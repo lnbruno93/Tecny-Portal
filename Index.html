@@ -505,11 +505,14 @@ const FIN_API='https://ipro-financiera-production-8c04.up.railway.app';
 const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
 const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
 
-let USERS=[
+const DEFAULT_USERS=[
   {id:1,nombre:'Lucas Bruno',username:'lucas',pass:'ipro2024',role:'admin',perms:{cotizador:true,financiera:true,cajas:true,envios:true,usuarios:true}},
   {id:2,nombre:'Ezequiel Bruno',username:'ezequiel',pass:'ezequiel123',role:'op',perms:{cotizador:true,financiera:false,cajas:false,envios:true,usuarios:false}},
   {id:3,nombre:'Ventas Demo',username:'ventas',pass:'ventas123',role:'op',perms:{cotizador:true,financiera:false,cajas:false,envios:false,usuarios:false}},
 ];
+function loadUsers(){try{const s=localStorage.getItem('ipro_users');return s?JSON.parse(s):DEFAULT_USERS;}catch(e){return DEFAULT_USERS;}}
+function saveUsers(){localStorage.setItem('ipro_users',JSON.stringify(USERS));}
+let USERS=loadUsers();
 let CU=null,editUID=null,editPerms2={},prodCount=0;
 let contacts=[],deudas=[],movDeudas=[],movInversiones=[],envios=[],enviosItems=[];
 let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null;
@@ -1163,7 +1166,7 @@ function openEditUser(id){const u=USERS.find(x=>x.id===id);if(!u)return;editUID=
 function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 function renderPermGrid(){document.getElementById('perm-grid').innerHTML=TOOLS.map(t=>`<div id="pt-${t}" onclick="tp2('${t}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--navy3);border:1px solid ${editPerms2[t]?'var(--green)':'var(--border)'};border-radius:9px;padding:10px 13px;cursor:pointer"><span style="font-size:13px;color:#fff">${t}</span><i class="ti ti-toggle-${editPerms2[t]?'right':'left'}" style="font-size:17px;color:${editPerms2[t]?'var(--green)':'var(--text3)'}"></i></div>`).join('');}
 function tp2(t){editPerms2[t]=!editPerms2[t];renderPermGrid();}
-function saveUser(){const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;if(!nom||!usr){alert('Nombre y usuario son obligatorios');return;}if(editUID){const u=USERS.find(x=>x.id===editUID);u.nombre=nom;u.username=usr;if(pas)u.pass=pas;u.perms={...editPerms2};}else{if(!pas){alert('Contraseña obligatoria');return;}USERS.push({id:Date.now(),nombre:nom,username:usr,pass:pas,role:'op',perms:{...editPerms2}});}closeModal('modal-usr');renderUsers();}
+function saveUser(){const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;if(!nom||!usr){alert('Nombre y usuario son obligatorios');return;}if(editUID){const u=USERS.find(x=>x.id===editUID);u.nombre=nom;u.username=usr;if(pas)u.pass=pas;u.perms={...editPerms2};}else{if(!pas){alert('Contraseña obligatoria');return;}USERS.push({id:Date.now(),nombre:nom,username:usr,pass:pas,role:'op',perms:{...editPerms2}});}saveUsers();closeModal('modal-usr');renderUsers();}
 </script>
 </body>
 </html>
