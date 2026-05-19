@@ -497,6 +497,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const CAJAS_ID='176tDFnaKyKSJYJlEWGpW02ekdhhy6R_rIEXbUnSCSKU';
+const USERS_ID='1KdBAlJ17uOu1DDg5ewT1E2HkH26EBNcpPZ1kNhyKinc';
 const ENVIOS_ID='1cDAByiatmp0LmDWUN7mau4oUAyfV2UwEWu6_iJf-cCo';
 const API_KEY='AIzaSyA58eJVAvw5j0p1wtw5rXMGXcJWPa-RzE4';
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbzjdhUOVNQFLgBRGAkMTve_vh-ZO1rde1hKwV7GCYGE4Nf_uah71Zi1JEd-10rZfXwb/exec';
@@ -504,14 +505,7 @@ const FIN_API='https://ipro-financiera-production-8c04.up.railway.app';
 const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
 const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
 
-const DEFAULT_USERS=[
-  {id:1,nombre:'Lucas Bruno',username:'lucas',pass:'ipro2024',role:'admin',perms:{cotizador:true,financiera:true,cajas:true,envios:true,usuarios:true}},
-  {id:2,nombre:'Ezequiel Bruno',username:'ezequiel',pass:'ezequiel123',role:'op',perms:{cotizador:true,financiera:false,cajas:false,envios:true,usuarios:false}},
-  {id:3,nombre:'Ventas Demo',username:'ventas',pass:'ventas123',role:'op',perms:{cotizador:true,financiera:false,cajas:false,envios:false,usuarios:false}},
-];
-function loadUsers(){try{const s=localStorage.getItem('ipro_users');return s?JSON.parse(s):DEFAULT_USERS;}catch(e){return DEFAULT_USERS;}}
-function saveUsers(){localStorage.setItem('ipro_users',JSON.stringify(USERS));}
-let USERS=loadUsers();
+let USERS=[];
 let CU=null,editUID=null,editPerms2={},prodCount=0;
 let contacts=[],deudas=[],movDeudas=[],movInversiones=[],envios=[],enviosItems=[];
 let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null;
@@ -1018,9 +1012,37 @@ async function saveContacto(){
   btn.disabled=false;btn.textContent='Guardar';
 }
 // ── AUTH PORTAL ──
-function doLogin(){
-  const u=document.getElementById('u-in').value.trim().toLowerCase(),p=document.getElementById('p-in').value;
+function parsePerms(str){
+  const tools=['cotizador','financiera','cajas','envios','usuarios'];
+  const p={};
+  tools.forEach(t=>p[t]=false);
+  if(!str)return p;
+  str.split(',').map(s=>s.trim().toLowerCase()).forEach(t=>{if(tools.includes(t))p[t]=true;});
+  return p;
+}
+
+async function loadUsersFromSheet(){
+  try{
+    const rows=await fetchSheet(USERS_ID,"iPro | Users!A:F");
+    USERS=rows.filter(r=>r[0]&&r[0]!=='ID').map(r=>({
+      id:String(r[0]),
+      nombre:r[1]||'',
+      username:(r[2]||'').toLowerCase(),
+      pass:r[3]||'',
+      role:(r[4]||'op').toLowerCase(),
+      perms:parsePerms(r[5]||'')
+    }));
+  }catch(e){USERS=[];}
+}
+
+async function doLogin(){
+  const u=document.getElementById('u-in').value.trim().toLowerCase();
+  const p=document.getElementById('p-in').value;
+  const btn=document.querySelector('.login-btn');
+  btn.textContent='Ingresando...';btn.disabled=true;
+  await loadUsersFromSheet();
   const found=USERS.find(x=>x.username===u&&x.pass===p);
+  btn.textContent='Ingresar →';btn.disabled=false;
   if(!found){document.getElementById('login-err').style.display='block';return;}
   CU=found;
   document.getElementById('login-err').style.display='none';
@@ -1158,14 +1180,35 @@ function copyResult(){
 
 // ── USUARIOS ──
 function renderUsers(){
-  const tools=['cotizador','financiera','cajas','envios'];
-  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><button class="btn-sm" onclick="openEditUser(${u.id})"><i class="ti ti-edit" style="font-size:12px"></i></button></div>`;}).join('')}</div>`;
+  const tools=['cotizador','financiera','cajas','envios','usuarios'];
+  if(!USERS.length){document.getElementById('usr-list').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
+  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button></div>`;}).join('')}</div>`;
 }
-function openEditUser(id){const u=USERS.find(x=>x.id===id);if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 function renderPermGrid(){document.getElementById('perm-grid').innerHTML=TOOLS.map(t=>`<div id="pt-${t}" onclick="tp2('${t}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--navy3);border:1px solid ${editPerms2[t]?'var(--green)':'var(--border)'};border-radius:9px;padding:10px 13px;cursor:pointer"><span style="font-size:13px;color:#fff">${t}</span><i class="ti ti-toggle-${editPerms2[t]?'right':'left'}" style="font-size:17px;color:${editPerms2[t]?'var(--green)':'var(--text3)'}"></i></div>`).join('');}
 function tp2(t){editPerms2[t]=!editPerms2[t];renderPermGrid();}
-function saveUser(){const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;if(!nom||!usr){alert('Nombre y usuario son obligatorios');return;}if(editUID){const u=USERS.find(x=>x.id===editUID);u.nombre=nom;u.username=usr;if(pas)u.pass=pas;u.perms={...editPerms2};}else{if(!pas){alert('Contraseña obligatoria');return;}USERS.push({id:Date.now(),nombre:nom,username:usr,pass:pas,role:'op',perms:{...editPerms2}});}saveUsers();closeModal('modal-usr');renderUsers();}
+async function saveUser(){
+  const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;
+  if(!nom||!usr){showToast('Nombre y usuario son obligatorios',false);return;}
+  const permsStr=Object.entries(editPerms2).filter(([k,v])=>v).map(([k])=>k).join(',');
+  const btn=document.querySelector('#modal-usr .btn-save');btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    if(editUID){
+      const updates=[{col:2,value:nom},{col:3,value:usr},{col:6,value:permsStr}];
+      if(pas)updates.push({col:4,value:pas});
+      await postScript({db:'users',sheet:'iPro | Users',action:'update',id:editUID,updates});
+      showToast('Usuario actualizado');
+    }else{
+      if(!pas){showToast('Contraseña obligatoria',false);btn.disabled=false;btn.textContent='Guardar';return;}
+      const id=Date.now().toString();
+      await postScript({db:'users',sheet:'iPro | Users',action:'append',row:[id,nom,usr,pas,'op',permsStr]});
+      showToast('Usuario creado');
+    }
+    closeModal('modal-usr');await loadUsersFromSheet();renderUsers();
+  }catch(e){showToast('Error: '+e.message,false);}
+  btn.disabled=false;btn.textContent='Guardar';
+}
 </script>
 </body>
 </html>
