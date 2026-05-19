@@ -515,8 +515,8 @@ document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>
 // ── CREDENCIALES FINANCIERA ──
 function getFinCreds(){try{return JSON.parse(localStorage.getItem('fin_creds')||'null');}catch(e){return null;}}
 function getFinToken(){return localStorage.getItem('fin_token')||null;}
-function saveFinCreds(e,p){localStorage.setItem('fin_creds',JSON.stringify({email:e,pass:p}));}
 function saveFinToken(t){localStorage.setItem('fin_token',t);}
+function saveFinCreds(e,p){localStorage.setItem('fin_creds',JSON.stringify({email:e,pass:p}));}
 function guardarCredFinanciera(){
   const e=document.getElementById('cfg-fin-email').value.trim();
   const p=document.getElementById('cfg-fin-pass').value;
@@ -524,8 +524,9 @@ function guardarCredFinanciera(){
   saveFinCreds(e,p);showToast('Credenciales guardadas');
 }
 
+// ── FINANCIERA API ──
 async function finApi(path,method='GET',body=null){
-  const opts={method,headers:{'Content-Type':'application/json'},credentials:'include'};
+const opts={method,headers:{'Content-Type':'application/json'},credentials:'include'};
   const token=getFinToken();
   if(token)opts.headers['Authorization']='Bearer '+token;
   if(body)opts.body=JSON.stringify(body);
@@ -539,28 +540,33 @@ async function finInit(){
   document.getElementById('fin-connecting').style.display='flex';
   document.getElementById('fin-app').style.display='none';
   document.getElementById('fin-error').style.display='none';
-  const token=getFinToken();
-  if(token){
-    try{await finApi('/api/auth/me');finMostrarApp();return;}catch(e){}
-  }
-  const creds=getFinCreds();
-  if(creds){
-    try{
-      const data=await finApi('/api/auth/login','POST',{email:creds.email,password:creds.pass});
-      if(data.token)saveFinToken(data.token);
-      finMostrarApp();return;
-    }catch(e2){
+  try{
+    await finApi('/api/auth/me');
+    finMostrarApp();
+  }catch(e){
+    if(e.message==='NO_AUTH'){
+      const creds=getFinCreds();
+      if(creds){
+        try{
+          const data=await finApi('/api/auth/login','POST',{email:creds.email,password:creds.pass});
+if(data.token)saveFinToken(data.token);
+          finMostrarApp();
+        }catch(e2){
+          document.getElementById('fin-connecting').style.display='none';
+          document.getElementById('fin-error').style.display='block';
+          document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--red);font-size:13px;margin-bottom:12px"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Credenciales incorrectas</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Actualizá las credenciales en Config</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
+        }
+      }else{
+        document.getElementById('fin-connecting').style.display='none';
+        document.getElementById('fin-error').style.display='block';
+        document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--amber);font-size:13px;margin-bottom:12px"><i class="ti ti-key" style="font-size:28px;display:block;margin-bottom:8px"></i>Configurá las credenciales</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Andá a Config → Credenciales Financiera e ingresá tu email y contraseña de Railway</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
+      }
+    }else{
       document.getElementById('fin-connecting').style.display='none';
       document.getElementById('fin-error').style.display='block';
-      document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--red);font-size:13px;margin-bottom:12px"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Credenciales incorrectas</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Actualizá las credenciales en Config</div><button class="btn-secondary" onclick="go('config')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
-      return;
+      document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Error de conexión<br><button class="btn-secondary" style="margin-top:12px" onclick="finInit()">Reintentar</button></div>';
     }
   }
-  document.getElementById('fin-connecting').style.display='none';
-  document.getElementById('fin-error').style.display='block';
-  document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--amber);font-size:13px;margin-bottom:12px"><i class="ti ti-key" style="font-size:28px;display:block;margin-bottom:8px"></i>Configurá las credenciales</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Andá a Config y guardá tu email y contraseña de Financiera</div><button class="btn-secondary" onclick="go('config')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
-}
-
 }
 
 async function finMostrarApp(){
