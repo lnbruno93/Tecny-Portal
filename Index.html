@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPro | Portal</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --navy:#0d1117;--navy2:#161b24;--navy3:#1c2333;--navy4:#21293a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#fff;--text2:rgba(255,255,255,0.7);--text3:rgba(255,255,255,0.4);
+  --green:#3fb950;--green2:rgba(63,185,80,0.13);
+  --amber:#d29922;--amber2:rgba(210,153,34,0.13);
+  --blue:#58a6ff;--blue2:rgba(88,166,255,0.11);
+  --red:#f85149;--red2:rgba(248,81,73,0.11);
+  --purple:#a78bfa;--purple2:rgba(167,139,250,0.11);
+}
+html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM Sans',system-ui,sans-serif;color:#fff;overflow-x:hidden}
+#toast{position:fixed;bottom:24px;right:24px;background:#fff;color:#0d1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(63,185,80,0.05) 0%,transparent 70%)}
+.login-box{width:360px;padding:44px 36px;background:var(--navy2);border:1px solid var(--border2);border-radius:16px}
+.brand{font-family:'Syne',system-ui,sans-serif;font-size:24px;font-weight:800;color:#fff;text-align:center;margin-bottom:4px}
+.brand-sub{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);text-align:center;margin-bottom:28px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.field input{width:100%;padding:9px 13px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:14px;outline:none;transition:border-color .2s;font-family:inherit}
+.field input:focus{border-color:var(--green)}
+.login-btn{width:100%;margin-top:20px;padding:11px;background:var(--green);border:none;border-radius:8px;color:#0d1117;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
+.login-btn:hover{opacity:.88}
+.login-err{font-size:12px;color:var(--red);margin-top:8px;text-align:center;display:none}
+#app{display:none;min-height:100vh;flex-direction:column}
+.topbar{height:50px;background:var(--navy2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:12px;position:sticky;top:0;z-index:50}
+.topbar-brand{font-family:'Syne',system-ui,sans-serif;font-weight:800;font-size:15px;color:#fff}
+.topbar-div{width:1px;height:16px;background:var(--border2)}
+.topbar-sub{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.topbar-user{font-size:13px;color:var(--text2)}
+.topbar-user strong{color:#fff;font-weight:500}
+.topbar-role{font-size:10px;padding:2px 8px;border-radius:20px;background:var(--green2);color:var(--green);letter-spacing:.06em;text-transform:uppercase}
+.layout{display:flex;min-height:calc(100vh - 50px)}
+.sidebar{width:210px;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 0;flex-shrink:0;position:sticky;top:50px;height:calc(100vh - 50px)}
+.sidebar-section{padding:0 10px;margin-bottom:2px}
+.s-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 8px 4px}
+.nav-btn{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:background .15s,color .15s}
+.nav-btn:hover{background:var(--navy3);color:#fff}
+.nav-btn.active{background:var(--navy4);color:#fff}
+.nav-btn.active .ni{color:var(--green)}
+.ni{font-size:15px;width:17px;text-align:center;flex-shrink:0}
+.nav-lock{font-size:11px;color:var(--text3);margin-left:auto}
+.s-footer{margin-top:auto;padding:0 10px;border-top:1px solid var(--border);padding-top:10px}
+.content{flex:1;overflow-y:auto;background:var(--navy)}
+.panel{display:none}.panel.active{display:block}
+.blocked-wrap{padding:40px;display:flex;align-items:center;justify-content:center;min-height:400px}
+.blocked-card{background:var(--navy2);border:1px solid var(--border2);border-radius:16px;padding:40px;text-align:center;max-width:380px;width:100%}
+.blocked-icon{font-size:40px;color:var(--text3);margin-bottom:16px}
+.blocked-title{font-family:'Syne',system-ui,sans-serif;font-size:17px;font-weight:700;margin-bottom:8px;color:#fff}
+.blocked-sub{font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:24px}
+.blocked-btn{display:inline-block;padding:9px 20px;background:var(--navy3);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:13px}
+.ph{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:var(--navy);flex-wrap:wrap}
+.ph-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.ph-title{font-family:'Syne',system-ui,sans-serif;font-size:16px;font-weight:700;color:#fff}
+.ph-sub{font-size:12px;color:var(--text2);margin-top:1px}
+.btn-primary{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#0d1117;background:var(--green);border:none;border-radius:7px;padding:7px 14px;cursor:pointer;font-family:inherit;font-weight:700;white-space:nowrap;transition:opacity .2s}
+.btn-primary:hover{opacity:.88}
+.btn-secondary{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--green);background:var(--green2);border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.btn-outline{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);background:none;border:1px solid var(--border2);border-radius:7px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.btn-outline:hover{color:#fff;background:var(--navy3)}
+.btn-sm{padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);color:var(--text2);background:none;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px}
+.btn-sm:hover{color:#fff;border-color:var(--border2)}
+.btn-danger-sm{color:var(--red);border-color:rgba(248,81,73,.2)}
+.btn-danger-sm:hover{background:var(--red2)}
+.btn-save{flex:2;padding:9px;background:var(--green);border:none;border-radius:8px;color:#0d1117;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:13px;cursor:pointer}
+.btn-save:disabled{opacity:.5;cursor:not-allowed}
+.btn-cancel{flex:1;padding:9px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:inherit;font-size:13px}
+.metric{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:14px}
+.metric-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.metric-val{font-family:'Syne',system-ui,sans-serif;font-size:19px;font-weight:700;color:#fff}
+.metric-val.green{color:var(--green)}.metric-val.amber{color:var(--amber)}.metric-val.blue{color:var(--blue)}
+.table-card{background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.table-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.table-title{font-size:13px;font-weight:600;color:#fff}
+.data-table{width:100%;border-collapse:collapse;font-size:13px}
+.data-table th{padding:10px 12px;text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);font-weight:500}
+.data-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:#fff;vertical-align:middle}
+.data-table tr:last-child td{border:none}
+.data-table tr:hover td{background:rgba(255,255,255,.02)}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-ok{background:var(--green2);color:var(--green)}.badge-pending{background:var(--amber2);color:var(--amber)}
+.b-amigo{background:var(--blue2);color:var(--blue)}.b-familiar{background:var(--amber2);color:var(--amber)}
+.b-cliente{background:var(--purple2);color:var(--purple)}.b-inversor{background:var(--green2);color:var(--green)}
+.b-debe{background:var(--red2);color:var(--red)}.b-pago{background:var(--green2);color:var(--green)}
+.b-pendiente{background:var(--amber2);color:var(--amber)}.b-inversion{background:var(--blue2);color:var(--blue)}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.modal-bg.open{display:flex}
+.modal{background:var(--navy2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:520px;max-width:100%;margin:auto}
+.modal-title{font-family:'Syne',system-ui,sans-serif;font-size:15px;font-weight:700;margin-bottom:18px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+.modal-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px}
+.modal-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.modal-actions{display:flex;gap:10px;margin-top:16px}
+.modal-err{font-size:12px;color:var(--red);margin-bottom:8px;display:none;padding:8px 10px;background:var(--red2);border-radius:7px}
+.section-divider{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:14px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.fg{margin-bottom:12px}
+.fg label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.fg input,.fg select,.fg textarea{width:100%;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none;transition:border-color .2s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--green)}
+.fg select option{background:var(--navy3)}.fg textarea{resize:vertical;min-height:60px}
+.home-grid{padding:20px 24px;display:grid;grid-template-columns:repeat(2,1fr);gap:14px;max-width:680px}
+.tool-card{background:var(--navy2);border:1px solid var(--border);border-radius:13px;padding:20px;cursor:pointer;transition:border-color .2s}
+.tool-card:hover{border-color:rgba(255,255,255,.18)}
+.tool-card-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:11px}
+.tool-card h3{font-family:'Syne',system-ui,sans-serif;font-size:14px;font-weight:700;margin-bottom:3px;color:#fff}
+.tool-card p{font-size:12px;color:var(--text2)}
+.cot-body{padding:24px;max-width:720px}
+.tab-row{display:flex;gap:4px;margin-bottom:20px;background:var(--navy3);border-radius:10px;padding:4px;width:fit-content}
+.ctab2{padding:7px 18px;border-radius:8px;font-size:13px;cursor:pointer;border:none;background:none;color:var(--text2);font-family:inherit}
+.ctab2.active{background:var(--navy2);color:#fff;border:1px solid var(--border2)}
+.tc-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px}
+.fg2{margin-bottom:0}
+.fg2 label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.fg2 input,.fg2 select{width:100%;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none}
+.fg2 select option{background:var(--navy3)}
+.prod-card-c{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px}
+.prod-head-c{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.prod-num-c{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--green);font-weight:700}
+.btn-rm-c{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px}
+.prod-g3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
+.calc-btn{width:100%;margin-top:18px;padding:11px;background:var(--green);border:none;border-radius:9px;color:#0d1117;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+.results-wrap{margin-top:20px;background:var(--navy3);border:1px solid var(--border2);border-radius:12px;overflow:hidden}
+.res-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.btn-copy{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit}
+.result-prod{border-bottom:1px solid var(--border)}.result-prod:last-child{border:none}
+.rpname{padding:10px 16px 4px;font-size:13px;font-weight:600;color:#fff}
+.rpvar{font-size:11px;color:var(--text2);font-weight:400;margin-left:6px}
+.rrows{padding:0 16px 10px}
+.rr{display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.04)}
+.rr:last-child{border:none}.rrl{color:var(--text2)}
+.rrv{font-family:'Syne',system-ui,sans-serif;font-weight:600;color:#fff}
+.rrv.green{color:var(--green)}.rrv.amber{color:var(--amber)}
+.total-row{padding:12px 16px;background:var(--navy4);display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border2)}
+.total-label{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em}
+.total-val{font-family:'Syne',system-ui,sans-serif;font-size:18px;font-weight:700;color:var(--green)}
+.usd-result{margin-top:16px;background:var(--navy3);border:1px solid var(--border2);border-radius:10px;padding:16px;display:none}
+.usd-rr{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
+.usd-rr:last-child{border:none;padding-top:10px;font-size:15px;font-weight:700}
+.usd-rr span:first-child{color:var(--text2)}.usd-rr span:last-child{color:var(--green);font-family:'Syne',system-ui,sans-serif}
+.fin-body{padding:0}
+.fin-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto;background:var(--navy)}
+.fin-tab{padding:12px 16px;border:none;background:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.fin-tab:hover{color:#fff}.fin-tab.active{color:#fff;border-bottom-color:var(--green)}
+.fin-section{display:none;padding:24px}.fin-section.active{display:block}
+.filter-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end}
+.filter-group{display:flex;flex-direction:column;gap:4px;min-width:120px}
+.filter-group label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.filter-group input,.filter-group select{padding:7px 10px;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none}
+.filter-group select option{background:var(--navy3)}
+.metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}
+.metric-card{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:14px}
+.metric-lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.metric-v{font-family:'Syne',system-ui,sans-serif;font-size:17px;font-weight:700;color:#fff}
+.metric-v.green{color:var(--green)}.metric-v.amber{color:var(--amber)}
+.form-card{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:16px}
+.form-card-title{font-size:13px;font-weight:600;color:#fff;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.upload-zone{border:1.5px dashed rgba(255,255,255,.15);border-radius:8px;padding:20px;text-align:center;cursor:pointer;color:var(--text3);font-size:13px;margin-bottom:10px;transition:all .2s}
+.upload-zone:hover{border-color:rgba(255,255,255,.3);color:var(--text2);background:var(--navy4)}
+.preview-bar{background:var(--navy4);border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap}
+.preview-bar-item strong{font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:3px}
+.preview-bar-item span{font-size:15px;font-weight:700;color:#fff}
+.ocr-status{display:inline-flex;align-items:center;gap:6px;background:var(--navy4);border-radius:6px;padding:4px 10px;font-size:12px;color:var(--text2);margin-top:6px}
+.fin-payment-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.fin-payment-row:last-child{border:none}
+.fin-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
+.hist-row{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.hist-row:last-child{border:none}
+.hist-icon{width:32px;height:32px;border-radius:8px;background:var(--navy4);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;color:var(--text2)}
+.config-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);font-size:13px}
+.config-row:last-child{border:none}
+.vendor-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.vendor-row:last-child{border:none}
+.cajas-body{padding:20px 24px}
+.cajas-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--navy3);border-radius:10px;padding:4px;width:fit-content}
+.ctab{padding:7px 16px;border-radius:8px;font-size:13px;cursor:pointer;border:none;background:none;color:var(--text2);font-family:inherit}
+.ctab.active{background:var(--navy2);color:#fff;border:1px solid var(--border2)}
+.cajas-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.btn-plus{width:26px;height:26px;border-radius:6px;background:var(--green);border:none;color:#0d1117;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+.mov-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.back-btn{background:none;border:1px solid var(--border);border-radius:7px;color:var(--text2);padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
+.envios-body{padding:20px 24px}
+.metrics-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.date-nav{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.date-btn{width:30px;height:30px;border-radius:7px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.date-btn:hover{border-color:var(--border2);color:#fff}
+.date-label{font-size:13px;font-weight:600;color:#fff;padding:6px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px}
+.btn-hoy{padding:6px 12px;background:none;border:1px solid var(--border);border-radius:7px;color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit}
+.search-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.search-input{flex:1;min-width:180px;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none}
+.search-input:focus{border-color:var(--green)}
+.filter-sel{padding:8px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:12px;font-family:inherit;outline:none;cursor:pointer}
+.filter-sel option{background:var(--navy3)}
+.envio-card{background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;transition:border-color .2s}
+.envio-card:hover{border-color:var(--border2)}
+.envio-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.envio-nombre{font-size:15px;font-weight:700;color:#fff}
+.envio-tel{font-size:12px;color:var(--text2);margin-top:2px}
+.status-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.s-pendiente{background:var(--amber2);color:var(--amber)}.s-camino{background:var(--blue2);color:var(--blue)}
+.s-entregado{background:var(--green2);color:var(--green)}.s-cancelado{background:var(--red2);color:var(--red)}
+.prod-tag{display:inline-block;padding:3px 9px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text2);margin:2px}
+.pago-tag{padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;margin:2px;display:inline-block}
+.pago-ars{background:var(--green2);color:var(--green)}.pago-usd{background:var(--amber2);color:var(--amber)}
+.envio-addr{font-size:12px;color:var(--text2);margin-bottom:8px;display:flex;align-items:flex-start;gap:5px}
+.alerta-flete{padding:6px 10px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.2);border-radius:7px;font-size:11px;color:var(--amber);margin-bottom:8px}
+.envio-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:10px}
+.action-btn{padding:5px 12px;border-radius:6px;font-size:11px;border:1px solid var(--border);color:var(--text2);background:none;cursor:pointer;font-family:inherit;transition:all .15s}
+.action-btn:hover{border-color:var(--border2);color:#fff}
+.action-btn.st-active{background:var(--green);color:#0d1117;border-color:transparent;font-weight:700}
+.action-btn.st-camino{background:var(--blue2);color:var(--blue);border-color:var(--blue2)}
+.flete-right{margin-left:auto;font-family:'Syne',system-ui,sans-serif;font-size:14px;font-weight:700;color:#fff}
+.prod-item{background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center}
+.prod-item input{flex:1;padding:6px 10px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none}
+.pago-item{background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
+.pago-item select,.pago-item input{padding:6px 10px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:12px;font-family:inherit;outline:none}
+.pago-item select option{background:var(--navy3)}
+.btn-rm-sm{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px;flex-shrink:0}
+.btn-rm-sm:hover{color:var(--red)}
+.cfg-body{padding:24px;max-width:480px}
+.cfg-section{background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
+.cfg-row{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--border);font-size:13px}
+.cfg-row:last-child{border:none}
+.logout-btn{width:100%;margin-top:4px;padding:11px;background:var(--red2);border:1px solid rgba(248,81,73,.18);border-radius:9px;color:var(--red);font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+.loading-msg{padding:32px;text-align:center;color:var(--text3);font-size:13px}
+.loading-msg i{font-size:24px;display:block;margin-bottom:8px;opacity:.3}
+.empty-msg{padding:32px;text-align:center;color:var(--text3);font-size:13px}
+.empty-msg i{font-size:28px;display:block;margin-bottom:8px;opacity:.25}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+<body>
+<div id="toast" class="toast"></div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="brand">iPro</div>
+    <div class="brand-sub">Tech Reseller & Celnyx</div>
+    <div class="field"><label>Usuario</label><input id="u-in" type="text" placeholder="usuario" autocomplete="username"/></div>
+    <div class="field"><label>Contraseña</label><input id="p-in" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
+    <button class="login-btn" onclick="doLogin()">Ingresar →</button>
+    <div class="login-err" id="login-err">Usuario o contraseña incorrectos</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-brand">iPro</div>
+    <div class="topbar-div"></div>
+    <div class="topbar-sub">Tech Reseller & Celnyx</div>
+    <div class="topbar-right">
+      <div class="topbar-user">Hola, <strong id="tb-name">—</strong></div>
+      <div class="topbar-role" id="tb-role">—</div>
+    </div>
+  </div>
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="s-label">Herramientas</div>
+        <button class="nav-btn active" onclick="go('home')" id="nb-home"><i class="ti ti-layout-dashboard ni"></i>Inicio</button>
+        <button class="nav-btn" onclick="go('cotizador')" id="nb-cotizador"><i class="ti ti-calculator ni"></i>Cotizador<span class="nav-lock" id="nl-cotizador" style="display:none"><i class="ti ti-lock"></i></span></button>
+        <button class="nav-btn" onclick="go('financiera')" id="nb-financiera"><i class="ti ti-chart-line ni"></i>Financiera<span class="nav-lock" id="nl-financiera" style="display:none"><i class="ti ti-lock"></i></span></button>
+        <button class="nav-btn" onclick="go('cajas')" id="nb-cajas"><i class="ti ti-wallet ni"></i>Cajas<span class="nav-lock" id="nl-cajas" style="display:none"><i class="ti ti-lock"></i></span></button>
+        <button class="nav-btn" onclick="go('envios')" id="nb-envios"><i class="ti ti-truck-delivery ni"></i>Envíos<span class="nav-lock" id="nl-envios" style="display:none"><i class="ti ti-lock"></i></span></button>
+      </div>
+      <div class="s-footer">
+        <div class="s-label">Sistema</div>
+        <button class="nav-btn" onclick="go('usuarios')" id="nb-usuarios"><i class="ti ti-users ni"></i>Usuarios<span class="nav-lock" id="nl-usuarios" style="display:none"><i class="ti ti-lock"></i></span></button>
+        <button class="nav-btn" onclick="go('config')" id="nb-config"><i class="ti ti-settings ni"></i>Config</button>
+      </div>
+    </div>
+    <div class="content">
+
+      <!-- HOME -->
+      <div class="panel active" id="panel-home">
+        <div class="ph"><div class="ph-icon" style="background:var(--green2);color:var(--green)"><i class="ti ti-layout-dashboard"></i></div><div><div class="ph-title">Inicio</div><div class="ph-sub" id="home-sub">Portal iPro</div></div></div>
+        <div class="home-grid">
+          <div class="tool-card" onclick="go('cotizador')"><div class="tool-card-icon" style="background:var(--green2);color:var(--green)"><i class="ti ti-calculator"></i></div><h3>Cotizador</h3><p>Precios ARS con cuotas y tipo de cambio</p></div>
+          <div class="tool-card" onclick="go('financiera')"><div class="tool-card-icon" style="background:var(--amber2);color:var(--amber)"><i class="ti ti-chart-line"></i></div><h3>Financiera</h3><p>Comprobantes, cobros y lector OCR</p></div>
+          <div class="tool-card" onclick="go('cajas')"><div class="tool-card-icon" style="background:var(--blue2);color:var(--blue)"><i class="ti ti-wallet"></i></div><h3>Cajas</h3><p>Deudas, inversiones y movimientos</p></div>
+          <div class="tool-card" onclick="go('envios')"><div class="tool-card-icon" style="background:var(--purple2);color:var(--purple)"><i class="ti ti-truck-delivery"></i></div><h3>Envíos</h3><p>Gestión de despachos y logística</p></div>
+        </div>
+      </div>
+
+      <!-- COTIZADOR -->
+      <div class="panel" id="panel-cotizador">
+        <div class="ph"><div class="ph-icon" style="background:var(--green2);color:var(--green)"><i class="ti ti-calculator"></i></div><div><div class="ph-title">Cotizador</div><div class="ph-sub">Precios con cuotas y tipo de cambio</div></div></div>
+        <div id="cotizador-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar el Cotizador.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="cotizador-content" class="cot-body">
+          <div class="tab-row"><button class="ctab2 active" id="tab-cc" onclick="setTab('cc')">Tarjetas de crédito</button><button class="ctab2" id="tab-usd" onclick="setTab('usd')">USD → ARS</button></div>
+          <div id="tc-cc">
+            <div class="tc-row"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc" value="1200" min="1"/></div><div class="fg2"><label>Recargo (%)</label><input type="number" id="rec" value="15" min="0"/></div><div class="fg2"><label>Cuotas s/i</label><select id="csi"><option value="1">Contado</option><option value="3">3 cuotas</option><option value="6">6 cuotas</option><option value="9">9 cuotas</option><option value="12">12 cuotas</option><option value="18">18 cuotas</option></select></div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:13px;font-weight:600">Productos</span><button class="btn-secondary" onclick="addProd()"><i class="ti ti-plus" style="font-size:13px"></i>Agregar</button></div>
+            <div id="prods"></div>
+            <button class="calc-btn" onclick="calcCC()">Calcular cotización</button>
+            <div class="results-wrap" id="cc-results" style="display:none"><div class="res-header"><span style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)">Resultado</span><button class="btn-copy" onclick="copyResult()"><i class="ti ti-copy" style="font-size:12px"></i>Copiar</button></div><div id="cc-results-body"></div><div class="total-row" id="cc-total-row" style="display:none"><div class="total-label">Total</div><div class="total-val" id="cc-total"></div></div></div>
+          </div>
+          <div id="tc-usd" style="display:none">
+            <div class="tc-row" style="grid-template-columns:1fr 1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc2" value="1200" min="1"/></div><div class="fg2"><label>Monto USD</label><input type="number" id="usd-in" placeholder="0" min="0"/></div></div>
+            <div class="tc-row" style="grid-template-columns:1fr 1fr;margin-top:-8px"><div class="fg2"><label>Recargo (%)</label><input type="number" id="rec2" value="0" min="0"/></div><div class="fg2"><label>Redondear</label><select id="rnd"><option value="1">Sin redondeo</option><option value="100">Centenas</option><option value="500" selected>Quinientos</option><option value="1000">Miles</option></select></div></div>
+            <button class="calc-btn" onclick="calcUSD()">Convertir</button>
+            <div class="usd-result" id="usd-result"><div class="usd-rr"><span>Monto USD</span><span id="ur-usd">—</span></div><div class="usd-rr"><span>Tipo de cambio</span><span id="ur-tc">—</span></div><div class="usd-rr"><span>Subtotal ARS</span><span id="ur-sub">—</span></div><div class="usd-rr" id="ur-rec-row"><span>Recargo</span><span id="ur-rec">—</span></div><div class="usd-rr"><span>Total ARS</span><span id="ur-total">—</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FINANCIERA -->
+      <div class="panel" id="panel-financiera">
+        <div class="ph"><div class="ph-icon" style="background:var(--amber2);color:var(--amber)"><i class="ti ti-chart-line"></i></div><div><div class="ph-title">Financiera</div><div class="ph-sub">Comprobantes, cobros y lector OCR</div></div></div>
+        <div id="financiera-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar Financiera.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="financiera-content" class="fin-body">
+          <div id="fin-connecting" style="padding:40px;display:flex;align-items:center;justify-content:center;min-height:300px"><div style="text-align:center;color:var(--text3)"><i class="ti ti-loader" style="font-size:32px;display:block;margin-bottom:12px;opacity:.4"></i><p style="font-size:13px">Conectando con Financiera...</p></div></div>
+          <div id="fin-app" style="display:none">
+            <div class="fin-tabs">
+              <button class="fin-tab active" onclick="finTab('dashboard',this)"><i class="ti ti-chart-bar"></i>Dashboard</button>
+              <button class="fin-tab" onclick="finTab('cargar',this)"><i class="ti ti-upload"></i>Cargar</button>
+              <button class="fin-tab" onclick="finTab('comprobantes',this)"><i class="ti ti-files"></i>Comprobantes</button>
+              <button class="fin-tab" onclick="finTab('pagos',this)"><i class="ti ti-building-bank"></i>Financiera</button>
+              <button class="fin-tab" onclick="finTab('historial',this)"><i class="ti ti-history"></i>Historial</button>
+              <button class="fin-tab" onclick="finTab('fin-config',this)"><i class="ti ti-settings"></i>Config</button>
+            </div>
+            <div id="fin-dashboard" class="fin-section active">
+              <div class="filter-row"><div class="filter-group"><label>Desde</label><input type="date" id="f-desde"/></div><div class="filter-group"><label>Hasta</label><input type="date" id="f-hasta"/></div><div class="filter-group"><label>Vendedor</label><select id="f-vendedor"><option value="">Todos</option></select></div><button class="btn-primary" onclick="finRenderDashboard()"><i class="ti ti-refresh" style="font-size:13px"></i>Filtrar</button></div>
+              <div class="metrics-row" id="fin-metrics"></div>
+              <div class="table-card"><div id="fin-tabla-dashboard"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div>
+              <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button class="btn-primary" onclick="finDescargarZip()"><i class="ti ti-download" style="font-size:13px"></i>Descargar ZIP</button><button class="btn-outline" onclick="finExportarCSV()"><i class="ti ti-file-spreadsheet" style="font-size:13px"></i>Exportar CSV</button></div>
+            </div>
+            <div id="fin-cargar" class="fin-section">
+              <div class="form-card">
+                <div class="form-card-title"><i class="ti ti-receipt"></i>Nuevo comprobante</div>
+                <div class="form-row-2" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Fecha de pago</label><input type="date" id="c-fecha"/></div><div class="fg" style="margin-bottom:0"><label>Cliente</label><input type="text" id="c-cliente" placeholder="Nombre completo"/></div></div>
+                <div class="form-row-2" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Vendedor</label><select id="c-vendedor"><option value="">Seleccionar...</option></select></div><div class="fg" style="margin-bottom:0"><label>Monto ($)</label><input type="number" id="c-monto" placeholder="0.00" step="0.01" oninput="finActualizarPreview()"/></div></div>
+                <div class="fg"><label>Comprobante adjunto</label><div class="upload-zone" onclick="document.getElementById('fin-file-input').click()"><i class="ti ti-upload" style="font-size:22px;display:block;margin-bottom:6px"></i>Hacé clic para adjuntar imagen o PDF<input type="file" id="fin-file-input" accept="image/*,.pdf" style="display:none" onchange="finHandleFile(this)"/></div><div id="fin-file-preview"></div></div>
+                <div class="preview-bar"><div class="preview-bar-item"><strong>Retención (<span id="fin-pct-lbl">3</span>%)</strong><span style="color:var(--amber)" id="fin-fin-preview">—</span></div><div class="preview-bar-item"><strong>Nos queda</strong><span style="color:var(--green)" id="fin-neto-preview">—</span></div><div class="preview-bar-item"><strong>Total ingresado</strong><span id="fin-total-preview">—</span></div></div>
+                <button class="btn-primary" onclick="finGuardarComprobante()"><i class="ti ti-check" style="font-size:13px"></i>Guardar comprobante</button>
+              </div>
+            </div>
+            <div id="fin-comprobantes" class="fin-section">
+              <div class="filter-row"><div class="filter-group"><label>Desde</label><input type="date" id="cb-desde"/></div><div class="filter-group"><label>Hasta</label><input type="date" id="cb-hasta"/></div><div class="filter-group"><label>Buscar</label><input type="text" id="cb-buscar" placeholder="Cliente..." oninput="finRenderComprobantes()"/></div><button class="btn-primary" onclick="finRenderComprobantes()"><i class="ti ti-refresh" style="font-size:13px"></i>Filtrar</button></div>
+              <div class="table-card"><div id="fin-tabla-comprobantes"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div>
+            </div>
+            <div id="fin-pagos" class="fin-section">
+              <div class="form-card"><div class="form-card-title"><i class="ti ti-plus"></i>Registrar pago de financiera</div><div class="form-row-2" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Fecha</label><input type="date" id="pf-fecha"/></div><div class="fg" style="margin-bottom:0"><label>Monto ($)</label><input type="number" id="pf-monto" placeholder="0.00" step="0.01"/></div></div><div class="fg"><label>Referencia</label><input type="text" id="pf-ref" placeholder="Ej: Liquidación semana 1 mayo"/></div><button class="btn-primary" onclick="finGuardarPago()"><i class="ti ti-check" style="font-size:13px"></i>Registrar</button></div>
+              <div class="table-card"><div style="padding:12px 16px;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-weight:600;color:#fff">Estado de cuenta</span></div><div class="metrics-row" style="padding:16px;margin-bottom:0" id="fin-metrics-pagos"></div><div id="fin-lista-pagos" style="padding:0 16px 16px"></div></div>
+            </div>
+            <div id="fin-historial" class="fin-section">
+              <div class="table-card"><div style="padding:12px 16px;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-weight:600;color:#fff">Historial de acciones</span></div><div id="fin-lista-historial" style="padding:0 16px"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div>
+            </div>
+            <div id="fin-fin-config" class="fin-section">
+              <div class="form-card"><div class="form-card-title"><i class="ti ti-adjustments"></i>Configuración</div>
+                <div class="config-row"><span style="color:#fff">Porcentaje de retención (%)</span><input type="number" id="cfg-pct" step="0.1" min="0" max="100" style="width:80px;padding:5px 8px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;text-align:right;font-family:inherit"/></div>
+                <div style="margin-top:14px"><div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px">Equipo de ventas</div><div id="fin-lista-vendedores"></div><div style="display:flex;gap:8px;margin-top:10px"><input type="text" id="nuevo-vendedor" placeholder="Nombre del vendedor" style="flex:1;padding:8px 12px;background:var(--navy4);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none"/><button class="btn-primary" onclick="finAgregarVendedor()"><i class="ti ti-plus" style="font-size:13px"></i>Agregar</button></div></div>
+                <div style="margin-top:16px"><button class="btn-primary" onclick="finGuardarConfig()"><i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar</button></div>
+              </div>
+            </div>
+          </div>
+          <div id="fin-error" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- CAJAS -->
+      <div class="panel" id="panel-cajas">
+        <div class="ph"><div class="ph-icon" style="background:var(--blue2);color:var(--blue)"><i class="ti ti-wallet"></i></div><div><div class="ph-title">Cajas</div><div class="ph-sub">Deudas e inversiones en tiempo real</div></div><button class="btn-secondary" style="margin-left:auto" onclick="loadCajas()" id="btn-refresh-cajas"><i class="ti ti-refresh" style="font-size:13px"></i>Actualizar</button></div>
+        <div id="cajas-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para ver Cajas.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="cajas-content" class="cajas-body">
+          <div class="cajas-tabs"><button class="ctab active" id="ctab-deudas" onclick="setCajasTab('deudas')">Deudas</button><button class="ctab" id="ctab-inversiones" onclick="setCajasTab('inversiones')">Inversiones</button><button class="ctab" id="ctab-contactos" onclick="setCajasTab('contactos')">Contactos</button></div>
+          <div id="cajasTab-deudas"><div class="cajas-metrics"><div class="metric"><div class="metric-label">Total ARS</div><div class="metric-val" id="m-ars">—</div></div><div class="metric"><div class="metric-label">Total USD</div><div class="metric-val green" id="m-usd">—</div></div><div class="metric"><div class="metric-label">Con deuda</div><div class="metric-val" id="m-count">—</div></div></div><div class="table-card"><div class="table-header"><div class="table-title">Deudas por contacto</div><button class="btn-primary" onclick="openMovModal(null,'deuda')"><i class="ti ti-plus" style="font-size:13px"></i>Movimiento</button></div><div id="deudas-body"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div></div>
+          <div id="cajasTab-inversiones" style="display:none"><div class="cajas-metrics"><div class="metric"><div class="metric-label">Total invertido</div><div class="metric-val green" id="m-inv-total">—</div></div><div class="metric"><div class="metric-label">Inversores</div><div class="metric-val" id="m-inv-count">—</div></div><div class="metric"><div class="metric-label">Tasa prom.</div><div class="metric-val amber" id="m-inv-tasa">—</div></div></div><div class="table-card"><div class="table-header"><div class="table-title">Inversiones</div><button class="btn-primary" onclick="openMovModal(null,'inversion')"><i class="ti ti-plus" style="font-size:13px"></i>Nueva</button></div><div id="inversiones-body"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div></div>
+          <div id="cajasTab-contactos" style="display:none"><div class="table-card"><div class="table-header"><div class="table-title">Contactos</div><button class="btn-primary" onclick="openContactoModal()"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo</button></div><div id="contactos-body"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div></div>
+          <div id="cajasTab-movimientos" style="display:none"><div class="mov-header"><button class="back-btn" onclick="backFromMov()"><i class="ti ti-arrow-left" style="font-size:13px"></i>Volver</button><div style="font-family:'Syne',system-ui,sans-serif;font-size:15px;font-weight:700;color:#fff" id="mov-cname">—</div><span id="mov-cbadge"></span></div><div class="cajas-metrics" style="grid-template-columns:1fr 1fr"><div class="metric"><div class="metric-label">Saldo ARS</div><div class="metric-val" id="mov-saldo-ars">—</div></div><div class="metric"><div class="metric-label">Saldo USD</div><div class="metric-val green" id="mov-saldo-usd">—</div></div></div><div class="table-card"><div class="table-header"><div class="table-title" id="mov-ttitle">Movimientos</div><button class="btn-primary" onclick="openMovModal(currentCid,'deuda')"><i class="ti ti-plus" style="font-size:13px"></i>Agregar</button></div><div id="movimientos-body"></div></div></div>
+        </div>
+      </div>
+
+      <!-- ENVIOS -->
+      <div class="panel" id="panel-envios">
+        <div class="ph"><div class="ph-icon" style="background:var(--purple2);color:var(--purple)"><i class="ti ti-truck-delivery"></i></div><div><div class="ph-title">Envíos</div><div class="ph-sub" id="envios-fecha-label">Hoy</div></div><div style="margin-left:auto;display:flex;gap:8px"><button class="btn-secondary" onclick="loadEnvios()" id="btn-refresh-envios"><i class="ti ti-refresh" style="font-size:13px"></i>Actualizar</button><button class="btn-primary" onclick="openNuevoEnvio()"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo envío</button></div></div>
+        <div id="envios-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar Envíos.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="envios-content" class="envios-body">
+          <div class="metrics-grid-5"><div class="metric"><div class="metric-label">Total</div><div class="metric-val" id="e-total">—</div></div><div class="metric"><div class="metric-label">Entregados</div><div class="metric-val green" id="e-entregados">—</div></div><div class="metric"><div class="metric-label">En camino</div><div class="metric-val blue" id="e-camino">—</div></div><div class="metric"><div class="metric-label">Pendientes</div><div class="metric-val amber" id="e-pendientes">—</div></div><div class="metric"><div class="metric-label">Total fletes</div><div class="metric-val" id="e-fletes" style="font-size:15px">—</div></div></div>
+          <div class="date-nav"><button class="date-btn" onclick="cambiarFecha(-1)"><i class="ti ti-chevron-left" style="font-size:14px"></i></button><div class="date-label" id="date-display">Hoy</div><button class="date-btn" onclick="cambiarFecha(1)"><i class="ti ti-chevron-right" style="font-size:14px"></i></button><button class="btn-hoy" onclick="irHoy()">Hoy</button></div>
+          <div class="search-bar"><input class="search-input" id="envio-search" placeholder="Buscar cliente, producto, dirección..." oninput="renderEnvios()"/><select class="filter-sel" id="filtro-estado" onchange="renderEnvios()"><option value="">Todos los estados</option><option value="Pendiente">Pendiente</option><option value="En camino">En camino</option><option value="Entregado">Entregado</option><option value="Cancelado">Cancelado</option></select></div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:12px;letter-spacing:.05em;text-transform:uppercase" id="envio-count"></div>
+          <div id="envios-list"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div>
+        </div>
+      </div>
+
+      <!-- USUARIOS -->
+      <div class="panel" id="panel-usuarios">
+        <div class="ph"><div class="ph-icon" style="background:rgba(255,255,255,.05);color:var(--text2)"><i class="ti ti-users"></i></div><div><div class="ph-title">Usuarios</div><div class="ph-sub">Accesos y permisos</div></div><button class="btn-primary" style="margin-left:auto" onclick="openNewUser()"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo</button></div>
+        <div id="usuarios-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">Solo administradores.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="usuarios-content" style="padding:24px"><div id="usr-list"></div></div>
+      </div>
+
+      <!-- CONFIG -->
+      <div class="panel" id="panel-config">
+        <div class="ph"><div class="ph-icon" style="background:rgba(255,255,255,.05);color:var(--text2)"><i class="ti ti-settings"></i></div><div><div class="ph-title">Configuración</div><div class="ph-sub">Ajustes generales del portal</div></div></div>
+        <div class="cfg-body">
+          <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Mi cuenta</div>
+          <div class="cfg-section"><div class="cfg-row"><span style="color:#fff">Usuario</span><span style="color:var(--text2)" id="cfg-u">—</span></div><div class="cfg-row"><span style="color:#fff">Rol</span><span style="color:var(--text2)" id="cfg-r">—</span></div><div class="cfg-row"><span style="color:#fff">Portal</span><span style="color:var(--text2)">iPro | Tech Reseller & Celnyx</span></div></div>
+          <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;margin-top:18px">Tipo de cambio</div>
+          <div class="cfg-section"><div class="cfg-row"><span style="color:#fff">Dólar (ARS)</span><input type="number" id="tc-global" value="1200" style="width:110px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;text-align:right;font-family:inherit" onchange="syncTC()"/></div></div>
+          <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;margin-top:18px">Credenciales Financiera</div>
+          <div class="cfg-section">
+            <div class="cfg-row"><span style="color:#fff">Email Railway</span><input type="email" id="cfg-fin-email" placeholder="tu@email.com" style="width:200px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none"/></div>
+            <div class="cfg-row"><span style="color:#fff">Contraseña</span><input type="password" id="cfg-fin-pass" placeholder="••••••••" style="width:200px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none"/></div>
+            <div class="cfg-row" style="border:none"><button class="btn-primary" onclick="guardarCredFinanciera()"><i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar credenciales</button></div>
+          </div>
+          <button class="logout-btn" onclick="doLogout()"><i class="ti ti-logout" style="font-size:14px;margin-right:6px"></i>Cerrar sesión</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ENVIO -->
+<div class="modal-bg" id="modal-envio">
+  <div class="modal">
+    <div class="modal-title"><span id="modal-envio-title">Nuevo envío</span><button class="modal-close" onclick="closeModal('modal-envio')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Cliente *</label><input type="text" id="e-cliente" placeholder="Nombre completo"/></div><div class="fg" style="margin-bottom:0"><label>Teléfono</label><input type="text" id="e-tel" placeholder="2213..."/></div></div>
+    <div class="fg"><label>Dirección *</label><input type="text" id="e-dir" placeholder="Calle 1234, piso, barrio"/></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Barrio / Localidad</label><input type="text" id="e-barrio" placeholder="La Plata, CABA..."/></div><div class="fg" style="margin-bottom:0"><label>Prioridad</label><select id="e-prioridad"><option value="">Sin prioridad</option><option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option></select></div></div>
+    <div class="section-divider">Productos</div>
+    <div id="e-prods-list"></div>
+    <button class="btn-secondary" style="margin-bottom:8px" onclick="addEnvioProd()"><i class="ti ti-plus" style="font-size:13px"></i>Agregar producto</button>
+    <div class="section-divider">Pagos recibidos</div>
+    <div id="e-pagos-list"></div>
+    <button class="btn-secondary" style="margin-bottom:8px" onclick="addEnvioPago()"><i class="ti ti-plus" style="font-size:13px"></i>Agregar pago</button>
+    <div class="section-divider">Logística</div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Costo envío</label><input type="number" id="e-costo" placeholder="0" min="0"/></div><div class="fg" style="margin-bottom:0"><label>Horario</label><input type="text" id="e-horario" placeholder="15:00 hs – 16:00 hs"/></div></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Operador</label><select id="e-operador"><option value="">Sin asignar</option><option value="Lucas">Lucas</option><option value="Ezequiel">Ezequiel</option></select></div><div class="fg" style="margin-bottom:0"><label>Estado</label><select id="e-estado"><option value="Pendiente">Pendiente</option><option value="En camino">En camino</option><option value="Entregado">Entregado</option><option value="Cancelado">Cancelado</option></select></div></div>
+    <div class="fg"><label>Notas especiales</label><textarea id="e-notas" placeholder="Llevar vuelto, instrucciones..."></textarea></div>
+    <div class="modal-err" id="modal-envio-err"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-envio')">Cancelar</button><button class="btn-save" id="btn-save-envio" onclick="saveEnvio()">Guardar en Sheets</button></div>
+  </div>
+</div>
+
+<!-- MODAL MOV CAJAS -->
+<div class="modal-bg" id="modal-mov">
+  <div class="modal">
+    <div class="modal-title"><span id="modal-mov-title">Nuevo movimiento</span><button class="modal-close" onclick="closeModal('modal-mov')"><i class="ti ti-x"></i></button></div>
+    <div class="fg"><label>Contacto</label><select id="mov-contacto"></select></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Monto ARS</label><input type="number" id="mov-ars" placeholder="0" min="0"/></div><div class="fg" style="margin-bottom:0"><label>Monto USD</label><input type="number" id="mov-usd-m" placeholder="0" min="0"/></div></div>
+    <div class="fg" id="mov-dir-wrap"><label>Dirección</label><select id="mov-dir"><option value="debe">Debe (me deben)</option><option value="pago">Pagó (saldó deuda)</option></select></div>
+    <div class="fg" id="mov-tasa-wrap" style="display:none"><label>Tasa (%)</label><input type="text" id="mov-tasa" placeholder="ej. 2.5%"/></div>
+    <div class="fg"><label>Concepto</label><input type="text" id="mov-concepto" placeholder="ej. iPhone 16 Pro"/></div>
+    <div class="modal-err" id="modal-mov-err"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-mov')">Cancelar</button><button class="btn-save" id="btn-save-mov" onclick="saveMovimiento()">Guardar en Sheets</button></div>
+  </div>
+</div>
+
+<!-- MODAL CONTACTO -->
+<div class="modal-bg" id="modal-contacto">
+  <div class="modal">
+    <div class="modal-title"><span>Nuevo contacto</span><button class="modal-close" onclick="closeModal('modal-contacto')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre</label><input type="text" id="c-nombre"/></div><div class="fg" style="margin-bottom:0"><label>Apellido</label><input type="text" id="c-apellido"/></div></div>
+    <div class="fg"><label>Tipo</label><select id="c-tipo"><option value="amigo">Amigo</option><option value="familiar">Familiar</option><option value="cliente">Cliente</option><option value="inversor">Inversor</option></select></div>
+    <div class="modal-err" id="modal-con-err"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-contacto')">Cancelar</button><button class="btn-save" id="btn-save-con" onclick="saveContacto()">Guardar en Sheets</button></div>
+  </div>
+</div>
+
+<!-- MODAL USUARIO -->
+<div class="modal-bg" id="modal-usr">
+  <div class="modal">
+    <div class="modal-title"><span id="modal-usr-title">Usuario</span><button class="modal-close" onclick="closeModal('modal-usr')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre</label><input type="text" id="m-nombre"/></div><div class="fg" style="margin-bottom:0"><label>Usuario</label><input type="text" id="m-user"/></div></div>
+    <div class="fg"><label>Contraseña</label><input type="password" id="m-pass" placeholder="dejar vacío para no cambiar"/></div>
+    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Permisos</div>
+    <div id="perm-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-usr')">Cancelar</button><button class="btn-save" onclick="saveUser()">Guardar</button></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/tabler-icons.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const CAJAS_ID='176tDFnaKyKSJYJlEWGpW02ekdhhy6R_rIEXbUnSCSKU';
+const ENVIOS_ID='1cDAByiatmp0LmDWUN7mau4oUAyfV2UwEWu6_iJf-cCo';
+const API_KEY='86915786e23c3de6c9770c9fd96e5db348d84a75';
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbzjdhUOVNQFLgBRGAkMTve_vh-ZO1rde1hKwV7GCYGE4Nf_uah71Zi1JEd-10rZfXwb/exec';
+const FIN_API='https://ipro-financiera-production-8c04.up.railway.app';
+const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
+const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
+
+let USERS=[
+  {id:1,nombre:'Lucas Bruno',username:'lucas',pass:'ipro2024',role:'admin',perms:{cotizador:true,financiera:true,cajas:true,envios:true,usuarios:true}},
+  {id:2,nombre:'Ezequiel Bruno',username:'ezequiel',pass:'ezequiel123',role:'op',perms:{cotizador:true,financiera:false,cajas:false,envios:true,usuarios:false}},
+  {id:3,nombre:'Ventas Demo',username:'ventas',pass:'ventas123',role:'op',perms:{cotizador:true,financiera:false,cajas:false,envios:false,usuarios:false}},
+];
+let CU=null,editUID=null,editPerms2={},prodCount=0;
+let contacts=[],deudas=[],movDeudas=[],movInversiones=[],envios=[],enviosItems=[];
+let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null;
+let finPct=3,eprodCount=0,epagoCount=0;
+
+// ── UTILS ──
+function fmt(n){return Math.round(n).toLocaleString('es-AR');}
+function fmtPesos(n){return '$'+Number(n).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function today(){return new Date().toISOString().split('T')[0];}
+function isoDate(d){return d.toISOString().split('T')[0];}
+function fmtFecha(d){return d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});}
+function showToast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'#fff':'#f85149';t.style.color=ok?'#0d1117':'#fff';t.style.opacity='1';setTimeout(()=>t.style.opacity='0',2500);}
+function showModalErr(id,msg){const el=document.getElementById(id);el.textContent=msg;el.style.display='block';}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
+
+// ── CREDENCIALES FINANCIERA ──
+function getFinCreds(){try{return JSON.parse(localStorage.getItem('fin_creds')||'null');}catch(e){return null;}}
+function saveFinCreds(e,p){localStorage.setItem('fin_creds',JSON.stringify({email:e,pass:p}));}
+function guardarCredFinanciera(){
+  const e=document.getElementById('cfg-fin-email').value.trim();
+  const p=document.getElementById('cfg-fin-pass').value;
+  if(!e||!p){showToast('Completá email y contraseña',false);return;}
+  saveFinCreds(e,p);showToast('Credenciales guardadas');
+}
+
+// ── FINANCIERA API ──
+async function finApi(path,method='GET',body=null){
+  const opts={method,headers:{'Content-Type':'application/json'},credentials:'include'};
+  if(body)opts.body=JSON.stringify(body);
+  const res=await fetch(FIN_API+path,opts);
+  if(res.status===401)throw new Error('NO_AUTH');
+  if(!res.ok)throw new Error(await res.text());
+  return res.json();
+}
+
+async function finInit(){
+  document.getElementById('fin-connecting').style.display='flex';
+  document.getElementById('fin-app').style.display='none';
+  document.getElementById('fin-error').style.display='none';
+  try{
+    await finApi('/api/auth/me');
+    finMostrarApp();
+  }catch(e){
+    if(e.message==='NO_AUTH'){
+      const creds=getFinCreds();
+      if(creds){
+        try{
+          await finApi('/api/auth/login','POST',{email:creds.email,password:creds.pass});
+          finMostrarApp();
+        }catch(e2){
+          document.getElementById('fin-connecting').style.display='none';
+          document.getElementById('fin-error').style.display='block';
+          document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--red);font-size:13px;margin-bottom:12px"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Credenciales incorrectas</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Actualizá las credenciales en Config</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
+        }
+      }else{
+        document.getElementById('fin-connecting').style.display='none';
+        document.getElementById('fin-error').style.display='block';
+        document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--amber);font-size:13px;margin-bottom:12px"><i class="ti ti-key" style="font-size:28px;display:block;margin-bottom:8px"></i>Configurá las credenciales</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Andá a Config → Credenciales Financiera e ingresá tu email y contraseña de Railway</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
+      }
+    }else{
+      document.getElementById('fin-connecting').style.display='none';
+      document.getElementById('fin-error').style.display='block';
+      document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Error de conexión<br><button class="btn-secondary" style="margin-top:12px" onclick="finInit()">Reintentar</button></div>';
+    }
+  }
+}
+
+async function finMostrarApp(){
+  document.getElementById('fin-connecting').style.display='none';
+  document.getElementById('fin-app').style.display='block';
+  document.getElementById('fin-error').style.display='none';
+  finInitFechas();
+  await Promise.all([finCargarVendedores(),finCargarConfig()]);
+  await finRenderDashboard();
+}
+
+function finInitFechas(){
+  const hoy=today(),ini=hoy.substring(0,8)+'01';
+  [['f-desde',ini],['f-hasta',hoy],['cb-desde',ini],['cb-hasta',hoy],['c-fecha',hoy],['pf-fecha',hoy]].forEach(([id,val])=>{const el=document.getElementById(id);if(el&&!el.value)el.value=val;});
+}
+
+async function finCargarVendedores(){
+  try{
+    const rows=await finApi('/api/vendedores');
+    ['c-vendedor','f-vendedor'].forEach(id=>{
+      const el=document.getElementById(id);if(!el)return;
+      const val=el.value;
+      el.innerHTML=id==='f-vendedor'?'<option value="">Todos</option>':'<option value="">Seleccionar...</option>';
+      rows.forEach(v=>el.innerHTML+=`<option value="${v.nombre}">${v.nombre}</option>`);
+      el.value=val;
+    });
+  }catch(e){}
+}
+
+async function finCargarConfig(){
+  try{
+    const cfg=await finApi('/api/config');
+    finPct=parseFloat(cfg.pct_financiera)||3;
+    const el=document.getElementById('cfg-pct');if(el)el.value=finPct;
+    const lbl=document.getElementById('fin-pct-lbl');if(lbl)lbl.textContent=finPct;
+  }catch(e){}
+}
+
+function finTab(id,btn){
+  document.querySelectorAll('.fin-section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.fin-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('fin-'+id).classList.add('active');btn.classList.add('active');
+  if(id==='dashboard')finRenderDashboard();
+  if(id==='comprobantes')finRenderComprobantes();
+  if(id==='pagos')finRenderPagos();
+  if(id==='historial')finRenderHistorial();
+  if(id==='fin-config')finRenderConfig();
+  if(id==='cargar'){document.getElementById('c-fecha').value=today();finActualizarPreview();}
+}
+
+async function finRenderDashboard(){
+  const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
+  document.getElementById('fin-tabla-dashboard').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
+  try{
+    let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
+    const[lista,pagos]=await Promise.all([finApi(url),finApi('/api/pagos')]);
+    const tR=lista.reduce((s,c)=>s+parseFloat(c.monto),0),tF=lista.reduce((s,c)=>s+parseFloat(c.monto_financiera),0),tN=lista.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tP=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),saldo=Math.max(0,tN-tP);
+    document.getElementById('fin-metrics').innerHTML=`
+      <div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${lista.length}</div></div>`;
+    if(!lista.length){document.getElementById('fin-tabla-dashboard').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos en el período</div>';return;}
+    document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
+  }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
+}
+
+async function finRenderComprobantes(){
+  try{
+    const lista=await finApi(`/api/comprobantes?desde=${document.getElementById('cb-desde').value}&hasta=${document.getElementById('cb-hasta').value}&buscar=${document.getElementById('cb-buscar').value||''}`);
+    if(!lista.length){document.getElementById('fin-tabla-comprobantes').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin comprobantes</div>';return;}
+    document.getElementById('fin-tabla-comprobantes').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Neto</th><th>Archivo</th><th></th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td><td style="display:flex;gap:4px">${c.archivo_nombre?`<button class="btn-sm" onclick="finVerArchivo(${c.id})"><i class="ti ti-eye"></i></button>`:''}<button class="btn-sm btn-danger-sm" onclick="finEliminar(${c.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table>`;
+  }catch(e){showToast('Error cargando comprobantes',false);}
+}
+
+async function finRenderPagos(){
+  try{
+    const[comp,pagos]=await Promise.all([finApi('/api/comprobantes'),finApi('/api/pagos')]);
+    const tN=comp.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tR=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),pend=Math.max(0,tN-tR);
+    document.getElementById('fin-metrics-pagos').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total netos</div><div class="metric-v">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Recibido</div><div class="metric-v green">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Pendiente</div><div class="metric-v amber">${fmtPesos(pend)}</div></div>`;
+    document.getElementById('fin-lista-pagos').innerHTML=!pagos.length?'<div class="empty-msg" style="padding:1rem">Sin pagos</div>':pagos.map(p=>`<div class="fin-payment-row"><div class="fin-dot"></div><div style="flex:1"><div style="font-size:14px;font-weight:600">${fmtPesos(p.monto)}</div><div style="font-size:12px;color:var(--text2)">${p.fecha?.substring(0,10)} — ${p.referencia}</div></div><button class="btn-sm btn-danger-sm" onclick="finEliminarPago(${p.id})"><i class="ti ti-trash"></i></button></div>`).join('');
+  }catch(e){}
+}
+
+async function finRenderHistorial(){
+  document.getElementById('fin-lista-historial').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
+  try{
+    const lista=await finApi('/api/historial');
+    const iconos={'LOGIN':'ti-login','CARGAR_COMPROBANTE':'ti-receipt','ELIMINAR_COMPROBANTE':'ti-trash','REGISTRAR_PAGO_FINANCIERA':'ti-building-bank','ELIMINAR_PAGO_FINANCIERA':'ti-trash'};
+    if(!lista.length){document.getElementById('fin-lista-historial').innerHTML='<div class="empty-msg">Sin acciones</div>';return;}
+    document.getElementById('fin-lista-historial').innerHTML=lista.map(h=>`<div class="hist-row"><div class="hist-icon"><i class="ti ${iconos[h.accion]||'ti-activity'}"></i></div><div><div style="font-size:13px;font-weight:600;color:#fff">${h.accion.replace(/_/g,' ')}</div><div style="font-size:12px;color:var(--text2)">${h.detalle||''}</div><div style="font-size:11px;color:var(--text3)">${h.usuario_nombre||'Sistema'} · ${new Date(h.creado_en).toLocaleString('es-AR')}</div></div></div>`).join('');
+  }catch(e){}
+}
+
+async function finRenderConfig(){
+  document.getElementById('cfg-pct').value=finPct;
+  try{
+    const rows=await finApi('/api/vendedores');
+    document.getElementById('fin-lista-vendedores').innerHTML=rows.map(v=>`<div class="vendor-row"><span style="color:#fff">${v.nombre}</span><button class="btn-sm btn-danger-sm" onclick="finEliminarVendedor(${v.id})"><i class="ti ti-trash"></i></button></div>`).join('');
+  }catch(e){}
+}
+
+function finActualizarPreview(){
+  const m=parseFloat(document.getElementById('c-monto').value)||0,fin=m*finPct/100,neto=m-fin;
+  document.getElementById('fin-pct-lbl').textContent=finPct;
+  document.getElementById('fin-fin-preview').textContent=m>0?fmtPesos(fin):'—';
+  document.getElementById('fin-neto-preview').textContent=m>0?fmtPesos(neto):'—';
+  document.getElementById('fin-total-preview').textContent=m>0?fmtPesos(m):'—';
+}
+
+function finHandleFile(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    window._archivoTemp={name:file.name,data:e.target.result,type:file.type};
+    document.getElementById('fin-file-preview').innerHTML=`<span class="ocr-status"><i class="ti ti-paperclip"></i>${file.name}</span><span class="ocr-status" id="ocr-status"><i class="ti ti-loader"></i>Leyendo monto...</span>`;
+    if(!file.type.includes('image')){document.getElementById('ocr-status').innerHTML='<i class="ti ti-file-text"></i> PDF adjunto';return;}
+    try{
+      const canvas=document.createElement('canvas'),img=new Image();
+      img.src=e.target.result;await new Promise(r=>img.onload=r);
+      const maxW=800,scale=Math.min(1,maxW/img.width);
+      canvas.width=img.width*scale;canvas.height=img.height*scale;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      const compressed=canvas.toDataURL('image/jpeg',0.7);
+      const resp=await fetch(FIN_API+'/api/ocr',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({imageData:compressed,mediaType:'image/jpeg'})});
+      const data=await resp.json();const texto=data.monto;
+      if(texto&&texto!=='NO'&&!isNaN(parseFloat(texto.replace(',','.')))){
+        const monto=parseFloat(texto.replace(',','.'));
+        document.getElementById('c-monto').value=monto;finActualizarPreview();
+        document.getElementById('ocr-status').innerHTML=`<i class="ti ti-check" style="color:var(--green)"></i><span style="color:var(--green)">Monto detectado: ${fmtPesos(monto)}</span>`;
+      }else{document.getElementById('ocr-status').innerHTML='<i class="ti ti-alert-triangle"></i><span style="color:var(--amber)">Ingresá el monto manualmente</span>';}
+    }catch(err){document.getElementById('ocr-status').innerHTML='<i class="ti ti-alert-triangle"></i><span style="color:var(--amber)">Error al leer</span>';}
+  };reader.readAsDataURL(file);
+}
+
+async function finGuardarComprobante(){
+  const fecha=document.getElementById('c-fecha').value,cliente=document.getElementById('c-cliente').value.trim(),vendedor=document.getElementById('c-vendedor').value,monto=parseFloat(document.getElementById('c-monto').value);
+  if(!fecha||!cliente||!vendedor||!monto){showToast('Completá todos los campos',false);return;}
+  const mF=monto*finPct/100,mN=monto-mF,body={fecha,cliente,vendedor,monto,monto_financiera:mF,monto_neto:mN};
+  if(window._archivoTemp){body.archivo_nombre=window._archivoTemp.name;body.archivo_data=window._archivoTemp.data;body.archivo_tipo=window._archivoTemp.type;}
+  try{
+    await finApi('/api/comprobantes','POST',body);showToast('Comprobante guardado');
+    document.getElementById('c-cliente').value='';document.getElementById('c-monto').value='';document.getElementById('c-vendedor').value='';
+    document.getElementById('fin-file-preview').innerHTML='';document.getElementById('fin-file-input').value='';
+    window._archivoTemp=null;finActualizarPreview();
+  }catch(e){showToast('Error al guardar',false);}
+}
+
+async function finGuardarPago(){
+  const fecha=document.getElementById('pf-fecha').value,monto=parseFloat(document.getElementById('pf-monto').value),ref=document.getElementById('pf-ref').value.trim()||'Sin referencia';
+  if(!fecha||!monto){showToast('Completá fecha y monto',false);return;}
+  try{await finApi('/api/pagos','POST',{fecha,monto,referencia:ref});document.getElementById('pf-monto').value='';document.getElementById('pf-ref').value='';showToast('Pago registrado');await finRenderPagos();}
+  catch(e){showToast('Error',false);}
+}
+
+async function finGuardarConfig(){
+  const pct=parseFloat(document.getElementById('cfg-pct').value);
+  if(isNaN(pct)||pct<0||pct>100){showToast('Porcentaje inválido',false);return;}
+  try{await finApi('/api/config','PUT',{pct_financiera:pct});finPct=pct;document.getElementById('fin-pct-lbl').textContent=pct;showToast('Configuración guardada');}
+  catch(e){showToast('Error',false);}
+}
+
+async function finAgregarVendedor(){
+  const n=document.getElementById('nuevo-vendedor').value.trim();if(!n)return;
+  try{await finApi('/api/vendedores','POST',{nombre:n});document.getElementById('nuevo-vendedor').value='';finRenderConfig();await finCargarVendedores();showToast('Vendedor agregado');}
+  catch(e){showToast('Ya existe',false);}
+}
+async function finEliminarVendedor(id){try{await finApi(`/api/vendedores/${id}`,'DELETE');finRenderConfig();await finCargarVendedores();}catch(e){}}
+async function finEliminar(id){if(!confirm('¿Eliminar comprobante?'))return;try{await finApi(`/api/comprobantes/${id}`,'DELETE');showToast('Eliminado');await finRenderComprobantes();}catch(e){showToast('Error',false);}}
+async function finEliminarPago(id){if(!confirm('¿Eliminar pago?'))return;try{await finApi(`/api/pagos/${id}`,'DELETE');await finRenderPagos();}catch(e){}}
+async function finVerArchivo(id){try{const{data,tipo}=await finApi(`/api/comprobantes/${id}/archivo`);const win=window.open();if(tipo?.includes('image'))win.document.write(`<img src="${data}" style="max-width:100%;">`);else win.document.write(`<embed src="${data}" width="100%" height="100%" type="application/pdf">`);}catch(e){showToast('Archivo no disponible',false);}}
+
+async function finDescargarZip(){
+  const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
+  let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
+  try{
+    const lista=await finApi(url),conArch=lista.filter(c=>c.archivo_nombre);
+    if(!conArch.length){showToast('No hay archivos',false);return;}
+    const zip=new JSZip();
+    for(const c of conArch){const{data,nombre}=await finApi(`/api/comprobantes/${c.id}/archivo`);const ext=nombre.split('.').pop();zip.file(`${c.fecha?.substring(0,10)}_${c.cliente.replace(/\s+/g,'_')}.${ext}`,data.split(',')[1],{base64:true});}
+    let csv='Fecha,Cliente,Vendedor,Monto,Financiera,Neto\n';lista.forEach(c=>{csv+=`${c.fecha?.substring(0,10)},${c.cliente},${c.vendedor},${c.monto},${parseFloat(c.monto_financiera).toFixed(2)},${parseFloat(c.monto_neto).toFixed(2)}\n`;});
+    zip.file('resumen.csv',csv);const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`iPro_${desde}_${hasta}.zip`;a.click();showToast('ZIP generado');
+  }catch(e){showToast('Error',false);}
+}
+
+async function finExportarCSV(){
+  const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
+  let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
+  try{
+    const lista=await finApi(url);if(!lista.length){showToast('Sin datos',false);return;}
+    let csv='Fecha,Cliente,Vendedor,Monto,Financiera,Neto\n';lista.forEach(c=>{csv+=`${c.fecha?.substring(0,10)},${c.cliente},${c.vendedor},${c.monto},${parseFloat(c.monto_financiera).toFixed(2)},${parseFloat(c.monto_neto).toFixed(2)}\n`;});
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`iPro_${desde}_${hasta}.csv`;a.click();showToast('CSV exportado');
+  }catch(e){showToast('Error',false);}
+}
+
+// ── SHEETS ──
+async function fetchSheet(sheetId,range){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`);const d=await r.json();return d.values||[];}
+async function postScript(payload){const r=await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});return r.json();}
+
+// ── ENVIOS ──
+async function loadEnvios(){
+  const btn=document.getElementById('btn-refresh-envios');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
+  try{
+    const[re,ri]=await Promise.all([fetchSheet(ENVIOS_ID,'Envios!A:M'),fetchSheet(ENVIOS_ID,'Envios_Items!A:F')]);
+    envios=re.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',cliente:r[2]||'',telefono:r[3]||'',direccion:r[4]||'',barrio:r[5]||'',costoEnvio:parseFloat(r[6])||0,totalCobrado:parseFloat(r[7])||0,horario:r[8]||'',operador:r[9]||'',notas:r[10]||'',estado:r[11]||'Pendiente',prioridad:r[12]||''}));
+    enviosItems=ri.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],envioId:r[1]||'',tipo:r[2]||'',descripcion:r[3]||'',monto:parseFloat(r[4])||0,metodoPago:r[5]||''}));
+    updateMetricasEnvios();renderEnvios();
+  }catch(e){document.getElementById('envios-list').innerHTML=`<div class="loading-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
+  btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
+}
+
+function updateMetricasEnvios(){
+  const hoy=isoDate(currentDate),dl=envios.filter(e=>e.fecha===hoy);
+  document.getElementById('e-total').textContent=dl.length;
+  document.getElementById('e-entregados').textContent=dl.filter(e=>e.estado==='Entregado').length;
+  document.getElementById('e-camino').textContent=dl.filter(e=>e.estado==='En camino').length;
+  document.getElementById('e-pendientes').textContent=dl.filter(e=>e.estado==='Pendiente').length;
+  const fl=dl.reduce((s,e)=>s+e.costoEnvio,0);document.getElementById('e-fletes').textContent=fl?'$'+fmt(fl):'—';
+}
+
+function renderEnvios(){
+  const hoy=isoDate(currentDate),q=(document.getElementById('envio-search').value||'').toLowerCase(),fe=document.getElementById('filtro-estado').value;
+  let lista=envios.filter(e=>e.fecha===hoy);
+  if(fe)lista=lista.filter(e=>e.estado===fe);
+  if(q)lista=lista.filter(e=>(e.cliente+e.direccion+e.barrio+e.telefono+e.notas).toLowerCase().includes(q)||enviosItems.filter(i=>i.envioId===e.id&&i.tipo==='producto'&&i.descripcion.toLowerCase().includes(q)).length>0);
+  document.getElementById('envio-count').textContent=`${lista.length} envío${lista.length!==1?'s':''}`;
+  updateMetricasEnvios();
+  if(!lista.length){document.getElementById('envios-list').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin envíos para este día</div>';return;}
+  document.getElementById('envios-list').innerHTML=lista.map(e=>{
+    const prods=enviosItems.filter(i=>i.envioId===e.id&&i.tipo==='producto');
+    const pagos=enviosItems.filter(i=>i.envioId===e.id&&i.tipo==='pago');
+    const estadoCls={Pendiente:'s-pendiente','En camino':'s-camino',Entregado:'s-entregado',Cancelado:'s-cancelado'}[e.estado]||'s-pendiente';
+    return `<div class="envio-card">
+      <div class="envio-card-top"><div><div class="envio-nombre">${e.cliente}</div>${e.telefono?`<div class="envio-tel">${e.telefono}</div>`:''}</div><span class="status-badge ${estadoCls}">${e.estado}</span></div>
+      ${prods.length?`<div style="margin-bottom:8px">${prods.map(p=>`<span class="prod-tag">${p.descripcion}</span>`).join('')}</div>`:''}
+      ${pagos.length?`<div style="margin-bottom:8px">${pagos.map(p=>{const esUSD=p.metodoPago&&(p.metodoPago.includes('USD')||p.metodoPago.includes('USDT')||p.metodoPago==='PayPal');return `<span class="pago-tag ${esUSD?'pago-usd':'pago-ars'}">${p.metodoPago}: ${esUSD?'u$s':'$'}${fmt(p.monto)}</span>`;}).join('')}</div>`:''}
+      ${e.horario?`<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><i class="ti ti-clock" style="font-size:12px;margin-right:4px"></i>${e.horario}</div>`:''}
+      ${e.direccion?`<div class="envio-addr"><i class="ti ti-map-pin" style="font-size:13px;flex-shrink:0"></i>${e.direccion}${e.barrio?', '+e.barrio:''}</div>`:''}
+      ${e.notas?`<div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:var(--navy3);border-radius:6px">${e.notas}</div>`:''}
+      <div class="envio-actions">
+        <button class="action-btn ${e.estado==='Pendiente'?'st-active':''}" onclick="cambiarEstado('${e.id}','Pendiente')">Pendiente</button>
+        <button class="action-btn ${e.estado==='En camino'?'st-camino':''}" onclick="cambiarEstado('${e.id}','En camino')">En camino</button>
+        <button class="action-btn ${e.estado==='Entregado'?'st-active':''}" onclick="cambiarEstado('${e.id}','Entregado')">✓ Entregado</button>
+        <button class="action-btn" onclick="editarEnvio('${e.id}')">Editar</button>
+        <button class="action-btn" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarEnvio('${e.id}')">Eliminar</button>
+        <div class="flete-right">$${fmt(e.costoEnvio)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function cambiarEstado(id,estado){const e=envios.find(x=>x.id===id);if(!e)return;e.estado=estado;renderEnvios();try{await postScript({db:'envios',sheet:'Envios',action:'update',id,updates:[{col:12,value:estado}]});}catch(err){}}
+async function eliminarEnvio(id){if(!confirm('¿Eliminar este envío?'))return;try{await postScript({db:'envios',sheet:'Envios',action:'delete',id});envios=envios.filter(e=>e.id!==id);enviosItems=enviosItems.filter(i=>i.envioId!==id);renderEnvios();}catch(e){showToast('Error',false);}}
+function cambiarFecha(d){currentDate=new Date(currentDate);currentDate.setDate(currentDate.getDate()+d);actualizarFechaLabel();renderEnvios();updateMetricasEnvios();}
+function irHoy(){currentDate=new Date();actualizarFechaLabel();renderEnvios();updateMetricasEnvios();}
+function actualizarFechaLabel(){
+  const hoy=new Date(),esHoy=isoDate(currentDate)===isoDate(hoy);
+  const label=esHoy?'Hoy · '+fmtFecha(currentDate):fmtFecha(currentDate);
+  document.getElementById('date-display').textContent=label;
+  document.getElementById('envios-fecha-label').textContent=label;
+}
+
+function openNuevoEnvio(){
+  editingEnvioId=null;document.getElementById('modal-envio-title').textContent='Nuevo envío';
+  ['e-cliente','e-tel','e-dir','e-barrio','e-costo','e-horario','e-notas'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('e-prioridad').value='';document.getElementById('e-operador').value='';document.getElementById('e-estado').value='Pendiente';
+  document.getElementById('e-prods-list').innerHTML='';document.getElementById('e-pagos-list').innerHTML='';
+  document.getElementById('modal-envio-err').style.display='none';
+  eprodCount=0;epagoCount=0;addEnvioProd();addEnvioPago();
+  document.getElementById('modal-envio').classList.add('open');
+}
+
+function editarEnvio(id){
+  const e=envios.find(x=>x.id===id);if(!e)return;
+  editingEnvioId=id;document.getElementById('modal-envio-title').textContent='Editar envío';
+  document.getElementById('e-cliente').value=e.cliente;document.getElementById('e-tel').value=e.telefono;
+  document.getElementById('e-dir').value=e.direccion;document.getElementById('e-barrio').value=e.barrio;
+  document.getElementById('e-costo').value=e.costoEnvio;document.getElementById('e-horario').value=e.horario;
+  document.getElementById('e-notas').value=e.notas;document.getElementById('e-prioridad').value=e.prioridad||'';
+  document.getElementById('e-operador').value=e.operador||'';document.getElementById('e-estado').value=e.estado||'Pendiente';
+  document.getElementById('e-prods-list').innerHTML='';document.getElementById('e-pagos-list').innerHTML='';
+  eprodCount=0;epagoCount=0;
+  enviosItems.filter(i=>i.envioId===id&&i.tipo==='producto').forEach(p=>addEnvioProd(p.descripcion));
+  enviosItems.filter(i=>i.envioId===id&&i.tipo==='pago').forEach(p=>addEnvioPago(p.metodoPago,p.monto));
+  if(!enviosItems.filter(i=>i.envioId===id&&i.tipo==='producto').length)addEnvioProd();
+  if(!enviosItems.filter(i=>i.envioId===id&&i.tipo==='pago').length)addEnvioPago();
+  document.getElementById('modal-envio-err').style.display='none';
+  document.getElementById('modal-envio').classList.add('open');
+}
+
+function addEnvioProd(val=''){eprodCount++;const n=eprodCount;const d=document.createElement('div');d.className='prod-item';d.id='eprod-'+n;d.innerHTML=`<input type="text" placeholder="ej. iPhone 16 Pro 256GB" value="${val}" id="eprod-val-${n}"/><button class="btn-rm-sm" onclick="document.getElementById('eprod-${n}').remove()"><i class="ti ti-x"></i></button>`;document.getElementById('e-prods-list').appendChild(d);}
+function addEnvioPago(metodo='',monto=''){epagoCount++;const n=epagoCount;const d=document.createElement('div');d.className='pago-item';d.id='epago-'+n;d.innerHTML=`<select id="epago-met-${n}">${METODOS_PAGO.map(m=>`<option value="${m}" ${m===metodo?'selected':''}>${m}</option>`).join('')}</select><input type="number" placeholder="Monto" id="epago-mnt-${n}" value="${monto||''}" min="0"/><button class="btn-rm-sm" onclick="document.getElementById('epago-${n}').remove()"><i class="ti ti-x"></i></button>`;document.getElementById('e-pagos-list').appendChild(d);}
+
+async function saveEnvio(){
+  const cliente=document.getElementById('e-cliente').value.trim(),dir=document.getElementById('e-dir').value.trim(),costo=parseFloat(document.getElementById('e-costo').value)||0;
+  if(!cliente||!dir){showModalErr('modal-envio-err','Cliente y dirección son obligatorios');return;}
+  const prods=[...document.querySelectorAll('[id^="eprod-val-"]')].map(i=>i.value.trim()).filter(Boolean);
+  const pagos=[...document.querySelectorAll('[id^="epago-met-"]')].map(el=>{const n=el.id.replace('epago-met-','');const monto=parseFloat(document.getElementById('epago-mnt-'+n).value)||0;return monto?{metodo:el.value,monto}:null;}).filter(Boolean);
+  const totalCobrado=pagos.reduce((s,p)=>s+p.monto,0);
+  const btn=document.getElementById('btn-save-envio');btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    const fecha=isoDate(currentDate);
+    if(editingEnvioId){
+      await postScript({db:'envios',sheet:'Envios',action:'update',id:editingEnvioId,updates:[{col:3,value:cliente},{col:4,value:document.getElementById('e-tel').value.trim()},{col:5,value:dir},{col:6,value:document.getElementById('e-barrio').value.trim()},{col:7,value:costo},{col:8,value:totalCobrado},{col:9,value:document.getElementById('e-horario').value.trim()},{col:10,value:document.getElementById('e-operador').value},{col:11,value:document.getElementById('e-notas').value.trim()},{col:12,value:document.getElementById('e-estado').value},{col:13,value:document.getElementById('e-prioridad').value}]});
+      enviosItems=enviosItems.filter(i=>i.envioId!==editingEnvioId);
+    }else{
+      const id=Date.now().toString();
+      await postScript({db:'envios',sheet:'Envios',action:'append',row:[id,fecha,cliente,document.getElementById('e-tel').value.trim(),dir,document.getElementById('e-barrio').value.trim(),costo,totalCobrado,document.getElementById('e-horario').value.trim(),document.getElementById('e-operador').value,document.getElementById('e-notas').value.trim(),document.getElementById('e-estado').value,document.getElementById('e-prioridad').value]});
+      editingEnvioId=id;
+    }
+    for(const p of prods){const iid=Date.now().toString()+'p'+Math.random().toString(36).slice(2,5);await postScript({db:'envios',sheet:'Envios_Items',action:'append',row:[iid,editingEnvioId,'producto',p,0,'']});}
+    for(const p of pagos){const iid=Date.now().toString()+'g'+Math.random().toString(36).slice(2,5);await postScript({db:'envios',sheet:'Envios_Items',action:'append',row:[iid,editingEnvioId,'pago','',p.monto,p.metodo]});}
+    closeModal('modal-envio');await loadEnvios();
+  }catch(e){showModalErr('modal-envio-err','Error: '+e.message);}
+  btn.disabled=false;btn.textContent='Guardar en Sheets';
+}
+
+// ── CAJAS ──
+async function loadCajas(){
+  const btn=document.getElementById('btn-refresh-cajas');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
+  try{
+    const[rc,rd,rmd,rmi]=await Promise.all([fetchSheet(CAJAS_ID,'Contactos!A:D'),fetchSheet(CAJAS_ID,'Deudas!A:G'),fetchSheet(CAJAS_ID,'Movimientos_Deudas!A:G'),fetchSheet(CAJAS_ID,'Movimientos_Inversiones!A:F')]);
+    contacts=rc.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],nombre:r[1]||'',apellido:r[2]||'',tipo:r[3]||''}));
+    deudas=rd.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',contacto:r[2]||'',saldo_ars:parseFloat(r[3])||0,saldo_usd:parseFloat(r[4])||0,estado:r[6]||'pendiente'}));
+    movDeudas=rmd.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',cid:r[2]||'',tipo:r[3]||'',ars:parseFloat(r[4])||0,usd:parseFloat(r[5])||0,concepto:r[6]||''}));
+    movInversiones=rmi.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',cid:r[2]||'',tipo:r[3]||'',monto:parseFloat(r[4])||0,tasa:r[5]||''}));
+    renderDeudas();renderInversiones();renderContactos();populateContactSel();
+  }catch(e){}
+  btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
+}
+
+function cname(id){const c=contacts.find(x=>x.id===id);return c?`${c.nombre} ${c.apellido}`.trim():id;}
+function ctipo(id){const c=contacts.find(x=>x.id===id);return c?c.tipo:'';}
+function badge(tipo){const map={amigo:'b-amigo',familiar:'b-familiar',cliente:'b-cliente',inversor:'b-inversor',debe:'b-debe',pago:'b-pago',pendiente:'b-pendiente',inversion:'b-inversion'};return `<span class="badge ${map[tipo]||'b-pendiente'}">${tipo}</span>`;}
+
+function renderDeudas(){
+  const tARS=deudas.reduce((s,d)=>s+d.saldo_ars,0),tUSD=deudas.reduce((s,d)=>s+d.saldo_usd,0);
+  document.getElementById('m-ars').textContent=tARS?'$'+fmt(tARS):'—';
+  document.getElementById('m-usd').textContent=tUSD?'u$s'+fmt(tUSD):'—';
+  document.getElementById('m-count').textContent=deudas.length;
+  if(!deudas.length){document.getElementById('deudas-body').innerHTML='<div class="loading-msg"><i class="ti ti-inbox"></i>Sin deudas</div>';return;}
+  document.getElementById('deudas-body').innerHTML=`<table class="data-table"><thead><tr><th>Contacto</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Estado</th><th></th></tr></thead><tbody>${deudas.map(d=>`<tr><td style="font-weight:600">${cname(d.contacto)}</td><td>${ctipo(d.contacto)?badge(ctipo(d.contacto)):'—'}</td><td>${d.saldo_ars?'$'+fmt(d.saldo_ars):'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--green)">${d.saldo_usd?'u$s'+fmt(d.saldo_usd):'<span style="color:var(--text3)">—</span>'}</td><td>${badge(d.estado)}</td><td><button class="btn-plus" onclick="verMov('${d.contacto}')">+</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderInversiones(){
+  const total=movInversiones.reduce((s,m)=>s+m.monto,0),inversores=new Set(movInversiones.map(m=>m.cid)).size;
+  const tasas=movInversiones.filter(m=>m.tasa).map(m=>parseFloat(m.tasa)||0),tProm=tasas.length?tasas.reduce((a,b)=>a+b,0)/tasas.length:0;
+  document.getElementById('m-inv-total').textContent=total?'$'+fmt(total):'—';
+  document.getElementById('m-inv-count').textContent=inversores||'—';
+  document.getElementById('m-inv-tasa').textContent=tProm?tProm.toFixed(1)+'%':'—';
+  if(!movInversiones.length){document.getElementById('inversiones-body').innerHTML='<div class="loading-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';return;}
+  document.getElementById('inversiones-body').innerHTML=`<table class="data-table"><thead><tr><th>Inversor</th><th>Fecha</th><th>Monto</th><th>Tasa</th></tr></thead><tbody>${movInversiones.map(m=>`<tr><td style="font-weight:600">${cname(m.cid)}</td><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green)">$${fmt(m.monto)}</td><td>${m.tasa?`<span style="color:var(--amber)">${m.tasa}</span>`:'—'}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderContactos(){
+  if(!contacts.length){document.getElementById('contactos-body').innerHTML='<div class="loading-msg"><i class="ti ti-inbox"></i>Sin contactos</div>';return;}
+  document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${c.nombre}</td><td>${c.apellido}</td><td>${badge(c.tipo)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function verMov(cid){
+  currentCid=cid;const n=cname(cid),t=ctipo(cid);
+  document.getElementById('mov-cname').textContent=n;document.getElementById('mov-cbadge').innerHTML=t?badge(t):'';
+  const d=deudas.find(x=>x.contacto===cid);
+  document.getElementById('mov-saldo-ars').textContent=d&&d.saldo_ars?'$'+fmt(d.saldo_ars):'—';
+  document.getElementById('mov-saldo-usd').textContent=d&&d.saldo_usd?'u$s'+fmt(d.saldo_usd):'—';
+  document.getElementById('mov-ttitle').textContent='Historial — '+n;
+  const movs=movDeudas.filter(m=>m.cid===cid);
+  document.getElementById('movimientos-body').innerHTML=movs.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th></tr></thead><tbody>${movs.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--green)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="loading-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
+  ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
+  document.getElementById('cajasTab-movimientos').style.display='block';
+}
+
+function backFromMov(){document.getElementById('cajasTab-movimientos').style.display='none';document.getElementById('cajasTab-deudas').style.display='block';currentCid=null;}
+function setCajasTab(t){['deudas','inversiones','contactos','movimientos'].forEach(x=>document.getElementById('cajasTab-'+x).style.display='none');document.getElementById('cajasTab-'+t).style.display='block';document.querySelectorAll('.ctab').forEach(b=>b.classList.remove('active'));document.getElementById('ctab-'+t)&&document.getElementById('ctab-'+t).classList.add('active');}
+function populateContactSel(){document.getElementById('mov-contacto').innerHTML=contacts.map(c=>`<option value="${c.id}">${c.nombre} ${c.apellido} (${c.tipo})</option>`).join('');}
+
+function openMovModal(cid,tipo){
+  currentMovTipo=tipo;document.getElementById('modal-mov-title').textContent=tipo==='inversion'?'Nueva inversión':'Nuevo movimiento';
+  document.getElementById('mov-dir-wrap').style.display=tipo==='inversion'?'none':'block';
+  document.getElementById('mov-tasa-wrap').style.display=tipo==='inversion'?'block':'none';
+  ['mov-ars','mov-usd-m','mov-concepto','mov-tasa'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('modal-mov-err').style.display='none';
+  if(cid){for(let o of document.getElementById('mov-contacto').options)if(o.value===cid){o.selected=true;break;}}
+  document.getElementById('modal-mov').classList.add('open');
+}
+
+async function saveMovimiento(){
+  const cid=document.getElementById('mov-contacto').value,ars=parseFloat(document.getElementById('mov-ars').value)||0,usd=parseFloat(document.getElementById('mov-usd-m').value)||0,dir=document.getElementById('mov-dir').value,concepto=document.getElementById('mov-concepto').value.trim(),tasa=document.getElementById('mov-tasa').value.trim();
+  if(!cid){showModalErr('modal-mov-err','Seleccioná un contacto');return;}
+  if(!ars&&!usd){showModalErr('modal-mov-err','Ingresá al menos un monto');return;}
+  const id=Date.now().toString(),fecha=new Date().toISOString().split('T')[0];
+  const sheet=currentMovTipo==='inversion'?'Movimientos_Inversiones':'Movimientos_Deudas';
+  const row=currentMovTipo==='inversion'?[id,fecha,cid,'inversion',ars,tasa]:[id,fecha,cid,dir,ars,usd,concepto];
+  const btn=document.getElementById('btn-save-mov');btn.disabled=true;btn.textContent='Guardando...';
+  try{const res=await postScript({db:'cajas',sheet,action:'append',row});if(res.ok){closeModal('modal-mov');await loadCajas();if(currentCid)verMov(currentCid);}else showModalErr('modal-mov-err','Error: '+(res.error||'desconocido'));}
+  catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
+  btn.disabled=false;btn.textContent='Guardar en Sheets';
+}
+
+function openContactoModal(){['c-nombre','c-apellido'].forEach(i=>document.getElementById(i).value='');document.getElementById('modal-con-err').style.display='none';document.getElementById('modal-contacto').classList.add('open');}
+
+async function saveContacto(){
+  const nombre=document.getElementById('c-nombre').value.trim(),apellido=document.getElementById('c-apellido').value.trim(),tipo=document.getElementById('c-tipo').value;
+  if(!nombre){showModalErr('modal-con-err','El nombre es obligatorio');return;}
+  const id=Date.now().toString();
+  const btn=document.getElementById('btn-save-con');btn.disabled=true;btn.textContent='Guardando...';
+  try{const res=await postScript({db:'cajas',sheet:'Contactos',action:'append',row:[id,nombre,apellido,tipo]});if(res.ok){closeModal('modal-contacto');await loadCajas();}else showModalErr('modal-con-err','Error: '+(res.error||'desconocido'));}
+  catch(e){showModalErr('modal-con-err','Error: '+e.message);}
+  btn.disabled=false;btn.textContent='Guardar en Sheets';
+}
+
+// ── AUTH PORTAL ──
+function doLogin(){
+  const u=document.getElementById('u-in').value.trim().toLowerCase(),p=document.getElementById('p-in').value;
+  const found=USERS.find(x=>x.username===u&&x.pass===p);
+  if(!found){document.getElementById('login-err').style.display='block';return;}
+  CU=found;
+  document.getElementById('login-err').style.display='none';
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('tb-name').textContent=CU.nombre.split(' ')[0];
+  document.getElementById('tb-role').textContent=CU.role==='admin'?'Admin':'Operador';
+  document.getElementById('cfg-u').textContent=CU.username;
+  document.getElementById('cfg-r').textContent=CU.role==='admin'?'Admin':'Operador';
+  document.getElementById('home-sub').textContent='Buen día, '+CU.nombre.split(' ')[0];
+  const creds=getFinCreds();
+  if(creds){document.getElementById('cfg-fin-email').value=creds.email;document.getElementById('cfg-fin-pass').value=creds.pass;}
+  applyLocks();renderUsers();initProds();actualizarFechaLabel();
+  if(CU.perms.cajas)loadCajas();
+  if(CU.perms.envios)loadEnvios();
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
+
+function applyLocks(){
+  TOOLS.forEach(t=>{
+    const lock=document.getElementById('nl-'+t);if(lock)lock.style.display=CU.perms[t]?'none':'inline';
+    const bc=document.getElementById(t+'-blocked'),ct=document.getElementById(t+'-content');
+    if(!bc||!ct)return;
+    if(CU.perms[t]){bc.style.display='none';ct.style.display='';}else{bc.style.display='flex';ct.style.display='none';}
+  });
+}
+
+function go(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
+  if(id==='financiera'&&CU&&CU.perms.financiera)finInit();
+}
+
+function doLogout(){CU=null;document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('u-in').value='';document.getElementById('p-in').value='';go('home');}
+function syncTC(){const v=document.getElementById('tc-global').value;document.getElementById('tc').value=v;document.getElementById('tc2').value=v;}
+
+// ── COTIZADOR ──
+function setTab(t){document.getElementById('tc-cc').style.display=t==='cc'?'block':'none';document.getElementById('tc-usd').style.display=t==='usd'?'block':'none';document.getElementById('tab-cc').classList.toggle('active',t==='cc');document.getElementById('tab-usd').classList.toggle('active',t==='usd');}
+function initProds(){prodCount=0;document.getElementById('prods').innerHTML='';addProd();}
+function addProd(){prodCount++;const n=prodCount;const d=document.createElement('div');d.className='prod-card-c';d.id='prod-'+n;d.innerHTML=`<div class="prod-head-c"><span class="prod-num-c">Producto ${n}</span><button class="btn-rm-c" onclick="rmProd(${n})"><i class="ti ti-x"></i></button></div><div class="prod-g3"><div class="fg2"><label>Nombre</label><input type="text" placeholder="ej. iPhone 16 Pro" id="pn-${n}"/></div><div class="fg2"><label>Variante</label><input type="text" placeholder="ej. 256GB" id="pv-${n}"/></div><div class="fg2"><label>USD</label><input type="number" placeholder="0" id="pp-${n}" min="0"/></div></div>`;document.getElementById('prods').appendChild(d);}
+function rmProd(n){const cards=document.querySelectorAll('.prod-card-c');if(cards.length<=1)return;document.getElementById('prod-'+n).remove();document.querySelectorAll('.prod-card-c').forEach((c,i)=>c.querySelector('.prod-num-c').textContent='Producto '+(i+1));}
+
+function calcCC(){
+  const tc=parseFloat(document.getElementById('tc').value)||1200,rec=parseFloat(document.getElementById('rec').value)||0,csi=parseInt(document.getElementById('csi').value)||1;
+  const cards=document.querySelectorAll('.prod-card-c');let html='',total=0;
+  cards.forEach(card=>{const id=card.id.replace('prod-','');const nom=document.getElementById('pn-'+id).value||'Producto';const vari=document.getElementById('pv-'+id).value||'';const usd=parseFloat(document.getElementById('pp-'+id).value)||0;const arsBase=usd*tc,arsRec=arsBase*(1+rec/100),cuota=arsRec/csi;total+=arsRec;
+    html+=`<div class="result-prod"><div class="rpname">${nom}${vari?'<span class="rpvar">'+vari+'</span>':''}</div><div class="rrows"><div class="rr"><span class="rrl">USD</span><span class="rrv">u$s${fmt(usd)}</span></div><div class="rr"><span class="rrl">ARS base</span><span class="rrv">$${fmt(arsBase)}</span></div>${rec>0?`<div class="rr"><span class="rrl">Con recargo (${rec}%)</span><span class="rrv amber">$${fmt(arsRec)}</span></div>`:''}${csi>1?`<div class="rr"><span class="rrl">${csi} cuotas s/i</span><span class="rrv green">$${fmt(cuota)}/cuota</span></div>`:''}<div class="rr"><span class="rrl">Precio final</span><span class="rrv green">$${fmt(arsRec)}</span></div></div></div>`;
+  });
+  document.getElementById('cc-results-body').innerHTML=html;document.getElementById('cc-results').style.display='block';
+  const tr=document.getElementById('cc-total-row');if(cards.length>1){tr.style.display='flex';document.getElementById('cc-total').textContent='$'+fmt(total);}else tr.style.display='none';
+}
+
+function calcUSD(){
+  const tc=parseFloat(document.getElementById('tc2').value)||1200,usd=parseFloat(document.getElementById('usd-in').value)||0,rec=parseFloat(document.getElementById('rec2').value)||0,rnd=parseInt(document.getElementById('rnd').value)||1;
+  const sub=usd*tc,conRec=sub*(1+rec/100),total=rnd>1?Math.ceil(conRec/rnd)*rnd:conRec;
+  document.getElementById('ur-usd').textContent='u$s'+fmt(usd);document.getElementById('ur-tc').textContent='$'+fmt(tc);document.getElementById('ur-sub').textContent='$'+fmt(sub);
+  document.getElementById('ur-rec').textContent=rec>0?'+$'+fmt(conRec-sub):'—';document.getElementById('ur-rec-row').style.display=rec>0?'flex':'none';
+  document.getElementById('ur-total').textContent='$'+fmt(total);document.getElementById('usd-result').style.display='block';
+}
+
+function copyResult(){
+  const cards=document.querySelectorAll('.prod-card-c');const tc=parseFloat(document.getElementById('tc').value)||1200,rec=parseFloat(document.getElementById('rec').value)||0,csi=parseInt(document.getElementById('csi').value)||1;
+  let txt='';cards.forEach(card=>{const id=card.id.replace('prod-','');const nom=document.getElementById('pn-'+id).value||'Producto';const vari=document.getElementById('pv-'+id).value||'';const usd=parseFloat(document.getElementById('pp-'+id).value)||0;const arsRec=usd*tc*(1+rec/100),cuota=arsRec/csi;txt+=`${nom}${vari?' '+vari:''}\nPrecio: $${fmt(arsRec)}`;if(csi>1)txt+=` (${csi}x $${fmt(cuota)})`;txt+='\n\n';});
+  navigator.clipboard.writeText(txt.trim()).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
+}
+
+// ── USUARIOS ──
+function renderUsers(){
+  const tools=['cotizador','financiera','cajas','envios'];
+  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><button class="btn-sm" onclick="openEditUser(${u.id})"><i class="ti ti-edit" style="font-size:12px"></i></button></div>`;}).join('')}</div>`;
+}
+
+function openEditUser(id){const u=USERS.find(x=>x.id===id);if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function renderPermGrid(){document.getElementById('perm-grid').innerHTML=TOOLS.map(t=>`<div id="pt-${t}" onclick="tp2('${t}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--navy3);border:1px solid ${editPerms2[t]?'var(--green)':'var(--border)'};border-radius:9px;padding:10px 13px;cursor:pointer"><span style="font-size:13px;color:#fff">${t}</span><i class="ti ti-toggle-${editPerms2[t]?'right':'left'}" style="font-size:17px;color:${editPerms2[t]?'var(--green)':'var(--text3)'}"></i></div>`).join('');}
+function tp2(t){editPerms2[t]=!editPerms2[t];renderPermGrid();}
+function saveUser(){const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;if(!nom||!usr){alert('Nombre y usuario son obligatorios');return;}if(editUID){const u=USERS.find(x=>x.id===editUID);u.nombre=nom;u.username=usr;if(pas)u.pass=pas;u.perms={...editPerms2};}else{if(!pas){alert('Contraseña obligatoria');return;}USERS.push({id:Date.now(),nombre:nom,username:usr,pass:pas,role:'op',perms:{...editPerms2}});}closeModal('modal-usr');renderUsers();}
+</script>
+</body>
+</html>
