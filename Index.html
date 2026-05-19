@@ -694,7 +694,7 @@ function finHandleFile(input){
       canvas.width=img.width*scale;canvas.height=img.height*scale;
       canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
       const compressed=canvas.toDataURL('image/jpeg',0.7);
-      const resp=await fetch(FIN_API+'/api/ocr',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({imageData:compressed,mediaType:'image/jpeg'})});
+      const resp=await fetch(FIN_API+'/api/ocr',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(getFinToken()||'')},credentials:'include',body:JSON.stringify({imageData:compressed,mediaType:'image/jpeg'})});
       const data=await resp.json();const texto=data.monto;
       if(texto&&texto!=='NO'&&!isNaN(parseFloat(texto.replace(',','.')))){
         const monto=parseFloat(texto.replace(',','.'));
