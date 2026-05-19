@@ -890,98 +890,131 @@ async function saveEnvio(){
 
 // ── CAJAS ──
 async function loadCajas(){
-  const btn=document.getElementById('btn-refresh-cajas');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
+  const btn=document.getElementById('btn-refresh-cajas');
+  btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
   try{
-    const[rc,rd,rmd,rmi]=await Promise.all([fetchSheet(CAJAS_ID,'Contactos!A:D'),fetchSheet(CAJAS_ID,'Deudas!A:G'),fetchSheet(CAJAS_ID,'Movimientos_Deudas!A:G'),fetchSheet(CAJAS_ID,'Movimientos_Inversiones!A:F')]);
-    contacts=rc.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],nombre:r[1]||'',apellido:r[2]||'',tipo:r[3]||''}));
-    deudas=rd.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',contacto:r[2]||'',saldo_ars:parseFloat(r[3])||0,saldo_usd:parseFloat(r[4])||0,estado:r[6]||'pendiente'}));
-    movDeudas=rmd.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',cid:r[2]||'',tipo:r[3]||'',ars:parseFloat(r[4])||0,usd:parseFloat(r[5])||0,concepto:r[6]||''}));
-    movInversiones=rmi.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',cid:r[2]||'',tipo:r[3]||'',monto:parseFloat(r[4])||0,tasa:r[5]||''}));
-    renderDeudas();renderInversiones();renderContactos();populateContactSel();
-  }catch(e){}
+    const[rc,rmd,rmi]=await Promise.all([
+      fetchSheet(CAJAS_ID,'Contactos!A:D'),
+      fetchSheet(CAJAS_ID,'Movimientos_Deudas!A:G'),
+      fetchSheet(CAJAS_ID,'Movimientos_Inversiones!A:F')
+    ]);
+    contacts=rc.filter(r=>r[0]).map(r=>({id:String(r[0]),nombre:r[1]||'',apellido:r[2]||'',tipo:r[3]||''}));
+    movDeudas=rmd.filter(r=>r[0]).map(r=>({id:String(r[0]),fecha:r[1]||'',cid:String(r[2]||''),tipo:r[3]||'',ars:parseFloat(r[4])||0,usd:parseFloat(r[5])||0,concepto:r[6]||''}));
+    movInversiones=rmi.filter(r=>r[0]).map(r=>({id:String(r[0]),fecha:r[1]||'',cid:String(r[2]||''),tipo:r[3]||'',monto:parseFloat(r[4])||0,tasa:r[5]||''}));
+    populateContactSel();renderDeudas();renderInversiones();renderContactos();
+  }catch(e){showToast('Error cargando Cajas',false);}
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
 }
-
-function cname(id){const c=contacts.find(x=>x.id===id);return c?`${c.nombre} ${c.apellido}`.trim():id;}
-function ctipo(id){const c=contacts.find(x=>x.id===id);return c?c.tipo:'';}
+function cname(id){const c=contacts.find(x=>x.id===String(id));return c?`${c.nombre} ${c.apellido}`.trim():id;}
+function ctipo(id){const c=contacts.find(x=>x.id===String(id));return c?c.tipo:'';}
 function badge(tipo){const map={amigo:'b-amigo',familiar:'b-familiar',cliente:'b-cliente',inversor:'b-inversor',debe:'b-debe',pago:'b-pago',pendiente:'b-pendiente',inversion:'b-inversion'};return `<span class="badge ${map[tipo]||'b-pendiente'}">${tipo}</span>`;}
-
 function renderDeudas(){
-  const tARS=deudas.reduce((s,d)=>s+d.saldo_ars,0),tUSD=deudas.reduce((s,d)=>s+d.saldo_usd,0);
+  const s={};
+  movDeudas.forEach(m=>{if(!s[m.cid])s[m.cid]={ars:0,usd:0,movs:0};const v=s[m.cid];v.movs++;if(m.tipo==='debe'){v.ars+=m.ars;v.usd+=m.usd;}else if(m.tipo==='pago'){v.ars-=m.ars;v.usd-=m.usd;}});
+  const tARS=Object.values(s).reduce((a,v)=>a+(v.ars>0?v.ars:0),0);
+  const tUSD=Object.values(s).reduce((a,v)=>a+(v.usd>0?v.usd:0),0);
+  const cnt=Object.keys(s).filter(c=>s[c].ars>0||s[c].usd>0).length;
   document.getElementById('m-ars').textContent=tARS?'$'+fmt(tARS):'—';
   document.getElementById('m-usd').textContent=tUSD?'u$s'+fmt(tUSD):'—';
-  document.getElementById('m-count').textContent=deudas.length;
-  if(!deudas.length){document.getElementById('deudas-body').innerHTML='<div class="loading-msg"><i class="ti ti-inbox"></i>Sin deudas</div>';return;}
-  document.getElementById('deudas-body').innerHTML=`<table class="data-table"><thead><tr><th>Contacto</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Estado</th><th></th></tr></thead><tbody>${deudas.map(d=>`<tr><td style="font-weight:600">${cname(d.contacto)}</td><td>${ctipo(d.contacto)?badge(ctipo(d.contacto)):'—'}</td><td>${d.saldo_ars?'$'+fmt(d.saldo_ars):'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--green)">${d.saldo_usd?'u$s'+fmt(d.saldo_usd):'<span style="color:var(--text3)">—</span>'}</td><td>${badge(d.estado)}</td><td><button class="btn-plus" onclick="verMov('${d.contacto}')">+</button></td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('m-count').textContent=cnt||'—';
+  if(!Object.keys(s).length){document.getElementById('deudas-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';return;}
+  const filas=Object.entries(s).sort((a,b)=>(b[1].usd+b[1].ars)-(a[1].usd+a[1].ars)).map(([cid,v])=>`<tr style="cursor:pointer" onclick="verMovDeudas('${cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(cid)}</td><td>${ctipo(cid)?badge(ctipo(cid)):'—'}</td><td>${v.ars?'<span style="color:var(--green)">$'+fmt(v.ars)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td>${v.usd?'<span style="color:var(--amber)">u$s'+fmt(v.usd)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--text3)">${v.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${cid}','deuda')">+</button></td></tr>`).join('');
+  document.getElementById('deudas-body').innerHTML=`<table class="data-table"><thead><tr><th>Contacto</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Movimientos</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
 }
-
 function renderInversiones(){
-  const total=movInversiones.reduce((s,m)=>s+m.monto,0),inversores=new Set(movInversiones.map(m=>m.cid)).size;
-  const tasas=movInversiones.filter(m=>m.tasa).map(m=>parseFloat(m.tasa)||0),tProm=tasas.length?tasas.reduce((a,b)=>a+b,0)/tasas.length:0;
-  document.getElementById('m-inv-total').textContent=total?'$'+fmt(total):'—';
-  document.getElementById('m-inv-count').textContent=inversores||'—';
-  document.getElementById('m-inv-tasa').textContent=tProm?tProm.toFixed(1)+'%':'—';
-  if(!movInversiones.length){document.getElementById('inversiones-body').innerHTML='<div class="loading-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';return;}
-  document.getElementById('inversiones-body').innerHTML=`<table class="data-table"><thead><tr><th>Inversor</th><th>Fecha</th><th>Monto</th><th>Tasa</th></tr></thead><tbody>${movInversiones.map(m=>`<tr><td style="font-weight:600">${cname(m.cid)}</td><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green)">$${fmt(m.monto)}</td><td>${m.tasa?`<span style="color:var(--amber)">${m.tasa}</span>`:'—'}</td></tr>`).join('')}</tbody></table>`;
+  const s={};
+  movInversiones.forEach(m=>{if(!s[m.cid])s[m.cid]={monto:0,movs:0,tasa:''};s[m.cid].monto+=m.monto;s[m.cid].movs++;if(m.tasa)s[m.cid].tasa=m.tasa;});
+  const tTotal=Object.values(s).reduce((a,v)=>a+v.monto,0);
+  document.getElementById('m-inv-total').textContent=tTotal?'u$s'+fmt(tTotal):'—';
+  document.getElementById('m-inv-count').textContent=Object.keys(s).length||'—';
+  if(!Object.keys(s).length){document.getElementById('inversiones-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';return;}
+  const filas=Object.entries(s).sort((a,b)=>b[1].monto-a[1].monto).map(([cid,v])=>`<tr style="cursor:pointer" onclick="verMovInversiones('${cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(cid)}</td><td>${ctipo(cid)?badge(ctipo(cid)):'—'}</td><td style="color:var(--green);font-weight:600">u$s${fmt(v.monto)}</td><td style="color:var(--amber)">${v.tasa||'—'}</td><td style="color:var(--text3)">${v.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${cid}','inversion')">+</button></td></tr>`).join('');
+  document.getElementById('inversiones-body').innerHTML=`<table class="data-table"><thead><tr><th>Inversor</th><th>Tipo</th><th>Monto USD</th><th>Tasa</th><th>Movimientos</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
 }
-
 function renderContactos(){
-  if(!contacts.length){document.getElementById('contactos-body').innerHTML='<div class="loading-msg"><i class="ti ti-inbox"></i>Sin contactos</div>';return;}
+  if(!contacts.length){document.getElementById('contactos-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin contactos</div>';return;}
   document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${c.nombre}</td><td>${c.apellido}</td><td>${badge(c.tipo)}</td></tr>`).join('')}</tbody></table>`;
 }
-
-function verMov(cid){
-  currentCid=cid;const n=cname(cid),t=ctipo(cid);
-  document.getElementById('mov-cname').textContent=n;document.getElementById('mov-cbadge').innerHTML=t?badge(t):'';
-  const d=deudas.find(x=>x.contacto===cid);
-  document.getElementById('mov-saldo-ars').textContent=d&&d.saldo_ars?'$'+fmt(d.saldo_ars):'—';
-  document.getElementById('mov-saldo-usd').textContent=d&&d.saldo_usd?'u$s'+fmt(d.saldo_usd):'—';
-  document.getElementById('mov-ttitle').textContent='Historial — '+n;
-  const movs=movDeudas.filter(m=>m.cid===cid);
-  document.getElementById('movimientos-body').innerHTML=movs.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th></tr></thead><tbody>${movs.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--green)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="loading-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
+function verMovDeudas(cid){
+  currentCid=cid;currentMovTipo='deuda';
+  document.getElementById('mov-cname').textContent=cname(cid);
+  document.getElementById('mov-cbadge').innerHTML=ctipo(cid)?badge(ctipo(cid)):'';;
+  let sARS=0,sUSD=0;
+  const movs=movDeudas.filter(m=>m.cid===String(cid));
+  movs.forEach(m=>{if(m.tipo==='debe'){sARS+=m.ars;sUSD+=m.usd;}else if(m.tipo==='pago'){sARS-=m.ars;sUSD-=m.usd;}});
+  document.getElementById('mov-saldo-ars').textContent=sARS?'$'+fmt(sARS):'—';
+  document.getElementById('mov-saldo-usd').textContent=sUSD?'u$s'+fmt(sUSD):'—';
+  document.getElementById('mov-ttitle').textContent='Historial — '+cname(cid);
+  const sorted=movs.sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
   ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
   document.getElementById('cajasTab-movimientos').style.display='block';
 }
-
-function backFromMov(){document.getElementById('cajasTab-movimientos').style.display='none';document.getElementById('cajasTab-deudas').style.display='block';currentCid=null;}
+function verMovInversiones(cid){
+  currentCid=cid;currentMovTipo='inversion';
+  document.getElementById('mov-cname').textContent=cname(cid);
+  document.getElementById('mov-cbadge').innerHTML=ctipo(cid)?badge(ctipo(cid)):'';
+  const movs=movInversiones.filter(m=>m.cid===String(cid)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const total=movs.reduce((a,m)=>a+m.monto,0);
+  document.getElementById('mov-saldo-ars').textContent='—';
+  document.getElementById('mov-saldo-usd').textContent=total?'u$s'+fmt(total):'—';
+  document.getElementById('mov-ttitle').textContent='Inversiones — '+cname(cid);
+  document.getElementById('movimientos-body').innerHTML=movs.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th></tr></thead><tbody>${movs.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${m.tasa||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
+  ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
+  document.getElementById('cajasTab-movimientos').style.display='block';
+}
+function backFromMov(){
+  document.getElementById('cajasTab-movimientos').style.display='none';
+  if(currentMovTipo==='inversion'){document.getElementById('cajasTab-inversiones').style.display='block';document.getElementById('ctab-inversiones').classList.add('active');document.getElementById('ctab-deudas').classList.remove('active');}
+  else{document.getElementById('cajasTab-deudas').style.display='block';document.getElementById('ctab-deudas').classList.add('active');document.getElementById('ctab-inversiones').classList.remove('active');}
+  currentCid=null;
+}
 function setCajasTab(t){['deudas','inversiones','contactos','movimientos'].forEach(x=>document.getElementById('cajasTab-'+x).style.display='none');document.getElementById('cajasTab-'+t).style.display='block';document.querySelectorAll('.ctab').forEach(b=>b.classList.remove('active'));document.getElementById('ctab-'+t)&&document.getElementById('ctab-'+t).classList.add('active');}
 function populateContactSel(){document.getElementById('mov-contacto').innerHTML=contacts.map(c=>`<option value="${c.id}">${c.nombre} ${c.apellido} (${c.tipo})</option>`).join('');}
-
 function openMovModal(cid,tipo){
-  currentMovTipo=tipo;document.getElementById('modal-mov-title').textContent=tipo==='inversion'?'Nueva inversión':'Nuevo movimiento';
+  currentMovTipo=tipo;
+  document.getElementById('modal-mov-title').textContent=tipo==='inversion'?'Nueva inversión':'Nuevo movimiento';
   document.getElementById('mov-dir-wrap').style.display=tipo==='inversion'?'none':'block';
   document.getElementById('mov-tasa-wrap').style.display=tipo==='inversion'?'block':'none';
   ['mov-ars','mov-usd-m','mov-concepto','mov-tasa'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('modal-mov-err').style.display='none';
-  if(cid){for(let o of document.getElementById('mov-contacto').options)if(o.value===cid){o.selected=true;break;}}
+  if(cid){for(let o of document.getElementById('mov-contacto').options)if(o.value===String(cid)){o.selected=true;break;}}
   document.getElementById('modal-mov').classList.add('open');
 }
-
 async function saveMovimiento(){
-  const cid=document.getElementById('mov-contacto').value,ars=parseFloat(document.getElementById('mov-ars').value)||0,usd=parseFloat(document.getElementById('mov-usd-m').value)||0,dir=document.getElementById('mov-dir').value,concepto=document.getElementById('mov-concepto').value.trim(),tasa=document.getElementById('mov-tasa').value.trim();
+  const cid=document.getElementById('mov-contacto').value;
+  const ars=parseFloat(document.getElementById('mov-ars').value)||0;
+  const usd=parseFloat(document.getElementById('mov-usd-m').value)||0;
+  const dir=document.getElementById('mov-dir').value;
+  const concepto=document.getElementById('mov-concepto').value.trim();
+  const tasa=document.getElementById('mov-tasa').value.trim();
   if(!cid){showModalErr('modal-mov-err','Seleccioná un contacto');return;}
-  if(!ars&&!usd){showModalErr('modal-mov-err','Ingresá al menos un monto');return;}
+  if(currentMovTipo==='inversion'){if(!usd&&!ars){showModalErr('modal-mov-err','Ingresá el monto');return;}}
+  else{if(!ars&&!usd){showModalErr('modal-mov-err','Ingresá al menos un monto');return;}}
   const id=Date.now().toString(),fecha=new Date().toISOString().split('T')[0];
   const sheet=currentMovTipo==='inversion'?'Movimientos_Inversiones':'Movimientos_Deudas';
-  const row=currentMovTipo==='inversion'?[id,fecha,cid,'inversion',ars,tasa]:[id,fecha,cid,dir,ars,usd,concepto];
+  const row=currentMovTipo==='inversion'?[id,fecha,cid,'inversion',usd||ars,tasa]:[id,fecha,cid,dir,ars,usd,concepto];
   const btn=document.getElementById('btn-save-mov');btn.disabled=true;btn.textContent='Guardando...';
-  try{const res=await postScript({db:'cajas',sheet,action:'append',row});if(res.ok){closeModal('modal-mov');await loadCajas();if(currentCid)verMov(currentCid);}else showModalErr('modal-mov-err','Error: '+(res.error||'desconocido'));}
-  catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
+  try{
+    const res=await postScript({db:'cajas',sheet,action:'append',row});
+    if(res.ok){closeModal('modal-mov');await loadCajas();if(currentCid){if(currentMovTipo==='inversion')verMovInversiones(currentCid);else verMovDeudas(currentCid);}showToast('Movimiento guardado');}
+    else showModalErr('modal-mov-err','Error: '+(res.error||'desconocido'));
+  }catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
 }
-
 function openContactoModal(){['c-nombre','c-apellido'].forEach(i=>document.getElementById(i).value='');document.getElementById('modal-con-err').style.display='none';document.getElementById('modal-contacto').classList.add('open');}
-
 async function saveContacto(){
   const nombre=document.getElementById('c-nombre').value.trim(),apellido=document.getElementById('c-apellido').value.trim(),tipo=document.getElementById('c-tipo').value;
   if(!nombre){showModalErr('modal-con-err','El nombre es obligatorio');return;}
   const id=Date.now().toString();
   const btn=document.getElementById('btn-save-con');btn.disabled=true;btn.textContent='Guardando...';
-  try{const res=await postScript({db:'cajas',sheet:'Contactos',action:'append',row:[id,nombre,apellido,tipo]});if(res.ok){closeModal('modal-contacto');await loadCajas();}else showModalErr('modal-con-err','Error: '+(res.error||'desconocido'));}
-  catch(e){showModalErr('modal-con-err','Error: '+e.message);}
+  try{
+    const res=await postScript({db:'cajas',sheet:'Contactos',action:'append',row:[id,nombre,apellido,tipo]});
+    if(res.ok){closeModal('modal-contacto');await loadCajas();showToast('Contacto guardado');}
+    else showModalErr('modal-con-err','Error: '+(res.error||'desconocido'));
+  }catch(e){showModalErr('modal-con-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
 }
-
 // ── AUTH PORTAL ──
 function doLogin(){
   const u=document.getElementById('u-in').value.trim().toLowerCase(),p=document.getElementById('p-in').value;
