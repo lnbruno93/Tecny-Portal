@@ -38,8 +38,8 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .topbar-user{font-size:13px;color:var(--text2)}
 .topbar-user strong{color:#fff;font-weight:500}
 .topbar-role{font-size:10px;padding:2px 8px;border-radius:20px;background:var(--green2);color:var(--green);letter-spacing:.06em;text-transform:uppercase}
-.layout{display:flex;min-height:calc(100vh - 50px)}
-.sidebar{width:210px;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 0;flex-shrink:0;position:sticky;top:50px;height:calc(100vh - 50px)}
+.layout{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 50px);width:100%}
+.sidebar{background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 0;position:sticky;top:50px;height:calc(100vh - 50px);overflow-y:auto}
 .sidebar-section{padding:0 10px;margin-bottom:2px}
 .s-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 8px 4px}
 .nav-btn{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:background .15s,color .15s}
@@ -49,7 +49,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .ni{font-size:15px;width:17px;text-align:center;flex-shrink:0}
 .nav-lock{font-size:11px;color:var(--text3);margin-left:auto}
 .s-footer{margin-top:auto;padding:0 10px;border-top:1px solid var(--border);padding-top:10px}
-.content{flex:1;overflow-y:auto;background:var(--navy)}
+.content{overflow-y:auto;overflow-x:hidden;background:var(--navy);min-width:0}
 .panel{display:none}.panel.active{display:block}
 .blocked-wrap{padding:40px;display:flex;align-items:center;justify-content:center;min-height:400px}
 .blocked-card{background:var(--navy2);border:1px solid var(--border2);border-radius:16px;padding:40px;text-align:center;max-width:380px;width:100%}
@@ -137,13 +137,11 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .rr:last-child{border:none}.rrl{color:var(--text2)}
 .rrv{font-family:'Syne',system-ui,sans-serif;font-weight:600;color:#fff}
 .rrv.green{color:var(--green)}.rrv.amber{color:var(--amber)}
-.total-row{padding:12px 16px;background:var(--navy4);display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border2)}
-.total-label{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em}
-.total-val{font-family:'Syne',system-ui,sans-serif;font-size:18px;font-weight:700;color:var(--green)}
+.total-row{padding:12px 16px;background:var(--navy4);border-top:1px solid var(--border2)}
 .usd-result{margin-top:16px;background:var(--navy3);border:1px solid var(--border2);border-radius:10px;padding:16px;display:none}
 .usd-rr{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
-.usd-rr:last-child{border:none;padding-top:10px;font-size:15px;font-weight:700}
-.usd-rr span:first-child{color:var(--text2)}.usd-rr span:last-child{color:var(--green);font-family:'Syne',system-ui,sans-serif}
+.usd-rr:last-child{border:none}
+.usd-rr span:first-child{color:var(--text2)}
 .fin-body{padding:0}
 .fin-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto;background:var(--navy)}
 .fin-tab{padding:12px 16px;border:none;background:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
@@ -187,7 +185,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .mov-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .back-btn{background:none;border:1px solid var(--border);border-radius:7px;color:var(--text2);padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
 .envios-body{padding:20px 24px}
-.metrics-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.metrics-grid-5{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:20px}
 .date-nav{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .date-btn{width:30px;height:30px;border-radius:7px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .date-btn:hover{border-color:var(--border2);color:#fff}
@@ -236,7 +234,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 </style>
-<body>
+</head><body>
 <div id="toast" class="toast"></div>
 
 <!-- LOGIN -->
@@ -297,18 +295,34 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         <div id="cotizador-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar el Cotizador.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
         <div id="cotizador-content" class="cot-body">
           <div class="tab-row"><button class="ctab2 active" id="tab-cc" onclick="setTab('cc')">Tarjetas de crédito</button><button class="ctab2" id="tab-usd" onclick="setTab('usd')">USD → ARS</button></div>
+          <!-- TAB TARJETAS -->
           <div id="tc-cc">
-            <div class="tc-row"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc" value="1200" min="1"/></div><div class="fg2"><label>Recargo (%)</label><input type="number" id="rec" value="15" min="0"/></div><div class="fg2"><label>Cuotas s/i</label><select id="csi"><option value="1">Contado</option><option value="3">3 cuotas</option><option value="6">6 cuotas</option><option value="9">9 cuotas</option><option value="12">12 cuotas</option><option value="18">18 cuotas</option></select></div></div>
+            <div class="tc-row" style="grid-template-columns:1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc" value="1200" min="1"/></div></div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:13px;font-weight:600">Productos</span><button class="btn-secondary" onclick="addProd()"><i class="ti ti-plus" style="font-size:13px"></i>Agregar</button></div>
             <div id="prods"></div>
             <button class="calc-btn" onclick="calcCC()">Calcular cotización</button>
-            <div class="results-wrap" id="cc-results" style="display:none"><div class="res-header"><span style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)">Resultado</span><button class="btn-copy" onclick="copyResult()"><i class="ti ti-copy" style="font-size:12px"></i>Copiar</button></div><div id="cc-results-body"></div><div class="total-row" id="cc-total-row" style="display:none"><div class="total-label">Total</div><div class="total-val" id="cc-total"></div></div></div>
+            <div class="results-wrap" id="cc-results" style="display:none">
+              <div class="res-header"><span style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)">Resultado</span><button class="btn-copy" onclick="copyResult()"><i class="ti ti-copy" style="font-size:12px"></i>Copiar</button></div>
+              <div id="cc-results-body"></div>
+              <div class="total-row" id="cc-total-row" style="display:none"></div>
+            </div>
           </div>
+          <!-- TAB USD -->
           <div id="tc-usd" style="display:none">
-            <div class="tc-row" style="grid-template-columns:1fr 1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc2" value="1200" min="1"/></div><div class="fg2"><label>Monto USD</label><input type="number" id="usd-in" placeholder="0" min="0"/></div></div>
-            <div class="tc-row" style="grid-template-columns:1fr 1fr;margin-top:-8px"><div class="fg2"><label>Recargo (%)</label><input type="number" id="rec2" value="0" min="0"/></div><div class="fg2"><label>Redondear</label><select id="rnd"><option value="1">Sin redondeo</option><option value="100">Centenas</option><option value="500" selected>Quinientos</option><option value="1000">Miles</option></select></div></div>
-            <button class="calc-btn" onclick="calcUSD()">Convertir</button>
-            <div class="usd-result" id="usd-result"><div class="usd-rr"><span>Monto USD</span><span id="ur-usd">—</span></div><div class="usd-rr"><span>Tipo de cambio</span><span id="ur-tc">—</span></div><div class="usd-rr"><span>Subtotal ARS</span><span id="ur-sub">—</span></div><div class="usd-rr" id="ur-rec-row"><span>Recargo</span><span id="ur-rec">—</span></div><div class="usd-rr"><span>Total ARS</span><span id="ur-total">—</span></div></div>
+            <div class="tc-row" style="grid-template-columns:1fr 1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc2" value="1200" min="1" oninput="calcUSD()"/></div><div class="fg2"><label>Monto USD</label><input type="number" id="usd-in" placeholder="0" min="0" oninput="calcUSD()"/></div></div>
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Forma de pago</div>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="usd-opt-ef" checked onchange="calcUSD()" style="margin-top:2px;accent-color:var(--green)"/><div><div style="font-size:13px;font-weight:600;color:#fff">Efectivo / Sin recargo</div><div style="font-size:11px;color:var(--text2)">Cobro en pesos al TC del día</div></div></label>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="usd-opt-tars" onchange="calcUSD()" style="margin-top:2px;accent-color:var(--green)"/><div><div style="font-size:13px;font-weight:600;color:#fff">Transferencia ARS (+3%)</div><div style="font-size:11px;color:var(--text2)">Cobro en pesos con recargo</div></div></label>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="usd-opt-tusd" onchange="calcUSD()" style="margin-top:2px;accent-color:var(--green)"/><div><div style="font-size:13px;font-weight:600;color:#fff">Transferencia USD (+3%)</div><div style="font-size:11px;color:var(--text2)">Cobro en dólares con recargo</div></div></label>
+            </div>
+            <div id="usd-result" style="display:none">
+              <div style="background:var(--navy3);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:12px" id="usd-result-body"></div>
+              <div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)">Resumen para el cliente</span><button class="btn-copy" onclick="copyUSD()"><i class="ti ti-copy" style="font-size:12px"></i>Copiar</button></div>
+                <div style="padding:14px 16px;font-size:13px;color:var(--text2);line-height:1.7" id="usd-preview"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -479,8 +493,8 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div id="perm-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-usr')">Cancelar</button><button class="btn-save" onclick="saveUser()">Guardar</button></div>
   </div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/tabler-icons.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" rel="stylesheet"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const CAJAS_ID='176tDFnaKyKSJYJlEWGpW02ekdhhy6R_rIEXbUnSCSKU';
@@ -514,7 +528,9 @@ document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>
 
 // ── CREDENCIALES FINANCIERA ──
 function getFinCreds(){try{return JSON.parse(localStorage.getItem('fin_creds')||'null');}catch(e){return null;}}
+function getFinToken(){return localStorage.getItem('fin_token')||null;}
 function saveFinCreds(e,p){localStorage.setItem('fin_creds',JSON.stringify({email:e,pass:p}));}
+function saveFinToken(t){localStorage.setItem('fin_token',t);}
 function guardarCredFinanciera(){
   const e=document.getElementById('cfg-fin-email').value.trim();
   const p=document.getElementById('cfg-fin-pass').value;
@@ -525,6 +541,8 @@ function guardarCredFinanciera(){
 // ── FINANCIERA API ──
 async function finApi(path,method='GET',body=null){
   const opts={method,headers:{'Content-Type':'application/json'},credentials:'include'};
+  const token=getFinToken();
+  if(token)opts.headers['Authorization']='Bearer '+token;
   if(body)opts.body=JSON.stringify(body);
   const res=await fetch(FIN_API+path,opts);
   if(res.status===401)throw new Error('NO_AUTH');
@@ -536,32 +554,26 @@ async function finInit(){
   document.getElementById('fin-connecting').style.display='flex';
   document.getElementById('fin-app').style.display='none';
   document.getElementById('fin-error').style.display='none';
-  try{
-    await finApi('/api/auth/me');
-    finMostrarApp();
-  }catch(e){
-    if(e.message==='NO_AUTH'){
-      const creds=getFinCreds();
-      if(creds){
-        try{
-          await finApi('/api/auth/login','POST',{email:creds.email,password:creds.pass});
-          finMostrarApp();
-        }catch(e2){
-          document.getElementById('fin-connecting').style.display='none';
-          document.getElementById('fin-error').style.display='block';
-          document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--red);font-size:13px;margin-bottom:12px"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Credenciales incorrectas</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Actualizá las credenciales en Config</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
-        }
-      }else{
-        document.getElementById('fin-connecting').style.display='none';
-        document.getElementById('fin-error').style.display='block';
-        document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--amber);font-size:13px;margin-bottom:12px"><i class="ti ti-key" style="font-size:28px;display:block;margin-bottom:8px"></i>Configurá las credenciales</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Andá a Config → Credenciales Financiera e ingresá tu email y contraseña de Railway</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
-      }
-    }else{
+  const token=getFinToken();
+  if(token){
+    try{await finApi('/api/auth/me');finMostrarApp();return;}catch(e){}
+  }
+  const creds=getFinCreds();
+  if(creds){
+    try{
+      const data=await finApi('/api/auth/login','POST',{email:creds.email,password:creds.pass});
+      if(data.token)saveFinToken(data.token);
+      finMostrarApp();return;
+    }catch(e2){
       document.getElementById('fin-connecting').style.display='none';
       document.getElementById('fin-error').style.display='block';
-      document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Error de conexión<br><button class="btn-secondary" style="margin-top:12px" onclick="finInit()">Reintentar</button></div>';
+      document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--red);font-size:13px;margin-bottom:12px"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Credenciales incorrectas</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Actualizá las credenciales en Config</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
+      return;
     }
   }
+  document.getElementById('fin-connecting').style.display='none';
+  document.getElementById('fin-error').style.display='block';
+  document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--amber);font-size:13px;margin-bottom:12px"><i class="ti ti-key" style="font-size:28px;display:block;margin-bottom:8px"></i>Configurá las credenciales</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Andá a Config y guardá tu email y contraseña de Financiera</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
 }
 
 async function finMostrarApp(){
@@ -619,13 +631,7 @@ async function finRenderDashboard(){
     let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
     const[lista,pagos]=await Promise.all([finApi(url),finApi('/api/pagos')]);
     const tR=lista.reduce((s,c)=>s+parseFloat(c.monto),0),tF=lista.reduce((s,c)=>s+parseFloat(c.monto_financiera),0),tN=lista.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tP=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),saldo=Math.max(0,tN-tP);
-    document.getElementById('fin-metrics').innerHTML=`
-      <div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div>
-      <div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div>
-      <div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div>
-      <div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div>
-      <div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div>
-      <div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${lista.length}</div></div>`;
+    document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${lista.length}</div></div>`;
     if(!lista.length){document.getElementById('fin-tabla-dashboard').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos en el período</div>';return;}
     document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
   }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
@@ -1018,34 +1024,101 @@ function go(id){
 function doLogout(){CU=null;document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('u-in').value='';document.getElementById('p-in').value='';go('home');}
 function syncTC(){const v=document.getElementById('tc-global').value;document.getElementById('tc').value=v;document.getElementById('tc2').value=v;}
 
-// ── COTIZADOR ──
+// ── COTIZADOR NUEVO ──
 function setTab(t){document.getElementById('tc-cc').style.display=t==='cc'?'block':'none';document.getElementById('tc-usd').style.display=t==='usd'?'block':'none';document.getElementById('tab-cc').classList.toggle('active',t==='cc');document.getElementById('tab-usd').classList.toggle('active',t==='usd');}
 function initProds(){prodCount=0;document.getElementById('prods').innerHTML='';addProd();}
 function addProd(){prodCount++;const n=prodCount;const d=document.createElement('div');d.className='prod-card-c';d.id='prod-'+n;d.innerHTML=`<div class="prod-head-c"><span class="prod-num-c">Producto ${n}</span><button class="btn-rm-c" onclick="rmProd(${n})"><i class="ti ti-x"></i></button></div><div class="prod-g3"><div class="fg2"><label>Nombre</label><input type="text" placeholder="ej. iPhone 16 Pro" id="pn-${n}"/></div><div class="fg2"><label>Variante</label><input type="text" placeholder="ej. 256GB" id="pv-${n}"/></div><div class="fg2"><label>USD</label><input type="number" placeholder="0" id="pp-${n}" min="0"/></div></div>`;document.getElementById('prods').appendChild(d);}
 function rmProd(n){const cards=document.querySelectorAll('.prod-card-c');if(cards.length<=1)return;document.getElementById('prod-'+n).remove();document.querySelectorAll('.prod-card-c').forEach((c,i)=>c.querySelector('.prod-num-c').textContent='Producto '+(i+1));}
 
 function calcCC(){
-  const tc=parseFloat(document.getElementById('tc').value)||1200,rec=parseFloat(document.getElementById('rec').value)||0,csi=parseInt(document.getElementById('csi').value)||1;
-  const cards=document.querySelectorAll('.prod-card-c');let html='',total=0;
-  cards.forEach(card=>{const id=card.id.replace('prod-','');const nom=document.getElementById('pn-'+id).value||'Producto';const vari=document.getElementById('pv-'+id).value||'';const usd=parseFloat(document.getElementById('pp-'+id).value)||0;const arsBase=usd*tc,arsRec=arsBase*(1+rec/100),cuota=arsRec/csi;total+=arsRec;
-    html+=`<div class="result-prod"><div class="rpname">${nom}${vari?'<span class="rpvar">'+vari+'</span>':''}</div><div class="rrows"><div class="rr"><span class="rrl">USD</span><span class="rrv">u$s${fmt(usd)}</span></div><div class="rr"><span class="rrl">ARS base</span><span class="rrv">$${fmt(arsBase)}</span></div>${rec>0?`<div class="rr"><span class="rrl">Con recargo (${rec}%)</span><span class="rrv amber">$${fmt(arsRec)}</span></div>`:''}${csi>1?`<div class="rr"><span class="rrl">${csi} cuotas s/i</span><span class="rrv green">$${fmt(cuota)}/cuota</span></div>`:''}<div class="rr"><span class="rrl">Precio final</span><span class="rrv green">$${fmt(arsRec)}</span></div></div></div>`;
+  const tc=parseFloat(document.getElementById('tc').value)||1200;
+  const cards=document.querySelectorAll('.prod-card-c');
+  let html='',tots={contado:0,transf:0,c1:0,c3:0,c6:0};
+  cards.forEach(card=>{
+    const id=card.id.replace('prod-','');
+    const nom=document.getElementById('pn-'+id).value||'Producto';
+    const vari=document.getElementById('pv-'+id).value||'';
+    const usd=parseFloat(document.getElementById('pp-'+id).value)||0;
+    const base=usd*tc;
+    const contado=Math.round(base);
+    const transf=Math.round(base*1.03);
+    const c1=Math.round(base*1.11);
+    const c3=Math.round(base*1.235);
+    const c6=Math.round(base*1.28);
+    tots.contado+=contado;tots.transf+=transf;tots.c1+=c1;tots.c3+=c3;tots.c6+=c6;
+    html+=`<div class="result-prod"><div class="rpname">${nom}${vari?' <span class="rpvar">'+vari+'</span>':''}</div><div class="rrows"><div class="rr"><span class="rrl">Precio USD</span><span class="rrv">u$s${fmt(usd)} | TC $${fmt(tc)}</span></div><div class="rr" style="margin-top:4px"><span class="rrl">Contado ARS</span><span class="rrv green">$${fmt(contado)}</span></div><div class="rr"><span class="rrl">Transferencia</span><span class="rrv green">$${fmt(transf)}</span></div><div class="rr" style="margin-top:4px"><span class="rrl">💳 1 cuota</span><span class="rrv amber">$${fmt(c1)}</span></div><div class="rr"><span class="rrl">💳 3 cuotas</span><span class="rrv amber">$${fmt(c3)} ($${fmt(Math.round(c3/3))}/cuota)</span></div><div class="rr"><span class="rrl">💳 6 cuotas</span><span class="rrv amber">$${fmt(c6)} ($${fmt(Math.round(c6/6))}/cuota)</span></div></div></div>`;
   });
-  document.getElementById('cc-results-body').innerHTML=html;document.getElementById('cc-results').style.display='block';
-  const tr=document.getElementById('cc-total-row');if(cards.length>1){tr.style.display='flex';document.getElementById('cc-total').textContent='$'+fmt(total);}else tr.style.display='none';
+  document.getElementById('cc-results-body').innerHTML=html;
+  document.getElementById('cc-results').style.display='block';
+  const tr=document.getElementById('cc-total-row');
+  if(cards.length>1){
+    tr.style.display='block';
+    tr.innerHTML=`<div class="rr"><span class="rrl">Total Contado</span><span class="rrv green">$${fmt(tots.contado)}</span></div><div class="rr"><span class="rrl">Total Transferencia</span><span class="rrv green">$${fmt(tots.transf)}</span></div><div class="rr" style="margin-top:4px"><span class="rrl">💳 Total 1 cuota</span><span class="rrv amber">$${fmt(tots.c1)}</span></div><div class="rr"><span class="rrl">💳 Total 3 cuotas</span><span class="rrv amber">$${fmt(tots.c3)} ($${fmt(Math.round(tots.c3/3))}/cuota)</span></div><div class="rr"><span class="rrl">💳 Total 6 cuotas</span><span class="rrv amber">$${fmt(tots.c6)} ($${fmt(Math.round(tots.c6/6))}/cuota)</span></div>`;
+  } else tr.style.display='none';
+  window._lastCalc={tc,tots,prods:Array.from(cards).map(card=>{const id=card.id.replace('prod-','');return{nom:document.getElementById('pn-'+id).value||'Producto',vari:document.getElementById('pv-'+id).value||'',usd:parseFloat(document.getElementById('pp-'+id).value)||0};})};
 }
 
 function calcUSD(){
-  const tc=parseFloat(document.getElementById('tc2').value)||1200,usd=parseFloat(document.getElementById('usd-in').value)||0,rec=parseFloat(document.getElementById('rec2').value)||0,rnd=parseInt(document.getElementById('rnd').value)||1;
-  const sub=usd*tc,conRec=sub*(1+rec/100),total=rnd>1?Math.ceil(conRec/rnd)*rnd:conRec;
-  document.getElementById('ur-usd').textContent='u$s'+fmt(usd);document.getElementById('ur-tc').textContent='$'+fmt(tc);document.getElementById('ur-sub').textContent='$'+fmt(sub);
-  document.getElementById('ur-rec').textContent=rec>0?'+$'+fmt(conRec-sub):'—';document.getElementById('ur-rec-row').style.display=rec>0?'flex':'none';
-  document.getElementById('ur-total').textContent='$'+fmt(total);document.getElementById('usd-result').style.display='block';
+  const tc=parseFloat(document.getElementById('tc2').value)||0;
+  const usd=parseFloat(document.getElementById('usd-in').value)||0;
+  if(!tc||!usd){document.getElementById('usd-result').style.display='none';return;}
+  const ef=document.getElementById('usd-opt-ef').checked;
+  const tars=document.getElementById('usd-opt-tars').checked;
+  const tusd=document.getElementById('usd-opt-tusd').checked;
+  const pEf=Math.round(usd*tc);
+  const pTars=Math.round(usd*tc*1.03);
+  const pTusd=(usd*1.03).toFixed(2);
+  let html='';
+  if(ef) html+=`<div class="usd-rr"><span>Efectivo / Contado</span><span style="color:var(--green);font-family:'Syne',system-ui;font-weight:700">$${fmt(pEf)}</span></div>`;
+  if(tars) html+=`<div class="usd-rr"><span>Transferencia ARS (+3%)</span><span style="color:var(--green);font-family:'Syne',system-ui;font-weight:700">$${fmt(pTars)}</span></div>`;
+  if(tusd) html+=`<div class="usd-rr"><span>Transferencia USD (+3%)</span><span style="color:var(--amber);font-family:'Syne',system-ui;font-weight:700">u$s ${pTusd}</span></div>`;
+  if(!html){document.getElementById('usd-result').style.display='none';return;}
+  html+=`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">USD ${fmt(usd)} × TC $${fmt(tc)}</div>`;
+  document.getElementById('usd-result-body').innerHTML=html;
+  let msg='Te comparto la cotización que me solicitaste:\n\nDe acuerdo al último tipo de cambio que recibimos (TC $'+fmt(tc)+'):\n\n';
+  if(ef) msg+='- Efectivo / Contado: $'+fmt(pEf)+'\n';
+  if(tars) msg+='- Transferencia bancaria ARS: $'+fmt(pTars)+'\n';
+  if(tusd) msg+='- Transferencia USD: u$s '+pTusd+'\n';
+  msg+='\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.\nCualquier otra duda o consulta, estoy disponible.';
+  window._lastUSD=msg;
+  document.getElementById('usd-preview').innerHTML=msg.replace(/\n/g,'<br>');
+  document.getElementById('usd-result').style.display='block';
+}
+
+function copyUSD(){
+  if(!window._lastUSD){showToast('Calculá primero',false);return;}
+  navigator.clipboard.writeText(window._lastUSD).then(()=>{const btn=document.querySelector('#tc-usd .btn-copy');if(btn){btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);}});
 }
 
 function copyResult(){
-  const cards=document.querySelectorAll('.prod-card-c');const tc=parseFloat(document.getElementById('tc').value)||1200,rec=parseFloat(document.getElementById('rec').value)||0,csi=parseInt(document.getElementById('csi').value)||1;
-  let txt='';cards.forEach(card=>{const id=card.id.replace('prod-','');const nom=document.getElementById('pn-'+id).value||'Producto';const vari=document.getElementById('pv-'+id).value||'';const usd=parseFloat(document.getElementById('pp-'+id).value)||0;const arsRec=usd*tc*(1+rec/100),cuota=arsRec/csi;txt+=`${nom}${vari?' '+vari:''}\nPrecio: $${fmt(arsRec)}`;if(csi>1)txt+=` (${csi}x $${fmt(cuota)})`;txt+='\n\n';});
-  navigator.clipboard.writeText(txt.trim()).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
+  if(!window._lastCalc){showToast('Calculá primero',false);return;}
+  const{tc,tots,prods}=window._lastCalc;
+  let txt='Te comparto la cotización que me solicitaste:\n';
+  prods.forEach(p=>{
+    const base=p.usd*tc;
+    const contado=Math.round(base);
+    const transf=Math.round(base*1.03);
+    const c1=Math.round(base*1.11);
+    const c3=Math.round(base*1.235);
+    const c6=Math.round(base*1.28);
+    txt+='\n- '+p.nom+(p.vari?' '+p.vari:'')+'\n';
+    txt+='- Precio: USD '+fmt(p.usd)+' | TC $'+fmt(tc)+'\n';
+    txt+='\n- Contado en pesos ARS: $'+fmt(contado)+'\n';
+    txt+='- Transferencia bancaria en pesos ARS: $'+fmt(transf)+'\n';
+    txt+='\n- 💳 Crédito 1 cuota: $'+fmt(c1)+'\n';
+    txt+='- 💳 Crédito 3 cuotas: $'+fmt(c3)+' ($'+fmt(Math.round(c3/3))+' / cuota)\n';
+    txt+='- 💳 Crédito 6 cuotas: $'+fmt(c6)+' ($'+fmt(Math.round(c6/6))+' / cuota)\n';
+  });
+  if(prods.length>1){
+    txt+='\n━━━━━━━━━━━━━━━\n';
+    txt+='TOTAL CONTADO: $'+fmt(tots.contado)+'\n';
+    txt+='TOTAL TRANSFERENCIA: $'+fmt(tots.transf)+'\n';
+    txt+='\n💳 TOTAL 1 cuota: $'+fmt(tots.c1)+'\n';
+    txt+='💳 TOTAL 3 cuotas: $'+fmt(tots.c3)+' ($'+fmt(Math.round(tots.c3/3))+' / cuota)\n';
+    txt+='💳 TOTAL 6 cuotas: $'+fmt(tots.c6)+' ($'+fmt(Math.round(tots.c6/6))+' / cuota)\n';
+  }
+  txt+='\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.\nCualquier otra duda o consulta, estoy disponible.';
+  navigator.clipboard.writeText(txt).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
 }
 
 // ── USUARIOS ──
@@ -1053,7 +1126,6 @@ function renderUsers(){
   const tools=['cotizador','financiera','cajas','envios'];
   document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><button class="btn-sm" onclick="openEditUser(${u.id})"><i class="ti ti-edit" style="font-size:12px"></i></button></div>`;}).join('')}</div>`;
 }
-
 function openEditUser(id){const u=USERS.find(x=>x.id===id);if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 function renderPermGrid(){document.getElementById('perm-grid').innerHTML=TOOLS.map(t=>`<div id="pt-${t}" onclick="tp2('${t}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--navy3);border:1px solid ${editPerms2[t]?'var(--green)':'var(--border)'};border-radius:9px;padding:10px 13px;cursor:pointer"><span style="font-size:13px;color:#fff">${t}</span><i class="ti ti-toggle-${editPerms2[t]?'right':'left'}" style="font-size:17px;color:${editPerms2[t]?'var(--green)':'var(--text3)'}"></i></div>`).join('');}
