@@ -767,7 +767,7 @@ async function finExportarCSV(){
 }
 
 // ── SHEETS ──
-async function fetchSheet(sheetId,range){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`);const d=await r.json();return d.values||[];}
+async function fetchSheet(sheetId,range){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${API_KEY}`);const d=await r.json();return d.values||[];}
 async function postScript(payload){const r=await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});return r.json();}
 
 // ── ENVIOS ──
