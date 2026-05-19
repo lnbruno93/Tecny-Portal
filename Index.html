@@ -305,10 +305,21 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
             <div class="results-wrap" id="cc-results" style="display:none"><div class="res-header"><span style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)">Resultado</span><button class="btn-copy" onclick="copyResult()"><i class="ti ti-copy" style="font-size:12px"></i>Copiar</button></div><div id="cc-results-body"></div><div class="total-row" id="cc-total-row" style="display:none"><div class="total-label">Total</div><div class="total-val" id="cc-total"></div></div></div>
           </div>
           <div id="tc-usd" style="display:none">
-            <div class="tc-row" style="grid-template-columns:1fr 1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc2" value="1200" min="1"/></div><div class="fg2"><label>Monto USD</label><input type="number" id="usd-in" placeholder="0" min="0"/></div></div>
-            <div class="tc-row" style="grid-template-columns:1fr 1fr;margin-top:-8px"><div class="fg2"><label>Recargo (%)</label><input type="number" id="rec2" value="0" min="0"/></div><div class="fg2"><label>Redondear</label><select id="rnd"><option value="1">Sin redondeo</option><option value="100">Centenas</option><option value="500" selected>Quinientos</option><option value="1000">Miles</option></select></div></div>
-            <button class="calc-btn" onclick="calcUSD()">Convertir</button>
-            <div class="usd-result" id="usd-result"><div class="usd-rr"><span>Monto USD</span><span id="ur-usd">—</span></div><div class="usd-rr"><span>Tipo de cambio</span><span id="ur-tc">—</span></div><div class="usd-rr"><span>Subtotal ARS</span><span id="ur-sub">—</span></div><div class="usd-rr" id="ur-rec-row"><span>Recargo</span><span id="ur-rec">—</span></div><div class="usd-rr"><span>Total ARS</span><span id="ur-total">—</span></div></div>
+            <div class="tc-row" style="grid-template-columns:1fr 1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc2" value="1200" min="1" oninput="calcUSD()"/></div><div class="fg2"><label>Monto USD</label><input type="number" id="usd-in" placeholder="0" min="0" oninput="calcUSD()"/></div></div>
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Forma de pago</div>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="usd-opt-ef" checked onchange="calcUSD()" style="margin-top:2px;accent-color:var(--green)"/><div><div style="font-size:13px;font-weight:600;color:#fff">Efectivo / Sin recargo</div><div style="font-size:11px;color:var(--text2)">Cobro en pesos al TC del día</div></div></label>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="usd-opt-tars" onchange="calcUSD()" style="margin-top:2px;accent-color:var(--green)"/><div><div style="font-size:13px;font-weight:600;color:#fff">Transferencia ARS (+3%)</div><div style="font-size:11px;color:var(--text2)">Cobro en pesos con recargo</div></div></label>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="usd-opt-tusd" onchange="calcUSD()" style="margin-top:2px;accent-color:var(--green)"/><div><div style="font-size:13px;font-weight:600;color:#fff">Transferencia USD (+3%)</div><div style="font-size:11px;color:var(--text2)">Cobro en dólares con recargo</div></div></label>
+            </div>
+            <div id="usd-result" style="display:none">
+              <div style="background:var(--navy3);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:12px" id="usd-result-body"></div>
+              <div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text2)">Resumen para el cliente</span><button class="btn-copy" onclick="copyUSD()"><i class="ti ti-copy" style="font-size:12px"></i>Copiar</button></div>
+                <div style="padding:14px 16px;font-size:13px;color:var(--text2);line-height:1.7" id="usd-preview"></div>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -1059,12 +1070,39 @@ function calcCC(){
 }
 
 function calcUSD(){
-  const tc=parseFloat(document.getElementById('tc2').value)||1200,usd=parseFloat(document.getElementById('usd-in').value)||0,rec=parseFloat(document.getElementById('rec2').value)||0,rnd=parseInt(document.getElementById('rnd').value)||1;
-  const sub=usd*tc,conRec=sub*(1+rec/100),total=rnd>1?Math.ceil(conRec/rnd)*rnd:conRec;
-  document.getElementById('ur-usd').textContent='u$s'+fmt(usd);document.getElementById('ur-tc').textContent='$'+fmt(tc);document.getElementById('ur-sub').textContent='$'+fmt(sub);
-  document.getElementById('ur-rec').textContent=rec>0?'+$'+fmt(conRec-sub):'—';document.getElementById('ur-rec-row').style.display=rec>0?'flex':'none';
-  document.getElementById('ur-total').textContent='$'+fmt(total);document.getElementById('usd-result').style.display='block';
+  const tc=parseFloat(document.getElementById('tc2').value)||0;
+  const usd=parseFloat(document.getElementById('usd-in').value)||0;
+  if(!tc||!usd){document.getElementById('usd-result').style.display='none';return;}
+  const ef=document.getElementById('usd-opt-ef').checked;
+  const tars=document.getElementById('usd-opt-tars').checked;
+  const tusd=document.getElementById('usd-opt-tusd').checked;
+  const pEf=Math.round(usd*tc);
+  const pTars=Math.round(usd*tc*1.03);
+  const pTusd=(usd*1.03).toFixed(2);
+  let html='',prev='';
+  if(ef) html+=`<div class="usd-rr"><span>Efectivo / Contado</span><span style="color:var(--green);font-family:'Syne',system-ui;font-weight:700">$${fmt(pEf)}</span></div>`;
+  if(tars) html+=`<div class="usd-rr"><span>Transferencia ARS (+3%)</span><span style="color:var(--green);font-family:'Syne',system-ui;font-weight:700">$${fmt(pTars)}</span></div>`;
+  if(tusd) html+=`<div class="usd-rr"><span>Transferencia USD (+3%)</span><span style="color:var(--amber);font-family:'Syne',system-ui;font-weight:700">u$s ${pTusd}</span></div>`;
+  if(!html){document.getElementById('usd-result').style.display='none';return;}
+  html+=`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">USD ${fmt(usd)} × TC $${fmt(tc)}</div>`;
+  document.getElementById('usd-result-body').innerHTML=html;
+  let msg='Te comparto la cotización que me solicitaste:\n\n';
+  msg+='De acuerdo al último tipo de cambio que recibimos (TC $'+fmt(tc)+'):\n\n';
+  if(ef) msg+='- Efectivo / Contado: $'+fmt(pEf)+'\n';
+  if(tars) msg+='- Transferencia bancaria ARS: $'+fmt(pTars)+'\n';
+  if(tusd) msg+='- Transferencia USD: u$s '+pTusd+'\n';
+  msg+='\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.\nCualquier otra duda o consulta, estoy disponible.';
+  window._lastUSD=msg;
+  const prev2=msg.replace(/\n/g,'<br>');
+  document.getElementById('usd-preview').innerHTML=prev2;
+  document.getElementById('usd-result').style.display='block';
 }
+
+function copyUSD(){
+  if(!window._lastUSD){showToast('Calculá primero',false);return;}
+  navigator.clipboard.writeText(window._lastUSD).then(()=>{const btn=document.querySelector('#tc-usd .btn-copy');if(btn){btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);}});
+}
+
 
 function copyResult(){
   if(!window._lastCalc){showToast('Calculá primero',false);return;}
