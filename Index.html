@@ -1024,19 +1024,38 @@ function doLogout(){CU=null;document.getElementById('app').style.display='none';
 function syncTC(){const v=document.getElementById('tc-global').value;document.getElementById('tc').value=v;document.getElementById('tc2').value=v;}
 
 // ── COTIZADOR ──
+const REC={contado:0,transferencia:0.03,c1:0.11,c3:0.235,c6:0.28};
 function setTab(t){document.getElementById('tc-cc').style.display=t==='cc'?'block':'none';document.getElementById('tc-usd').style.display=t==='usd'?'block':'none';document.getElementById('tab-cc').classList.toggle('active',t==='cc');document.getElementById('tab-usd').classList.toggle('active',t==='usd');}
 function initProds(){prodCount=0;document.getElementById('prods').innerHTML='';addProd();}
 function addProd(){prodCount++;const n=prodCount;const d=document.createElement('div');d.className='prod-card-c';d.id='prod-'+n;d.innerHTML=`<div class="prod-head-c"><span class="prod-num-c">Producto ${n}</span><button class="btn-rm-c" onclick="rmProd(${n})"><i class="ti ti-x"></i></button></div><div class="prod-g3"><div class="fg2"><label>Nombre</label><input type="text" placeholder="ej. iPhone 16 Pro" id="pn-${n}"/></div><div class="fg2"><label>Variante</label><input type="text" placeholder="ej. 256GB" id="pv-${n}"/></div><div class="fg2"><label>USD</label><input type="number" placeholder="0" id="pp-${n}" min="0"/></div></div>`;document.getElementById('prods').appendChild(d);}
 function rmProd(n){const cards=document.querySelectorAll('.prod-card-c');if(cards.length<=1)return;document.getElementById('prod-'+n).remove();document.querySelectorAll('.prod-card-c').forEach((c,i)=>c.querySelector('.prod-num-c').textContent='Producto '+(i+1));}
 
 function calcCC(){
-  const tc=parseFloat(document.getElementById('tc').value)||1200,rec=parseFloat(document.getElementById('rec').value)||0,csi=parseInt(document.getElementById('csi').value)||1;
-  const cards=document.querySelectorAll('.prod-card-c');let html='',total=0;
-  cards.forEach(card=>{const id=card.id.replace('prod-','');const nom=document.getElementById('pn-'+id).value||'Producto';const vari=document.getElementById('pv-'+id).value||'';const usd=parseFloat(document.getElementById('pp-'+id).value)||0;const arsBase=usd*tc,arsRec=arsBase*(1+rec/100),cuota=arsRec/csi;total+=arsRec;
-    html+=`<div class="result-prod"><div class="rpname">${nom}${vari?'<span class="rpvar">'+vari+'</span>':''}</div><div class="rrows"><div class="rr"><span class="rrl">USD</span><span class="rrv">u$s${fmt(usd)}</span></div><div class="rr"><span class="rrl">ARS base</span><span class="rrv">$${fmt(arsBase)}</span></div>${rec>0?`<div class="rr"><span class="rrl">Con recargo (${rec}%)</span><span class="rrv amber">$${fmt(arsRec)}</span></div>`:''}${csi>1?`<div class="rr"><span class="rrl">${csi} cuotas s/i</span><span class="rrv green">$${fmt(cuota)}/cuota</span></div>`:''}<div class="rr"><span class="rrl">Precio final</span><span class="rrv green">$${fmt(arsRec)}</span></div></div></div>`;
+  const tc=parseFloat(document.getElementById('tc').value)||1200;
+  const cards=document.querySelectorAll('.prod-card-c');
+  let html='',tots={contado:0,transf:0,c1:0,c3:0,c6:0};
+  cards.forEach(card=>{
+    const id=card.id.replace('prod-','');
+    const nom=document.getElementById('pn-'+id).value||'Producto';
+    const vari=document.getElementById('pv-'+id).value||'';
+    const usd=parseFloat(document.getElementById('pp-'+id).value)||0;
+    const base=usd*tc;
+    const contado=Math.round(base);
+    const transf=Math.round(base*1.03);
+    const c1=Math.round(base*1.11);
+    const c3=Math.round(base*1.235);
+    const c6=Math.round(base*1.28);
+    tots.contado+=contado;tots.transf+=transf;tots.c1+=c1;tots.c3+=c3;tots.c6+=c6;
+    html+=`<div class="result-prod"><div class="rpname">${nom}${vari?' <span class=\"rpvar\">'+vari+'</span>':''}</div><div class="rrows"><div class="rr"><span class="rrl">Precio USD</span><span class="rrv">u$s${fmt(usd)} | TC $${fmt(tc)}</span></div><div class="rr" style="margin-top:4px"><span class="rrl">Contado ARS</span><span class="rrv green">$${fmt(contado)}</span></div><div class="rr"><span class="rrl">Transferencia</span><span class="rrv green">$${fmt(transf)}</span></div><div class="rr" style="margin-top:4px"><span class="rrl">💳 1 cuota</span><span class="rrv amber">$${fmt(c1)}</span></div><div class="rr"><span class="rrl">💳 3 cuotas</span><span class="rrv amber">$${fmt(c3)} ($${fmt(Math.round(c3/3))}/cuota)</span></div><div class="rr"><span class="rrl">💳 6 cuotas</span><span class="rrv amber">$${fmt(c6)} ($${fmt(Math.round(c6/6))}/cuota)</span></div></div></div>`;
   });
-  document.getElementById('cc-results-body').innerHTML=html;document.getElementById('cc-results').style.display='block';
-  const tr=document.getElementById('cc-total-row');if(cards.length>1){tr.style.display='flex';document.getElementById('cc-total').textContent='$'+fmt(total);}else tr.style.display='none';
+  document.getElementById('cc-results-body').innerHTML=html;
+  document.getElementById('cc-results').style.display='block';
+  const tr=document.getElementById('cc-total-row');
+  if(cards.length>1){
+    tr.style.display='block';
+    tr.innerHTML=`<div class="rr"><span class="rrl">Total Contado</span><span class="rrv green">$${fmt(tots.contado)}</span></div><div class="rr"><span class="rrl">Total Transferencia</span><span class="rrv green">$${fmt(tots.transf)}</span></div><div class="rr" style="margin-top:4px"><span class="rrl">💳 Total 1 cuota</span><span class="rrv amber">$${fmt(tots.c1)}</span></div><div class="rr"><span class="rrl">💳 Total 3 cuotas</span><span class="rrv amber">$${fmt(tots.c3)} ($${fmt(Math.round(tots.c3/3))}/cuota)</span></div><div class="rr"><span class="rrl">💳 Total 6 cuotas</span><span class="rrv amber">$${fmt(tots.c6)} ($${fmt(Math.round(tots.c6/6))}/cuota)</span></div>`;
+  } else tr.style.display='none';
+  window._lastCalc={tc,tots,prods:Array.from(cards).map(card=>{const id=card.id.replace('prod-','');return{nom:document.getElementById('pn-'+id).value||'Producto',vari:document.getElementById('pv-'+id).value||'',usd:parseFloat(document.getElementById('pp-'+id).value)||0};})};
 }
 
 function calcUSD(){
@@ -1048,12 +1067,36 @@ function calcUSD(){
 }
 
 function copyResult(){
-  const cards=document.querySelectorAll('.prod-card-c');const tc=parseFloat(document.getElementById('tc').value)||1200,rec=parseFloat(document.getElementById('rec').value)||0,csi=parseInt(document.getElementById('csi').value)||1;
-  let txt='';cards.forEach(card=>{const id=card.id.replace('prod-','');const nom=document.getElementById('pn-'+id).value||'Producto';const vari=document.getElementById('pv-'+id).value||'';const usd=parseFloat(document.getElementById('pp-'+id).value)||0;const arsRec=usd*tc*(1+rec/100),cuota=arsRec/csi;txt+=`${nom}${vari?' '+vari:''}\nPrecio: $${fmt(arsRec)}`;if(csi>1)txt+=` (${csi}x $${fmt(cuota)})`;txt+='\n\n';});
-  navigator.clipboard.writeText(txt.trim()).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
+  if(!window._lastCalc){showToast('Calculá primero',false);return;}
+  const{tc,tots,prods}=window._lastCalc;
+  let txt='Te comparto la cotización que me solicitaste:\n';
+  prods.forEach(p=>{
+    const base=p.usd*tc;
+    const contado=Math.round(base);
+    const transf=Math.round(base*1.03);
+    const c1=Math.round(base*1.11);
+    const c3=Math.round(base*1.235);
+    const c6=Math.round(base*1.28);
+    txt+='\n- '+p.nom+(p.vari?' '+p.vari:'')+'\n';
+    txt+='- Precio: USD '+fmt(p.usd)+' | TC $'+fmt(tc)+'\n';
+    txt+='\n- Contado en pesos ARS: $'+fmt(contado)+'\n';
+    txt+='- Transferencia bancaria en pesos ARS: $'+fmt(transf)+'\n';
+    txt+='\n- 💳 Crédito 1 cuota: $'+fmt(c1)+'\n';
+    txt+='- 💳 Crédito 3 cuotas: $'+fmt(c3)+' ($'+fmt(Math.round(c3/3))+' / cuota)\n';
+    txt+='- 💳 Crédito 6 cuotas: $'+fmt(c6)+' ($'+fmt(Math.round(c6/6))+' / cuota)\n';
+  });
+  if(prods.length>1){
+    txt+='\n━━━━━━━━━━━━━━━\n';
+    txt+='TOTAL CONTADO: $'+fmt(tots.contado)+'\n';
+    txt+='TOTAL TRANSFERENCIA: $'+fmt(tots.transf)+'\n';
+    txt+='\n💳 TOTAL 1 cuota: $'+fmt(tots.c1)+'\n';
+    txt+='💳 TOTAL 3 cuotas: $'+fmt(tots.c3)+' ($'+fmt(Math.round(tots.c3/3))+' / cuota)\n';
+    txt+='💳 TOTAL 6 cuotas: $'+fmt(tots.c6)+' ($'+fmt(Math.round(tots.c6/6))+' / cuota)\n';
+  }
+  txt+='\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.\nCualquier otra duda o consulta, estoy disponible.';
+  navigator.clipboard.writeText(txt).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
 }
 
-// ── USUARIOS ──
 function renderUsers(){
   const tools=['cotizador','financiera','cajas','envios'];
   document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><button class="btn-sm" onclick="openEditUser(${u.id})"><i class="ti ti-edit" style="font-size:12px"></i></button></div>`;}).join('')}</div>`;
