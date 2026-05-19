@@ -298,7 +298,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         <div id="cotizador-content" class="cot-body">
           <div class="tab-row"><button class="ctab2 active" id="tab-cc" onclick="setTab('cc')">Tarjetas de crédito</button><button class="ctab2" id="tab-usd" onclick="setTab('usd')">USD → ARS</button></div>
           <div id="tc-cc">
-            <div class="tc-row"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc" value="1200" min="1"/></div><div class="fg2"><label>Recargo (%)</label><input type="number" id="rec" value="15" min="0"/></div><div class="fg2"><label>Cuotas s/i</label><select id="csi"><option value="1">Contado</option><option value="3">3 cuotas</option><option value="6">6 cuotas</option><option value="9">9 cuotas</option><option value="12">12 cuotas</option><option value="18">18 cuotas</option></select></div></div>
+            <div class="tc-row" style="grid-template-columns:1fr"><div class="fg2"><label>Dólar (ARS)</label><input type="number" id="tc" value="1200" min="1"/></div></div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:13px;font-weight:600">Productos</span><button class="btn-secondary" onclick="addProd()"><i class="ti ti-plus" style="font-size:13px"></i>Agregar</button></div>
             <div id="prods"></div>
             <button class="calc-btn" onclick="calcCC()">Calcular cotización</button>
