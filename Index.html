@@ -1023,7 +1023,7 @@ function parsePerms(str){
 
 async function loadUsersFromSheet(){
   try{
-    const rows=await fetchSheet(USERS_ID,"iPro%20%7C%20Users!A:F");
+    const rows=await fetchSheet(USERS_ID,"Users!A:F");
     USERS=rows.filter(r=>r[0]&&r[0]!=='ID').map(r=>({
       id:String(r[0]),
       nombre:r[1]||'',
@@ -1197,12 +1197,12 @@ async function saveUser(){
     if(editUID){
       const updates=[{col:2,value:nom},{col:3,value:usr},{col:6,value:permsStr}];
       if(pas)updates.push({col:4,value:pas});
-      await postScript({db:'users',sheet:'iPro | Users',action:'update',id:editUID,updates});
+      await postScript({db:'users',sheet:'Users',action:'update',id:editUID,updates});
       showToast('Usuario actualizado');
     }else{
       if(!pas){showToast('Contraseña obligatoria',false);btn.disabled=false;btn.textContent='Guardar';return;}
       const id=Date.now().toString();
-      await postScript({db:'users',sheet:'iPro | Users',action:'append',row:[id,nom,usr,pas,'op',permsStr]});
+      await postScript({db:'users',sheet:'Users',action:'append',row:[id,nom,usr,pas,'op',permsStr]});
       showToast('Usuario creado');
     }
     closeModal('modal-usr');await loadUsersFromSheet();renderUsers();
