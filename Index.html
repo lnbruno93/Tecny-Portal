@@ -1093,7 +1093,7 @@ function copyResult(){
     txt+='💳 TOTAL 3 cuotas: $'+fmt(tots.c3)+' ($'+fmt(Math.round(tots.c3/3))+' / cuota)\n';
     txt+='💳 TOTAL 6 cuotas: $'+fmt(tots.c6)+' ($'+fmt(Math.round(tots.c6/6))+' / cuota)\n';
   }
-  txt+='\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.\nCualquier otra duda o consulta, estoy disponible.';
+  txt+='\n\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.\nCualquier otra duda o consulta, estoy disponible.';
   navigator.clipboard.writeText(txt).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
 }
 
