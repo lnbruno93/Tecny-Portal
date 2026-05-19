@@ -454,7 +454,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Operador</label><select id="e-operador"><option value="">Sin asignar</option><option value="Lucas">Lucas</option><option value="Ezequiel">Ezequiel</option></select></div><div class="fg" style="margin-bottom:0"><label>Estado</label><select id="e-estado"><option value="Pendiente">Pendiente</option><option value="En camino">En camino</option><option value="Entregado">Entregado</option><option value="Cancelado">Cancelado</option></select></div></div>
     <div class="fg"><label>Notas especiales</label><textarea id="e-notas" placeholder="Llevar vuelto, instrucciones..."></textarea></div>
     <div class="modal-err" id="modal-envio-err"></div>
-    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-envio')">Cancelar</button><button class="btn-save" id="btn-save-envio" onclick="saveEnvio()">Guardar en Sheets</button></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-envio')">Cancelar</button><button class="btn-save" id="btn-save-envio" onclick="saveEnvio()">Guardar</button></div>
   </div>
 </div>
 
@@ -468,7 +468,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div class="fg" id="mov-tasa-wrap" style="display:none"><label>Tasa (%)</label><input type="text" id="mov-tasa" placeholder="ej. 2.5%"/></div>
     <div class="fg"><label>Concepto</label><input type="text" id="mov-concepto" placeholder="ej. iPhone 16 Pro"/></div>
     <div class="modal-err" id="modal-mov-err"></div>
-    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-mov')">Cancelar</button><button class="btn-save" id="btn-save-mov" onclick="saveMovimiento()">Guardar en Sheets</button></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-mov')">Cancelar</button><button class="btn-save" id="btn-save-mov" onclick="saveMovimiento()">Guardar</button></div>
   </div>
 </div>
 
@@ -479,7 +479,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre</label><input type="text" id="c-nombre"/></div><div class="fg" style="margin-bottom:0"><label>Apellido</label><input type="text" id="c-apellido"/></div></div>
     <div class="fg"><label>Tipo</label><select id="c-tipo"><option value="amigo">Amigo</option><option value="familiar">Familiar</option><option value="cliente">Cliente</option><option value="inversor">Inversor</option></select></div>
     <div class="modal-err" id="modal-con-err"></div>
-    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-contacto')">Cancelar</button><button class="btn-save" id="btn-save-con" onclick="saveContacto()">Guardar en Sheets</button></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-contacto')">Cancelar</button><button class="btn-save" id="btn-save-con" onclick="saveContacto()">Guardar</button></div>
   </div>
 </div>
 
@@ -885,7 +885,7 @@ async function saveEnvio(){
     for(const p of pagos){const iid=Date.now().toString()+'g'+Math.random().toString(36).slice(2,5);await postScript({db:'envios',sheet:'Envios_Items',action:'append',row:[iid,editingEnvioId,'pago','',p.monto,p.metodo]});}
     closeModal('modal-envio');await loadEnvios();
   }catch(e){showModalErr('modal-envio-err','Error: '+e.message);}
-  btn.disabled=false;btn.textContent='Guardar en Sheets';
+  btn.disabled=false;btn.textContent='Guardar';
 }
 
 // ── CAJAS ──
@@ -967,7 +967,7 @@ async function saveMovimiento(){
   const btn=document.getElementById('btn-save-mov');btn.disabled=true;btn.textContent='Guardando...';
   try{const res=await postScript({db:'cajas',sheet,action:'append',row});if(res.ok){closeModal('modal-mov');await loadCajas();if(currentCid)verMov(currentCid);}else showModalErr('modal-mov-err','Error: '+(res.error||'desconocido'));}
   catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
-  btn.disabled=false;btn.textContent='Guardar en Sheets';
+  btn.disabled=false;btn.textContent='Guardar';
 }
 
 function openContactoModal(){['c-nombre','c-apellido'].forEach(i=>document.getElementById(i).value='');document.getElementById('modal-con-err').style.display='none';document.getElementById('modal-contacto').classList.add('open');}
@@ -979,7 +979,7 @@ async function saveContacto(){
   const btn=document.getElementById('btn-save-con');btn.disabled=true;btn.textContent='Guardando...';
   try{const res=await postScript({db:'cajas',sheet:'Contactos',action:'append',row:[id,nombre,apellido,tipo]});if(res.ok){closeModal('modal-contacto');await loadCajas();}else showModalErr('modal-con-err','Error: '+(res.error||'desconocido'));}
   catch(e){showModalErr('modal-con-err','Error: '+e.message);}
-  btn.disabled=false;btn.textContent='Guardar en Sheets';
+  btn.disabled=false;btn.textContent='Guardar';
 }
 
 // ── AUTH PORTAL ──
