@@ -38,8 +38,8 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .topbar-user{font-size:13px;color:var(--text2)}
 .topbar-user strong{color:#fff;font-weight:500}
 .topbar-role{font-size:10px;padding:2px 8px;border-radius:20px;background:var(--green2);color:var(--green);letter-spacing:.06em;text-transform:uppercase}
-.layout{display:flex;min-height:calc(100vh - 50px);overflow:hidden;width:100%}
-.sidebar{width:210px;min-width:210px;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 0;flex-shrink:0;align-self:flex-start;position:sticky;top:50px}
+.layout{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 50px);width:100%}
+.sidebar{background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 0;position:sticky;top:50px;height:calc(100vh - 50px);overflow-y:auto}
 .sidebar-section{padding:0 10px;margin-bottom:2px}
 .s-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 8px 4px}
 .nav-btn{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:background .15s,color .15s}
@@ -49,7 +49,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .ni{font-size:15px;width:17px;text-align:center;flex-shrink:0}
 .nav-lock{font-size:11px;color:var(--text3);margin-left:auto}
 .s-footer{margin-top:auto;padding:0 10px;border-top:1px solid var(--border);padding-top:10px}
-.content{flex:1;overflow-y:auto;background:var(--navy);min-width:0}
+.content{overflow-y:auto;background:var(--navy);min-width:0}
 .panel{display:none}.panel.active{display:block}
 .blocked-wrap{padding:40px;display:flex;align-items:center;justify-content:center;min-height:400px}
 .blocked-card{background:var(--navy2);border:1px solid var(--border2);border-radius:16px;padding:40px;text-align:center;max-width:380px;width:100%}
