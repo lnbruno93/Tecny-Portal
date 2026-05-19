@@ -1023,7 +1023,7 @@ function parsePerms(str){
 
 async function loadUsersFromSheet(){
   try{
-    const rows=await fetchSheet(USERS_ID,"iPro | Users!A:F");
+    const rows=await fetchSheet(USERS_ID,"iPro%20%7C%20Users!A:F");
     USERS=rows.filter(r=>r[0]&&r[0]!=='ID').map(r=>({
       id:String(r[0]),
       nombre:r[1]||'',
