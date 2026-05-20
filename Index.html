@@ -503,7 +503,7 @@ const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
 
 let USERS=[];
 let CU=null,editUID=null,editPerms2={},prodCount=0;
-let contacts=[],deudas=[],movDeudas=[],movInversiones=[],envios=[],enviosItems=[];
+let contacts=[],movDeudas=[],movInversiones=[],resumenDeudas=[],resumenInversiones=[],envios=[],enviosItems=[];
 let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null,editingContactoId=null;
 let finPct=3,eprodCount=0,epagoCount=0;
 
@@ -776,7 +776,8 @@ async function finExportarCSV(){
 async function loadEnvios(){
   const btn=document.getElementById('btn-refresh-envios');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
   try{
-    const lista=await finApi('/api/envios');
+    const fecha=isoDate(currentDate);
+    const lista=await finApi('/api/envios?desde='+fecha+'&hasta='+fecha);
     envios=lista.map(e=>({id:String(e.id),fecha:e.fecha?.substring(0,10)||'',cliente:e.cliente||'',telefono:e.telefono||'',direccion:e.direccion||'',barrio:e.barrio||'',costoEnvio:parseFloat(e.costo_envio)||0,totalCobrado:parseFloat(e.total_cobrado)||0,horario:e.horario||'',operador:e.operador||'',notas:e.notas||'',estado:e.estado||'Pendiente',prioridad:e.prioridad||''}));
     enviosItems=lista.flatMap(e=>(e.items||[]).map(i=>({id:String(i.id),envioId:String(e.id),tipo:i.tipo||'',descripcion:i.descripcion||'',monto:parseFloat(i.monto)||0,metodoPago:i.metodo_pago||''})));
     updateMetricasEnvios();renderEnvios();
@@ -826,8 +827,8 @@ function renderEnvios(){
 
 async function cambiarEstado(id,estado){const e=envios.find(x=>x.id===id);if(!e)return;e.estado=estado;renderEnvios();try{await finApi(`/api/envios/${id}`,'PUT',{estado});}catch(err){}}
 async function eliminarEnvio(id){if(!confirm('¿Eliminar este envío?'))return;try{await finApi(`/api/envios/${id}`,'DELETE');envios=envios.filter(e=>e.id!==id);enviosItems=enviosItems.filter(i=>i.envioId!==id);renderEnvios();}catch(e){showToast('Error',false);}}
-function cambiarFecha(d){currentDate=new Date(currentDate);currentDate.setDate(currentDate.getDate()+d);actualizarFechaLabel();renderEnvios();updateMetricasEnvios();}
-function irHoy(){currentDate=new Date();actualizarFechaLabel();renderEnvios();updateMetricasEnvios();}
+function cambiarFecha(d){currentDate=new Date(currentDate);currentDate.setDate(currentDate.getDate()+d);actualizarFechaLabel();loadEnvios();}
+function irHoy(){currentDate=new Date();actualizarFechaLabel();loadEnvios();}
 function actualizarFechaLabel(){
   const hoy=new Date(),esHoy=isoDate(currentDate)===isoDate(hoy);
   const label=esHoy?'Hoy · '+fmtFecha(currentDate):fmtFecha(currentDate);
@@ -893,14 +894,14 @@ async function loadCajas(){
   const btn=document.getElementById('btn-refresh-cajas');
   btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
   try{
-    const[rc,rmd,rmi]=await Promise.all([
+    const[rc,resumen]=await Promise.all([
       finApi('/api/contactos'),
-      finApi('/api/cajas/deudas'),
-      finApi('/api/cajas/inversiones')
+      finApi('/api/cajas/resumen')
     ]);
     contacts=rc.map(c=>({id:String(c.id),nombre:c.nombre||'',apellido:c.apellido||'',tipo:c.tipo||''}));
-    movDeudas=rmd.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),tipo:m.tipo||'',ars:parseFloat(m.monto_ars)||0,usd:parseFloat(m.monto_usd)||0,concepto:m.concepto||''}));
-    movInversiones=rmi.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),monto:parseFloat(m.monto)||0,tasa:m.tasa||''}));
+    resumenDeudas=resumen.deudas.map(r=>({cid:String(r.contacto_id),saldoARS:parseFloat(r.saldo_ars)||0,saldoUSD:parseFloat(r.saldo_usd)||0,movs:parseInt(r.movimientos)||0}));
+    resumenInversiones=resumen.inversiones.map(r=>({cid:String(r.contacto_id),total:parseFloat(r.total_invertido)||0,movs:parseInt(r.movimientos)||0,ultimaTasa:r.ultima_tasa||''}));
+    movDeudas=[];movInversiones=[];
     populateContactSel();renderDeudas();renderInversiones();renderContactos();
   }catch(e){showToast('Error cargando Cajas',false);}
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
@@ -909,59 +910,67 @@ function cname(id){const c=contacts.find(x=>x.id===String(id));return c?`${c.nom
 function ctipo(id){const c=contacts.find(x=>x.id===String(id));return c?c.tipo:'';}
 function badge(tipo){const map={amigo:'b-amigo',familiar:'b-familiar',cliente:'b-cliente',inversor:'b-inversor','ipro team':'b-ipro',debe:'b-debe',pago:'b-pago',pendiente:'b-pendiente',inversion:'b-inversion'};return `<span class="badge ${map[tipo?.toLowerCase()]||'b-pendiente'}">${tipo.charAt(0).toUpperCase()+tipo.slice(1)}</span>`;}
 function renderDeudas(){
-  const s={};
-  movDeudas.forEach(m=>{if(!s[m.cid])s[m.cid]={ars:0,usd:0,movs:0};const v=s[m.cid];v.movs++;if(m.tipo==='debe'){v.ars+=m.ars;v.usd+=m.usd;}else if(m.tipo==='pago'){v.ars-=m.ars;v.usd-=m.usd;}});
-  const tARS=Object.values(s).reduce((a,v)=>a+(v.ars>0?v.ars:0),0);
-  const tUSD=Object.values(s).reduce((a,v)=>a+(v.usd>0?v.usd:0),0);
-  const cnt=Object.keys(s).filter(c=>s[c].ars>0||s[c].usd>0).length;
+  if(!resumenDeudas.length){document.getElementById('m-ars').textContent='—';document.getElementById('m-usd').textContent='—';document.getElementById('m-count').textContent='—';document.getElementById('deudas-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';return;}
+  const tARS=resumenDeudas.reduce((a,r)=>a+(r.saldoARS>0?r.saldoARS:0),0);
+  const tUSD=resumenDeudas.reduce((a,r)=>a+(r.saldoUSD>0?r.saldoUSD:0),0);
+  const cnt=resumenDeudas.filter(r=>r.saldoARS>0||r.saldoUSD>0).length;
   document.getElementById('m-ars').textContent=tARS?'$'+fmt(tARS):'—';
   document.getElementById('m-usd').textContent=tUSD?'u$s'+fmt(tUSD):'—';
   document.getElementById('m-count').textContent=cnt||'—';
-  if(!Object.keys(s).length){document.getElementById('deudas-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';return;}
-  const filas=Object.entries(s).sort((a,b)=>(b[1].usd+b[1].ars)-(a[1].usd+a[1].ars)).map(([cid,v])=>`<tr style="cursor:pointer" onclick="verMovDeudas('${cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(cid)}</td><td>${ctipo(cid)?badge(ctipo(cid)):'—'}</td><td>${v.ars?'<span style="color:var(--green)">$'+fmt(v.ars)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td>${v.usd?'<span style="color:var(--amber)">u$s'+fmt(v.usd)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--text3)">${v.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${cid}','deuda')">+</button></td></tr>`).join('');
+  const filas=resumenDeudas.slice().sort((a,b)=>(b.saldoUSD+b.saldoARS)-(a.saldoUSD+a.saldoARS)).map(r=>`<tr style="cursor:pointer" onclick="verMovDeudas('${r.cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(r.cid)}</td><td>${ctipo(r.cid)?badge(ctipo(r.cid)):'—'}</td><td>${r.saldoARS?'<span style="color:var(--green)">$'+fmt(r.saldoARS)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td>${r.saldoUSD?'<span style="color:var(--amber)">u$s'+fmt(r.saldoUSD)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--text3)">${r.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${r.cid}','deuda')">+</button></td></tr>`).join('');
   document.getElementById('deudas-body').innerHTML=`<table class="data-table"><thead><tr><th>Contacto</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Movimientos</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
 }
 function renderInversiones(){
-  const s={};
-  movInversiones.forEach(m=>{if(!s[m.cid])s[m.cid]={monto:0,movs:0,tasa:''};s[m.cid].monto+=m.monto;s[m.cid].movs++;if(m.tasa)s[m.cid].tasa=m.tasa;});
-  const tTotal=Object.values(s).reduce((a,v)=>a+v.monto,0);
+  if(!resumenInversiones.length){document.getElementById('m-inv-total').textContent='—';document.getElementById('m-inv-count').textContent='—';document.getElementById('inversiones-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';return;}
+  const tTotal=resumenInversiones.reduce((a,r)=>a+r.total,0);
   document.getElementById('m-inv-total').textContent=tTotal?'u$s'+fmt(tTotal):'—';
-  document.getElementById('m-inv-count').textContent=Object.keys(s).length||'—';
-  if(!Object.keys(s).length){document.getElementById('inversiones-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';return;}
-  const filas=Object.entries(s).sort((a,b)=>b[1].monto-a[1].monto).map(([cid,v])=>`<tr style="cursor:pointer" onclick="verMovInversiones('${cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(cid)}</td><td>${ctipo(cid)?badge(ctipo(cid)):'—'}</td><td style="color:var(--green);font-weight:600">u$s${fmt(v.monto)}</td><td style="color:var(--amber)">${v.tasa||'—'}</td><td style="color:var(--text3)">${v.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${cid}','inversion')">+</button></td></tr>`).join('');
+  document.getElementById('m-inv-count').textContent=resumenInversiones.length||'—';
+  const filas=resumenInversiones.slice().sort((a,b)=>b.total-a.total).map(r=>`<tr style="cursor:pointer" onclick="verMovInversiones('${r.cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(r.cid)}</td><td>${ctipo(r.cid)?badge(ctipo(r.cid)):'—'}</td><td style="color:var(--green);font-weight:600">u$s${fmt(r.total)}</td><td style="color:var(--amber)">${r.ultimaTasa||'—'}</td><td style="color:var(--text3)">${r.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${r.cid}','inversion')">+</button></td></tr>`).join('');
   document.getElementById('inversiones-body').innerHTML=`<table class="data-table"><thead><tr><th>Inversor</th><th>Tipo</th><th>Monto USD</th><th>Tasa</th><th>Movimientos</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
 }
 function renderContactos(){
   if(!contacts.length){document.getElementById('contactos-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin contactos</div>';return;}
   document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th><th></th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${c.nombre}</td><td>${c.apellido||'—'}</td><td>${badge(c.tipo)}</td><td style="text-align:right;white-space:nowrap"><button class="btn-sm" onclick="openEditContacto('${c.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button> <button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarContacto('${c.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`;
 }
-function verMovDeudas(cid){
+async function verMovDeudas(cid){
   currentCid=cid;currentMovTipo='deuda';
   document.getElementById('mov-cname').textContent=cname(cid);
-  document.getElementById('mov-cbadge').innerHTML=ctipo(cid)?badge(ctipo(cid)):'';;
-  let sARS=0,sUSD=0;
-  const movs=movDeudas.filter(m=>m.cid===String(cid));
-  movs.forEach(m=>{if(m.tipo==='debe'){sARS+=m.ars;sUSD+=m.usd;}else if(m.tipo==='pago'){sARS-=m.ars;sUSD-=m.usd;}});
-  document.getElementById('mov-saldo-ars').textContent=sARS?'$'+fmt(sARS):'—';
-  document.getElementById('mov-saldo-usd').textContent=sUSD?'u$s'+fmt(sUSD):'—';
+  document.getElementById('mov-cbadge').innerHTML=ctipo(cid)?badge(ctipo(cid)):'';
+  document.getElementById('mov-saldo-ars').textContent='…';
+  document.getElementById('mov-saldo-usd').textContent='…';
   document.getElementById('mov-ttitle').textContent='Historial — '+cname(cid);
-  const sorted=movs.sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarDeuda('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
+  document.getElementById('movimientos-body').innerHTML='<div class="loading-msg"><i class="ti ti-loader" style="font-size:13px"></i>Cargando...</div>';
   ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
   document.getElementById('cajasTab-movimientos').style.display='block';
+  try{
+    const raw=await finApi('/api/cajas/deudas?contacto_id='+cid);
+    movDeudas=raw.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),tipo:m.tipo||'',ars:parseFloat(m.monto_ars)||0,usd:parseFloat(m.monto_usd)||0,concepto:m.concepto||''}));
+    let sARS=0,sUSD=0;
+    movDeudas.forEach(m=>{if(m.tipo==='debe'){sARS+=m.ars;sUSD+=m.usd;}else if(m.tipo==='pago'){sARS-=m.ars;sUSD-=m.usd;}});
+    document.getElementById('mov-saldo-ars').textContent=sARS?'$'+fmt(sARS):'—';
+    document.getElementById('mov-saldo-usd').textContent=sUSD?'u$s'+fmt(sUSD):'—';
+    const sorted=movDeudas.slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarDeuda('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
+  }catch(e){document.getElementById('movimientos-body').innerHTML='<div class="loading-msg">Error cargando movimientos</div>';}
 }
-function verMovInversiones(cid){
+async function verMovInversiones(cid){
   currentCid=cid;currentMovTipo='inversion';
   document.getElementById('mov-cname').textContent=cname(cid);
   document.getElementById('mov-cbadge').innerHTML=ctipo(cid)?badge(ctipo(cid)):'';
-  const movs=movInversiones.filter(m=>m.cid===String(cid)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  const total=movs.reduce((a,m)=>a+m.monto,0);
   document.getElementById('mov-saldo-ars').textContent='—';
-  document.getElementById('mov-saldo-usd').textContent=total?'u$s'+fmt(total):'—';
+  document.getElementById('mov-saldo-usd').textContent='…';
   document.getElementById('mov-ttitle').textContent='Inversiones — '+cname(cid);
-  document.getElementById('movimientos-body').innerHTML=movs.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th><th></th></tr></thead><tbody>${movs.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${m.tasa||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarInversion('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
+  document.getElementById('movimientos-body').innerHTML='<div class="loading-msg"><i class="ti ti-loader" style="font-size:13px"></i>Cargando...</div>';
   ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
   document.getElementById('cajasTab-movimientos').style.display='block';
+  try{
+    const raw=await finApi('/api/cajas/inversiones?contacto_id='+cid);
+    movInversiones=raw.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),monto:parseFloat(m.monto)||0,tasa:m.tasa||''}));
+    const total=movInversiones.reduce((a,m)=>a+m.monto,0);
+    document.getElementById('mov-saldo-usd').textContent=total?'u$s'+fmt(total):'—';
+    const sorted=movInversiones.slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${m.tasa||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarInversion('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
+  }catch(e){document.getElementById('movimientos-body').innerHTML='<div class="loading-msg">Error cargando inversiones</div>';}
 }
 function backFromMov(){
   document.getElementById('cajasTab-movimientos').style.display='none';
@@ -999,8 +1008,10 @@ async function saveMovimiento(){
     }else{
       await finApi('/api/cajas/deudas','POST',{fecha,contacto_id:parseInt(cid),tipo,monto_ars:ars,monto_usd:usd,concepto:concepto||null});
     }
-    closeModal('modal-mov');await loadCajas();
-    if(currentCid){if(currentMovTipo==='inversion')verMovInversiones(currentCid);else verMovDeudas(currentCid);}
+    closeModal('modal-mov');
+    const _cidMov=currentCid,_tipoMov=currentMovTipo;
+    await loadCajas();
+    if(_cidMov){if(_tipoMov==='inversion')await verMovInversiones(_cidMov);else await verMovDeudas(_cidMov);}
     showToast('Movimiento guardado');
   }catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
@@ -1051,8 +1062,9 @@ async function eliminarDeuda(id){
   if(!confirm('¿Eliminar este movimiento?'))return;
   try{
     await finApi(`/api/cajas/deudas/${id}`,'DELETE');
-    movDeudas=movDeudas.filter(m=>m.id!==String(id));
-    renderDeudas();if(currentCid)verMovDeudas(currentCid);
+    const _cid=currentCid;
+    await loadCajas();
+    if(_cid)await verMovDeudas(_cid);
     showToast('Movimiento eliminado');
   }catch(e){showToast('Error: '+e.message,false);}
 }
@@ -1060,8 +1072,9 @@ async function eliminarInversion(id){
   if(!confirm('¿Eliminar esta inversión?'))return;
   try{
     await finApi(`/api/cajas/inversiones/${id}`,'DELETE');
-    movInversiones=movInversiones.filter(m=>m.id!==String(id));
-    renderInversiones();if(currentCid)verMovInversiones(currentCid);
+    const _cid=currentCid;
+    await loadCajas();
+    if(_cid)await verMovInversiones(_cid);
     showToast('Inversión eliminada');
   }catch(e){showToast('Error: '+e.message,false);}
 }

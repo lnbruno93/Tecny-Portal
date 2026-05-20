@@ -118,17 +118,24 @@ router.get('/resumen', async (_req, res, next) => {
   try {
     const [{ rows: deudas }, { rows: inv }] = await Promise.all([
       db.query(`
-        SELECT contacto_id,
-          SUM(CASE WHEN tipo='debe' THEN monto_ars ELSE -monto_ars END) AS saldo_ars,
-          SUM(CASE WHEN tipo='debe' THEN monto_usd ELSE -monto_usd END) AS saldo_usd,
+        SELECT m.contacto_id,
+          SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END) AS saldo_ars,
+          SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END) AS saldo_usd,
           COUNT(*) AS movimientos
-        FROM movimientos_deudas GROUP BY contacto_id
+        FROM movimientos_deudas m
+        JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+        GROUP BY m.contacto_id
       `),
       db.query(`
-        SELECT contacto_id,
-          SUM(monto) AS total_invertido,
-          COUNT(*) AS movimientos
-        FROM movimientos_inversiones GROUP BY contacto_id
+        SELECT m.contacto_id,
+          SUM(m.monto) AS total_invertido,
+          COUNT(*) AS movimientos,
+          (SELECT tasa FROM movimientos_inversiones
+           WHERE contacto_id = m.contacto_id AND tasa IS NOT NULL
+           ORDER BY fecha DESC, id DESC LIMIT 1) AS ultima_tasa
+        FROM movimientos_inversiones m
+        JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+        GROUP BY m.contacto_id
       `),
     ]);
     res.json({ deudas, inversiones: inv });
