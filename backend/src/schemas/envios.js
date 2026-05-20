@@ -25,8 +25,10 @@ const baseEnvio = z.object({
 
 const createEnvioSchema = baseEnvio;
 
-// PUT — todo opcional excepto validaciones de tipo
-const updateEnvioSchema = baseEnvio.partial();
+// PUT — todo opcional. items sin default para que undefined signifique "no tocar"
+const updateEnvioSchema = baseEnvio.omit({ items: true }).partial().extend({
+  items: z.array(envioItemSchema).optional(),
+});
 
 const queryEnviosSchema = z.object({
   estado: z.enum(['Pendiente','En camino','Entregado','Cancelado']).optional(),

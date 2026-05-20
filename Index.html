@@ -869,8 +869,9 @@ function addEnvioPago(metodo='',monto=''){epagoCount++;const n=epagoCount;const 
 async function saveEnvio(){
   const cliente=document.getElementById('e-cliente').value.trim(),dir=document.getElementById('e-dir').value.trim(),costo=parseFloat(document.getElementById('e-costo').value)||0;
   if(!cliente||!dir){showModalErr('modal-envio-err','Cliente y dirección son obligatorios');return;}
-  const prods=[...document.querySelectorAll('[id^="eprod-val-"]')].map(i=>i.value.trim()).filter(Boolean);
-  const pagos=[...document.querySelectorAll('[id^="epago-met-"]')].map(el=>{const n=el.id.replace('epago-met-','');const monto=parseFloat(document.getElementById('epago-mnt-'+n).value)||0;return monto?{metodo:el.value,monto}:null;}).filter(Boolean);
+  const prodsEl=document.getElementById('e-prods-list');const pagosEl=document.getElementById('e-pagos-list');
+  const prods=[...prodsEl.querySelectorAll('[id^="eprod-val-"]')].map(i=>i.value.trim()).filter(Boolean);
+  const pagos=[...pagosEl.querySelectorAll('[id^="epago-met-"]')].map(el=>{const n=el.id.replace('epago-met-','');const monto=parseFloat(document.getElementById('epago-mnt-'+n).value)||0;return monto?{metodo:el.value,monto}:null;}).filter(Boolean);
   const totalCobrado=pagos.reduce((s,p)=>s+p.monto,0);
   const btn=document.getElementById('btn-save-envio');btn.disabled=true;btn.textContent='Guardando...';
   try{
