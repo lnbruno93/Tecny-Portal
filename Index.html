@@ -475,7 +475,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 <!-- MODAL CONTACTO -->
 <div class="modal-bg" id="modal-contacto">
   <div class="modal">
-    <div class="modal-title"><span>Nuevo contacto</span><button class="modal-close" onclick="closeModal('modal-contacto')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-title"><span id="modal-con-title">Nuevo contacto</span><button class="modal-close" onclick="closeModal('modal-contacto')"><i class="ti ti-x"></i></button></div>
     <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre</label><input type="text" id="c-nombre"/></div><div class="fg" style="margin-bottom:0"><label>Apellido</label><input type="text" id="c-apellido"/></div></div>
     <div class="fg"><label>Tipo</label><select id="c-tipo"><option value="amigo">Amigo</option><option value="familiar">Familiar</option><option value="cliente">Cliente</option><option value="inversor">Inversor</option><option value="ipro team">iPro Team</option></select></div>
     <div class="modal-err" id="modal-con-err"></div>
@@ -489,6 +489,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div class="modal-title"><span id="modal-usr-title">Usuario</span><button class="modal-close" onclick="closeModal('modal-usr')"><i class="ti ti-x"></i></button></div>
     <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre</label><input type="text" id="m-nombre"/></div><div class="fg" style="margin-bottom:0"><label>Usuario</label><input type="text" id="m-user"/></div></div>
     <div class="fg"><label>Contraseña</label><input type="password" id="m-pass" placeholder="dejar vacío para no cambiar"/></div>
+    <div class="fg"><label>Rol</label><select id="m-role"><option value="op">Operador</option><option value="admin">Admin</option></select></div>
     <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Permisos</div>
     <div id="perm-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-usr')">Cancelar</button><button class="btn-save" onclick="saveUser()">Guardar</button></div>
@@ -503,7 +504,7 @@ const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
 let USERS=[];
 let CU=null,editUID=null,editPerms2={},prodCount=0;
 let contacts=[],deudas=[],movDeudas=[],movInversiones=[],envios=[],enviosItems=[];
-let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null;
+let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null,editingContactoId=null;
 let finPct=3,eprodCount=0,epagoCount=0;
 
 // ── UTILS ──
@@ -931,7 +932,7 @@ function renderInversiones(){
 }
 function renderContactos(){
   if(!contacts.length){document.getElementById('contactos-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin contactos</div>';return;}
-  document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${c.nombre}</td><td>${c.apellido}</td><td>${badge(c.tipo)}</td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th><th></th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${c.nombre}</td><td>${c.apellido||'—'}</td><td>${badge(c.tipo)}</td><td style="text-align:right;white-space:nowrap"><button class="btn-sm" onclick="openEditContacto('${c.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button> <button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarContacto('${c.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`;
 }
 function verMovDeudas(cid){
   currentCid=cid;currentMovTipo='deuda';
@@ -944,7 +945,7 @@ function verMovDeudas(cid){
   document.getElementById('mov-saldo-usd').textContent=sUSD?'u$s'+fmt(sUSD):'—';
   document.getElementById('mov-ttitle').textContent='Historial — '+cname(cid);
   const sorted=movs.sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
+  document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarDeuda('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
   ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
   document.getElementById('cajasTab-movimientos').style.display='block';
 }
@@ -957,7 +958,7 @@ function verMovInversiones(cid){
   document.getElementById('mov-saldo-ars').textContent='—';
   document.getElementById('mov-saldo-usd').textContent=total?'u$s'+fmt(total):'—';
   document.getElementById('mov-ttitle').textContent='Inversiones — '+cname(cid);
-  document.getElementById('movimientos-body').innerHTML=movs.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th></tr></thead><tbody>${movs.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${m.tasa||'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
+  document.getElementById('movimientos-body').innerHTML=movs.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th><th></th></tr></thead><tbody>${movs.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${m.tasa||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarInversion('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
   ['deudas','inversiones','contactos'].forEach(t=>document.getElementById('cajasTab-'+t).style.display='none');
   document.getElementById('cajasTab-movimientos').style.display='block';
 }
@@ -1003,16 +1004,65 @@ async function saveMovimiento(){
   }catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
 }
-function openContactoModal(){['c-nombre','c-apellido'].forEach(i=>document.getElementById(i).value='');document.getElementById('modal-con-err').style.display='none';document.getElementById('modal-contacto').classList.add('open');}
+function openContactoModal(){
+  editingContactoId=null;
+  document.getElementById('modal-con-title').textContent='Nuevo contacto';
+  ['c-nombre','c-apellido'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('c-tipo').value='cliente';
+  document.getElementById('modal-con-err').style.display='none';
+  document.getElementById('modal-contacto').classList.add('open');
+}
+function openEditContacto(id){
+  const c=contacts.find(x=>x.id===String(id));if(!c)return;
+  editingContactoId=id;
+  document.getElementById('modal-con-title').textContent='Editar contacto';
+  document.getElementById('c-nombre').value=c.nombre;
+  document.getElementById('c-apellido').value=c.apellido||'';
+  document.getElementById('c-tipo').value=c.tipo;
+  document.getElementById('modal-con-err').style.display='none';
+  document.getElementById('modal-contacto').classList.add('open');
+}
 async function saveContacto(){
   const nombre=document.getElementById('c-nombre').value.trim(),apellido=document.getElementById('c-apellido').value.trim(),tipo=document.getElementById('c-tipo').value;
   if(!nombre){showModalErr('modal-con-err','El nombre es obligatorio');return;}
   const btn=document.getElementById('btn-save-con');btn.disabled=true;btn.textContent='Guardando...';
   try{
-    await finApi('/api/contactos','POST',{nombre,apellido:apellido||null,tipo});
-    closeModal('modal-contacto');await loadCajas();showToast('Contacto guardado');
+    if(editingContactoId){
+      await finApi(`/api/contactos/${editingContactoId}`,'PUT',{nombre,apellido:apellido||null,tipo});
+      showToast('Contacto actualizado');
+    }else{
+      await finApi('/api/contactos','POST',{nombre,apellido:apellido||null,tipo});
+      showToast('Contacto guardado');
+    }
+    closeModal('modal-contacto');await loadCajas();
   }catch(e){showModalErr('modal-con-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
+}
+async function eliminarContacto(id){
+  if(!confirm('¿Eliminar este contacto?'))return;
+  try{
+    await finApi(`/api/contactos/${id}`,'DELETE');
+    contacts=contacts.filter(c=>c.id!==String(id));
+    renderContactos();showToast('Contacto eliminado');
+  }catch(e){showToast('Error: '+e.message,false);}
+}
+async function eliminarDeuda(id){
+  if(!confirm('¿Eliminar este movimiento?'))return;
+  try{
+    await finApi(`/api/cajas/deudas/${id}`,'DELETE');
+    movDeudas=movDeudas.filter(m=>m.id!==String(id));
+    renderDeudas();if(currentCid)verMovDeudas(currentCid);
+    showToast('Movimiento eliminado');
+  }catch(e){showToast('Error: '+e.message,false);}
+}
+async function eliminarInversion(id){
+  if(!confirm('¿Eliminar esta inversión?'))return;
+  try{
+    await finApi(`/api/cajas/inversiones/${id}`,'DELETE');
+    movInversiones=movInversiones.filter(m=>m.id!==String(id));
+    renderInversiones();if(currentCid)verMovInversiones(currentCid);
+    showToast('Inversión eliminada');
+  }catch(e){showToast('Error: '+e.message,false);}
 }
 async function loadUsersFromSheet(){
   try{
@@ -1182,25 +1232,35 @@ function copyResult(){
 function renderUsers(){
   const tools=['cotizador','financiera','cajas','envios','usuarios'];
   if(!USERS.length){document.getElementById('usr-list').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
-  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button></div>`;}).join('')}</div>`;
+  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';const esYo=CU&&String(u.id)===String(CU.id);return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><div style="display:flex;gap:6px;flex-shrink:0"><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button>${esYo?'':`<button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarUser('${u.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button>`}</div></div>`;}).join('')}</div>`;
 }
-function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
-function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';document.getElementById('m-role').value=u.role||'op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');document.getElementById('m-role').value='op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+async function eliminarUser(id){
+  if(CU&&String(id)===String(CU.id)){showToast('No podés eliminar tu propia cuenta',false);return;}
+  if(!confirm('¿Eliminar este usuario?'))return;
+  try{
+    await finApi(`/api/usuarios/${id}`,'DELETE');
+    USERS=USERS.filter(u=>u.id!==String(id));
+    renderUsers();showToast('Usuario eliminado');
+  }catch(e){showToast('Error: '+e.message,false);}
+}
 function renderPermGrid(){document.getElementById('perm-grid').innerHTML=TOOLS.map(t=>`<div id="pt-${t}" onclick="tp2('${t}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--navy3);border:1px solid ${editPerms2[t]?'var(--green)':'var(--border)'};border-radius:9px;padding:10px 13px;cursor:pointer"><span style="font-size:13px;color:#fff">${t}</span><i class="ti ti-toggle-${editPerms2[t]?'right':'left'}" style="font-size:17px;color:${editPerms2[t]?'var(--green)':'var(--text3)'}"></i></div>`).join('');}
 function tp2(t){editPerms2[t]=!editPerms2[t];renderPermGrid();}
 async function saveUser(){
   const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;
   if(!nom||!usr){showToast('Nombre y usuario son obligatorios',false);return;}
   const btn=document.querySelector('#modal-usr .btn-save');btn.disabled=true;btn.textContent='Guardando...';
+  const role=document.getElementById('m-role').value;
   try{
     if(editUID){
-      const body={nombre:nom,username:usr,perms:editPerms2};
+      const body={nombre:nom,username:usr,role,perms:editPerms2};
       if(pas)body.password=pas;
       await finApi(`/api/usuarios/${editUID}`,'PUT',body);
       showToast('Usuario actualizado');
     }else{
       if(!pas){showToast('Contraseña obligatoria',false);btn.disabled=false;btn.textContent='Guardar';return;}
-      await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role:'op',perms:editPerms2});
+      await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role,perms:editPerms2});
       showToast('Usuario creado');
     }
     closeModal('modal-usr');await loadUsersFromSheet();
