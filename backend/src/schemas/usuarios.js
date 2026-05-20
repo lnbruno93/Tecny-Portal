@@ -1,0 +1,32 @@
+const { z } = require('zod');
+
+const TOOLS = ['cotizador','financiera','cajas','envios','usuarios'];
+
+const permsSchema = z.object(
+  Object.fromEntries(TOOLS.map(t => [t, z.boolean().default(false)]))
+).default({});
+
+const createUsuarioSchema = z.object({
+  nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
+  username: z.string().trim().min(2, 'Username mínimo 2 caracteres').max(50)
+              .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo'),
+  email:    z.string().trim().email('Email inválido').optional().nullable(),
+  password: z.string().min(6, 'Password mínimo 6 caracteres'),
+  role:     z.enum(['admin','op']).default('op'),
+  perms:    permsSchema,
+});
+
+const updateUsuarioSchema = z.object({
+  nombre:   z.string().trim().min(1).max(100).optional(),
+  username: z.string().trim().min(2).max(50)
+              .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo').optional(),
+  email:    z.string().trim().email('Email inválido').optional().nullable(),
+  password: z.string().min(6, 'Password mínimo 6 caracteres').optional(),
+  role:     z.enum(['admin','op']).optional(),
+  perms:    permsSchema.optional(),
+}).refine(
+  d => Object.values(d).some(v => v !== undefined),
+  { message: 'Al menos un campo es requerido para actualizar' }
+);
+
+module.exports = { createUsuarioSchema, updateUsuarioSchema };
