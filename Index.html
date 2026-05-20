@@ -770,9 +770,9 @@ async function postScript(payload){const r=await fetch(SCRIPT_URL,{method:'POST'
 async function loadEnvios(){
   const btn=document.getElementById('btn-refresh-envios');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
   try{
-    const[re,ri]=await Promise.all([fetchSheet(ENVIOS_ID,'Envios!A:M'),fetchSheet(ENVIOS_ID,'Envios_Items!A:F')]);
-    envios=re.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],fecha:r[1]||'',cliente:r[2]||'',telefono:r[3]||'',direccion:r[4]||'',barrio:r[5]||'',costoEnvio:parseFloat(r[6])||0,totalCobrado:parseFloat(r[7])||0,horario:r[8]||'',operador:r[9]||'',notas:r[10]||'',estado:r[11]||'Pendiente',prioridad:r[12]||''}));
-    enviosItems=ri.filter(r=>r[0]&&r[0]!=='ID').map(r=>({id:r[0],envioId:r[1]||'',tipo:r[2]||'',descripcion:r[3]||'',monto:parseFloat(r[4])||0,metodoPago:r[5]||''}));
+    const lista=await finApi('/api/envios');
+    envios=lista.map(e=>({id:String(e.id),fecha:e.fecha?.substring(0,10)||'',cliente:e.cliente||'',telefono:e.telefono||'',direccion:e.direccion||'',barrio:e.barrio||'',costoEnvio:parseFloat(e.costo_envio)||0,totalCobrado:parseFloat(e.total_cobrado)||0,horario:e.horario||'',operador:e.operador||'',notas:e.notas||'',estado:e.estado||'Pendiente',prioridad:e.prioridad||''}));
+    enviosItems=lista.flatMap(e=>(e.items||[]).map(i=>({id:String(i.id),envioId:String(e.id),tipo:i.tipo||'',descripcion:i.descripcion||'',monto:parseFloat(i.monto)||0,metodoPago:i.metodo_pago||''})));
     updateMetricasEnvios();renderEnvios();
   }catch(e){document.getElementById('envios-list').innerHTML=`<div class="loading-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
@@ -818,8 +818,8 @@ function renderEnvios(){
   }).join('');
 }
 
-async function cambiarEstado(id,estado){const e=envios.find(x=>x.id===id);if(!e)return;e.estado=estado;renderEnvios();try{await postScript({db:'envios',sheet:'Envios',action:'update',id,updates:[{col:12,value:estado}]});}catch(err){}}
-async function eliminarEnvio(id){if(!confirm('¿Eliminar este envío?'))return;try{await postScript({db:'envios',sheet:'Envios',action:'delete',id});envios=envios.filter(e=>e.id!==id);enviosItems=enviosItems.filter(i=>i.envioId!==id);renderEnvios();}catch(e){showToast('Error',false);}}
+async function cambiarEstado(id,estado){const e=envios.find(x=>x.id===id);if(!e)return;e.estado=estado;renderEnvios();try{await finApi(`/api/envios/${id}`,'PUT',{estado});}catch(err){}}
+async function eliminarEnvio(id){if(!confirm('¿Eliminar este envío?'))return;try{await finApi(`/api/envios/${id}`,'DELETE');envios=envios.filter(e=>e.id!==id);enviosItems=enviosItems.filter(i=>i.envioId!==id);renderEnvios();}catch(e){showToast('Error',false);}}
 function cambiarFecha(d){currentDate=new Date(currentDate);currentDate.setDate(currentDate.getDate()+d);actualizarFechaLabel();renderEnvios();updateMetricasEnvios();}
 function irHoy(){currentDate=new Date();actualizarFechaLabel();renderEnvios();updateMetricasEnvios();}
 function actualizarFechaLabel(){
@@ -869,16 +869,13 @@ async function saveEnvio(){
   const btn=document.getElementById('btn-save-envio');btn.disabled=true;btn.textContent='Guardando...';
   try{
     const fecha=isoDate(currentDate);
-    if(editingEnvioId){
-      await postScript({db:'envios',sheet:'Envios',action:'update',id:editingEnvioId,updates:[{col:3,value:cliente},{col:4,value:document.getElementById('e-tel').value.trim()},{col:5,value:dir},{col:6,value:document.getElementById('e-barrio').value.trim()},{col:7,value:costo},{col:8,value:totalCobrado},{col:9,value:document.getElementById('e-horario').value.trim()},{col:10,value:document.getElementById('e-operador').value},{col:11,value:document.getElementById('e-notas').value.trim()},{col:12,value:document.getElementById('e-estado').value},{col:13,value:document.getElementById('e-prioridad').value}]});
-      enviosItems=enviosItems.filter(i=>i.envioId!==editingEnvioId);
-    }else{
-      const id=Date.now().toString();
-      await postScript({db:'envios',sheet:'Envios',action:'append',row:[id,fecha,cliente,document.getElementById('e-tel').value.trim(),dir,document.getElementById('e-barrio').value.trim(),costo,totalCobrado,document.getElementById('e-horario').value.trim(),document.getElementById('e-operador').value,document.getElementById('e-notas').value.trim(),document.getElementById('e-estado').value,document.getElementById('e-prioridad').value]});
-      editingEnvioId=id;
-    }
-    for(const p of prods){const iid=Date.now().toString()+'p'+Math.random().toString(36).slice(2,5);await postScript({db:'envios',sheet:'Envios_Items',action:'append',row:[iid,editingEnvioId,'producto',p,0,'']});}
-    for(const p of pagos){const iid=Date.now().toString()+'g'+Math.random().toString(36).slice(2,5);await postScript({db:'envios',sheet:'Envios_Items',action:'append',row:[iid,editingEnvioId,'pago','',p.monto,p.metodo]});}
+    const items=[
+      ...prods.map(d=>({tipo:'producto',descripcion:d,monto:0,metodo_pago:null})),
+      ...pagos.map(p=>({tipo:'pago',descripcion:null,monto:p.monto,metodo_pago:p.metodo}))
+    ];
+    const body={fecha,cliente,telefono:document.getElementById('e-tel').value.trim()||null,direccion:dir,barrio:document.getElementById('e-barrio').value.trim()||null,costo_envio:costo,total_cobrado:totalCobrado,horario:document.getElementById('e-horario').value.trim()||null,operador:document.getElementById('e-operador').value||null,notas:document.getElementById('e-notas').value.trim()||null,estado:document.getElementById('e-estado').value||'Pendiente',prioridad:document.getElementById('e-prioridad').value||null,items};
+    if(editingEnvioId){await finApi(`/api/envios/${editingEnvioId}`,'PUT',body);}
+    else{await finApi('/api/envios','POST',body);}
     closeModal('modal-envio');await loadEnvios();
   }catch(e){showModalErr('modal-envio-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
@@ -890,13 +887,13 @@ async function loadCajas(){
   btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
   try{
     const[rc,rmd,rmi]=await Promise.all([
-      fetchSheet(CAJAS_ID,'Contactos!A:D'),
-      fetchSheet(CAJAS_ID,'Movimientos_Deudas!A:G'),
-      fetchSheet(CAJAS_ID,'Movimientos_Inversiones!A:F')
+      finApi('/api/contactos'),
+      finApi('/api/cajas/deudas'),
+      finApi('/api/cajas/inversiones')
     ]);
-    contacts=rc.filter(r=>r[0]).map(r=>({id:String(r[0]),nombre:r[1]||'',apellido:r[2]||'',tipo:r[3]||''}));
-    movDeudas=rmd.filter(r=>r[0]).map(r=>({id:String(r[0]),fecha:r[1]||'',cid:String(r[2]||''),tipo:r[3]||'',ars:parseFloat(r[4])||0,usd:parseFloat(r[5])||0,concepto:r[6]||''}));
-    movInversiones=rmi.filter(r=>r[0]).map(r=>({id:String(r[0]),fecha:r[1]||'',cid:String(r[2]||''),tipo:r[3]||'',monto:parseFloat(r[4])||0,tasa:r[5]||''}));
+    contacts=rc.map(c=>({id:String(c.id),nombre:c.nombre||'',apellido:c.apellido||'',tipo:c.tipo||''}));
+    movDeudas=rmd.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),tipo:m.tipo||'',ars:parseFloat(m.monto_ars)||0,usd:parseFloat(m.monto_usd)||0,concepto:m.concepto||''}));
+    movInversiones=rmi.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),monto:parseFloat(m.monto)||0,tasa:m.tasa||''}));
     populateContactSel();renderDeudas();renderInversiones();renderContactos();
   }catch(e){showToast('Error cargando Cajas',false);}
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
@@ -981,20 +978,23 @@ async function saveMovimiento(){
   const cid=document.getElementById('mov-contacto').value;
   const ars=parseFloat(document.getElementById('mov-ars').value)||0;
   const usd=parseFloat(document.getElementById('mov-usd-m').value)||0;
-  const dir=document.getElementById('mov-dir').value;
+  const tipo=document.getElementById('mov-dir').value;
   const concepto=document.getElementById('mov-concepto').value.trim();
   const tasa=document.getElementById('mov-tasa').value.trim();
   if(!cid){showModalErr('modal-mov-err','Seleccioná un contacto');return;}
   if(currentMovTipo==='inversion'){if(!usd&&!ars){showModalErr('modal-mov-err','Ingresá el monto');return;}}
   else{if(!ars&&!usd){showModalErr('modal-mov-err','Ingresá al menos un monto');return;}}
-  const id=Date.now().toString(),fecha=new Date().toISOString().split('T')[0];
-  const sheet=currentMovTipo==='inversion'?'Movimientos_Inversiones':'Movimientos_Deudas';
-  const row=currentMovTipo==='inversion'?[id,fecha,cid,'inversion',usd||ars,tasa]:[id,fecha,cid,dir,ars,usd,concepto];
+  const fecha=new Date().toISOString().split('T')[0];
   const btn=document.getElementById('btn-save-mov');btn.disabled=true;btn.textContent='Guardando...';
   try{
-    const res=await postScript({db:'cajas',sheet,action:'append',row});
-    if(res.ok){closeModal('modal-mov');await loadCajas();if(currentCid){if(currentMovTipo==='inversion')verMovInversiones(currentCid);else verMovDeudas(currentCid);}showToast('Movimiento guardado');}
-    else showModalErr('modal-mov-err','Error: '+(res.error||'desconocido'));
+    if(currentMovTipo==='inversion'){
+      await finApi('/api/cajas/inversiones','POST',{fecha,contacto_id:parseInt(cid),monto:usd||ars,tasa:tasa||null});
+    }else{
+      await finApi('/api/cajas/deudas','POST',{fecha,contacto_id:parseInt(cid),tipo,monto_ars:ars,monto_usd:usd,concepto:concepto||null});
+    }
+    closeModal('modal-mov');await loadCajas();
+    if(currentCid){if(currentMovTipo==='inversion')verMovInversiones(currentCid);else verMovDeudas(currentCid);}
+    showToast('Movimiento guardado');
   }catch(e){showModalErr('modal-mov-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
 }
@@ -1002,12 +1002,10 @@ function openContactoModal(){['c-nombre','c-apellido'].forEach(i=>document.getEl
 async function saveContacto(){
   const nombre=document.getElementById('c-nombre').value.trim(),apellido=document.getElementById('c-apellido').value.trim(),tipo=document.getElementById('c-tipo').value;
   if(!nombre){showModalErr('modal-con-err','El nombre es obligatorio');return;}
-  const id=Date.now().toString();
   const btn=document.getElementById('btn-save-con');btn.disabled=true;btn.textContent='Guardando...';
   try{
-    const res=await postScript({db:'cajas',sheet:'Contactos',action:'append',row:[id,nombre,apellido,tipo]});
-    if(res.ok){closeModal('modal-contacto');await loadCajas();showToast('Contacto guardado');}
-    else showModalErr('modal-con-err','Error: '+(res.error||'desconocido'));
+    await finApi('/api/contactos','POST',{nombre,apellido:apellido||null,tipo});
+    closeModal('modal-contacto');await loadCajas();showToast('Contacto guardado');
   }catch(e){showModalErr('modal-con-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
 }
@@ -1023,15 +1021,9 @@ function parsePerms(str){
 
 async function loadUsersFromSheet(){
   try{
-    const rows=await fetchSheet(USERS_ID,"Users!A:F");
-    USERS=rows.filter(r=>r[0]&&r[0]!=='ID').map(r=>({
-      id:String(r[0]),
-      nombre:r[1]||'',
-      username:(r[2]||'').toLowerCase(),
-      pass:r[3]||'',
-      role:(r[4]||'op').toLowerCase(),
-      perms:parsePerms(r[5]||'')
-    }));
+    const rows=await finApi('/api/usuarios');
+    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:u.perms||{cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false}}));
+    renderUsers();
   }catch(e){USERS=[];}
 }
 
@@ -1054,9 +1046,10 @@ async function doLogin(){
     document.getElementById('cfg-u').textContent=CU.username;
     document.getElementById('cfg-r').textContent=CU.role==='admin'?'Admin':'Operador';
     document.getElementById('home-sub').textContent='Buen día, '+CU.nombre.split(' ')[0];
-    applyLocks();renderUsers();initProds();actualizarFechaLabel();
+    applyLocks();initProds();actualizarFechaLabel();
     if(CU.perms.cajas)loadCajas();
     if(CU.perms.envios)loadEnvios();
+    if(CU.perms.usuarios)loadUsersFromSheet();
   }catch(e){document.getElementById('login-err').style.display='block';btn.textContent='Ingresar →';btn.disabled=false;}
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
@@ -1076,6 +1069,7 @@ function go(id){
   document.getElementById('panel-'+id).classList.add('active');
   const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
   if(id==='financiera'&&CU&&CU.perms.financiera)finInit();
+  if(id==='usuarios'&&CU&&CU.perms.usuarios)loadUsersFromSheet();
 }
 
 function doLogout(){CU=null;document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('u-in').value='';document.getElementById('p-in').value='';go('home');}
@@ -1191,21 +1185,19 @@ function tp2(t){editPerms2[t]=!editPerms2[t];renderPermGrid();}
 async function saveUser(){
   const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;
   if(!nom||!usr){showToast('Nombre y usuario son obligatorios',false);return;}
-  const permsStr=Object.entries(editPerms2).filter(([k,v])=>v).map(([k])=>k).join(',');
   const btn=document.querySelector('#modal-usr .btn-save');btn.disabled=true;btn.textContent='Guardando...';
   try{
     if(editUID){
-      const updates=[{col:2,value:nom},{col:3,value:usr},{col:6,value:permsStr}];
-      if(pas)updates.push({col:4,value:pas});
-      await postScript({db:'users',sheet:'Users',action:'update',id:editUID,updates});
+      const body={nombre:nom,username:usr,perms:editPerms2};
+      if(pas)body.password=pas;
+      await finApi(`/api/usuarios/${editUID}`,'PUT',body);
       showToast('Usuario actualizado');
     }else{
       if(!pas){showToast('Contraseña obligatoria',false);btn.disabled=false;btn.textContent='Guardar';return;}
-      const id=Date.now().toString();
-      await postScript({db:'users',sheet:'Users',action:'append',row:[id,nom,usr,pas,'op',permsStr]});
+      await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role:'op',perms:editPerms2});
       showToast('Usuario creado');
     }
-    closeModal('modal-usr');await loadUsersFromSheet();renderUsers();
+    closeModal('modal-usr');await loadUsersFromSheet();
   }catch(e){showToast('Error: '+e.message,false);}
   btn.disabled=false;btn.textContent='Guardar';
 }
