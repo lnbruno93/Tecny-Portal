@@ -496,11 +496,6 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-const CAJAS_ID='176tDFnaKyKSJYJlEWGpW02ekdhhy6R_rIEXbUnSCSKU';
-const USERS_ID='1KdBAlJ17uOu1DDg5ewT1E2HkH26EBNcpPZ1kNhyKinc';
-const ENVIOS_ID='1cDAByiatmp0LmDWUN7mau4oUAyfV2UwEWu6_iJf-cCo';
-const API_KEY='AIzaSyA58eJVAvw5j0p1wtw5rXMGXcJWPa-RzE4';
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbzjdhUOVNQFLgBRGAkMTve_vh-ZO1rde1hKwV7GCYGE4Nf_uah71Zi1JEd-10rZfXwb/exec';
 const FIN_API='https://ipro-backend-production.up.railway.app';
 const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
 const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
@@ -762,10 +757,6 @@ async function finExportarCSV(){
   }catch(e){showToast('Error',false);}
 }
 
-// ── SHEETS ──
-async function fetchSheet(sheetId,range){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${API_KEY}`);const d=await r.json();return d.values||[];}
-async function postScript(payload){const r=await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});return r.json();}
-
 // ── ENVIOS ──
 async function loadEnvios(){
   const btn=document.getElementById('btn-refresh-envios');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
@@ -1009,16 +1000,6 @@ async function saveContacto(){
   }catch(e){showModalErr('modal-con-err','Error: '+e.message);}
   btn.disabled=false;btn.textContent='Guardar';
 }
-// ── AUTH PORTAL ──
-function parsePerms(str){
-  const tools=['cotizador','financiera','cajas','envios','usuarios'];
-  const p={};
-  tools.forEach(t=>p[t]=false);
-  if(!str)return p;
-  str.split(',').map(s=>s.trim().toLowerCase()).forEach(t=>{if(tools.includes(t))p[t]=true;});
-  return p;
-}
-
 async function loadUsersFromSheet(){
   try{
     const rows=await finApi('/api/usuarios');
