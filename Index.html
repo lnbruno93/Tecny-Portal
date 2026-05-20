@@ -1040,24 +1040,24 @@ async function doLogin(){
   const p=document.getElementById('p-in').value;
   const btn=document.querySelector('.login-btn');
   btn.textContent='Ingresando...';btn.disabled=true;
-  await loadUsersFromSheet();
-  const found=USERS.find(x=>x.username===u&&x.pass===p);
-  btn.textContent='Ingresar →';btn.disabled=false;
-  if(!found){document.getElementById('login-err').style.display='block';return;}
-  CU=found;
-  document.getElementById('login-err').style.display='none';
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app').style.display='flex';
-  document.getElementById('tb-name').textContent=CU.nombre.split(' ')[0];
-  document.getElementById('tb-role').textContent=CU.role==='admin'?'Admin':'Operador';
-  document.getElementById('cfg-u').textContent=CU.username;
-  document.getElementById('cfg-r').textContent=CU.role==='admin'?'Admin':'Operador';
-  document.getElementById('home-sub').textContent='Buen día, '+CU.nombre.split(' ')[0];
-  const creds=getFinCreds();
-  if(creds){document.getElementById('cfg-fin-email').value=creds.email;document.getElementById('cfg-fin-pass').value=creds.pass;}
-  applyLocks();renderUsers();initProds();actualizarFechaLabel();
-  if(CU.perms.cajas)loadCajas();
-  if(CU.perms.envios)loadEnvios();
+  try{
+    const res=await fetch(FIN_API+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const data=await res.json();
+    if(!res.ok||!data.token){document.getElementById('login-err').style.display='block';btn.textContent='Ingresar →';btn.disabled=false;return;}
+    saveFinToken(data.token);
+    CU=data.user;
+    document.getElementById('login-err').style.display='none';
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='flex';
+    document.getElementById('tb-name').textContent=CU.nombre.split(' ')[0];
+    document.getElementById('tb-role').textContent=CU.role==='admin'?'Admin':'Operador';
+    document.getElementById('cfg-u').textContent=CU.username;
+    document.getElementById('cfg-r').textContent=CU.role==='admin'?'Admin':'Operador';
+    document.getElementById('home-sub').textContent='Buen día, '+CU.nombre.split(' ')[0];
+    applyLocks();renderUsers();initProds();actualizarFechaLabel();
+    if(CU.perms.cajas)loadCajas();
+    if(CU.perms.envios)loadEnvios();
+  }catch(e){document.getElementById('login-err').style.display='block';btn.textContent='Ingresar →';btn.disabled=false;}
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 
