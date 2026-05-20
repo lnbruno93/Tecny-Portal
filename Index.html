@@ -855,7 +855,9 @@ function editarEnvio(id){
   document.getElementById('e-operador').value=e.operador||'';document.getElementById('e-estado').value=e.estado||'Pendiente';
   document.getElementById('e-prods-list').innerHTML='';document.getElementById('e-pagos-list').innerHTML='';
   eprodCount=0;epagoCount=0;
-  enviosItems.filter(i=>i.envioId===id&&i.tipo==='producto').forEach(p=>addEnvioProd(p.descripcion));
+  const _dbgProds=enviosItems.filter(i=>i.envioId===id&&i.tipo==='producto');
+  console.log('[DEBUG editarEnvio] envioId='+id+' prods en memoria:',JSON.stringify(_dbgProds));
+  _dbgProds.forEach(p=>addEnvioProd(p.descripcion));
   enviosItems.filter(i=>i.envioId===id&&i.tipo==='pago').forEach(p=>addEnvioPago(p.metodoPago,p.monto));
   if(!enviosItems.filter(i=>i.envioId===id&&i.tipo==='producto').length)addEnvioProd();
   if(!enviosItems.filter(i=>i.envioId===id&&i.tipo==='pago').length)addEnvioPago();
@@ -880,6 +882,7 @@ async function saveEnvio(){
       ...prods.map(d=>({tipo:'producto',descripcion:d,monto:0,metodo_pago:null})),
       ...pagos.map(p=>({tipo:'pago',descripcion:null,monto:p.monto,metodo_pago:p.metodo}))
     ];
+    console.log('[DEBUG saveEnvio] editingId='+editingEnvioId+' prods:',prods,'items a enviar:',JSON.stringify(items));
     const body={fecha,cliente,telefono:document.getElementById('e-tel').value.trim()||null,direccion:dir,barrio:document.getElementById('e-barrio').value.trim()||null,costo_envio:costo,total_cobrado:totalCobrado,horario:document.getElementById('e-horario').value.trim()||null,operador:document.getElementById('e-operador').value||null,notas:document.getElementById('e-notas').value.trim()||null,estado:document.getElementById('e-estado').value||'Pendiente',prioridad:document.getElementById('e-prioridad').value||null,items};
     if(editingEnvioId){await finApi(`/api/envios/${editingEnvioId}`,'PUT',body);}
     else{await finApi('/api/envios','POST',body);}
