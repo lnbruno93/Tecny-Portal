@@ -530,14 +530,28 @@ function guardarCredFinanciera(){
 }
 
 // ── FINANCIERA API ──
+function sessionExpirada(){
+  localStorage.removeItem('fin_token');
+  CU=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  const err=document.getElementById('login-err');
+  err.textContent='Tu sesión expiró. Ingresá de nuevo.';
+  err.style.display='block';
+}
+
 async function finApi(path,method='GET',body=null){
   const opts={method,headers:{'Content-Type':'application/json'},credentials:'include'};
   const token=getFinToken();
   if(token)opts.headers['Authorization']='Bearer '+token;
   if(body)opts.body=JSON.stringify(body);
   const res=await fetch(FIN_API+path,opts);
-  if(res.status===401)throw new Error('NO_AUTH');
-  if(!res.ok)throw new Error(await res.text());
+  if(res.status===401){sessionExpirada();throw new Error('NO_AUTH');}
+  if(!res.ok){
+    let msg='Error del servidor';
+    try{const d=await res.json();msg=d.error||d.message||msg;}catch(e){}
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -1053,7 +1067,18 @@ function go(id){
   if(id==='usuarios'&&CU&&CU.perms.usuarios)loadUsersFromSheet();
 }
 
-function doLogout(){CU=null;document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('u-in').value='';document.getElementById('p-in').value='';go('home');}
+function doLogout(){
+  localStorage.removeItem('fin_token');
+  CU=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('u-in').value='';
+  document.getElementById('p-in').value='';
+  const err=document.getElementById('login-err');
+  err.textContent='Usuario o contraseña incorrectos';
+  err.style.display='none';
+  go('home');
+}
 function syncTC(){const v=document.getElementById('tc-global').value;document.getElementById('tc').value=v;document.getElementById('tc2').value=v;}
 
 // ── COTIZADOR NUEVO ──
