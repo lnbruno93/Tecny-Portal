@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const pinoHttp = require('pino-http');
 const logger = require('./lib/logger');
+const db = require('./config/database');
 
 const authRoutes        = require('./routes/auth');
 const vendedoresRoutes  = require('./routes/vendedores');
@@ -53,7 +54,40 @@ app.use(pinoHttp({
   },
 }));
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+app.get('/health', async (_req, res) => {
+  const start = Date.now();
+  let dbStatus = 'ok';
+  let dbLatency = null;
+  let dbError = null;
+
+  try {
+    await db.query('SELECT 1');
+    dbLatency = Date.now() - start;
+  } catch (err) {
+    dbStatus = 'error';
+    dbError = err.message;
+  }
+
+  const mem = process.memoryUsage();
+  const status = dbStatus === 'ok' ? 'ok' : 'degraded';
+
+  res.status(status === 'ok' ? 200 : 503).json({
+    status,
+    ts:      new Date().toISOString(),
+    uptime:  Math.floor(process.uptime()),
+    version: process.env.npm_package_version || '1.0.0',
+    db: {
+      status:     dbStatus,
+      latency_ms: dbLatency,
+      ...(dbError && { error: dbError }),
+    },
+    memory: {
+      rss_mb:        Math.round(mem.rss        / 1024 / 1024),
+      heap_used_mb:  Math.round(mem.heapUsed   / 1024 / 1024),
+      heap_total_mb: Math.round(mem.heapTotal  / 1024 / 1024),
+    },
+  });
+});
 
 // Strict login rate limit: 10 failed attempts / 15 min per IP
 const loginLimiter = rateLimit({
