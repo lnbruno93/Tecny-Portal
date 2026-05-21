@@ -72,6 +72,12 @@ app.use('/api/envios',        enviosRoutes);
 // Usuarios (admin)
 app.use('/api/usuarios',      usuariosRoutes);
 
+// Sentry captura los errores antes que el handler genérico
+const Sentry = require('@sentry/node');
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(err.status || 500).json({ error: err.message || 'Error interno' });
