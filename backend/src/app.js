@@ -6,17 +6,20 @@ const pinoHttp = require('pino-http');
 const logger = require('./lib/logger');
 const db = require('./config/database');
 
-const authRoutes        = require('./routes/auth');
-const vendedoresRoutes  = require('./routes/vendedores');
-const comprobantesRoutes= require('./routes/comprobantes');
-const pagosRoutes       = require('./routes/pagos');
-const historialRoutes   = require('./routes/historial');
-const configRoutes      = require('./routes/config');
-const ocrRoutes         = require('./routes/ocr');
-const contactosRoutes   = require('./routes/contactos');
-const cajasRoutes       = require('./routes/cajas');
-const enviosRoutes      = require('./routes/envios');
-const usuariosRoutes    = require('./routes/usuarios');
+const authRoutes         = require('./routes/auth');
+const vendedoresRoutes   = require('./routes/vendedores');
+const comprobantesRoutes = require('./routes/comprobantes');
+const pagosRoutes        = require('./routes/pagos');
+const historialRoutes    = require('./routes/historial');
+const configRoutes       = require('./routes/config');
+const ocrRoutes          = require('./routes/ocr');
+const contactosRoutes    = require('./routes/contactos');
+const cajasRoutes        = require('./routes/cajas');
+const enviosRoutes       = require('./routes/envios');
+const usuariosRoutes     = require('./routes/usuarios');
+
+const requireAuth       = require('./middleware/auth');
+const requirePermission = require('./middleware/requirePermission');
 
 const app = express();
 
@@ -112,23 +115,25 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/auth/login', loginLimiter);
 
-// Financiera
+// Auth (sin restricción de permisos)
 app.use('/api/auth',          authRoutes);
-app.use('/api/vendedores',    vendedoresRoutes);
-app.use('/api/comprobantes',  comprobantesRoutes);
-app.use('/api/pagos',         pagosRoutes);
-app.use('/api/historial',     historialRoutes);
-app.use('/api/config',        configRoutes);
-app.use('/api/ocr',           ocrRoutes);
 
-// Cajas
-app.use('/api/contactos',     contactosRoutes);
-app.use('/api/cajas',         cajasRoutes);
+// Financiera — requiere permiso "financiera"
+app.use('/api/vendedores',    requireAuth, requirePermission('financiera'), vendedoresRoutes);
+app.use('/api/comprobantes',  requireAuth, requirePermission('financiera'), comprobantesRoutes);
+app.use('/api/pagos',         requireAuth, requirePermission('financiera'), pagosRoutes);
+app.use('/api/historial',     requireAuth, requirePermission('financiera'), historialRoutes);
+app.use('/api/config',        requireAuth, requirePermission('financiera'), configRoutes);
+app.use('/api/ocr',           requireAuth, requirePermission('financiera'), ocrRoutes);
 
-// Envíos
-app.use('/api/envios',        enviosRoutes);
+// Cajas — requiere permiso "cajas"
+app.use('/api/contactos',     requireAuth, requirePermission('cajas'), contactosRoutes);
+app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRoutes);
 
-// Usuarios (admin)
+// Envíos — requiere permiso "envios"
+app.use('/api/envios',        requireAuth, requirePermission('envios'), enviosRoutes);
+
+// Usuarios — solo admin (ya controlado dentro de la ruta con adminOnly)
 app.use('/api/usuarios',      usuariosRoutes);
 
 // Sentry captura los errores antes que el handler genérico

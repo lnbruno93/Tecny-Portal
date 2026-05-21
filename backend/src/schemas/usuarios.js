@@ -6,6 +6,7 @@ const permsSchema = z.object(
   Object.fromEntries(TOOLS.map(t => [t, z.boolean().default(false)]))
 ).default({});
 
+// Para crear: perms con defaults (todos false si no se envían)
 const createUsuarioSchema = z.object({
   nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
   username: z.string().trim().min(2, 'Username mínimo 2 caracteres').max(50)
@@ -16,6 +17,11 @@ const createUsuarioSchema = z.object({
   perms:    permsSchema,
 });
 
+// Para actualizar: perms SIN default para que un body vacío {} no lo active
+const permsUpdateSchema = z.object(
+  Object.fromEntries(TOOLS.map(t => [t, z.boolean().default(false)]))
+);
+
 const updateUsuarioSchema = z.object({
   nombre:   z.string().trim().min(1).max(100).optional(),
   username: z.string().trim().min(2).max(50)
@@ -23,7 +29,7 @@ const updateUsuarioSchema = z.object({
   email:    z.string().trim().email('Email inválido').optional().nullable(),
   password: z.string().min(6, 'Password mínimo 6 caracteres').optional(),
   role:     z.enum(['admin','op']).optional(),
-  perms:    permsSchema.optional(),
+  perms:    permsUpdateSchema.optional(),  // opcional y SIN default de nivel superior
 }).refine(
   d => Object.values(d).some(v => v !== undefined),
   { message: 'Al menos un campo es requerido para actualizar' }

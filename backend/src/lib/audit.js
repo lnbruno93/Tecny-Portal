@@ -1,4 +1,5 @@
-const db = require('../config/database');
+const db     = require('../config/database');
+const logger = require('./logger');
 
 async function audit(tabla, accion, registro_id, { antes = null, despues = null, user_id = null } = {}) {
   try {
@@ -8,7 +9,7 @@ async function audit(tabla, accion, registro_id, { antes = null, despues = null,
       [tabla, accion, registro_id, antes ? JSON.stringify(antes) : null, despues ? JSON.stringify(despues) : null, user_id || null]
     );
   } catch (err) {
-    console.error('audit error:', err.message);
+    logger.error({ err, tabla, accion, registro_id }, 'audit log failed');
   }
 }
 
