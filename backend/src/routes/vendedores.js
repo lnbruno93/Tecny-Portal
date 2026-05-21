@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const { createVendedorSchema } = require('../schemas/vendedores');
 const parseId = require('../lib/parseId');
+const audit  = require('../lib/audit');
 
 router.use(requireAuth);
 
@@ -37,6 +38,7 @@ router.delete('/:id', async (req, res, next) => {
       [id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Vendedor no encontrado' });
+    await audit('vendedores', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     next(err);

@@ -616,10 +616,11 @@ async function finCargarVendedores(){
       const el=document.getElementById(id);if(!el)return;
       const val=el.value;
       el.innerHTML=id==='f-vendedor'?'<option value="">Todos</option>':'<option value="">Seleccionar...</option>';
-      rows.forEach(v=>el.innerHTML+=`<option value="${esc(v.nombre)}">${esc(v.nombre)}</option>`);
+      // c-vendedor: value=id (para INSERT con FK) | f-vendedor: value=nombre (para filtro por nombre)
+      rows.forEach(v=>el.innerHTML+=`<option value="${id==='c-vendedor'?v.id:esc(v.nombre)}">${esc(v.nombre)}</option>`);
       el.value=val;
     });
-  }catch(e){}
+  }catch(e){console.error('finCargarVendedores:',e);showToast('Error al cargar vendedores',false);}
 }
 
 async function finCargarConfig(){
@@ -647,11 +648,17 @@ async function finRenderDashboard(){
   const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
   document.getElementById('fin-tabla-dashboard').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
   try{
-    let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}&limit=200`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
-    const[res,resPagos]=await Promise.all([finApi(url),finApi('/api/pagos?limit=200')]);
-    const lista=res.data,pagos=resPagos.data;
-    const tR=lista.reduce((s,c)=>s+parseFloat(c.monto),0),tF=lista.reduce((s,c)=>s+parseFloat(c.monto_financiera),0),tN=lista.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tP=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),saldo=Math.max(0,tN-tP);
-    document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${res.pagination.total}</div></div>`;
+    // Filtros compartidos para comprobantes
+    let filtros=`desde=${desde}&hasta=${hasta}`;if(vendedor)filtros+=`&vendedor=${encodeURIComponent(vendedor)}`;
+    // 3 calls en paralelo: totales reales en SQL + lista para la tabla + totales de pagos
+    const[totComp,resPagos,res]=await Promise.all([
+      finApi('/api/comprobantes/totales?'+filtros),
+      finApi('/api/pagos/totales'),
+      finApi('/api/comprobantes?'+filtros+'&limit=200')
+    ]);
+    const lista=res.data;
+    const tR=totComp.total_monto,tF=totComp.total_financiera,tN=totComp.total_neto,tP=resPagos.total_monto,saldo=Math.max(0,tN-tP);
+    document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${totComp.count}</div></div>`;
     if(!lista.length){document.getElementById('fin-tabla-dashboard').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos en el período</div>';return;}
     document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${esc(c.cliente)}</td><td>${esc(c.vendedor_nombre)||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
   }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${esc(e.message)}</div>`;}
@@ -684,7 +691,7 @@ async function finRenderPagos(){
     const pg=resPagos.pagination;
     const paginationHtml=pg.pages>1?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:8px"><button class="btn-secondary" onclick="pagosPrev()" ${pagoPage<=1?'disabled style="opacity:.4"':''}>&larr;</button><span style="font-size:12px;color:var(--text2)">${pg.page} / ${pg.pages}</span><button class="btn-secondary" onclick="pagosNext()" ${pagoPage>=pg.pages?'disabled style="opacity:.4"':''}>&rarr;</button></div>`:'';
     document.getElementById('fin-lista-pagos').innerHTML=(!pagos.length?'<div class="empty-msg" style="padding:1rem">Sin pagos</div>':pagos.map(p=>`<div class="fin-payment-row"><div class="fin-dot"></div><div style="flex:1"><div style="font-size:14px;font-weight:600">${fmtPesos(p.monto)}</div><div style="font-size:12px;color:var(--text2)">${p.fecha?.substring(0,10)} — ${esc(p.referencia)}</div></div><button class="btn-sm btn-danger-sm" onclick="finEliminarPago(${p.id})"><i class="ti ti-trash"></i></button></div>`).join(''))+paginationHtml;
-  }catch(e){}
+  }catch(e){console.error('finRenderPagos:',e);document.getElementById('fin-lista-pagos').innerHTML='<div class="empty-msg" style="color:var(--red)"><i class="ti ti-alert-circle"></i> Error al cargar pagos</div>';}
 }
 function pagosPrev(){if(pagoPage>1){pagoPage--;finRenderPagos();}}
 function pagosNext(){if(pagoPage<pagoPages){pagoPage++;finRenderPagos();}}
@@ -693,10 +700,13 @@ async function finRenderHistorial(){
   document.getElementById('fin-lista-historial').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
   try{
     const lista=await finApi('/api/historial');
-    const iconos={'LOGIN':'ti-login','CARGAR_COMPROBANTE':'ti-receipt','ELIMINAR_COMPROBANTE':'ti-trash','REGISTRAR_PAGO_FINANCIERA':'ti-building-bank','ELIMINAR_PAGO_FINANCIERA':'ti-trash'};
+    // Iconos según tabla y acción — formato: "tabla: ACCION"
+    const tablaIcono={'comprobantes':'ti-receipt','pagos':'ti-building-bank','users':'ti-user','vendedores':'ti-users','contactos':'ti-address-book','envios':'ti-truck','cajas':'ti-wallet','movimientos_deudas':'ti-wallet','movimientos_inversiones':'ti-chart-line'};
+    const accionIcono={'INSERT':'ti-plus','UPDATE':'ti-edit','DELETE':'ti-trash'};
+    function histIcono(accion){const[tabla,op]=(accion||'').split(': ');return tablaIcono[tabla]||accionIcono[op]||'ti-activity';}
     if(!lista.length){document.getElementById('fin-lista-historial').innerHTML='<div class="empty-msg">Sin acciones</div>';return;}
-    document.getElementById('fin-lista-historial').innerHTML=lista.map(h=>`<div class="hist-row"><div class="hist-icon"><i class="ti ${iconos[h.accion]||'ti-activity'}"></i></div><div><div style="font-size:13px;font-weight:600;color:#fff">${esc(h.accion).replace(/_/g,' ')}</div><div style="font-size:12px;color:var(--text2)">${esc(h.detalle)||''}</div><div style="font-size:11px;color:var(--text3)">${esc(h.usuario_nombre)||'Sistema'} · ${new Date(h.creado_en).toLocaleString('es-AR')}</div></div></div>`).join('');
-  }catch(e){}
+    document.getElementById('fin-lista-historial').innerHTML=lista.map(h=>`<div class="hist-row"><div class="hist-icon"><i class="ti ${histIcono(h.accion)}"></i></div><div><div style="font-size:13px;font-weight:600;color:#fff">${esc(h.accion)}</div><div style="font-size:12px;color:var(--text2)">${esc(h.detalle)||''}</div><div style="font-size:11px;color:var(--text3)">${esc(h.usuario_nombre)||'Sistema'} · ${new Date(h.creado_en).toLocaleString('es-AR')}</div></div></div>`).join('');
+  }catch(e){console.error('finRenderHistorial:',e);document.getElementById('fin-lista-historial').innerHTML='<div class="empty-msg" style="color:var(--red)"><i class="ti ti-alert-circle"></i> Error al cargar historial</div>';}
 }
 
 async function finRenderConfig(){
@@ -704,7 +714,7 @@ async function finRenderConfig(){
   try{
     const rows=await finApi('/api/vendedores');
     document.getElementById('fin-lista-vendedores').innerHTML=rows.map(v=>`<div class="vendor-row"><span style="color:#fff">${esc(v.nombre)}</span><button class="btn-sm btn-danger-sm" onclick="finEliminarVendedor(${v.id})"><i class="ti ti-trash"></i></button></div>`).join('');
-  }catch(e){}
+  }catch(e){console.error('finRenderConfig:',e);document.getElementById('fin-lista-vendedores').innerHTML='<div class="empty-msg" style="color:var(--red)"><i class="ti ti-alert-circle"></i> Error al cargar vendedores</div>';}
 }
 
 function finActualizarPreview(){
@@ -729,8 +739,8 @@ function finHandleFile(input){
       canvas.width=img.width*scale;canvas.height=img.height*scale;
       canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
       const compressed=canvas.toDataURL('image/jpeg',0.7);
-      const resp=await fetch(FIN_API+'/api/ocr',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(getFinToken()||'')},credentials:'include',body:JSON.stringify({imageData:compressed,mediaType:'image/jpeg'})});
-      const data=await resp.json();const texto=data.monto;
+      const data=await finApi('/api/ocr','POST',{imageData:compressed,mediaType:'image/jpeg'});
+      const texto=data.monto;
       if(texto&&texto!=='NO'&&!isNaN(parseFloat(texto.replace(',','.')))){
         const monto=parseFloat(texto.replace(',','.'));
         document.getElementById('c-monto').value=monto;finActualizarPreview();
@@ -741,9 +751,9 @@ function finHandleFile(input){
 }
 
 async function finGuardarComprobante(){
-  const fecha=document.getElementById('c-fecha').value,cliente=document.getElementById('c-cliente').value.trim(),vendedor=document.getElementById('c-vendedor').value,monto=parseFloat(document.getElementById('c-monto').value);
-  if(!fecha||!cliente||!vendedor||!monto){showToast('Completá todos los campos',false);return;}
-  const mF=monto*finPct/100,mN=monto-mF,body={fecha,cliente,vendedor,monto,monto_financiera:mF,monto_neto:mN};
+  const fecha=document.getElementById('c-fecha').value,cliente=document.getElementById('c-cliente').value.trim(),vendedor_id=parseInt(document.getElementById('c-vendedor').value)||null,monto=parseFloat(document.getElementById('c-monto').value);
+  if(!fecha||!cliente||!vendedor_id||!monto){showToast('Completá todos los campos',false);return;}
+  const mF=monto*finPct/100,mN=monto-mF,body={fecha,cliente,vendedor_id,monto,monto_financiera:mF,monto_neto:mN};
   if(window._archivoTemp){body.archivo_nombre=window._archivoTemp.name;body.archivo_data=window._archivoTemp.data;body.archivo_tipo=window._archivoTemp.type;}
   try{
     await finApi('/api/comprobantes','POST',body);showToast('Comprobante guardado');
@@ -801,7 +811,7 @@ async function finDescargarZip(){
     if(!conArch.length){showToast('No hay archivos',false);return;}
     const zip=new JSZip();
     for(const c of conArch){const{data,nombre}=await finApi(`/api/comprobantes/${c.id}/archivo`);const ext=nombre.split('.').pop();zip.file(`${c.fecha?.substring(0,10)}_${c.cliente.replace(/\s+/g,'_')}.${ext}`,data.split(',')[1],{base64:true});}
-    let csv='Fecha,Cliente,Vendedor,Monto,Financiera,Neto\n';lista.forEach(c=>{csv+=`${c.fecha?.substring(0,10)},${c.cliente},${c.vendedor},${c.monto},${parseFloat(c.monto_financiera).toFixed(2)},${parseFloat(c.monto_neto).toFixed(2)}\n`;});
+    let csv='Fecha,Cliente,Vendedor,Monto,Financiera,Neto\n';lista.forEach(c=>{csv+=`${c.fecha?.substring(0,10)},${c.cliente},${c.vendedor_nombre||''},${c.monto},${parseFloat(c.monto_financiera).toFixed(2)},${parseFloat(c.monto_neto).toFixed(2)}\n`;});
     zip.file('resumen.csv',csv);const blob=await zip.generateAsync({type:'blob'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`iPro_${desde}_${hasta}.zip`;a.click();showToast('ZIP generado');
   }catch(e){showToast('Error',false);}
@@ -811,8 +821,8 @@ async function finExportarCSV(){
   const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
   let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
   try{
-    const lista=await finApi(url);if(!lista.length){showToast('Sin datos',false);return;}
-    let csv='Fecha,Cliente,Vendedor,Monto,Financiera,Neto\n';lista.forEach(c=>{csv+=`${c.fecha?.substring(0,10)},${c.cliente},${c.vendedor},${c.monto},${parseFloat(c.monto_financiera).toFixed(2)},${parseFloat(c.monto_neto).toFixed(2)}\n`;});
+    const res=await finApi(url),lista=res.data||[];if(!lista.length){showToast('Sin datos',false);return;}
+    let csv='Fecha,Cliente,Vendedor,Monto,Financiera,Neto\n';lista.forEach(c=>{csv+=`${c.fecha?.substring(0,10)},${c.cliente},${c.vendedor_nombre||''},${c.monto},${parseFloat(c.monto_financiera).toFixed(2)},${parseFloat(c.monto_neto).toFixed(2)}\n`;});
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`iPro_${desde}_${hasta}.csv`;a.click();showToast('CSV exportado');
   }catch(e){showToast('Error',false);}
 }
@@ -871,7 +881,13 @@ function renderEnvios(){
   }).join('');
 }
 
-async function cambiarEstado(id,estado){const e=envios.find(x=>x.id===id);if(!e)return;e.estado=estado;renderEnvios();try{await finApi(`/api/envios/${id}`,'PUT',{estado});}catch(err){}}
+async function cambiarEstado(id,estado){
+  const e=envios.find(x=>x.id===id);if(!e)return;
+  const estadoAnterior=e.estado;
+  e.estado=estado;renderEnvios();
+  try{await finApi(`/api/envios/${id}`,'PUT',{estado});}
+  catch(err){e.estado=estadoAnterior;renderEnvios();showToast('Error al cambiar estado',false);}
+}
 async function eliminarEnvio(id){if(!confirm('¿Eliminar este envío?'))return;try{await finApi(`/api/envios/${id}`,'DELETE');envios=envios.filter(e=>e.id!==id);enviosItems=enviosItems.filter(i=>i.envioId!==id);renderEnvios();}catch(e){showToast('Error',false);}}
 function cambiarFecha(d){currentDate=new Date(currentDate);currentDate.setDate(currentDate.getDate()+d);actualizarFechaLabel();loadEnvios();}
 function irHoy(){currentDate=new Date();actualizarFechaLabel();loadEnvios();}
