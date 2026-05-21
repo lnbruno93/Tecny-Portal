@@ -3,6 +3,7 @@ const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
+const parseId = require('../lib/parseId');
 const { createContactoSchema, updateContactoSchema } = require('../schemas/contactos');
 
 router.use(requireAuth);
@@ -34,8 +35,8 @@ router.post('/', validate(createContactoSchema), async (req, res, next) => {
 
 router.put('/:id', validate(updateContactoSchema), async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows: before } = await db.query(
       'SELECT * FROM contactos WHERE id = $1 AND deleted_at IS NULL', [id]
@@ -60,8 +61,8 @@ router.put('/:id', validate(updateContactoSchema), async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query(
       'UPDATE contactos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',

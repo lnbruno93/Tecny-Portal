@@ -11,7 +11,7 @@
 const request = require('supertest');
 const app     = require('../src/app');
 const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
-const bcrypt  = require('bcryptjs');
+const bcrypt  = require('bcrypt');
 
 let pool;
 let adminToken;
@@ -82,7 +82,7 @@ describe('POST /api/usuarios', () => {
       .send({
         nombre:   'Nuevo Vendedor',
         username: 'vendedor01',
-        password: 'pass123',
+        password: 'pass12345',
         role:     'op',
         perms:    { cotizador: false, financiera: true, cajas: false, envios: false, usuarios: false },
       });
@@ -96,7 +96,7 @@ describe('POST /api/usuarios', () => {
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        nombre: 'Otro', username: 'vendedor01', password: 'pass123', role: 'op',
+        nombre: 'Otro', username: 'vendedor01', password: 'pass12345', role: 'op',
         perms: { cotizador: false, financiera: false, cajas: false, envios: false, usuarios: false },
       });
     expect(res.status).toBe(409);
@@ -106,7 +106,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: '', username: 'x_user', password: 'pass123', role: 'op', perms: {} });
+      .send({ nombre: '', username: 'x_user', password: 'pass12345', role: 'op', perms: {} });
     expect(res.status).toBe(400);
   });
 
@@ -122,7 +122,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Alguien', username: 'UserBad', password: 'pass123', role: 'op', perms: {} });
+      .send({ nombre: 'Alguien', username: 'UserBad', password: 'pass12345', role: 'op', perms: {} });
     expect(res.status).toBe(400);
   });
 });

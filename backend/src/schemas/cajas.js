@@ -16,6 +16,8 @@ const createDeudaSchema = z.object({
 
 const queryDeudasSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
+  page:        z.coerce.number().int().positive().optional(),
+  limit:       z.coerce.number().int().positive().max(200).optional(),
 });
 
 // ─── INVERSIONES ────────────────────────────────────────────
@@ -29,6 +31,8 @@ const createInversionSchema = z.object({
 
 const queryInversionesSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
+  page:        z.coerce.number().int().positive().optional(),
+  limit:       z.coerce.number().int().positive().max(200).optional(),
 });
 
 module.exports = {

@@ -9,7 +9,7 @@
  */
 require('dotenv').config();
 const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const path = require('path');
 const { execSync } = require('child_process');
 

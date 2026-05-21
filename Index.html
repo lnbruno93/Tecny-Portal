@@ -983,7 +983,7 @@ async function verMovDeudas(cid){
   document.getElementById('cajasTab-movimientos').style.display='block';
   try{
     const raw=await finApi('/api/cajas/deudas?contacto_id='+cid);
-    movDeudas=raw.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),tipo:m.tipo||'',ars:parseFloat(m.monto_ars)||0,usd:parseFloat(m.monto_usd)||0,concepto:m.concepto||''}));
+    movDeudas=(raw.data||raw).map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),tipo:m.tipo||'',ars:parseFloat(m.monto_ars)||0,usd:parseFloat(m.monto_usd)||0,concepto:m.concepto||''}));
     let sARS=0,sUSD=0;
     movDeudas.forEach(m=>{if(m.tipo==='debe'){sARS+=m.ars;sUSD+=m.usd;}else if(m.tipo==='pago'){sARS-=m.ars;sUSD-=m.usd;}});
     document.getElementById('mov-saldo-ars').textContent=sARS?'$'+fmt(sARS):'—';
@@ -1004,7 +1004,7 @@ async function verMovInversiones(cid){
   document.getElementById('cajasTab-movimientos').style.display='block';
   try{
     const raw=await finApi('/api/cajas/inversiones?contacto_id='+cid);
-    movInversiones=raw.map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),monto:parseFloat(m.monto)||0,tasa:m.tasa||''}));
+    movInversiones=(raw.data||raw).map(m=>({id:String(m.id),fecha:m.fecha?.substring(0,10)||'',cid:String(m.contacto_id),monto:parseFloat(m.monto)||0,tasa:m.tasa||''}));
     const total=movInversiones.reduce((a,m)=>a+m.monto,0);
     document.getElementById('mov-saldo-usd').textContent=total?'u$s'+fmt(total):'—';
     const sorted=movInversiones.slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));

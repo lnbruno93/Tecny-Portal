@@ -110,18 +110,20 @@ describe('GET /api/cajas/deudas', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(2); // debe + pago
-    res.body.forEach(m => expect(m.contacto_id).toBe(contactoId));
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBe(2); // debe + pago
+    res.body.data.forEach(m => expect(m.contacto_id).toBe(contactoId));
   });
 
-  it('devuelve todos los movimientos sin filtro', async () => {
+  it('devuelve todos los movimientos sin filtro (paginado)', async () => {
     const res = await request(app)
       .get('/api/cajas/deudas')
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.pagination).toBeDefined();
   });
 });
 
@@ -198,7 +200,7 @@ describe('DELETE /api/cajas/deudas/:id', () => {
       .get(`/api/cajas/deudas?contacto_id=${contactoId}`)
       .set('Authorization', `Bearer ${token}`);
 
-    const ids = res.body.map(m => m.id);
+    const ids = res.body.data.map(m => m.id);
     expect(ids).not.toContain(deudaId);
   });
 

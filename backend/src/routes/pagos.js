@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createPagoSchema } = require('../schemas/pagos');
+const parseId = require('../lib/parseId');
 
 router.use(requireAuth);
 
@@ -57,8 +58,8 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
 // ─── Eliminar (soft delete) ───────────────────────────────────────────────────
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
       'UPDATE pagos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id',
       [id]

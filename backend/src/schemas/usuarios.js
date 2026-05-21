@@ -2,6 +2,10 @@ const { z } = require('zod');
 
 const TOOLS = ['cotizador','financiera','cajas','envios','usuarios'];
 
+// Política de contraseñas unificada — igual que changePasswordSchema en auth.js
+const MIN_PASSWORD_LENGTH = 8;
+const PASSWORD_MSG = `Password mínimo ${MIN_PASSWORD_LENGTH} caracteres`;
+
 const permsSchema = z.object(
   Object.fromEntries(TOOLS.map(t => [t, z.boolean().default(false)]))
 ).default({});
@@ -12,7 +16,7 @@ const createUsuarioSchema = z.object({
   username: z.string().trim().min(2, 'Username mínimo 2 caracteres').max(50)
               .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo'),
   email:    z.string().trim().email('Email inválido').optional().nullable(),
-  password: z.string().min(6, 'Password mínimo 6 caracteres'),
+  password: z.string().min(MIN_PASSWORD_LENGTH, PASSWORD_MSG),
   role:     z.enum(['admin','op']).default('op'),
   perms:    permsSchema,
 });
@@ -27,7 +31,7 @@ const updateUsuarioSchema = z.object({
   username: z.string().trim().min(2).max(50)
               .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo').optional(),
   email:    z.string().trim().email('Email inválido').optional().nullable(),
-  password: z.string().min(6, 'Password mínimo 6 caracteres').optional(),
+  password: z.string().min(MIN_PASSWORD_LENGTH, PASSWORD_MSG).optional(),
   role:     z.enum(['admin','op']).optional(),
   perms:    permsUpdateSchema.optional(),  // opcional y SIN default de nivel superior
 }).refine(

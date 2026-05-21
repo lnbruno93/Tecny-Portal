@@ -3,6 +3,8 @@ const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
+const parseId = require('../lib/parseId');
+const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
@@ -15,17 +17,30 @@ router.use(requireAuth);
 router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, next) => {
   try {
     const { contacto_id } = req.query;
-    let query = `
-      SELECT m.*, c.nombre, c.apellido, c.tipo
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+
+    let where = 'WHERE c.deleted_at IS NULL';
+    const params = [];
+    if (contacto_id) { params.push(contacto_id); where += ` AND m.contacto_id = $${params.length}`; }
+
+    const baseQuery = `
       FROM movimientos_deudas m
       JOIN contactos c ON c.id = m.contacto_id
-      WHERE c.deleted_at IS NULL
+      ${where}
     `;
-    const params = [];
-    if (contacto_id) { params.push(contacto_id); query += ` AND m.contacto_id = $${params.length}`; }
-    query += ' ORDER BY m.fecha DESC, m.id DESC';
-    const { rows } = await db.query(query, params);
-    res.json(rows);
+
+    const [countRes, dataRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) ${baseQuery}`, params),
+      db.query(
+        `SELECT m.*, c.nombre, c.apellido, c.tipo ${baseQuery}
+         ORDER BY m.fecha DESC, m.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+    ]);
+
+    const total = parseInt(countRes.rows[0].count);
+    res.json(paginatedResponse(dataRes.rows, total, { page, limit }));
   } catch (err) {
     next(err);
   }
@@ -48,8 +63,8 @@ router.post('/deudas', validate(createDeudaSchema), async (req, res, next) => {
 
 router.delete('/deudas/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query('SELECT * FROM movimientos_deudas WHERE id = $1', [id]);
     if (!rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
@@ -66,17 +81,30 @@ router.delete('/deudas/:id', async (req, res, next) => {
 router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req, res, next) => {
   try {
     const { contacto_id } = req.query;
-    let query = `
-      SELECT m.*, c.nombre, c.apellido, c.tipo
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+
+    let where = 'WHERE c.deleted_at IS NULL';
+    const params = [];
+    if (contacto_id) { params.push(contacto_id); where += ` AND m.contacto_id = $${params.length}`; }
+
+    const baseQuery = `
       FROM movimientos_inversiones m
       JOIN contactos c ON c.id = m.contacto_id
-      WHERE c.deleted_at IS NULL
+      ${where}
     `;
-    const params = [];
-    if (contacto_id) { params.push(contacto_id); query += ` AND m.contacto_id = $${params.length}`; }
-    query += ' ORDER BY m.fecha DESC, m.id DESC';
-    const { rows } = await db.query(query, params);
-    res.json(rows);
+
+    const [countRes, dataRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) ${baseQuery}`, params),
+      db.query(
+        `SELECT m.*, c.nombre, c.apellido, c.tipo ${baseQuery}
+         ORDER BY m.fecha DESC, m.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+    ]);
+
+    const total = parseInt(countRes.rows[0].count);
+    res.json(paginatedResponse(dataRes.rows, total, { page, limit }));
   } catch (err) {
     next(err);
   }
@@ -99,8 +127,8 @@ router.post('/inversiones', validate(createInversionSchema), async (req, res, ne
 
 router.delete('/inversiones/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query('SELECT * FROM movimientos_inversiones WHERE id = $1', [id]);
     if (!rows[0]) return res.status(404).json({ error: 'Inversión no encontrada' });

@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
+const parseId = require('../lib/parseId');
 const { createComprobanteSchema, queryComprobantesSchema } = require('../schemas/comprobantes');
 
 router.use(requireAuth);
@@ -106,8 +107,8 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
 // ─── Eliminar (soft delete) ───────────────────────────────────────────────────
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query(
       'UPDATE comprobantes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
@@ -125,8 +126,8 @@ router.delete('/:id', async (req, res, next) => {
 // ─── Archivo adjunto ──────────────────────────────────────────────────────────
 router.get('/:id/archivo', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query(
       'SELECT archivo_data, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1',

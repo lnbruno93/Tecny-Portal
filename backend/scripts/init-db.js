@@ -5,7 +5,7 @@
  */
 require('dotenv').config();
 const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
 

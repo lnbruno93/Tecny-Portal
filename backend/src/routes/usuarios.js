@@ -1,10 +1,11 @@
 const router = require('express').Router();
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
+const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
 
 const TOOLS = ['cotizador','financiera','cajas','envios','usuarios'];
@@ -68,8 +69,8 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
 
 router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows: before } = await db.query(
       'SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL', [id]
@@ -119,8 +120,8 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     if (id === req.user.id) {
       return res.status(400).json({ error: 'No podés eliminar tu propia cuenta' });

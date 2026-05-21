@@ -5,6 +5,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../schemas/envios');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
+const parseId = require('../lib/parseId');
 
 router.use(requireAuth);
 
@@ -87,8 +88,8 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
 
 router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows: before } = await db.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL', [id]
@@ -147,8 +148,8 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query(
       'UPDATE envios SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',

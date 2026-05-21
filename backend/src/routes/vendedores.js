@@ -3,6 +3,7 @@ const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const { createVendedorSchema } = require('../schemas/vendedores');
+const parseId = require('../lib/parseId');
 
 router.use(requireAuth);
 
@@ -29,8 +30,8 @@ router.post('/', validate(createVendedorSchema), async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const id = parseInt(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
     await db.query('DELETE FROM vendedores WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (err) {
