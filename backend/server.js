@@ -11,9 +11,10 @@ if (process.env.SENTRY_DSN) {
 }
 
 const app = require('./src/app');
+const logger = require('./src/lib/logger');
 
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
-  console.log(`iPro API corriendo en puerto ${PORT}`);
+  logger.info({ port: PORT, env: process.env.NODE_ENV || 'production' }, 'iPro API iniciada');
 });

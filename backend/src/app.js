@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const pinoHttp = require('pino-http');
+const logger = require('./lib/logger');
 
 const authRoutes        = require('./routes/auth');
 const vendedoresRoutes  = require('./routes/vendedores');
@@ -39,6 +41,17 @@ app.use(rateLimit({
 }));
 
 app.use(express.json({ limit: '10mb' }));
+
+// Logging de requests (silencia /health para no generar ruido)
+app.use(pinoHttp({
+  logger,
+  customProps: (req) => ({ userId: req.user?.id }),
+  autoLogging: { ignore: (req) => req.url === '/health' },
+  serializers: {
+    req: (req) => ({ method: req.method, url: req.url }),
+    res: (res) => ({ statusCode: res.statusCode }),
+  },
+}));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
@@ -78,9 +91,12 @@ if (process.env.SENTRY_DSN) {
   Sentry.setupExpressErrorHandler(app);
 }
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(err.status || 500).json({ error: err.message || 'Error interno' });
+app.use((err, req, res, _next) => {
+  const status = err.status || 500;
+  if (status >= 500) {
+    (req.log || logger).error({ err }, err.message);
+  }
+  res.status(status).json({ error: err.message || 'Error interno' });
 });
 
 module.exports = app;
