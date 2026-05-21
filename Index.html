@@ -226,6 +226,8 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .cfg-section{background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
 .cfg-row{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--border);font-size:13px}
 .cfg-row:last-child{border:none}
+.change-pass-btn{width:100%;margin-top:4px;padding:11px;background:var(--navy4);border:1px solid var(--border);border-radius:9px;color:var(--text2);font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:color .15s,border-color .15s}
+.change-pass-btn:hover{color:#fff;border-color:var(--blue)}
 .logout-btn{width:100%;margin-top:4px;padding:11px;background:var(--red2);border:1px solid rgba(248,81,73,.18);border-radius:9px;color:var(--red);font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer}
 .loading-msg{padding:32px;text-align:center;color:var(--text3);font-size:13px}
 .loading-msg i{font-size:24px;display:block;margin-bottom:8px;opacity:.3}
@@ -428,6 +430,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
             <div class="cfg-row"><span style="color:#fff">Contraseña</span><input type="password" id="cfg-fin-pass" placeholder="••••••••" style="width:200px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none"/></div>
             <div class="cfg-row" style="border:none"><button class="btn-primary" onclick="guardarCredFinanciera()"><i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar credenciales</button></div>
           </div>
+          <button class="change-pass-btn" onclick="openCambiarPassModal()"><i class="ti ti-lock-open" style="font-size:14px;margin-right:6px"></i>Cambiar contraseña</button>
           <button class="logout-btn" onclick="doLogout()"><i class="ti ti-logout" style="font-size:14px;margin-right:6px"></i>Cerrar sesión</button>
         </div>
       </div>
@@ -480,6 +483,18 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div class="fg"><label>Tipo</label><select id="c-tipo"><option value="amigo">Amigo</option><option value="familiar">Familiar</option><option value="cliente">Cliente</option><option value="inversor">Inversor</option><option value="ipro team">iPro Team</option></select></div>
     <div class="modal-err" id="modal-con-err"></div>
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-contacto')">Cancelar</button><button class="btn-save" id="btn-save-con" onclick="saveContacto()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- MODAL CAMBIAR CONTRASEÑA -->
+<div class="modal-bg" id="modal-cambiar-pass">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-title"><span>Cambiar contraseña</span><button class="modal-close" onclick="closeModal('modal-cambiar-pass')"><i class="ti ti-x"></i></button></div>
+    <div class="fg"><label>Contraseña actual</label><input type="password" id="cp-current" placeholder="••••••••" autocomplete="current-password"/></div>
+    <div class="fg"><label>Nueva contraseña</label><input type="password" id="cp-new" placeholder="mínimo 8 caracteres" autocomplete="new-password"/></div>
+    <div class="fg"><label>Confirmar nueva contraseña</label><input type="password" id="cp-confirm" placeholder="repetir contraseña" autocomplete="new-password"/></div>
+    <div class="modal-err" id="modal-cp-err"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-cambiar-pass')">Cancelar</button><button class="btn-save" id="btn-cp-save" onclick="cambiarPass()">Guardar</button></div>
   </div>
 </div>
 
@@ -1131,6 +1146,32 @@ function go(id){
   if(id==='usuarios'&&CU&&CU.perms.usuarios)loadUsersFromSheet();
 }
 
+function openCambiarPassModal(){
+  ['cp-current','cp-new','cp-confirm'].forEach(id=>document.getElementById(id).value='');
+  const err=document.getElementById('modal-cp-err');err.textContent='';err.style.display='none';
+  document.getElementById('modal-cambiar-pass').classList.add('open');
+}
+async function cambiarPass(){
+  const cur=document.getElementById('cp-current').value.trim();
+  const nw=document.getElementById('cp-new').value.trim();
+  const con=document.getElementById('cp-confirm').value.trim();
+  const err=document.getElementById('modal-cp-err');
+  const btn=document.getElementById('btn-cp-save');
+  err.style.display='none';
+  if(!cur||!nw||!con){err.textContent='Completá todos los campos';err.style.display='block';return;}
+  if(nw.length<8){err.textContent='La nueva contraseña debe tener al menos 8 caracteres';err.style.display='block';return;}
+  if(nw!==con){err.textContent='Las contraseñas no coinciden';err.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    await finApi('/api/auth/change-password','POST',{currentPassword:cur,newPassword:nw});
+    closeModal('modal-cambiar-pass');
+    showToast('Contraseña actualizada correctamente',true);
+  }catch(e){
+    err.textContent=e.message||'Error al cambiar la contraseña';err.style.display='block';
+  }finally{
+    btn.disabled=false;btn.textContent='Guardar';
+  }
+}
 function doLogout(){
   localStorage.removeItem('fin_token');
   CU=null;
