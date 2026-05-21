@@ -15,7 +15,7 @@ router.use(requireAuth, adminOnly);
 router.get('/', async (_req, res, next) => {
   try {
     const { rows: users } = await db.query(
-      'SELECT id, nombre, username, email, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY nombre'
+      'SELECT id, nombre, username, email, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY nombre LIMIT 200'
     );
     const { rows: perms } = await db.query(
       'SELECT user_id, tool, enabled FROM user_permissions WHERE user_id = ANY($1)',

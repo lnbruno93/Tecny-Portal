@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 router.get('/', async (_req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vendedores ORDER BY nombre');
+    const { rows } = await db.query('SELECT * FROM vendedores ORDER BY nombre LIMIT 500');
     res.json(rows);
   } catch (err) {
     next(err);

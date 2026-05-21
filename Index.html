@@ -424,12 +424,6 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
           <div class="cfg-section"><div class="cfg-row"><span style="color:#fff">Usuario</span><span style="color:var(--text2)" id="cfg-u">—</span></div><div class="cfg-row"><span style="color:#fff">Rol</span><span style="color:var(--text2)" id="cfg-r">—</span></div><div class="cfg-row"><span style="color:#fff">Portal</span><span style="color:var(--text2)">iPro | Tech Reseller & Celnyx</span></div></div>
           <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;margin-top:18px">Tipo de cambio</div>
           <div class="cfg-section"><div class="cfg-row"><span style="color:#fff">Dólar (ARS)</span><input type="number" id="tc-global" value="1200" style="width:110px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;text-align:right;font-family:inherit" onchange="syncTC()"/></div></div>
-          <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;margin-top:18px">Credenciales Financiera</div>
-          <div class="cfg-section">
-            <div class="cfg-row"><span style="color:#fff">Email Railway</span><input type="email" id="cfg-fin-email" placeholder="tu@email.com" style="width:200px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none"/></div>
-            <div class="cfg-row"><span style="color:#fff">Contraseña</span><input type="password" id="cfg-fin-pass" placeholder="••••••••" style="width:200px;padding:5px 9px;background:var(--navy4);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:13px;font-family:inherit;outline:none"/></div>
-            <div class="cfg-row" style="border:none"><button class="btn-primary" onclick="guardarCredFinanciera()"><i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar credenciales</button></div>
-          </div>
           <button class="change-pass-btn" onclick="openCambiarPassModal()"><i class="ti ti-lock-open" style="font-size:14px;margin-right:6px"></i>Cambiar contraseña</button>
           <button class="logout-btn" onclick="doLogout()"><i class="ti ti-logout" style="font-size:14px;margin-right:6px"></i>Cerrar sesión</button>
         </div>
@@ -537,20 +531,17 @@ function isoDate(d){return d.toISOString().split('T')[0];}
 function fmtFecha(d){return d.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});}
 function showToast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'#fff':'#f85149';t.style.color=ok?'#0d1117':'#fff';t.style.opacity='1';setTimeout(()=>t.style.opacity='0',2500);}
 function showModalErr(id,msg){const el=document.getElementById(id);el.textContent=msg;el.style.display='block';}
+// Escapa HTML para prevenir XSS al insertar datos del servidor via innerHTML
+function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open'));});
 
 // ── CREDENCIALES FINANCIERA ──
-function getFinCreds(){try{return JSON.parse(localStorage.getItem('fin_creds')||'null');}catch(e){return null;}}
 function getFinToken(){return localStorage.getItem('fin_token')||null;}
-function saveFinCreds(e,p){localStorage.setItem('fin_creds',JSON.stringify({email:e,pass:p}));}
 function saveFinToken(t){localStorage.setItem('fin_token',t);}
-function guardarCredFinanciera(){
-  const e=document.getElementById('cfg-fin-email').value.trim();
-  const p=document.getElementById('cfg-fin-pass').value;
-  if(!e||!p){showToast('Completá email y contraseña',false);return;}
-  saveFinCreds(e,p);showToast('Credenciales guardadas');
-}
+// fin_creds eliminado: guardar contraseñas en localStorage es inseguro.
+// Cuando el token expira, sessionExpirada() muestra el login para que el usuario ingrese de nuevo.
 
 // ── FINANCIERA API ──
 function sessionExpirada(){
@@ -568,8 +559,16 @@ async function finApi(path,method='GET',body=null){
   const token=getFinToken();
   if(token)opts.headers['Authorization']='Bearer '+token;
   if(body)opts.body=JSON.stringify(body);
-  const res=await fetch(FIN_API+path,opts);
+  let res;
+  try{
+    res=await fetch(FIN_API+path,opts);
+  }catch(e){
+    // Red caída, timeout o servidor inaccesible
+    throw new Error('Sin conexión con el servidor. Verificá tu red e intentá de nuevo.');
+  }
   if(res.status===401){sessionExpirada();throw new Error('NO_AUTH');}
+  if(res.status===403){throw new Error('No tenés permiso para realizar esta acción.');}
+  if(res.status===429){throw new Error('Demasiadas solicitudes. Esperá unos minutos e intentá de nuevo.');}
   if(!res.ok){
     let msg='Error del servidor';
     try{const d=await res.json();msg=d.error||d.message||msg;}catch(e){}
@@ -586,22 +585,8 @@ async function finInit(){
   if(token){
     try{await finApi('/api/auth/me');finMostrarApp();return;}catch(e){}
   }
-  const creds=getFinCreds();
-  if(creds){
-    try{
-      const data=await finApi('/api/auth/login','POST',{email:creds.email,password:creds.pass});
-      if(data.token)saveFinToken(data.token);
-      finMostrarApp();return;
-    }catch(e2){
-      document.getElementById('fin-connecting').style.display='none';
-      document.getElementById('fin-error').style.display='block';
-      document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--red);font-size:13px;margin-bottom:12px"><i class="ti ti-alert-circle" style="font-size:28px;display:block;margin-bottom:8px"></i>Credenciales incorrectas</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Actualizá las credenciales en Config</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
-      return;
-    }
-  }
-  document.getElementById('fin-connecting').style.display='none';
-  document.getElementById('fin-error').style.display='block';
-  document.getElementById('fin-error').innerHTML='<div style="padding:40px;text-align:center"><div style="color:var(--amber);font-size:13px;margin-bottom:12px"><i class="ti ti-key" style="font-size:28px;display:block;margin-bottom:8px"></i>Configurá las credenciales</div><div style="font-size:12px;color:var(--text3);margin-bottom:16px">Andá a Config y guardá tu email y contraseña de Financiera</div><button class="btn-secondary" onclick="go(\'config\')"><i class="ti ti-settings" style="font-size:13px"></i>Ir a Config</button></div>';
+  // No hay token válido → mostrar pantalla de login
+  sessionExpirada();
 }
 
 async function finMostrarApp(){
@@ -625,7 +610,7 @@ async function finCargarVendedores(){
       const el=document.getElementById(id);if(!el)return;
       const val=el.value;
       el.innerHTML=id==='f-vendedor'?'<option value="">Todos</option>':'<option value="">Seleccionar...</option>';
-      rows.forEach(v=>el.innerHTML+=`<option value="${v.nombre}">${v.nombre}</option>`);
+      rows.forEach(v=>el.innerHTML+=`<option value="${esc(v.nombre)}">${esc(v.nombre)}</option>`);
       el.value=val;
     });
   }catch(e){}
@@ -662,7 +647,7 @@ async function finRenderDashboard(){
     const tR=lista.reduce((s,c)=>s+parseFloat(c.monto),0),tF=lista.reduce((s,c)=>s+parseFloat(c.monto_financiera),0),tN=lista.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tP=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),saldo=Math.max(0,tN-tP);
     document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${res.pagination.total}</div></div>`;
     if(!lista.length){document.getElementById('fin-tabla-dashboard').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos en el período</div>';return;}
-    document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor_nombre||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
+    document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${esc(c.cliente)}</td><td>${esc(c.vendedor_nombre)||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
   }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
 }
 
@@ -673,7 +658,7 @@ async function finRenderComprobantes(){
     if(!lista.length){document.getElementById('fin-tabla-comprobantes').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin comprobantes</div>';return;}
     const pg=res.pagination;
     const paginationHtml=pg.pages>1?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:12px;border-top:1px solid var(--border)"><button class="btn-secondary" onclick="cbPrev()" ${cbPage<=1?'disabled style="opacity:.4"':''}>&larr; Anterior</button><span style="font-size:12px;color:var(--text2)">Página ${pg.page} / ${pg.pages} · ${pg.total} registros</span><button class="btn-secondary" onclick="cbNext()" ${cbPage>=pg.pages?'disabled style="opacity:.4"':''}>Siguiente &rarr;</button></div>`:'';
-    document.getElementById('fin-tabla-comprobantes').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Neto</th><th>Archivo</th><th></th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor_nombre||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td><td style="display:flex;gap:4px">${c.archivo_nombre?`<button class="btn-sm" onclick="finVerArchivo(${c.id})"><i class="ti ti-eye"></i></button>`:''}<button class="btn-sm btn-danger-sm" onclick="finEliminar(${c.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table>${paginationHtml}`;
+    document.getElementById('fin-tabla-comprobantes').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Neto</th><th>Archivo</th><th></th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${esc(c.cliente)}</td><td>${esc(c.vendedor_nombre)||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td><td style="display:flex;gap:4px">${c.archivo_nombre?`<button class="btn-sm" onclick="finVerArchivo(${c.id})"><i class="ti ti-eye"></i></button>`:''}<button class="btn-sm btn-danger-sm" onclick="finEliminar(${c.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table>${paginationHtml}`;
   }catch(e){showToast('Error cargando comprobantes',false);}
 }
 function cbPrev(){if(cbPage>1){cbPage--;finRenderComprobantes();}}
@@ -691,8 +676,8 @@ async function finRenderPagos(){
     const pagos=resPagos.data;
     document.getElementById('fin-metrics-pagos').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total netos</div><div class="metric-v">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Recibido</div><div class="metric-v green">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Pendiente</div><div class="metric-v amber">${fmtPesos(pend)}</div></div>`;
     const pg=resPagos.pagination;
-    const paginationHtml=pg.pages>1?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:8px"><button class="btn-secondary" onclick="pagosPrev()" ${pagoPage<=1?'disabled style="opacity:.4"':''}>&larr;</button><span style="font-size:12px;color:var(--text2)">${pg.page} / ${pg.pages}</span><button class="btn-secondary" onclick="pagosNext()" ${pagoPage>=pg.pages?'disabled style="opacity:.4"':'']}>&rarr;</button></div>`:'';
-    document.getElementById('fin-lista-pagos').innerHTML=(!pagos.length?'<div class="empty-msg" style="padding:1rem">Sin pagos</div>':pagos.map(p=>`<div class="fin-payment-row"><div class="fin-dot"></div><div style="flex:1"><div style="font-size:14px;font-weight:600">${fmtPesos(p.monto)}</div><div style="font-size:12px;color:var(--text2)">${p.fecha?.substring(0,10)} — ${p.referencia}</div></div><button class="btn-sm btn-danger-sm" onclick="finEliminarPago(${p.id})"><i class="ti ti-trash"></i></button></div>`).join(''))+paginationHtml;
+    const paginationHtml=pg.pages>1?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:8px"><button class="btn-secondary" onclick="pagosPrev()" ${pagoPage<=1?'disabled style="opacity:.4"':''}>&larr;</button><span style="font-size:12px;color:var(--text2)">${pg.page} / ${pg.pages}</span><button class="btn-secondary" onclick="pagosNext()" ${pagoPage>=pg.pages?'disabled style="opacity:.4"':''}>&rarr;</button></div>`:'';
+    document.getElementById('fin-lista-pagos').innerHTML=(!pagos.length?'<div class="empty-msg" style="padding:1rem">Sin pagos</div>':pagos.map(p=>`<div class="fin-payment-row"><div class="fin-dot"></div><div style="flex:1"><div style="font-size:14px;font-weight:600">${fmtPesos(p.monto)}</div><div style="font-size:12px;color:var(--text2)">${p.fecha?.substring(0,10)} — ${esc(p.referencia)}</div></div><button class="btn-sm btn-danger-sm" onclick="finEliminarPago(${p.id})"><i class="ti ti-trash"></i></button></div>`).join(''))+paginationHtml;
   }catch(e){}
 }
 function pagosPrev(){if(pagoPage>1){pagoPage--;finRenderPagos();}}
@@ -704,7 +689,7 @@ async function finRenderHistorial(){
     const lista=await finApi('/api/historial');
     const iconos={'LOGIN':'ti-login','CARGAR_COMPROBANTE':'ti-receipt','ELIMINAR_COMPROBANTE':'ti-trash','REGISTRAR_PAGO_FINANCIERA':'ti-building-bank','ELIMINAR_PAGO_FINANCIERA':'ti-trash'};
     if(!lista.length){document.getElementById('fin-lista-historial').innerHTML='<div class="empty-msg">Sin acciones</div>';return;}
-    document.getElementById('fin-lista-historial').innerHTML=lista.map(h=>`<div class="hist-row"><div class="hist-icon"><i class="ti ${iconos[h.accion]||'ti-activity'}"></i></div><div><div style="font-size:13px;font-weight:600;color:#fff">${h.accion.replace(/_/g,' ')}</div><div style="font-size:12px;color:var(--text2)">${h.detalle||''}</div><div style="font-size:11px;color:var(--text3)">${h.usuario_nombre||'Sistema'} · ${new Date(h.creado_en).toLocaleString('es-AR')}</div></div></div>`).join('');
+    document.getElementById('fin-lista-historial').innerHTML=lista.map(h=>`<div class="hist-row"><div class="hist-icon"><i class="ti ${iconos[h.accion]||'ti-activity'}"></i></div><div><div style="font-size:13px;font-weight:600;color:#fff">${esc(h.accion).replace(/_/g,' ')}</div><div style="font-size:12px;color:var(--text2)">${esc(h.detalle)||''}</div><div style="font-size:11px;color:var(--text3)">${esc(h.usuario_nombre)||'Sistema'} · ${new Date(h.creado_en).toLocaleString('es-AR')}</div></div></div>`).join('');
   }catch(e){}
 }
 
@@ -712,7 +697,7 @@ async function finRenderConfig(){
   document.getElementById('cfg-pct').value=finPct;
   try{
     const rows=await finApi('/api/vendedores');
-    document.getElementById('fin-lista-vendedores').innerHTML=rows.map(v=>`<div class="vendor-row"><span style="color:#fff">${v.nombre}</span><button class="btn-sm btn-danger-sm" onclick="finEliminarVendedor(${v.id})"><i class="ti ti-trash"></i></button></div>`).join('');
+    document.getElementById('fin-lista-vendedores').innerHTML=rows.map(v=>`<div class="vendor-row"><span style="color:#fff">${esc(v.nombre)}</span><button class="btn-sm btn-danger-sm" onclick="finEliminarVendedor(${v.id})"><i class="ti ti-trash"></i></button></div>`).join('');
   }catch(e){}
 }
 
@@ -729,7 +714,7 @@ function finHandleFile(input){
   const reader=new FileReader();
   reader.onload=async e=>{
     window._archivoTemp={name:file.name,data:e.target.result,type:file.type};
-    document.getElementById('fin-file-preview').innerHTML=`<span class="ocr-status"><i class="ti ti-paperclip"></i>${file.name}</span><span class="ocr-status" id="ocr-status"><i class="ti ti-loader"></i>Leyendo monto...</span>`;
+    document.getElementById('fin-file-preview').innerHTML=`<span class="ocr-status"><i class="ti ti-paperclip"></i>${esc(file.name)}</span><span class="ocr-status" id="ocr-status"><i class="ti ti-loader"></i>Leyendo monto...</span>`;
     if(!file.type.includes('image')){document.getElementById('ocr-status').innerHTML='<i class="ti ti-file-text"></i> PDF adjunto';return;}
     try{
       const canvas=document.createElement('canvas'),img=new Image();
@@ -846,12 +831,12 @@ function renderEnvios(){
     const pagos=enviosItems.filter(i=>i.envioId===e.id&&i.tipo==='pago');
     const estadoCls={Pendiente:'s-pendiente','En camino':'s-camino',Entregado:'s-entregado',Cancelado:'s-cancelado'}[e.estado]||'s-pendiente';
     return `<div class="envio-card">
-      <div class="envio-card-top"><div><div class="envio-nombre">${e.cliente}</div>${e.telefono?`<div class="envio-tel">${e.telefono}</div>`:''}</div><span class="status-badge ${estadoCls}">${e.estado}</span></div>
-      ${prods.length?`<div style="margin-bottom:8px">${prods.map(p=>`<span class="prod-tag">${p.descripcion}</span>`).join('')}</div>`:''}
-      ${pagos.length?`<div style="margin-bottom:8px">${pagos.map(p=>{const esUSD=p.metodoPago&&(p.metodoPago.includes('USD')||p.metodoPago.includes('USDT')||p.metodoPago==='PayPal');return `<span class="pago-tag ${esUSD?'pago-usd':'pago-ars'}">${p.metodoPago}: ${esUSD?'u$s':'$'}${fmt(p.monto)}</span>`;}).join('')}</div>`:''}
-      ${e.horario?`<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><i class="ti ti-clock" style="font-size:12px;margin-right:4px"></i>${e.horario}</div>`:''}
-      ${e.direccion?`<div class="envio-addr"><i class="ti ti-map-pin" style="font-size:13px;flex-shrink:0"></i>${e.direccion}${e.barrio?', '+e.barrio:''}</div>`:''}
-      ${e.notas?`<div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:var(--navy3);border-radius:6px">${e.notas}</div>`:''}
+      <div class="envio-card-top"><div><div class="envio-nombre">${esc(e.cliente)}</div>${e.telefono?`<div class="envio-tel">${esc(e.telefono)}</div>`:''}</div><span class="status-badge ${estadoCls}">${e.estado}</span></div>
+      ${prods.length?`<div style="margin-bottom:8px">${prods.map(p=>`<span class="prod-tag">${esc(p.descripcion)}</span>`).join('')}</div>`:''}
+      ${pagos.length?`<div style="margin-bottom:8px">${pagos.map(p=>{const esUSD=p.metodoPago&&(p.metodoPago.includes('USD')||p.metodoPago.includes('USDT')||p.metodoPago==='PayPal');return `<span class="pago-tag ${esUSD?'pago-usd':'pago-ars'}">${esc(p.metodoPago)}: ${esUSD?'u$s':'$'}${fmt(p.monto)}</span>`;}).join('')}</div>`:''}
+      ${e.horario?`<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><i class="ti ti-clock" style="font-size:12px;margin-right:4px"></i>${esc(e.horario)}</div>`:''}
+      ${e.direccion?`<div class="envio-addr"><i class="ti ti-map-pin" style="font-size:13px;flex-shrink:0"></i>${esc(e.direccion)}${e.barrio?', '+esc(e.barrio):''}</div>`:''}
+      ${e.notas?`<div style="font-size:12px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:var(--navy3);border-radius:6px">${esc(e.notas)}</div>`:''}
       <div class="envio-actions">
         <button class="action-btn ${e.estado==='Pendiente'?'st-active':''}" onclick="cambiarEstado('${e.id}','Pendiente')">Pendiente</button>
         <button class="action-btn ${e.estado==='En camino'?'st-camino':''}" onclick="cambiarEstado('${e.id}','En camino')">En camino</button>
@@ -903,7 +888,7 @@ function editarEnvio(id){
   document.getElementById('modal-envio').classList.add('open');
 }
 
-function addEnvioProd(val=''){eprodCount++;const n=eprodCount;const d=document.createElement('div');d.className='prod-item';d.id='eprod-'+n;d.innerHTML=`<input type="text" placeholder="ej. iPhone 16 Pro 256GB" value="${val}" id="eprod-val-${n}"/><button class="btn-rm-sm" onclick="document.getElementById('eprod-${n}').remove()"><i class="ti ti-x"></i></button>`;document.getElementById('e-prods-list').appendChild(d);}
+function addEnvioProd(val=''){eprodCount++;const n=eprodCount;const d=document.createElement('div');d.className='prod-item';d.id='eprod-'+n;d.innerHTML=`<input type="text" placeholder="ej. iPhone 16 Pro 256GB" value="${esc(val)}" id="eprod-val-${n}"/><button class="btn-rm-sm" onclick="document.getElementById('eprod-${n}').remove()"><i class="ti ti-x"></i></button>`;document.getElementById('e-prods-list').appendChild(d);}
 function addEnvioPago(metodo='',monto=''){epagoCount++;const n=epagoCount;const d=document.createElement('div');d.className='pago-item';d.id='epago-'+n;d.innerHTML=`<select id="epago-met-${n}">${METODOS_PAGO.map(m=>`<option value="${m}" ${m===metodo?'selected':''}>${m}</option>`).join('')}</select><input type="number" placeholder="Monto" id="epago-mnt-${n}" value="${monto||''}" min="0"/><button class="btn-rm-sm" onclick="document.getElementById('epago-${n}').remove()"><i class="ti ti-x"></i></button>`;document.getElementById('e-pagos-list').appendChild(d);}
 
 async function saveEnvio(){
@@ -945,7 +930,8 @@ async function loadCajas(){
   }catch(e){showToast('Error cargando Cajas',false);}
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
 }
-function cname(id){const c=contacts.find(x=>x.id===String(id));return c?`${c.nombre} ${c.apellido}`.trim():id;}
+function cname(id){const c=contacts.find(x=>x.id===String(id));return c?`${c.nombre} ${c.apellido}`.trim():String(id);}
+function cnameEsc(id){return esc(cname(id));}
 function ctipo(id){const c=contacts.find(x=>x.id===String(id));return c?c.tipo:'';}
 function badge(tipo){const map={amigo:'b-amigo',familiar:'b-familiar',cliente:'b-cliente',inversor:'b-inversor','ipro team':'b-ipro',debe:'b-debe',pago:'b-pago',pendiente:'b-pendiente',inversion:'b-inversion'};return `<span class="badge ${map[tipo?.toLowerCase()]||'b-pendiente'}">${tipo.charAt(0).toUpperCase()+tipo.slice(1)}</span>`;}
 function renderDeudas(){
@@ -956,7 +942,7 @@ function renderDeudas(){
   document.getElementById('m-ars').textContent=tARS?'$'+fmt(tARS):'—';
   document.getElementById('m-usd').textContent=tUSD?'u$s'+fmt(tUSD):'—';
   document.getElementById('m-count').textContent=cnt||'—';
-  const filas=resumenDeudas.slice().sort((a,b)=>(b.saldoUSD+b.saldoARS)-(a.saldoUSD+a.saldoARS)).map(r=>`<tr style="cursor:pointer" onclick="verMovDeudas('${r.cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(r.cid)}</td><td>${ctipo(r.cid)?badge(ctipo(r.cid)):'—'}</td><td>${r.saldoARS?'<span style="color:var(--green)">$'+fmt(r.saldoARS)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td>${r.saldoUSD?'<span style="color:var(--amber)">u$s'+fmt(r.saldoUSD)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--text3)">${r.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${r.cid}','deuda')">+</button></td></tr>`).join('');
+  const filas=resumenDeudas.slice().sort((a,b)=>(b.saldoUSD+b.saldoARS)-(a.saldoUSD+a.saldoARS)).map(r=>`<tr style="cursor:pointer" onclick="verMovDeudas('${r.cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cnameEsc(r.cid)}</td><td>${ctipo(r.cid)?badge(ctipo(r.cid)):'—'}</td><td>${r.saldoARS?'<span style="color:var(--green)">$'+fmt(r.saldoARS)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td>${r.saldoUSD?'<span style="color:var(--amber)">u$s'+fmt(r.saldoUSD)+'</span>':'<span style="color:var(--text3)">—</span>'}</td><td style="color:var(--text3)">${r.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${r.cid}','deuda')">+</button></td></tr>`).join('');
   document.getElementById('deudas-body').innerHTML=`<table class="data-table"><thead><tr><th>Contacto</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Movimientos</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
 }
 function renderInversiones(){
@@ -964,12 +950,12 @@ function renderInversiones(){
   const tTotal=resumenInversiones.reduce((a,r)=>a+r.total,0);
   document.getElementById('m-inv-total').textContent=tTotal?'u$s'+fmt(tTotal):'—';
   document.getElementById('m-inv-count').textContent=resumenInversiones.length||'—';
-  const filas=resumenInversiones.slice().sort((a,b)=>b.total-a.total).map(r=>`<tr style="cursor:pointer" onclick="verMovInversiones('${r.cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cname(r.cid)}</td><td>${ctipo(r.cid)?badge(ctipo(r.cid)):'—'}</td><td style="color:var(--green);font-weight:600">u$s${fmt(r.total)}</td><td style="color:var(--amber)">${r.ultimaTasa||'—'}</td><td style="color:var(--text3)">${r.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${r.cid}','inversion')">+</button></td></tr>`).join('');
+  const filas=resumenInversiones.slice().sort((a,b)=>b.total-a.total).map(r=>`<tr style="cursor:pointer" onclick="verMovInversiones('${r.cid}')" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''"><td style="font-weight:600">${cnameEsc(r.cid)}</td><td>${ctipo(r.cid)?badge(ctipo(r.cid)):'—'}</td><td style="color:var(--green);font-weight:600">u$s${fmt(r.total)}</td><td style="color:var(--amber)">${esc(r.ultimaTasa)||'—'}</td><td style="color:var(--text3)">${r.movs}</td><td><button class="btn-plus" onclick="event.stopPropagation();openMovModal('${r.cid}','inversion')">+</button></td></tr>`).join('');
   document.getElementById('inversiones-body').innerHTML=`<table class="data-table"><thead><tr><th>Inversor</th><th>Tipo</th><th>Monto USD</th><th>Tasa</th><th>Movimientos</th><th></th></tr></thead><tbody>${filas}</tbody></table>`;
 }
 function renderContactos(){
   if(!contacts.length){document.getElementById('contactos-body').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin contactos</div>';return;}
-  document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th><th></th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${c.nombre}</td><td>${c.apellido||'—'}</td><td>${badge(c.tipo)}</td><td style="text-align:right;white-space:nowrap"><button class="btn-sm" onclick="openEditContacto('${c.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button> <button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarContacto('${c.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`;
+  document.getElementById('contactos-body').innerHTML=`<table class="data-table"><thead><tr><th>Nombre</th><th>Apellido</th><th>Tipo</th><th></th></tr></thead><tbody>${contacts.map(c=>`<tr><td style="font-weight:600">${esc(c.nombre)}</td><td>${esc(c.apellido)||'—'}</td><td>${badge(c.tipo)}</td><td style="text-align:right;white-space:nowrap"><button class="btn-sm" onclick="openEditContacto('${c.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button> <button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarContacto('${c.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`;
 }
 async function verMovDeudas(cid){
   currentCid=cid;currentMovTipo='deuda';
@@ -989,7 +975,7 @@ async function verMovDeudas(cid){
     document.getElementById('mov-saldo-ars').textContent=sARS?'$'+fmt(sARS):'—';
     document.getElementById('mov-saldo-usd').textContent=sUSD?'u$s'+fmt(sUSD):'—';
     const sorted=movDeudas.slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));
-    document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${m.concepto||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarDeuda('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
+    document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>ARS</th><th>USD</th><th>Concepto</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td>${badge(m.tipo)}</td><td>${m.ars?'$'+fmt(m.ars):'—'}</td><td style="color:var(--amber)">${m.usd?'u$s'+fmt(m.usd):'—'}</td><td style="color:var(--text2)">${esc(m.concepto)||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarDeuda('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos</div>';
   }catch(e){document.getElementById('movimientos-body').innerHTML='<div class="loading-msg">Error cargando movimientos</div>';}
 }
 async function verMovInversiones(cid){
@@ -1008,7 +994,7 @@ async function verMovInversiones(cid){
     const total=movInversiones.reduce((a,m)=>a+m.monto,0);
     document.getElementById('mov-saldo-usd').textContent=total?'u$s'+fmt(total):'—';
     const sorted=movInversiones.slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));
-    document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${m.tasa||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarInversion('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
+    document.getElementById('movimientos-body').innerHTML=sorted.length?`<table class="data-table"><thead><tr><th>Fecha</th><th>Monto USD</th><th>Tasa</th><th></th></tr></thead><tbody>${sorted.map(m=>`<tr><td style="color:var(--text2)">${m.fecha}</td><td style="color:var(--green);font-weight:600">${m.monto?'u$s'+fmt(m.monto):'—'}</td><td style="color:var(--amber)">${esc(m.tasa)||'—'}</td><td><button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarInversion('${m.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-msg"><i class="ti ti-inbox"></i>Sin inversiones</div>';
   }catch(e){document.getElementById('movimientos-body').innerHTML='<div class="loading-msg">Error cargando inversiones</div>';}
 }
 function backFromMov(){
@@ -1018,7 +1004,7 @@ function backFromMov(){
   currentCid=null;
 }
 function setCajasTab(t){['deudas','inversiones','contactos','movimientos'].forEach(x=>document.getElementById('cajasTab-'+x).style.display='none');document.getElementById('cajasTab-'+t).style.display='block';document.querySelectorAll('.ctab').forEach(b=>b.classList.remove('active'));document.getElementById('ctab-'+t)&&document.getElementById('ctab-'+t).classList.add('active');}
-function populateContactSel(){document.getElementById('mov-contacto').innerHTML=contacts.map(c=>`<option value="${c.id}">${c.nombre} ${c.apellido} (${c.tipo})</option>`).join('');}
+function populateContactSel(){document.getElementById('mov-contacto').innerHTML=contacts.map(c=>`<option value="${c.id}">${esc(c.nombre)} ${esc(c.apellido)} (${esc(c.tipo)})</option>`).join('');}
 function openMovModal(cid,tipo){
   currentMovTipo=tipo;
   document.getElementById('modal-mov-title').textContent=tipo==='inversion'?'Nueva inversión':'Nuevo movimiento';
@@ -1313,7 +1299,7 @@ function copyResult(){
 function renderUsers(){
   const tools=['cotizador','financiera','cajas','envios','usuarios'];
   if(!USERS.length){document.getElementById('usr-list').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
-  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';const esYo=CU&&String(u.id)===String(CU.id);return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${u.nombre}</div><div style="font-size:11px;color:var(--text2)">${u.username} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><div style="display:flex;gap:6px;flex-shrink:0"><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button>${esYo?'':`<button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarUser('${u.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button>`}</div></div>`;}).join('')}</div>`;
+  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';const esYo=CU&&String(u.id)===String(CU.id);return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${esc(u.nombre)}</div><div style="font-size:11px;color:var(--text2)">${esc(u.username)} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><div style="display:flex;gap:6px;flex-shrink:0"><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button>${esYo?'':`<button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarUser('${u.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button>`}</div></div>`;}).join('')}</div>`;
 }
 function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';document.getElementById('m-role').value=u.role||'op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');document.getElementById('m-role').value='op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}

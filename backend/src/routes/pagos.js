@@ -5,6 +5,7 @@ const validate = require('../lib/validate');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createPagoSchema } = require('../schemas/pagos');
 const parseId = require('../lib/parseId');
+const audit  = require('../lib/audit');
 
 router.use(requireAuth);
 
@@ -49,6 +50,7 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
       'INSERT INTO pagos (fecha, monto, referencia) VALUES ($1,$2,$3) RETURNING *',
       [fecha, monto, referencia ?? null]
     );
+    await audit('pagos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
     next(err);
@@ -61,10 +63,11 @@ router.delete('/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
-      'UPDATE pagos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id',
+      'UPDATE pagos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'No encontrado' });
+    await audit('pagos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     next(err);

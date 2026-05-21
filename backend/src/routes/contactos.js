@@ -11,7 +11,7 @@ router.use(requireAuth);
 router.get('/', async (_req, res, next) => {
   try {
     const { rows } = await db.query(
-      'SELECT * FROM contactos WHERE deleted_at IS NULL ORDER BY nombre, apellido'
+      'SELECT * FROM contactos WHERE deleted_at IS NULL ORDER BY nombre, apellido LIMIT 500'
     );
     res.json(rows);
   } catch (err) {
