@@ -79,7 +79,10 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
 
     const hash = await bcrypt.hash(newPassword, 10);
-    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, user.id]);
+    await db.query(
+      'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
+      [hash, user.id]
+    );
     await audit('users', 'UPDATE', user.id, { tipo: 'cambio_password', user_id: req.user.id });
 
     res.json({ ok: true });

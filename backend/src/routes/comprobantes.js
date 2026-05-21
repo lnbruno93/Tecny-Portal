@@ -8,17 +8,32 @@ const { createComprobanteSchema, queryComprobantesSchema } = require('../schemas
 
 router.use(requireAuth);
 
-// ─── Totales globales (para métricas sin traer todos los registros) ───────────
-router.get('/totales', async (_req, res, next) => {
+// ─── Totales con los mismos filtros que la lista ─────────────────────────────
+router.get('/totales', validate(queryComprobantesSchema, 'query'), async (req, res, next) => {
   try {
+    const { desde, hasta, vendedor, buscar } = req.query;
+    let where = 'WHERE 1=1';
+    const params = [];
+
+    if (desde)   { params.push(desde);   where += ` AND c.fecha >= $${params.length}`; }
+    if (hasta)   { params.push(hasta);   where += ` AND c.fecha <= $${params.length}`; }
+    if (vendedor){ params.push(vendedor); where += ` AND v.nombre = $${params.length}`; }
+    if (buscar)  {
+      params.push(`%${buscar}%`);
+      where += ` AND (c.cliente ILIKE $${params.length} OR c.referencia ILIKE $${params.length})`;
+    }
+
     const { rows } = await db.query(`
       SELECT
-        COUNT(*)             AS count,
-        COALESCE(SUM(monto),            0) AS total_monto,
-        COALESCE(SUM(monto_financiera), 0) AS total_financiera,
-        COALESCE(SUM(monto_neto),       0) AS total_neto
-      FROM comprobantes
-    `);
+        COUNT(*)                        AS count,
+        COALESCE(SUM(c.monto),            0) AS total_monto,
+        COALESCE(SUM(c.monto_financiera), 0) AS total_financiera,
+        COALESCE(SUM(c.monto_neto),       0) AS total_neto
+      FROM comprobantes c
+      LEFT JOIN vendedores v ON v.id = c.vendedor_id
+      ${where} AND c.deleted_at IS NULL
+    `, params);
+
     const r = rows[0];
     res.json({
       count:            parseInt(r.count),
@@ -51,7 +66,7 @@ router.get('/', validate(queryComprobantesSchema, 'query'), async (req, res, nex
     const baseQuery = `
       FROM comprobantes c
       LEFT JOIN vendedores v ON v.id = c.vendedor_id
-      ${where}
+      ${where} AND c.deleted_at IS NULL
     `;
 
     const [countRes, dataRes] = await Promise.all([
@@ -88,16 +103,18 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
   }
 });
 
-// ─── Eliminar ─────────────────────────────────────────────────────────────────
+// ─── Eliminar (soft delete) ───────────────────────────────────────────────────
 router.delete('/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query('SELECT * FROM comprobantes WHERE id = $1', [id]);
+    const { rows } = await db.query(
+      'UPDATE comprobantes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+      [id]
+    );
     if (!rows[0]) return res.status(404).json({ error: 'No encontrado' });
 
-    await db.query('DELETE FROM comprobantes WHERE id = $1', [id]);
     await audit('comprobantes', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {

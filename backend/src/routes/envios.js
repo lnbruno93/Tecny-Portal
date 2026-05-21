@@ -4,6 +4,7 @@ const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../schemas/envios');
+const { parsePagination, paginatedResponse } = require('../lib/paginate');
 
 router.use(requireAuth);
 
@@ -27,9 +28,20 @@ router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => 
                    OR e.barrio ILIKE $${params.length} OR e.telefono ILIKE $${params.length}
                    OR e.notas ILIKE $${params.length})`;
     }
-    query += ' GROUP BY e.id ORDER BY e.fecha DESC, e.id DESC';
-    const { rows } = await db.query(query, params);
-    res.json(rows.map(r => ({ ...r, items: r.items || [] })));
+    // Contar sin paginación para el total
+    const countQuery = query.replace(
+      /SELECT e\.\*,[\s\S]*?FROM envios e/,
+      'SELECT COUNT(DISTINCT e.id) FROM envios e'
+    );
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
+    query += ` GROUP BY e.id ORDER BY e.fecha DESC, e.id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+
+    const [countRes, dataRes] = await Promise.all([
+      db.query(countQuery, params),
+      db.query(query, [...params, limit, offset]),
+    ]);
+    const total = parseInt(countRes.rows[0].count);
+    res.json(paginatedResponse(dataRes.rows.map(r => ({ ...r, items: r.items || [] })), total, { page, limit }));
   } catch (err) {
     next(err);
   }

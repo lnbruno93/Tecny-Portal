@@ -35,6 +35,8 @@ const queryEnviosSchema = z.object({
   buscar: z.string().trim().max(200).optional(),
   desde:  z.string().date().optional(),
   hasta:  z.string().date().optional(),
+  page:   z.coerce.number().int().positive().optional(),
+  limit:  z.coerce.number().int().positive().max(200).optional(),
 });
 
 module.exports = { createEnvioSchema, updateEnvioSchema, queryEnviosSchema };

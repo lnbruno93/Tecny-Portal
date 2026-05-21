@@ -12,7 +12,7 @@ router.get('/totales', async (_req, res, next) => {
   try {
     const { rows } = await db.query(`
       SELECT COUNT(*) AS count, COALESCE(SUM(monto), 0) AS total_monto
-      FROM pagos
+      FROM pagos WHERE deleted_at IS NULL
     `);
     res.json({
       count:       parseInt(rows[0].count),
@@ -29,8 +29,8 @@ router.get('/', async (req, res, next) => {
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
 
     const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM pagos'),
-      db.query('SELECT * FROM pagos ORDER BY fecha DESC, id DESC LIMIT $1 OFFSET $2', [limit, offset]),
+      db.query('SELECT COUNT(*) FROM pagos WHERE deleted_at IS NULL'),
+      db.query('SELECT * FROM pagos WHERE deleted_at IS NULL ORDER BY fecha DESC, id DESC LIMIT $1 OFFSET $2', [limit, offset]),
     ]);
 
     const total = parseInt(countRes.rows[0].count);
@@ -54,12 +54,16 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
   }
 });
 
-// ─── Eliminar ─────────────────────────────────────────────────────────────────
+// ─── Eliminar (soft delete) ───────────────────────────────────────────────────
 router.delete('/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
-    await db.query('DELETE FROM pagos WHERE id = $1', [id]);
+    const { rows } = await db.query(
+      'UPDATE pagos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id',
+      [id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'No encontrado' });
     res.json({ ok: true });
   } catch (err) {
     next(err);

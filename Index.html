@@ -815,7 +815,8 @@ async function loadEnvios(){
   const btn=document.getElementById('btn-refresh-envios');btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Cargando...';
   try{
     const fecha=isoDate(currentDate);
-    const lista=await finApi('/api/envios?desde='+fecha+'&hasta='+fecha);
+    const res=await finApi('/api/envios?desde='+fecha+'&hasta='+fecha+'&limit=200');
+    const lista=res.data;
     envios=lista.map(e=>({id:String(e.id),fecha:e.fecha?.substring(0,10)||'',cliente:e.cliente||'',telefono:e.telefono||'',direccion:e.direccion||'',barrio:e.barrio||'',costoEnvio:parseFloat(e.costo_envio)||0,totalCobrado:parseFloat(e.total_cobrado)||0,horario:e.horario||'',operador:e.operador||'',notas:e.notas||'',estado:e.estado||'Pendiente',prioridad:e.prioridad||''}));
     enviosItems=lista.flatMap(e=>(e.items||[]).map(i=>({id:String(i.id),envioId:String(e.id),tipo:i.tipo||'',descripcion:i.descripcion||'',monto:parseFloat(i.monto)||0,metodoPago:i.metodo_pago||''})));
     updateMetricasEnvios();renderEnvios();

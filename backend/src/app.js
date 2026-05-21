@@ -26,9 +26,21 @@ app.set('trust proxy', 1);
 // Security headers
 app.use(helmet());
 
-// CORS
+// CORS — lista blanca explícita. Sin CORS_ORIGIN en env, solo permite localhost
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:5500')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+if (!process.env.CORS_ORIGIN) {
+  logger.warn('CORS_ORIGIN no configurado — solo se permiten orígenes localhost');
+}
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: (origin, cb) => {
+    // Requests sin Origin (Supertest, curl, health checks): permitir
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    cb(Object.assign(new Error(`Origen no permitido: ${origin}`), { status: 403 }));
+  },
   credentials: true,
 }));
 

@@ -8,9 +8,10 @@ const baseComprobante = z.object({
   monto_financiera: z.number().min(0).default(0),
   monto_neto:       z.number().min(0).optional(),
   referencia:       z.string().trim().max(500).optional().nullable(),
-  archivo_data:     z.string().optional().nullable(),
+  // Base64 de archivo adjunto — max ~7MB de string (≈5MB real)
+  archivo_data:     z.string().max(7 * 1024 * 1024, 'Archivo demasiado grande (máx. 5MB)').optional().nullable(),
   archivo_nombre:   z.string().trim().max(255).optional().nullable(),
-  archivo_tipo:     z.string().trim().max(100).optional().nullable(),
+  archivo_tipo:     z.enum(['image/jpeg','image/png','image/webp','application/pdf']).optional().nullable(),
 });
 
 const createComprobanteSchema = baseComprobante;

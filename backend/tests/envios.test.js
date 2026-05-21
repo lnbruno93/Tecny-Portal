@@ -92,8 +92,8 @@ describe('GET /api/envios con filtro de fecha', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    const ids = res.body.map(e => e.id);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    const ids = res.body.data.map(e => e.id);
     expect(ids).toContain(envioId);
   });
 
@@ -103,7 +103,7 @@ describe('GET /api/envios con filtro de fecha', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    const ids = res.body.map(e => e.id);
+    const ids = res.body.data.map(e => e.id);
     expect(ids).not.toContain(envioId);
   });
 
@@ -112,7 +112,7 @@ describe('GET /api/envios con filtro de fecha', () => {
       .get(`/api/envios?desde=${hoy}&hasta=${hoy}`)
       .set('Authorization', `Bearer ${token}`);
 
-    const envio = res.body.find(e => e.id === envioId);
+    const envio = res.body.data.find(e => e.id === envioId);
     expect(envio).toBeDefined();
     expect(Array.isArray(envio.items)).toBe(true);
     expect(envio.items.length).toBe(2);
@@ -139,7 +139,7 @@ describe('PUT /api/envios/:id — cambio de estado', () => {
       .get(`/api/envios?desde=${hoy}&hasta=${hoy}`)
       .set('Authorization', `Bearer ${token}`);
 
-    const envio = res.body.find(e => e.id === envioId);
+    const envio = res.body.data.find(e => e.id === envioId);
     expect(envio).toBeDefined();
     // Los 2 items deben seguir intactos
     expect(envio.items.length).toBe(2);
@@ -180,7 +180,7 @@ describe('DELETE /api/envios/:id', () => {
       .get(`/api/envios?desde=${hoy}&hasta=${hoy}`)
       .set('Authorization', `Bearer ${token}`);
 
-    const ids = res.body.map(e => e.id);
+    const ids = res.body.data.map(e => e.id);
     expect(ids).not.toContain(envioId);
   });
 
