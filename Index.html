@@ -361,7 +361,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
               </div>
             </div>
             <div id="fin-comprobantes" class="fin-section">
-              <div class="filter-row"><div class="filter-group"><label>Desde</label><input type="date" id="cb-desde"/></div><div class="filter-group"><label>Hasta</label><input type="date" id="cb-hasta"/></div><div class="filter-group"><label>Buscar</label><input type="text" id="cb-buscar" placeholder="Cliente..." oninput="finRenderComprobantes()"/></div><button class="btn-primary" onclick="finRenderComprobantes()"><i class="ti ti-refresh" style="font-size:13px"></i>Filtrar</button></div>
+              <div class="filter-row"><div class="filter-group"><label>Desde</label><input type="date" id="cb-desde"/></div><div class="filter-group"><label>Hasta</label><input type="date" id="cb-hasta"/></div><div class="filter-group"><label>Buscar</label><input type="text" id="cb-buscar" placeholder="Cliente..." oninput="cbPage=1;finRenderComprobantes()"/></div><button class="btn-primary" onclick="cbPage=1;finRenderComprobantes()"><i class="ti ti-refresh" style="font-size:13px"></i>Filtrar</button></div>
               <div class="table-card"><div id="fin-tabla-comprobantes"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div></div>
             </div>
             <div id="fin-pagos" class="fin-section">
@@ -527,6 +527,7 @@ let CU=null,editUID=null,editPerms2={},prodCount=0;
 let contacts=[],movDeudas=[],movInversiones=[],resumenDeudas=[],resumenInversiones=[],envios=[],enviosItems=[];
 let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null,editingContactoId=null;
 let finPct=3,eprodCount=0,epagoCount=0;
+let cbPage=1,cbPages=1,pagoPage=1,pagoPages=1; // estado de paginación
 
 // ── UTILS ──
 function fmt(n){return Math.round(n).toLocaleString('es-AR');}
@@ -655,31 +656,47 @@ async function finRenderDashboard(){
   const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
   document.getElementById('fin-tabla-dashboard').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
   try{
-    let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
-    const[lista,pagos]=await Promise.all([finApi(url),finApi('/api/pagos')]);
+    let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}&limit=200`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
+    const[res,resPagos]=await Promise.all([finApi(url),finApi('/api/pagos?limit=200')]);
+    const lista=res.data,pagos=resPagos.data;
     const tR=lista.reduce((s,c)=>s+parseFloat(c.monto),0),tF=lista.reduce((s,c)=>s+parseFloat(c.monto_financiera),0),tN=lista.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tP=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),saldo=Math.max(0,tN-tP);
-    document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${lista.length}</div></div>`;
+    document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${res.pagination.total}</div></div>`;
     if(!lista.length){document.getElementById('fin-tabla-dashboard').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos en el período</div>';return;}
-    document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
+    document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor_nombre||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
   }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
 }
 
 async function finRenderComprobantes(){
   try{
-    const lista=await finApi(`/api/comprobantes?desde=${document.getElementById('cb-desde').value}&hasta=${document.getElementById('cb-hasta').value}&buscar=${document.getElementById('cb-buscar').value||''}`);
+    const res=await finApi(`/api/comprobantes?desde=${document.getElementById('cb-desde').value}&hasta=${document.getElementById('cb-hasta').value}&buscar=${document.getElementById('cb-buscar').value||''}&page=${cbPage}&limit=50`);
+    const lista=res.data;cbPages=res.pagination.pages;
     if(!lista.length){document.getElementById('fin-tabla-comprobantes').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin comprobantes</div>';return;}
-    document.getElementById('fin-tabla-comprobantes').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Neto</th><th>Archivo</th><th></th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td><td style="display:flex;gap:4px">${c.archivo_nombre?`<button class="btn-sm" onclick="finVerArchivo(${c.id})"><i class="ti ti-eye"></i></button>`:''}<button class="btn-sm btn-danger-sm" onclick="finEliminar(${c.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table>`;
+    const pg=res.pagination;
+    const paginationHtml=pg.pages>1?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:12px;border-top:1px solid var(--border)"><button class="btn-secondary" onclick="cbPrev()" ${cbPage<=1?'disabled style="opacity:.4"':''}>&larr; Anterior</button><span style="font-size:12px;color:var(--text2)">Página ${pg.page} / ${pg.pages} · ${pg.total} registros</span><button class="btn-secondary" onclick="cbNext()" ${cbPage>=pg.pages?'disabled style="opacity:.4"':''}>Siguiente &rarr;</button></div>`:'';
+    document.getElementById('fin-tabla-comprobantes').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Neto</th><th>Archivo</th><th></th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${c.cliente}</td><td>${c.vendedor_nombre||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td><td style="display:flex;gap:4px">${c.archivo_nombre?`<button class="btn-sm" onclick="finVerArchivo(${c.id})"><i class="ti ti-eye"></i></button>`:''}<button class="btn-sm btn-danger-sm" onclick="finEliminar(${c.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table>${paginationHtml}`;
   }catch(e){showToast('Error cargando comprobantes',false);}
 }
+function cbPrev(){if(cbPage>1){cbPage--;finRenderComprobantes();}}
+function cbNext(){if(cbPage<cbPages){cbPage++;finRenderComprobantes();}}
 
 async function finRenderPagos(){
   try{
-    const[comp,pagos]=await Promise.all([finApi('/api/comprobantes'),finApi('/api/pagos')]);
-    const tN=comp.reduce((s,c)=>s+parseFloat(c.monto_neto),0),tR=pagos.reduce((s,p)=>s+parseFloat(p.monto),0),pend=Math.max(0,tN-tR);
+    const[totComp,totPagos,resPagos]=await Promise.all([
+      finApi('/api/comprobantes/totales'),
+      finApi('/api/pagos/totales'),
+      finApi('/api/pagos?page='+pagoPage+'&limit=50')
+    ]);
+    const tN=totComp.total_neto,tR=totPagos.total_monto,pend=Math.max(0,tN-tR);
+    pagoPages=resPagos.pagination.pages;
+    const pagos=resPagos.data;
     document.getElementById('fin-metrics-pagos').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total netos</div><div class="metric-v">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Recibido</div><div class="metric-v green">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Pendiente</div><div class="metric-v amber">${fmtPesos(pend)}</div></div>`;
-    document.getElementById('fin-lista-pagos').innerHTML=!pagos.length?'<div class="empty-msg" style="padding:1rem">Sin pagos</div>':pagos.map(p=>`<div class="fin-payment-row"><div class="fin-dot"></div><div style="flex:1"><div style="font-size:14px;font-weight:600">${fmtPesos(p.monto)}</div><div style="font-size:12px;color:var(--text2)">${p.fecha?.substring(0,10)} — ${p.referencia}</div></div><button class="btn-sm btn-danger-sm" onclick="finEliminarPago(${p.id})"><i class="ti ti-trash"></i></button></div>`).join('');
+    const pg=resPagos.pagination;
+    const paginationHtml=pg.pages>1?`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:8px"><button class="btn-secondary" onclick="pagosPrev()" ${pagoPage<=1?'disabled style="opacity:.4"':''}>&larr;</button><span style="font-size:12px;color:var(--text2)">${pg.page} / ${pg.pages}</span><button class="btn-secondary" onclick="pagosNext()" ${pagoPage>=pg.pages?'disabled style="opacity:.4"':'']}>&rarr;</button></div>`:'';
+    document.getElementById('fin-lista-pagos').innerHTML=(!pagos.length?'<div class="empty-msg" style="padding:1rem">Sin pagos</div>':pagos.map(p=>`<div class="fin-payment-row"><div class="fin-dot"></div><div style="flex:1"><div style="font-size:14px;font-weight:600">${fmtPesos(p.monto)}</div><div style="font-size:12px;color:var(--text2)">${p.fecha?.substring(0,10)} — ${p.referencia}</div></div><button class="btn-sm btn-danger-sm" onclick="finEliminarPago(${p.id})"><i class="ti ti-trash"></i></button></div>`).join(''))+paginationHtml;
   }catch(e){}
 }
+function pagosPrev(){if(pagoPage>1){pagoPage--;finRenderPagos();}}
+function pagosNext(){if(pagoPage<pagoPages){pagoPage++;finRenderPagos();}}
 
 async function finRenderHistorial(){
   document.getElementById('fin-lista-historial').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
@@ -748,7 +765,7 @@ async function finGuardarComprobante(){
 async function finGuardarPago(){
   const fecha=document.getElementById('pf-fecha').value,monto=parseFloat(document.getElementById('pf-monto').value),ref=document.getElementById('pf-ref').value.trim()||'Sin referencia';
   if(!fecha||!monto){showToast('Completá fecha y monto',false);return;}
-  try{await finApi('/api/pagos','POST',{fecha,monto,referencia:ref});document.getElementById('pf-monto').value='';document.getElementById('pf-ref').value='';showToast('Pago registrado');await finRenderPagos();}
+  try{await finApi('/api/pagos','POST',{fecha,monto,referencia:ref});document.getElementById('pf-monto').value='';document.getElementById('pf-ref').value='';showToast('Pago registrado');pagoPage=1;await finRenderPagos();}
   catch(e){showToast('Error',false);}
 }
 
@@ -771,9 +788,9 @@ async function finVerArchivo(id){try{const{data,tipo}=await finApi(`/api/comprob
 
 async function finDescargarZip(){
   const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
-  let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
+  let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}&limit=200`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
   try{
-    const lista=await finApi(url),conArch=lista.filter(c=>c.archivo_nombre);
+    const res=await finApi(url),lista=res.data,conArch=lista.filter(c=>c.archivo_nombre);
     if(!conArch.length){showToast('No hay archivos',false);return;}
     const zip=new JSZip();
     for(const c of conArch){const{data,nombre}=await finApi(`/api/comprobantes/${c.id}/archivo`);const ext=nombre.split('.').pop();zip.file(`${c.fecha?.substring(0,10)}_${c.cliente.replace(/\s+/g,'_')}.${ext}`,data.split(',')[1],{base64:true});}

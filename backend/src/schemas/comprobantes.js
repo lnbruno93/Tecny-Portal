@@ -20,6 +20,8 @@ const queryComprobantesSchema = z.object({
   hasta:    z.string().date().optional(),
   vendedor: z.string().trim().optional(),
   buscar:   z.string().trim().max(200).optional(),
+  page:     z.coerce.number().int().positive().optional(),
+  limit:    z.coerce.number().int().positive().max(200).optional(),
 });
 
 module.exports = { createComprobanteSchema, queryComprobantesSchema };
