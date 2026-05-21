@@ -1,4 +1,6 @@
-require('dotenv').config();
+// override:true garantiza que las vars del .env local siempre toman precedencia,
+// incluso si el sistema tiene la misma variable seteada como vacía
+require('dotenv').config({ override: true });
 
 // ─── Validación de variables de entorno críticas ──────────────────────────────
 // Fallar rápido antes de cargar nada — mejor un error claro que un servidor roto

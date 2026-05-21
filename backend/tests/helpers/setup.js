@@ -7,7 +7,8 @@
  *
  * teardownTestDb(pool) — cierra la conexión al terminar la suite.
  */
-require('dotenv').config();
+// Las variables de entorno ya fueron cargadas por tests/helpers/setEnv.js (jest setupFiles)
+// No recargar dotenv aquí para evitar sobreescribir con .env de desarrollo
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const path = require('path');

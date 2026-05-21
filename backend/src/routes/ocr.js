@@ -1,8 +1,10 @@
-const router = require('express').Router();
-const { z } = require('zod');
-const rateLimit = require('express-rate-limit');
+const router      = require('express').Router();
+const { z }       = require('zod');
+const rateLimit   = require('express-rate-limit');
+const Anthropic   = require('@anthropic-ai/sdk');
 const requireAuth = require('../middleware/auth');
-const validate = require('../lib/validate');
+const validate    = require('../lib/validate');
+const logger      = require('../lib/logger');
 
 // 10 llamadas OCR por usuario por hora — protege costos de API de visión
 const ocrLimiter = rateLimit({
@@ -26,15 +28,53 @@ const ocrSchema = z.object({
   }),
 });
 
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 router.use(requireAuth);
 
 router.post('/', ocrLimiter, validate(ocrSchema), async (req, res, next) => {
   try {
-    const { imageData, mediaType } = req.body;  // eslint-disable-line no-unused-vars
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(503).json({ error: 'OCR no configurado (falta ANTHROPIC_API_KEY)' });
+    }
 
-    // TODO: integrar con Anthropic Vision API u otro proveedor OCR
-    res.json({ text: '', fields: {} });
+    const { imageData, mediaType } = req.body;
+
+    // Extraer solo el contenido base64 (sin el prefijo "data:image/...;base64,")
+    const base64 = imageData.includes(',') ? imageData.split(',')[1] : imageData;
+
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 256,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: base64 },
+            },
+            {
+              type: 'text',
+              text: `Analizá este comprobante/factura y extraé el monto total a pagar o cobrar.
+Respondé ÚNICAMENTE con el número, sin símbolos de moneda, sin puntos de miles, usando punto como separador decimal si corresponde.
+Ejemplos de respuesta válida: 15000 | 1500.50 | 230000
+Si no podés determinar el monto con certeza, respondé exactamente: null`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const raw = message.content[0]?.text?.trim() ?? 'null';
+    logger.info({ raw }, 'OCR response');
+
+    // Validar que la respuesta sea un número válido o null
+    const monto = raw === 'null' || raw === '' ? null : raw.replace(/[^\d.]/g, '');
+
+    res.json({ monto: monto || null });
   } catch (err) {
+    logger.error({ err }, 'OCR error');
     next(err);
   }
 });
