@@ -11,7 +11,7 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const path = require('path');
-const { runner: migrate } = require('node-pg-migrate');
+const { execSync } = require('child_process');
 
 const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios'];
 
@@ -25,21 +25,20 @@ const TEST_USER = {
 async function setupTestDb() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-  // Correr migraciones (idempotente — igual que producción)
-  await migrate({
-    databaseUrl: process.env.DATABASE_URL,
-    migrationsTable: 'pgmigrations',
-    dir: path.join(__dirname, '../../migrations'),
-    direction: 'up',
-    log: () => {}, // silenciar output en tests
+  // Correr migraciones via CLI (mismo path que producción, evita conflictos ESM/CJS)
+  execSync('npm run migrate', {
+    cwd:   path.join(__dirname, '../..'),
+    env:   { ...process.env },
+    stdio: 'pipe', // silenciar output en tests
   });
 
-  // Limpiar todas las tablas y reiniciar secuencias
+  // Limpiar todas las tablas de datos y reiniciar secuencias
   await pool.query(`
     TRUNCATE TABLE
       audit_logs, historial,
       envio_items, envios,
       movimientos_inversiones, movimientos_deudas, contactos,
+      comprobantes, pagos, vendedores,
       user_permissions, users
     RESTART IDENTITY CASCADE
   `);
