@@ -41,6 +41,10 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Audit dependencies
+        working-directory: backend
+        run: npm audit --audit-level=moderate
+
       - name: Run migrations
         working-directory: backend
         env:

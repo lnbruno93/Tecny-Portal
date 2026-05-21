@@ -20,7 +20,15 @@ const bcrypt = require('bcrypt');
 const DRY_RUN = process.argv.includes('--dry-run');
 
 // ── Configuración ────────────────────────────────────────────
-const API_KEY   = 'AIzaSyA58eJVAvw5j0p1wtw5rXMGXcJWPa-RzE4';
+// ⚠️  IMPORTANTE: rotar la API key de Google Cloud Console (la anterior
+//    estuvo hardcodeada en el repo — debe revocarse inmediatamente).
+//    Nueva clave: configurar en .env como SHEETS_API_KEY
+const API_KEY = process.env.SHEETS_API_KEY;
+if (!API_KEY) {
+  console.error('ERROR: SHEETS_API_KEY no configurada en .env');
+  process.exit(1);
+}
+
 const CAJAS_ID  = '176tDFnaKyKSJYJlEWGpW02ekdhhy6R_rIEXbUnSCSKU';
 const USERS_ID  = '1KdBAlJ17uOu1DDg5ewT1E2HkH26EBNcpPZ1kNhyKinc';
 const ENVIOS_ID = '1cDAByiatmp0LmDWUN7mau4oUAyfV2UwEWu6_iJf-cCo';

@@ -1,5 +1,24 @@
 require('dotenv').config();
 
+// ─── Validación de variables de entorno críticas ──────────────────────────────
+// Fallar rápido antes de cargar nada — mejor un error claro que un servidor roto
+const REQUIRED_ENV = { JWT_SECRET: 32, DATABASE_URL: 1 };
+const envErrors = [];
+for (const [key, minLen] of Object.entries(REQUIRED_ENV)) {
+  const val = process.env[key];
+  if (!val || val.length < minLen) {
+    envErrors.push(
+      minLen > 1
+        ? `${key} debe tener al menos ${minLen} caracteres (actual: ${val?.length ?? 0})`
+        : `${key} es requerido`
+    );
+  }
+}
+if (envErrors.length) {
+  console.error('❌  Variables de entorno faltantes o inválidas:\n  •', envErrors.join('\n  • '));
+  process.exit(1);
+}
+
 // Sentry debe inicializarse ANTES de cargar Express y las rutas
 const Sentry = require('@sentry/node');
 if (process.env.SENTRY_DSN) {

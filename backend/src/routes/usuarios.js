@@ -94,7 +94,15 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
         [nombre, username, email, hash, role, id]
       );
 
+      let permsAntes = null;
       if (perms !== undefined) {
+        // Guardar permisos anteriores para el audit
+        const { rows: permsBefore } = await client.query(
+          'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
+          [id]
+        );
+        permsAntes = Object.fromEntries(permsBefore.map(p => [p.tool, p.enabled]));
+
         for (const tool of TOOLS) {
           await client.query(
             `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1,$2,$3)
@@ -104,7 +112,11 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
         }
       }
       await client.query('COMMIT');
-      await audit('users', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+      await audit('users', 'UPDATE', id, {
+        antes:   { ...before[0], perms: permsAntes },
+        despues: { ...rows[0],   perms: perms ?? permsAntes },
+        user_id: req.user.id,
+      });
       res.json(rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');

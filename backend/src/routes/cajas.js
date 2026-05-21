@@ -19,7 +19,7 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
     const { contacto_id } = req.query;
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
 
-    let where = 'WHERE c.deleted_at IS NULL';
+    let where = 'WHERE c.deleted_at IS NULL AND m.deleted_at IS NULL';
     const params = [];
     if (contacto_id) { params.push(contacto_id); where += ` AND m.contacto_id = $${params.length}`; }
 
@@ -66,9 +66,11 @@ router.delete('/deudas/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query('SELECT * FROM movimientos_deudas WHERE id = $1', [id]);
+    const { rows } = await db.query(
+      'UPDATE movimientos_deudas SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+      [id]
+    );
     if (!rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
-    await db.query('DELETE FROM movimientos_deudas WHERE id = $1', [id]);
     await audit('movimientos_deudas', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
@@ -83,7 +85,7 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
     const { contacto_id } = req.query;
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
 
-    let where = 'WHERE c.deleted_at IS NULL';
+    let where = 'WHERE c.deleted_at IS NULL AND m.deleted_at IS NULL';
     const params = [];
     if (contacto_id) { params.push(contacto_id); where += ` AND m.contacto_id = $${params.length}`; }
 
@@ -130,9 +132,11 @@ router.delete('/inversiones/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query('SELECT * FROM movimientos_inversiones WHERE id = $1', [id]);
+    const { rows } = await db.query(
+      'UPDATE movimientos_inversiones SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+      [id]
+    );
     if (!rows[0]) return res.status(404).json({ error: 'Inversión no encontrada' });
-    await db.query('DELETE FROM movimientos_inversiones WHERE id = $1', [id]);
     await audit('movimientos_inversiones', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
@@ -152,6 +156,7 @@ router.get('/resumen', async (_req, res, next) => {
           COUNT(*) AS movimientos
         FROM movimientos_deudas m
         JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+        WHERE m.deleted_at IS NULL
         GROUP BY m.contacto_id
       `),
       db.query(`
@@ -159,10 +164,11 @@ router.get('/resumen', async (_req, res, next) => {
           SUM(m.monto) AS total_invertido,
           COUNT(*) AS movimientos,
           (SELECT tasa FROM movimientos_inversiones
-           WHERE contacto_id = m.contacto_id AND tasa IS NOT NULL
+           WHERE contacto_id = m.contacto_id AND tasa IS NOT NULL AND deleted_at IS NULL
            ORDER BY fecha DESC, id DESC LIMIT 1) AS ultima_tasa
         FROM movimientos_inversiones m
         JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+        WHERE m.deleted_at IS NULL
         GROUP BY m.contacto_id
       `),
     ]);

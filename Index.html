@@ -507,7 +507,9 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 <script src="https://cdn.jsdelivr.net/npm/@sentry/browser@8/build/bundles/bundle.min.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-const FIN_API='https://ipro-backend-production.up.railway.app';
+const FIN_API=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'
+  ?'http://localhost:3001'
+  :'https://ipro-backend-production.up.railway.app';
 const SENTRY_DSN_FRONT='https://7b73d1104422df03c3f6d729f9b48655@o4511427679748096.ingest.us.sentry.io/4511427715268608';
 const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
 const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
@@ -554,8 +556,10 @@ function sessionExpirada(){
   err.style.display='block';
 }
 
-async function finApi(path,method='GET',body=null){
-  const opts={method,headers:{'Content-Type':'application/json'},credentials:'include'};
+async function finApi(path,method='GET',body=null,timeoutMs=15000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const opts={method,headers:{'Content-Type':'application/json'},credentials:'include',signal:controller.signal};
   const token=getFinToken();
   if(token)opts.headers['Authorization']='Bearer '+token;
   if(body)opts.body=JSON.stringify(body);
@@ -563,8 +567,10 @@ async function finApi(path,method='GET',body=null){
   try{
     res=await fetch(FIN_API+path,opts);
   }catch(e){
-    // Red caída, timeout o servidor inaccesible
+    if(e.name==='AbortError')throw new Error('La solicitud tardó demasiado. Verificá tu conexión e intentá de nuevo.');
     throw new Error('Sin conexión con el servidor. Verificá tu red e intentá de nuevo.');
+  }finally{
+    clearTimeout(timer);
   }
   if(res.status===401){sessionExpirada();throw new Error('NO_AUTH');}
   if(res.status===403){throw new Error('No tenés permiso para realizar esta acción.');}
@@ -648,7 +654,7 @@ async function finRenderDashboard(){
     document.getElementById('fin-metrics').innerHTML=`<div class="metric-card"><div class="metric-lbl">Total recibido</div><div class="metric-v">${fmtPesos(tR)}</div></div><div class="metric-card"><div class="metric-lbl">Financiera (${finPct}%)</div><div class="metric-v amber">${fmtPesos(tF)}</div></div><div class="metric-card"><div class="metric-lbl">Neto total</div><div class="metric-v green">${fmtPesos(tN)}</div></div><div class="metric-card"><div class="metric-lbl">Pagos financiera</div><div class="metric-v green">${fmtPesos(tP)}</div></div><div class="metric-card"><div class="metric-lbl">Saldo pendiente</div><div class="metric-v ${saldo>0?'amber':'green'}">${fmtPesos(saldo)}</div></div><div class="metric-card"><div class="metric-lbl">Comprobantes</div><div class="metric-v">${res.pagination.total}</div></div>`;
     if(!lista.length){document.getElementById('fin-tabla-dashboard').innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos en el período</div>';return;}
     document.getElementById('fin-tabla-dashboard').innerHTML=`<table class="data-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th>Monto</th><th>Financiera</th><th>Neto</th><th>Archivo</th></tr></thead><tbody>${lista.map(c=>`<tr><td style="color:var(--text2)">${c.fecha?.substring(0,10)}</td><td style="font-weight:600">${esc(c.cliente)}</td><td>${esc(c.vendedor_nombre)||''}</td><td>${fmtPesos(c.monto)}</td><td style="color:var(--amber)">${fmtPesos(c.monto_financiera)}</td><td style="color:var(--green);font-weight:600">${fmtPesos(c.monto_neto)}</td><td>${c.archivo_nombre?'<span class="badge-ok">Adjunto</span>':'<span class="badge-pending">Sin archivo</span>'}</td></tr>`).join('')}</tbody></table>`;
-  }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
+  }catch(e){document.getElementById('fin-tabla-dashboard').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${esc(e.message)}</div>`;}
 }
 
 async function finRenderComprobantes(){
@@ -769,7 +775,23 @@ async function finAgregarVendedor(){
 async function finEliminarVendedor(id){try{await finApi(`/api/vendedores/${id}`,'DELETE');finRenderConfig();await finCargarVendedores();}catch(e){}}
 async function finEliminar(id){if(!confirm('¿Eliminar comprobante?'))return;try{await finApi(`/api/comprobantes/${id}`,'DELETE');showToast('Eliminado');await finRenderComprobantes();}catch(e){showToast('Error',false);}}
 async function finEliminarPago(id){if(!confirm('¿Eliminar pago?'))return;try{await finApi(`/api/pagos/${id}`,'DELETE');await finRenderPagos();}catch(e){}}
-async function finVerArchivo(id){try{const{data,tipo}=await finApi(`/api/comprobantes/${id}/archivo`);const win=window.open();if(tipo?.includes('image'))win.document.write(`<img src="${data}" style="max-width:100%;">`);else win.document.write(`<embed src="${data}" width="100%" height="100%" type="application/pdf">`);}catch(e){showToast('Archivo no disponible',false);}}
+async function finVerArchivo(id){
+  try{
+    const {data,tipo}=await finApi(`/api/comprobantes/${id}/archivo`);
+    // Convertir base64 a Blob y abrir con URL temporal — evita document.write() y XSS
+    const allowedTypes=['image/jpeg','image/png','image/webp','application/pdf'];
+    const safeTipo=allowedTypes.includes(tipo)?tipo:'application/octet-stream';
+    const byteStr=atob(data.split(',').pop());
+    const arr=new Uint8Array(byteStr.length);
+    for(let i=0;i<byteStr.length;i++)arr[i]=byteStr.charCodeAt(i);
+    const blob=new Blob([arr],{type:safeTipo});
+    const url=URL.createObjectURL(blob);
+    const win=window.open(url,'_blank');
+    // Revocar la URL temporal cuando el usuario abre la pestaña
+    if(win)win.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});
+    else URL.revokeObjectURL(url); // popup bloqueado — limpiar igual
+  }catch(e){showToast('Archivo no disponible',false);}
+}
 
 async function finDescargarZip(){
   const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
@@ -805,7 +827,7 @@ async function loadEnvios(){
     envios=lista.map(e=>({id:String(e.id),fecha:e.fecha?.substring(0,10)||'',cliente:e.cliente||'',telefono:e.telefono||'',direccion:e.direccion||'',barrio:e.barrio||'',costoEnvio:parseFloat(e.costo_envio)||0,totalCobrado:parseFloat(e.total_cobrado)||0,horario:e.horario||'',operador:e.operador||'',notas:e.notas||'',estado:e.estado||'Pendiente',prioridad:e.prioridad||''}));
     enviosItems=lista.flatMap(e=>(e.items||[]).map(i=>({id:String(i.id),envioId:String(e.id),tipo:i.tipo||'',descripcion:i.descripcion||'',monto:parseFloat(i.monto)||0,metodoPago:i.metodo_pago||''})));
     updateMetricasEnvios();renderEnvios();
-  }catch(e){document.getElementById('envios-list').innerHTML=`<div class="loading-msg"><i class="ti ti-alert-circle"></i>Error: ${e.message}</div>`;}
+  }catch(e){document.getElementById('envios-list').innerHTML=`<div class="loading-msg"><i class="ti ti-alert-circle"></i>Error: ${esc(e.message)}</div>`;}
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:13px"></i>Actualizar';
 }
 
