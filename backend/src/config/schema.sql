@@ -1,19 +1,29 @@
 -- ============================================================
--- iPro Portal — Schema v2 (completo y sólido)
+-- iPro Portal — Schema v2 (estado actual post-migraciones)
+-- ============================================================
+-- Este archivo refleja el estado COMPLETO de la base de datos
+-- después de aplicar todas las migraciones (001 → 005).
+--
+-- NO se usa para crear la DB desde cero en producción
+-- (eso lo hacen las migraciones). Sirve como fuente de verdad
+-- para documentación, desarrollo local y referencia.
+--
+-- Última actualización: migración 005
 -- ============================================================
 
 -- ------------------------------------------------------------
 -- USERS
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-  id            SERIAL PRIMARY KEY,
-  nombre        TEXT NOT NULL,
-  username      TEXT UNIQUE NOT NULL,         -- login principal (portal)
-  email         TEXT UNIQUE,                  -- login financiera (finApi)
-  password_hash TEXT NOT NULL,
-  role          TEXT NOT NULL DEFAULT 'op'    CHECK (role IN ('admin','op')),
-  deleted_at    TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
+  id                  SERIAL PRIMARY KEY,
+  nombre              TEXT NOT NULL,
+  username            TEXT UNIQUE NOT NULL,         -- login principal (portal)
+  email               TEXT UNIQUE,                  -- opcional
+  password_hash       TEXT NOT NULL,
+  role                TEXT NOT NULL DEFAULT 'op'    CHECK (role IN ('admin','op')),
+  deleted_at          TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ DEFAULT NOW(),
+  password_changed_at TIMESTAMPTZ                   -- migración 003: revocación JWT
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username  ON users (username);
@@ -37,8 +47,11 @@ CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions (user_i
 CREATE TABLE IF NOT EXISTS vendedores (
   id         SERIAL PRIMARY KEY,
   nombre     TEXT NOT NULL,
+  deleted_at TIMESTAMPTZ,                           -- migración 005: soft delete
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_vendedores_active ON vendedores (id) WHERE deleted_at IS NULL;
 
 -- ------------------------------------------------------------
 -- COMPROBANTES (financiera)
@@ -55,12 +68,14 @@ CREATE TABLE IF NOT EXISTS comprobantes (
   archivo_data     TEXT,          -- base64 del archivo adjunto
   archivo_nombre   TEXT,
   archivo_tipo     TEXT,
+  deleted_at       TIMESTAMPTZ,                     -- migración 002: soft delete
   created_at       TIMESTAMPTZ    DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_comprobantes_fecha       ON comprobantes (fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_comprobantes_vendedor    ON comprobantes (vendedor_id);
 CREATE INDEX IF NOT EXISTS idx_comprobantes_fecha_vend  ON comprobantes (fecha DESC, vendedor_id);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_active      ON comprobantes (id) WHERE deleted_at IS NULL;
 
 -- ------------------------------------------------------------
 -- PAGOS (financiera)
@@ -70,10 +85,12 @@ CREATE TABLE IF NOT EXISTS pagos (
   fecha      DATE           NOT NULL,
   monto      NUMERIC(12,2)  NOT NULL,
   referencia TEXT,
+  deleted_at TIMESTAMPTZ,                           -- migración 002: soft delete
   created_at TIMESTAMPTZ    DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos (fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_pagos_fecha  ON pagos (fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_pagos_active ON pagos (id) WHERE deleted_at IS NULL;
 
 -- ------------------------------------------------------------
 -- CONTACTOS (cajas)
@@ -101,11 +118,14 @@ CREATE TABLE IF NOT EXISTS movimientos_deudas (
   monto_ars   NUMERIC(12,2)  NOT NULL DEFAULT 0,
   monto_usd   NUMERIC(12,2)  NOT NULL DEFAULT 0,
   concepto    TEXT,
+  deleted_at  TIMESTAMPTZ,                          -- migración 005: soft delete
   created_at  TIMESTAMPTZ    DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_mov_deudas_contacto ON movimientos_deudas (contacto_id);
+-- Migración 004: índice composite (contacto + fecha) para filtros y resumen
+CREATE INDEX IF NOT EXISTS idx_mov_deudas_contacto ON movimientos_deudas (contacto_id, fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_mov_deudas_fecha    ON movimientos_deudas (fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_mov_deudas_active   ON movimientos_deudas (id) WHERE deleted_at IS NULL;
 
 -- ------------------------------------------------------------
 -- MOVIMIENTOS DE INVERSIONES (cajas)
@@ -116,11 +136,14 @@ CREATE TABLE IF NOT EXISTS movimientos_inversiones (
   contacto_id INTEGER        NOT NULL REFERENCES contactos(id) ON DELETE CASCADE,
   monto       NUMERIC(12,2)  NOT NULL,
   tasa        TEXT,
+  deleted_at  TIMESTAMPTZ,                          -- migración 005: soft delete
   created_at  TIMESTAMPTZ    DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_mov_inv_contacto ON movimientos_inversiones (contacto_id);
-CREATE INDEX IF NOT EXISTS idx_mov_inv_fecha    ON movimientos_inversiones (fecha DESC);
+-- Migración 004: índice composite (contacto + fecha) para filtros y resumen
+CREATE INDEX IF NOT EXISTS idx_mov_inversiones_contacto ON movimientos_inversiones (contacto_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_mov_inversiones_fecha    ON movimientos_inversiones (fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_mov_inversiones_active   ON movimientos_inversiones (id) WHERE deleted_at IS NULL;
 
 -- ------------------------------------------------------------
 -- ENVÍOS
@@ -162,7 +185,7 @@ CREATE TABLE IF NOT EXISTS envio_items (
 CREATE INDEX IF NOT EXISTS idx_envio_items_envio ON envio_items (envio_id);
 
 -- ------------------------------------------------------------
--- HISTORIAL (log de acciones del usuario en financiera)
+-- HISTORIAL (log de acciones — ahora apunta a audit_logs)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS historial (
   id         SERIAL PRIMARY KEY,
@@ -189,9 +212,9 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_tabla    ON audit_logs (tabla, registro_id);
-CREATE INDEX IF NOT EXISTS idx_audit_created  ON audit_logs (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_user     ON audit_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_tabla   ON audit_logs (tabla, registro_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_logs (user_id);
 
 -- ------------------------------------------------------------
 -- CONFIG (singleton — siempre 1 sola fila)

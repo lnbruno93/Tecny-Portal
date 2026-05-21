@@ -67,3 +67,16 @@ async function shutdown(signal) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
+
+// ─── Errores no capturados ────────────────────────────────────────────────────
+// Si una promesa o excepción escapa fuera de los route handlers, Node puede
+// quedar en estado corrupto. Logueamos y salimos limpio para que Railway reinicie.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'unhandledRejection — saliendo');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'uncaughtException — saliendo');
+  process.exit(1);
+});

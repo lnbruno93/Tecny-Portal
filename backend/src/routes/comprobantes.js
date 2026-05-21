@@ -130,7 +130,7 @@ router.get('/:id/archivo', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     const { rows } = await db.query(
-      'SELECT archivo_data, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1',
+      'SELECT archivo_data, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (!rows[0]?.archivo_data) return res.status(404).json({ error: 'Archivo no encontrado' });

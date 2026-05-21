@@ -1,13 +1,9 @@
 const router = require('express').Router();
-const { z } = require('zod');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
-
-const updateConfigSchema = z.object({
-  pct_financiera: z.number().min(0, 'No puede ser negativo').max(100, 'No puede superar 100'),
-});
+const { updateConfigSchema } = require('../schemas/config');
 
 router.use(requireAuth);
 

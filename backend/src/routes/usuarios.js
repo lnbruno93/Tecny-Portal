@@ -46,12 +46,12 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
       );
       const user = rows[0];
 
-      for (const tool of TOOLS) {
-        await client.query(
-          'INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1,$2,$3)',
-          [user.id, tool, perms[tool] === true]
-        );
-      }
+      // Un solo INSERT multi-row en lugar de 5 queries secuenciales
+      const permValues = TOOLS.map((tool, i) => `($1, $${i + 2}, $${i + 2 + TOOLS.length})`).join(', ');
+      await client.query(
+        `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ${permValues}`,
+        [user.id, ...TOOLS, ...TOOLS.map(t => perms[t] === true)]
+      );
       await client.query('COMMIT');
       await audit('users', 'INSERT', user.id, { despues: user, user_id: req.user.id });
       res.status(201).json({ ...user, perms });
@@ -103,13 +103,13 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
         );
         permsAntes = Object.fromEntries(permsBefore.map(p => [p.tool, p.enabled]));
 
-        for (const tool of TOOLS) {
-          await client.query(
-            `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1,$2,$3)
-             ON CONFLICT (user_id, tool) DO UPDATE SET enabled = $3`,
-            [id, tool, perms[tool] === true]
-          );
-        }
+        // Un solo UPSERT multi-row en lugar de 5 queries secuenciales
+        const upsertValues = TOOLS.map((tool, i) => `($1, $${i + 2}, $${i + 2 + TOOLS.length})`).join(', ');
+        await client.query(
+          `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ${upsertValues}
+           ON CONFLICT (user_id, tool) DO UPDATE SET enabled = EXCLUDED.enabled`,
+          [id, ...TOOLS, ...TOOLS.map(t => perms[t] === true)]
+        );
       }
       await client.query('COMMIT');
       await audit('users', 'UPDATE', id, {

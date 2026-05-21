@@ -1,9 +1,10 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const pinoHttp = require('pino-http');
-const logger = require('./lib/logger');
+const express     = require('express');
+const compression = require('compression');
+const cors        = require('cors');
+const helmet      = require('helmet');
+const rateLimit   = require('express-rate-limit');
+const pinoHttp    = require('pino-http');
+const logger      = require('./lib/logger');
 const db = require('./config/database');
 
 const authRoutes         = require('./routes/auth');
@@ -25,6 +26,9 @@ const app = express();
 
 // Trust Railway's load balancer so rate limiting uses the real client IP
 app.set('trust proxy', 1);
+
+// Compresión gzip/brotli — reduce tamaño de respuestas JSON hasta ~70%
+app.use(compression());
 
 // Security headers
 app.use(helmet());
