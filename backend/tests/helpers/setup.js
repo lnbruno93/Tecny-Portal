@@ -1,7 +1,7 @@
 /**
  * Helpers compartidos para los tests de integración.
  *
- * setupTestDb()  — aplica el schema, limpia datos y crea usuario admin de prueba.
+ * setupTestDb()  — corre las migraciones, limpia datos y crea usuario admin de prueba.
  *                  Devuelve el pool para que los tests puedan usarlo si necesitan
  *                  insertar datos directamente.
  *
@@ -10,8 +10,8 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const fs = require('fs');
 const path = require('path');
+const { runner: migrate } = require('node-pg-migrate');
 
 const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios'];
 
@@ -25,14 +25,16 @@ const TEST_USER = {
 async function setupTestDb() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-  // Aplicar schema (CREATE TABLE IF NOT EXISTS → idempotente)
-  const schema = fs.readFileSync(
-    path.join(__dirname, '../../src/config/schema.sql'),
-    'utf8'
-  );
-  await pool.query(schema);
+  // Correr migraciones (idempotente — igual que producción)
+  await migrate({
+    databaseUrl: process.env.DATABASE_URL,
+    migrationsTable: 'pgmigrations',
+    dir: path.join(__dirname, '../../migrations'),
+    direction: 'up',
+    log: () => {}, // silenciar output en tests
+  });
 
-  // Limpiar todas las tablas de una sola vez y reiniciar secuencias
+  // Limpiar todas las tablas y reiniciar secuencias
   await pool.query(`
     TRUNCATE TABLE
       audit_logs, historial,
