@@ -10,7 +10,7 @@
   --navy:#0d1f3c;--navy2:#142847;--navy3:#1a3255;--navy4:#1e3a61;
   --border:#1e3255;--border2:#2a4570;
   --text:#f0ead6;--text2:#c8bfb0;--text3:#8a8070;
-  --green:#3fb950;--green2:rgba(63,185,80,0.13);
+  --green:#f0ead6;--green2:rgba(240,234,214,0.1);
   --amber:#d29922;--amber2:rgba(210,153,34,0.13);
   --blue:#58a6ff;--blue2:rgba(88,166,255,0.11);
   --red:#f85149;--red2:rgba(248,81,73,0.11);
@@ -18,7 +18,7 @@
 }
 html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM Sans',system-ui,sans-serif;color:#fff;overflow-x:hidden}
 #toast{position:fixed;bottom:24px;right:24px;background:#fff;color:#0d1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
-#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(63,185,80,0.05) 0%,transparent 70%)}
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(240,234,214,0.04) 0%,transparent 70%)}
 .login-box{width:360px;padding:44px 36px;background:var(--navy2);border:1px solid var(--border2);border-radius:16px}
 .brand{font-family:'Syne',system-ui,sans-serif;font-size:24px;font-weight:800;color:#fff;text-align:center;margin-bottom:4px}
 .brand-sub{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);text-align:center;margin-bottom:28px}
@@ -45,7 +45,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .nav-btn{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);border:none;background:none;width:100%;text-align:left;transition:background .15s,color .15s}
 .nav-btn:hover{background:var(--navy3);color:#fff}
 .nav-btn.active{background:var(--navy4);color:#fff}
-.nav-btn.active .ni{color:var(--green)}
+.nav-btn.active .ni{color:#f0ead6}
 .ni{font-size:15px;width:17px;text-align:center;flex-shrink:0}
 .nav-lock{font-size:11px;color:var(--text3);margin-left:auto}
 .s-footer{margin-top:auto;padding:0 10px;border-top:1px solid var(--border);padding-top:10px}
@@ -61,18 +61,35 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .ph-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
 .ph-title{font-family:'Syne',system-ui,sans-serif;font-size:16px;font-weight:700;color:#fff}
 .ph-sub{font-size:12px;color:var(--text2);margin-top:1px}
-.btn-primary{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#0d1117;background:var(--green);border:none;border-radius:7px;padding:7px 14px;cursor:pointer;font-family:inherit;font-weight:700;white-space:nowrap;transition:opacity .2s}
+.btn-primary{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#0d1f3c;background:#f0ead6;border:none;border-radius:7px;padding:7px 14px;cursor:pointer;font-family:inherit;font-weight:700;white-space:nowrap;transition:opacity .2s}
 .btn-primary:hover{opacity:.88}
-.btn-secondary{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--green);background:var(--green2);border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-family:inherit}
+.btn-secondary{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#0d1f3c;background:#f0ead6;border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-family:inherit;opacity:.85}
+.btn-secondary:hover{opacity:1}
 .btn-outline{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);background:none;border:1px solid var(--border2);border-radius:7px;padding:6px 12px;cursor:pointer;font-family:inherit}
 .btn-outline:hover{color:#fff;background:var(--navy3)}
 .btn-sm{padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);color:var(--text2);background:none;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px}
 .btn-sm:hover{color:#fff;border-color:var(--border2)}
 .btn-danger-sm{color:var(--red);border-color:rgba(248,81,73,.2)}
 .btn-danger-sm:hover{background:var(--red2)}
-.btn-save{flex:2;padding:9px;background:var(--green);border:none;border-radius:8px;color:#0d1117;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:13px;cursor:pointer}
+.btn-save{flex:2;padding:9px;background:#f0ead6;border:none;border-radius:8px;color:#0d1f3c;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:13px;cursor:pointer}
 .btn-save:disabled{opacity:.5;cursor:not-allowed}
 .btn-cancel{flex:1;padding:9px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-family:inherit;font-size:13px}
+/* Pill toggle — matriz de permisos */
+.perm-toggle{position:relative;display:inline-block;width:38px;height:21px;background:var(--navy4);border:1px solid var(--border2);border-radius:11px;cursor:pointer;transition:background .18s,border-color .18s;padding:0;vertical-align:middle;flex-shrink:0}
+.perm-toggle::after{content:'';position:absolute;top:3px;left:3px;width:13px;height:13px;background:var(--text3);border-radius:50%;transition:transform .18s,background .18s}
+.perm-toggle.on{background:rgba(88,166,255,0.12);border-color:var(--blue)}
+.perm-toggle.on::after{transform:translateX(17px);background:var(--blue)}
+/* Tabla matriz de permisos */
+.perm-matrix{width:100%;border-collapse:collapse}
+.perm-matrix th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap}
+.perm-matrix th:first-child{text-align:left;min-width:160px}
+.perm-matrix td{padding:10px 14px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}
+.perm-matrix td:first-child{text-align:left}
+.perm-matrix tr:last-child td{border-bottom:none}
+.perm-matrix tbody tr:hover td{background:rgba(255,255,255,.015)}
+.role-admin{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:var(--amber2);color:var(--amber);white-space:nowrap}
+.role-oper{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:var(--blue2);color:var(--blue);white-space:nowrap}
+.usr-ini{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
 .metric{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:14px}
 .metric-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
 .metric-val{font-family:'Syne',system-ui,sans-serif;font-size:19px;font-weight:700;color:#fff}
@@ -125,7 +142,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .prod-num-c{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--green);font-weight:700}
 .btn-rm-c{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px}
 .prod-g3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
-.calc-btn{width:100%;margin-top:18px;padding:11px;background:var(--green);border:none;border-radius:9px;color:#0d1117;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+.calc-btn{width:100%;margin-top:18px;padding:11px;background:#f0ead6;border:none;border-radius:9px;color:#0d1f3c;font-family:'Syne',system-ui,sans-serif;font-weight:700;font-size:14px;cursor:pointer}
 .results-wrap{margin-top:20px;background:var(--navy3);border:1px solid var(--border2);border-radius:12px;overflow:hidden}
 .res-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .btn-copy{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit}
@@ -181,7 +198,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .ctab{padding:7px 16px;border-radius:8px;font-size:13px;cursor:pointer;border:none;background:none;color:var(--text2);font-family:inherit}
 .ctab.active{background:var(--navy2);color:#fff;border:1px solid var(--border2)}
 .cajas-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-.btn-plus{width:26px;height:26px;border-radius:6px;background:var(--green);border:none;color:#0d1117;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+.btn-plus{width:26px;height:26px;border-radius:6px;background:#f0ead6;border:none;color:#0d1f3c;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
 .mov-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .back-btn{background:none;border:1px solid var(--border);border-radius:7px;color:var(--text2);padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
 .envios-body{padding:20px 24px}
@@ -212,7 +229,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .envio-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:10px}
 .action-btn{padding:5px 12px;border-radius:6px;font-size:11px;border:1px solid var(--border);color:var(--text2);background:none;cursor:pointer;font-family:inherit;transition:all .15s}
 .action-btn:hover{border-color:var(--border2);color:#fff}
-.action-btn.st-active{background:var(--green);color:#0d1117;border-color:transparent;font-weight:700}
+.action-btn.st-active{background:#f0ead6;color:#0d1f3c;border-color:transparent;font-weight:700}
 .action-btn.st-camino{background:var(--blue2);color:var(--blue);border-color:var(--blue2)}
 .flete-right{margin-left:auto;font-family:'Syne',system-ui,sans-serif;font-size:14px;font-weight:700;color:#fff}
 .prod-item{background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center}
@@ -616,8 +633,6 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
     <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre</label><input type="text" id="m-nombre"/></div><div class="fg" style="margin-bottom:0"><label>Usuario</label><input type="text" id="m-user"/></div></div>
     <div class="fg"><label>Contraseña</label><input type="password" id="m-pass" placeholder="dejar vacío para no cambiar"/></div>
     <div class="fg"><label>Rol</label><select id="m-role"><option value="op">Operador</option><option value="admin">Admin</option></select></div>
-    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Permisos</div>
-    <div id="perm-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-usr')">Cancelar</button><button class="btn-save" onclick="saveUser()">Guardar</button></div>
   </div>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
@@ -1774,11 +1789,38 @@ async function ccEliminarMovimiento(id){
 // ── USUARIOS ──
 function renderUsers(){
   const tools=['cotizador','financiera','cajas','envios','usuarios','cuentas'];
-  if(!USERS.length){document.getElementById('usr-list').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
-  document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=esc(u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase());const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';const esYo=CU&&String(u.id)===String(CU.id);return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${esc(u.nombre)}</div><div style="font-size:11px;color:var(--text2)">${esc(u.username)} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><div style="display:flex;gap:6px;flex-shrink:0"><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button>${esYo?'':`<button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarUser('${u.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button>`}</div></div>`;}).join('')}</div>`;
+  const el=document.getElementById('usr-list');
+  if(!USERS.length){el.innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
+  const thead=`<thead><tr>
+    <th style="text-align:left">Usuario</th>
+    <th>Rol</th>
+    ${tools.map(t=>`<th>${t.charAt(0).toUpperCase()+t.slice(1)}</th>`).join('')}
+    <th></th>
+  </tr></thead>`;
+  const tbody=USERS.map(u=>{
+    const ini=esc(u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase());
+    const esAdmin=u.role==='admin';
+    const esYo=CU&&String(u.id)===String(CU.id);
+    const rol=esAdmin?'<span class="role-admin">Admin</span>':'<span class="role-oper">Operador</span>';
+    const toggles=tools.map(t=>`<td><button class="perm-toggle${u.perms[t]?' on':''}" id="ptgl-${u.id}-${t}" onclick="togglePerm('${u.id}','${t}',${!!u.perms[t]})"></button></td>`).join('');
+    const acciones=`<td style="white-space:nowrap;text-align:right">
+      <button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button>
+      ${esYo?'':`<button class="btn-sm btn-danger-sm" style="margin-left:4px" onclick="eliminarUser('${u.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button>`}
+    </td>`;
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:10px">
+        <div class="usr-ini" style="background:${esAdmin?'var(--amber2)':'var(--blue2)'};color:${esAdmin?'var(--amber)':'var(--blue)'}">${ini}</div>
+        <div><div style="font-size:13px;font-weight:600;color:#fff">${esc(u.nombre)}</div><div style="font-size:11px;color:var(--text3)">@${esc(u.username)}</div></div>
+      </div></td>
+      <td>${rol}</td>
+      ${toggles}
+      ${acciones}
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:auto"><table class="perm-matrix">${thead}<tbody>${tbody}</tbody></table></div>`;
 }
-function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';document.getElementById('m-role').value=u.role||'op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
-function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');document.getElementById('m-role').value='op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';document.getElementById('m-role').value=u.role||'op';document.getElementById('modal-usr').classList.add('open');}
+function openNewUser(){editUID=null;document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');document.getElementById('m-role').value='op';document.getElementById('modal-usr').classList.add('open');}
 async function eliminarUser(id){
   if(CU&&String(id)===String(CU.id)){showToast('No podés eliminar tu propia cuenta',false);return;}
   if(!confirm('¿Eliminar este usuario?'))return;
@@ -1788,8 +1830,6 @@ async function eliminarUser(id){
     renderUsers();showToast('Usuario eliminado');
   }catch(e){showToast('Error: '+e.message,false);}
 }
-function renderPermGrid(){document.getElementById('perm-grid').innerHTML=TOOLS.map(t=>`<div id="pt-${t}" onclick="tp2('${t}')" style="display:flex;align-items:center;justify-content:space-between;background:var(--navy3);border:1px solid ${editPerms2[t]?'var(--green)':'var(--border)'};border-radius:9px;padding:10px 13px;cursor:pointer"><span style="font-size:13px;color:#fff">${t}</span><i class="ti ti-toggle-${editPerms2[t]?'right':'left'}" style="font-size:17px;color:${editPerms2[t]?'var(--green)':'var(--text3)'}"></i></div>`).join('');}
-function tp2(t){editPerms2[t]=!editPerms2[t];renderPermGrid();}
 async function saveUser(){
   const nom=document.getElementById('m-nombre').value.trim(),usr=document.getElementById('m-user').value.trim().toLowerCase(),pas=document.getElementById('m-pass').value;
   if(!nom||!usr){showToast('Nombre y usuario son obligatorios',false);return;}
@@ -1797,18 +1837,35 @@ async function saveUser(){
   const role=document.getElementById('m-role').value;
   try{
     if(editUID){
-      const body={nombre:nom,username:usr,role,perms:editPerms2};
+      const u=USERS.find(x=>String(x.id)===String(editUID));
+      const body={nombre:nom,username:usr,role,perms:u?u.perms:{}};
       if(pas)body.password=pas;
       await finApi(`/api/usuarios/${editUID}`,'PUT',body);
       showToast('Usuario actualizado');
     }else{
       if(!pas){showToast('Contraseña obligatoria',false);btn.disabled=false;btn.textContent='Guardar';return;}
-      await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role,perms:editPerms2});
-      showToast('Usuario creado');
+      const defaultPerms={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false};
+      await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role,perms:defaultPerms});
+      showToast('Usuario creado — activá sus permisos desde la tabla');
     }
     closeModal('modal-usr');await loadUsersFromSheet();
   }catch(e){showToast('Error: '+e.message,false);}
   btn.disabled=false;btn.textContent='Guardar';
+}
+async function togglePerm(userId,tool,currentVal){
+  const newVal=!currentVal;
+  const btn=document.getElementById(`ptgl-${userId}-${tool}`);
+  if(btn){newVal?btn.classList.add('on'):btn.classList.remove('on');btn.setAttribute('onclick',`togglePerm('${userId}','${tool}',${newVal})`);}
+  const u=USERS.find(x=>String(x.id)===String(userId));
+  if(!u)return;
+  u.perms[tool]=newVal;
+  try{
+    await finApi(`/api/usuarios/${userId}`,'PUT',{nombre:u.nombre,username:u.username,role:u.role,perms:u.perms});
+  }catch(e){
+    u.perms[tool]=currentVal;
+    if(btn){currentVal?btn.classList.add('on'):btn.classList.remove('on');btn.setAttribute('onclick',`togglePerm('${userId}','${tool}',${currentVal})`);}
+    showToast('Error al actualizar permiso',false);
+  }
 }
 </script>
 </body>
