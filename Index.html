@@ -270,8 +270,17 @@ tr.row-dirty>td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
 .cc-item-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);align-items:center}
 .cc-item-row:last-child{border:none}
 .cc-item-row input,.cc-item-row select{padding:5px 8px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:#fff;font-size:12px;font-family:inherit;outline:none;width:100%}
-.cc-add-item{display:flex;align-items:center;gap:5px;padding:5px 0;font-size:12px;color:var(--text3);cursor:pointer;border:none;background:none;font-family:inherit}
-.cc-add-item:hover{color:var(--green)}
+.cc-add-item{display:flex;align-items:center;gap:5px;padding:6px 0;font-size:12px;color:var(--text3);cursor:pointer;border:none;background:none;font-family:inherit}
+.cc-add-item:hover{color:var(--blue)}
+.cc-grid-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:4px}
+.cc-grid-table th{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);font-weight:600;padding:5px 5px 7px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+.cc-grid-table th.col-r{text-align:right}.cc-grid-table th.col-c{text-align:center}
+.cc-grid-table td{padding:2px 3px;vertical-align:middle}
+.cc-grid-cell{width:100%;background:transparent;border:1px solid transparent;border-radius:4px;color:#fff;font-family:inherit;font-size:12px;padding:5px 6px;transition:background .1s,border-color .1s;box-sizing:border-box;min-width:0}
+.cc-grid-cell:hover{background:var(--navy4);border-color:var(--border2)}.cc-grid-cell:focus{background:var(--navy4);border-color:var(--blue);outline:none}
+.cc-grid-cell[type=number]{text-align:right}.cc-grid-cell[type=number]::-webkit-inner-spin-button,.cc-grid-cell[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.cc-grid-cell[type=number]{-moz-appearance:textfield}
+.cc-grid-check{width:15px;height:15px;cursor:pointer;accent-color:var(--blue);display:block;margin:auto}
+tr.cc-grid-row:hover td{background:rgba(255,255,255,.012)}
 .cc-mov-card{background:var(--navy2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
 .cc-mov-head{display:flex;align-items:center;padding:12px 14px;gap:10px;cursor:pointer}
 .cc-mov-head:hover{background:rgba(255,255,255,.02)}
@@ -643,7 +652,7 @@ tr.row-dirty>td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
 
 <!-- MODAL MOVIMIENTO CC -->
 <div class="modal-bg" id="modal-cc-mov">
-  <div class="modal" style="width:600px">
+  <div class="modal" style="max-width:900px;width:94vw">
     <div class="modal-title"><span>Nuevo movimiento</span><button class="modal-close" onclick="closeModal('modal-cc-mov')"><i class="ti ti-x"></i></button></div>
     <div class="modal-row" style="margin-bottom:12px">
       <div class="fg" style="margin-bottom:0"><label>Tipo *</label>
@@ -659,19 +668,26 @@ tr.row-dirty>td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
     </div>
     <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Monto total ($) *</label><input type="number" id="cc-mov-monto" placeholder="0.00" step="0.01" min="0"/></div><div class="fg" style="margin-bottom:0"><label>Descripción</label><input type="text" id="cc-mov-desc" placeholder="Resumen del movimiento"/></div></div>
     <div class="fg"><label>Notas</label><textarea id="cc-mov-notas" placeholder="Detalles adicionales..." style="min-height:48px"></textarea></div>
-    <!-- Items: visibles solo para compra/devolucion -->
+    <!-- Grid de productos — solo para compra/devolucion -->
     <div id="cc-mov-items-wrap" style="display:none">
-      <div class="section-divider">Productos</div>
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:6px;padding:4px 0;margin-bottom:4px">
-        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Producto/Modelo</span>
-        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Color</span>
-        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">IMEI/Serial</span>
-        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Valor</span>
-        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Check</span>
-        <span></span>
+      <div class="section-divider" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Productos</span>
+        <span style="font-size:10px;color:var(--text3);font-weight:400">Tab · Enter · ↑↓ &nbsp;·&nbsp; Pegá desde Excel / Sheets</span>
       </div>
-      <div id="cc-items-list"></div>
-      <button class="cc-add-item" onclick="ccAddItem()"><i class="ti ti-plus" style="font-size:12px"></i>Agregar producto</button>
+      <table class="cc-grid-table">
+        <thead><tr>
+          <th style="width:25%">Producto</th>
+          <th style="width:11%">Almacen.</th>
+          <th style="width:13%">Color</th>
+          <th style="width:22%">IMEI / Serial</th>
+          <th class="col-r" style="width:13%">Valor $</th>
+          <th class="col-c" style="width:8%">✓</th>
+          <th style="width:8%"></th>
+        </tr></thead>
+        <tbody id="cc-grid-tbody" onkeydown="ccGridKeydown(event)" onpaste="ccGridPaste(event)"></tbody>
+      </table>
+      <button class="cc-add-item" onclick="ccGridAddRow(true)"><i class="ti ti-plus" style="font-size:12px"></i>Agregar fila <kbd style="font-size:10px;color:var(--text3);background:var(--navy4);border:1px solid var(--border);border-radius:3px;padding:0 4px">↵</kbd></button>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px" id="cc-grid-total" style="display:none"></div>
     </div>
     <div class="modal-err" id="modal-cc-mov-err"></div>
     <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-cc-mov')">Cancelar</button><button class="btn-save" id="btn-cc-mov-save" onclick="ccGuardarMovimiento()">Guardar</button></div>
@@ -709,7 +725,8 @@ let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId
 let finPct=3,eprodCount=0,epagoCount=0;
 let cbPage=1,cbPages=1,pagoPage=1,pagoPages=1; // estado de paginación
 // Cuentas Corrientes
-let ccClientes=[],currentCcClienteId=null,ccItemCount=0,editingCcClienteId=null,ccLoaded=false;
+let ccClientes=[],currentCcClienteId=null,editingCcClienteId=null,ccLoaded=false;
+let ccGridData=[]; // [{producto,tamano,color,imei_serial,valor,verificado}]
 let usadosCatalogo=[],editingUsadoId=null,usadosLoaded=false;
 let usadosDirty={}; // { [id]: { precio_usd?: true, comentarios?: true } }
 let usersLoaded=false,usersLoading=false;
@@ -1756,15 +1773,14 @@ async function ccEliminarCliente(id){
 
 function ccAbrirModalMovimiento(){
   if(!currentCcClienteId)return;
-  ccItemCount=0;
   document.getElementById('cc-mov-tipo').value='compra';
   document.getElementById('cc-mov-fecha').value=today();
   document.getElementById('cc-mov-monto').value='';
   document.getElementById('cc-mov-desc').value='';
   document.getElementById('cc-mov-notas').value='';
-  document.getElementById('cc-items-list').innerHTML='';
   const err=document.getElementById('modal-cc-mov-err');err.textContent='';err.style.display='none';
-  ccMovTipoChange();  // mostrar/ocultar items según tipo inicial
+  ccGridData=[];
+  ccMovTipoChange();
   document.getElementById('modal-cc-mov').classList.add('open');
 }
 
@@ -1774,27 +1790,112 @@ function ccMovTipoChange(){
   const conItems=['compra','devolucion'];
   if(conItems.includes(tipo)){
     wrap.style.display='block';
-    if(document.getElementById('cc-items-list').children.length===0)ccAddItem();
+    if(ccGridData.length===0)ccGridAddRow(true);
   }else{
     wrap.style.display='none';
   }
 }
 
-function ccAddItem(){
-  ccItemCount++;
-  const n=ccItemCount;
-  const div=document.createElement('div');
-  div.id='cc-item-'+n;
-  div.style.cssText='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
-  div.innerHTML=`
-    <input type="text" id="cci-prod-${n}" placeholder="Producto / Modelo"/>
-    <input type="text" id="cci-color-${n}" placeholder="Color"/>
-    <input type="text" id="cci-imei-${n}" placeholder="IMEI/Serial"/>
-    <input type="number" id="cci-valor-${n}" placeholder="Valor" min="0" step="0.01"/>
-    <select id="cci-check-${n}"><option value="false">—</option><option value="true">✓ Verificado</option></select>
-    <button class="btn-rm-sm" onclick="document.getElementById('cc-item-${n}').remove()"><i class="ti ti-x"></i></button>
-  `;
-  document.getElementById('cc-items-list').appendChild(div);
+// ── CC Spreadsheet Grid ─────────────────────────────────────────────────────
+const CC_GRID_FIELDS=['producto','tamano','color','imei_serial','valor']; // cols 0-4; col 5 = verificado
+
+function ccGridRender(){
+  const tbody=document.getElementById('cc-grid-tbody');
+  if(!tbody)return;
+  tbody.innerHTML=ccGridData.map((r,ri)=>`<tr class="cc-grid-row">
+    <td><input class="cc-grid-cell" data-row="${ri}" data-col="0" value="${esc(r.producto)}" placeholder="iPhone 15 Pro" oninput="ccGridUpdate(${ri},'producto',this.value)"></td>
+    <td><input class="cc-grid-cell" data-row="${ri}" data-col="1" value="${esc(r.tamano)}" placeholder="256GB" oninput="ccGridUpdate(${ri},'tamano',this.value)"></td>
+    <td><input class="cc-grid-cell" data-row="${ri}" data-col="2" value="${esc(r.color)}" placeholder="Negro" oninput="ccGridUpdate(${ri},'color',this.value)"></td>
+    <td><input class="cc-grid-cell" data-row="${ri}" data-col="3" value="${esc(r.imei_serial)}" placeholder="356789012345678" oninput="ccGridUpdate(${ri},'imei_serial',this.value)"></td>
+    <td><input class="cc-grid-cell" type="number" data-row="${ri}" data-col="4" value="${r.valor}" placeholder="0" min="0" step="0.01" oninput="ccGridUpdate(${ri},'valor',this.value);ccGridAutoTotal()"></td>
+    <td style="text-align:center"><input type="checkbox" class="cc-grid-check" data-row="${ri}" data-col="5" ${r.verificado?'checked':''} onchange="ccGridUpdate(${ri},'verificado',this.checked)"></td>
+    <td style="text-align:center"><button class="btn-rm-sm" onclick="ccGridRemoveRow(${ri})" tabindex="-1"><i class="ti ti-x"></i></button></td>
+  </tr>`).join('');
+}
+
+function ccGridAddRow(focusFirst=false){
+  ccGridData.push({producto:'',tamano:'',color:'',imei_serial:'',valor:'',verificado:false});
+  ccGridRender();
+  if(focusFirst)setTimeout(()=>ccGridFocus(ccGridData.length-1,0),15);
+}
+
+function ccGridFocus(ri,ci){
+  const el=document.querySelector(`#cc-grid-tbody [data-row="${ri}"][data-col="${ci}"]`);
+  if(el){el.focus();if(el.select&&el.type!=='checkbox')el.select();}
+}
+
+function ccGridUpdate(ri,field,val){
+  if(ccGridData[ri])ccGridData[ri][field]=val;
+}
+
+function ccGridRemoveRow(ri){
+  if(ccGridData.length<=1){ccGridData=[{producto:'',tamano:'',color:'',imei_serial:'',valor:'',verificado:false}];ccGridRender();ccGridFocus(0,0);return;}
+  ccGridData.splice(ri,1);
+  ccGridRender();
+  setTimeout(()=>ccGridFocus(Math.min(ri,ccGridData.length-1),0),15);
+}
+
+function ccGridAutoTotal(){
+  const sum=ccGridData.reduce((a,r)=>a+(parseFloat(r.valor)||0),0);
+  const el=document.getElementById('cc-mov-monto');
+  if(el&&sum>0)el.value=sum.toFixed(2);
+  const lbl=document.getElementById('cc-grid-total');
+  if(lbl)lbl.textContent=sum>0?`Subtotal ítems: ${fmtPesos(sum)}`:'';
+}
+
+function ccGridKeydown(e){
+  const el=e.target;
+  if(!el.dataset.col)return;
+  const ri=parseInt(el.dataset.row),ci=parseInt(el.dataset.col);
+  const rows=ccGridData.length,MAX=5;
+
+  if(e.key==='Tab'){
+    e.preventDefault();
+    if(!e.shiftKey){
+      if(ci<MAX)ccGridFocus(ri,ci+1);
+      else if(ri<rows-1)ccGridFocus(ri+1,0);
+      else{ccGridAddRow();setTimeout(()=>ccGridFocus(rows,0),15);}
+    }else{
+      if(ci>0)ccGridFocus(ri,ci-1);
+      else if(ri>0)ccGridFocus(ri-1,MAX);
+      else document.getElementById('cc-mov-notas').focus();
+    }
+    return;
+  }
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(ri<rows-1)ccGridFocus(ri+1,ci);
+    else{ccGridAddRow();setTimeout(()=>ccGridFocus(rows,ci),15);}
+    return;
+  }
+  if(e.key==='ArrowDown'&&ri<rows-1){e.preventDefault();ccGridFocus(ri+1,ci);return;}
+  if(e.key==='ArrowUp'&&ri>0){e.preventDefault();ccGridFocus(ri-1,ci);return;}
+  if(e.key==='Backspace'&&el.value===''&&rows>1&&el.type!=='checkbox'){
+    e.preventDefault();ccGridRemoveRow(ri);
+  }
+}
+
+function ccGridPaste(e){
+  const el=e.target;
+  if(!el.dataset.col||el.type==='checkbox')return;
+  const text=(e.clipboardData||window.clipboardData).getData('text');
+  const lines=text.split(/\r?\n/).filter(l=>l);
+  if(lines.length===0)return;
+  const cells=lines[0].split('\t');
+  if(lines.length===1&&cells.length===1)return; // paste normal de texto
+  e.preventDefault();
+  const startRow=parseInt(el.dataset.row),startCol=parseInt(el.dataset.col);
+  lines.forEach((line,li)=>{
+    const ri=startRow+li;
+    while(ccGridData.length<=ri)ccGridData.push({producto:'',tamano:'',color:'',imei_serial:'',valor:'',verificado:false});
+    line.split('\t').forEach((val,ci)=>{
+      const colIdx=startCol+ci;
+      if(colIdx<CC_GRID_FIELDS.length)ccGridData[ri][CC_GRID_FIELDS[colIdx]]=val.trim();
+    });
+  });
+  ccGridRender();
+  ccGridAutoTotal();
+  setTimeout(()=>ccGridFocus(startRow,startCol),15);
 }
 
 async function ccGuardarMovimiento(){
@@ -1805,20 +1906,21 @@ async function ccGuardarMovimiento(){
   if(!fecha){showModalErr('modal-cc-mov-err','La fecha es obligatoria');return;}
   const monto=parseFloat(montoRaw);
   if(isNaN(monto)||monto<0){showModalErr('modal-cc-mov-err','El monto debe ser un número válido');return;}
-  // Recolectar items
+  // Recolectar items desde el grid
   const conItems=['compra','devolucion'];
-  const items=[];
+  let items=[];
   if(conItems.includes(tipo)){
-    document.querySelectorAll('#cc-items-list > div').forEach(row=>{
-      const n=row.id.replace('cc-item-','');
-      const prod=document.getElementById('cci-prod-'+n)?.value.trim()||null;
-      const color=document.getElementById('cci-color-'+n)?.value.trim()||null;
-      const imei=document.getElementById('cci-imei-'+n)?.value.trim()||null;
-      const valorRaw=document.getElementById('cci-valor-'+n)?.value;
-      const valor=valorRaw?parseFloat(valorRaw):null;
-      const verificado=document.getElementById('cci-check-'+n)?.value==='true';
-      items.push({producto:prod,color,imei_serial:imei,valor:isNaN(valor)?null:valor,verificado});
-    });
+    items=ccGridData
+      .filter(r=>r.producto||r.tamano||r.color||r.imei_serial||(r.valor!==''&&r.valor!==null&&r.valor!==undefined))
+      .map(r=>({
+        producto:   r.producto   ? r.producto.trim()   : null,
+        tamano:     r.tamano     ? r.tamano.trim()      : null,
+        color:      r.color      ? r.color.trim()       : null,
+        imei_serial:r.imei_serial? r.imei_serial.trim() : null,
+        valor:      r.valor!==''&&r.valor!==null&&r.valor!==undefined ? (parseFloat(r.valor)||null) : null,
+        verificado: !!r.verificado,
+        notas:      r.notas      ? r.notas.trim()       : null,
+      }));
   }
   const btn=document.getElementById('btn-cc-mov-save');
   btn.disabled=true;btn.textContent='Guardando...';
