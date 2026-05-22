@@ -1,0 +1,8 @@
+# Excluir archivos sensibles del deploy
+.env
+.env.*
+!.env.example
+node_modules/
+tests/
+*.log
+.DS_Store

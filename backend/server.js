@@ -1,7 +1,7 @@
-// override:true garantiza que las vars del .env local siempre toman precedencia,
-// incluso si el sistema tiene la misma variable seteada como vacía
-// v1.0.1
-require('dotenv').config({ override: true });
+// En producción (Railway), las vars vienen del entorno y dotenv no hace nada (no hay .env).
+// En desarrollo local, override:true garantiza que el .env local tome precedencia
+// sobre vars del sistema que puedan estar vacías.
+require('dotenv').config({ override: process.env.NODE_ENV !== 'production' });
 
 // ─── Validación de variables de entorno críticas ──────────────────────────────
 // Fallar rápido antes de cargar nada — mejor un error claro que un servidor roto
