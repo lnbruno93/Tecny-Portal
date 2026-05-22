@@ -22,13 +22,15 @@ if (envErrors.length) {
   process.exit(1);
 }
 
-// Sentry debe inicializarse ANTES de cargar Express y las rutas
+// Sentry debe inicializarse ANTES de cargar Express y las rutas.
+// Se carga siempre para poder usar Sentry.flush() en shutdown/crashes
+// incluso cuando SENTRY_DSN no está configurado (Sentry es no-op sin DSN).
 const Sentry = require('@sentry/node');
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV || 'production',
-    tracesSampleRate: 0, // solo captura errores, sin performance
+    tracesSampleRate: 0, // solo errores, sin performance tracing (menor overhead)
   });
 }
 
@@ -49,12 +51,17 @@ async function shutdown(signal) {
   // 1. Dejar de aceptar conexiones nuevas
   server.close(async () => {
     try {
-      // 2. Drenar el pool de PostgreSQL
+      // 2. Flushear eventos pendientes de Sentry antes de cerrar
+      //    (Railway da ~10s — usar 2s para no bloquear el cierre)
+      if (process.env.SENTRY_DSN) {
+        await Sentry.flush(2000);
+      }
+      // 3. Drenar el pool de PostgreSQL
       await db.end();
-      logger.info('Pool de DB cerrado — saliendo limpiamente');
+      logger.info('Shutdown limpio — Sentry flusheado, pool cerrado');
       process.exit(0);
     } catch (err) {
-      logger.error({ err }, 'Error cerrando el pool de DB');
+      logger.error({ err }, 'Error durante shutdown');
       process.exit(1);
     }
   });
@@ -71,13 +78,24 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 
 // ─── Errores no capturados ────────────────────────────────────────────────────
 // Si una promesa o excepción escapa fuera de los route handlers, Node puede
-// quedar en estado corrupto. Logueamos y salimos limpio para que Railway reinicie.
+// quedar en estado corrupto. Reportamos a Sentry, logueamos y salimos para
+// que Railway reinicie el proceso automáticamente.
 process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'unhandledRejection — saliendo');
-  process.exit(1);
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(reason);
+    Sentry.flush(2000).finally(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });
 
 process.on('uncaughtException', (err) => {
   logger.error({ err }, 'uncaughtException — saliendo');
-  process.exit(1);
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err);
+    Sentry.flush(2000).finally(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });

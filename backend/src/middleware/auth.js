@@ -1,5 +1,6 @@
-const jwt = require('jsonwebtoken');
-const db  = require('../config/database');
+const jwt    = require('jsonwebtoken');
+const db     = require('../config/database');
+const Sentry = require('@sentry/node');
 
 module.exports = async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -37,5 +38,16 @@ module.exports = async function requireAuth(req, res, next) {
   }
 
   req.user = decoded;
+
+  // Asociar el usuario autenticado al scope de Sentry para este request.
+  // Así todos los errores capturados incluyen quién los triggereó.
+  if (process.env.SENTRY_DSN) {
+    Sentry.getCurrentScope().setUser({
+      id:       String(decoded.id),
+      username: decoded.username,
+      role:     decoded.role,
+    });
+  }
+
   next();
 };
