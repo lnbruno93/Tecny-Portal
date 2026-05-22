@@ -26,7 +26,9 @@ router.get('/', async (_req, res, next) => {
       if (!permMap[p.user_id]) permMap[p.user_id] = {};
       permMap[p.user_id][p.tool] = p.enabled;
     });
-    res.json(users.map(u => ({ ...u, perms: permMap[u.id] || {} })));
+    // Garantizar que todos los tools aparezcan (false si falta la fila en DB)
+    const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
+    res.json(users.map(u => ({ ...u, perms: { ...defaultPerms, ...(permMap[u.id] || {}) } })));
   } catch (err) {
     next(err);
   }
