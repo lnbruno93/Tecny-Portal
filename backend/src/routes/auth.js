@@ -51,7 +51,9 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
       [user.id]
     );
-    const permissions = Object.fromEntries(perms.map(p => [p.tool, p.enabled]));
+    const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
+    const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
+    const permissions = { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) };
 
     res.json({
       token: makeToken(user),
@@ -74,7 +76,9 @@ router.get('/me', requireAuth, async (req, res, next) => {
       'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
       [req.user.id]
     );
-    res.json({ ...rows[0], perms: Object.fromEntries(perms.map(p => [p.tool, p.enabled])) });
+    const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
+    const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
+    res.json({ ...rows[0], perms: { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) } });
   } catch (err) {
     next(err);
   }

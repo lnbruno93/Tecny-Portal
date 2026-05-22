@@ -541,7 +541,7 @@ tr.row-dirty>td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
               <select id="mu-bateria">
                 <option value="">— Sin especificar —</option>
                 <option>70% a 74%</option><option>75% a 79%</option><option>80% a 84%</option>
-                <option>85% a 89%</option><option>90% a 94%</option><option>95% a 100%</option>
+                <option>80% a 84%</option><option>85% a 89%</option><option>90% a 100%</option>
               </select>
             </div>
           </div>
@@ -1989,7 +1989,7 @@ function usadosRenderizar(lista){
   // Sincronizar estado del botón bulk tras re-render (ej: filtro aplicado)
   const n=Object.keys(usadosDirty).length;
   const btn=document.getElementById('btn-usados-bulk');
-  if(btn){btn.style.display=n>0?'':'none';if(n>0)btn.textContent=`Guardar cambios (${n})`;}
+  if(btn){btn.style.display=n>0?'':'none';if(n>0)btn.innerHTML=`<i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar cambios (${n})`;}
 }
 
 function usadosAbrirModal(id){
@@ -2069,7 +2069,7 @@ function usadosMarcarDirty(id,campo,valor,inputEl){
   if(row)row.classList.add('row-dirty');
   const n=Object.keys(usadosDirty).length;
   const btn=document.getElementById('btn-usados-bulk');
-  if(btn){btn.style.display='';btn.textContent=`Guardar cambios (${n})`;}
+  if(btn){btn.style.display='';btn.innerHTML=`<i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar cambios (${n})`;}
 }
 
 // Guarda todos los cambios pendientes en una sola transacción
@@ -2081,8 +2081,8 @@ async function usadosGuardarMasivo(){
     return{id:p.id,precio_usd:Number(p.precio_usd),comentarios:p.comentarios||null};
   });
   const btn=document.getElementById('btn-usados-bulk');
-  const origText=btn.textContent;
-  btn.disabled=true;btn.textContent='Guardando...';
+  const n=updates.length;
+  btn.disabled=true;btn.innerHTML='<i class="ti ti-loader" style="font-size:13px"></i>Guardando...';
   try{
     const res=await finApi('/api/usados/bulk','PUT',{updates});
     usadosDirty={};
@@ -2091,7 +2091,7 @@ async function usadosGuardarMasivo(){
     showToast(`${res.updated} precio${res.updated!==1?'s':''} actualizado${res.updated!==1?'s':''}`);
   }catch(e){
     showToast('Error: '+e.message,false);
-    btn.disabled=false;btn.textContent=origText;
+    btn.disabled=false;btn.innerHTML=`<i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar cambios (${n})`;
   }
 }
 </script>

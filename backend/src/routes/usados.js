@@ -32,10 +32,12 @@ router.get('/', async (req, res, next) => {
 // ── GET /api/usados/:id ──────────────────────────────────────────────────────
 router.get('/:id', async (req, res, next) => {
   try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
       `SELECT id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at
        FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,
-      [req.params.id]
+      [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
     res.json(rows[0]);
@@ -52,7 +54,7 @@ router.post('/', async (req, res, next) => {
        RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
       [data.equipo, data.capacidad ?? null, data.pct_bateria ?? null, data.precio_usd, data.comentarios ?? null]
     );
-    await audit('catalogo_usados', 'CREATE', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    await audit('catalogo_usados', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -77,7 +79,7 @@ router.put('/bulk', async (req, res, next) => {
         count += rowCount;
       }
       await client.query('COMMIT');
-      await audit('catalogo_usados', 'BULK_UPDATE', null, {
+      await audit('catalogo_usados', 'UPDATE', null, {
         despues: { count, ids: updates.map(u => u.id) },
         user_id: req.user.id,
       });
@@ -94,11 +96,13 @@ router.put('/bulk', async (req, res, next) => {
 // ── PUT /api/usados/:id ──────────────────────────────────────────────────────
 router.put('/:id', async (req, res, next) => {
   try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
     const data = updateUsadoSchema.parse(req.body);
 
     const prev = await db.query(
       `SELECT * FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,
-      [req.params.id]
+      [id]
     );
     if (!prev.rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
 
@@ -113,7 +117,7 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
-    params.push(req.params.id);
+    params.push(id);
     const { rows } = await db.query(
       `UPDATE catalogo_usados SET ${fields.join(', ')} WHERE id = $${params.length} AND deleted_at IS NULL
        RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
@@ -127,10 +131,12 @@ router.put('/:id', async (req, res, next) => {
 // ── DELETE /api/usados/:id ───────────────────────────────────────────────────
 router.delete('/:id', async (req, res, next) => {
   try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
       `UPDATE catalogo_usados SET deleted_at = now()
        WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
-      [req.params.id]
+      [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
     await audit('catalogo_usados', 'DELETE', rows[0].id, { user_id: req.user.id });

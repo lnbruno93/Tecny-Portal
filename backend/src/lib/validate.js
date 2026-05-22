@@ -1,5 +1,3 @@
-const { ZodError } = require('zod');
-
 /**
  * Middleware factory que valida req.body, req.query o req.params con un schema Zod.
  * Si la validación falla devuelve 400 con errores por campo.
