@@ -454,7 +454,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 
       <!-- USUARIOS -->
       <div class="panel" id="panel-usuarios">
-        <div class="ph"><div class="ph-icon" style="background:rgba(255,255,255,.05);color:var(--text2)"><i class="ti ti-users"></i></div><div><div class="ph-title">Usuarios</div><div class="ph-sub">Accesos y permisos</div></div><button class="btn-primary" style="margin-left:auto" onclick="openNewUser()"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo</button></div>
+        <div class="ph"><div class="ph-icon" style="background:rgba(255,255,255,.05);color:var(--text2)"><i class="ti ti-users"></i></div><div><div class="ph-title">Usuarios</div><div class="ph-sub">Accesos y permisos</div></div><button class="btn-secondary" style="margin-left:auto;margin-right:8px" onclick="usersLoaded=false;loadUsersFromSheet()"><i class="ti ti-refresh" style="font-size:13px"></i>Actualizar</button><button class="btn-primary" onclick="openNewUser()"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo</button></div>
         <div id="usuarios-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">Solo administradores.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
         <div id="usuarios-content" style="padding:24px"><div id="usr-list"></div></div>
       </div>
@@ -703,6 +703,7 @@ let cbPage=1,cbPages=1,pagoPage=1,pagoPages=1; // estado de paginación
 // Cuentas Corrientes
 let ccClientes=[],currentCcClienteId=null,ccItemCount=0,editingCcClienteId=null,ccLoaded=false;
 let usadosCatalogo=[],editingUsadoId=null,usadosLoaded=false;
+let usersLoaded=false,usersLoading=false;
 
 // ── UTILS ──
 function fmt(n){return Math.round(n).toLocaleString('es-AR');}
@@ -1334,11 +1335,16 @@ async function eliminarInversion(id){
   }catch(e){showToast('Error: '+e.message,false);}
 }
 async function loadUsersFromSheet(){
+  if(usersLoading)return; // evitar fetch concurrente
+  usersLoading=true;
   try{
+    const defaultP=Object.fromEntries(TOOLS.map(t=>[t,false]));
     const rows=await finApi('/api/usuarios');
-    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:u.perms||{cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false,usados:false}}));
+    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:{...defaultP,...(u.perms||{})}}));
+    usersLoaded=true;
     renderUsers();
   }catch(e){USERS=[];}
+  finally{usersLoading=false;}
 }
 
 async function doLogin(){
@@ -1384,7 +1390,7 @@ function go(id){
   document.getElementById('panel-'+id).classList.add('active');
   const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
   if(id==='financiera'&&CU&&CU.perms.financiera)finInit();
-  if(id==='usuarios'&&CU&&CU.perms.usuarios)loadUsersFromSheet();
+  if(id==='usuarios'&&CU&&CU.perms.usuarios&&!usersLoaded)loadUsersFromSheet();
   if(id==='cuentas'&&CU&&CU.perms.cuentas&&!ccLoaded)loadCuentas();
   if(id==='usados'&&CU&&CU.perms.usados&&!usadosLoaded)usadosCargar();
 }
@@ -1872,7 +1878,7 @@ async function eliminarUser(id){
   if(!confirm('¿Eliminar este usuario?'))return;
   try{
     await finApi(`/api/usuarios/${id}`,'DELETE');
-    USERS=USERS.filter(u=>u.id!==String(id));
+    usersLoaded=false;USERS=USERS.filter(u=>u.id!==String(id));
     renderUsers();showToast('Usuario eliminado');
   }catch(e){showToast('Error: '+e.message,false);}
 }
@@ -1894,7 +1900,7 @@ async function saveUser(){
       await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role,perms:defaultPerms});
       showToast('Usuario creado — activá sus permisos desde la tabla');
     }
-    closeModal('modal-usr');await loadUsersFromSheet();
+    closeModal('modal-usr');usersLoaded=false;await loadUsersFromSheet();
   }catch(e){showToast('Error: '+e.message,false);}
   btn.disabled=false;btn.textContent='Guardar';
 }
