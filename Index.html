@@ -90,6 +90,13 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .role-admin{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:var(--amber2);color:var(--amber);white-space:nowrap}
 .role-oper{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;background:var(--blue2);color:var(--blue);white-space:nowrap}
 .usr-ini{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.usados-inline-input{background:transparent;border:1px solid transparent;border-radius:5px;color:inherit;font-family:inherit;font-size:12px;padding:3px 7px;transition:border-color .15s,background .15s;box-sizing:border-box}
+.usados-inline-input:hover,.usados-inline-input:focus{background:var(--navy4);border-color:var(--border2);outline:none}
+.usados-inline-input.dirty{background:rgba(88,166,255,.08);border-color:var(--blue)}
+input.usados-inline-input[type=number]::-webkit-inner-spin-button,input.usados-inline-input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+input.usados-inline-input[type=number]{-moz-appearance:textfield}
+tr.row-dirty>td{background:rgba(88,166,255,.025)}
+tr.row-dirty>td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
 .metric{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:14px}
 .metric-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
 .metric-val{font-family:'Syne',system-ui,sans-serif;font-size:19px;font-weight:700;color:#fff}
@@ -506,7 +513,8 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         <div class="ph">
           <div class="ph-icon" style="background:var(--amber2);color:var(--amber)"><i class="ti ti-device-mobile"></i></div>
           <div><div class="ph-title">Cotizador — Usados</div><div class="ph-sub">Precios de equipos usados en USD</div></div>
-          <div style="margin-left:auto;display:flex;gap:8px">
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <button class="btn-save" id="btn-usados-bulk" style="display:none" onclick="usadosGuardarMasivo()"><i class="ti ti-device-floppy" style="font-size:13px"></i>Guardar cambios</button>
             <input type="text" id="usados-buscar" placeholder="Buscar equipo..." oninput="usadosFiltrar()" style="padding:6px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:12px;font-family:inherit;outline:none;width:200px">
             <button class="btn-primary" onclick="usadosAbrirModal(null)"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo</button>
           </div>
@@ -703,6 +711,7 @@ let cbPage=1,cbPages=1,pagoPage=1,pagoPages=1; // estado de paginación
 // Cuentas Corrientes
 let ccClientes=[],currentCcClienteId=null,ccItemCount=0,editingCcClienteId=null,ccLoaded=false;
 let usadosCatalogo=[],editingUsadoId=null,usadosLoaded=false;
+let usadosDirty={}; // { [id]: { precio_usd?: true, comentarios?: true } }
 let usersLoaded=false,usersLoading=false;
 
 // ── UTILS ──
@@ -1926,6 +1935,7 @@ async function usadosCargar(){
   try{
     const data=await finApi('/api/usados');
     usadosCatalogo=data;
+    usadosDirty={};
     usadosLoaded=true;
     usadosRenderizar(data);
   }catch(e){
@@ -1945,6 +1955,9 @@ function usadosRenderizar(lista){
   const el=document.getElementById('usados-body');
   if(!lista.length){
     el.innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin productos en el catálogo</div>';
+    // Ocultar botón bulk si no hay filas
+    const btn=document.getElementById('btn-usados-bulk');
+    if(btn)btn.style.display='none';
     return;
   }
   el.innerHTML=`<div class="table-card"><table class="data-table">
@@ -1952,18 +1965,31 @@ function usadosRenderizar(lista){
       <th>Equipo</th><th>Capacidad</th><th>% Batería</th>
       <th style="text-align:right">Precio USD</th><th>Comentarios</th><th></th>
     </tr></thead>
-    <tbody>${lista.map(p=>`<tr>
-      <td style="font-weight:600">${esc(p.equipo)}</td>
-      <td>${esc(p.capacidad||'—')}</td>
-      <td>${esc(p.pct_bateria||'—')}</td>
-      <td style="text-align:right;font-family:'Syne',system-ui,sans-serif;font-weight:700">$${Number(p.precio_usd).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
-      <td style="color:var(--text2);font-size:12px">${esc(p.comentarios||'')}</td>
-      <td style="white-space:nowrap;text-align:right">
-        <button class="btn-sm" onclick="usadosAbrirModal(${p.id})"><i class="ti ti-edit" style="font-size:12px"></i></button>
-        <button class="btn-sm btn-danger-sm" style="margin-left:4px" onclick="usadosEliminar(${p.id})"><i class="ti ti-trash" style="font-size:12px"></i></button>
-      </td>
-    </tr>`).join('')}</tbody>
+    <tbody>${lista.map(p=>{
+      const d=usadosDirty[p.id]||{};
+      return `<tr id="usados-row-${p.id}"${d.precio_usd||d.comentarios?' class="row-dirty"':''}>
+        <td style="font-weight:600">${esc(p.equipo)}</td>
+        <td>${esc(p.capacidad||'—')}</td>
+        <td>${esc(p.pct_bateria||'—')}</td>
+        <td style="padding:6px 10px">
+          <input type="number" class="usados-inline-input${d.precio_usd?' dirty':''}" style="width:80px;text-align:right" value="${Number(p.precio_usd)}" min="0" step="1"
+            oninput="usadosMarcarDirty(${p.id},'precio_usd',this.value,this)">
+        </td>
+        <td style="padding:6px 10px">
+          <input type="text" class="usados-inline-input${d.comentarios?' dirty':''}" style="width:100%;min-width:100px" value="${esc(p.comentarios||'')}"
+            oninput="usadosMarcarDirty(${p.id},'comentarios',this.value,this)">
+        </td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn-sm" onclick="usadosAbrirModal(${p.id})"><i class="ti ti-edit" style="font-size:12px"></i></button>
+          <button class="btn-sm btn-danger-sm" style="margin-left:4px" onclick="usadosEliminar(${p.id})"><i class="ti ti-trash" style="font-size:12px"></i></button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
   </table></div>`;
+  // Sincronizar estado del botón bulk tras re-render (ej: filtro aplicado)
+  const n=Object.keys(usadosDirty).length;
+  const btn=document.getElementById('btn-usados-bulk');
+  if(btn){btn.style.display=n>0?'':'none';if(n>0)btn.textContent=`Guardar cambios (${n})`;}
 }
 
 function usadosAbrirModal(id){
@@ -2018,10 +2044,55 @@ async function usadosEliminar(id){
   if(!confirm('¿Eliminar este producto del catálogo?'))return;
   try{
     await finApi(`/api/usados/${id}`,'DELETE');
+    delete usadosDirty[id];
     usadosCatalogo=usadosCatalogo.filter(p=>p.id!==id);
     usadosRenderizar(usadosCatalogo);
     showToast('Producto eliminado');
   }catch(e){showToast('Error: '+e.message,false);}
+}
+
+// Marca una celda como modificada, actualiza el catálogo en memoria y refleja el estado visual
+function usadosMarcarDirty(id,campo,valor,inputEl){
+  const p=usadosCatalogo.find(x=>x.id===id);
+  if(!p)return;
+  if(campo==='precio_usd'){
+    const v=parseFloat(valor);
+    if(isNaN(v)||v<0)return;
+    p.precio_usd=v;
+  }else{
+    p[campo]=valor;
+  }
+  if(!usadosDirty[id])usadosDirty[id]={};
+  usadosDirty[id][campo]=true;
+  inputEl.classList.add('dirty');
+  const row=document.getElementById(`usados-row-${id}`);
+  if(row)row.classList.add('row-dirty');
+  const n=Object.keys(usadosDirty).length;
+  const btn=document.getElementById('btn-usados-bulk');
+  if(btn){btn.style.display='';btn.textContent=`Guardar cambios (${n})`;}
+}
+
+// Guarda todos los cambios pendientes en una sola transacción
+async function usadosGuardarMasivo(){
+  const ids=Object.keys(usadosDirty);
+  if(!ids.length)return;
+  const updates=ids.map(idStr=>{
+    const p=usadosCatalogo.find(x=>x.id===Number(idStr));
+    return{id:p.id,precio_usd:Number(p.precio_usd),comentarios:p.comentarios||null};
+  });
+  const btn=document.getElementById('btn-usados-bulk');
+  const origText=btn.textContent;
+  btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    const res=await finApi('/api/usados/bulk','PUT',{updates});
+    usadosDirty={};
+    usadosLoaded=false;
+    await usadosCargar();
+    showToast(`${res.updated} precio${res.updated!==1?'s':''} actualizado${res.updated!==1?'s':''}`);
+  }catch(e){
+    showToast('Error: '+e.message,false);
+    btn.disabled=false;btn.textContent=origText;
+  }
 }
 </script>
 </body>

@@ -13,4 +13,15 @@ const updateUsadoSchema = createUsadoSchema.partial().refine(
   { message: 'Se requiere al menos un campo para actualizar' }
 );
 
-module.exports = { createUsadoSchema, updateUsadoSchema };
+// Bulk update: array de { id, precio_usd, comentarios }
+const bulkUpdateItemSchema = z.object({
+  id:          z.number({ coerce: true }).int().positive(),
+  precio_usd:  z.number({ coerce: true }).nonnegative(),
+  comentarios: z.string().max(500).nullable().optional(),
+});
+
+const bulkUpdateUsadosSchema = z.object({
+  updates: z.array(bulkUpdateItemSchema).min(1).max(500),
+});
+
+module.exports = { createUsadoSchema, updateUsadoSchema, bulkUpdateUsadosSchema };

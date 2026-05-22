@@ -1,8 +1,9 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../config/database');
-const { audit } = require('../lib/audit');
-const { createUsadoSchema, updateUsadoSchema } = require('../schemas/usados');
+const audit   = require('../lib/audit');
+const parseId = require('../lib/parseId');
+const { createUsadoSchema, updateUsadoSchema, bulkUpdateUsadosSchema } = require('../schemas/usados');
 
 // ── GET /api/usados ──────────────────────────────────────────────────────────
 // Lista todos los productos del catálogo (con búsqueda opcional)
@@ -51,8 +52,42 @@ router.post('/', async (req, res, next) => {
        RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
       [data.equipo, data.capacidad ?? null, data.pct_bateria ?? null, data.precio_usd, data.comentarios ?? null]
     );
-    await audit(req.user.id, 'CREATE', 'catalogo_usados', rows[0].id, null, rows[0]);
+    await audit('catalogo_usados', 'CREATE', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ── PUT /api/usados/bulk ─────────────────────────────────────────────────────
+// Actualiza precio_usd y comentarios de múltiples productos en una sola transacción.
+router.put('/bulk', async (req, res, next) => {
+  try {
+    const { updates } = bulkUpdateUsadosSchema.parse(req.body);
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      let count = 0;
+      for (const u of updates) {
+        const { rowCount } = await client.query(
+          `UPDATE catalogo_usados
+              SET precio_usd   = $1,
+                  comentarios  = NULLIF($2::text, '')
+            WHERE id = $3 AND deleted_at IS NULL`,
+          [u.precio_usd, u.comentarios ?? null, u.id]
+        );
+        count += rowCount;
+      }
+      await client.query('COMMIT');
+      await audit('catalogo_usados', 'BULK_UPDATE', null, {
+        despues: { count, ids: updates.map(u => u.id) },
+        user_id: req.user.id,
+      });
+      res.json({ updated: count });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) { next(err); }
 });
 
@@ -84,7 +119,7 @@ router.put('/:id', async (req, res, next) => {
        RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
       params
     );
-    await audit(req.user.id, 'UPDATE', 'catalogo_usados', rows[0].id, prev.rows[0], rows[0]);
+    await audit('catalogo_usados', 'UPDATE', rows[0].id, { antes: prev.rows[0], despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -98,7 +133,7 @@ router.delete('/:id', async (req, res, next) => {
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
-    await audit(req.user.id, 'DELETE', 'catalogo_usados', rows[0].id, null, null);
+    await audit('catalogo_usados', 'DELETE', rows[0].id, { user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
