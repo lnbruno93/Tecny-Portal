@@ -1834,7 +1834,7 @@ async function ccEliminarMovimiento(id){
 
 // ── USUARIOS ──
 function renderUsers(){
-  const tools=['cotizador','financiera','cajas','envios','usuarios','cuentas'];
+  const tools=TOOLS; // usa el array global — se actualiza solo al agregar módulos
   const el=document.getElementById('usr-list');
   if(!USERS.length){el.innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
   const thead=`<thead><tr>
