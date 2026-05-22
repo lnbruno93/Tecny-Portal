@@ -14,7 +14,7 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas'];
+const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas', 'usados'];
 
 const TEST_USER = {
   nombre:   'Test Admin',

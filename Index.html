@@ -311,6 +311,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         <button class="nav-btn" onclick="go('cajas')" id="nb-cajas"><i class="ti ti-wallet ni"></i>Cajas<span class="nav-lock" id="nl-cajas" style="display:none"><i class="ti ti-lock"></i></span></button>
         <button class="nav-btn" onclick="go('envios')" id="nb-envios"><i class="ti ti-truck-delivery ni"></i>Envíos<span class="nav-lock" id="nl-envios" style="display:none"><i class="ti ti-lock"></i></span></button>
         <button class="nav-btn" onclick="go('cuentas')" id="nb-cuentas"><i class="ti ti-receipt ni"></i>Cuentas CC<span class="nav-lock" id="nl-cuentas" style="display:none"><i class="ti ti-lock"></i></span></button>
+        <button class="nav-btn" onclick="go('usados')" id="nb-usados"><i class="ti ti-device-mobile ni"></i>Cotizador — Usados<span class="nav-lock" id="nl-usados" style="display:none"><i class="ti ti-lock"></i></span></button>
       </div>
       <div class="s-footer">
         <div class="s-label">Sistema</div>
@@ -499,6 +500,48 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         </div>
       </div>
 
+      <!-- COTIZADOR USADOS -->
+      <div class="panel" id="panel-usados">
+        <div class="ph">
+          <div class="ph-icon" style="background:var(--amber2);color:var(--amber)"><i class="ti ti-device-mobile"></i></div>
+          <div><div class="ph-title">Cotizador — Usados</div><div class="ph-sub">Precios de equipos usados en USD</div></div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <input type="text" id="usados-buscar" placeholder="Buscar equipo..." oninput="usadosFiltrar()" style="padding:6px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:#fff;font-size:12px;font-family:inherit;outline:none;width:200px">
+            <button class="btn-primary" onclick="usadosAbrirModal(null)"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo</button>
+          </div>
+        </div>
+        <div id="usados-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar Cotizador — Usados.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="usados-content" style="padding:20px 24px">
+          <div id="usados-body"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando catálogo...</div></div>
+        </div>
+      </div>
+
+      <!-- MODAL USADOS -->
+      <div class="modal-bg" id="modal-usados">
+        <div class="modal">
+          <div class="modal-title"><span id="modal-usados-title">Nuevo producto</span><button class="modal-close" onclick="closeModal('modal-usados')"><i class="ti ti-x"></i></button></div>
+          <div class="fg"><label>Equipo</label><input type="text" id="mu-equipo" placeholder="Ej: iPhone 13 Pro"/></div>
+          <div class="modal-row" style="margin-bottom:12px">
+            <div class="fg" style="margin-bottom:0"><label>Capacidad</label>
+              <select id="mu-capacidad">
+                <option value="">— Sin especificar —</option>
+                <option>64GB</option><option>128GB</option><option>256GB</option><option>512GB</option><option>1TB</option>
+              </select>
+            </div>
+            <div class="fg" style="margin-bottom:0"><label>% Batería</label>
+              <select id="mu-bateria">
+                <option value="">— Sin especificar —</option>
+                <option>70% a 74%</option><option>75% a 79%</option><option>80% a 84%</option>
+                <option>85% a 89%</option><option>90% a 94%</option><option>95% a 100%</option>
+              </select>
+            </div>
+          </div>
+          <div class="fg"><label>Precio (USD)</label><input type="number" id="mu-precio" placeholder="0" min="0" step="0.01"/></div>
+          <div class="fg"><label>Comentarios <span style="color:var(--text3)">(opcional)</span></label><textarea id="mu-comentarios" rows="2" style="width:100%;padding:8px 10px;background:var(--navy4);border:1px solid var(--border);border-radius:8px;color:#fff;font-size:13px;font-family:inherit;outline:none;resize:none"></textarea></div>
+          <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-usados')">Cancelar</button><button class="btn-save" id="btn-usados-save" onclick="usadosGuardar()">Guardar</button></div>
+        </div>
+      </div>
+
       <!-- CONFIG -->
       <div class="panel" id="panel-config">
         <div class="ph"><div class="ph-icon" style="background:rgba(255,255,255,.05);color:var(--text2)"><i class="ti ti-settings"></i></div><div><div class="ph-title">Configuración</div><div class="ph-sub">Ajustes generales del portal</div></div></div>
@@ -644,7 +687,7 @@ const FIN_API=window.location.hostname==='localhost'||window.location.hostname==
   :'https://ipro-backend-production.up.railway.app';
 const SENTRY_DSN_FRONT='https://7b73d1104422df03c3f6d729f9b48655@o4511427679748096.ingest.us.sentry.io/4511427715268608';
 const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
-const TOOLS=['cotizador','financiera','cajas','envios','usuarios','cuentas'];
+const TOOLS=['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
 
 if(typeof Sentry!=='undefined'&&SENTRY_DSN_FRONT){
   Sentry.init({dsn:SENTRY_DSN_FRONT,environment:'production',tracesSampleRate:0});
@@ -658,6 +701,7 @@ let finPct=3,eprodCount=0,epagoCount=0;
 let cbPage=1,cbPages=1,pagoPage=1,pagoPages=1; // estado de paginación
 // Cuentas Corrientes
 let ccClientes=[],currentCcClienteId=null,ccItemCount=0,editingCcClienteId=null,ccLoaded=false;
+let usadosCatalogo=[],editingUsadoId=null,usadosLoaded=false;
 
 // ── UTILS ──
 function fmt(n){return Math.round(n).toLocaleString('es-AR');}
@@ -1291,7 +1335,7 @@ async function eliminarInversion(id){
 async function loadUsersFromSheet(){
   try{
     const rows=await finApi('/api/usuarios');
-    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:u.perms||{cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false}}));
+    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:u.perms||{cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false,usados:false}}));
     renderUsers();
   }catch(e){USERS=[];}
 }
@@ -1341,6 +1385,7 @@ function go(id){
   if(id==='financiera'&&CU&&CU.perms.financiera)finInit();
   if(id==='usuarios'&&CU&&CU.perms.usuarios)loadUsersFromSheet();
   if(id==='cuentas'&&CU&&CU.perms.cuentas&&!ccLoaded)loadCuentas();
+  if(id==='usados'&&CU&&CU.perms.usados&&!usadosLoaded)usadosCargar();
 }
 
 function openCambiarPassModal(){
@@ -1844,7 +1889,7 @@ async function saveUser(){
       showToast('Usuario actualizado');
     }else{
       if(!pas){showToast('Contraseña obligatoria',false);btn.disabled=false;btn.textContent='Guardar';return;}
-      const defaultPerms={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false};
+      const defaultPerms={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false,usados:false};
       await finApi('/api/usuarios','POST',{nombre:nom,username:usr,password:pas,role,perms:defaultPerms});
       showToast('Usuario creado — activá sus permisos desde la tabla');
     }
@@ -1866,6 +1911,110 @@ async function togglePerm(userId,tool,currentVal){
     if(btn){currentVal?btn.classList.add('on'):btn.classList.remove('on');btn.setAttribute('onclick',`togglePerm('${userId}','${tool}',${currentVal})`);}
     showToast('Error al actualizar permiso',false);
   }
+}
+
+// ── COTIZADOR USADOS ─────────────────────────────────────────────────────────
+async function usadosCargar(){
+  document.getElementById('usados-body').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando catálogo...</div>';
+  try{
+    const data=await finApi('/api/usados');
+    usadosCatalogo=data;
+    usadosLoaded=true;
+    usadosRenderizar(data);
+  }catch(e){
+    document.getElementById('usados-body').innerHTML='<div class="loading-msg"><i class="ti ti-alert-circle"></i>Error al cargar</div>';
+  }
+}
+
+function usadosFiltrar(){
+  const q=document.getElementById('usados-buscar').value.trim().toLowerCase();
+  const filtrados=q
+    ?usadosCatalogo.filter(p=>(p.equipo+' '+(p.capacidad||'')+' '+(p.pct_bateria||'')+' '+(p.comentarios||'')).toLowerCase().includes(q))
+    :usadosCatalogo;
+  usadosRenderizar(filtrados);
+}
+
+function usadosRenderizar(lista){
+  const el=document.getElementById('usados-body');
+  if(!lista.length){
+    el.innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin productos en el catálogo</div>';
+    return;
+  }
+  el.innerHTML=`<div class="table-card"><table class="data-table">
+    <thead><tr>
+      <th>Equipo</th><th>Capacidad</th><th>% Batería</th>
+      <th style="text-align:right">Precio USD</th><th>Comentarios</th><th></th>
+    </tr></thead>
+    <tbody>${lista.map(p=>`<tr>
+      <td style="font-weight:600">${esc(p.equipo)}</td>
+      <td>${esc(p.capacidad||'—')}</td>
+      <td>${esc(p.pct_bateria||'—')}</td>
+      <td style="text-align:right;font-family:'Syne',system-ui,sans-serif;font-weight:700">$${Number(p.precio_usd).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
+      <td style="color:var(--text2);font-size:12px">${esc(p.comentarios||'')}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn-sm" onclick="usadosAbrirModal(${p.id})"><i class="ti ti-edit" style="font-size:12px"></i></button>
+        <button class="btn-sm btn-danger-sm" style="margin-left:4px" onclick="usadosEliminar(${p.id})"><i class="ti ti-trash" style="font-size:12px"></i></button>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function usadosAbrirModal(id){
+  editingUsadoId=id;
+  document.getElementById('modal-usados-title').textContent=id?'Editar producto':'Nuevo producto';
+  if(id){
+    const p=usadosCatalogo.find(x=>x.id===id);
+    if(!p)return;
+    document.getElementById('mu-equipo').value=p.equipo||'';
+    document.getElementById('mu-capacidad').value=p.capacidad||'';
+    document.getElementById('mu-bateria').value=p.pct_bateria||'';
+    document.getElementById('mu-precio').value=p.precio_usd||'';
+    document.getElementById('mu-comentarios').value=p.comentarios||'';
+  }else{
+    ['mu-equipo','mu-precio','mu-comentarios'].forEach(i=>document.getElementById(i).value='');
+    document.getElementById('mu-capacidad').value='';
+    document.getElementById('mu-bateria').value='';
+  }
+  document.getElementById('modal-usados').classList.add('open');
+}
+
+async function usadosGuardar(){
+  const equipo=document.getElementById('mu-equipo').value.trim();
+  const precio=parseFloat(document.getElementById('mu-precio').value);
+  if(!equipo){showToast('El nombre del equipo es obligatorio',false);return;}
+  if(isNaN(precio)||precio<0){showToast('Ingresá un precio válido',false);return;}
+  const body={
+    equipo,
+    capacidad:document.getElementById('mu-capacidad').value||undefined,
+    pct_bateria:document.getElementById('mu-bateria').value||undefined,
+    precio_usd:precio,
+    comentarios:document.getElementById('mu-comentarios').value.trim()||undefined,
+  };
+  const btn=document.getElementById('btn-usados-save');
+  btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    if(editingUsadoId){
+      await finApi(`/api/usados/${editingUsadoId}`,'PUT',body);
+      showToast('Producto actualizado');
+    }else{
+      await finApi('/api/usados','POST',body);
+      showToast('Producto agregado');
+    }
+    closeModal('modal-usados');
+    usadosLoaded=false;
+    await usadosCargar();
+  }catch(e){showToast('Error: '+e.message,false);}
+  btn.disabled=false;btn.textContent='Guardar';
+}
+
+async function usadosEliminar(id){
+  if(!confirm('¿Eliminar este producto del catálogo?'))return;
+  try{
+    await finApi(`/api/usados/${id}`,'DELETE');
+    usadosCatalogo=usadosCatalogo.filter(p=>p.id!==id);
+    usadosRenderizar(usadosCatalogo);
+    showToast('Producto eliminado');
+  }catch(e){showToast('Error: '+e.message,false);}
 }
 </script>
 </body>

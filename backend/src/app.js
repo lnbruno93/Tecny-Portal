@@ -19,6 +19,7 @@ const cajasRoutes        = require('./routes/cajas');
 const enviosRoutes       = require('./routes/envios');
 const usuariosRoutes     = require('./routes/usuarios');
 const cuentasRoutes      = require('./routes/cuentas');
+const usadosRoutes       = require('./routes/usados');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -163,6 +164,9 @@ app.use('/api/envios',        requireAuth, requirePermission('envios'), enviosRo
 
 // Cuentas Corrientes — requiere permiso "cuentas"
 app.use('/api/cuentas',       requireAuth, requirePermission('cuentas'), cuentasRoutes);
+
+// Cotizador Usados — requiere permiso "usados"
+app.use('/api/usados',        requireAuth, requirePermission('usados'), usadosRoutes);
 
 // Usuarios — solo admin (ya controlado dentro de la ruta con adminOnly)
 app.use('/api/usuarios',      usuariosRoutes);

@@ -1,0 +1,16 @@
+const { z } = require('zod/v4');
+
+const createUsadoSchema = z.object({
+  equipo:      z.string().min(1).max(150),
+  capacidad:   z.string().max(50).optional(),
+  pct_bateria: z.string().max(50).optional(),
+  precio_usd:  z.number({ coerce: true }).nonnegative(),
+  comentarios: z.string().max(500).optional(),
+});
+
+const updateUsadoSchema = createUsadoSchema.partial().refine(
+  data => Object.keys(data).length > 0,
+  { message: 'Se requiere al menos un campo para actualizar' }
+);
+
+module.exports = { createUsadoSchema, updateUsadoSchema };
