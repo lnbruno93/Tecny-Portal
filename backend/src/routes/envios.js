@@ -12,34 +12,39 @@ router.use(requireAuth);
 router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => {
   try {
     const { estado, buscar, desde, hasta } = req.query;
-    let query = `
+
+    // Construir cláusula WHERE compartida entre la query de datos y la de conteo
+    // Evita el regex frágil que rompía si el SELECT cambiaba de formato
+    const conditions = ['e.deleted_at IS NULL'];
+    const params = [];
+    if (estado) { params.push(estado);          conditions.push(`e.estado = $${params.length}`); }
+    if (desde)  { params.push(desde);            conditions.push(`e.fecha >= $${params.length}`); }
+    if (hasta)  { params.push(hasta);            conditions.push(`e.fecha <= $${params.length}`); }
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      conditions.push(`(e.cliente ILIKE $${params.length} OR e.direccion ILIKE $${params.length}
+                        OR e.barrio ILIKE $${params.length} OR e.telefono ILIKE $${params.length}
+                        OR e.notas ILIKE $${params.length})`);
+    }
+    const where = conditions.join(' AND ');
+
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
+
+    const countQuery = `SELECT COUNT(DISTINCT e.id) FROM envios e WHERE ${where}`;
+    const dataQuery  = `
       SELECT e.*,
         JSON_AGG(i ORDER BY i.tipo, i.id) FILTER (WHERE i.id IS NOT NULL) AS items
       FROM envios e
       LEFT JOIN envio_items i ON i.envio_id = e.id
-      WHERE e.deleted_at IS NULL
+      WHERE ${where}
+      GROUP BY e.id
+      ORDER BY e.fecha DESC, e.id DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
-    const params = [];
-    if (estado) { params.push(estado);        query += ` AND e.estado = $${params.length}`; }
-    if (desde)  { params.push(desde);          query += ` AND e.fecha >= $${params.length}`; }
-    if (hasta)  { params.push(hasta);          query += ` AND e.fecha <= $${params.length}`; }
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      query += ` AND (e.cliente ILIKE $${params.length} OR e.direccion ILIKE $${params.length}
-                   OR e.barrio ILIKE $${params.length} OR e.telefono ILIKE $${params.length}
-                   OR e.notas ILIKE $${params.length})`;
-    }
-    // Contar sin paginación para el total
-    const countQuery = query.replace(
-      /SELECT e\.\*,[\s\S]*?FROM envios e/,
-      'SELECT COUNT(DISTINCT e.id) FROM envios e'
-    );
-    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
-    query += ` GROUP BY e.id ORDER BY e.fecha DESC, e.id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
 
     const [countRes, dataRes] = await Promise.all([
       db.query(countQuery, params),
-      db.query(query, [...params, limit, offset]),
+      db.query(dataQuery,  [...params, limit, offset]),
     ]);
     const total = parseInt(countRes.rows[0].count);
     res.json(paginatedResponse(dataRes.rows.map(r => ({ ...r, items: r.items || [] })), total, { page, limit }));

@@ -36,7 +36,7 @@ async function setupTestDb() {
   // Limpiar todas las tablas de datos y reiniciar secuencias
   await pool.query(`
     TRUNCATE TABLE
-      audit_logs, historial,
+      audit_logs,
       envio_items, envios,
       movimientos_inversiones, movimientos_deudas, contactos,
       comprobantes, pagos, vendedores,
@@ -63,7 +63,21 @@ async function setupTestDb() {
 }
 
 async function teardownTestDb(pool) {
-  if (pool) await pool.end();
+  if (!pool) return;
+  // Limpiar datos al finalizar para que el próximo `jest` arranque con DB vacía,
+  // incluso si el proceso terminó sin correr setupTestDb (crash, SIGINT, etc.)
+  try {
+    await pool.query(`
+      TRUNCATE TABLE
+        audit_logs,
+        envio_items, envios,
+        movimientos_inversiones, movimientos_deudas, contactos,
+        comprobantes, pagos, vendedores,
+        user_permissions, users
+      RESTART IDENTITY CASCADE
+    `);
+  } catch { /* ignorar si la tabla no existe aún (migraciones no corridas) */ }
+  await pool.end();
 }
 
 module.exports = { setupTestDb, teardownTestDb, TEST_USER };

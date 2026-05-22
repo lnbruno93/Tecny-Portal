@@ -16,8 +16,12 @@ const DUMMY_HASH = bcrypt.hashSync('__dummy_password_for_timing__', 10);
 const JWT_ALGORITHM = 'HS256';
 
 function makeToken(user) {
+  // iat_ms: timestamp de emisión en milisegundos — permite comparación de precisión
+  // sub-segundo contra password_changed_at (que tiene precisión de microsegundos en PG).
+  // El jwt.iat estándar solo tiene precisión de segundos, lo que genera race conditions
+  // cuando el login y el cambio de contraseña ocurren en el mismo segundo.
   return jwt.sign(
-    { id: user.id, username: user.username, email: user.email, role: user.role },
+    { id: user.id, username: user.username, email: user.email, role: user.role, iat_ms: Date.now() },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d', algorithm: JWT_ALGORITHM }
   );

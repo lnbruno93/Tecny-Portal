@@ -24,8 +24,13 @@ module.exports = async function requireAuth(req, res, next) {
     if (!rows[0]) return res.status(401).json({ error: 'Usuario no encontrado' });
 
     const changedAt = rows[0].password_changed_at;
-    if (changedAt && decoded.iat < Math.floor(new Date(changedAt).getTime() / 1000)) {
-      return res.status(401).json({ error: 'Sesión expirada. Ingresá de nuevo.' });
+    if (changedAt) {
+      const changedAtMs   = new Date(changedAt).getTime();
+      // iat_ms está presente en tokens nuevos (precisión ms); fallback a iat*1000 para tokens legacy
+      const tokenIssuedMs = decoded.iat_ms ?? decoded.iat * 1000;
+      if (tokenIssuedMs < changedAtMs) {
+        return res.status(401).json({ error: 'Sesión expirada. Ingresá de nuevo.' });
+      }
     }
   } catch (err) {
     return next(err);

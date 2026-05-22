@@ -1,23 +1,25 @@
 const router      = require('express').Router();
-const rateLimit   = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const Anthropic   = require('@anthropic-ai/sdk');
 const requireAuth = require('../middleware/auth');
 const validate    = require('../lib/validate');
 const logger      = require('../lib/logger');
 const { ocrSchema } = require('../schemas/ocr');
 
-// 10 llamadas OCR por usuario por hora — protege costos de API de visión
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+router.use(requireAuth);
+
+// 10 llamadas OCR por usuario por hora — limita por user_id (no por IP)
+// Así un NAT compartido no afecta a otros usuarios, y cambiar de IP no evita el límite
 const ocrLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
+  keyGenerator: (req) => req.user?.id != null ? String(req.user.id) : ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Límite de OCR alcanzado. Intentá de nuevo en 1 hora.' },
 });
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-router.use(requireAuth);
 
 router.post('/', ocrLimiter, validate(ocrSchema), async (req, res, next) => {
   try {

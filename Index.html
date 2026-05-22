@@ -699,7 +699,8 @@ function pagosNext(){if(pagoPage<pagoPages){pagoPage++;finRenderPagos();}}
 async function finRenderHistorial(){
   document.getElementById('fin-lista-historial').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
   try{
-    const lista=await finApi('/api/historial');
+    const res=await finApi('/api/historial');
+    const lista=res.data||[];
     // Iconos según tabla y acción — formato: "tabla: ACCION"
     const tablaIcono={'comprobantes':'ti-receipt','pagos':'ti-building-bank','users':'ti-user','vendedores':'ti-users','contactos':'ti-address-book','envios':'ti-truck','cajas':'ti-wallet','movimientos_deudas':'ti-wallet','movimientos_inversiones':'ti-chart-line'};
     const accionIcono={'INSERT':'ti-plus','UPDATE':'ti-edit','DELETE':'ti-trash'};

@@ -23,8 +23,10 @@ router.post('/', validate(createVendedorSchema), async (req, res, next) => {
       'INSERT INTO vendedores (nombre) VALUES ($1) RETURNING *',
       [req.body.nombre]
     );
+    await audit('vendedores', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Ya existe un vendedor con ese nombre' });
     next(err);
   }
 });

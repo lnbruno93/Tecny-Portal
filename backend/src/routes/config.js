@@ -3,6 +3,7 @@ const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
+const audit = require('../lib/audit');
 const { updateConfigSchema } = require('../schemas/config');
 
 router.use(requireAuth);
@@ -26,6 +27,7 @@ router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) 
        RETURNING *`,
       [pct_financiera]
     );
+    await audit('config', 'UPDATE', 1, { despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) {
     next(err);

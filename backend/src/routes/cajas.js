@@ -160,16 +160,22 @@ router.get('/resumen', async (_req, res, next) => {
         GROUP BY m.contacto_id
       `),
       db.query(`
+        WITH ultima_tasa AS (
+          SELECT DISTINCT ON (contacto_id)
+            contacto_id, tasa
+          FROM movimientos_inversiones
+          WHERE tasa IS NOT NULL AND deleted_at IS NULL
+          ORDER BY contacto_id, fecha DESC, id DESC
+        )
         SELECT m.contacto_id,
           SUM(m.monto) AS total_invertido,
           COUNT(*) AS movimientos,
-          (SELECT tasa FROM movimientos_inversiones
-           WHERE contacto_id = m.contacto_id AND tasa IS NOT NULL AND deleted_at IS NULL
-           ORDER BY fecha DESC, id DESC LIMIT 1) AS ultima_tasa
+          ut.tasa AS ultima_tasa
         FROM movimientos_inversiones m
         JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+        LEFT JOIN ultima_tasa ut ON ut.contacto_id = m.contacto_id
         WHERE m.deleted_at IS NULL
-        GROUP BY m.contacto_id
+        GROUP BY m.contacto_id, ut.tasa
       `),
     ]);
     res.json({ deudas, inversiones: inv });

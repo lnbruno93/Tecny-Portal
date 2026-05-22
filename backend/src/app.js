@@ -30,8 +30,24 @@ app.set('trust proxy', 1);
 // Compresión gzip/brotli — reduce tamaño de respuestas JSON hasta ~70%
 app.use(compression());
 
-// Security headers
-app.use(helmet());
+// Security headers — CSP explícito para servidor API puro (sin HTML propio)
+// defaultSrc 'none' bloquea cualquier intento de cargar recursos desde este origen.
+// Los headers X-Frame-Options, HSTS, etc. los gestiona helmet con defaults seguros.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:  ["'none'"],
+      scriptSrc:   ["'none'"],
+      styleSrc:    ["'none'"],
+      imgSrc:      ["'none'"],
+      connectSrc:  ["'none'"],
+      frameSrc:    ["'none'"],
+      objectSrc:   ["'none'"],
+      baseUri:     ["'none'"],
+      formAction:  ["'none'"],
+    },
+  },
+}));
 
 // CORS — lista blanca explícita. Sin CORS_ORIGIN en env, solo permite localhost
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:5500')
@@ -98,7 +114,14 @@ app.get('/health', async (_req, res) => {
     db: {
       status:     dbStatus,
       latency_ms: dbLatency,
-      ...(dbError && { error: dbError }),
+      // Estado del pool de conexiones — útil para detectar connection leaks o saturación
+      pool: {
+        total:   db.totalCount,
+        idle:    db.idleCount,
+        waiting: db.waitingCount,
+      },
+      // Error interno solo visible fuera de producción — evita filtrar detalles de DB
+      ...(dbError && process.env.NODE_ENV !== 'production' && { error: dbError }),
     },
     memory: {
       rss_mb:        Math.round(mem.rss        / 1024 / 1024),
