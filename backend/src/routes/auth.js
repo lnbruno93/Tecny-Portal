@@ -80,6 +80,20 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 });
 
+// Logout — bump password_changed_at invalida TODOS los tokens activos (todos los dispositivos).
+// Solución stateless: no requiere blocklist ni Redis. El middleware ya verifica iat_ms < changedAt.
+router.post('/logout', requireAuth, async (req, res, next) => {
+  try {
+    await db.query(
+      'UPDATE users SET password_changed_at = NOW() WHERE id = $1',
+      [req.user.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/change-password', requireAuth, validate(changePasswordSchema), async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;

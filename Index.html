@@ -806,9 +806,21 @@ async function finVerArchivo(id){
 
 async function finDescargarZip(){
   const desde=document.getElementById('f-desde').value,hasta=document.getElementById('f-hasta').value,vendedor=document.getElementById('f-vendedor').value;
-  let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}&limit=200`;if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
   try{
-    const res=await finApi(url),lista=res.data,conArch=lista.filter(c=>c.archivo_nombre);
+    // Paginar para obtener TODOS los comprobantes del rango (no solo los primeros 200)
+    let lista=[],page=1,fetched=0,total=Infinity;
+    while(fetched<total){
+      let url=`/api/comprobantes?desde=${desde}&hasta=${hasta}&page=${page}&limit=200`;
+      if(vendedor)url+=`&vendedor=${encodeURIComponent(vendedor)}`;
+      const res=await finApi(url);
+      const batch=res.data||[];
+      lista=lista.concat(batch);
+      total=res.pagination?.total??0;
+      fetched+=batch.length;
+      if(batch.length<200)break;
+      page++;
+    }
+    const conArch=lista.filter(c=>c.archivo_nombre);
     if(!conArch.length){showToast('No hay archivos',false);return;}
     const zip=new JSZip();
     for(const c of conArch){const{data,nombre}=await finApi(`/api/comprobantes/${c.id}/archivo`);const ext=nombre.split('.').pop();zip.file(`${c.fecha?.substring(0,10)}_${c.cliente.replace(/\s+/g,'_')}.${ext}`,data.split(',')[1],{base64:true});}

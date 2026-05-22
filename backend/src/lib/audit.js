@@ -10,6 +10,16 @@ async function audit(tabla, accion, registro_id, { antes = null, despues = null,
     );
   } catch (err) {
     logger.error({ err, tabla, accion, registro_id }, 'audit log failed');
+    // Reportar a Sentry si está configurado — audit failure es crítico (pérdida de trazabilidad)
+    try {
+      const Sentry = require('@sentry/node');
+      if (process.env.SENTRY_DSN) {
+        Sentry.captureException(err, {
+          tags:  { tabla, accion },
+          extra: { registro_id, user_id },
+        });
+      }
+    } catch { /* Sentry no disponible — no propagar el error */ }
   }
 }
 

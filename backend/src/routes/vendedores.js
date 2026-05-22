@@ -8,9 +8,19 @@ const audit  = require('../lib/audit');
 
 router.use(requireAuth);
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM vendedores WHERE deleted_at IS NULL ORDER BY nombre LIMIT 500');
+    const { buscar } = req.query;
+    const params = [];
+    let filter = '';
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      filter = ` AND nombre ILIKE $1`;
+    }
+    const { rows } = await db.query(
+      `SELECT * FROM vendedores WHERE deleted_at IS NULL${filter} ORDER BY nombre LIMIT 500`,
+      params
+    );
     res.json(rows);
   } catch (err) {
     next(err);

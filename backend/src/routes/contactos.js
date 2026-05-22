@@ -8,10 +8,18 @@ const { createContactoSchema, updateContactoSchema } = require('../schemas/conta
 
 router.use(requireAuth);
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
+    const { buscar } = req.query;
+    const params = [];
+    let filter = '';
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      filter = ` AND (nombre ILIKE $1 OR apellido ILIKE $1)`;
+    }
     const { rows } = await db.query(
-      'SELECT * FROM contactos WHERE deleted_at IS NULL ORDER BY nombre, apellido LIMIT 500'
+      `SELECT * FROM contactos WHERE deleted_at IS NULL${filter} ORDER BY nombre, apellido LIMIT 500`,
+      params
     );
     res.json(rows);
   } catch (err) {
