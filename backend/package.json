@@ -4,7 +4,7 @@
   "description": "iPro Portal — API Backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "npm run migrate && node server.js",
     "dev": "nodemon server.js | pino-pretty --colorize --translateTime 'SYS:HH:MM:ss'",
     "test": "jest --runInBand",
     "migrate": "node-pg-migrate -m migrations up",
