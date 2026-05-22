@@ -9,7 +9,8 @@ module.exports = async function requireAuth(req, res, next) {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // algorithms explícito previene algorithm confusion attacks (none, RS256, etc.)
+    decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   } catch {
     return res.status(401).json({ error: 'Token inválido' });
   }

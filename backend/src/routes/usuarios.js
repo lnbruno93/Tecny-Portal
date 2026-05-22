@@ -112,9 +112,11 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
         );
       }
       await client.query('COMMIT');
+      // Excluir password_hash del audit log — es un hash pero no debe persistirse innecesariamente
+      const { password_hash: _phAntes, ...safeAntes } = before[0];
       await audit('users', 'UPDATE', id, {
-        antes:   { ...before[0], perms: permsAntes },
-        despues: { ...rows[0],   perms: perms ?? permsAntes },
+        antes:   { ...safeAntes, perms: permsAntes },
+        despues: { ...rows[0],  perms: perms ?? permsAntes },
         user_id: req.user.id,
       });
       res.json(rows[0]);
@@ -143,7 +145,8 @@ router.delete('/:id', async (req, res, next) => {
       [id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
-    await audit('users', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const { password_hash: _ph, ...safeUser } = rows[0];
+    await audit('users', 'DELETE', id, { antes: safeUser, user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     next(err);

@@ -6,12 +6,20 @@ const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const { loginSchema, changePasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
+const logger = require('../lib/logger');
+
+// Hash dummy precalculado — garantiza tiempo constante aunque el usuario no exista
+// Previene timing attacks que permiten enumerar usuarios válidos
+const DUMMY_HASH = bcrypt.hashSync('__dummy_password_for_timing__', 10);
+
+// algoritmo fijo: previene algorithm confusion attacks (none, RS256, etc.)
+const JWT_ALGORITHM = 'HS256';
 
 function makeToken(user) {
   return jwt.sign(
     { id: user.id, username: user.username, email: user.email, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d', algorithm: JWT_ALGORITHM }
   );
 }
 
@@ -22,12 +30,16 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const value = username || email;
 
     const { rows } = await db.query(
-      `SELECT * FROM users WHERE ${field} = $1 AND deleted_at IS NULL`,
+      `SELECT id, nombre, username, email, role, password_hash, password_changed_at
+       FROM users WHERE ${field} = $1 AND deleted_at IS NULL`,
       [value]
     );
     const user = rows[0];
 
-    if (!user || !await bcrypt.compare(password, user.password_hash)) {
+    // Siempre ejecutar bcrypt.compare (tiempo constante) para no revelar si el usuario existe
+    const valid = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
+    if (!user || !valid) {
+      logger.warn({ field, ip: req.ip }, 'login fallido');
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
 
@@ -69,7 +81,7 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     const { currentPassword, newPassword } = req.body;
 
     const { rows } = await db.query(
-      'SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT id, password_hash FROM users WHERE id = $1 AND deleted_at IS NULL',
       [req.user.id]
     );
     const user = rows[0];
