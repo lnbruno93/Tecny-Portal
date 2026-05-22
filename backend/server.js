@@ -1,5 +1,6 @@
 // override:true garantiza que las vars del .env local siempre toman precedencia,
 // incluso si el sistema tiene la misma variable seteada como vacía
+// v1.0.1
 require('dotenv').config({ override: true });
 
 // ─── Validación de variables de entorno críticas ──────────────────────────────
