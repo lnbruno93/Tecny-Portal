@@ -14,7 +14,7 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios'];
+const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas'];
 
 const TEST_USER = {
   nombre:   'Test Admin',
@@ -37,6 +37,7 @@ async function setupTestDb() {
   await pool.query(`
     TRUNCATE TABLE
       audit_logs,
+      items_movimiento_cc, movimientos_cc, clientes_cc,
       envio_items, envios,
       movimientos_inversiones, movimientos_deudas, contactos,
       comprobantes, pagos, vendedores,
@@ -70,6 +71,7 @@ async function teardownTestDb(pool) {
     await pool.query(`
       TRUNCATE TABLE
         audit_logs,
+        items_movimiento_cc, movimientos_cc, clientes_cc,
         envio_items, envios,
         movimientos_inversiones, movimientos_deudas, contactos,
         comprobantes, pagos, vendedores,

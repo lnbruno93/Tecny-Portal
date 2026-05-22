@@ -18,6 +18,7 @@ const contactosRoutes    = require('./routes/contactos');
 const cajasRoutes        = require('./routes/cajas');
 const enviosRoutes       = require('./routes/envios');
 const usuariosRoutes     = require('./routes/usuarios');
+const cuentasRoutes      = require('./routes/cuentas');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -159,6 +160,9 @@ app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRout
 
 // Envíos — requiere permiso "envios"
 app.use('/api/envios',        requireAuth, requirePermission('envios'), enviosRoutes);
+
+// Cuentas Corrientes — requiere permiso "cuentas"
+app.use('/api/cuentas',       requireAuth, requirePermission('cuentas'), cuentasRoutes);
 
 // Usuarios — solo admin (ya controlado dentro de la ruta con adminOnly)
 app.use('/api/usuarios',      usuariosRoutes);

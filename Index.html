@@ -235,6 +235,28 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
 .empty-msg i{font-size:28px;display:block;margin-bottom:8px;opacity:.25}
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+/* ── Cuentas Corrientes ── */
+.cc-body{padding:20px 24px}
+.cc-view{display:block}.cc-view.hidden{display:none}
+.cc-saldo-pos{color:var(--amber);font-family:'Syne',system-ui,sans-serif;font-weight:700}
+.cc-saldo-neg{color:var(--green);font-family:'Syne',system-ui,sans-serif;font-weight:700}
+.cc-saldo-zero{color:var(--text3);font-family:'Syne',system-ui,sans-serif;font-weight:700}
+.cat-vip{background:var(--amber2);color:var(--amber)}.cat-aplus{background:var(--green2);color:var(--green)}.cat-aminus{background:var(--blue2);color:var(--blue)}
+.cc-items-wrap{background:var(--navy4);border-radius:7px;padding:10px 12px;margin-top:8px;font-size:12px;color:var(--text2)}
+.cc-item-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);align-items:center}
+.cc-item-row:last-child{border:none}
+.cc-item-row input,.cc-item-row select{padding:5px 8px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:#fff;font-size:12px;font-family:inherit;outline:none;width:100%}
+.cc-add-item{display:flex;align-items:center;gap:5px;padding:5px 0;font-size:12px;color:var(--text3);cursor:pointer;border:none;background:none;font-family:inherit}
+.cc-add-item:hover{color:var(--green)}
+.cc-mov-card{background:var(--navy2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.cc-mov-head{display:flex;align-items:center;padding:12px 14px;gap:10px;cursor:pointer}
+.cc-mov-head:hover{background:rgba(255,255,255,.02)}
+.cc-mov-tipo{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px}
+.t-compra{background:var(--red2);color:var(--red)}.t-pago{background:var(--green2);color:var(--green)}
+.t-devolucion{background:var(--blue2);color:var(--blue)}.t-parte_de_pago{background:var(--purple2);color:var(--purple)}
+.t-entrega_mercaderia{background:var(--amber2);color:var(--amber)}
+.cc-mov-items{padding:0 14px 12px;border-top:1px solid var(--border);display:none}
+.cc-mov-items.open{display:block}
 </style>
 </head><body>
 <div id="toast" class="toast"></div>
@@ -271,6 +293,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         <button class="nav-btn" onclick="go('financiera')" id="nb-financiera"><i class="ti ti-chart-line ni"></i>Financiera<span class="nav-lock" id="nl-financiera" style="display:none"><i class="ti ti-lock"></i></span></button>
         <button class="nav-btn" onclick="go('cajas')" id="nb-cajas"><i class="ti ti-wallet ni"></i>Cajas<span class="nav-lock" id="nl-cajas" style="display:none"><i class="ti ti-lock"></i></span></button>
         <button class="nav-btn" onclick="go('envios')" id="nb-envios"><i class="ti ti-truck-delivery ni"></i>Envíos<span class="nav-lock" id="nl-envios" style="display:none"><i class="ti ti-lock"></i></span></button>
+        <button class="nav-btn" onclick="go('cuentas')" id="nb-cuentas"><i class="ti ti-receipt ni"></i>Cuentas CC<span class="nav-lock" id="nl-cuentas" style="display:none"><i class="ti ti-lock"></i></span></button>
       </div>
       <div class="s-footer">
         <div class="s-label">Sistema</div>
@@ -288,6 +311,7 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
           <div class="tool-card" onclick="go('financiera')"><div class="tool-card-icon" style="background:var(--amber2);color:var(--amber)"><i class="ti ti-chart-line"></i></div><h3>Financiera</h3><p>Comprobantes, cobros y lector OCR</p></div>
           <div class="tool-card" onclick="go('cajas')"><div class="tool-card-icon" style="background:var(--blue2);color:var(--blue)"><i class="ti ti-wallet"></i></div><h3>Cajas</h3><p>Deudas, inversiones y movimientos</p></div>
           <div class="tool-card" onclick="go('envios')"><div class="tool-card-icon" style="background:var(--purple2);color:var(--purple)"><i class="ti ti-truck-delivery"></i></div><h3>Envíos</h3><p>Gestión de despachos y logística</p></div>
+          <div class="tool-card" onclick="go('cuentas')"><div class="tool-card-icon" style="background:var(--ipro2);color:var(--ipro)"><i class="ti ti-receipt"></i></div><h3>Cuentas CC</h3><p>Clientes B2B — compras, pagos y saldo</p></div>
         </div>
       </div>
 
@@ -416,6 +440,48 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
         <div id="usuarios-content" style="padding:24px"><div id="usr-list"></div></div>
       </div>
 
+      <!-- CUENTAS CORRIENTES -->
+      <div class="panel" id="panel-cuentas">
+        <div class="ph"><div class="ph-icon" style="background:var(--ipro2);color:var(--ipro)"><i class="ti ti-receipt"></i></div><div><div class="ph-title">Cuentas Corrientes</div><div class="ph-sub">Clientes B2B — compras, pagos y saldo</div></div><div style="margin-left:auto;display:flex;gap:8px"><button class="btn-secondary" onclick="ccCargarClientes()" id="btn-refresh-cuentas"><i class="ti ti-refresh" style="font-size:13px"></i>Actualizar</button><button class="btn-primary" id="btn-nuevo-cc-cliente" onclick="ccAbrirModalCliente(null)"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo cliente</button></div></div>
+        <div id="cuentas-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar Cuentas Corrientes.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
+        <div id="cuentas-content" class="cc-body">
+
+          <!-- Vista lista de clientes -->
+          <div id="cc-view-lista" class="cc-view">
+            <div class="search-bar" style="margin-bottom:16px">
+              <input class="search-input" id="cc-buscar" placeholder="Buscar por nombre..." oninput="ccCargarClientes()"/>
+              <select class="filter-sel" id="cc-filtro-cat" onchange="ccCargarClientes()">
+                <option value="">Todas las categorías</option>
+                <option value="VIP">VIP</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+              </select>
+            </div>
+            <div class="table-card">
+              <div id="cc-clientes-body"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div>
+            </div>
+          </div>
+
+          <!-- Vista detalle de cuenta -->
+          <div id="cc-view-cuenta" class="cc-view hidden">
+            <div class="mov-header" style="margin-bottom:16px">
+              <button class="back-btn" onclick="ccVolverLista()"><i class="ti ti-arrow-left" style="font-size:13px"></i>Clientes</button>
+              <div style="font-family:'Syne',system-ui,sans-serif;font-size:15px;font-weight:700;color:#fff" id="cc-cuenta-nombre">—</div>
+              <span id="cc-cuenta-cat"></span>
+            </div>
+            <div class="metrics-row" style="margin-bottom:20px" id="cc-resumen-metrics"></div>
+            <div class="table-card">
+              <div class="table-header">
+                <div class="table-title">Movimientos</div>
+                <button class="btn-primary" onclick="ccAbrirModalMovimiento()"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo movimiento</button>
+              </div>
+              <div id="cc-movimientos-body"><div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       <!-- CONFIG -->
       <div class="panel" id="panel-config">
         <div class="ph"><div class="ph-icon" style="background:rgba(255,255,255,.05);color:var(--text2)"><i class="ti ti-settings"></i></div><div><div class="ph-title">Configuración</div><div class="ph-sub">Ajustes generales del portal</div></div></div>
@@ -492,6 +558,57 @@ html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM San
   </div>
 </div>
 
+<!-- MODAL CLIENTE CC -->
+<div class="modal-bg" id="modal-cc-cliente">
+  <div class="modal" style="width:580px">
+    <div class="modal-title"><span id="modal-cc-cli-title">Nuevo cliente</span><button class="modal-close" onclick="closeModal('modal-cc-cliente')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Nombre *</label><input type="text" id="cc-cli-nombre" placeholder="Nombre"/></div><div class="fg" style="margin-bottom:0"><label>Apellido</label><input type="text" id="cc-cli-apellido" placeholder="Apellido"/></div></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Contacto</label><input type="text" id="cc-cli-contacto" placeholder="Tel / WhatsApp / email"/></div><div class="fg" style="margin-bottom:0"><label>Marca / Redes</label><input type="text" id="cc-cli-marcas" placeholder="@nombre o marca comercial"/></div></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Provincia</label><input type="text" id="cc-cli-provincia" placeholder="Buenos Aires..."/></div><div class="fg" style="margin-bottom:0"><label>Localidad</label><input type="text" id="cc-cli-localidad" placeholder="La Plata, CABA..."/></div></div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Dirección</label><input type="text" id="cc-cli-direccion" placeholder="Calle 1234"/></div><div class="fg" style="margin-bottom:0"><label>Categoría *</label><select id="cc-cli-cat"><option value="VIP">VIP</option><option value="A+" selected>A+</option><option value="A-">A-</option></select></div></div>
+    <div class="fg"><label>Notas</label><textarea id="cc-cli-notas" placeholder="Observaciones..." style="min-height:52px"></textarea></div>
+    <div class="modal-err" id="modal-cc-cli-err"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-cc-cliente')">Cancelar</button><button class="btn-save" id="btn-cc-cli-save" onclick="ccGuardarCliente()">Guardar</button></div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMIENTO CC -->
+<div class="modal-bg" id="modal-cc-mov">
+  <div class="modal" style="width:600px">
+    <div class="modal-title"><span>Nuevo movimiento</span><button class="modal-close" onclick="closeModal('modal-cc-mov')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-row" style="margin-bottom:12px">
+      <div class="fg" style="margin-bottom:0"><label>Tipo *</label>
+        <select id="cc-mov-tipo" onchange="ccMovTipoChange()">
+          <option value="compra">Compra</option>
+          <option value="pago">Pago</option>
+          <option value="devolucion">Devolución</option>
+          <option value="parte_de_pago">Parte de pago</option>
+          <option value="entrega_mercaderia">Entrega mercadería</option>
+        </select>
+      </div>
+      <div class="fg" style="margin-bottom:0"><label>Fecha *</label><input type="date" id="cc-mov-fecha"/></div>
+    </div>
+    <div class="modal-row" style="margin-bottom:12px"><div class="fg" style="margin-bottom:0"><label>Monto total ($) *</label><input type="number" id="cc-mov-monto" placeholder="0.00" step="0.01" min="0"/></div><div class="fg" style="margin-bottom:0"><label>Descripción</label><input type="text" id="cc-mov-desc" placeholder="Resumen del movimiento"/></div></div>
+    <div class="fg"><label>Notas</label><textarea id="cc-mov-notas" placeholder="Detalles adicionales..." style="min-height:48px"></textarea></div>
+    <!-- Items: visibles solo para compra/devolucion -->
+    <div id="cc-mov-items-wrap" style="display:none">
+      <div class="section-divider">Productos</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:6px;padding:4px 0;margin-bottom:4px">
+        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Producto/Modelo</span>
+        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Color</span>
+        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">IMEI/Serial</span>
+        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Valor</span>
+        <span style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">Check</span>
+        <span></span>
+      </div>
+      <div id="cc-items-list"></div>
+      <button class="cc-add-item" onclick="ccAddItem()"><i class="ti ti-plus" style="font-size:12px"></i>Agregar producto</button>
+    </div>
+    <div class="modal-err" id="modal-cc-mov-err"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeModal('modal-cc-mov')">Cancelar</button><button class="btn-save" id="btn-cc-mov-save" onclick="ccGuardarMovimiento()">Guardar</button></div>
+  </div>
+</div>
+
 <!-- MODAL USUARIO -->
 <div class="modal-bg" id="modal-usr">
   <div class="modal">
@@ -512,7 +629,7 @@ const FIN_API=window.location.hostname==='localhost'||window.location.hostname==
   :'https://ipro-backend-production.up.railway.app';
 const SENTRY_DSN_FRONT='https://7b73d1104422df03c3f6d729f9b48655@o4511427679748096.ingest.us.sentry.io/4511427715268608';
 const METODOS_PAGO=['Efectivo','Transferencia BBVA LB','Transferencia BBVA GL','Recaudadora','USD','USDT','USD BBVA LB','USD BBVA GL','Tarjeta de Crédito','PayPal','Takenos'];
-const TOOLS=['cotizador','financiera','cajas','envios','usuarios'];
+const TOOLS=['cotizador','financiera','cajas','envios','usuarios','cuentas'];
 
 if(typeof Sentry!=='undefined'&&SENTRY_DSN_FRONT){
   Sentry.init({dsn:SENTRY_DSN_FRONT,environment:'production',tracesSampleRate:0});
@@ -524,6 +641,8 @@ let contacts=[],movDeudas=[],movInversiones=[],resumenDeudas=[],resumenInversion
 let currentCid=null,currentMovTipo='deuda',currentDate=new Date(),editingEnvioId=null,editingContactoId=null;
 let finPct=3,eprodCount=0,epagoCount=0;
 let cbPage=1,cbPages=1,pagoPage=1,pagoPages=1; // estado de paginación
+// Cuentas Corrientes
+let ccClientes=[],currentCcClienteId=null,ccItemCount=0,editingCcClienteId=null,ccLoaded=false;
 
 // ── UTILS ──
 function fmt(n){return Math.round(n).toLocaleString('es-AR');}
@@ -1157,7 +1276,7 @@ async function eliminarInversion(id){
 async function loadUsersFromSheet(){
   try{
     const rows=await finApi('/api/usuarios');
-    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:u.perms||{cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false}}));
+    USERS=rows.map(u=>({id:String(u.id),nombre:u.nombre||'',username:u.username||'',role:u.role||'op',perms:u.perms||{cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false}}));
     renderUsers();
   }catch(e){USERS=[];}
 }
@@ -1206,6 +1325,7 @@ function go(id){
   const nb=document.getElementById('nb-'+id);if(nb)nb.classList.add('active');
   if(id==='financiera'&&CU&&CU.perms.financiera)finInit();
   if(id==='usuarios'&&CU&&CU.perms.usuarios)loadUsersFromSheet();
+  if(id==='cuentas'&&CU&&CU.perms.cuentas&&!ccLoaded)loadCuentas();
 }
 
 function openCambiarPassModal(){
@@ -1346,14 +1466,319 @@ function copyResult(){
   navigator.clipboard.writeText(txt).then(()=>{const btn=document.querySelector('.btn-copy');btn.innerHTML='<i class="ti ti-check" style="font-size:12px"></i>Copiado';setTimeout(()=>{btn.innerHTML='<i class="ti ti-copy" style="font-size:12px"></i>Copiar';},2000);});
 }
 
+// ── CUENTAS CORRIENTES ──
+
+async function loadCuentas(){
+  ccLoaded=true;
+  await ccCargarClientes();
+}
+
+async function ccCargarClientes(){
+  try{
+    const buscar=(document.getElementById('cc-buscar')||{}).value||'';
+    const cat=(document.getElementById('cc-filtro-cat')||{}).value||'';
+    let url='/api/cuentas/clientes';
+    const qs=[];
+    if(buscar)qs.push('buscar='+encodeURIComponent(buscar));
+    if(cat)qs.push('categoria='+encodeURIComponent(cat));
+    if(qs.length)url+='?'+qs.join('&');
+    const rows=await finApi(url);
+    ccClientes=rows;
+    ccRenderClientes();
+  }catch(e){
+    document.getElementById('cc-clientes-body').innerHTML=`<div class="empty-msg"><i class="ti ti-alert-circle"></i>Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function ccSaldoClass(s){return s>0?'cc-saldo-pos':s<0?'cc-saldo-neg':'cc-saldo-zero';}
+function ccCatBadge(cat){
+  const cls=cat==='VIP'?'cat-vip':cat==='A+'?'cat-aplus':'cat-aminus';
+  return `<span class="badge ${cls}">${esc(cat)}</span>`;
+}
+
+function ccRenderClientes(){
+  const el=document.getElementById('cc-clientes-body');
+  if(!ccClientes.length){
+    el.innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin clientes aún. ¡Agregá el primero!</div>';
+    return;
+  }
+  el.innerHTML=`<table class="data-table">
+    <thead><tr><th>Cliente</th><th>Categoría</th><th>Contacto</th><th>Localidad</th><th>Saldo</th><th></th></tr></thead>
+    <tbody>${ccClientes.map(c=>{
+      const saldo=parseFloat(c.saldo)||0;
+      const nombre=esc(c.nombre)+' '+esc(c.apellido||'');
+      return `<tr>
+        <td style="font-weight:600">${nombre.trim()}</td>
+        <td>${ccCatBadge(c.categoria)}</td>
+        <td style="color:var(--text2)">${esc(c.contacto||'—')}</td>
+        <td style="color:var(--text2)">${esc(c.localidad||'—')}</td>
+        <td><span class="${ccSaldoClass(saldo)}">${fmtPesos(saldo)}</span></td>
+        <td style="display:flex;gap:4px">
+          <button class="btn-sm" onclick="ccVerCuenta(${c.id})" title="Ver cuenta"><i class="ti ti-eye"></i></button>
+          <button class="btn-sm" onclick="ccAbrirModalCliente(${c.id})" title="Editar"><i class="ti ti-edit"></i></button>
+          <button class="btn-sm btn-danger-sm" onclick="ccEliminarCliente(${c.id})" title="Eliminar"><i class="ti ti-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+async function ccVerCuenta(id){
+  currentCcClienteId=id;
+  document.getElementById('cc-view-lista').classList.add('hidden');
+  document.getElementById('cc-view-cuenta').classList.remove('hidden');
+  document.getElementById('cc-resumen-metrics').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
+  document.getElementById('cc-movimientos-body').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
+  // Ocultar botones de header que no aplican en vista detalle
+  document.getElementById('btn-nuevo-cc-cliente').style.display='none';
+  document.getElementById('btn-refresh-cuentas').onclick=()=>ccRefrescarCuenta();
+  try{
+    const[resumen,movs]=await Promise.all([
+      finApi(`/api/cuentas/clientes/${id}/resumen`),
+      finApi(`/api/cuentas/clientes/${id}/movimientos`),
+    ]);
+    const c=resumen.cliente;
+    const nombre=(c.nombre+' '+(c.apellido||'')).trim();
+    document.getElementById('cc-cuenta-nombre').textContent=nombre;
+    document.getElementById('cc-cuenta-cat').innerHTML=ccCatBadge(c.categoria);
+    const saldo=parseFloat(resumen.saldo)||0;
+    document.getElementById('cc-resumen-metrics').innerHTML=`
+      <div class="metric-card"><div class="metric-lbl">Saldo actual</div><div class="metric-v ${saldo>0?'amber':saldo<0?'green':''}">${fmtPesos(saldo)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Total compras</div><div class="metric-v" style="color:var(--red)">${fmtPesos(resumen.total_compras)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Total pagado</div><div class="metric-v green">${fmtPesos(Number(resumen.total_pagos)+Number(resumen.total_parte_de_pago))}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Devoluciones</div><div class="metric-v" style="color:var(--blue)">${fmtPesos(resumen.total_devoluciones)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Movimientos</div><div class="metric-v">${resumen.cant_movimientos}</div></div>
+    `;
+    ccRenderMovimientos(movs);
+  }catch(e){
+    document.getElementById('cc-resumen-metrics').innerHTML=`<div class="empty-msg" style="color:var(--red)">${esc(e.message)}</div>`;
+  }
+}
+
+async function ccRefrescarCuenta(){
+  if(!currentCcClienteId)return;
+  await ccVerCuenta(currentCcClienteId);
+}
+
+function ccVolverLista(){
+  currentCcClienteId=null;
+  document.getElementById('cc-view-cuenta').classList.add('hidden');
+  document.getElementById('cc-view-lista').classList.remove('hidden');
+  document.getElementById('btn-nuevo-cc-cliente').style.display='';
+  document.getElementById('btn-refresh-cuentas').onclick=()=>ccCargarClientes();
+  ccCargarClientes();
+}
+
+const CC_TIPO_LABELS={compra:'Compra',pago:'Pago',devolucion:'Devolución',parte_de_pago:'Parte de pago',entrega_mercaderia:'Entrega mercadería'};
+
+function ccRenderMovimientos(movs){
+  const el=document.getElementById('cc-movimientos-body');
+  if(!movs.length){el.innerHTML='<div class="empty-msg"><i class="ti ti-inbox"></i>Sin movimientos registrados</div>';return;}
+  el.innerHTML=movs.map(m=>{
+    const tipoClass='t-'+m.tipo;
+    const label=CC_TIPO_LABELS[m.tipo]||m.tipo;
+    const signo=m.tipo==='compra'?'+':'-';
+    const montoColor=m.tipo==='compra'?'color:var(--red)':'color:var(--green)';
+    const tieneItems=m.items&&m.items.length>0;
+    const itemsHtml=tieneItems?`<div class="cc-mov-items" id="cc-mov-items-${m.id}">
+      <table class="data-table" style="font-size:12px;margin-top:6px">
+        <thead><tr><th>Producto</th><th>Modelo</th><th>Color</th><th>IMEI/Serial</th><th>Valor</th><th>Check</th></tr></thead>
+        <tbody>${m.items.map(it=>`<tr>
+          <td>${esc(it.producto||'—')}</td>
+          <td style="color:var(--text2)">${esc(it.modelo||'—')}</td>
+          <td style="color:var(--text2)">${esc(it.color||'—')}</td>
+          <td style="color:var(--text2);font-size:11px">${esc(it.imei_serial||'—')}</td>
+          <td>${it.valor!=null?fmtPesos(it.valor):'—'}</td>
+          <td>${it.verificado?'<span class="badge badge-ok">✓</span>':'<span style="color:var(--text3)">—</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`:'';
+    return `<div class="cc-mov-card">
+      <div class="cc-mov-head" onclick="ccToggleItems(${m.id})">
+        <span class="cc-mov-tipo ${tipoClass}">${esc(label)}</span>
+        <span style="font-size:12px;color:var(--text2)">${m.fecha?.substring(0,10)}</span>
+        ${m.descripcion?`<span style="font-size:13px;color:#fff;flex:1">${esc(m.descripcion)}</span>`:'<span style="flex:1"></span>'}
+        <span style="${montoColor};font-family:'Syne',system-ui,sans-serif;font-weight:700">${signo}${fmtPesos(m.monto_total)}</span>
+        ${tieneItems?`<span style="font-size:11px;color:var(--text3);margin-left:6px">${m.items.length} prod.</span>`:''}
+        <button class="btn-sm btn-danger-sm" style="margin-left:8px;flex-shrink:0" onclick="event.stopPropagation();ccEliminarMovimiento(${m.id})"><i class="ti ti-trash"></i></button>
+      </div>
+      ${itemsHtml}
+    </div>`;
+  }).join('');
+}
+
+function ccToggleItems(movId){
+  const el=document.getElementById('cc-mov-items-'+movId);
+  if(el)el.classList.toggle('open');
+}
+
+// ── Modal cliente CC ──
+
+function ccAbrirModalCliente(id){
+  editingCcClienteId=id;
+  const isEdit=id!==null;
+  document.getElementById('modal-cc-cli-title').textContent=isEdit?'Editar cliente':'Nuevo cliente';
+  const err=document.getElementById('modal-cc-cli-err');err.textContent='';err.style.display='none';
+  if(isEdit){
+    const c=ccClientes.find(x=>x.id===id)||{};
+    document.getElementById('cc-cli-nombre').value=c.nombre||'';
+    document.getElementById('cc-cli-apellido').value=c.apellido||'';
+    document.getElementById('cc-cli-contacto').value=c.contacto||'';
+    document.getElementById('cc-cli-marcas').value=c.marca_redes||'';
+    document.getElementById('cc-cli-provincia').value=c.provincia||'';
+    document.getElementById('cc-cli-localidad').value=c.localidad||'';
+    document.getElementById('cc-cli-direccion').value=c.direccion||'';
+    document.getElementById('cc-cli-cat').value=c.categoria||'A+';
+    document.getElementById('cc-cli-notas').value=c.notas||'';
+  }else{
+    ['cc-cli-nombre','cc-cli-apellido','cc-cli-contacto','cc-cli-marcas','cc-cli-provincia','cc-cli-localidad','cc-cli-direccion','cc-cli-notas'].forEach(i=>document.getElementById(i).value='');
+    document.getElementById('cc-cli-cat').value='A+';
+  }
+  document.getElementById('modal-cc-cliente').classList.add('open');
+}
+
+async function ccGuardarCliente(){
+  const nombre=document.getElementById('cc-cli-nombre').value.trim();
+  if(!nombre){showModalErr('modal-cc-cli-err','El nombre es obligatorio');return;}
+  const btn=document.getElementById('btn-cc-cli-save');
+  btn.disabled=true;btn.textContent='Guardando...';
+  const body={
+    nombre,
+    apellido:    document.getElementById('cc-cli-apellido').value.trim()||null,
+    contacto:    document.getElementById('cc-cli-contacto').value.trim()||null,
+    marca_redes: document.getElementById('cc-cli-marcas').value.trim()||null,
+    provincia:   document.getElementById('cc-cli-provincia').value.trim()||null,
+    localidad:   document.getElementById('cc-cli-localidad').value.trim()||null,
+    direccion:   document.getElementById('cc-cli-direccion').value.trim()||null,
+    categoria:   document.getElementById('cc-cli-cat').value,
+    notas:       document.getElementById('cc-cli-notas').value.trim()||null,
+  };
+  try{
+    if(editingCcClienteId){
+      await finApi(`/api/cuentas/clientes/${editingCcClienteId}`,'PUT',body);
+      showToast('Cliente actualizado');
+    }else{
+      await finApi('/api/cuentas/clientes','POST',body);
+      showToast('Cliente creado');
+    }
+    closeModal('modal-cc-cliente');
+    await ccCargarClientes();
+  }catch(e){showModalErr('modal-cc-cli-err',e.message);}
+  btn.disabled=false;btn.textContent='Guardar';
+}
+
+async function ccEliminarCliente(id){
+  if(!confirm('¿Eliminar este cliente? Sus movimientos también serán eliminados.'))return;
+  try{
+    await finApi(`/api/cuentas/clientes/${id}`,'DELETE');
+    showToast('Cliente eliminado');
+    await ccCargarClientes();
+  }catch(e){showToast('Error: '+e.message,false);}
+}
+
+// ── Modal movimiento CC ──
+
+function ccAbrirModalMovimiento(){
+  if(!currentCcClienteId)return;
+  ccItemCount=0;
+  document.getElementById('cc-mov-tipo').value='compra';
+  document.getElementById('cc-mov-fecha').value=today();
+  document.getElementById('cc-mov-monto').value='';
+  document.getElementById('cc-mov-desc').value='';
+  document.getElementById('cc-mov-notas').value='';
+  document.getElementById('cc-items-list').innerHTML='';
+  const err=document.getElementById('modal-cc-mov-err');err.textContent='';err.style.display='none';
+  ccMovTipoChange();  // mostrar/ocultar items según tipo inicial
+  document.getElementById('modal-cc-mov').classList.add('open');
+}
+
+function ccMovTipoChange(){
+  const tipo=document.getElementById('cc-mov-tipo').value;
+  const wrap=document.getElementById('cc-mov-items-wrap');
+  const conItems=['compra','devolucion'];
+  if(conItems.includes(tipo)){
+    wrap.style.display='block';
+    if(document.getElementById('cc-items-list').children.length===0)ccAddItem();
+  }else{
+    wrap.style.display='none';
+  }
+}
+
+function ccAddItem(){
+  ccItemCount++;
+  const n=ccItemCount;
+  const div=document.createElement('div');
+  div.id='cc-item-'+n;
+  div.style.cssText='display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center';
+  div.innerHTML=`
+    <input type="text" id="cci-prod-${n}" placeholder="Producto / Modelo"/>
+    <input type="text" id="cci-color-${n}" placeholder="Color"/>
+    <input type="text" id="cci-imei-${n}" placeholder="IMEI/Serial"/>
+    <input type="number" id="cci-valor-${n}" placeholder="Valor" min="0" step="0.01"/>
+    <select id="cci-check-${n}"><option value="false">—</option><option value="true">✓ Verificado</option></select>
+    <button class="btn-rm-sm" onclick="document.getElementById('cc-item-${n}').remove()"><i class="ti ti-x"></i></button>
+  `;
+  document.getElementById('cc-items-list').appendChild(div);
+}
+
+async function ccGuardarMovimiento(){
+  const tipo=document.getElementById('cc-mov-tipo').value;
+  const fecha=document.getElementById('cc-mov-fecha').value;
+  const montoRaw=document.getElementById('cc-mov-monto').value;
+  const err=document.getElementById('modal-cc-mov-err');err.textContent='';err.style.display='none';
+  if(!fecha){showModalErr('modal-cc-mov-err','La fecha es obligatoria');return;}
+  const monto=parseFloat(montoRaw);
+  if(isNaN(monto)||monto<0){showModalErr('modal-cc-mov-err','El monto debe ser un número válido');return;}
+  // Recolectar items
+  const conItems=['compra','devolucion'];
+  const items=[];
+  if(conItems.includes(tipo)){
+    document.querySelectorAll('#cc-items-list > div').forEach(row=>{
+      const n=row.id.replace('cc-item-','');
+      const prod=document.getElementById('cci-prod-'+n)?.value.trim()||null;
+      const color=document.getElementById('cci-color-'+n)?.value.trim()||null;
+      const imei=document.getElementById('cci-imei-'+n)?.value.trim()||null;
+      const valorRaw=document.getElementById('cci-valor-'+n)?.value;
+      const valor=valorRaw?parseFloat(valorRaw):null;
+      const verificado=document.getElementById('cci-check-'+n)?.value==='true';
+      items.push({producto:prod,color,imei_serial:imei,valor:isNaN(valor)?null:valor,verificado});
+    });
+  }
+  const btn=document.getElementById('btn-cc-mov-save');
+  btn.disabled=true;btn.textContent='Guardando...';
+  try{
+    await finApi('/api/cuentas/movimientos','POST',{
+      cliente_cc_id: currentCcClienteId,
+      fecha,tipo,
+      descripcion: document.getElementById('cc-mov-desc').value.trim()||null,
+      monto_total: monto,
+      notas: document.getElementById('cc-mov-notas').value.trim()||null,
+      items,
+    });
+    showToast('Movimiento registrado');
+    closeModal('modal-cc-mov');
+    await ccRefrescarCuenta();
+  }catch(e){showModalErr('modal-cc-mov-err',e.message);}
+  btn.disabled=false;btn.textContent='Guardar';
+}
+
+async function ccEliminarMovimiento(id){
+  if(!confirm('¿Eliminar este movimiento?'))return;
+  try{
+    await finApi(`/api/cuentas/movimientos/${id}`,'DELETE');
+    showToast('Movimiento eliminado');
+    await ccRefrescarCuenta();
+  }catch(e){showToast('Error: '+e.message,false);}
+}
+
 // ── USUARIOS ──
 function renderUsers(){
-  const tools=['cotizador','financiera','cajas','envios','usuarios'];
+  const tools=['cotizador','financiera','cajas','envios','usuarios','cuentas'];
   if(!USERS.length){document.getElementById('usr-list').innerHTML='<div class="loading-msg"><i class="ti ti-loader"></i>Cargando usuarios...</div>';return;}
   document.getElementById('usr-list').innerHTML=`<div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;overflow:hidden">${USERS.map(u=>{const ini=esc(u.nombre.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase());const col=u.role==='admin'?'var(--green)':'var(--blue)';const bg=u.role==='admin'?'var(--green2)':'var(--blue2)';const esYo=CU&&String(u.id)===String(CU.id);return `<div style="display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${col};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${ini}</div><div><div style="font-size:13px;font-weight:600;color:#fff">${esc(u.nombre)}</div><div style="font-size:11px;color:var(--text2)">${esc(u.username)} · ${u.role==='admin'?'Admin':'Operador'}</div></div><div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:auto">${tools.map(t=>`<span style="padding:2px 7px;border-radius:10px;font-size:10px;${u.perms[t]?'background:var(--green2);color:var(--green)':'border:1px solid var(--border2);color:var(--text3)'}">${t}</span>`).join('')}</div><div style="display:flex;gap:6px;flex-shrink:0"><button class="btn-sm" onclick="openEditUser('${u.id}')"><i class="ti ti-edit" style="font-size:12px"></i></button>${esYo?'':`<button class="btn-sm" style="color:var(--red);border-color:rgba(248,81,73,.2)" onclick="eliminarUser('${u.id}')"><i class="ti ti-trash" style="font-size:12px"></i></button>`}</div></div>`;}).join('')}</div>`;
 }
 function openEditUser(id){const u=USERS.find(x=>x.id===String(id));if(!u)return;editUID=id;editPerms2={...u.perms};document.getElementById('modal-usr-title').textContent='Editar usuario';document.getElementById('m-nombre').value=u.nombre;document.getElementById('m-user').value=u.username;document.getElementById('m-pass').value='';document.getElementById('m-role').value=u.role||'op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
-function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');document.getElementById('m-role').value='op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
+function openNewUser(){editUID=null;editPerms2={cotizador:false,financiera:false,cajas:false,envios:false,usuarios:false,cuentas:false};document.getElementById('modal-usr-title').textContent='Nuevo usuario';['m-nombre','m-user','m-pass'].forEach(i=>document.getElementById(i).value='');document.getElementById('m-role').value='op';renderPermGrid();document.getElementById('modal-usr').classList.add('open');}
 async function eliminarUser(id){
   if(CU&&String(id)===String(CU.id)){showToast('No podés eliminar tu propia cuenta',false);return;}
   if(!confirm('¿Eliminar este usuario?'))return;

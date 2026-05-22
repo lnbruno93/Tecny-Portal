@@ -8,7 +8,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
 
-const TOOLS = ['cotizador','financiera','cajas','envios','usuarios'];
+const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas'];
 
 router.use(requireAuth, adminOnly);
 
