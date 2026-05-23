@@ -19,16 +19,11 @@
   --text-muted:    #7c87a5;
   --text-dim:      #525c79;
 
-  --accent:        #f0b341;       /* warm amber */
-  --accent-2:      #ffd07a;
-  --accent-soft:   rgba(240,179,65,0.12);
-  --accent-ring:   rgba(240,179,65,0.35);
-  --accent-ink:    #1a1305;
-
-  --primary:       #0ea5e9;       /* sky-500 — CTA buttons */
-  --primary-2:     #38bdf8;       /* sky-400 — hover */
-  --primary-soft:  rgba(14,165,233,0.14);
-  --primary-ink:   #ffffff;
+  --accent:        #0ea5e9;       /* sky-500 */
+  --accent-2:      #38bdf8;       /* sky-400 — hover / lighter */
+  --accent-soft:   rgba(14,165,233,0.12);
+  --accent-ring:   rgba(14,165,233,0.35);
+  --accent-ink:    #ffffff;
 
   --pos:           #4ade80;
   --pos-soft:      rgba(74,222,128,0.12);
@@ -388,12 +383,12 @@ body {
 .btn .ico { width: 15px; height: 15px; }
 
 .btn-primary {
-  background: var(--primary);
-  color: var(--primary-ink);
+  background: var(--accent);
+  color: var(--accent-ink);
   border-color: transparent;
   box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 1px 6px rgba(14,165,233,0.25);
 }
-.btn-primary:hover { background: var(--primary-2); border-color: transparent; }
+.btn-primary:hover { background: var(--accent-2); border-color: transparent; }
 
 .btn-ghost {
   background: transparent;

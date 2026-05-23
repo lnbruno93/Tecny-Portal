@@ -19,7 +19,7 @@ function fmtFecha(isoDate) {
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
 const ESTADO_DISPLAY = {
-  'Pendiente': { label: 'Pendiente', tone: 'warn' },
+  'Pendiente': { label: 'Pendiente', tone: 'info' },
   'En camino': { label: 'En camino', tone: 'info' },
   'Entregado': { label: 'Entregado', tone: 'pos' },
   'Cancelado': { label: 'Cancelado', tone: 'neg' },
