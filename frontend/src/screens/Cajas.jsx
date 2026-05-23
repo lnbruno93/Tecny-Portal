@@ -11,7 +11,9 @@ function fmt(n) {
 }
 function fmtFecha(iso) {
   if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

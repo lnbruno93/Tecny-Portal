@@ -30,7 +30,7 @@ export default function Config() {
   useEffect(() => {
     configApi.get()
       .then(data => {
-        const v = data?.pct_financiera ?? 3;
+        const v = Number(data?.pct_financiera ?? 3);
         setPct(v);
         setInputVal(String(v));
       })

@@ -123,6 +123,8 @@ export const cuentas = {
 
 export const usados = {
   list: () => api('/api/usados'),
+  create: (data) => api('/api/usados', 'POST', data),
+  delete: (id) => api(`/api/usados/${id}`, 'DELETE'),
   bulkUpdate: (items) => api('/api/usados/bulk', 'PUT', { updates: items }),
 };
 

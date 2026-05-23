@@ -60,6 +60,7 @@ export default function Envios() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [fechaLabel, setFechaLabel] = useState('Hoy');
 
   // ── Load on mount ──
@@ -114,6 +115,25 @@ export default function Envios() {
       alert(e.message);
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  // ── Delete envío ──
+  async function handleDelete(id) {
+    if (!window.confirm('¿Eliminar este envío? Esta acción no se puede deshacer.')) return;
+    setDeletingId(id);
+    try {
+      await envios.delete(id);
+      setEnviosList(prev => prev.filter(e => e.id !== id));
+      setSelectedId(prev => {
+        if (prev !== id) return prev;
+        const remaining = enviosList.filter(e => e.id !== id);
+        return remaining.length > 0 ? remaining[0].id : null;
+      });
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -474,6 +494,15 @@ export default function Envios() {
                     <Icons.Phone size={13} /> {selected.telefono}
                   </a>
                 )}
+                <button
+                  className="btn btn-sm"
+                  style={{ marginLeft: 'auto', color: 'var(--neg)' }}
+                  disabled={deletingId === selected.id}
+                  onClick={() => handleDelete(selected.id)}
+                >
+                  <Icons.Trash size={13} />
+                  {deletingId === selected.id ? 'Eliminando…' : 'Eliminar'}
+                </button>
               </div>
             </div>
           ) : (

@@ -18,12 +18,47 @@ function relDate(iso) {
   });
 }
 
+const EMPTY_FORM = { equipo: '', capacidad: '', pct_bateria: '', precio_usd: '', comentarios: '' };
+
 export default function Usados() {
   const [rows, setRows] = useState([]);
   const [edits, setEdits] = useState({});   // { id: { field: value } }
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // ── Create modal ──────────────────────────────────────────────────────────
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!form.equipo.trim()) { setFormError('El modelo es obligatorio.'); return; }
+    if (form.precio_usd === '' || isNaN(Number(form.precio_usd))) {
+      setFormError('Ingresá un precio USD válido.');
+      return;
+    }
+    setCreating(true);
+    setFormError('');
+    try {
+      const nuevo = await usadosApi.create({
+        equipo:      form.equipo.trim(),
+        capacidad:   form.capacidad.trim() || undefined,
+        pct_bateria: form.pct_bateria.trim() || undefined,
+        precio_usd:  Number(form.precio_usd),
+        comentarios: form.comentarios.trim() || undefined,
+      });
+      setRows(prev => [...prev, nuevo].sort((a, b) => a.equipo.localeCompare(b.equipo)));
+      setShowCreate(false);
+      setForm(EMPTY_FORM);
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -113,9 +148,9 @@ export default function Usados() {
               {saving ? 'Guardando…' : `Guardar ${editCount} cambio${editCount !== 1 ? 's' : ''}`}
             </button>
           )}
-          <button className="btn btn-ghost">
-            <Icons.Download size={15} />
-            Exportar
+          <button className="btn" onClick={() => { setShowCreate(true); setFormError(''); }}>
+            <Icons.Plus size={15} />
+            Nuevo equipo
           </button>
         </div>
       </div>
@@ -228,6 +263,91 @@ export default function Usados() {
           </table>
         )}
       </div>
+
+      {/* ── Create modal ────────────────────────────────────────────────── */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Nuevo equipo</h3>
+              <button className="icon-btn" onClick={() => setShowCreate(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreate}>
+              <div className="modal-body">
+                <div className="stack" style={{ gap: 14 }}>
+                  <div className="row">
+                    <div className="field" style={{ flex: 2 }}>
+                      <label className="field-label">Modelo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input
+                        className="input"
+                        placeholder="ej. iPhone 14"
+                        value={form.equipo}
+                        onChange={e => setForm(f => ({ ...f, equipo: e.target.value }))}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Capacidad</label>
+                      <input
+                        className="input"
+                        placeholder="ej. 128GB"
+                        value={form.capacidad}
+                        onChange={e => setForm(f => ({ ...f, capacidad: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Batería</label>
+                      <input
+                        className="input"
+                        placeholder="ej. 89%"
+                        value={form.pct_bateria}
+                        onChange={e => setForm(f => ({ ...f, pct_bateria: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Precio USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <div className="input-group">
+                        <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
+                        <input
+                          type="number"
+                          className="input mono"
+                          placeholder="0"
+                          value={form.precio_usd}
+                          onChange={e => setForm(f => ({ ...f, precio_usd: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Comentarios</label>
+                    <input
+                      className="input"
+                      placeholder="Estado, detalles adicionales…"
+                      value={form.comentarios}
+                      onChange={e => setForm(f => ({ ...f, comentarios: e.target.value }))}
+                    />
+                  </div>
+                  {formError && (
+                    <div style={{ color: 'var(--neg)', fontSize: 13 }}>{formError}</div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={creating}>
+                  {creating ? 'Guardando…' : 'Crear equipo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
