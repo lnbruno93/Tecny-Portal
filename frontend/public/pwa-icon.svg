@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#0a0e18"/>
+  <!-- iP mark — stylized lightning bolt in sky-500 -->
+  <text
+    x="256" y="330"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="220"
+    font-weight="700"
+    fill="#0ea5e9"
+    text-anchor="middle"
+    letter-spacing="-8"
+  >iP</text>
+</svg>

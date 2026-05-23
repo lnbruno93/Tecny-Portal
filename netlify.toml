@@ -3,7 +3,42 @@
   command = "npm run build"
   publish = "dist"
 
+# Service worker and PWA assets — no redirect, serve as-is
+[[redirects]]
+  from   = "/sw.js"
+  to     = "/sw.js"
+  status = 200
+
+[[redirects]]
+  from   = "/workbox-*.js"
+  to     = "/workbox-:splat.js"
+  status = 200
+
+[[redirects]]
+  from   = "/manifest.webmanifest"
+  to     = "/manifest.webmanifest"
+  status = 200
+
+# SPA fallback — must come last
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
+
+# Headers for service worker scope and caching
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
