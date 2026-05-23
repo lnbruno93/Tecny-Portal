@@ -18,7 +18,7 @@
 }
 html,body{width:100%;min-height:100vh;background:var(--navy);font-family:'DM Sans',system-ui,sans-serif;color:#fff;overflow-x:hidden}
 #toast{position:fixed;bottom:24px;right:24px;background:#fff;color:#0d1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
-#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(240,234,214,0.04) 0%,transparent 70%)}
+#login-screen{min-height:100vh;display:none;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 60% 50% at 50% 0%,rgba(240,234,214,0.04) 0%,transparent 70%)}
 .login-box{width:360px;padding:44px 36px;background:var(--navy2);border:1px solid var(--border2);border-radius:16px}
 .brand{font-family:'Syne',system-ui,sans-serif;font-size:24px;font-weight:800;color:#fff;text-align:center;margin-bottom:4px}
 .brand-sub{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);text-align:center;margin-bottom:28px}
@@ -891,6 +891,11 @@ if(typeof Sentry!=='undefined'&&SENTRY_DSN_FRONT){
   Sentry.init({dsn:SENTRY_DSN_FRONT,environment:'production',tracesSampleRate:0});
 }
 
+// Mostrar login de inmediato si no hay token guardado; si hay token, restoreSession() lo validará.
+if(!localStorage.getItem('fin_token')){
+  document.getElementById('login-screen').style.display='flex';
+}
+
 let USERS=[];
 let CU=null,editUID=null,editPerms2={},prodCount=0;
 let contacts=[],movDeudas=[],movInversiones=[],resumenDeudas=[],resumenInversiones=[],envios=[],enviosItems=[];
@@ -1550,6 +1555,44 @@ async function loadUsersFromSheet(){
   finally{usersLoading=false;}
 }
 
+// ── ENTRADA A LA APP (lógica compartida entre login y restauración de sesión) ──
+function entrarAlApp(){
+  if(typeof Sentry!=='undefined'&&SENTRY_DSN_FRONT)Sentry.setUser({id:String(CU.id),username:CU.username});
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('tb-name').textContent=CU.nombre.split(' ')[0];
+  document.getElementById('tb-role').textContent=CU.role==='admin'?'Admin':'Operador';
+  document.getElementById('cfg-u').textContent=CU.username;
+  document.getElementById('cfg-r').textContent=CU.role==='admin'?'Admin':'Operador';
+  document.getElementById('home-sub').textContent='Buen día, '+CU.nombre.split(' ')[0];
+  applyLocks();initProds();actualizarFechaLabel();
+  if(CU.perms.cajas)loadCajas();
+  if(CU.perms.envios)loadEnvios();
+  if(CU.perms.usuarios)loadUsersFromSheet();
+}
+
+// ── RESTAURACIÓN DE SESIÓN AL CARGAR LA PÁGINA ──
+// Si hay un token en localStorage, lo validamos contra /api/auth/me antes de mostrar el login.
+// Si el token sigue vigente → se salta el login por completo.
+// Si expiró o es inválido → se elimina y se muestra el login normalmente.
+async function restoreSession(){
+  const token=getFinToken();
+  if(!token){document.getElementById('login-screen').style.display='flex';return;}
+  try{
+    const r=await fetch(FIN_API+'/api/auth/me',{
+      method:'GET',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}
+    });
+    if(!r.ok)throw new Error('token_invalid');
+    CU=await r.json();
+    entrarAlApp();
+  }catch(e){
+    localStorage.removeItem('fin_token');
+    document.getElementById('login-screen').style.display='flex';
+  }
+}
+document.addEventListener('DOMContentLoaded',restoreSession);
+
 async function doLogin(){
   const u=document.getElementById('u-in').value.trim().toLowerCase();
   const p=document.getElementById('p-in').value;
@@ -1561,20 +1604,10 @@ async function doLogin(){
     if(!res.ok||!data.token){document.getElementById('login-err').style.display='block';btn.textContent='Ingresar →';btn.disabled=false;return;}
     saveFinToken(data.token);
     CU=data.user;
-    if(typeof Sentry!=='undefined'&&SENTRY_DSN_FRONT)Sentry.setUser({id:String(CU.id),username:CU.username});
     document.getElementById('login-err').style.display='none';
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app').style.display='flex';
-    document.getElementById('tb-name').textContent=CU.nombre.split(' ')[0];
-    document.getElementById('tb-role').textContent=CU.role==='admin'?'Admin':'Operador';
-    document.getElementById('cfg-u').textContent=CU.username;
-    document.getElementById('cfg-r').textContent=CU.role==='admin'?'Admin':'Operador';
-    document.getElementById('home-sub').textContent='Buen día, '+CU.nombre.split(' ')[0];
-    applyLocks();initProds();actualizarFechaLabel();
-    if(CU.perms.cajas)loadCajas();
-    if(CU.perms.envios)loadEnvios();
-    if(CU.perms.usuarios)loadUsersFromSheet();
-  }catch(e){document.getElementById('login-err').style.display='block';btn.textContent='Ingresar →';btn.disabled=false;}
+    entrarAlApp();
+  }catch(e){document.getElementById('login-err').style.display='block';}
+  finally{btn.textContent='Ingresar →';btn.disabled=false;}
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 
@@ -1626,6 +1659,8 @@ async function cambiarPass(){
 }
 function doLogout(){
   if(typeof Sentry!=='undefined'&&SENTRY_DSN_FRONT)Sentry.setUser(null);
+  // Invalidar token en el servidor (fire-and-forget: no bloquea el logout local)
+  finApi('/api/auth/logout','POST').catch(()=>{});
   localStorage.removeItem('fin_token');
   CU=null;
   document.getElementById('app').style.display='none';
