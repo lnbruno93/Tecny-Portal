@@ -58,6 +58,7 @@ export const Icons = {
   Shield: (p) => <ICO {...p}><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z" /></ICO>,
   Lock: (p) => <ICO {...p}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V8a4 4 0 1 1 8 0v3" /></ICO>,
   Bolt: (p) => <ICO {...p}><path d="M13 2 4 14h7l-1 8 9-12h-7Z" /></ICO>,
+  Menu: (p) => <ICO {...p}><path d="M4 6h16M4 12h16M4 18h16" /></ICO>,
 };
 
 export default Icons;

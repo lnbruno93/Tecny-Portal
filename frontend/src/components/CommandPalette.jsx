@@ -1,0 +1,274 @@
+// CommandPalette.jsx — Global ⌘K command palette for navigation.
+// Controlled by parent via `open` / `onClose` props.
+
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Icons } from './Icons';
+
+const COMMANDS = [
+  { id: 'inicio',     path: '/inicio',     label: 'Inicio',      desc: 'Dashboard principal',              icon: 'Grid'       },
+  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',   desc: 'Precios con cuotas y USD → ARS',  icon: 'Calculator' },
+  { id: 'financiera', path: '/financiera', label: 'Financiera',  desc: 'Comprobantes, pagos y OCR',       icon: 'Trend'      },
+  { id: 'cajas',      path: '/cajas',      label: 'Cajas',       desc: 'Deudas e inversiones',            icon: 'Wallet'     },
+  { id: 'envios',     path: '/envios',     label: 'Envíos',      desc: 'Despachos a domicilio',           icon: 'Truck'      },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Cuentas CC',  desc: 'Clientes B2B y cuenta corriente', icon: 'Receipt'    },
+  { id: 'usados',     path: '/usados',     label: 'Usados',      desc: 'Catálogo de precios USD',         icon: 'Phone'      },
+  { id: 'historial',  path: '/historial',  label: 'Historial',   desc: 'Auditoría de cambios',            icon: 'Refresh'    },
+  { id: 'usuarios',   path: '/usuarios',   label: 'Usuarios',    desc: 'Gestión de acceso',               icon: 'Users'      },
+  { id: 'config',     path: '/config',     label: 'Config',      desc: 'Ajustes del portal',              icon: 'Settings'   },
+];
+
+export default function CommandPalette({ open, onClose }) {
+  const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const inputRef = useRef(null);
+  const navigate = useNavigate();
+
+  // Reset state when palette opens/closes
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setActiveIndex(0);
+      // Autofocus input on next tick so the DOM is ready
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  // Global keyboard shortcut: ⌘K / Ctrl+K to open
+  useEffect(() => {
+    function handleGlobalKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (!open) {
+          // Signal parent to open — parent controls `open`, so we rely on
+          // Shell's own listener. This effect is here for safety if palette
+          // is ever used standalone.
+        }
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKey);
+    return () => window.removeEventListener('keydown', handleGlobalKey);
+  }, [open]);
+
+  // Keyboard navigation inside the palette
+  useEffect(() => {
+    if (!open) return;
+
+    function handleKey(e) {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveIndex(i => Math.min(i + 1, filtered.length - 1));
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveIndex(i => Math.max(i - 1, 0));
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (filtered[activeIndex]) {
+          handleSelect(filtered[activeIndex]);
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeIndex]);
+
+  // Filter commands based on query
+  const filtered = COMMANDS.filter(cmd => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return (
+      cmd.label.toLowerCase().includes(q) ||
+      cmd.desc.toLowerCase().includes(q)
+    );
+  });
+
+  // Reset active index when query changes
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  function handleSelect(cmd) {
+    navigate(cmd.path);
+    onClose();
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 300,
+        background: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: '12vh',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          maxWidth: 520,
+          width: 'calc(100% - 32px)',
+          background: 'var(--surface)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 14,
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Search input row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px' }}>
+          <Icons.Search size={16} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Buscar pantallas…"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: 16,
+              padding: '16px 0',
+              background: 'transparent',
+              color: 'var(--text)',
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Icons.X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--hairline)' }} />
+
+        {/* Results */}
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {filtered.length > 0 ? (
+            <>
+              <div style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-muted)',
+                padding: '10px 16px 4px',
+              }}>
+                Navegación
+              </div>
+              {filtered.map((cmd, idx) => {
+                const Icon = Icons[cmd.icon];
+                const isActive = idx === activeIndex;
+                return (
+                  <div
+                    key={cmd.id}
+                    onClick={() => handleSelect(cmd)}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      borderRadius: 8,
+                      margin: '2px 6px',
+                      background: isActive ? 'var(--accent-soft)' : 'transparent',
+                      color: isActive ? 'var(--accent)' : 'var(--text)',
+                      transition: 'background 0.1s, color 0.1s',
+                    }}
+                  >
+                    <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }}>
+                      {Icon && <Icon size={16} />}
+                    </span>
+                    <span style={{ fontWeight: 600, fontSize: 14, minWidth: 90 }}>
+                      {cmd.label}
+                    </span>
+                    <span style={{
+                      fontSize: 13,
+                      color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {cmd.desc}
+                    </span>
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <div style={{
+              padding: '24px 16px',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              fontSize: 14,
+            }}>
+              Sin resultados para "{query}"
+            </div>
+          )}
+        </div>
+
+        {/* Footer hint */}
+        <div style={{
+          fontSize: 11,
+          color: 'var(--text-dim)',
+          padding: '10px 16px',
+          borderTop: '1px solid var(--hairline)',
+          display: 'flex',
+          gap: 16,
+        }}>
+          <span><kbd style={{
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            padding: '1px 5px',
+            fontSize: 10,
+            fontFamily: 'monospace',
+          }}>Esc</kbd> para cerrar</span>
+          <span><kbd style={{
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            padding: '1px 5px',
+            fontSize: 10,
+            fontFamily: 'monospace',
+          }}>↑↓</kbd> para navegar</span>
+          <span><kbd style={{
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            padding: '1px 5px',
+            fontSize: 10,
+            fontFamily: 'monospace',
+          }}>Enter</kbd> para ir</span>
+        </div>
+      </div>
+    </div>
+  );
+}

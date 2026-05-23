@@ -331,6 +331,7 @@ body {
   background: var(--accent); border-radius: 50%;
   border: 1.5px solid var(--bg);
 }
+.hamburger-btn { display: none; }
 
 .content {
   flex: 1;
@@ -1036,6 +1037,36 @@ body {
 /* Caja grid responsiveness — kept outside the queries above for clarity */
 @media (max-width: 1100px) {
   .caja-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 640px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0;
+    height: 100dvh;
+    width: 248px;
+    z-index: 200;
+    transform: translateX(-260px);
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.sidebar-open { transform: translateX(0); }
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(2px);
+    animation: fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .hamburger-btn { display: flex !important; }
+  .topbar .search { display: none; }
+  .content { padding: 16px 14px 40px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .quote-grid { grid-template-columns: 1fr; }
+  .page-head, .hello { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 
 /* Shipping rail */

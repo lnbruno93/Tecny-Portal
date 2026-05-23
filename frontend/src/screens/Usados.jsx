@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { usados as usadosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
+import { exportCsv } from '../lib/exportCsv';
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -156,6 +157,23 @@ export default function Usados() {
               {saving ? 'Guardando…' : `Guardar ${editCount} cambio${editCount !== 1 ? 's' : ''}`}
             </button>
           )}
+          <button
+            className="btn btn-ghost"
+            onClick={() => exportCsv(
+              'usados-' + new Date().toLocaleDateString('sv') + '.csv',
+              rows,
+              [
+                { key: 'equipo',      label: 'Equipo'      },
+                { key: 'capacidad',   label: 'Capacidad'   },
+                { key: 'pct_bateria', label: 'Batería'     },
+                { key: 'precio_usd',  label: 'Precio USD'  },
+                { key: 'comentarios', label: 'Comentarios' },
+              ]
+            )}
+          >
+            <Icons.Download size={15} />
+            Exportar
+          </button>
           <button className="btn" onClick={() => { setShowCreate(true); setFormError(''); }}>
             <Icons.Plus size={15} />
             Nuevo equipo

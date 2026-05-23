@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { cuentas } from '../lib/api';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -213,6 +214,18 @@ export default function CuentasCC() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [showMovModal, setShowMovModal] = useState(false);
 
+  // ── Nuevo cliente modal state ──
+  const EMPTY_CLIENTE = {
+    nombre: '', apellido: '', contacto: '', marca_redes: '',
+    provincia: '', localidad: '', direccion: '', categoria: 'A-', notas: '',
+  };
+  const [showClienteModal, setShowClienteModal] = useState(false);
+  const [clienteForm, setClienteForm] = useState(EMPTY_CLIENTE);
+  const [clienteCreating, setClienteCreating] = useState(false);
+  const [clienteError, setClienteError] = useState('');
+
+  const { setPrimaryAction } = usePageActions();
+
   const notasTimerRef = useRef(null);
 
   // ── Load clientes list on mount + when catFilter changes ──
@@ -299,6 +312,52 @@ export default function CuentasCC() {
         console.warn('notas autosave:', e);
       }
     }, 700);
+  }
+
+  // ── Register global + button action ──
+  useEffect(() => {
+    setPrimaryAction({
+      label: 'Nuevo cliente',
+      onClick: () => {
+        setClienteForm(EMPTY_CLIENTE);
+        setClienteError('');
+        setShowClienteModal(true);
+      },
+    });
+    return () => setPrimaryAction(null);
+  }, [setPrimaryAction]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Create cliente handler ──
+  async function handleCreateCliente() {
+    if (!clienteForm.nombre.trim()) {
+      setClienteError('El nombre es obligatorio.');
+      return;
+    }
+    if (!clienteForm.categoria) {
+      setClienteError('La categoría es obligatoria.');
+      return;
+    }
+    setClienteCreating(true);
+    setClienteError('');
+    try {
+      const nuevo = await cuentas.createCliente({
+        nombre: clienteForm.nombre.trim(),
+        apellido: clienteForm.apellido.trim() || null,
+        contacto: clienteForm.contacto.trim() || null,
+        marca_redes: clienteForm.marca_redes.trim() || null,
+        provincia: clienteForm.provincia.trim() || null,
+        localidad: clienteForm.localidad.trim() || null,
+        direccion: clienteForm.direccion.trim() || null,
+        categoria: clienteForm.categoria,
+        notas: clienteForm.notas.trim() || null,
+      });
+      setClientes(prev => [nuevo, ...prev]);
+      setSelectedId(nuevo.id);
+      setShowClienteModal(false);
+    } catch (e) {
+      setClienteError(e.message || 'Error al crear el cliente.');
+      setClienteCreating(false);
+    }
   }
 
   // ── Reload detail helper ──
@@ -514,7 +573,9 @@ export default function CuentasCC() {
           <button
             className="btn btn-primary"
             onClick={() => {
-              /* open new client modal — future */
+              setClienteForm(EMPTY_CLIENTE);
+              setClienteError('');
+              setShowClienteModal(true);
             }}
           >
             <Icons.Plus size={14} /> Nuevo cliente
@@ -1024,6 +1085,160 @@ export default function CuentasCC() {
             reloadDetail();
           }}
         />
+      )}
+
+      {/* Nuevo cliente modal */}
+      {showClienteModal && (
+        <div
+          className="modal-overlay"
+          onClick={e => e.target === e.currentTarget && setShowClienteModal(false)}
+        >
+          <div className="modal" style={{ maxWidth: 520 }}>
+            <div className="modal-hd">
+              <h3>Nuevo cliente</h3>
+              <button className="icon-btn" onClick={() => setShowClienteModal(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="stack" style={{ gap: 12 }}>
+                {/* Row 1: nombre + apellido */}
+                <div className="row" style={{ gap: 12 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">
+                      Nombre <span style={{ color: 'var(--neg)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Ej: Juan"
+                      value={clienteForm.nombre}
+                      onChange={e => setClienteForm(f => ({ ...f, nombre: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">Apellido</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Ej: García"
+                      value={clienteForm.apellido}
+                      onChange={e => setClienteForm(f => ({ ...f, apellido: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: contacto + categoria */}
+                <div className="row" style={{ gap: 12 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">Contacto</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Teléfono / WhatsApp / email"
+                      value={clienteForm.contacto}
+                      onChange={e => setClienteForm(f => ({ ...f, contacto: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">
+                      Categoría <span style={{ color: 'var(--neg)' }}>*</span>
+                    </label>
+                    <select
+                      className="input"
+                      value={clienteForm.categoria}
+                      onChange={e => setClienteForm(f => ({ ...f, categoria: e.target.value }))}
+                    >
+                      <option value="VIP">VIP</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 3: provincia + localidad */}
+                <div className="row" style={{ gap: 12 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">Provincia</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Ej: Buenos Aires"
+                      value={clienteForm.provincia}
+                      onChange={e => setClienteForm(f => ({ ...f, provincia: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">Localidad</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Ej: Lanús"
+                      value={clienteForm.localidad}
+                      onChange={e => setClienteForm(f => ({ ...f, localidad: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: direccion */}
+                <div className="field">
+                  <label className="field-label">Dirección</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Ej: Av. Rivadavia 1234"
+                    value={clienteForm.direccion}
+                    onChange={e => setClienteForm(f => ({ ...f, direccion: e.target.value }))}
+                  />
+                </div>
+
+                {/* Row 5: marca_redes */}
+                <div className="field">
+                  <label className="field-label">Redes sociales</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Ej: @juangarcia"
+                    value={clienteForm.marca_redes}
+                    onChange={e => setClienteForm(f => ({ ...f, marca_redes: e.target.value }))}
+                  />
+                </div>
+
+                {/* Row 6: notas */}
+                <div className="field">
+                  <label className="field-label">Notas internas</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Ej: cobra los viernes"
+                    value={clienteForm.notas}
+                    onChange={e => setClienteForm(f => ({ ...f, notas: e.target.value }))}
+                  />
+                </div>
+
+                {clienteError && (
+                  <div style={{ color: 'var(--neg)', fontSize: 13 }}>{clienteError}</div>
+                )}
+              </div>
+            </div>
+            <div className="modal-ft">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowClienteModal(false)}
+                disabled={clienteCreating}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleCreateCliente}
+                disabled={clienteCreating}
+              >
+                {clienteCreating ? 'Guardando…' : 'Crear cliente'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
