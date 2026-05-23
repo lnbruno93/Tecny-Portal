@@ -300,6 +300,44 @@ tr.row-dirty>td:first-child{box-shadow:inset 2px 0 0 var(--blue)}
 .cc-pr-fecha{width:138px}
 .cc-pr-desc{flex:1;min-width:0}
 .cc-movs{flex:1;overflow-y:auto;padding:12px 16px}
+/* ── CC tabs ── */
+.cc-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--navy);padding:0 20px}
+.cc-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);padding:10px 16px;font-size:13px;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;margin-bottom:-1px;transition:color .15s,border-color .15s}
+.cc-tab:hover{color:#fff}
+.cc-tab.cc-tab-active{color:#fff;border-bottom-color:var(--blue)}
+/* ── CC Resumen general ── */
+.cc-rg{padding:20px 24px;overflow-y:auto;height:calc(100vh - 170px)}
+.cc-rg-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.cc-rg-card{background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.cc-rg-card-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px}
+.cc-rg-card-val{font-size:22px;font-weight:700;font-family:'Syne',system-ui,sans-serif}
+.cc-rg-section{margin-bottom:24px}
+.cc-rg-section-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:12px}
+/* Debt ranking bars */
+.cc-rank-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.cc-rank-row:last-child{border:none}
+.cc-rank-name{width:180px;min-width:180px;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-rank-bar-wrap{flex:1;height:8px;background:var(--navy4);border-radius:4px;overflow:hidden}
+.cc-rank-bar{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef4444,#f97316);transition:width .4s ease}
+.cc-rank-val{width:110px;min-width:110px;text-align:right;font-size:13px;font-weight:700;color:#f87171}
+.cc-rank-cat{width:80px;min-width:80px}
+/* Calendar */
+.cc-cal-nav{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.cc-cal-nav-btn{background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:var(--text2);width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px}
+.cc-cal-nav-btn:hover{color:#fff;border-color:var(--blue)}
+.cc-cal-month{font-size:15px;font-weight:700;color:#fff;min-width:140px;text-align:center}
+.cc-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cc-cal-dow{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center;padding:4px 0;font-weight:600}
+.cc-cal-day{background:var(--navy3);border:1px solid var(--border);border-radius:6px;padding:5px 6px;min-height:56px;cursor:default;transition:border-color .1s;position:relative}
+.cc-cal-day.has-data{cursor:pointer;border-color:var(--border2)}
+.cc-cal-day.has-data:hover{border-color:var(--blue)}
+.cc-cal-day.empty{background:transparent;border-color:transparent}
+.cc-cal-day.today{border-color:var(--blue)!important}
+.cc-cal-dn{font-size:11px;font-weight:600;color:var(--text3);margin-bottom:3px}
+.cc-cal-day.today .cc-cal-dn{color:var(--blue)}
+.cc-cal-pill{font-size:10px;border-radius:3px;padding:1px 5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-cal-pill.compra{background:rgba(239,68,68,.15);color:#f87171}
+.cc-cal-pill.pago{background:rgba(34,197,94,.15);color:#4ade80}
 .cc-saldo-pos{color:var(--amber);font-family:'Syne',system-ui,sans-serif;font-weight:700}
 .cc-saldo-neg{color:var(--green);font-family:'Syne',system-ui,sans-serif;font-weight:700}
 .cc-saldo-zero{color:var(--text3);font-family:'Syne',system-ui,sans-serif;font-weight:700}
@@ -523,6 +561,11 @@ tr.cc-grid-row.cc-row-active:hover td{background:rgba(37,99,235,.11)}
       <!-- CUENTAS CORRIENTES -->
       <div class="panel" id="panel-cuentas">
         <div class="ph"><div class="ph-icon" style="background:var(--ipro2);color:var(--ipro)"><i class="ti ti-receipt"></i></div><div><div class="ph-title">Cuentas Corrientes</div><div class="ph-sub">Clientes B2B — compras, pagos y saldo</div></div><div style="margin-left:auto;display:flex;gap:8px"><button class="btn-secondary" onclick="ccCargarClientes()" id="btn-refresh-cuentas"><i class="ti ti-refresh" style="font-size:13px"></i>Actualizar</button><button class="btn-primary" id="btn-nuevo-cc-cliente" onclick="ccAbrirModalCliente(null)"><i class="ti ti-plus" style="font-size:13px"></i>Nuevo cliente</button></div></div>
+        <!-- Tabs CC -->
+        <div class="cc-tabs" id="cc-tabs">
+          <button class="cc-tab cc-tab-active" id="cc-tab-clientes" onclick="ccCambiarTab('clientes')"><i class="ti ti-users" style="font-size:13px"></i>Clientes</button>
+          <button class="cc-tab" id="cc-tab-resumen" onclick="ccCambiarTab('resumen')"><i class="ti ti-chart-bar" style="font-size:13px"></i>Resumen general</button>
+        </div>
         <div id="cuentas-blocked" class="blocked-wrap" style="display:none"><div class="blocked-card"><div class="blocked-icon"><i class="ti ti-lock"></i></div><div class="blocked-title">Acceso restringido</div><div class="blocked-sub">No tenés permiso para usar Cuentas Corrientes.</div><div class="blocked-btn">Contactar al administrador</div></div></div>
         <div id="cuentas-content" class="cc-body">
 
@@ -602,6 +645,13 @@ tr.cc-grid-row.cc-row-active:hover td{background:rgba(37,99,235,.11)}
             </div>
           </div>
 
+        </div>
+
+        <!-- Resumen General (tab oculta por defecto) -->
+        <div id="cuentas-resumen" style="display:none">
+          <div class="cc-rg" id="cc-rg-body">
+            <div class="loading-msg"><i class="ti ti-loader"></i>Cargando resumen...</div>
+          </div>
         </div>
       </div>
 
@@ -2146,6 +2196,176 @@ async function ccEliminarMovimiento(id){
     showToast('Movimiento eliminado');
     await ccRefrescarCuenta();
   }catch(e){showToast('Error: '+e.message,false);}
+}
+
+// ── CC RESUMEN GENERAL ──────────────────────────────────────────────────────
+
+let ccCalMes = new Date().toISOString().substring(0, 7); // 'YYYY-MM'
+let ccCalData = []; // [{dia,compras,pagos,devoluciones,cant}]
+
+function ccCambiarTab(tab) {
+  // Update tab buttons
+  document.getElementById('cc-tab-clientes').classList.toggle('cc-tab-active', tab === 'clientes');
+  document.getElementById('cc-tab-resumen').classList.toggle('cc-tab-active', tab === 'resumen');
+  // Show/hide content
+  document.getElementById('cuentas-content').style.display = tab === 'clientes' ? 'flex' : 'none';
+  document.getElementById('cuentas-resumen').style.display  = tab === 'resumen'  ? 'block' : 'none';
+  // Header buttons visibility
+  document.getElementById('btn-nuevo-cc-cliente').style.display = tab === 'clientes' ? '' : 'none';
+  document.getElementById('btn-refresh-cuentas').onclick = tab === 'clientes'
+    ? () => ccCargarClientes()
+    : () => ccCargarResumenGeneral();
+  if (tab === 'resumen') ccCargarResumenGeneral();
+}
+
+async function ccCargarResumenGeneral() {
+  document.getElementById('cc-rg-body').innerHTML = '<div class="loading-msg"><i class="ti ti-loader"></i>Cargando...</div>';
+  try {
+    const [rg, cal] = await Promise.all([
+      finApi('/api/cuentas/resumen-general'),
+      finApi(`/api/cuentas/calendario?mes=${ccCalMes}`),
+    ]);
+    ccCalData = cal;
+    document.getElementById('cc-rg-body').innerHTML = ccRenderResumenGeneral(rg);
+  } catch (e) {
+    document.getElementById('cc-rg-body').innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="ti ti-alert-circle"></i> ${esc(e.message)}</div>`;
+  }
+}
+
+function ccRenderResumenGeneral(rg) {
+  const deuda    = parseFloat(rg.total_deuda)   || 0;
+  const credito  = parseFloat(rg.total_credito) || 0;
+  const neto     = parseFloat(rg.neto)          || 0;
+  const maxSaldo = rg.top_deudores?.length ? Math.max(...rg.top_deudores.map(d => parseFloat(d.saldo))) : 1;
+
+  const rankingHTML = rg.top_deudores?.length
+    ? rg.top_deudores.map(d => {
+        const pct = Math.round((parseFloat(d.saldo) / maxSaldo) * 100);
+        return `<div class="cc-rank-row">
+          <div class="cc-rank-name">${esc(d.nombre)} ${esc(d.apellido||'')}</div>
+          <div class="cc-rank-cat">${ccCatBadge(d.categoria)}</div>
+          <div class="cc-rank-bar-wrap"><div class="cc-rank-bar" style="width:${pct}%"></div></div>
+          <div class="cc-rank-val">${fmtPesos(d.saldo)}</div>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--text3);font-size:13px;padding:12px 0">Sin deudas pendientes</div>';
+
+  return `
+    <!-- Métricas globales -->
+    <div class="cc-rg-metrics">
+      <div class="cc-rg-card">
+        <div class="cc-rg-card-lbl">Deuda total</div>
+        <div class="cc-rg-card-val" style="color:#f87171">${fmtPesos(deuda)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Lo que nos deben</div>
+      </div>
+      <div class="cc-rg-card">
+        <div class="cc-rg-card-lbl">Créditos pendientes</div>
+        <div class="cc-rg-card-val" style="color:var(--blue)">${fmtPesos(credito)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Saldo a favor de clientes</div>
+      </div>
+      <div class="cc-rg-card">
+        <div class="cc-rg-card-lbl">Posición neta</div>
+        <div class="cc-rg-card-val ${neto>0?'':''}${neto>=0?'':''}">
+          <span style="color:${neto>=0?'#f87171':'#4ade80'}">${fmtPesos(neto)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">${neto>=0?'A cobrar neto':'A favor de clientes'}</div>
+      </div>
+      <div class="cc-rg-card">
+        <div class="cc-rg-card-lbl">Clientes activos</div>
+        <div class="cc-rg-card-val">${rg.cant_clientes||0}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Con cuenta corriente</div>
+      </div>
+    </div>
+
+    <!-- Ranking deudores -->
+    <div class="cc-rg-section">
+      <div class="cc-rg-section-title">Ranking de deuda por cliente</div>
+      <div class="table-card" style="padding:12px 16px">
+        ${rankingHTML}
+      </div>
+    </div>
+
+    <!-- Calendario -->
+    <div class="cc-rg-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="cc-rg-section-title" style="margin:0">Calendario de operaciones</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:10px">
+            <span><span style="display:inline-block;width:10px;height:10px;background:rgba(239,68,68,.4);border-radius:2px;margin-right:4px"></span>Compras</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:rgba(34,197,94,.4);border-radius:2px;margin-right:4px"></span>Pagos</span>
+          </span>
+        </div>
+      </div>
+      <div class="cc-cal-nav">
+        <button class="cc-cal-nav-btn" onclick="ccCalNavegar(-1)">&#8249;</button>
+        <div class="cc-cal-month" id="cc-cal-mes-lbl">${ccCalMesLabel()}</div>
+        <button class="cc-cal-nav-btn" onclick="ccCalNavegar(1)">&#8250;</button>
+      </div>
+      <div class="table-card" style="padding:12px">
+        ${ccRenderCalendario()}
+      </div>
+    </div>`;
+}
+
+function ccCalMesLabel() {
+  const [y, m] = ccCalMes.split('-');
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return `${meses[parseInt(m)-1]} ${y}`;
+}
+
+async function ccCalNavegar(dir) {
+  const [y, m] = ccCalMes.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  ccCalMes = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('cc-cal-mes-lbl').textContent = ccCalMesLabel();
+  try {
+    ccCalData = await finApi(`/api/cuentas/calendario?mes=${ccCalMes}`);
+    const rgBody = document.getElementById('cc-rg-body');
+    if (rgBody) {
+      const calSection = rgBody.querySelector('.cc-cal-grid')?.closest('.table-card');
+      if (calSection) calSection.innerHTML = ccRenderCalendario();
+    }
+  } catch(e) { showToast('Error al cargar calendario', false); }
+}
+
+function ccRenderCalendario() {
+  const [y, m] = ccCalMes.split('-').map(Number);
+  const primerDia = new Date(y, m - 1, 1);
+  const ultimoDia = new Date(y, m, 0);
+  const hoy = new Date().toISOString().substring(0, 10);
+
+  // Map dia -> data
+  const porDia = {};
+  ccCalData.forEach(r => { porDia[r.dia?.substring(0,10) || String(r.dia).substring(0,10)] = r; });
+
+  // Day of week offset (Monday=0)
+  let offset = primerDia.getDay() - 1; // 0=Mon
+  if (offset < 0) offset = 6;
+
+  const dias = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+  let html = '<div class="cc-cal-grid" id="cc-cal-grid">';
+  // Headers
+  dias.forEach(d => { html += `<div class="cc-cal-dow">${d}</div>`; });
+  // Empty cells before first day
+  for (let i = 0; i < offset; i++) html += '<div class="cc-cal-day empty"></div>';
+  // Days
+  for (let dia = 1; dia <= ultimoDia.getDate(); dia++) {
+    const key = `${y}-${String(m).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+    const d = porDia[key];
+    const isHoy = key === hoy;
+    const hasData = !!d && d.cant > 0;
+    html += `<div class="cc-cal-day${hasData?' has-data':''}${isHoy?' today':''}">
+      <div class="cc-cal-dn">${dia}</div>`;
+    if (d && parseFloat(d.compras) > 0) {
+      html += `<div class="cc-cal-pill compra">+${fmtPesos(d.compras)}</div>`;
+    }
+    if (d && parseFloat(d.pagos) > 0) {
+      html += `<div class="cc-cal-pill pago">-${fmtPesos(d.pagos)}</div>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 // ── USUARIOS ──

@@ -329,4 +329,77 @@ router.get('/clientes/:id/resumen', async (req, res, next) => {
   }
 });
 
+// GET /resumen-general — métricas globales de todas las CC
+router.get('/resumen-general', async (req, res, next) => {
+  try {
+    // Totals con CTE para no repetir el subquery de saldo
+    const { rows: totals } = await db.query(`
+      WITH saldos AS (
+        SELECT
+          c.id, c.nombre, c.apellido, c.categoria,
+          COALESCE(SUM(
+            CASE WHEN m.tipo = 'compra' THEN m.monto_total ELSE -m.monto_total END
+          ), 0) AS saldo
+        FROM clientes_cc c
+        LEFT JOIN movimientos_cc m
+               ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
+        WHERE c.deleted_at IS NULL
+        GROUP BY c.id, c.nombre, c.apellido, c.categoria
+      )
+      SELECT
+        COUNT(*)::int                                                     AS cant_clientes,
+        COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)     AS total_deuda,
+        COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)     AS total_credito,
+        COALESCE(SUM(saldo), 0)                                           AS neto
+      FROM saldos
+    `);
+
+    // Top 10 deudores (saldo positivo = nos deben)
+    const { rows: top } = await db.query(`
+      SELECT
+        c.id, c.nombre, c.apellido, c.categoria,
+        COALESCE(SUM(
+          CASE WHEN m.tipo = 'compra' THEN m.monto_total ELSE -m.monto_total END
+        ), 0) AS saldo
+      FROM clientes_cc c
+      LEFT JOIN movimientos_cc m
+             ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
+      WHERE c.deleted_at IS NULL
+      GROUP BY c.id, c.nombre, c.apellido, c.categoria
+      HAVING COALESCE(SUM(
+        CASE WHEN m.tipo = 'compra' THEN m.monto_total ELSE -m.monto_total END
+      ), 0) > 0
+      ORDER BY saldo DESC
+      LIMIT 10
+    `);
+
+    res.json({ ...totals[0], top_deudores: top });
+  } catch (err) { next(err); }
+});
+
+// GET /calendario?mes=2026-05 — movimientos agrupados por día para el calendario
+router.get('/calendario', async (req, res, next) => {
+  try {
+    const mes = req.query.mes || new Date().toISOString().substring(0, 7);
+    // Validate mes format
+    if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'Formato de mes inválido (YYYY-MM)' });
+
+    const { rows } = await db.query(`
+      SELECT
+        fecha::date                                                                                AS dia,
+        COALESCE(SUM(CASE WHEN tipo = 'compra'                         THEN monto_total ELSE 0 END), 0) AS compras,
+        COALESCE(SUM(CASE WHEN tipo IN ('pago','parte_de_pago','entrega_mercaderia') THEN monto_total ELSE 0 END), 0) AS pagos,
+        COALESCE(SUM(CASE WHEN tipo = 'devolucion'                     THEN monto_total ELSE 0 END), 0) AS devoluciones,
+        COUNT(*)::int                                                                              AS cant
+      FROM movimientos_cc
+      WHERE DATE_TRUNC('month', fecha) = DATE_TRUNC('month', ($1 || '-01')::date)
+        AND deleted_at IS NULL
+      GROUP BY fecha::date
+      ORDER BY fecha::date
+    `, [mes]);
+
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
