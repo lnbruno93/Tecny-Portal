@@ -2373,6 +2373,7 @@ async function ccCargarResumenGeneral() {
     document.getElementById('cc-rg-body').innerHTML = ccRenderResumenGeneral(rg);
     ccRgRenderRanking(); // poblar la lista después de que el DOM esté listo
   } catch (e) {
+    console.error('[ccCargarResumenGeneral]', e);
     document.getElementById('cc-rg-body').innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="ti ti-alert-circle"></i> ${esc(e.message)}</div>`;
   }
 }
