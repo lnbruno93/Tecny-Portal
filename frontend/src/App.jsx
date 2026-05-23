@@ -4,6 +4,7 @@ import Shell from './components/Shell';
 import Login from './screens/Login';
 import Inicio from './screens/Inicio';
 import CuentasCC from './screens/CuentasCC';
+import Financiera from './screens/Financiera';
 
 // Placeholder screens — replace with real implementations
 const Placeholder = ({ name }) => (
@@ -41,7 +42,7 @@ export default function App() {
               <Route index element={<Navigate to="/inicio" replace />} />
               <Route path="inicio" element={<Inicio />} />
               <Route path="cotizador" element={<Placeholder name="Cotizador" />} />
-              <Route path="financiera/*" element={<Placeholder name="Financiera" />} />
+              <Route path="financiera/*" element={<Financiera />} />
               <Route path="cajas/*" element={<Placeholder name="Cajas" />} />
               <Route path="envios" element={<Placeholder name="Envíos" />} />
               <Route path="cuentas/*" element={<CuentasCC />} />
