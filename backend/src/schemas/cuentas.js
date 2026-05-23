@@ -39,13 +39,20 @@ const itemMovimientoCCSchema = z.object({
 
 const createMovimientoCCSchema = z.object({
   cliente_cc_id: z.number().int().positive('ID de cliente requerido'),
-  fecha:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)'),
+  fecha:         z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)')
+    .refine(d => {
+      const date = new Date(d + 'T00:00:00');
+      const now  = new Date();
+      const min  = new Date('2000-01-01T00:00:00');
+      return date <= now && date >= min;
+    }, 'La fecha no puede ser futura ni anterior al año 2000'),
   tipo:          z.enum(TIPOS_MOVIMIENTO_CC, { error: `Tipo debe ser: ${TIPOS_MOVIMIENTO_CC.join(', ')}` }),
   descripcion:   z.string().trim().max(500).optional().nullable(),
-  monto_total:   z.number().nonnegative('El monto no puede ser negativo'),
+  monto_total:   z.number().positive('El monto debe ser mayor a 0'),
   notas:         z.string().trim().max(1000).optional().nullable(),
   // items solo aplica a compra/devolucion — la ruta ignora items en otros tipos
-  items:         z.array(itemMovimientoCCSchema).optional().default([]),
+  items:         z.array(itemMovimientoCCSchema).max(200, 'Máximo 200 ítems por movimiento').optional().default([]),
 });
 
 module.exports = {

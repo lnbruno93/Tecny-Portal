@@ -53,7 +53,7 @@ router.get('/clientes', async (req, res, next) => {
 
     if (buscar) {
       params.push(`%${buscar}%`);
-      filters.push(`(c.nombre ILIKE $${params.length} OR c.apellido ILIKE $${params.length})`);
+      filters.push(`(c.nombre ILIKE $${params.length} OR c.apellido ILIKE $${params.length} OR c.contacto ILIKE $${params.length})`);
     }
     if (categoria) {
       params.push(categoria);
@@ -218,13 +218,16 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       items = [],
     } = req.body;
 
-    // Verificar que el cliente existe
-    const { rows: c } = await client.query(
-      'SELECT id FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL', [cliente_cc_id]
-    );
-    if (!c[0]) return res.status(404).json({ error: 'Cliente no encontrado' });
-
     await client.query('BEGIN');
+
+    // Verificar que el cliente existe (dentro de la tx, con FOR UPDATE para evitar race condition)
+    const { rows: c } = await client.query(
+      'SELECT id FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [cliente_cc_id]
+    );
+    if (!c[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
 
     // Insertar movimiento
     const { rows: movRows } = await client.query(
@@ -332,8 +335,8 @@ router.get('/clientes/:id/resumen', async (req, res, next) => {
 // GET /resumen-general — métricas globales de todas las CC
 router.get('/resumen-general', async (req, res, next) => {
   try {
-    // Totals con CTE para no repetir el subquery de saldo
-    const { rows: totals } = await db.query(`
+    // Una sola query CTE: calcula saldos una vez, los agrega y extrae top-10
+    const { rows } = await db.query(`
       WITH saldos AS (
         SELECT
           c.id, c.nombre, c.apellido, c.categoria,
@@ -347,33 +350,19 @@ router.get('/resumen-general', async (req, res, next) => {
         GROUP BY c.id, c.nombre, c.apellido, c.categoria
       )
       SELECT
-        COUNT(*)::int                                                     AS cant_clientes,
-        COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)     AS total_deuda,
-        COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)     AS total_credito,
-        COALESCE(SUM(saldo), 0)                                           AS neto
+        COUNT(*)::int                                                                 AS cant_clientes,
+        COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)                 AS total_deuda,
+        COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)                 AS total_credito,
+        COALESCE(SUM(saldo), 0)                                                       AS neto,
+        COALESCE(
+          (SELECT json_agg(t ORDER BY t.saldo DESC)
+           FROM (SELECT id, nombre, apellido, categoria, saldo FROM saldos WHERE saldo > 0 ORDER BY saldo DESC LIMIT 10) t),
+          '[]'::json
+        )                                                                             AS top_deudores
       FROM saldos
     `);
 
-    // Top 10 deudores (saldo positivo = nos deben)
-    const { rows: top } = await db.query(`
-      SELECT
-        c.id, c.nombre, c.apellido, c.categoria,
-        COALESCE(SUM(
-          CASE WHEN m.tipo = 'compra' THEN m.monto_total ELSE -m.monto_total END
-        ), 0) AS saldo
-      FROM clientes_cc c
-      LEFT JOIN movimientos_cc m
-             ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
-      WHERE c.deleted_at IS NULL
-      GROUP BY c.id, c.nombre, c.apellido, c.categoria
-      HAVING COALESCE(SUM(
-        CASE WHEN m.tipo = 'compra' THEN m.monto_total ELSE -m.monto_total END
-      ), 0) > 0
-      ORDER BY saldo DESC
-      LIMIT 10
-    `);
-
-    res.json({ ...totals[0], top_deudores: top });
+    res.json(rows[0]);
   } catch (err) { next(err); }
 });
 
