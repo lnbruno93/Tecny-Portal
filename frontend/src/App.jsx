@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Shell from './components/Shell';
 import Login from './screens/Login';
 import Inicio from './screens/Inicio';
+import CuentasCC from './screens/CuentasCC';
 
 // Placeholder screens — replace with real implementations
 const Placeholder = ({ name }) => (
@@ -43,7 +44,7 @@ export default function App() {
               <Route path="financiera/*" element={<Placeholder name="Financiera" />} />
               <Route path="cajas/*" element={<Placeholder name="Cajas" />} />
               <Route path="envios" element={<Placeholder name="Envíos" />} />
-              <Route path="cuentas/*" element={<Placeholder name="Cuentas CC" />} />
+              <Route path="cuentas/*" element={<CuentasCC />} />
               <Route path="usados" element={<Placeholder name="Usados" />} />
               <Route path="historial" element={<Placeholder name="Historial" />} />
               <Route path="usuarios" element={<Placeholder name="Usuarios" />} />
