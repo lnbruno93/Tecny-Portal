@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { cajas } from '../lib/api';
+import { cajas, contactos as contactosApi } from '../lib/api';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -67,6 +68,41 @@ export default function Cajas() {
   // Inversiones
   const [inversiones, setInversiones] = useState([]);
   const [loadingInv, setLoadingInv] = useState(false);
+
+  // ── Crear contacto ────────────────────────────────────────────────────────
+  const [showContacto, setShowContacto] = useState(false);
+  const [cForm, setCForm] = useState({ nombre: '', apellido: '', tipo: 'amigo' });
+  const [cCreating, setCCreating] = useState(false);
+  const [cError, setCError] = useState('');
+
+  const { setPrimaryAction } = usePageActions();
+  useEffect(() => {
+    setPrimaryAction({ label: 'Nuevo contacto', onClick: () => { setCForm({ nombre: '', apellido: '', tipo: 'amigo' }); setCError(''); setShowContacto(true); } });
+    return () => setPrimaryAction(null);
+  }, [setPrimaryAction]);
+
+  async function handleCreateContacto(e) {
+    e.preventDefault();
+    if (!cForm.nombre.trim()) { setCError('El nombre es obligatorio.'); return; }
+    setCCreating(true); setCError('');
+    try {
+      const nuevo = await contactosApi.create({
+        nombre: cForm.nombre.trim(),
+        apellido: cForm.apellido.trim() || null,
+        tipo: cForm.tipo,
+      });
+      // El nuevo contacto no tiene movimientos aún — lo marcamos seleccionado
+      setDeudaMovs(prev => [...prev, {
+        contacto_id: nuevo.id, nombre: nuevo.nombre, apellido: nuevo.apellido,
+        contacto_tipo: nuevo.tipo, mov_tipo: 'debe', monto_ars: 0, monto_usd: 0, fecha: null,
+        id: -nuevo.id, concepto: null, created_at: null,
+      }]);
+      setSelectedContactoId(nuevo.id);
+      setShowContacto(false);
+      if (tab !== 'deudas') setTab('deudas');
+    } catch (err) { setCError(err.message); }
+    finally { setCCreating(false); }
+  }
 
   // Load deudas
   useEffect(() => {
@@ -344,6 +380,57 @@ export default function Cajas() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Modal: Nuevo contacto ────────────────────────────────────── */}
+      {showContacto && (
+        <div className="modal-overlay" onClick={() => setShowContacto(false)}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Nuevo contacto</h3>
+              <button className="icon-btn" onClick={() => setShowContacto(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateContacto}>
+              <div className="modal-body">
+                <div className="stack" style={{ gap: 14 }}>
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input className="input" placeholder="ej. Martín"
+                        value={cForm.nombre} onChange={e => setCForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Apellido</label>
+                      <input className="input" placeholder="ej. García"
+                        value={cForm.apellido} onChange={e => setCForm(f => ({ ...f, apellido: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Tipo de contacto</label>
+                    <select className="input" value={cForm.tipo} onChange={e => setCForm(f => ({ ...f, tipo: e.target.value }))}>
+                      <option value="amigo">Amigo</option>
+                      <option value="familiar">Familiar</option>
+                      <option value="cliente">Cliente</option>
+                      <option value="inversor">Inversor</option>
+                      <option value="ipro team">iPro Team</option>
+                    </select>
+                  </div>
+                  {cError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{cError}</div>}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowContacto(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={cCreating}>
+                  {cCreating ? 'Guardando…' : 'Crear contacto'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

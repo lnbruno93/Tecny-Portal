@@ -121,6 +121,13 @@ export const cuentas = {
   deleteMovimiento: (id) => api(`/api/cuentas/movimientos/${id}`, 'DELETE'),
 };
 
+export const contactos = {
+  list: (params = {}) => api('/api/contactos?' + new URLSearchParams(params)),
+  create: (data) => api('/api/contactos', 'POST', data),
+  update: (id, data) => api(`/api/contactos/${id}`, 'PUT', data),
+  delete: (id) => api(`/api/contactos/${id}`, 'DELETE'),
+};
+
 export const usados = {
   list: () => api('/api/usados'),
   create: (data) => api('/api/usados', 'POST', data),

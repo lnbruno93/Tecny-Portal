@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { envios } from '../lib/api';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 // ─── Formatter ────────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -12,9 +13,19 @@ function fmt(n) {
 
 function fmtFecha(isoDate) {
   if (!isoDate) return '—';
-  const d = new Date(isoDate + 'T00:00:00');
+  const d = new Date(isoDate.includes('T') ? isoDate : isoDate + 'T00:00:00');
+  if (isNaN(d)) return '—';
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
+
+// ─── Create modal helpers ─────────────────────────────────────────────────────
+const EMPTY_FORM = {
+  fecha: new Date().toLocaleDateString('sv'),
+  cliente: '', telefono: '', direccion: '', barrio: '',
+  horario: '', operador: '', notas: '',
+  prioridad: '', estado: 'Pendiente',
+};
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '' };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -62,6 +73,74 @@ export default function Envios() {
   const [updatingId, setUpdatingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [fechaLabel, setFechaLabel] = useState('Hoy');
+
+  // ── Create modal ──
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
+  const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM }]);
+  const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
+  const setItem = (idx, field, val) =>
+    setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
+
+  function openCreate() {
+    setForm(EMPTY_FORM);
+    setItems([{ ...EMPTY_ITEM }]);
+    setCreateError('');
+    setShowCreate(true);
+  }
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!form.cliente.trim()) { setCreateError('El cliente es obligatorio.'); return; }
+    if (!form.direccion.trim()) { setCreateError('La dirección es obligatoria.'); return; }
+    setCreating(true);
+    setCreateError('');
+    try {
+      const payload = {
+        fecha: form.fecha,
+        cliente: form.cliente.trim(),
+        telefono: form.telefono.trim() || null,
+        direccion: form.direccion.trim(),
+        barrio: form.barrio.trim() || null,
+        horario: form.horario.trim() || null,
+        operador: form.operador.trim() || null,
+        notas: form.notas.trim() || null,
+        prioridad: form.prioridad || null,
+        estado: form.estado || 'Pendiente',
+        costo_envio: 0,
+        total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
+        items: items
+          .filter(i => i.descripcion.trim() || i.tipo === 'pago')
+          .map(i => ({
+            tipo: i.tipo,
+            descripcion: i.descripcion.trim() || null,
+            monto: Number(i.monto) || 0,
+            metodo_pago: i.metodo_pago.trim() || null,
+          })),
+      };
+      const nuevo = await envios.create(payload);
+      setEnviosList(prev => [{ ...nuevo, items: payload.items }, ...prev]);
+      setSelectedId(nuevo.id);
+      setShowCreate(false);
+    } catch (err) {
+      setCreateError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // ── Register global + action ──
+  const { setPrimaryAction } = usePageActions();
+  useEffect(() => {
+    setPrimaryAction({ label: 'Nuevo envío', onClick: openCreate });
+    return () => setPrimaryAction(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setPrimaryAction]);
 
   // ── Load on mount ──
   useEffect(() => {
@@ -521,6 +600,155 @@ export default function Envios() {
               Seleccioná un envío
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Modal: Nuevo envío ─────────────────────────────────────────── */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Nuevo envío</h3>
+              <button className="icon-btn" onClick={() => setShowCreate(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreate}>
+              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                <div className="stack" style={{ gap: 16 }}>
+
+                  {/* Fila 1: fecha + estado + prioridad */}
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input type="date" className="input" value={form.fecha}
+                        onChange={e => setF('fecha', e.target.value)} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Estado</label>
+                      <select className="input" value={form.estado} onChange={e => setF('estado', e.target.value)}>
+                        <option>Pendiente</option>
+                        <option>En camino</option>
+                        <option>Entregado</option>
+                        <option>Cancelado</option>
+                      </select>
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Prioridad</label>
+                      <select className="input" value={form.prioridad} onChange={e => setF('prioridad', e.target.value)}>
+                        <option value="">Sin prioridad</option>
+                        <option>Alta</option>
+                        <option>Media</option>
+                        <option>Baja</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Fila 2: cliente + teléfono */}
+                  <div className="row">
+                    <div className="field" style={{ flex: 2 }}>
+                      <label className="field-label">Cliente <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input className="input" placeholder="Nombre del cliente"
+                        value={form.cliente} onChange={e => setF('cliente', e.target.value)} autoFocus />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Teléfono</label>
+                      <input className="input" placeholder="ej. 3416123456"
+                        value={form.telefono} onChange={e => setF('telefono', e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* Fila 3: dirección + barrio */}
+                  <div className="row">
+                    <div className="field" style={{ flex: 2 }}>
+                      <label className="field-label">Dirección <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input className="input" placeholder="ej. San Martín 450"
+                        value={form.direccion} onChange={e => setF('direccion', e.target.value)} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Barrio</label>
+                      <input className="input" placeholder="ej. Centro"
+                        value={form.barrio} onChange={e => setF('barrio', e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* Fila 4: horario + operador */}
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Horario</label>
+                      <input className="input" placeholder="ej. 10:00-12:00"
+                        value={form.horario} onChange={e => setF('horario', e.target.value)} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Operador</label>
+                      <input className="input" placeholder="Quién despacha"
+                        value={form.operador} onChange={e => setF('operador', e.target.value)} />
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  <div className="field">
+                    <label className="field-label">Notas</label>
+                    <input className="input" placeholder="Instrucciones, detalles…"
+                      value={form.notas} onChange={e => setF('notas', e.target.value)} />
+                  </div>
+
+                  {/* Items */}
+                  <div>
+                    <div className="flex-between" style={{ marginBottom: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Items del envío</div>
+                      <button type="button" className="btn btn-sm" onClick={addItem}>
+                        <Icons.Plus size={13} /> Agregar item
+                      </button>
+                    </div>
+                    <div className="stack" style={{ gap: 8 }}>
+                      {items.map((it, idx) => (
+                        <div key={idx} className="card card-tight" style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 120px auto', gap: 8, alignItems: 'end' }}>
+                            <div className="field" style={{ marginBottom: 0 }}>
+                              <label className="field-label">Tipo</label>
+                              <select className="input" value={it.tipo}
+                                onChange={e => setItem(idx, 'tipo', e.target.value)}>
+                                <option value="producto">Producto</option>
+                                <option value="pago">Pago</option>
+                              </select>
+                            </div>
+                            <div className="field" style={{ marginBottom: 0 }}>
+                              <label className="field-label">Descripción</label>
+                              <input className="input" placeholder={it.tipo === 'pago' ? 'Método de pago…' : 'Producto…'}
+                                value={it.descripcion} onChange={e => setItem(idx, 'descripcion', e.target.value)} />
+                            </div>
+                            <div className="field" style={{ marginBottom: 0 }}>
+                              <label className="field-label">Monto ARS</label>
+                              <input type="number" className="input mono" placeholder="0"
+                                value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                            </div>
+                            <button type="button" className="icon-btn"
+                              style={{ marginBottom: 1, visibility: items.length > 1 ? 'visible' : 'hidden' }}
+                              onClick={() => rmItem(idx)}>
+                              <Icons.X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {createError && (
+                    <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={creating}>
+                  {creating ? 'Guardando…' : 'Crear envío'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
