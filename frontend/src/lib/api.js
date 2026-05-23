@@ -85,20 +85,25 @@ export const vendedores = {
 };
 
 export const cajas = {
-  contactos: () => api('/api/cajas/contactos'),
-  deudas: () => api('/api/cajas/deudas'),
-  movimientos: (contactoId) => api(`/api/cajas/contactos/${contactoId}/movimientos`),
-  inversiones: () => api('/api/cajas/inversiones'),
-  createMovimiento: (data) => api('/api/cajas/movimientos', 'POST', data),
-  deleteMovimiento: (id) => api(`/api/cajas/movimientos/${id}`, 'DELETE'),
+  // Deudas (movimientos_deudas): tipo debe|pago, monto_ars, monto_usd
+  deudas: (params = {}) => api('/api/cajas/deudas?' + new URLSearchParams(params)),
+  createDeuda: (data) => api('/api/cajas/deudas', 'POST', data),
+  deleteDeuda: (id) => api(`/api/cajas/deudas/${id}`, 'DELETE'),
+  // Inversiones (movimientos_inversiones): monto (ARS), tasa (texto libre)
+  inversiones: (params = {}) => api('/api/cajas/inversiones?' + new URLSearchParams(params)),
+  createInversion: (data) => api('/api/cajas/inversiones', 'POST', data),
+  deleteInversion: (id) => api(`/api/cajas/inversiones/${id}`, 'DELETE'),
+  // Resumen agregado por contacto_id
+  resumen: () => api('/api/cajas/resumen'),
 };
 
 export const envios = {
   list: (params = {}) => api('/api/envios?' + new URLSearchParams(params)),
   get: (id) => api(`/api/envios/${id}`),
   create: (data) => api('/api/envios', 'POST', data),
+  // updateEstado usa la ruta PUT /:id (no existe sub-ruta /estado)
   update: (id, data) => api(`/api/envios/${id}`, 'PUT', data),
-  updateEstado: (id, estado) => api(`/api/envios/${id}/estado`, 'PUT', { estado }),
+  updateEstado: (id, estado) => api(`/api/envios/${id}`, 'PUT', { estado }),
   delete: (id) => api(`/api/envios/${id}`, 'DELETE'),
 };
 

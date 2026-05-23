@@ -32,7 +32,10 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
     const [countRes, dataRes] = await Promise.all([
       db.query(`SELECT COUNT(*) ${baseQuery}`, params),
       db.query(
-        `SELECT m.*, c.nombre, c.apellido, c.tipo ${baseQuery}
+        `SELECT m.id, m.fecha, m.contacto_id, m.tipo AS mov_tipo,
+                m.monto_ars, m.monto_usd, m.concepto, m.created_at,
+                c.nombre, c.apellido, c.tipo AS contacto_tipo
+         ${baseQuery}
          ORDER BY m.fecha DESC, m.id DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
@@ -98,7 +101,9 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
     const [countRes, dataRes] = await Promise.all([
       db.query(`SELECT COUNT(*) ${baseQuery}`, params),
       db.query(
-        `SELECT m.*, c.nombre, c.apellido, c.tipo ${baseQuery}
+        `SELECT m.id, m.fecha, m.contacto_id, m.monto, m.tasa, m.created_at,
+                c.nombre, c.apellido, c.tipo AS contacto_tipo
+         ${baseQuery}
          ORDER BY m.fecha DESC, m.id DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]

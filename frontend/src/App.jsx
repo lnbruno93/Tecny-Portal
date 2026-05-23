@@ -5,6 +5,8 @@ import Login from './screens/Login';
 import Inicio from './screens/Inicio';
 import CuentasCC from './screens/CuentasCC';
 import Financiera from './screens/Financiera';
+import Envios from './screens/Envios';
+import Cajas from './screens/Cajas';
 import Usados from './screens/Usados';
 import Historial from './screens/Historial';
 import Usuarios from './screens/Usuarios';
@@ -47,8 +49,8 @@ export default function App() {
               <Route path="inicio" element={<Inicio />} />
               <Route path="cotizador" element={<Placeholder name="Cotizador" />} />
               <Route path="financiera/*" element={<Financiera />} />
-              <Route path="cajas/*" element={<Placeholder name="Cajas" />} />
-              <Route path="envios" element={<Placeholder name="Envíos" />} />
+              <Route path="cajas/*" element={<Cajas />} />
+              <Route path="envios" element={<Envios />} />
               <Route path="cuentas/*" element={<CuentasCC />} />
               <Route path="usados" element={<Usados />} />
               <Route path="historial" element={<Historial />} />
