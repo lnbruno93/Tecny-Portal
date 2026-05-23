@@ -335,8 +335,8 @@ router.get('/clientes/:id/resumen', async (req, res, next) => {
 // GET /resumen-general — métricas globales de todas las CC
 router.get('/resumen-general', async (req, res, next) => {
   try {
-    // Una sola query CTE: calcula saldos una vez, los agrega y extrae top-10
-    const { rows } = await db.query(`
+    // CTE compartida: calcula saldos una sola vez para totales y top-10
+    const BASE_CTE = `
       WITH saldos AS (
         SELECT
           c.id, c.nombre, c.apellido, c.categoria,
@@ -349,20 +349,27 @@ router.get('/resumen-general', async (req, res, next) => {
         WHERE c.deleted_at IS NULL
         GROUP BY c.id, c.nombre, c.apellido, c.categoria
       )
-      SELECT
-        COUNT(*)::int                                                                 AS cant_clientes,
-        COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)                 AS total_deuda,
-        COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)                 AS total_credito,
-        COALESCE(SUM(saldo), 0)                                                       AS neto,
-        COALESCE(
-          (SELECT json_agg(t ORDER BY t.saldo DESC)
-           FROM (SELECT id, nombre, apellido, categoria, saldo FROM saldos WHERE saldo > 0 ORDER BY saldo DESC LIMIT 10) t),
-          '[]'::json
-        )                                                                             AS top_deudores
-      FROM saldos
-    `);
+    `;
 
-    res.json(rows[0]);
+    const [{ rows: totals }, { rows: top }] = await Promise.all([
+      db.query(BASE_CTE + `
+        SELECT
+          COUNT(*)::int                                                   AS cant_clientes,
+          COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)   AS total_deuda,
+          COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)   AS total_credito,
+          COALESCE(SUM(saldo), 0)                                         AS neto
+        FROM saldos
+      `),
+      db.query(BASE_CTE + `
+        SELECT id, nombre, apellido, categoria, saldo
+        FROM saldos
+        WHERE saldo > 0
+        ORDER BY saldo DESC
+        LIMIT 10
+      `),
+    ]);
+
+    res.json({ ...totals[0], top_deudores: top });
   } catch (err) { next(err); }
 });
 
