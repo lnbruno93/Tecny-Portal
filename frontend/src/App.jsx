@@ -11,14 +11,7 @@ import Usados from './screens/Usados';
 import Historial from './screens/Historial';
 import Usuarios from './screens/Usuarios';
 import Config from './screens/Config';
-
-// Placeholder screens — replace with real implementations
-const Placeholder = ({ name }) => (
-  <div style={{ padding: 32, color: 'var(--text-2)' }}>
-    <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>{name}</h2>
-    <p style={{ color: 'var(--text-muted)' }}>Próximamente</p>
-  </div>
-);
+import Cotizador from './screens/Cotizador';
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -47,7 +40,7 @@ export default function App() {
             <Route path="/" element={<Shell />}>
               <Route index element={<Navigate to="/inicio" replace />} />
               <Route path="inicio" element={<Inicio />} />
-              <Route path="cotizador" element={<Placeholder name="Cotizador" />} />
+              <Route path="cotizador" element={<Cotizador />} />
               <Route path="financiera/*" element={<Financiera />} />
               <Route path="cajas/*" element={<Cajas />} />
               <Route path="envios" element={<Envios />} />
