@@ -118,7 +118,7 @@ export const cuentas = {
 
 export const usados = {
   list: () => api('/api/usados'),
-  bulkUpdate: (items) => api('/api/usados/bulk', 'PUT', { items }),
+  bulkUpdate: (items) => api('/api/usados/bulk', 'PUT', { updates: items }),
 };
 
 export const usuarios = {

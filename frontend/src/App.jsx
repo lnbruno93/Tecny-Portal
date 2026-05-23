@@ -5,6 +5,10 @@ import Login from './screens/Login';
 import Inicio from './screens/Inicio';
 import CuentasCC from './screens/CuentasCC';
 import Financiera from './screens/Financiera';
+import Usados from './screens/Usados';
+import Historial from './screens/Historial';
+import Usuarios from './screens/Usuarios';
+import Config from './screens/Config';
 
 // Placeholder screens — replace with real implementations
 const Placeholder = ({ name }) => (
@@ -46,10 +50,10 @@ export default function App() {
               <Route path="cajas/*" element={<Placeholder name="Cajas" />} />
               <Route path="envios" element={<Placeholder name="Envíos" />} />
               <Route path="cuentas/*" element={<CuentasCC />} />
-              <Route path="usados" element={<Placeholder name="Usados" />} />
-              <Route path="historial" element={<Placeholder name="Historial" />} />
-              <Route path="usuarios" element={<Placeholder name="Usuarios" />} />
-              <Route path="config" element={<Placeholder name="Config" />} />
+              <Route path="usados" element={<Usados />} />
+              <Route path="historial" element={<Historial />} />
+              <Route path="usuarios" element={<Usuarios />} />
+              <Route path="config" element={<Config />} />
             </Route>
           </Routes>
         </RequireAuth>
