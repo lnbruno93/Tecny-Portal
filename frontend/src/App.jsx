@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Shell from './components/Shell';
 import Login from './screens/Login';
+import Inicio from './screens/Inicio';
 
 // Placeholder screens — replace with real implementations
 const Placeholder = ({ name }) => (
@@ -37,7 +38,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Shell />}>
               <Route index element={<Navigate to="/inicio" replace />} />
-              <Route path="inicio" element={<Placeholder name="Inicio" />} />
+              <Route path="inicio" element={<Inicio />} />
               <Route path="cotizador" element={<Placeholder name="Cotizador" />} />
               <Route path="financiera/*" element={<Placeholder name="Financiera" />} />
               <Route path="cajas/*" element={<Placeholder name="Cajas" />} />
