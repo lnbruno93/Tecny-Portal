@@ -3,6 +3,7 @@
 
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 
 // Navigation structure matching the 7+3 design
@@ -126,7 +127,7 @@ function UserPill() {
 
 function Topbar() {
   const location = useLocation();
-  // Get current screen label from path
+  const { primaryAction } = usePageActions();
   const segment = location.pathname.split('/').filter(Boolean)[0] || 'inicio';
   const label = SCREEN_LABELS[segment] || segment;
 
@@ -146,7 +147,12 @@ function Topbar() {
       <button className="icon-btn" title="Notificaciones">
         <Icons.Bell size={17} />
       </button>
-      <button className="icon-btn" title="Nuevo">
+      <button
+        className="icon-btn"
+        title={primaryAction?.label || 'Nuevo'}
+        onClick={() => primaryAction?.onClick()}
+        style={primaryAction ? { color: 'var(--accent)' } : { opacity: 0.35, cursor: 'default' }}
+      >
         <Icons.Plus size={17} />
       </button>
     </div>

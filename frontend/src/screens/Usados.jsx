@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { usados as usadosApi } from '../lib/api';
+import { usePageActions } from '../contexts/PageActionsContext';
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -26,6 +27,13 @@ export default function Usados() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // ── Register global + action ──────────────────────────────────────────────
+  const { setPrimaryAction } = usePageActions();
+  useEffect(() => {
+    setPrimaryAction({ label: 'Nuevo equipo', onClick: () => { setShowCreate(true); setFormError(''); } });
+    return () => setPrimaryAction(null);
+  }, [setPrimaryAction]);
 
   // ── Create modal ──────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);

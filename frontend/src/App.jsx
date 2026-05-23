@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { PageActionsProvider } from './contexts/PageActionsContext';
 import Shell from './components/Shell';
 import Login from './screens/Login';
 import Inicio from './screens/Inicio';
@@ -34,6 +35,7 @@ function RequireAuth({ children }) {
 export default function App() {
   return (
     <AuthProvider>
+      <PageActionsProvider>
       <BrowserRouter>
         <RequireAuth>
           <Routes>
@@ -53,6 +55,7 @@ export default function App() {
           </Routes>
         </RequireAuth>
       </BrowserRouter>
+      </PageActionsProvider>
     </AuthProvider>
   );
 }
