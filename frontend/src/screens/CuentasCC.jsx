@@ -225,10 +225,9 @@ const mkRow = (prev = null) => ({
   ars: '', tc: '',
 });
 
-function InlineAddRows({ clienteId, onSave }) {
-  const [rows, setRows]     = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
-  const [saving, setSaving] = useState({});
-  const [errs,   setErrs]   = useState({});
+function InlineAddRows({ clienteId, onSave, onSaveDone, onSaveError }) {
+  const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
+  const [errs, setErrs] = useState({});
 
   const cr = useRef({});
   const setRef    = (i, col) => el => { cr.current[`${i}_${col}`] = el; };
@@ -256,43 +255,46 @@ function InlineAddRows({ clienteId, onSave }) {
     if (errs[i]) setErrs(e => { const n = { ...e }; delete n[i]; return n; });
   }
 
-  async function saveRow(i) {
+  function saveRow(i) {
     const row    = rows[i];
     const isPago = !ITEM_TIPOS.includes(row.tipo);
-    // Pago con ARS pero sin TC → pedir TC
     if (isPago && parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
       setErrs(e => ({ ...e, [i]: 'Ingresá el tipo de cambio' })); return;
     }
-    if (!row.monto || Number(row.monto) <= 0) return; // fila vacía → ignorar
+    if (!row.monto || Number(row.monto) <= 0) return;
 
-    setSaving(s => ({ ...s, [i]: true }));
-    try {
-      await cuentas.createMovimiento({
-        cliente_cc_id: clienteId,
-        fecha:         row.fecha,
-        tipo:          row.tipo,
-        monto_total:   Number(row.monto),   // siempre en USD
-        items: ITEM_TIPOS.includes(row.tipo) ? [{
-          producto:    row.producto    || null,
-          modelo:      row.modelo      || null,
-          tamano:      row.tamano      || null,
-          color:       row.color       || null,
-          imei_serial: row.imei_serial || null,
-          valor:       Number(row.monto),
-          verificado:  row.verificado,
-        }] : [],
-      });
-      setRows(rs => rs.map((r, idx) =>
-        idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
-      ));
-      setErrs(e => { const n = { ...e }; delete n[i]; return n; });
-      onSave();
-      setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 40);
-    } catch (e) {
-      setErrs(err => ({ ...err, [i]: e.message || 'Error al guardar' }));
-    } finally {
-      setSaving(s => { const n = { ...s }; delete n[i]; return n; });
-    }
+    const tempId  = `_tmp_${Date.now()}_${i}`;
+    const isItem  = ITEM_TIPOS.includes(row.tipo);
+    const itemData = {
+      producto: row.producto || null, modelo: row.modelo || null,
+      tamano: row.tamano || null,     color: row.color || null,
+      imei_serial: row.imei_serial || null,
+      valor: Number(row.monto),       verificado: row.verificado,
+    };
+
+    // 1. Reset inmediato → usuario puede seguir sin esperar
+    setRows(rs => rs.map((r, idx) =>
+      idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
+    ));
+    setErrs(e => { const n = { ...e }; delete n[i]; return n; });
+    setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 20);
+
+    // 2. Actualización optimista instantánea en la lista
+    onSave({
+      id: tempId, _pending: true,
+      fecha: row.fecha, tipo: row.tipo,
+      monto_total: Number(row.monto), descripcion: null, notas: null,
+      items: isItem ? [{ id: `${tempId}_item`, ...itemData }] : [],
+    });
+
+    // 3. API en segundo plano — no bloquea la UI
+    cuentas.createMovimiento({
+      cliente_cc_id: clienteId,
+      fecha: row.fecha, tipo: row.tipo, monto_total: Number(row.monto),
+      items: isItem ? [itemData] : [],
+    })
+    .then(real => onSaveDone(tempId, real))
+    .catch(err  => onSaveError(tempId, err.message || 'Error al guardar'));
   }
 
   function handleLastKey(e, i) {
@@ -319,8 +321,6 @@ function InlineAddRows({ clienteId, onSave }) {
           <tr key={row._id} style={{
             background: 'rgba(99,102,241,0.04)',
             borderTop: i === 0 ? '2px solid var(--accent)' : '1px solid var(--hairline)',
-            opacity: saving[i] ? 0.5 : 1,
-            transition: 'opacity 0.15s',
           }}>
 
             {/* Fecha */}
@@ -443,11 +443,7 @@ function InlineAddRows({ clienteId, onSave }) {
 
             {/* Estado */}
             <td style={{ padding: '4px 5px', textAlign: 'center' }}>
-              {saving[i]
-                ? <span className="muted tiny">…</span>
-                : errs[i]
-                  ? <span style={{ color: 'var(--neg)', fontSize: 11 }} title={errs[i]}>⚠</span>
-                  : null}
+              {errs[i] && <span style={{ color: 'var(--neg)', fontSize: 11 }} title={errs[i]}>⚠</span>}
             </td>
           </tr>
         );
@@ -581,6 +577,69 @@ export default function CuentasCC() {
       })
       .catch(console.error)
       .finally(() => setLoadingDetail(false));
+  }
+
+  // ── Handlers optimistas para InlineAddRows ──────────────────────────────
+  // onSave: actualización inmediata sin esperar la API
+  function handleOptimisticSave(optMov) {
+    const signo = TIPO_DISPLAY[optMov.tipo]?.signo ?? 1;
+    const delta  = signo * Number(optMov.monto_total);
+    setClienteDetail(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        movimientos: [...prev.movimientos, optMov],
+        resumen: {
+          ...prev.resumen,
+          saldo:            Number(prev.resumen.saldo) + delta,
+          total_compras:    optMov.tipo === 'compra'
+            ? Number(prev.resumen.total_compras || 0) + Number(optMov.monto_total)
+            : prev.resumen.total_compras,
+          cant_movimientos: (prev.resumen.cant_movimientos || 0) + 1,
+        },
+      };
+    });
+    setClientes(prev => prev.map(c =>
+      c.id === selectedId ? { ...c, saldo: Number(c.saldo) + delta } : c
+    ));
+  }
+
+  // onSaveDone: reemplaza el movimiento temporal con el real devuelto por la API
+  function handleSaveDone(tempId, real) {
+    setClienteDetail(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        movimientos: prev.movimientos.map(m => m.id === tempId ? real : m),
+      };
+    });
+  }
+
+  // onSaveError: revierte el optimista y muestra toast
+  function handleSaveError(tempId, errorMsg) {
+    toast.error(errorMsg || 'Error al guardar');
+    setClienteDetail(prev => {
+      if (!prev) return prev;
+      const failed = prev.movimientos.find(m => m.id === tempId);
+      if (!failed) return prev;
+      const signo = TIPO_DISPLAY[failed.tipo]?.signo ?? 1;
+      const delta  = signo * Number(failed.monto_total);
+      setClientes(cs => cs.map(c =>
+        c.id === selectedId ? { ...c, saldo: Number(c.saldo) - delta } : c
+      ));
+      return {
+        ...prev,
+        movimientos: prev.movimientos.filter(m => m.id !== tempId),
+        resumen: {
+          ...prev.resumen,
+          saldo:            Number(prev.resumen.saldo) - delta,
+          total_compras:    failed.tipo === 'compra'
+            ? Math.max(0, Number(prev.resumen.total_compras || 0) - Number(failed.monto_total))
+            : prev.resumen.total_compras,
+          cant_movimientos: Math.max(0, (prev.resumen.cant_movimientos || 0) - 1),
+        },
+      };
+    });
   }
 
   function handleEditSuccess(updated) {
@@ -892,7 +951,7 @@ export default function CuentasCC() {
                     const item = m.items?.[0];
                     const extra = m.items?.length > 1 ? ` +${m.items.length - 1}` : '';
                     return (
-                      <tr key={m.id} style={{ borderBottom: '1px solid var(--hairline)' }}>
+                      <tr key={m.id} style={{ borderBottom: '1px solid var(--hairline)', opacity: m._pending ? 0.55 : 1 }}>
                         <td style={cell} className="muted mono">{fmtFecha(m.fecha)}</td>
                         <td style={cell}><Status tone={t.tone}>{t.label}</Status></td>
                         <td style={cell}>
@@ -924,9 +983,11 @@ export default function CuentasCC() {
                             : <span className="dim" style={{ fontSize: 11 }}>—</span>}
                         </td>
                         <td style={{ padding: '7px 6px' }}>
-                          <button className="icon-btn" title="Eliminar" onClick={() => handleDeleteMovimiento(m.id)}>
-                            <Icons.Trash size={13} />
-                          </button>
+                          {!m._pending && (
+                            <button className="icon-btn" title="Eliminar" onClick={() => handleDeleteMovimiento(m.id)}>
+                              <Icons.Trash size={13} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -936,7 +997,9 @@ export default function CuentasCC() {
                   <InlineAddRows
                     key={selectedId}
                     clienteId={selectedId}
-                    onSave={reloadDetail}
+                    onSave={handleOptimisticSave}
+                    onSaveDone={handleSaveDone}
+                    onSaveError={handleSaveError}
                   />
                 </tbody>
               </table>
