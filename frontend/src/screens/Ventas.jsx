@@ -146,6 +146,8 @@ export default function Ventas() {
   const [showRapida, setShowRapida] = useState(false);
   const [showEgreso, setShowEgreso] = useState(false);
   const [showGarantias, setShowGarantias] = useState(false);
+  const [showEtiquetas, setShowEtiquetas] = useState(false);
+  const [nuevaEtiqueta, setNuevaEtiqueta] = useState('');
   const [showComprob, setShowComprob] = useState(null); // venta id
   const [comprobList, setComprobList] = useState([]);
 
@@ -400,6 +402,19 @@ export default function Ventas() {
     try { await ventas.deleteGarantia(id); await reloadGarantias(); } catch (e) { toast.error(e.message); }
   }
 
+  // ── Etiquetas (gestión) ──
+  async function addEtiqueta() {
+    const nombre = nuevaEtiqueta.trim();
+    if (!nombre) return;
+    try { await ventas.createEtiqueta({ nombre }); setNuevaEtiqueta(''); setEtiquetas(await ventas.etiquetas()); }
+    catch (e) { toast.error(e.message); }
+  }
+  async function delEtiqueta(id) {
+    const ok = await confirm({ title: 'Eliminar etiqueta', message: 'Las ventas con esta etiqueta quedarán sin etiqueta.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    try { await ventas.deleteEtiqueta(id); setEtiquetas(await ventas.etiquetas()); } catch (e) { toast.error(e.message); }
+  }
+
   // ── Comprobantes adjuntos (ver) ──
   async function openComprob(id) {
     setShowComprob(id); setComprobList(null);
@@ -617,7 +632,7 @@ export default function Ventas() {
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Cliente</label><input className="input" placeholder="Nombre del cliente" value={vForm.cliente_nombre} onChange={e => setVF('cliente_nombre', e.target.value)} /></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Etiqueta</label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /></div>
@@ -763,6 +778,31 @@ export default function Ventas() {
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal etiquetas ── */}
+      {showEtiquetas && (
+        <div className="modal-overlay" onClick={() => setShowEtiquetas(false)}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd"><h3>Etiquetas de venta</h3><button className="icon-btn" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-body">
+              <div className="flex-row" style={{ gap: 6, marginBottom: 10 }}>
+                <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
+                <button className="btn btn-sm" onClick={addEtiqueta}><Icons.Plus size={13} /></button>
+              </div>
+              <div className="stack" style={{ gap: 4 }}>
+                {etiquetas.length === 0 && <div className="muted tiny">Sin etiquetas</div>}
+                {etiquetas.map(et => (
+                  <div key={et.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
+                    <span>{et.nombre}</span>
+                    <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-ft"><button className="btn btn-primary" onClick={() => setShowEtiquetas(false)}>Listo</button></div>
           </div>
         </div>
       )}

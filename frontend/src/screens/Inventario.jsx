@@ -103,6 +103,12 @@ export default function Inventario() {
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
 
+  // Modal catálogos (categorías + depósitos)
+  const [showCatalogos, setShowCatalogos] = useState(false);
+  const [nuevaCat, setNuevaCat] = useState('');
+  const [nuevoDep, setNuevoDep] = useState('');
+  const [catError, setCatError] = useState('');
+
   // ── Carga de datos ──
   const loadProductos = useCallback(async () => {
     setLoading(true);
@@ -296,6 +302,32 @@ export default function Inventario() {
     }
   }
 
+  // ── Catálogos (categorías / depósitos) ──
+  async function addCategoria() {
+    setCatError('');
+    const nombre = nuevaCat.trim();
+    if (!nombre) return;
+    try { await inventario.createCategoria({ nombre }); setNuevaCat(''); await loadCatalogos(); }
+    catch (e) { setCatError(e.message); }
+  }
+  async function delCategoria(c) {
+    const ok = await confirm({ title: 'Eliminar categoría', message: `¿Eliminar "${c.nombre}"? Los productos quedarán sin categoría.`, confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    try { await inventario.deleteCategoria(c.id); await loadCatalogos(); } catch (e) { toast.error(e.message); }
+  }
+  async function addDeposito() {
+    setCatError('');
+    const nombre = nuevoDep.trim();
+    if (!nombre) return;
+    try { await inventario.createDeposito({ nombre }); setNuevoDep(''); await loadCatalogos(); }
+    catch (e) { setCatError(e.message); }
+  }
+  async function delDeposito(d) {
+    const ok = await confirm({ title: 'Eliminar depósito', message: `¿Eliminar "${d.nombre}"? Los productos quedarán sin depósito.`, confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    try { await inventario.deleteDeposito(d.id); await loadCatalogos(); } catch (e) { toast.error(e.message); }
+  }
+
   const importValidos = useMemo(() => importRows.filter(r => !r.error), [importRows]);
   const importErrores = useMemo(() => importRows.filter(r => r.error), [importRows]);
 
@@ -319,6 +351,7 @@ export default function Inventario() {
           <button className="btn" onClick={descargarPlantilla}><Icons.Download size={14} /> Plantilla</button>
           <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
           <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
+          <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Catálogos</button>
           <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
         </div>
       </div>
@@ -556,6 +589,58 @@ export default function Inventario() {
             <div className="modal-ft">
               <button className="btn btn-ghost" onClick={() => setShowImport(false)}>Cancelar</button>
               <button className="btn btn-primary" disabled={importing || importValidos.length === 0} onClick={confirmImport}>{importing ? 'Importando…' : 'Importar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal catálogos ── */}
+      {showCatalogos && (
+        <div className="modal-overlay" onClick={() => setShowCatalogos(false)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Categorías y depósitos</h3>
+              <button className="icon-btn" onClick={() => setShowCatalogos(false)}><Icons.X size={16} /></button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              <div className="row">
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Categorías</div>
+                  <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
+                    <input className="input" placeholder="Nueva categoría" value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategoria(); } }} />
+                    <button className="btn btn-sm" onClick={addCategoria}><Icons.Plus size={13} /></button>
+                  </div>
+                  <div className="stack" style={{ gap: 4 }}>
+                    {categorias.length === 0 && <div className="muted tiny">Sin categorías</div>}
+                    {categorias.map(c => (
+                      <div key={c.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
+                        <span>{c.nombre}</span>
+                        <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delCategoria(c)}><Icons.Trash size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Depósitos</div>
+                  <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
+                    <input className="input" placeholder="Nuevo depósito" value={nuevoDep} onChange={e => setNuevoDep(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDeposito(); } }} />
+                    <button className="btn btn-sm" onClick={addDeposito}><Icons.Plus size={13} /></button>
+                  </div>
+                  <div className="stack" style={{ gap: 4 }}>
+                    {depositos.length === 0 && <div className="muted tiny">Sin depósitos</div>}
+                    {depositos.map(d => (
+                      <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
+                        <span>{d.nombre}</span>
+                        <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {catError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 10 }}>{catError}</div>}
+            </div>
+            <div className="modal-ft">
+              <button className="btn btn-primary" onClick={() => setShowCatalogos(false)}>Listo</button>
             </div>
           </div>
         </div>
