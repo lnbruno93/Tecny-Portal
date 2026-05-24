@@ -78,8 +78,8 @@ const NAV_MAIN = [
   { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera'  },
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas'       },
   { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios'      },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Cuentas CC', icon: 'Receipt',    perm: 'cuentas'     },
-  { id: 'usados',     path: '/usados',     label: 'Usados',     icon: 'Phone',      perm: 'usados'      },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Venta Mayorista & Gestión B2B', icon: 'Receipt',    perm: 'cuentas'     },
+  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados'      },
 ];
 
 const NAV_SYS = [
@@ -95,8 +95,8 @@ const SCREEN_LABELS = {
   financiera: 'Financiera',
   cajas:      'Cajas',
   envios:     'Envíos',
-  cuentas:    'Cuentas CC',
-  usados:     'Usados',
+  cuentas:    'Venta Mayorista & Gestión B2B',
+  usados:     'Usados | Cotizador',
   historial:  'Historial',
   usuarios:   'Usuarios',
   config:     'Config',

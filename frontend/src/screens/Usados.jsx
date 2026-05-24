@@ -145,7 +145,7 @@ export default function Usados() {
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="page-head">
         <div>
-          <div className="page-title">Usados</div>
+          <div className="page-title">Usados | Cotizador</div>
           <div className="page-sub">Catálogo editable · precios en USD · texto libre de batería</div>
         </div>
         <div className="page-actions">
