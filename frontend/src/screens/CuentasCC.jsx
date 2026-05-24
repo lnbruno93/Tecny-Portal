@@ -154,17 +154,27 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
 }
 
 // ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles) ───────────────────
-// Tab en Monto o Verificado → guarda esa fila y pasa a la siguiente.
-// Enter en Monto → guarda esa fila.
-// No hay botón de guardar: el flujo es 100 % teclado.
+// Compra / Devolución → columnas de producto completas.
+// Pago / Parte pago / Entrega → $ ARS ÷ TC → USD (auto-calculado).
+//   · ARS + TC rellenos: USD = ARS / TC (campo USD de solo lectura, fondo verde).
+//   · ARS vacío + USD directo: registra ese monto sin conversión.
+// Tab en último campo → guarda y pasa a la siguiente fila.
+// Enter en el campo de monto/USD → guarda esa fila.
 
-const ROW_COUNT = 5;
+const ROW_COUNT  = 5;
+const ITEM_TIPOS = ['compra', 'devolucion'];
+
 const mkRow = (prev = null) => ({
   _id:         Math.random().toString(36).slice(2),
   fecha:       prev?.fecha || todayISO(),
   tipo:        prev?.tipo  || 'compra',
+  // Producto (solo ITEM_TIPOS)
   producto: '', modelo: '', tamano: '', color: '', imei_serial: '',
-  monto: '', verificado: false,
+  verificado: false,
+  // Monto final en USD (todos los tipos)
+  monto: '',
+  // Solo pagos: ARS + TC → monto se auto-calcula
+  ars: '', tc: '',
 });
 
 function InlineAddRows({ clienteId, onSave }) {
@@ -172,28 +182,49 @@ function InlineAddRows({ clienteId, onSave }) {
   const [saving, setSaving] = useState({});
   const [errs,   setErrs]   = useState({});
 
-  // Callback refs planos: key `${idx}_${col}` → elemento DOM
   const cr = useRef({});
   const setRef    = (i, col) => el => { cr.current[`${i}_${col}`] = el; };
   const focusCell = (i, col) => cr.current[`${i}_${col}`]?.focus();
 
   function upd(i, field, val) {
-    setRows(rs => rs.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+    setRows(rs => rs.map((r, idx) => {
+      if (idx !== i) return r;
+      const next = { ...r, [field]: val };
+      // Cambio de tipo → limpia campos del modo anterior
+      if (field === 'tipo') {
+        if (ITEM_TIPOS.includes(val)) { next.ars = ''; next.tc = ''; }
+        else { next.producto = ''; next.modelo = ''; next.tamano = '';
+               next.color = ''; next.imei_serial = ''; next.monto = ''; }
+      }
+      // Auto-calcula USD cuando cambian ARS o TC
+      if (field === 'ars' || field === 'tc') {
+        const ars = parseFloat(next.ars);
+        const tc  = parseFloat(next.tc);
+        if (ars > 0 && tc > 0) next.monto = (Math.round(ars / tc * 100) / 100).toString();
+        else if (field === 'ars' && !val) next.monto = '';
+      }
+      return next;
+    }));
     if (errs[i]) setErrs(e => { const n = { ...e }; delete n[i]; return n; });
   }
 
   async function saveRow(i) {
-    const row = rows[i];
-    if (!row.monto || Number(row.monto) <= 0) return;
+    const row    = rows[i];
+    const isPago = !ITEM_TIPOS.includes(row.tipo);
+    // Pago con ARS pero sin TC → pedir TC
+    if (isPago && parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
+      setErrs(e => ({ ...e, [i]: 'Ingresá el tipo de cambio' })); return;
+    }
+    if (!row.monto || Number(row.monto) <= 0) return; // fila vacía → ignorar
+
     setSaving(s => ({ ...s, [i]: true }));
-    const isItemType = ['compra', 'devolucion'].includes(row.tipo);
     try {
       await cuentas.createMovimiento({
         cliente_cc_id: clienteId,
         fecha:         row.fecha,
         tipo:          row.tipo,
-        monto_total:   Number(row.monto),
-        items: isItemType ? [{
+        monto_total:   Number(row.monto),   // siempre en USD
+        items: ITEM_TIPOS.includes(row.tipo) ? [{
           producto:    row.producto    || null,
           modelo:      row.modelo      || null,
           tamano:      row.tamano      || null,
@@ -203,14 +234,12 @@ function InlineAddRows({ clienteId, onSave }) {
           verificado:  row.verificado,
         }] : [],
       });
-      // Resetea la fila pero mantiene fecha y tipo para carga rápida
       setRows(rs => rs.map((r, idx) =>
         idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
       ));
       setErrs(e => { const n = { ...e }; delete n[i]; return n; });
       onSave();
-      // Foco a la primera celda editable de la siguiente fila
-      setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'producto'), 40);
+      setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 40);
     } catch (e) {
       setErrs(err => ({ ...err, [i]: e.message || 'Error al guardar' }));
     } finally {
@@ -223,7 +252,7 @@ function InlineAddRows({ clienteId, onSave }) {
     e.preventDefault();
     const row = rows[i];
     if (row.monto && Number(row.monto) > 0) saveRow(i);
-    else focusCell((i + 1) % ROW_COUNT, 'producto');
+    else focusCell((i + 1) % ROW_COUNT, 'first');
   }
 
   const inp = {
@@ -235,95 +264,146 @@ function InlineAddRows({ clienteId, onSave }) {
 
   return (
     <>
-      {rows.map((row, i) => (
-        <tr key={row._id} style={{
-          background: 'rgba(99,102,241,0.04)',
-          borderTop: i === 0 ? '2px solid var(--accent)' : '1px solid var(--hairline)',
-          opacity: saving[i] ? 0.5 : 1,
-          transition: 'opacity 0.15s',
-        }}>
-          {/* Fecha */}
-          <td style={{ padding: '4px 5px' }}>
-            <input type="date" style={inp}
-              value={row.fecha}
-              onChange={e => upd(i, 'fecha', e.target.value)} />
-          </td>
-          {/* Tipo */}
-          <td style={{ padding: '4px 5px' }}>
-            <select style={{ ...inp, cursor: 'pointer' }}
-              value={row.tipo}
-              onChange={e => upd(i, 'tipo', e.target.value)}>
-              <option value="compra">+ Compra</option>
-              <option value="pago">− Pago</option>
-              <option value="devolucion">− Devolución</option>
-              <option value="parte_de_pago">− Parte pago</option>
-              <option value="entrega_mercaderia">− Entrega</option>
-            </select>
-          </td>
-          {/* Producto */}
-          <td style={{ padding: '4px 5px' }}>
-            <input ref={setRef(i, 'producto')} style={inp} placeholder="iPhone"
-              value={row.producto}
-              onChange={e => upd(i, 'producto', e.target.value)} />
-          </td>
-          {/* Modelo */}
-          <td style={{ padding: '4px 5px' }}>
-            <input style={inp} placeholder="17 Pro Max"
-              value={row.modelo}
-              onChange={e => upd(i, 'modelo', e.target.value)} />
-          </td>
-          {/* Cap. */}
-          <td style={{ padding: '4px 5px' }}>
-            <input style={inp} placeholder="256GB"
-              value={row.tamano}
-              onChange={e => upd(i, 'tamano', e.target.value)} />
-          </td>
-          {/* Color */}
-          <td style={{ padding: '4px 5px' }}>
-            <input style={inp} placeholder="Negro"
-              value={row.color}
-              onChange={e => upd(i, 'color', e.target.value)} />
-          </td>
-          {/* IMEI / Serial */}
-          <td style={{ padding: '4px 5px' }}>
-            <input style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}
-              placeholder="358123…"
-              value={row.imei_serial}
-              onChange={e => upd(i, 'imei_serial', e.target.value)} />
-          </td>
-          {/* Monto */}
-          <td style={{ padding: '4px 5px' }}>
-            <input
-              ref={setRef(i, 'monto')}
-              type="number" min="0"
-              style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
-              placeholder="0"
-              value={row.monto}
-              onChange={e => upd(i, 'monto', e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
-                else handleLastKey(e, i);
-              }}
-            />
-          </td>
-          {/* Verificado */}
-          <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-            <input type="checkbox"
-              checked={row.verificado}
-              onChange={e => upd(i, 'verificado', e.target.checked)}
-              onKeyDown={e => handleLastKey(e, i)}
-            />
-          </td>
-          {/* Estado inline */}
-          <td style={{ padding: '4px 5px', textAlign: 'center' }}>
-            {saving[i]
-              ? <span className="muted tiny">…</span>
-              : errs[i]
-                ? <span style={{ color: 'var(--neg)', fontSize: 11 }} title={errs[i]}>⚠</span>
-                : null}
-          </td>
-        </tr>
-      ))}
+      {rows.map((row, i) => {
+        const isPago  = !ITEM_TIPOS.includes(row.tipo);
+        const autoUSD = isPago && parseFloat(row.ars) > 0 && parseFloat(row.tc) > 0;
+        return (
+          <tr key={row._id} style={{
+            background: 'rgba(99,102,241,0.04)',
+            borderTop: i === 0 ? '2px solid var(--accent)' : '1px solid var(--hairline)',
+            opacity: saving[i] ? 0.5 : 1,
+            transition: 'opacity 0.15s',
+          }}>
+
+            {/* Fecha */}
+            <td style={{ padding: '4px 5px' }}>
+              <input type="date" style={inp}
+                value={row.fecha}
+                onChange={e => upd(i, 'fecha', e.target.value)} />
+            </td>
+
+            {/* Tipo */}
+            <td style={{ padding: '4px 5px' }}>
+              <select style={{ ...inp, cursor: 'pointer' }}
+                value={row.tipo}
+                onChange={e => upd(i, 'tipo', e.target.value)}>
+                <option value="compra">+ Compra</option>
+                <option value="pago">− Pago</option>
+                <option value="devolucion">− Devolución</option>
+                <option value="parte_de_pago">− Parte pago</option>
+                <option value="entrega_mercaderia">− Entrega</option>
+              </select>
+            </td>
+
+            {isPago ? (
+              /* ── Pago: $ ARS ÷ TC → USD ──────────────────────────────── */
+              <td colSpan={6} style={{ padding: '4px 12px' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>$ ARS</span>
+                  <input
+                    ref={setRef(i, 'first')}
+                    type="number" min="0"
+                    style={{ ...inp, flex: '1.6 1 0', textAlign: 'right' }}
+                    placeholder="0"
+                    value={row.ars}
+                    onChange={e => upd(i, 'ars', e.target.value)}
+                  />
+                  <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>÷</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>TC</span>
+                  <input
+                    type="number" min="0"
+                    style={{ ...inp, flex: '1 1 0', textAlign: 'right' }}
+                    placeholder="1200"
+                    value={row.tc}
+                    onChange={e => upd(i, 'tc', e.target.value)}
+                  />
+                  <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
+                  <input
+                    ref={setRef(i, 'monto')}
+                    type="number" min="0"
+                    style={{
+                      ...inp, flex: '1.6 1 0', textAlign: 'right', fontWeight: 700,
+                      color:      autoUSD ? 'var(--pos)' : 'inherit',
+                      background: autoUSD ? 'rgba(34,197,94,0.08)' : 'var(--surface)',
+                    }}
+                    placeholder="0"
+                    value={row.monto}
+                    readOnly={autoUSD}
+                    onChange={e => { if (!autoUSD) upd(i, 'monto', e.target.value); }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
+                      else handleLastKey(e, i);
+                    }}
+                  />
+                </div>
+              </td>
+            ) : (
+              /* ── Compra / Devolución: columnas de producto ───────────── */
+              <>
+                <td style={{ padding: '4px 5px' }}>
+                  <input ref={setRef(i, 'first')} style={inp} placeholder="iPhone"
+                    value={row.producto}
+                    onChange={e => upd(i, 'producto', e.target.value)} />
+                </td>
+                <td style={{ padding: '4px 5px' }}>
+                  <input style={inp} placeholder="17 Pro Max"
+                    value={row.modelo}
+                    onChange={e => upd(i, 'modelo', e.target.value)} />
+                </td>
+                <td style={{ padding: '4px 5px' }}>
+                  <input style={inp} placeholder="256GB"
+                    value={row.tamano}
+                    onChange={e => upd(i, 'tamano', e.target.value)} />
+                </td>
+                <td style={{ padding: '4px 5px' }}>
+                  <input style={inp} placeholder="Negro"
+                    value={row.color}
+                    onChange={e => upd(i, 'color', e.target.value)} />
+                </td>
+                <td style={{ padding: '4px 5px' }}>
+                  <input style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}
+                    placeholder="358123…"
+                    value={row.imei_serial}
+                    onChange={e => upd(i, 'imei_serial', e.target.value)} />
+                </td>
+                <td style={{ padding: '4px 5px' }}>
+                  <input
+                    ref={setRef(i, 'monto')}
+                    type="number" min="0"
+                    style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
+                    placeholder="0"
+                    value={row.monto}
+                    onChange={e => upd(i, 'monto', e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
+                      else handleLastKey(e, i);
+                    }}
+                  />
+                </td>
+              </>
+            )}
+
+            {/* Verificado */}
+            <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+              <input type="checkbox"
+                checked={row.verificado}
+                onChange={e => upd(i, 'verificado', e.target.checked)}
+                onKeyDown={e => handleLastKey(e, i)}
+              />
+            </td>
+
+            {/* Estado */}
+            <td style={{ padding: '4px 5px', textAlign: 'center' }}>
+              {saving[i]
+                ? <span className="muted tiny">…</span>
+                : errs[i]
+                  ? <span style={{ color: 'var(--neg)', fontSize: 11 }} title={errs[i]}>⚠</span>
+                  : null}
+            </td>
+          </tr>
+        );
+      })}
     </>
   );
 }
