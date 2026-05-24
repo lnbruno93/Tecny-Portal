@@ -60,6 +60,7 @@ const updateVentaSchema = z.object({
   etiqueta_id:    z.coerce.number().int().positive().optional().nullable(),
   garantia_id:    z.coerce.number().int().positive().optional().nullable(),
   cliente_id:     z.coerce.number().int().positive().optional().nullable(),
+  cliente_cc_id:  z.coerce.number().int().positive().optional().nullable(),
   cliente_nombre: z.string().trim().max(200).optional().nullable(),
   notas:          z.string().trim().max(1000).optional().nullable(),
   // Edición completa (opcional): si se envían items, se recalculan totales y stock.

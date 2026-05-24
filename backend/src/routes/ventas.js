@@ -38,6 +38,32 @@ function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
 // Una venta retiene (descuenta) stock mientras no esté cancelada.
 function retieneStock(estado) { return estado !== 'cancelado'; }
 
+// Si hay un pago en cuenta corriente, exige un cliente de cuenta corriente.
+function validarCuentaCorriente(pagos, clienteCcId) {
+  if ((pagos || []).some(p => p.es_cuenta_corriente) && !clienteCcId) {
+    throw err400('Para un pago en cuenta corriente, elegí un cliente con cuenta corriente.');
+  }
+}
+
+// Sincroniza la deuda de cuenta corriente que genera una venta (en USD, módulo `cuentas`).
+// Revierte (soft-delete) la deuda previa de esta venta y, si la venta retiene (no cancelada)
+// y tiene cliente CC y pagos en cuenta corriente, crea un movimiento 'compra' por el total USD.
+// Deriva el monto de venta_pagos (ya persistido), por eso se llama DESPUÉS de insertar el detalle.
+async function sincronizarCuentaCorriente(client, venta) {
+  await client.query('UPDATE movimientos_cc SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [venta.id]);
+  if (!retieneStock(venta.estado) || !venta.cliente_cc_id) return;
+  const { rows } = await client.query(
+    'SELECT COALESCE(SUM(monto_usd), 0) AS total FROM venta_pagos WHERE venta_id = $1 AND es_cuenta_corriente = true', [venta.id]
+  );
+  const total = round2(Number(rows[0].total));
+  if (total <= 0) return;
+  await client.query(
+    `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, descripcion, monto_total, venta_id)
+     VALUES ($1, $2, 'compra', $3, $4, $5)`,
+    [venta.cliente_cc_id, venta.fecha, `Venta ${venta.order_id}`, total, venta.id]
+  );
+}
+
 // Exige TC > 0 cuando hay montos en ARS (evita que se contabilicen como USD 0 silenciosamente).
 function validarTc(items, pagos, tcVenta) {
   const tcOk = Number(tcVenta) > 0;
@@ -544,6 +570,7 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     validarTc(b.items, b.pagos, b.tc_venta);
+    validarCuentaCorriente(b.pagos, b.cliente_cc_id);
     await client.query('BEGIN');
 
     const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta);
@@ -560,6 +587,8 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     if (retieneStock(b.estado)) await descontarStock(client, b.items);
     // Ítems, pagos y canjes
     await insertarDetalle(client, venta, b);
+    // Deuda de cuenta corriente (si corresponde)
+    await sincronizarCuentaCorriente(client, venta);
 
     await client.query('COMMIT');
     await audit('ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
@@ -591,7 +620,8 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
 
     if (fullEdit) {
       const tc = b.tc_venta !== undefined ? b.tc_venta : before.tc_venta;
-      if (newHolds) validarTc(b.items, b.pagos, tc);
+      const effClienteCc = b.cliente_cc_id !== undefined ? b.cliente_cc_id : before.cliente_cc_id;
+      if (newHolds) { validarTc(b.items, b.pagos, tc); validarCuentaCorriente(b.pagos, effClienteCc); }
       // Reponer stock viejo (si retenía) y descontar el nuevo (si la venta sigue reteniendo)
       const { rows: oldItems } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
       if (oldHolds) await reponerStock(client, oldItems);
@@ -602,16 +632,17 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await client.query('DELETE FROM canjes WHERE venta_id = $1', [id]);
 
       const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc);
-      const { estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora } = b;
+      const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora } = b;
       const { rows: vrows } = await client.query(
         `UPDATE ventas SET
            estado = COALESCE($1, estado), etiqueta_id = COALESCE($2, etiqueta_id), garantia_id = COALESCE($3, garantia_id),
-           cliente_id = COALESCE($4, cliente_id), cliente_nombre = COALESCE($5, cliente_nombre), notas = COALESCE($6, notas),
-           hora = COALESCE($7, hora), tc_venta = $8, total_usd = $9, ganancia_usd = $10
-         WHERE id = $11 RETURNING *`,
-        [estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora, tc ?? null, totalUsd, gananciaUsd, id]
+           cliente_id = COALESCE($4, cliente_id), cliente_cc_id = COALESCE($5, cliente_cc_id), cliente_nombre = COALESCE($6, cliente_nombre),
+           notas = COALESCE($7, notas), hora = COALESCE($8, hora), tc_venta = $9, total_usd = $10, ganancia_usd = $11
+         WHERE id = $12 RETURNING *`,
+        [estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, tc ?? null, totalUsd, gananciaUsd, id]
       );
       await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc });
+      await sincronizarCuentaCorriente(client, vrows[0]);
       await client.query('COMMIT');
       await audit('ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       return res.json(vrows[0]);
@@ -625,15 +656,16 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
       await descontarStock(client, items); // reactivación: re-descontar (valida disponibilidad)
     }
-    const { estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora } = b;
+    const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora } = b;
     const { rows } = await client.query(
       `UPDATE ventas SET
          estado = COALESCE($1, estado), etiqueta_id = COALESCE($2, etiqueta_id), garantia_id = COALESCE($3, garantia_id),
-         cliente_id = COALESCE($4, cliente_id), cliente_nombre = COALESCE($5, cliente_nombre), notas = COALESCE($6, notas),
-         hora = COALESCE($7, hora)
-       WHERE id = $8 RETURNING *`,
-      [estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora, id]
+         cliente_id = COALESCE($4, cliente_id), cliente_cc_id = COALESCE($5, cliente_cc_id), cliente_nombre = COALESCE($6, cliente_nombre),
+         notas = COALESCE($7, notas), hora = COALESCE($8, hora)
+       WHERE id = $9 RETURNING *`,
+      [estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, id]
     );
+    await sincronizarCuentaCorriente(client, rows[0]);
     await client.query('COMMIT');
     await audit('ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
@@ -662,6 +694,8 @@ router.delete('/:id', async (req, res, next) => {
       await reponerStock(client, items);
       repuestos = items.length;
     }
+    // Revertir la deuda de cuenta corriente generada por esta venta
+    await client.query('UPDATE movimientos_cc SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await client.query('COMMIT');
     await audit('ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });

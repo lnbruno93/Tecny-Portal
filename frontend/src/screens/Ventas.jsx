@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { ventas, inventario, vendedores as vendedoresApi } from '../lib/api';
+import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -30,7 +30,7 @@ const ESTADO_LABEL = { acreditado: 'Acreditado', pendiente: 'Pendiente', cancela
 const GARANTIA_FALLBACK = 'Este comprobante es tu nota de compra y avala la operación comercial entre partes. No es una factura ni comprobante fiscal.\n\nNos responsabilizamos por 12 meses, desde la fecha de compra, ante cualquier error, falla o mal funcionamiento propio de software y hardware.\n\niPro | Tech Reseller';
 
 const EMPTY_VENTA = {
-  fecha: todayStr(), hora: '', cliente_nombre: '', etiqueta_id: '', garantia_id: '',
+  fecha: todayStr(), hora: '', cliente_nombre: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
   vendedor_id: '', comision: '', tc_venta: '', estado: 'pendiente', notas: '',
   canjeOn: false, canjeDesc: '', canjeValor: '', canjeStock: false,
 };
@@ -140,6 +140,7 @@ export default function Ventas() {
   const [etiquetas, setEtiquetas] = useState([]);
   const [metodos, setMetodos] = useState([]);
   const [garantias, setGarantias] = useState([]);
+  const [clientesCC, setClientesCC] = useState([]);
 
   // Modales
   const [showVenta, setShowVenta] = useState(false);
@@ -173,10 +174,10 @@ export default function Ventas() {
 
   const loadCatalogos = useCallback(async () => {
     const safe = (p) => p.then(r => r).catch(() => []);
-    const [v, e, m, g] = await Promise.all([
-      safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()),
+    const [v, e, m, g, cc] = await Promise.all([
+      safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()),
     ]);
-    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g);
+    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(cc);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
@@ -211,13 +212,13 @@ export default function Ventas() {
     setVForm({
       ...EMPTY_VENTA,
       fecha: (v.fecha || '').substring(0, 10), hora: v.hora ? v.hora.substring(0, 5) : '',
-      cliente_nombre: v.cliente_nombre || '', etiqueta_id: v.etiqueta_id || '', garantia_id: v.garantia_id || '',
+      cliente_nombre: v.cliente_nombre || '', cliente_cc_id: v.cliente_cc_id || '', etiqueta_id: v.etiqueta_id || '', garantia_id: v.garantia_id || '',
       vendedor_id: (v.items.find(i => i.vendedor_id) || {}).vendedor_id || '', comision: v.items[0]?.comision || '',
       tc_venta: v.tc_venta || '', estado: v.estado, notas: v.notas || '',
       canjeOn: (v.canjes || []).length > 0, canjeDesc: v.canjes?.[0]?.descripcion || '', canjeValor: v.canjes?.[0]?.valor_toma || '',
     });
     setCart((v.items || []).map(it => ({ producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
-    setPagos((v.pagos || []).map(p => ({ metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '' })));
+    setPagos((v.pagos || []).map(p => ({ metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '', es_cuenta_corriente: !!p.es_cuenta_corriente })));
     setShowVenta(true);
   }
 
@@ -264,12 +265,16 @@ export default function Ventas() {
   const setItem = (i, k, v) => setCart(c => c.map((it, j) => j === i ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
   const rmItem = (i) => setCart(c => c.filter((_, j) => j !== i));
 
-  const addPago = () => setPagos(p => [...p, { metodo_nombre: '', monto: '', moneda: 'ARS', tc: '' }]);
+  const addPago = () => setPagos(p => [...p, { metodo_nombre: '', monto: '', moneda: 'ARS', tc: '', es_cuenta_corriente: false }]);
   const setPago = (i, k, v) => setPagos(p => p.map((pg, j) => j === i ? { ...pg, [k]: v } : pg));
   const rmPago = (i) => setPagos(p => p.filter((_, j) => j !== i));
-  function setPagoMetodo(i, nombre) {
-    const m = metodos.find(x => x.nombre === nombre);
-    setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_nombre: nombre, moneda: m ? m.moneda : pg.moneda } : pg));
+  function setPagoMetodo(i, value) {
+    if (value === '__CC__') {
+      setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_nombre: 'Cuenta corriente', es_cuenta_corriente: true, moneda: pg.moneda || 'USD' } : pg));
+      return;
+    }
+    const m = metodos.find(x => x.nombre === value);
+    setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_nombre: value, es_cuenta_corriente: false, moneda: m ? m.moneda : pg.moneda } : pg));
   }
 
   function onComprobFiles(e) {
@@ -313,10 +318,12 @@ export default function Ventas() {
     if (!items.length) { setVentaError('Agregá al menos un producto con descripción.'); return; }
     const pagosPayload = pagos.filter(p => p.metodo_nombre && (Number(p.monto) || 0) > 0).map(p => ({
       metodo_nombre: p.metodo_nombre, monto: Number(p.monto) || 0, moneda: p.moneda, tc: p.tc ? Number(p.tc) : null,
+      es_cuenta_corriente: !!p.es_cuenta_corriente,
     }));
     const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
     const payload = {
       fecha: vForm.fecha, hora: vForm.hora || null, cliente_nombre: vForm.cliente_nombre.trim() || null,
+      cliente_cc_id: vForm.cliente_cc_id || null,
       etiqueta_id: vForm.etiqueta_id || null, garantia_id: vForm.garantia_id || null,
       estado: vForm.estado, tc_venta: vForm.tc_venta ? Number(vForm.tc_venta) : null,
       notas: vForm.notas.trim() || null, items, pagos: pagosPayload, canjes,
@@ -634,6 +641,13 @@ export default function Ventas() {
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Cliente</label><input className="input" placeholder="Nombre del cliente" value={vForm.cliente_nombre} onChange={e => setVF('cliente_nombre', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
+                  <div className="field">
+                    <label className="field-label">Cliente cuenta corriente <span className="muted tiny">(requerido si pagás en CC)</span></label>
+                    <select className="input" value={vForm.cliente_cc_id} onChange={e => setVF('cliente_cc_id', e.target.value)}>
+                      <option value="">— Ninguno —</option>
+                      {clientesCC.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}</option>)}
+                    </select>
+                  </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
@@ -666,7 +680,7 @@ export default function Ventas() {
                     <div className="stack" style={{ gap: 6 }}>
                       {pagos.map((p, i) => (
                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
-                          <select className="input" value={p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}</select>
+                          <select className="input" value={p.es_cuenta_corriente ? '__CC__' : p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
                           <input type="number" className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
                           <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}><option>ARS</option><option>USD</option><option>USDT</option></select>
                           <input type="number" className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />

@@ -215,6 +215,66 @@ describe('Edición de ventas', () => {
   });
 });
 
+describe('Cuenta corriente como medio de pago', () => {
+  async function crearClienteCC(nombre) {
+    const r = await request(app).post('/api/cuentas/clientes').set(auth()).send({ nombre, categoria: 'A-' });
+    return r.body.id;
+  }
+  async function saldo(id) {
+    const r = await request(app).get(`/api/cuentas/clientes/${id}`).set(auth());
+    return Number(r.body.saldo);
+  }
+  const ccPago = (monto) => ({ metodo_nombre: 'Cuenta Corriente', monto, moneda: 'USD', es_cuenta_corriente: true });
+
+  it('una venta pagada en CC genera deuda (compra) en USD para el cliente', async () => {
+    const cid = await crearClienteCC('Mayorista CC 1');
+    const v = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_cc_id: cid,
+      items: [{ descripcion: 'iPhone CC', cantidad: 1, precio_vendido: 500, costo: 400, moneda: 'USD' }],
+      pagos: [ccPago(500)],
+    });
+    expect(v.status).toBe(201);
+    expect(await saldo(cid)).toBe(500);
+  });
+
+  it('rechaza pago en CC sin cliente de cuenta corriente → 400', async () => {
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone CC sin cliente', cantidad: 1, precio_vendido: 300, costo: 200, moneda: 'USD' }],
+      pagos: [ccPago(300)],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/cuenta corriente/i);
+  });
+
+  it('cancelar la venta revierte la deuda de CC', async () => {
+    const cid = await crearClienteCC('Mayorista CC 2');
+    const v = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_cc_id: cid,
+      items: [{ descripcion: 'iPhone CC2', cantidad: 1, precio_vendido: 700, costo: 500, moneda: 'USD' }],
+      pagos: [ccPago(700)],
+    });
+    expect(await saldo(cid)).toBe(700);
+    await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'cancelado' });
+    expect(await saldo(cid)).toBe(0);
+    // reactivar la vuelve a generar
+    await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'acreditado' });
+    expect(await saldo(cid)).toBe(700);
+  });
+
+  it('borrar la venta revierte la deuda de CC', async () => {
+    const cid = await crearClienteCC('Mayorista CC 3');
+    const v = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_cc_id: cid,
+      items: [{ descripcion: 'iPhone CC3', cantidad: 1, precio_vendido: 450, costo: 300, moneda: 'USD' }],
+      pagos: [ccPago(450)],
+    });
+    expect(await saldo(cid)).toBe(450);
+    await request(app).delete(`/api/ventas/${v.body.id}`).set(auth());
+    expect(await saldo(cid)).toBe(0);
+  });
+});
+
 describe('Etiquetas, métodos de pago, egresos y ventas rápidas', () => {
   it('crea una etiqueta y rechaza duplicado', async () => {
     const a = await request(app).post('/api/ventas/etiquetas').set(auth()).send({ nombre: 'Mayorista' });
