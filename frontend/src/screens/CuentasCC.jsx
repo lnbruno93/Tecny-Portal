@@ -162,14 +162,22 @@ const CC_DATALISTS = (
   <>
     <datalist id="cc-dl-producto">
       <option value="iPhone" />
-      <option value="Samsung Galaxy" />
-      <option value="Motorola" />
-      <option value="Xiaomi" />
-      <option value="iPad" />
-      <option value="MacBook" />
-      <option value="Apple Watch" />
+      <option value="MacBook Air" />
+      <option value="MacBook Pro" />
+      <option value="Neo" />
       <option value="AirPods" />
-      <option value="Tablet Android" />
+      <option value="Apple Watch" />
+      <option value="iPad" />
+      <option value="AirTag" />
+      <option value="RayBan Meta" />
+      <option value="Cargador" />
+      <option value="SuperHub" />
+      <option value="Accesorios" />
+      <option value="PS 5" />
+      <option value="Nintendo" />
+      <option value="XBox" />
+      <option value="Pencil" />
+      <option value="Samsung" />
     </datalist>
     <datalist id="cc-dl-modelo">
       <option value="16 Pro Max" /><option value="16 Pro" /><option value="16 Plus" /><option value="16" />
@@ -189,6 +197,9 @@ const CC_DATALISTS = (
       <option value="256GB" />
       <option value="512GB" />
       <option value="1TB" />
+      <option value="2TB" />
+      <option value="825GB" />
+      <option value="S/D" />
     </datalist>
     <datalist id="cc-dl-color">
       <option value="Negro" /><option value="Blanco" /><option value="Azul" />
