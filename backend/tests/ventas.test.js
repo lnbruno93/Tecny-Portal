@@ -108,6 +108,113 @@ describe('DELETE /api/ventas/:id repone stock', () => {
   });
 });
 
+describe('Integridad de stock', () => {
+  it('rechaza vender más que el stock de un lote → 400', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Cargador X', cantidad: 3 });
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Cargador X', cantidad: 5, precio_vendido: 20, costo: 5, moneda: 'USD' }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/insuficiente/i);
+  });
+
+  it('descuenta un lote hasta 0 y luego rechaza otra venta', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Cable Y', cantidad: 2 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Cable Y', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
+    expect(v.status).toBe(201);
+    const inv = await request(app).get('/api/inventario/productos?buscar=Cable Y').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(0);
+    const v2 = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Cable Y', cantidad: 1, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
+    expect(v2.status).toBe(400);
+  });
+
+  it('rechaza vender un unitario ya vendido → 400', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone Único' });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'iPhone Único', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }] });
+    expect(v.status).toBe(201);
+    const v2 = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'iPhone Único', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }] });
+    expect(v2.status).toBe(400);
+    expect(v2.body.error).toMatch(/vendido/i);
+  });
+
+  it('al borrar la venta, el lote recupera su stock', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Funda Z', cantidad: 4 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Funda Z', cantidad: 3, precio_vendido: 12, costo: 4, moneda: 'USD' }] });
+    await request(app).delete(`/api/ventas/${v.body.id}`).set(auth());
+    const inv = await request(app).get('/api/inventario/productos?buscar=Funda Z').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(4);
+  });
+});
+
+describe('Estado, cancelación y validación de TC', () => {
+  it('crear una venta CANCELADA no descuenta stock', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Stock Cancel', cantidad: 5 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, estado: 'cancelado', items: [{ producto_id: prod.id, descripcion: 'Stock Cancel', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
+    expect(v.status).toBe(201);
+    const inv = await request(app).get('/api/inventario/productos?buscar=Stock Cancel').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(5);
+  });
+
+  it('cancelar repone stock y reactivar lo vuelve a descontar', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Stock Toggle', cantidad: 5 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Stock Toggle', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
+    await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'cancelado' });
+    let inv = await request(app).get('/api/inventario/productos?buscar=Stock Toggle').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(5);
+    await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'acreditado' });
+    inv = await request(app).get('/api/inventario/productos?buscar=Stock Toggle').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(3);
+  });
+
+  it('borrar una venta cancelada no vuelve a tocar el stock', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Stock DelCancel', cantidad: 5 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Stock DelCancel', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
+    await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'cancelado' });
+    await request(app).delete(`/api/ventas/${v.body.id}`).set(auth());
+    const inv = await request(app).get('/api/inventario/productos?buscar=Stock DelCancel').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(5);
+  });
+
+  it('rechaza una venta con ítem en ARS sin TC → 400', async () => {
+    const res = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ descripcion: 'Equipo ARS', cantidad: 1, precio_vendido: 900000, costo: 700000, moneda: 'ARS' }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/cambio|TC/i);
+  });
+});
+
+describe('Edición de ventas', () => {
+  it('editar items repone y re-descuenta stock, recalcula total', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Auric Edit', cantidad: 5 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Auric Edit', cantidad: 2, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
+    expect(v.status).toBe(201);
+    let inv = await request(app).get('/api/inventario/productos?buscar=Auric Edit').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(3);
+
+    const e = await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ items: [{ producto_id: prod.id, descripcion: 'Auric Edit', cantidad: 4, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
+    expect(e.status).toBe(200);
+    expect(Number(e.body.total_usd)).toBe(200);
+    inv = await request(app).get('/api/inventario/productos?buscar=Auric Edit').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(1);
+  });
+
+  it('editar excediendo stock → 400 y el stock no se descuadra (rollback)', async () => {
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Auric Edit2', cantidad: 3 });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Auric Edit2', cantidad: 1, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
+    const e = await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ items: [{ producto_id: prod.id, descripcion: 'Auric Edit2', cantidad: 10, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
+    expect(e.status).toBe(400);
+    const inv = await request(app).get('/api/inventario/productos?buscar=Auric Edit2').set(auth());
+    expect(Number(inv.body.data[0].cantidad)).toBe(2);
+  });
+
+  it('edición simple (estado) sigue funcionando sin tocar items', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone EditMeta' });
+    const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, estado: 'pendiente', items: [{ producto_id: prod.id, descripcion: 'iPhone EditMeta', cantidad: 1, precio_vendido: 500, costo: 400, moneda: 'USD' }] });
+    const e = await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'acreditado' });
+    expect(e.status).toBe(200);
+    expect(e.body.estado).toBe('acreditado');
+  });
+});
+
 describe('Etiquetas, métodos de pago, egresos y ventas rápidas', () => {
   it('crea una etiqueta y rechaza duplicado', async () => {
     const a = await request(app).post('/api/ventas/etiquetas').set(auth()).send({ nombre: 'Mayorista' });

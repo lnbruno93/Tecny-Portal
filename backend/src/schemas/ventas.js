@@ -62,6 +62,12 @@ const updateVentaSchema = z.object({
   cliente_id:     z.coerce.number().int().positive().optional().nullable(),
   cliente_nombre: z.string().trim().max(200).optional().nullable(),
   notas:          z.string().trim().max(1000).optional().nullable(),
+  // Edición completa (opcional): si se envían items, se recalculan totales y stock.
+  hora:           z.string().regex(HORA_RE, 'Hora inválida').optional().nullable(),
+  tc_venta:       z.coerce.number().positive().optional().nullable(),
+  items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto').optional(),
+  pagos:          z.array(ventaPagoSchema).optional(),
+  canjes:         z.array(canjeSchema).optional(),
 });
 
 /* ── Plantillas de garantía ── */

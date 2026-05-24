@@ -196,6 +196,7 @@ export default function Ventas() {
   const [pagos, setPagos] = useState([]);
   const [comprobantes, setComprobantes] = useState([]);
   const [procRapidaId, setProcRapidaId] = useState(null);
+  const [editId, setEditId] = useState(null);
   const [savingVenta, setSavingVenta] = useState(false);
   const [ventaError, setVentaError] = useState('');
   const [prodSearch, setProdSearch] = useState('');
@@ -203,10 +204,25 @@ export default function Ventas() {
   const prodTimer = useRef(null);
   const setVF = (k, v) => setVForm(f => ({ ...f, [k]: v }));
 
+  function openEdit(v) {
+    setEditId(v.id); setProcRapidaId(null); setComprobantes([]); setVentaError(''); setProdSearch(''); setProdResults([]);
+    setVForm({
+      ...EMPTY_VENTA,
+      fecha: (v.fecha || '').substring(0, 10), hora: v.hora ? v.hora.substring(0, 5) : '',
+      cliente_nombre: v.cliente_nombre || '', etiqueta_id: v.etiqueta_id || '', garantia_id: v.garantia_id || '',
+      vendedor_id: (v.items.find(i => i.vendedor_id) || {}).vendedor_id || '', comision: v.items[0]?.comision || '',
+      tc_venta: v.tc_venta || '', estado: v.estado, notas: v.notas || '',
+      canjeOn: (v.canjes || []).length > 0, canjeDesc: v.canjes?.[0]?.descripcion || '', canjeValor: v.canjes?.[0]?.valor_toma || '',
+    });
+    setCart((v.items || []).map(it => ({ producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
+    setPagos((v.pagos || []).map(p => ({ metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '' })));
+    setShowVenta(true);
+  }
+
   function openVenta(rapida) {
     setVForm({ ...EMPTY_VENTA, fecha: todayStr() });
     setCart([]); setPagos([]); setComprobantes([]); setVentaError(''); setProdSearch(''); setProdResults([]);
-    setProcRapidaId(null);
+    setProcRapidaId(null); setEditId(null);
     if (rapida) {
       setProcRapidaId(rapida.id);
       setVForm(f => ({ ...f, cliente_nombre: rapida.cliente_texto || '', notas: rapida.detalle || '' }));
@@ -305,12 +321,12 @@ export default function Ventas() {
     };
     setSavingVenta(true);
     try {
-      const venta = await ventas.create(payload);
+      const venta = editId ? await ventas.update(editId, payload) : await ventas.create(payload);
       for (const c of comprobantes) {
         try { await ventas.uploadComprobante(venta.id, { archivo_data: c.data, archivo_nombre: c.nombre, archivo_tipo: c.tipo }); } catch (_) {}
       }
-      if (procRapidaId) { try { await ventas.updateRapida(procRapidaId, { estado: 'procesada', venta_id: venta.id }); } catch (_) {} }
-      toast.success('Venta registrada.');
+      if (!editId && procRapidaId) { try { await ventas.updateRapida(procRapidaId, { estado: 'procesada', venta_id: venta.id }); } catch (_) {} }
+      toast.success(editId ? 'Venta actualizada.' : 'Venta registrada.');
       setShowVenta(false);
       await Promise.all([loadDash(), loadLista(), loadRapidas()]);
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
@@ -540,6 +556,7 @@ export default function Ventas() {
                     <select className="input" style={{ width: 'auto', display: 'inline-block', padding: '4px 6px', fontSize: 11 }} value={v.estado} onChange={e => changeEstado(v.id, e.target.value)}>
                       <option value="acreditado">Acreditado</option><option value="pendiente">Pendiente</option><option value="cancelado">Cancelado</option>
                     </select>{' '}
+                    <button className="icon-btn" title="Editar venta" onClick={() => openEdit(v)}><Icons.Edit size={14} /></button>
                     <button className="icon-btn" title="Comprobante (imprimir/PDF)" onClick={() => comprobantePDF(v)}><Icons.Print size={14} /></button>
                     {Number(v.comprobantes_count) > 0 && <button className="icon-btn" title="Comprobantes adjuntos" onClick={() => openComprob(v.id)}><Icons.Eye size={14} /></button>}
                     <button className="icon-btn" style={{ color: 'var(--neg)' }} title="Eliminar" onClick={() => deleteVenta(v)}><Icons.Trash size={14} /></button>
@@ -555,7 +572,7 @@ export default function Ventas() {
       {showVenta && (
         <div className="modal-overlay" onClick={() => setShowVenta(false)}>
           <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>{procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button className="icon-btn" onClick={() => setShowVenta(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3>{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button className="icon-btn" onClick={() => setShowVenta(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleSaveVenta}>
               <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
                 <div className="stack" style={{ gap: 14 }}>

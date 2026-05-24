@@ -32,6 +32,120 @@ function genOrderId() {
   return `ORD-${yy}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
+// Error con status 400 (validación de negocio)
+function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
+
+// Una venta retiene (descuenta) stock mientras no esté cancelada.
+function retieneStock(estado) { return estado !== 'cancelado'; }
+
+// Exige TC > 0 cuando hay montos en ARS (evita que se contabilicen como USD 0 silenciosamente).
+function validarTc(items, pagos, tcVenta) {
+  const tcOk = Number(tcVenta) > 0;
+  if ((items || []).some(it => it.moneda === 'ARS') && !tcOk) {
+    throw err400('Indicá el tipo de cambio (TC) de la venta para ítems en ARS.');
+  }
+  for (const p of (pagos || [])) {
+    if (p.moneda === 'ARS' && !(Number(p.tc) > 0) && !tcOk) {
+      throw err400('Indicá el tipo de cambio (TC) para los pagos en ARS.');
+    }
+  }
+}
+
+// Suma de cantidades necesarias por producto_id (ignora ítems manuales sin producto)
+function necesidadPorProducto(items) {
+  const map = new Map();
+  for (const it of items || []) {
+    if (!it.producto_id) continue;
+    map.set(it.producto_id, (map.get(it.producto_id) || 0) + (Number(it.cantidad) || 0));
+  }
+  return map;
+}
+
+// Bloquea las filas (FOR UPDATE, en orden estable para evitar deadlocks), valida
+// disponibilidad y descuenta stock. Lanza err400 si no hay stock o el unitario ya se vendió.
+async function descontarStock(client, items) {
+  const need = necesidadPorProducto(items);
+  for (const id of [...need.keys()].sort((a, b) => a - b)) {
+    const { rows } = await client.query(
+      `SELECT id, nombre, tipo_carga, estado, cantidad, trackear_stock
+         FROM productos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, [id]
+    );
+    const p = rows[0];
+    if (!p) throw err400('Un producto de la venta ya no existe en el inventario.');
+    const qty = need.get(id);
+    if (p.tipo_carga === 'unitario' && p.estado === 'vendido') throw err400(`"${p.nombre}" ya figura como vendido.`);
+    if (p.trackear_stock && p.cantidad < qty) throw err400(`Stock insuficiente de "${p.nombre}" (disponible: ${p.cantidad}, pedido: ${qty}).`);
+    await client.query(
+      `UPDATE productos
+         SET cantidad = GREATEST(cantidad - $1, 0),
+             estado   = CASE WHEN tipo_carga = 'unitario' THEN 'vendido' ELSE estado END
+       WHERE id = $2`, [qty, id]
+    );
+  }
+}
+
+// Repone stock (al eliminar o reeditar una venta). Devuelve unitarios vendidos a 'disponible'.
+async function reponerStock(client, items) {
+  const need = necesidadPorProducto(items);
+  for (const id of [...need.keys()].sort((a, b) => a - b)) {
+    await client.query(
+      `UPDATE productos
+         SET cantidad = cantidad + $1,
+             estado   = CASE WHEN tipo_carga = 'unitario' AND estado = 'vendido' THEN 'disponible' ELSE estado END
+       WHERE id = $2 AND deleted_at IS NULL`, [need.get(id), id]
+    );
+  }
+}
+
+// Totales de una venta en USD (normalizados por TC). { totalUsd, gananciaUsd }
+function calcularTotales(items, tc) {
+  let totalUsd = 0, costoUsd = 0, comisionUsd = 0;
+  for (const it of items) {
+    totalUsd    += toUsd(it.precio_vendido * it.cantidad, it.moneda, tc);
+    costoUsd    += toUsd(it.costo * it.cantidad, it.moneda, tc);
+    comisionUsd += toUsd(it.comision, it.moneda, tc);
+  }
+  return { totalUsd: round2(totalUsd), gananciaUsd: round2(totalUsd - costoUsd - comisionUsd) };
+}
+
+// Inserta items, pagos y canjes de una venta (usado por crear y editar). El stock
+// debe descontarse aparte con descontarStock(). Canjes con agregar_stock crean un producto usado.
+async function insertarDetalle(client, venta, b) {
+  for (const it of b.items) {
+    const ganancia = round2((it.precio_vendido - it.costo) * it.cantidad - it.comision);
+    await client.query(
+      `INSERT INTO venta_items (venta_id, producto_id, vendedor_id, descripcion, imei, cantidad, precio_vendido, precio_original, costo, moneda, comision, ganancia)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [venta.id, it.producto_id ?? null, it.vendedor_id ?? null, it.descripcion, it.imei ?? null, it.cantidad,
+       it.precio_vendido, it.precio_original ?? null, it.costo, it.moneda, it.comision, ganancia]
+    );
+  }
+  for (const p of (b.pagos || [])) {
+    const montoUsd = round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta));
+    await client.query(
+      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [venta.id, p.metodo_pago_id ?? null, p.metodo_nombre, p.monto, p.moneda, p.tc ?? null, montoUsd, p.es_cuenta_corriente]
+    );
+  }
+  for (const c of (b.canjes || [])) {
+    let prodId = null;
+    if (c.agregar_stock) {
+      const { rows: pr } = await client.query(
+        `INSERT INTO productos (tipo_carga, clase, nombre, imei, gb, color, bateria, costo, costo_moneda, precio_venta, precio_moneda, estado, observaciones)
+         VALUES ('unitario','celular',$1,$2,$3,$4,$5,$6,$7,0,$7,'disponible',$8) RETURNING id`,
+        [c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null, c.valor_toma, c.moneda, `Ingresado por canje (venta ${venta.order_id})`]
+      );
+      prodId = pr[0].id;
+    }
+    await client.query(
+      `INSERT INTO canjes (venta_id, descripcion, imei, gb, color, bateria, valor_toma, moneda, producto_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [venta.id, c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null, c.valor_toma, c.moneda, prodId]
+    );
+  }
+}
+
 /* ═══════════════════════ ETIQUETAS ═══════════════════════ */
 
 router.get('/etiquetas', async (_req, res, next) => {
@@ -313,7 +427,10 @@ router.get('/comprobantes/:cid', async (req, res, next) => {
     const cid = parseId(req.params.cid);
     if (!cid) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
-      'SELECT archivo_data, archivo_nombre, archivo_tipo FROM venta_comprobantes WHERE id = $1', [cid]
+      `SELECT vc.archivo_data, vc.archivo_nombre, vc.archivo_tipo
+         FROM venta_comprobantes vc
+         JOIN ventas v ON v.id = vc.venta_id AND v.deleted_at IS NULL
+        WHERE vc.id = $1`, [cid]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Comprobante no encontrado' });
     res.json(rows[0]);
@@ -426,72 +543,23 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
   const b = req.body;
   const client = await db.connect();
   try {
+    validarTc(b.items, b.pagos, b.tc_venta);
     await client.query('BEGIN');
 
-    // Totales en USD (normalizados por TC)
-    let totalUsd = 0, costoUsd = 0, comisionUsd = 0;
-    for (const it of b.items) {
-      totalUsd    += toUsd(it.precio_vendido * it.cantidad, it.moneda, b.tc_venta);
-      costoUsd    += toUsd(it.costo * it.cantidad, it.moneda, b.tc_venta);
-      comisionUsd += toUsd(it.comision, it.moneda, b.tc_venta);
-    }
-    const gananciaUsd = round2(totalUsd - costoUsd - comisionUsd);
+    const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta);
 
     const { rows: vrows } = await client.query(
       `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, user_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [genOrderId(), b.fecha, b.hora ?? null, b.cliente_id ?? null, b.cliente_cc_id ?? null, b.cliente_nombre ?? null,
-       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, round2(totalUsd), gananciaUsd, b.notas ?? null, req.user.id]
+       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, req.user.id]
     );
     const venta = vrows[0];
 
-    // Items + descuento de stock
-    for (const it of b.items) {
-      const ganancia = round2((it.precio_vendido - it.costo) * it.cantidad - it.comision);
-      await client.query(
-        `INSERT INTO venta_items (venta_id, producto_id, vendedor_id, descripcion, imei, cantidad, precio_vendido, precio_original, costo, moneda, comision, ganancia)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [venta.id, it.producto_id ?? null, it.vendedor_id ?? null, it.descripcion, it.imei ?? null, it.cantidad,
-         it.precio_vendido, it.precio_original ?? null, it.costo, it.moneda, it.comision, ganancia]
-      );
-      if (it.producto_id) {
-        await client.query(
-          `UPDATE productos
-             SET cantidad = GREATEST(cantidad - $1, 0),
-                 estado   = CASE WHEN tipo_carga = 'unitario' THEN 'vendido' ELSE estado END
-           WHERE id = $2 AND deleted_at IS NULL`,
-          [it.cantidad, it.producto_id]
-        );
-      }
-    }
-
-    // Pagos
-    for (const p of b.pagos) {
-      const montoUsd = round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta));
-      await client.query(
-        `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [venta.id, p.metodo_pago_id ?? null, p.metodo_nombre, p.monto, p.moneda, p.tc ?? null, montoUsd, p.es_cuenta_corriente]
-      );
-    }
-
-    // Canjes (opcionalmente ingresan al stock como producto usado)
-    for (const c of b.canjes) {
-      let prodId = null;
-      if (c.agregar_stock) {
-        const { rows: pr } = await client.query(
-          `INSERT INTO productos (tipo_carga, clase, nombre, imei, gb, color, bateria, costo, costo_moneda, precio_venta, precio_moneda, estado, observaciones)
-           VALUES ('unitario','celular',$1,$2,$3,$4,$5,$6,$7,0,$7,'disponible',$8) RETURNING id`,
-          [c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null, c.valor_toma, c.moneda, `Ingresado por canje (venta ${venta.order_id})`]
-        );
-        prodId = pr[0].id;
-      }
-      await client.query(
-        `INSERT INTO canjes (venta_id, descripcion, imei, gb, color, bateria, valor_toma, moneda, producto_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [venta.id, c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null, c.valor_toma, c.moneda, prodId]
-      );
-    }
+    // Stock: descontar solo si la venta retiene stock (no cancelada). Bloquea y valida disponibilidad.
+    if (retieneStock(b.estado)) await descontarStock(client, b.items);
+    // Ítems, pagos y canjes
+    await insertarDetalle(client, venta, b);
 
     await client.query('COMMIT');
     await audit('ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
@@ -505,27 +573,76 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
 });
 
 router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
+  const b = req.body;
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows: before } = await db.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!before[0]) return res.status(404).json({ error: 'Venta no encontrada' });
+    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
 
-    const { estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas } = req.body;
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    const { rows: beforeRows } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
+    if (!beforeRows[0]) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'Venta no encontrada' }); }
+    const before = beforeRows[0];
+
+    const fullEdit = b.items !== undefined;
+    const newEstado = b.estado ?? before.estado;
+    const oldHolds = retieneStock(before.estado);
+    const newHolds = retieneStock(newEstado);
+
+    if (fullEdit) {
+      const tc = b.tc_venta !== undefined ? b.tc_venta : before.tc_venta;
+      if (newHolds) validarTc(b.items, b.pagos, tc);
+      // Reponer stock viejo (si retenía) y descontar el nuevo (si la venta sigue reteniendo)
+      const { rows: oldItems } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
+      if (oldHolds) await reponerStock(client, oldItems);
+      if (newHolds) await descontarStock(client, b.items);
+
+      await client.query('DELETE FROM venta_items WHERE venta_id = $1', [id]);
+      await client.query('DELETE FROM venta_pagos WHERE venta_id = $1', [id]);
+      await client.query('DELETE FROM canjes WHERE venta_id = $1', [id]);
+
+      const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc);
+      const { estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora } = b;
+      const { rows: vrows } = await client.query(
+        `UPDATE ventas SET
+           estado = COALESCE($1, estado), etiqueta_id = COALESCE($2, etiqueta_id), garantia_id = COALESCE($3, garantia_id),
+           cliente_id = COALESCE($4, cliente_id), cliente_nombre = COALESCE($5, cliente_nombre), notas = COALESCE($6, notas),
+           hora = COALESCE($7, hora), tc_venta = $8, total_usd = $9, ganancia_usd = $10
+         WHERE id = $11 RETURNING *`,
+        [estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora, tc ?? null, totalUsd, gananciaUsd, id]
+      );
+      await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc });
+      await client.query('COMMIT');
+      await audit('ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
+      return res.json(vrows[0]);
+    }
+
+    // ── Solo metadatos ── ajustar stock si cambia el "retener stock" (cancelar / reactivar)
+    if (oldHolds && !newHolds) {
+      const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
+      await reponerStock(client, items); // cancelación: liberar stock
+    } else if (!oldHolds && newHolds) {
+      const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
+      await descontarStock(client, items); // reactivación: re-descontar (valida disponibilidad)
+    }
+    const { estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora } = b;
+    const { rows } = await client.query(
       `UPDATE ventas SET
-         estado         = COALESCE($1, estado),
-         etiqueta_id    = COALESCE($2, etiqueta_id),
-         garantia_id    = COALESCE($3, garantia_id),
-         cliente_id     = COALESCE($4, cliente_id),
-         cliente_nombre = COALESCE($5, cliente_nombre),
-         notas          = COALESCE($6, notas)
-       WHERE id = $7 RETURNING *`,
-      [estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, id]
+         estado = COALESCE($1, estado), etiqueta_id = COALESCE($2, etiqueta_id), garantia_id = COALESCE($3, garantia_id),
+         cliente_id = COALESCE($4, cliente_id), cliente_nombre = COALESCE($5, cliente_nombre), notas = COALESCE($6, notas),
+         hora = COALESCE($7, hora)
+       WHERE id = $8 RETURNING *`,
+      [estado, etiqueta_id, garantia_id, cliente_id, cliente_nombre, notas, hora, id]
     );
-    await audit('ventas', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
+    await audit('ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 router.delete('/:id', async (req, res, next) => {
@@ -535,24 +652,20 @@ router.delete('/:id', async (req, res, next) => {
     if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
 
     await client.query('BEGIN');
-    const { rows: before } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]);
+    const { rows: before } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'Venta no encontrada' }); }
 
-    // Reponer stock de los items que descontaron
-    const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
-    for (const it of items) {
-      await client.query(
-        `UPDATE productos
-           SET cantidad = cantidad + $1,
-               estado   = CASE WHEN tipo_carga = 'unitario' AND estado = 'vendido' THEN 'disponible' ELSE estado END
-         WHERE id = $2 AND deleted_at IS NULL`,
-        [it.cantidad, it.producto_id]
-      );
+    // Reponer stock solo si la venta aún retenía stock (una cancelada ya lo liberó)
+    let repuestos = 0;
+    if (retieneStock(before[0].estado)) {
+      const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
+      await reponerStock(client, items);
+      repuestos = items.length;
     }
-    const { rows } = await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1 RETURNING *', [id]);
+    await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await client.query('COMMIT');
     await audit('ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
-    res.json({ ok: true, stock_repuesto: items.length });
+    res.json({ ok: true, stock_repuesto: repuestos });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

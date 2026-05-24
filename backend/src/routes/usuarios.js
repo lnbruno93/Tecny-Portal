@@ -7,7 +7,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
 
-const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
+const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados','inventario','ventas'];
 
 // requireAuth aplicado en app.js al montar /api/usuarios
 router.use(adminOnly);
