@@ -135,7 +135,12 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
 
     const countQuery = `SELECT COUNT(*) FROM productos p WHERE ${where}`;
     const dataQuery = `
-      SELECT p.*, c.nombre AS categoria_nombre, d.nombre AS deposito_nombre
+      SELECT p.id, p.tipo_carga, p.clase, p.nombre, p.imei, p.gb, p.color, p.bateria,
+             p.categoria_id, p.deposito_id, p.proveedor, p.costo, p.costo_moneda,
+             p.precio_venta, p.precio_moneda, p.trackear_stock, p.cantidad, p.estado,
+             p.observaciones, p.created_at,
+             (p.foto_data IS NOT NULL) AS tiene_foto, p.foto_nombre, p.foto_tipo,
+             c.nombre AS categoria_nombre, d.nombre AS deposito_nombre
       FROM productos p
       LEFT JOIN categorias c ON c.id = p.categoria_id
       LEFT JOIN depositos  d ON d.id = p.deposito_id
@@ -149,6 +154,19 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
       db.query(dataQuery, [...params, limit, offset]),
     ]);
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+  } catch (err) { next(err); }
+});
+
+// Foto on-demand: el blob NO viaja en el listado (evita transferir base64 en cada query)
+router.get('/productos/:id/foto', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { rows } = await db.query(
+      'SELECT foto_data, foto_nombre, foto_tipo FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
+    );
+    if (!rows[0] || !rows[0].foto_data) return res.status(404).json({ error: 'Sin foto' });
+    res.json(rows[0]);
   } catch (err) { next(err); }
 });
 

@@ -153,6 +153,30 @@ describe('Productos', () => {
   });
 });
 
+// ─── Fotos (lazy) ────────────────────────────────────────────
+describe('Foto del producto (lazy load)', () => {
+  const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  it('el listado NO incluye foto_data pero marca tiene_foto', async () => {
+    const c = await request(app).post('/api/inventario/productos').set(auth())
+      .send({ nombre: 'Con Foto', clase: 'celular', foto_data: b64, foto_nombre: 'f.png', foto_tipo: 'image/png' });
+    const list = await request(app).get('/api/inventario/productos?buscar=Con Foto').set(auth());
+    const p = list.body.data.find(x => x.id === c.body.id);
+    expect(p).toBeDefined();
+    expect(p.foto_data).toBeUndefined();
+    expect(p.tiene_foto).toBe(true);
+    // la foto se trae on-demand
+    const foto = await request(app).get(`/api/inventario/productos/${c.body.id}/foto`).set(auth());
+    expect(foto.status).toBe(200);
+    expect(foto.body.foto_data).toBe(b64);
+  });
+
+  it('producto sin foto → 404 en el endpoint de foto', async () => {
+    const c = await request(app).post('/api/inventario/productos').set(auth()).send({ nombre: 'Sin Foto', clase: 'celular' });
+    const foto = await request(app).get(`/api/inventario/productos/${c.body.id}/foto`).set(auth());
+    expect(foto.status).toBe(404);
+  });
+});
+
 // ─── Métricas ────────────────────────────────────────────────
 describe('GET /api/inventario/productos/metricas', () => {
   it('agrega inversión de accesorios disponibles en USD', async () => {
