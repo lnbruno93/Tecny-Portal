@@ -22,6 +22,7 @@ const cuentasRoutes      = require('./routes/cuentas');
 const usadosRoutes       = require('./routes/usados');
 const inventarioRoutes   = require('./routes/inventario');
 const ventasRoutes       = require('./routes/ventas');
+const ventasExtraRoutes  = require('./routes/ventas-extra');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -173,7 +174,8 @@ app.use('/api/usados',        requireAuth, requirePermission('usados'), usadosRo
 // Inventario — requiere permiso "inventario"
 app.use('/api/inventario',    requireAuth, requirePermission('inventario'), inventarioRoutes);
 
-// Ventas — requiere permiso "ventas"
+// Ventas — requiere permiso "ventas" (sub-recursos + core, mismo prefijo)
+app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasExtraRoutes);
 app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasRoutes);
 
 // Usuarios — solo admin (requireAuth aquí + adminOnly dentro del router)
