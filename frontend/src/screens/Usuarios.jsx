@@ -12,7 +12,7 @@ function fmt(n) {
   return Math.round(v).toLocaleString('es-AR');
 }
 
-const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas', 'usados'];
+const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas', 'usados', 'inventario', 'ventas'];
 
 const TOOL_LABELS = {
   cotizador:  'Cotizador',
@@ -22,6 +22,8 @@ const TOOL_LABELS = {
   cuentas:    'Cuentas CC',
   usados:     'Usados',
   usuarios:   'Usuarios',
+  inventario: 'Inventario',
+  ventas:     'Ventas',
 };
 
 function initials(nombre) {

@@ -20,6 +20,8 @@ const Historial  = lazy(() => import('./screens/Historial'));
 const Usuarios   = lazy(() => import('./screens/Usuarios'));
 const Config     = lazy(() => import('./screens/Config'));
 const Cotizador  = lazy(() => import('./screens/Cotizador'));
+const Inventario = lazy(() => import('./screens/Inventario'));
+const Ventas     = lazy(() => import('./screens/Ventas'));
 
 function PageLoader() {
   return (
@@ -122,6 +124,16 @@ export default function App() {
                   <Route path="usados" element={
                     <RequirePermission perm="usados">
                       <ErrorBoundary><Usados /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="inventario" element={
+                    <RequirePermission perm="inventario">
+                      <ErrorBoundary><Inventario /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="ventas" element={
+                    <RequirePermission perm="ventas">
+                      <ErrorBoundary><Ventas /></ErrorBoundary>
                     </RequirePermission>
                   } />
 

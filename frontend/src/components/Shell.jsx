@@ -80,6 +80,8 @@ const NAV_MAIN = [
   { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios'      },
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta Mayorista & Gestión B2B', icon: 'Receipt',    perm: 'cuentas'     },
   { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados'      },
+  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario'  },
+  { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas'      },
 ];
 
 const NAV_SYS = [
@@ -97,6 +99,8 @@ const SCREEN_LABELS = {
   envios:     'Envíos',
   cuentas:    'Venta Mayorista & Gestión B2B',
   usados:     'Usados | Cotizador',
+  inventario: 'Inventario',
+  ventas:     'Ventas',
   historial:  'Historial',
   usuarios:   'Usuarios',
   config:     'Config',
