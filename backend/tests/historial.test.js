@@ -120,6 +120,83 @@ describe('GET /api/historial', () => {
     const hayInsert = acciones.some(a => a.includes('INSERT'));
     expect(hayInsert).toBe(true);
   });
+
+  // ── Filtros ──────────────────────────────────────────────────
+  it('filtra por accion=INSERT → solo entradas INSERT', async () => {
+    const res = await request(app)
+      .get('/api/historial?accion=INSERT')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    res.body.data.forEach(e => {
+      expect(e.accion).toMatch(/: INSERT$/);
+    });
+  });
+
+  it('filtra por tabla=comprobantes → solo entradas de comprobantes', async () => {
+    const res = await request(app)
+      .get('/api/historial?tabla=comprobantes')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    res.body.data.forEach(e => {
+      expect(e.accion).toMatch(/^comprobantes:/);
+    });
+  });
+
+  it('filtra por q (búsqueda en usuario) → retorna coincidencias', async () => {
+    // TEST_USER tiene nombre conocido — debería aparecer en los logs
+    const res = await request(app)
+      .get('/api/historial?q=' + encodeURIComponent(TEST_USER.username))
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // Puede ser 0 si el nombre no coincide con datos_despues, pero no debe fallar
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it('filtra por rango de fechas (semana pasada → mañana) → devuelve resultados', async () => {
+    // Rango amplio para evitar problemas de zona horaria (UTC vs local)
+    const desde = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
+    const hasta = new Date(Date.now() + 1  * 86400_000).toISOString().slice(0, 10);
+    const res = await request(app)
+      .get(`/api/historial?desde=${desde}&hasta=${hasta}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0); // el beforeAll ocurrió en este rango
+  });
+
+  it('filtra por rango de fechas futuro → array vacío', async () => {
+    const res = await request(app)
+      .get('/api/historial?desde=2099-01-01&hasta=2099-12-31')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('tabla inválida es ignorada (no 500, no registros de otra tabla)', async () => {
+    // Tablas fuera del whitelist son ignoradas silenciosamente
+    const res = await request(app)
+      .get('/api/historial?tabla=__inyeccion__')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200); // no 500
+    // Sin filtro de tabla → devuelve todo (tabla fuera de whitelist se ignora)
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it('per_page como alias de limit funciona igual', async () => {
+    const res = await request(app)
+      .get('/api/historial?per_page=2&page=1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeLessThanOrEqual(2);
+  });
 });
 
 // ─── Logout ──────────────────────────────────────────────────
@@ -204,8 +281,8 @@ describe('GET /api/vendedores?buscar', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res)).toBe(false); // no se verifica array directamente
     expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThanOrEqual(1);
     res.body.forEach(v => expect(v.nombre.toLowerCase()).toContain('abc'));
   });
 

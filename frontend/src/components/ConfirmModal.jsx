@@ -1,0 +1,110 @@
+// ConfirmModal — reemplaza window.confirm() con un modal del design system.
+// Uso declarativo (componente): <ConfirmModal open={...} onConfirm={...} onCancel={...} ... />
+// Uso imperativo (hook):        const confirm = useConfirm(); await confirm({ title, message });
+
+import { createContext, useContext, useState, useCallback, useRef } from 'react';
+
+// ── Imperativo: hook useConfirm ───────────────────────────────────────────────
+const ConfirmCtx = createContext(null);
+
+export function ConfirmProvider({ children }) {
+  const [state, setState] = useState(null); // { title, message, confirmLabel, danger, resolve }
+  const resolveRef = useRef(null);
+
+  const confirm = useCallback(({
+    title        = '¿Estás seguro?',
+    message      = '',
+    confirmLabel = 'Confirmar',
+    danger       = false,
+  } = {}) => {
+    return new Promise((resolve) => {
+      resolveRef.current = resolve;
+      setState({ title, message, confirmLabel, danger });
+    });
+  }, []);
+
+  function handleConfirm() {
+    setState(null);
+    resolveRef.current?.(true);
+  }
+
+  function handleCancel() {
+    setState(null);
+    resolveRef.current?.(false);
+  }
+
+  return (
+    <ConfirmCtx.Provider value={{ confirm }}>
+      {children}
+      {state && (
+        <ConfirmModal
+          open
+          title={state.title}
+          message={state.message}
+          confirmLabel={state.confirmLabel}
+          danger={state.danger}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
+      )}
+    </ConfirmCtx.Provider>
+  );
+}
+
+export function useConfirm() {
+  const ctx = useContext(ConfirmCtx);
+  if (!ctx) throw new Error('useConfirm debe usarse dentro de <ConfirmProvider>');
+  return ctx.confirm;
+}
+
+// ── Declarativo: componente ────────────────────────────────────────────────────
+export function ConfirmModal({
+  open,
+  title        = '¿Estás seguro?',
+  message      = '',
+  confirmLabel = 'Confirmar',
+  cancelLabel  = 'Cancelar',
+  danger       = false,
+  onConfirm,
+  onCancel,
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="modal-overlay"
+      onClick={onCancel}
+      style={{ zIndex: 500 }}
+    >
+      <div
+        className="modal"
+        style={{ maxWidth: 400 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-hd">
+          <h3 style={{ color: danger ? 'var(--neg)' : 'var(--text)' }}>{title}</h3>
+        </div>
+        {message && (
+          <div className="modal-body">
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0, lineHeight: 1.6 }}>
+              {message}
+            </p>
+          </div>
+        )}
+        <div className="modal-ft">
+          <button className="btn btn-ghost" onClick={onCancel}>
+            {cancelLabel}
+          </button>
+          <button
+            className="btn btn-primary"
+            style={danger ? { background: 'var(--neg)', boxShadow: 'none' } : {}}
+            onClick={onConfirm}
+            autoFocus
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

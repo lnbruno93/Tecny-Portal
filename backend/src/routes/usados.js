@@ -1,8 +1,9 @@
-const express = require('express');
-const router  = express.Router();
-const db      = require('../config/database');
-const audit   = require('../lib/audit');
-const parseId = require('../lib/parseId');
+const express  = require('express');
+const router   = express.Router();
+const db       = require('../config/database');
+const audit    = require('../lib/audit');
+const parseId  = require('../lib/parseId');
+const validate = require('../lib/validate');
 const { createUsadoSchema, updateUsadoSchema, bulkUpdateUsadosSchema } = require('../schemas/usados');
 
 // ── GET /api/usados ──────────────────────────────────────────────────────────
@@ -45,9 +46,9 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // ── POST /api/usados ─────────────────────────────────────────────────────────
-router.post('/', async (req, res, next) => {
+router.post('/', validate(createUsadoSchema), async (req, res, next) => {
   try {
-    const data = createUsadoSchema.parse(req.body);
+    const data = req.body;
     const { rows } = await db.query(
       `INSERT INTO catalogo_usados (equipo, capacidad, pct_bateria, precio_usd, comentarios)
        VALUES ($1, $2, $3, $4, $5)
@@ -61,9 +62,9 @@ router.post('/', async (req, res, next) => {
 
 // ── PUT /api/usados/bulk ─────────────────────────────────────────────────────
 // Actualiza precio_usd y comentarios de múltiples productos en una sola transacción.
-router.put('/bulk', async (req, res, next) => {
+router.put('/bulk', validate(bulkUpdateUsadosSchema), async (req, res, next) => {
   try {
-    const { updates } = bulkUpdateUsadosSchema.parse(req.body);
+    const { updates } = req.body;
     const client = await db.connect();
     try {
       await client.query('BEGIN');
@@ -94,11 +95,11 @@ router.put('/bulk', async (req, res, next) => {
 });
 
 // ── PUT /api/usados/:id ──────────────────────────────────────────────────────
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', validate(updateUsadoSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const data = updateUsadoSchema.parse(req.body);
+    const data = req.body;
 
     const prev = await db.query(
       `SELECT * FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,

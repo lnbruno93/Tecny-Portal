@@ -22,6 +22,7 @@ export default function CommandPalette({ open, onClose }) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef(null);
+  const filteredRef = useRef([]); // always-current ref used inside keydown handler
   const navigate = useNavigate();
 
   // Reset state when palette opens/closes
@@ -32,22 +33,6 @@ export default function CommandPalette({ open, onClose }) {
       // Autofocus input on next tick so the DOM is ready
       setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [open]);
-
-  // Global keyboard shortcut: ⌘K / Ctrl+K to open
-  useEffect(() => {
-    function handleGlobalKey(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        if (!open) {
-          // Signal parent to open — parent controls `open`, so we rely on
-          // Shell's own listener. This effect is here for safety if palette
-          // is ever used standalone.
-        }
-      }
-    }
-    window.addEventListener('keydown', handleGlobalKey);
-    return () => window.removeEventListener('keydown', handleGlobalKey);
   }, [open]);
 
   // Keyboard navigation inside the palette
@@ -61,7 +46,7 @@ export default function CommandPalette({ open, onClose }) {
       }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setActiveIndex(i => Math.min(i + 1, filtered.length - 1));
+        setActiveIndex(i => Math.min(i + 1, filteredRef.current.length - 1));
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -69,9 +54,8 @@ export default function CommandPalette({ open, onClose }) {
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (filtered[activeIndex]) {
-          handleSelect(filtered[activeIndex]);
-        }
+        const current = filteredRef.current[activeIndex];
+        if (current) handleSelect(current);
       }
     }
 
@@ -89,6 +73,8 @@ export default function CommandPalette({ open, onClose }) {
       cmd.desc.toLowerCase().includes(q)
     );
   });
+  // Keep ref in sync so keydown handler always reads the current filtered list
+  filteredRef.current = filtered;
 
   // Reset active index when query changes
   useEffect(() => {

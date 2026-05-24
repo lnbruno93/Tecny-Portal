@@ -1,13 +1,11 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../schemas/envios');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
 
-router.use(requireAuth);
 
 router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => {
   try {

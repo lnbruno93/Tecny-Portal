@@ -14,4 +14,11 @@ const updateContactoSchema = createContactoSchema.partial().refine(
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 
-module.exports = { createContactoSchema, updateContactoSchema };
+const queryContactosSchema = z.object({
+  buscar: z.string().max(200).optional(),
+  tipo:   z.enum(TIPOS_CONTACTO).optional(),
+  limit:  z.coerce.number().int().positive().max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+module.exports = { createContactoSchema, updateContactoSchema, queryContactosSchema };

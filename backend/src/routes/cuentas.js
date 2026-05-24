@@ -29,7 +29,8 @@ const {
   TIPOS_MOVIMIENTO_CC,
 } = require('../schemas/cuentas');
 
-// Helper: SQL para calcular saldo de un cliente (subquery reutilizable)
+// Helper: SQL para calcular saldo de un cliente (subquery reutilizable — usada solo en GET /:id)
+// Para el listado usamos un JOIN en lugar de subquery correlacionada (ver abajo).
 const SALDO_SQL = `
   COALESCE((
     SELECT SUM(
@@ -49,7 +50,7 @@ router.get('/clientes', async (req, res, next) => {
   try {
     const { buscar, categoria } = req.query;
     const params  = [];
-    const filters = [];
+    const filters = ['c.deleted_at IS NULL'];
 
     if (buscar) {
       params.push(`%${buscar}%`);
@@ -60,12 +61,22 @@ router.get('/clientes', async (req, res, next) => {
       filters.push(`c.categoria = $${params.length}`);
     }
 
-    const where = filters.length ? ` AND ${filters.join(' AND ')}` : '';
+    const where = filters.join(' AND ');
 
+    // JOIN en lugar de subquery correlacionada — calcula todos los saldos en un solo pase
+    // antes: 1 + N queries (una por cliente). Ahora: siempre 1 query total.
     const { rows } = await db.query(
-      `SELECT c.*, ${SALDO_SQL} AS saldo
+      `SELECT c.*,
+              COALESCE(s.saldo, 0) AS saldo
        FROM clientes_cc c
-       WHERE c.deleted_at IS NULL${where}
+       LEFT JOIN (
+         SELECT cliente_cc_id,
+                SUM(CASE WHEN tipo = 'compra' THEN monto_total ELSE -monto_total END) AS saldo
+         FROM movimientos_cc
+         WHERE deleted_at IS NULL
+         GROUP BY cliente_cc_id
+       ) s ON s.cliente_cc_id = c.id
+       WHERE ${where}
        ORDER BY c.nombre, c.apellido
        LIMIT 500`,
       params

@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { cajas, contactos as contactosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../components/ConfirmModal';
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -16,9 +18,12 @@ function fmtFecha(iso) {
   if (isNaN(d)) return '—';
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
+function todayISO() {
+  return new Date().toLocaleDateString('sv'); // YYYY-MM-DD
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const TIPO_TONE = { amigo: 'info', familiar: 'accent', cliente: 'pos', inversor: 'warn', 'ipro team': 'default' };
+const TIPO_TONE  = { amigo: 'info', familiar: 'accent', cliente: 'pos', inversor: 'warn', 'ipro team': 'default' };
 const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'iPro team' };
 
 function Badge({ tone = 'default', children }) {
@@ -54,8 +59,13 @@ function groupDeudas(movs) {
   return Object.values(map).sort((a, b) => b.saldo_ars - a.saldo_ars);
 }
 
+const EMPTY_DEUDA = () => ({ fecha: todayISO(), contacto_id: '', tipo: 'debe', monto_ars: '', monto_usd: '', concepto: '' });
+const EMPTY_INV   = () => ({ fecha: todayISO(), contacto_id: '', monto: '', tasa: '' });
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Cajas() {
+  const { toast } = useToast();
+  const confirm   = useConfirm();
   const [tab, setTab] = useState('deudas');
 
   // Deudas
@@ -69,18 +79,51 @@ export default function Cajas() {
   const [inversiones, setInversiones] = useState([]);
   const [loadingInv, setLoadingInv] = useState(false);
 
+  // All contacts for dropdowns (loaded once)
+  const [allContacts, setAllContacts] = useState([]);
+  useEffect(() => {
+    // contactos API returns a plain array (not paginated)
+    contactosApi.list({ limit: 500 })
+      .then(rows => setAllContacts(Array.isArray(rows) ? rows : []))
+      .catch(console.error);
+  }, []);
+
   // ── Crear contacto ────────────────────────────────────────────────────────
   const [showContacto, setShowContacto] = useState(false);
   const [cForm, setCForm] = useState({ nombre: '', apellido: '', tipo: 'amigo' });
   const [cCreating, setCCreating] = useState(false);
   const [cError, setCError] = useState('');
 
+  // ── Crear movimiento de deuda ─────────────────────────────────────────────
+  const [showDeuda, setShowDeuda] = useState(false);
+  const [deudaForm, setDeudaForm] = useState(EMPTY_DEUDA);
+  const [deudaCreating, setDeudaCreating] = useState(false);
+  const [deudaError, setDeudaError] = useState('');
+
+  // ── Crear inversión ───────────────────────────────────────────────────────
+  const [showInv, setShowInv] = useState(false);
+  const [invForm, setInvForm] = useState(EMPTY_INV);
+  const [invCreating, setInvCreating] = useState(false);
+  const [invError, setInvError] = useState('');
+
+  // ── Tab-aware primary action ──────────────────────────────────────────────
   const { setPrimaryAction } = usePageActions();
   useEffect(() => {
-    setPrimaryAction({ label: 'Nuevo contacto', onClick: () => { setCForm({ nombre: '', apellido: '', tipo: 'amigo' }); setCError(''); setShowContacto(true); } });
+    if (tab === 'deudas') {
+      setPrimaryAction({
+        label: 'Nuevo movimiento',
+        onClick: () => { setDeudaForm(EMPTY_DEUDA()); setDeudaError(''); setShowDeuda(true); },
+      });
+    } else {
+      setPrimaryAction({
+        label: 'Nueva inversión',
+        onClick: () => { setInvForm(EMPTY_INV()); setInvError(''); setShowInv(true); },
+      });
+    }
     return () => setPrimaryAction(null);
-  }, [setPrimaryAction]);
+  }, [tab, setPrimaryAction]);
 
+  // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleCreateContacto(e) {
     e.preventDefault();
     if (!cForm.nombre.trim()) { setCError('El nombre es obligatorio.'); return; }
@@ -91,7 +134,8 @@ export default function Cajas() {
         apellido: cForm.apellido.trim() || null,
         tipo: cForm.tipo,
       });
-      // El nuevo contacto no tiene movimientos aún — lo marcamos seleccionado
+      // Optimistically add to contacts list and deuda list
+      setAllContacts(prev => [...prev, nuevo]);
       setDeudaMovs(prev => [...prev, {
         contacto_id: nuevo.id, nombre: nuevo.nombre, apellido: nuevo.apellido,
         contacto_tipo: nuevo.tipo, mov_tipo: 'debe', monto_ars: 0, monto_usd: 0, fecha: null,
@@ -100,8 +144,75 @@ export default function Cajas() {
       setSelectedContactoId(nuevo.id);
       setShowContacto(false);
       if (tab !== 'deudas') setTab('deudas');
+      toast.success('Contacto creado.');
     } catch (err) { setCError(err.message); }
     finally { setCCreating(false); }
+  }
+
+  async function handleCreateDeuda(e) {
+    e.preventDefault();
+    if (!deudaForm.contacto_id) { setDeudaError('Seleccioná un contacto.'); return; }
+    const monto_ars = parseFloat(deudaForm.monto_ars) || 0;
+    const monto_usd = parseFloat(deudaForm.monto_usd) || 0;
+    if (!monto_ars && !monto_usd) { setDeudaError('Ingresá al menos un monto.'); return; }
+
+    setDeudaCreating(true); setDeudaError('');
+    try {
+      await cajas.createDeuda({
+        fecha:       deudaForm.fecha,
+        contacto_id: Number(deudaForm.contacto_id),
+        tipo:        deudaForm.tipo,
+        monto_ars,
+        monto_usd,
+        concepto:    deudaForm.concepto.trim() || null,
+      });
+      setShowDeuda(false);
+      toast.success('Movimiento registrado.');
+
+      // Refresh global deuda list
+      setLoadingDeudas(true);
+      cajas.deudas({ limit: 500 })
+        .then(res => setDeudaMovs(res.data || []))
+        .catch(console.error)
+        .finally(() => setLoadingDeudas(false));
+
+      // Auto-select the contacto and refresh its detail
+      const cid = Number(deudaForm.contacto_id);
+      setSelectedContactoId(cid);
+      setLoadingContactoMovs(true);
+      cajas.deudas({ contacto_id: cid, limit: 200 })
+        .then(res => setContactoMovs(res.data || []))
+        .catch(console.error)
+        .finally(() => setLoadingContactoMovs(false));
+    } catch (err) { setDeudaError(err.message); }
+    finally { setDeudaCreating(false); }
+  }
+
+  async function handleCreateInversion(e) {
+    e.preventDefault();
+    if (!invForm.contacto_id) { setInvError('Seleccioná un contacto.'); return; }
+    const monto = parseFloat(invForm.monto);
+    if (!monto || monto <= 0) { setInvError('El monto debe ser mayor a 0.'); return; }
+
+    setInvCreating(true); setInvError('');
+    try {
+      await cajas.createInversion({
+        fecha:       invForm.fecha,
+        contacto_id: Number(invForm.contacto_id),
+        monto,
+        tasa:        invForm.tasa.trim() || null,
+      });
+      setShowInv(false);
+      toast.success('Inversión registrada.');
+
+      // Refresh inversiones list
+      setLoadingInv(true);
+      cajas.inversiones({ limit: 200 })
+        .then(res => setInversiones(res.data || []))
+        .catch(console.error)
+        .finally(() => setLoadingInv(false));
+    } catch (err) { setInvError(err.message); }
+    finally { setInvCreating(false); }
   }
 
   // Load deudas
@@ -142,32 +253,35 @@ export default function Cajas() {
   );
 
   // KPIs for deudas
-  const totalDeudaARS  = useMemo(() => contactosDeuda.filter(c => c.saldo_ars > 0).reduce((s, c) => s + c.saldo_ars, 0), [contactosDeuda]);
-  const totalDeudaUSD  = useMemo(() => contactosDeuda.filter(c => c.saldo_usd > 0).reduce((s, c) => s + c.saldo_usd, 0), [contactosDeuda]);
-  const conDeuda       = useMemo(() => contactosDeuda.filter(c => c.saldo_ars > 0 || c.saldo_usd > 0).length, [contactosDeuda]);
-  const mayorSaldo     = useMemo(() => contactosDeuda.length ? Math.max(...contactosDeuda.map(c => c.saldo_ars)) : 0, [contactosDeuda]);
+  const totalDeudaARS     = useMemo(() => contactosDeuda.filter(c => c.saldo_ars > 0).reduce((s, c) => s + c.saldo_ars, 0), [contactosDeuda]);
+  const totalDeudaUSD     = useMemo(() => contactosDeuda.filter(c => c.saldo_usd > 0).reduce((s, c) => s + c.saldo_usd, 0), [contactosDeuda]);
+  const conDeuda          = useMemo(() => contactosDeuda.filter(c => c.saldo_ars > 0 || c.saldo_usd > 0).length, [contactosDeuda]);
+  const mayorSaldo        = useMemo(() => contactosDeuda.length ? Math.max(...contactosDeuda.map(c => c.saldo_ars)) : 0, [contactosDeuda]);
 
   // KPIs for inversiones
-  const totalInvARS    = useMemo(() => inversiones.reduce((s, m) => s + (parseFloat(m.monto) || 0), 0), [inversiones]);
+  const totalInvARS       = useMemo(() => inversiones.reduce((s, m) => s + (parseFloat(m.monto) || 0), 0), [inversiones]);
   const inversoresActivos = useMemo(() => new Set(inversiones.map(m => m.contacto_id)).size, [inversiones]);
 
-  // Delete deuda movement
+  // Delete handlers
   async function handleDeleteDeuda(id) {
-    if (!confirm('¿Eliminar este movimiento?')) return;
+    const ok = await confirm({ title: 'Eliminar movimiento', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
     try {
       await cajas.deleteDeuda(id);
       setContactoMovs(prev => prev.filter(m => m.id !== id));
-      // Reload deudas totals
       cajas.deudas({ limit: 500 }).then(res => setDeudaMovs(res.data || []));
-    } catch (e) { alert(e.message); }
+      toast.success('Movimiento eliminado.');
+    } catch (e) { toast.error(e.message); }
   }
 
   async function handleDeleteInversion(id) {
-    if (!confirm('¿Eliminar esta inversión?')) return;
+    const ok = await confirm({ title: 'Eliminar inversión', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
     try {
       await cajas.deleteInversion(id);
       setInversiones(prev => prev.filter(m => m.id !== id));
-    } catch (e) { alert(e.message); }
+      toast.success('Inversión eliminada.');
+    } catch (e) { toast.error(e.message); }
   }
 
   return (
@@ -178,7 +292,7 @@ export default function Cajas() {
           <h1 className="page-title">Cajas</h1>
           <div className="page-sub">Deudas e inversiones por contacto</div>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className="tabs">
             {[{ value: 'deudas', label: 'Deudas' }, { value: 'inversiones', label: 'Inversiones' }].map(t => (
               <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')}
@@ -187,6 +301,13 @@ export default function Cajas() {
               </button>
             ))}
           </div>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={() => { setCForm({ nombre: '', apellido: '', tipo: 'amigo' }); setCError(''); setShowContacto(true); }}
+          >
+            + Contacto
+          </button>
         </div>
       </div>
 
@@ -238,7 +359,7 @@ export default function Cajas() {
                         <td style={{ fontWeight: 600 }}>{c.nombre} {c.apellido || ''}</td>
                         <td><Badge tone={TIPO_TONE[c.contacto_tipo] || 'default'}>{TIPO_LABEL[c.contacto_tipo] || c.contacto_tipo}</Badge></td>
                         <td className="num mono" style={{ color: c.saldo_ars > 0 ? 'var(--neg)' : c.saldo_ars < 0 ? 'var(--pos)' : 'var(--text-muted)', fontWeight: 600 }}>
-                          {c.saldo_ars !== 0 ? (c.saldo_ars > 0 ? '' : '') + fmt(c.saldo_ars) : <span className="dim">—</span>}
+                          {c.saldo_ars !== 0 ? fmt(c.saldo_ars) : <span className="dim">—</span>}
                         </td>
                         <td className="num mono" style={{ color: c.saldo_usd > 0 ? 'var(--neg)' : c.saldo_usd < 0 ? 'var(--pos)' : 'var(--text-muted)' }}>
                           {c.saldo_usd !== 0 ? fmt(c.saldo_usd) : <span className="dim">—</span>}
@@ -267,9 +388,22 @@ export default function Cajas() {
                       </span>
                     </div>
                   </div>
-                  <button className="icon-btn" onClick={() => setSelectedContactoId(null)}>
-                    <Icons.X size={15} />
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: 12, padding: '4px 10px' }}
+                      onClick={() => {
+                        setDeudaForm({ ...EMPTY_DEUDA(), contacto_id: String(selectedContactoId) });
+                        setDeudaError('');
+                        setShowDeuda(true);
+                      }}
+                    >
+                      + Movimiento
+                    </button>
+                    <button className="icon-btn" onClick={() => setSelectedContactoId(null)}>
+                      <Icons.X size={15} />
+                    </button>
+                  </div>
                 </div>
                 {loadingContactoMovs ? (
                   <div className="empty">Cargando…</div>
@@ -426,6 +560,147 @@ export default function Cajas() {
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={cCreating}>
                   {cCreating ? 'Guardando…' : 'Crear contacto'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Nuevo movimiento de deuda ────────────────────────── */}
+      {showDeuda && (
+        <div className="modal-overlay" onClick={() => setShowDeuda(false)}>
+          <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Nuevo movimiento de deuda</h3>
+              <button className="icon-btn" onClick={() => setShowDeuda(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateDeuda}>
+              <div className="modal-body">
+                <div className="stack" style={{ gap: 14 }}>
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input type="date" className="input"
+                        value={deudaForm.fecha}
+                        onChange={e => setDeudaForm(f => ({ ...f, fecha: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Tipo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <select className="input"
+                        value={deudaForm.tipo}
+                        onChange={e => setDeudaForm(f => ({ ...f, tipo: e.target.value }))}>
+                        <option value="debe">Debe (deuda nueva)</option>
+                        <option value="pago">Pago (cancela deuda)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Contacto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <select className="input"
+                      value={deudaForm.contacto_id}
+                      onChange={e => setDeudaForm(f => ({ ...f, contacto_id: e.target.value }))}
+                      autoFocus={!deudaForm.contacto_id}>
+                      <option value="">— Seleccionar —</option>
+                      {allContacts.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}{c.apellido ? ` ${c.apellido}` : ''} ({TIPO_LABEL[c.tipo] || c.tipo})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Monto ARS</label>
+                      <input type="number" min="0" step="0.01" className="input" placeholder="0"
+                        value={deudaForm.monto_ars}
+                        onChange={e => setDeudaForm(f => ({ ...f, monto_ars: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Monto USD</label>
+                      <input type="number" min="0" step="0.01" className="input" placeholder="0"
+                        value={deudaForm.monto_usd}
+                        onChange={e => setDeudaForm(f => ({ ...f, monto_usd: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Concepto</label>
+                    <input className="input" placeholder="ej. Préstamo viaje, Compra materiales…"
+                      value={deudaForm.concepto}
+                      onChange={e => setDeudaForm(f => ({ ...f, concepto: e.target.value }))} />
+                  </div>
+                  {deudaError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{deudaError}</div>}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowDeuda(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={deudaCreating}>
+                  {deudaCreating ? 'Guardando…' : 'Registrar movimiento'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Nueva inversión ───────────────────────────────────── */}
+      {showInv && (
+        <div className="modal-overlay" onClick={() => setShowInv(false)}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Nueva inversión</h3>
+              <button className="icon-btn" onClick={() => setShowInv(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateInversion}>
+              <div className="modal-body">
+                <div className="stack" style={{ gap: 14 }}>
+                  <div className="field">
+                    <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <input type="date" className="input"
+                      value={invForm.fecha}
+                      onChange={e => setInvForm(f => ({ ...f, fecha: e.target.value }))} />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Inversor <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <select className="input"
+                      value={invForm.contacto_id}
+                      onChange={e => setInvForm(f => ({ ...f, contacto_id: e.target.value }))}
+                      autoFocus>
+                      <option value="">— Seleccionar —</option>
+                      {allContacts.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}{c.apellido ? ` ${c.apellido}` : ''} ({TIPO_LABEL[c.tipo] || c.tipo})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Monto ARS <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <input type="number" min="1" step="0.01" className="input" placeholder="ej. 500000"
+                      value={invForm.monto}
+                      onChange={e => setInvForm(f => ({ ...f, monto: e.target.value }))} />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Tasa / condición</label>
+                    <input className="input" placeholder="ej. 5% mensual, TNA 60%…"
+                      value={invForm.tasa}
+                      onChange={e => setInvForm(f => ({ ...f, tasa: e.target.value }))} />
+                  </div>
+                  {invError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{invError}</div>}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowInv(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={invCreating}>
+                  {invCreating ? 'Guardando…' : 'Registrar inversión'}
                 </button>
               </div>
             </form>

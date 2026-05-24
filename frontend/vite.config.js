@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'pwa-icon.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
         name: 'iPro Portal',
@@ -50,7 +50,11 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /\/api\/.*/i,
+            // Matchea la URL absoluta del backend en Railway (cross-origin)
+            // El patrón /\/api\/.*/i NO matchea URLs absolutas con dominio diferente
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/api/') ||
+              url.href.includes('railway.app/api/'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
@@ -64,4 +68,21 @@ export default defineConfig({
     }),
   ],
   base: '/',
+  build: {
+    rollupOptions: {
+      output: {
+        // Vite 8 (rolldown) requiere manualChunks como función
+        // Separa vendors en un chunk estable para maximizar cache hit rate
+        manualChunks(id) {
+          if (id.includes('node_modules/react') ||
+              id.includes('node_modules/react-dom') ||
+              id.includes('node_modules/react-router-dom') ||
+              id.includes('node_modules/react-router/') ||
+              id.includes('node_modules/@remix-run/')) {
+            return 'vendor';
+          }
+        },
+      },
+    },
+  },
 });

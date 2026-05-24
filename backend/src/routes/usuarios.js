@@ -1,7 +1,6 @@
 const router = require('express').Router();
 const bcrypt = require('bcrypt');
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
@@ -10,7 +9,8 @@ const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuario
 
 const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
 
-router.use(requireAuth, adminOnly);
+// requireAuth aplicado en app.js al montar /api/usuarios
+router.use(adminOnly);
 
 router.get('/', async (_req, res, next) => {
   try {

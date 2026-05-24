@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { usuarios as usuariosApi } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../components/ConfirmModal';
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -31,6 +33,8 @@ function Badge({ tone = 'default', children }) {
 }
 
 export default function Usuarios() {
+  const { toast } = useToast();
+  const confirm   = useConfirm();
   const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [rolFilter, setRolFilter]   = useState('todos');
@@ -42,9 +46,9 @@ export default function Usuarios() {
     setLoading(true);
     usuariosApi.list()
       .then(data => setUsers(Array.isArray(data) ? data : []))
-      .catch(e => alert(e.message))
+      .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── KPI ──────────────────────────────────────────────────────────────────
   const admins   = users.filter(u => u.role === 'admin').length;
@@ -80,19 +84,21 @@ export default function Usuarios() {
       );
       setEditingId(null);
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(userId) {
-    if (!confirm('¿Eliminar este usuario?')) return;
+    const ok = await confirm({ title: 'Eliminar usuario', message: 'Esta acción desactivará la cuenta. No se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
     try {
       await usuariosApi.delete(userId);
       setUsers(prev => prev.filter(u => u.id !== userId));
+      toast.success('Usuario eliminado.');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   }
 
@@ -109,7 +115,7 @@ export default function Usuarios() {
             setLoading(true);
             usuariosApi.list()
               .then(data => setUsers(Array.isArray(data) ? data : []))
-              .catch(e => alert(e.message))
+              .catch(e => toast.error(e.message))
               .finally(() => setLoading(false));
           }}>
             <Icons.Refresh size={15} />

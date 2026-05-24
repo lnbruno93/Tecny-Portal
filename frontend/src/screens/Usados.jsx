@@ -3,6 +3,7 @@ import { Icons } from '../components/Icons';
 import { usados as usadosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { exportCsv } from '../lib/exportCsv';
+import { useToast } from '../contexts/ToastContext';
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -23,6 +24,7 @@ function relDate(iso) {
 const EMPTY_FORM = { equipo: '', capacidad: '', pct_bateria: '', precio_usd: '', comentarios: '' };
 
 export default function Usados() {
+  const { toast } = useToast();
   const [rows, setRows] = useState([]);
   const [edits, setEdits] = useState({});   // { id: { field: value } }
   const [search, setSearch] = useState('');
@@ -73,7 +75,7 @@ export default function Usados() {
     setLoading(true);
     usadosApi.list()
       .then(data => setRows(Array.isArray(data) ? data : []))
-      .catch(e => alert(e.message))
+      .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
   }, []);
 
@@ -116,9 +118,9 @@ export default function Usados() {
         prev.map(r => edits[r.id] ? { ...r, ...edits[r.id] } : r)
       );
       setEdits({});
-      alert('Cambios guardados correctamente.');
+      toast.success('Cambios guardados correctamente.');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setSaving(false);
     }

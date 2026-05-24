@@ -1,14 +1,12 @@
 const router      = require('express').Router();
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const Anthropic   = require('@anthropic-ai/sdk');
-const requireAuth = require('../middleware/auth');
 const validate    = require('../lib/validate');
 const logger      = require('../lib/logger');
 const { ocrSchema } = require('../schemas/ocr');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-router.use(requireAuth);
 
 // 10 llamadas OCR por usuario por hora — limita por user_id (no por IP)
 // Así un NAT compartido no afecta a otros usuarios, y cambiar de IP no evita el límite

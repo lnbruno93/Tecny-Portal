@@ -1,13 +1,11 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { createPagoSchema } = require('../schemas/pagos');
+const { createPagoSchema, queryPagosSchema } = require('../schemas/pagos');
 const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
 
-router.use(requireAuth);
 
 // ─── Totales globales ─────────────────────────────────────────────────────────
 router.get('/totales', async (_req, res, next) => {
@@ -26,13 +24,26 @@ router.get('/totales', async (_req, res, next) => {
 });
 
 // ─── Lista paginada ───────────────────────────────────────────────────────────
-router.get('/', async (req, res, next) => {
+router.get('/', validate(queryPagosSchema, 'query'), async (req, res, next) => {
   try {
+    const { desde, hasta, buscar } = req.query;
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
 
+    const conditions = ['deleted_at IS NULL'];
+    const params = [];
+
+    if (desde)  { params.push(desde);          conditions.push(`fecha >= $${params.length}`); }
+    if (hasta)  { params.push(hasta);           conditions.push(`fecha <= $${params.length}`); }
+    if (buscar) { params.push(`%${buscar}%`);   conditions.push(`referencia ILIKE $${params.length}`); }
+
+    const where = conditions.join(' AND ');
+
     const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM pagos WHERE deleted_at IS NULL'),
-      db.query('SELECT * FROM pagos WHERE deleted_at IS NULL ORDER BY fecha DESC, id DESC LIMIT $1 OFFSET $2', [limit, offset]),
+      db.query(`SELECT COUNT(*) FROM pagos WHERE ${where}`, params),
+      db.query(
+        `SELECT * FROM pagos WHERE ${where} ORDER BY fecha DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
     ]);
 
     const total = parseInt(countRes.rows[0].count);

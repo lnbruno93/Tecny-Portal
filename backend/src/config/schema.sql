@@ -30,11 +30,11 @@ CREATE INDEX IF NOT EXISTS idx_users_username  ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_email     ON users (email) WHERE email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_active    ON users (id) WHERE deleted_at IS NULL;
 
--- Permisos por herramienta (cotizador | financiera | cajas | envios | usuarios)
+-- Permisos por herramienta (cotizador | financiera | cajas | envios | usuarios | cuentas | usados)
 CREATE TABLE IF NOT EXISTS user_permissions (
   id         SERIAL PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  tool       TEXT    NOT NULL CHECK (tool IN ('cotizador','financiera','cajas','envios','usuarios')),
+  tool       TEXT    NOT NULL CHECK (tool IN ('cotizador','financiera','cajas','envios','usuarios','cuentas','usados')),
   enabled    BOOLEAN NOT NULL DEFAULT false,
   UNIQUE (user_id, tool)
 );
@@ -227,3 +227,93 @@ CREATE TABLE IF NOT EXISTS config (
 );
 
 INSERT INTO config (id, pct_financiera) VALUES (1, 0) ON CONFLICT DO NOTHING;
+
+-- ------------------------------------------------------------
+-- CUENTAS CORRIENTES (migración 008)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS clientes_cc (
+  id           SERIAL PRIMARY KEY,
+  nombre       TEXT          NOT NULL,
+  apellido     TEXT,
+  contacto     TEXT,
+  marca_redes  TEXT,
+  provincia    TEXT,
+  localidad    TEXT,
+  direccion    TEXT,
+  categoria    TEXT          NOT NULL DEFAULT 'A-'
+                 CHECK (categoria IN ('VIP','A+','A-')),
+  notas        TEXT,
+  deleted_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ   DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_clientes_cc_active    ON clientes_cc (id)             WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clientes_cc_nombre    ON clientes_cc (nombre, apellido) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_clientes_cc_categoria ON clientes_cc (categoria)      WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS movimientos_cc (
+  id             SERIAL PRIMARY KEY,
+  cliente_cc_id  INTEGER       NOT NULL REFERENCES clientes_cc(id) ON DELETE CASCADE,
+  fecha          DATE          NOT NULL,
+  tipo           TEXT          NOT NULL
+                   CHECK (tipo IN ('compra','pago','devolucion','parte_de_pago','entrega_mercaderia')),
+  descripcion    TEXT,
+  monto_total    NUMERIC(12,2) NOT NULL DEFAULT 0,
+  notas          TEXT,
+  deleted_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ   DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mov_cc_cliente ON movimientos_cc (cliente_cc_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mov_cc_fecha   ON movimientos_cc (fecha DESC)    WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mov_cc_tipo    ON movimientos_cc (tipo)          WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS items_movimiento_cc (
+  id               SERIAL PRIMARY KEY,
+  movimiento_cc_id INTEGER       NOT NULL REFERENCES movimientos_cc(id) ON DELETE CASCADE,
+  producto         TEXT,
+  modelo           TEXT,
+  tamano           TEXT,
+  color            TEXT,
+  imei_serial      TEXT,
+  valor            NUMERIC(12,2),
+  verificado       BOOLEAN       NOT NULL DEFAULT false,
+  notas            TEXT,
+  created_at       TIMESTAMPTZ   DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_mov_cc ON items_movimiento_cc (movimiento_cc_id);
+
+-- ------------------------------------------------------------
+-- CATÁLOGO USADOS (migración 009)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS catalogo_usados (
+  id           SERIAL PRIMARY KEY,
+  equipo       VARCHAR(150)  NOT NULL,
+  capacidad    VARCHAR(50),
+  pct_bateria  VARCHAR(50),
+  precio_usd   NUMERIC(10,2) NOT NULL CHECK (precio_usd >= 0),
+  comentarios  TEXT,
+  deleted_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalogo_usados_equipo ON catalogo_usados (equipo) WHERE deleted_at IS NULL;
+
+-- ------------------------------------------------------------
+-- ÍNDICES GIN TRIGRAM — clientes_cc y contactos (migración 011+012)
+-- Requieren pg_trgm (habilitado en migración 007).
+-- Se crean con IF NOT EXISTS para que el script sea idempotente.
+-- ------------------------------------------------------------
+-- (Los índices GIN se crean vía migración CONCURRENTLY;
+--  aquí sólo documentamos su existencia para referencia.)
+-- idx_clientes_cc_nombre_trgm  ON clientes_cc  USING GIN (nombre  gin_trgm_ops)
+-- idx_clientes_cc_apellido_trgm ON clientes_cc USING GIN (apellido gin_trgm_ops)
+-- idx_contactos_nombre_trgm    ON contactos    USING GIN (nombre  gin_trgm_ops)
+-- idx_contactos_apellido_trgm  ON contactos    USING GIN (apellido gin_trgm_ops)
+
+-- ------------------------------------------------------------
+-- ÍNDICES HISTORIAL PERFORMANCE (migración 013)
+-- ------------------------------------------------------------
+-- idx_audit_logs_tabla_accion ON audit_logs (tabla, accion)
+-- idx_audit_logs_created_tabla ON audit_logs (created_at DESC, tabla)

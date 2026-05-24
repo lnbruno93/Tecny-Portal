@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { historial as historialApi } from '../lib/api';
+import { exportCsv } from '../lib/exportCsv';
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -22,7 +23,6 @@ function rel(iso) {
 }
 
 // accion from backend looks like "tabla: ACCION", e.g. "comprobantes: INSERT"
-// We extract the raw action keyword for badge rendering
 function parseAccion(accionStr) {
   if (!accionStr) return { tabla: '', accion: '' };
   const idx = accionStr.lastIndexOf(': ');
@@ -48,70 +48,119 @@ function AccionBadge({ raw }) {
   return <span className={`badge ${meta.cls}`}>{meta.label}</span>;
 }
 
+// Módulos auditados con etiqueta legible
+const TABLAS_OPTS = [
+  { value: 'comprobantes',           label: 'Comprobantes'      },
+  { value: 'pagos',                  label: 'Pagos'             },
+  { value: 'envios',                 label: 'Envíos'            },
+  { value: 'contactos',              label: 'Contactos'         },
+  { value: 'vendedores',             label: 'Vendedores'        },
+  { value: 'clientes_cc',            label: 'Cuentas CC'        },
+  { value: 'movimientos_cc',         label: 'CC Movimientos'    },
+  { value: 'catalogo_usados',        label: 'Usados'            },
+  { value: 'movimientos_deudas',     label: 'Cajas — Deudas'    },
+  { value: 'movimientos_inversiones',label: 'Cajas — Inversiones'},
+  { value: 'users',                  label: 'Usuarios'          },
+  { value: 'config',                 label: 'Configuración'     },
+];
+
 export default function Historial() {
-  const [rows, setRows]               = useState([]);
-  const [pagination, setPagination]   = useState(null);
-  const [page, setPage]               = useState(1);
+  const [rows, setRows]             = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [page, setPage]             = useState(1);
+  const [loading, setLoading]       = useState(true);
+
+  // Filtros
   const [q, setQ]                     = useState('');
+  const [debouncedQ, setDebouncedQ]   = useState('');
   const [accionFilter, setAccionFilter] = useState('');
-  const [loading, setLoading]         = useState(true);
+  const [tablaFilter, setTablaFilter]   = useState('');
+  const [desde, setDesde]             = useState('');
+  const [hasta, setHasta]             = useState('');
 
   // Detail modal
-  const [detail, setDetail]           = useState(null);
+  const [detail, setDetail] = useState(null);
 
-  // Debounce ref for q
-  const debounceRef = useRef(null);
+  // ── Debounce del campo de búsqueda ───────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedQ(q);
+      setPage(1);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [q]);
 
-  function triggerLoad(newPage) {
+  // ── Carga de datos (sin stale closure — todos los filtros son deps) ───────
+  useEffect(() => {
+    let mounted = true;
     setLoading(true);
-    const params = { page: newPage, per_page: 20 };
-    if (q.trim()) params.q = q.trim();
-    if (accionFilter) params.accion = accionFilter;
+
+    const params = { page, limit: 20 };
+    if (debouncedQ.trim()) params.q     = debouncedQ.trim();
+    if (accionFilter)       params.accion = accionFilter;
+    if (tablaFilter)        params.tabla  = tablaFilter;
+    if (desde)              params.desde  = desde;
+    if (hasta)              params.hasta  = hasta;
+
     historialApi.list(params)
       .then(res => {
-        setRows(res.data || res || []);
+        if (!mounted) return;
+        setRows(res.data || []);
         setPagination(res.pagination || null);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }
+      .catch(err => { if (mounted) console.error(err); })
+      .finally(() => { if (mounted) setLoading(false); });
 
-  // Load when page or accionFilter changes
-  useEffect(() => {
-    triggerLoad(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, accionFilter]);
+    return () => { mounted = false; };
+  }, [page, debouncedQ, accionFilter, tablaFilter, desde, hasta]);
 
-  function handleSearch() {
-    setPage(1);
-    triggerLoad(1);
-  }
-
-  function handleQChange(e) {
-    setQ(e.target.value);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setPage(1);
-      triggerLoad(1);
-    }, 500);
-  }
+  // Handlers de filtros con select/date — siempre vuelven a pág 1
+  function handleAccion(e)  { setAccionFilter(e.target.value); setPage(1); }
+  function handleTabla(e)   { setTablaFilter(e.target.value);  setPage(1); }
+  function handleDesde(e)   { setDesde(e.target.value);        setPage(1); }
+  function handleHasta(e)   { setHasta(e.target.value);        setPage(1); }
 
   function handleQKeyDown(e) {
     if (e.key === 'Enter') {
-      clearTimeout(debounceRef.current);
-      handleSearch();
+      // Flush debounce inmediatamente
+      setDebouncedQ(q);
+      setPage(1);
     }
   }
 
-  // ── KPI counts from current page rows ────────────────────────────────────
+  function clearFilters() {
+    setQ(''); setDebouncedQ('');
+    setAccionFilter(''); setTablaFilter('');
+    setDesde(''); setHasta('');
+    setPage(1);
+  }
+
+  const hayFiltros = q || accionFilter || tablaFilter || desde || hasta;
+
+  // ── KPI counts desde la página actual ────────────────────────────────────
   const totalRows = pagination?.total ?? rows.length;
   const countByType = (keyword) =>
-    rows.filter(r => {
-      const { accion } = parseAccion(r.accion);
-      return accion === keyword;
-    }).length;
-
+    rows.filter(r => parseAccion(r.accion).accion === keyword).length;
   const totalPages = pagination ? Math.ceil(pagination.total / 20) : 1;
+
+  // ── Exportar CSV ─────────────────────────────────────────────────────────
+  function handleExport() {
+    const csvRows = rows.map(h => {
+      const { tabla, accion } = parseAccion(h.accion);
+      return { ...h, _tabla: tabla, _accion: accion };
+    });
+    exportCsv(
+      'historial-' + new Date().toLocaleDateString('sv') + '.csv',
+      csvRows,
+      [
+        { key: 'creado_en',      label: 'Fecha'    },
+        { key: 'usuario_nombre', label: 'Usuario'  },
+        { key: '_tabla',         label: 'Módulo'   },
+        { key: '_accion',        label: 'Acción'   },
+        { key: 'detalle',        label: 'Detalle'  },
+      ]
+    );
+  }
 
   return (
     <div>
@@ -122,7 +171,7 @@ export default function Historial() {
           <div className="page-sub">Auditoría completa · audit_logs con antes y después</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-ghost">
+          <button className="btn btn-ghost" onClick={handleExport}>
             <Icons.Download size={15} />
             Exportar
           </button>
@@ -159,29 +208,44 @@ export default function Historial() {
 
       {/* ── Table card ────────────────────────────────────────────────────── */}
       <div className="card card-flush">
-        <div className="card-hd flex-between" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <div className="card-hd" style={{ flexWrap: 'wrap', gap: 10 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>
-            Eventos — {fmt(totalRows)} total
+            Eventos{hayFiltros ? ' · filtrado' : ''} — {fmt(totalRows)} resultado{totalRows !== 1 ? 's' : ''}
           </div>
-          <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <div className="input-group" style={{ width: 220 }}>
+
+          {/* ── Fila de filtros ─────────────────────────────────────────── */}
+          <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Búsqueda libre */}
+            <div className="input-group" style={{ width: 210 }}>
               <span className="addon addon-l"><Icons.Search size={14} /></span>
               <input
                 className="input"
                 placeholder="Buscar usuario, detalle…"
                 value={q}
-                onChange={handleQChange}
+                onChange={e => setQ(e.target.value)}
                 onKeyDown={handleQKeyDown}
               />
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={handleSearch}>
-              Buscar
-            </button>
+
+            {/* Módulo */}
             <select
               className="input"
-              style={{ width: 160 }}
+              style={{ width: 172 }}
+              value={tablaFilter}
+              onChange={handleTabla}
+            >
+              <option value="">Todos los módulos</option>
+              {TABLAS_OPTS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+
+            {/* Acción */}
+            <select
+              className="input"
+              style={{ width: 148 }}
               value={accionFilter}
-              onChange={e => { setAccionFilter(e.target.value); setPage(1); }}
+              onChange={handleAccion}
             >
               <option value="">Todas las acciones</option>
               <option value="INSERT">INSERT</option>
@@ -190,13 +254,38 @@ export default function Historial() {
               <option value="OCR">OCR</option>
               <option value="LOGIN">LOGIN</option>
             </select>
+
+            {/* Rango de fechas */}
+            <input
+              type="date"
+              className="input"
+              style={{ width: 136 }}
+              title="Desde"
+              value={desde}
+              onChange={handleDesde}
+            />
+            <input
+              type="date"
+              className="input"
+              style={{ width: 136 }}
+              title="Hasta"
+              value={hasta}
+              onChange={handleHasta}
+            />
+
+            {/* Limpiar filtros */}
+            {hayFiltros && (
+              <button className="btn btn-ghost btn-sm" onClick={clearFilters} title="Limpiar filtros">
+                <Icons.X size={13} />
+              </button>
+            )}
           </div>
         </div>
 
         {loading ? (
           <div className="empty">Cargando historial…</div>
         ) : rows.length === 0 ? (
-          <div className="empty">Sin eventos en este período.</div>
+          <div className="empty">Sin eventos para los filtros seleccionados.</div>
         ) : (
           <table className="tbl">
             <thead>
@@ -204,7 +293,7 @@ export default function Historial() {
                 <th>Fecha</th>
                 <th>Usuario</th>
                 <th>Acción</th>
-                <th>Entidad</th>
+                <th>Módulo</th>
                 <th>Detalle</th>
                 <th style={{ width: 40 }}></th>
               </tr>

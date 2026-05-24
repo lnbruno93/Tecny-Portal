@@ -1,6 +1,5 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
@@ -10,7 +9,6 @@ const {
   createInversionSchema, queryInversionesSchema,
 } = require('../schemas/cajas');
 
-router.use(requireAuth);
 
 // ─── DEUDAS ─────────────────────────────────────────────────
 

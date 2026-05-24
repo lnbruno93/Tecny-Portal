@@ -214,3 +214,56 @@ describe('DELETE /api/cajas/deudas/:id', () => {
     expect(parseFloat(d.saldo_ars)).toBe(-10000);
   });
 });
+
+// ─── GET inversiones ──────────────────────────────────────────
+describe('GET /api/cajas/inversiones', () => {
+  it('devuelve lista paginada de inversiones', async () => {
+    const res = await request(app)
+      .get('/api/cajas/inversiones')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.pagination).toBeDefined();
+  });
+
+  it('filtra por contacto_id', async () => {
+    const res = await request(app)
+      .get(`/api/cajas/inversiones?contacto_id=${contactoId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    res.body.data.forEach(inv => expect(inv.contacto_id).toBe(contactoId));
+  });
+});
+
+// ─── DELETE inversión ─────────────────────────────────────────
+describe('DELETE /api/cajas/inversiones/:id', () => {
+  it('elimina la inversión → 200', async () => {
+    const res = await request(app)
+      .delete(`/api/cajas/inversiones/${inversionId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('la inversión eliminada ya no aparece en GET', async () => {
+    const res = await request(app)
+      .get(`/api/cajas/inversiones?contacto_id=${contactoId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    const ids = res.body.data.map(m => m.id);
+    expect(ids).not.toContain(inversionId);
+  });
+
+  it('eliminar de nuevo → 404', async () => {
+    const res = await request(app)
+      .delete(`/api/cajas/inversiones/${inversionId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+});

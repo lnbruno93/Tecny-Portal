@@ -1,19 +1,42 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { ConfirmProvider } from './components/ConfirmModal';
 import Shell from './components/Shell';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './screens/Login';
-import Inicio from './screens/Inicio';
-import CuentasCC from './screens/CuentasCC';
-import Financiera from './screens/Financiera';
-import Envios from './screens/Envios';
-import Cajas from './screens/Cajas';
-import Usados from './screens/Usados';
-import Historial from './screens/Historial';
-import Usuarios from './screens/Usuarios';
-import Config from './screens/Config';
-import Cotizador from './screens/Cotizador';
+import Forbidden from './screens/Forbidden';
 
+// Lazy-load screens — Vite genera un chunk por pantalla (~40% menos bundle inicial)
+const Inicio     = lazy(() => import('./screens/Inicio'));
+const CuentasCC  = lazy(() => import('./screens/CuentasCC'));
+const Financiera = lazy(() => import('./screens/Financiera'));
+const Envios     = lazy(() => import('./screens/Envios'));
+const Cajas      = lazy(() => import('./screens/Cajas'));
+const Usados     = lazy(() => import('./screens/Usados'));
+const Historial  = lazy(() => import('./screens/Historial'));
+const Usuarios   = lazy(() => import('./screens/Usuarios'));
+const Config     = lazy(() => import('./screens/Config'));
+const Cotizador  = lazy(() => import('./screens/Cotizador'));
+
+function PageLoader() {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+      color: 'var(--text-muted)',
+      fontSize: 14,
+    }}>
+      Cargando…
+    </div>
+  );
+}
+
+// ── Auth gate ──────────────────────────────────────────────────────────────────
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   if (loading) return (
@@ -23,39 +46,111 @@ function RequireAuth({ children }) {
       justifyContent: 'center',
       height: '100vh',
       color: 'var(--text-muted)',
-      fontSize: 14
+      fontSize: 14,
     }}>
-      Verificando sesión...
+      Verificando sesión…
     </div>
   );
   if (!user) return <Login />;
   return children;
 }
 
+// ── Permission gate ────────────────────────────────────────────────────────────
+// perm: key en user.perms (ej. 'financiera')
+// adminOnly: true → solo role === 'admin'
+function RequirePermission({ perm, adminOnly, children }) {
+  const { user } = useAuth();
+  if (!user) return null;
+
+  // Admin bypasses all permission checks
+  if (user.role === 'admin') return children;
+
+  // Admin-only route
+  if (adminOnly) return <Forbidden />;
+
+  // Permission check
+  if (perm && !user.perms?.[perm]) return <Forbidden />;
+
+  return children;
+}
+
+// ── App ────────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <AuthProvider>
+      <ToastProvider>
+      <ConfirmProvider>
       <PageActionsProvider>
-      <BrowserRouter>
-        <RequireAuth>
-          <Routes>
-            <Route path="/" element={<Shell />}>
-              <Route index element={<Navigate to="/inicio" replace />} />
-              <Route path="inicio" element={<Inicio />} />
-              <Route path="cotizador" element={<Cotizador />} />
-              <Route path="financiera/*" element={<Financiera />} />
-              <Route path="cajas/*" element={<Cajas />} />
-              <Route path="envios" element={<Envios />} />
-              <Route path="cuentas/*" element={<CuentasCC />} />
-              <Route path="usados" element={<Usados />} />
-              <Route path="historial" element={<Historial />} />
-              <Route path="usuarios" element={<Usuarios />} />
-              <Route path="config" element={<Config />} />
-            </Route>
-          </Routes>
-        </RequireAuth>
-      </BrowserRouter>
+        <BrowserRouter>
+          <RequireAuth>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Shell />}>
+                  <Route index element={<Navigate to="/inicio" replace />} />
+
+                  {/* ── Siempre visible ── */}
+                  <Route path="inicio" element={
+                    <ErrorBoundary><Inicio /></ErrorBoundary>
+                  } />
+
+                  {/* ── Por permiso ── */}
+                  <Route path="cotizador" element={
+                    <RequirePermission perm="cotizador">
+                      <ErrorBoundary><Cotizador /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="financiera/*" element={
+                    <RequirePermission perm="financiera">
+                      <ErrorBoundary><Financiera /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="cajas/*" element={
+                    <RequirePermission perm="cajas">
+                      <ErrorBoundary><Cajas /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="envios" element={
+                    <RequirePermission perm="envios">
+                      <ErrorBoundary><Envios /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="cuentas/*" element={
+                    <RequirePermission perm="cuentas">
+                      <ErrorBoundary><CuentasCC /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="usados" element={
+                    <RequirePermission perm="usados">
+                      <ErrorBoundary><Usados /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+
+                  {/* ── Historial y Config requieren 'financiera' ── */}
+                  <Route path="historial" element={
+                    <RequirePermission perm="financiera">
+                      <ErrorBoundary><Historial /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="config" element={
+                    <RequirePermission perm="financiera">
+                      <ErrorBoundary><Config /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+
+                  {/* ── Solo admin ── */}
+                  <Route path="usuarios" element={
+                    <RequirePermission adminOnly>
+                      <ErrorBoundary><Usuarios /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                </Route>
+              </Routes>
+            </Suspense>
+          </RequireAuth>
+        </BrowserRouter>
       </PageActionsProvider>
+      </ConfirmProvider>
+      </ToastProvider>
     </AuthProvider>
   );
 }

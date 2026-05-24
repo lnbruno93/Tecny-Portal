@@ -88,7 +88,7 @@ export default function Inicio() {
   const cantClientes    = data ? Number(data.rgData.cant_clientes) : 0;
 
   const activosCount = data
-    ? (data.envData.data || []).filter(e => e.estado === 'pendiente' || e.estado === 'en_camino').length
+    ? (data.envData.data || []).filter(e => e.estado === 'Pendiente' || e.estado === 'En camino').length
     : 0;
 
   const tools = [

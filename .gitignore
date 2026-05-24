@@ -1,0 +1,29 @@
+# ─── Credentials & secrets — NEVER commit these ──────────────────────────────
+**/.env
+**/.env.*
+!**/.env.*.example
+
+# ─── Dependencies ─────────────────────────────────────────────────────────────
+**/node_modules/
+
+# ─── Build artifacts ──────────────────────────────────────────────────────────
+frontend/dist/
+frontend/.vite/
+
+# ─── OS & editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.local
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+pino.log
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
+Index.html
+index_backup.html

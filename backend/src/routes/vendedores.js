@@ -1,14 +1,12 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
-const { createVendedorSchema } = require('../schemas/vendedores');
+const { createVendedorSchema, queryVendedoresSchema } = require('../schemas/vendedores');
 const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
 
-router.use(requireAuth);
 
-router.get('/', async (req, res, next) => {
+router.get('/', validate(queryVendedoresSchema, 'query'), async (req, res, next) => {
   try {
     const { buscar } = req.query;
     const params = [];

@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { envios } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../components/ConfirmModal';
 
 // ─── Formatter ────────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -65,6 +67,8 @@ function Seg({ value, options, onChange }) {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function Envios() {
+  const { toast } = useToast();
+  const confirm   = useConfirm();
   const [enviosList, setEnviosList] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [estadoFilter, setEstadoFilter] = useState('todos');
@@ -72,7 +76,8 @@ export default function Envios() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-  const [fechaLabel, setFechaLabel] = useState('Hoy');
+  // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
+  const [dateFilter, setDateFilter] = useState(null);
 
   // ── Create modal ──
   const [showCreate, setShowCreate] = useState(false);
@@ -156,25 +161,56 @@ export default function Envios() {
       .finally(() => setLoading(false));
   }, []);
 
+  // ── Date helpers ──────────────────────────────────────────────────────────
+  function todayStr() { return new Date().toLocaleDateString('sv'); } // 'sv' = YYYY-MM-DD
+  function shiftDate(isoStr, days) {
+    const d = new Date(isoStr + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toLocaleDateString('sv');
+  }
+  function dateLabel(isoStr) {
+    if (!isoStr) return 'Todos los días';
+    const today = todayStr();
+    const yesterday = shiftDate(today, -1);
+    const tomorrow  = shiftDate(today, +1);
+    if (isoStr === today)     return 'Hoy';
+    if (isoStr === yesterday) return 'Ayer';
+    if (isoStr === tomorrow)  return 'Mañana';
+    const d = new Date(isoStr + 'T00:00:00');
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  }
+
   // ── Client-side filter ──
   const filtered = useMemo(() => {
     return enviosList.filter(e => {
       const matchEstado = estadoFilter === 'todos' || e.estado === estadoFilter;
+      const matchDate   = !dateFilter || (e.fecha && e.fecha.startsWith(dateFilter));
       const matchSearch =
         !search ||
         (e.cliente + ' ' + (e.direccion || '') + ' ' + (e.barrio || '') + ' ' +
           (e.items || []).map(i => i.descripcion || '').join(' '))
           .toLowerCase()
           .includes(search.toLowerCase());
-      return matchEstado && matchSearch;
+      return matchEstado && matchDate && matchSearch;
     });
-  }, [enviosList, estadoFilter, search]);
+  }, [enviosList, estadoFilter, dateFilter, search]);
 
   const selected = enviosList.find(e => e.id === selectedId) || null;
 
   // ── KPIs ──
+  // "esta semana" = lunes al domingo de la semana actual
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    const day = d.getDay(); // 0 = domingo
+    const diff = day === 0 ? -6 : 1 - day; // ajustar a lunes
+    d.setDate(d.getDate() + diff);
+    return d.toLocaleDateString('sv');
+  }, []);
+
   const kpiTotal = enviosList.length;
-  const kpiEntregados = enviosList.filter(e => e.estado === 'Entregado').length;
+  const kpiEntregados = enviosList.filter(e =>
+    e.estado === 'Entregado' && e.fecha && e.fecha >= weekStart
+  ).length;
   const kpiEnCamino = enviosList.filter(e => e.estado === 'En camino').length;
   const kpiPendientes = enviosList.filter(e => e.estado === 'Pendiente').length;
   const kpiCobros = enviosList.reduce(
@@ -191,7 +227,7 @@ export default function Envios() {
       await envios.update(id, { estado: newEstado });
       setEnviosList(prev => prev.map(e => e.id === id ? { ...e, estado: newEstado } : e));
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setUpdatingId(null);
     }
@@ -199,18 +235,17 @@ export default function Envios() {
 
   // ── Delete envío ──
   async function handleDelete(id) {
-    if (!window.confirm('¿Eliminar este envío? Esta acción no se puede deshacer.')) return;
+    const ok = await confirm({ title: 'Eliminar envío', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
     setDeletingId(id);
     try {
       await envios.delete(id);
-      setEnviosList(prev => prev.filter(e => e.id !== id));
-      setSelectedId(prev => {
-        if (prev !== id) return prev;
-        const remaining = enviosList.filter(e => e.id !== id);
-        return remaining.length > 0 ? remaining[0].id : null;
-      });
+      const remaining = enviosList.filter(e => e.id !== id);
+      setEnviosList(remaining);
+      setSelectedId(prev => prev === id ? (remaining[0]?.id ?? null) : prev);
+      toast.success('Envío eliminado.');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setDeletingId(null);
     }
@@ -300,16 +335,35 @@ export default function Envios() {
       {/* ── Date nav + search + filter ── */}
       <div className="flex-between" style={{ marginBottom: 14 }}>
         <div className="flex-row" style={{ gap: 8 }}>
-          <button className="icon-btn">
+          <button
+            className="icon-btn"
+            title="Día anterior"
+            onClick={() => setDateFilter(d => d ? shiftDate(d, -1) : shiftDate(todayStr(), -1))}
+          >
             <Icons.ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} />
           </button>
-          <div style={{ fontWeight: 600, fontSize: 14, minWidth: 80, textAlign: 'center' }}>
-            {fechaLabel}
+          <div style={{ fontWeight: 600, fontSize: 14, minWidth: 96, textAlign: 'center' }}>
+            {dateLabel(dateFilter)}
           </div>
-          <button className="icon-btn">
+          <button
+            className="icon-btn"
+            title="Día siguiente"
+            onClick={() => setDateFilter(d => d ? shiftDate(d, +1) : shiftDate(todayStr(), +1))}
+          >
             <Icons.ChevronRight size={14} />
           </button>
-          <button className="btn btn-sm" onClick={() => setFechaLabel('Hoy')}>Hoy</button>
+          <button
+            className="btn btn-sm"
+            style={dateFilter === todayStr() ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : {}}
+            onClick={() => setDateFilter(todayStr())}
+          >
+            Hoy
+          </button>
+          {dateFilter && (
+            <button className="btn btn-sm btn-ghost" onClick={() => setDateFilter(null)}>
+              Todos
+            </button>
+          )}
         </div>
         <div className="flex-row" style={{ gap: 8 }}>
           <div className="input-group" style={{ width: 280 }}>

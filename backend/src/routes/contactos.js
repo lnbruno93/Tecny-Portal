@@ -1,25 +1,30 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
-const { createContactoSchema, updateContactoSchema } = require('../schemas/contactos');
+const { createContactoSchema, updateContactoSchema, queryContactosSchema } = require('../schemas/contactos');
 
-router.use(requireAuth);
 
-router.get('/', async (req, res, next) => {
+router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) => {
   try {
-    const { buscar } = req.query;
+    const { buscar, tipo, limit = 500, offset = 0 } = req.query;
+    const conditions = ['deleted_at IS NULL'];
     const params = [];
-    let filter = '';
+
     if (buscar) {
       params.push(`%${buscar}%`);
-      filter = ` AND (nombre ILIKE $1 OR apellido ILIKE $1)`;
+      conditions.push(`(nombre ILIKE $${params.length} OR apellido ILIKE $${params.length})`);
     }
+    if (tipo) {
+      params.push(tipo);
+      conditions.push(`tipo = $${params.length}`);
+    }
+
+    const where = conditions.join(' AND ');
     const { rows } = await db.query(
-      `SELECT * FROM contactos WHERE deleted_at IS NULL${filter} ORDER BY nombre, apellido LIMIT 500`,
-      params
+      `SELECT * FROM contactos WHERE ${where} ORDER BY nombre, apellido LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, Number(limit), Number(offset)]
     );
     res.json(rows);
   } catch (err) {

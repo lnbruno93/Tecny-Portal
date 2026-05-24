@@ -1,13 +1,11 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
 const { createComprobanteSchema, queryComprobantesSchema } = require('../schemas/comprobantes');
 
-router.use(requireAuth);
 
 // ─── Totales con los mismos filtros que la lista ─────────────────────────────
 router.get('/totales', validate(queryComprobantesSchema, 'query'), async (req, res, next) => {

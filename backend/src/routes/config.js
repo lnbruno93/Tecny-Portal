@@ -1,12 +1,10 @@
 const router = require('express').Router();
 const db = require('../config/database');
-const requireAuth = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { updateConfigSchema } = require('../schemas/config');
 
-router.use(requireAuth);
 
 router.get('/', async (_req, res, next) => {
   try {

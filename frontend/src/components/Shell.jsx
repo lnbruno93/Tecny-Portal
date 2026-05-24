@@ -3,26 +3,89 @@
 
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
 
-// Navigation structure matching the 7+3 design
+// ── UpdateBanner ─────────────────────────────────────────────────────────────
+// Shown when the service worker detects a new version waiting to activate.
+// registerType: 'prompt' means the SW waits for the user to confirm before
+// taking over — this prevents the app from refreshing mid-use.
+function UpdateBanner() {
+  const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW();
+
+  if (!needRefresh) return null;
+
+  return (
+    <div style={{
+      position: 'sticky',
+      top: 0,
+      zIndex: 50,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      padding: '10px 16px',
+      background: 'var(--accent)',
+      color: 'var(--accent-ink)',
+      fontSize: 13,
+      fontWeight: 500,
+    }}>
+      <span>Nueva versión del portal disponible.</span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={() => updateServiceWorker(true)}
+          style={{
+            background: 'var(--accent-ink)',
+            color: 'var(--accent)',
+            border: 'none',
+            borderRadius: 6,
+            padding: '4px 12px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontSize: 12,
+          }}
+        >
+          Actualizar ahora
+        </button>
+        <button
+          onClick={() => setNeedRefresh(false)}
+          style={{
+            background: 'transparent',
+            color: 'var(--accent-ink)',
+            border: '1px solid var(--accent-ink)',
+            borderRadius: 6,
+            padding: '4px 10px',
+            cursor: 'pointer',
+            fontSize: 12,
+            opacity: 0.75,
+          }}
+        >
+          Después
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Navigation structure — perm: key en user.perms, adminOnly: solo role=admin
+// null perm = siempre visible
 const NAV_MAIN = [
-  { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid'       },
-  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator' },
-  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend'      },
-  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet'     },
-  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck'      },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Cuentas CC', icon: 'Receipt'    },
-  { id: 'usados',     path: '/usados',     label: 'Usados',     icon: 'Phone'      },
+  { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null          },
+  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador'   },
+  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera'  },
+  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas'       },
+  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios'      },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Cuentas CC', icon: 'Receipt',    perm: 'cuentas'     },
+  { id: 'usados',     path: '/usados',     label: 'Usados',     icon: 'Phone',      perm: 'usados'      },
 ];
 
 const NAV_SYS = [
-  { id: 'historial', path: '/historial', label: 'Historial', icon: 'Refresh'   },
-  { id: 'usuarios',  path: '/usuarios',  label: 'Usuarios',  icon: 'Users'     },
-  { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings'  },
+  { id: 'historial', path: '/historial', label: 'Historial', icon: 'Refresh',  perm: 'financiera'  },
+  { id: 'usuarios',  path: '/usuarios',  label: 'Usuarios',  icon: 'Users',    adminOnly: true      },
+  { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings', perm: 'financiera'  },
 ];
 
 // Map path segment → display label for breadcrumb
@@ -49,7 +112,22 @@ function getInitials(name) {
     .toUpperCase();
 }
 
+// Filtra items de nav según los permisos del usuario actual
+function useVisibleNav(items) {
+  const { user } = useAuth();
+  if (!user) return [];
+  if (user.role === 'admin') return items; // admin ve todo
+  return items.filter(n => {
+    if (n.adminOnly) return false;
+    if (!n.perm) return true; // siempre visible (ej. Inicio)
+    return user.perms?.[n.perm] === true;
+  });
+}
+
 function Sidebar({ badges = {}, open, onClose }) {
+  const visibleMain = useVisibleNav(NAV_MAIN);
+  const visibleSys  = useVisibleNav(NAV_SYS);
+
   return (
     <>
       {open && (
@@ -65,7 +143,7 @@ function Sidebar({ badges = {}, open, onClose }) {
         </div>
 
         <div className="nav-section">Herramientas</div>
-        {NAV_MAIN.map((n) => {
+        {visibleMain.map((n) => {
           const I = Icons[n.icon];
           return (
             <NavLink
@@ -83,21 +161,25 @@ function Sidebar({ badges = {}, open, onClose }) {
 
         <div className="sidebar-spacer" />
 
-        <div className="nav-section">Sistema</div>
-        {NAV_SYS.map((n) => {
-          const I = Icons[n.icon];
-          return (
-            <NavLink
-              key={n.id}
-              to={n.path}
-              className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
-              onClick={onClose}
-            >
-              <span className="ico">{I && <I size={17} />}</span>
-              <span>{n.label}</span>
-            </NavLink>
-          );
-        })}
+        {visibleSys.length > 0 && (
+          <>
+            <div className="nav-section">Sistema</div>
+            {visibleSys.map((n) => {
+              const I = Icons[n.icon];
+              return (
+                <NavLink
+                  key={n.id}
+                  to={n.path}
+                  className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
+                  onClick={onClose}
+                >
+                  <span className="ico">{I && <I size={17} />}</span>
+                  <span>{n.label}</span>
+                </NavLink>
+              );
+            })}
+          </>
+        )}
 
         <UserPill />
       </aside>
@@ -162,7 +244,8 @@ function Topbar({ onMenuClick, onSearchClick }) {
       <button
         className="icon-btn"
         title={primaryAction?.label || 'Nuevo'}
-        onClick={() => primaryAction?.onClick()}
+        onClick={() => primaryAction?.onClick?.()}
+        disabled={!primaryAction}
         style={primaryAction ? { color: 'var(--accent)' } : { opacity: 0.35, cursor: 'default' }}
       >
         <Icons.Plus size={17} />
@@ -195,6 +278,7 @@ export default function Shell() {
           onMenuClick={() => setSidebarOpen(s => !s)}
           onSearchClick={() => setPaletteOpen(true)}
         />
+        <UpdateBanner />
         <div className="content">
           <Outlet />
         </div>

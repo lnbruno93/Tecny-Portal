@@ -168,8 +168,8 @@ app.use('/api/cuentas',       requireAuth, requirePermission('cuentas'), cuentas
 // Cotizador Usados — requiere permiso "usados"
 app.use('/api/usados',        requireAuth, requirePermission('usados'), usadosRoutes);
 
-// Usuarios — solo admin (ya controlado dentro de la ruta con adminOnly)
-app.use('/api/usuarios',      usuariosRoutes);
+// Usuarios — solo admin (requireAuth aquí + adminOnly dentro del router)
+app.use('/api/usuarios',      requireAuth, usuariosRoutes);
 
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');

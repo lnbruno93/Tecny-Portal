@@ -7,6 +7,9 @@ import {
   config as configApi,
   ocr as ocrApi,
 } from '../lib/api';
+import { exportCsv } from '../lib/exportCsv';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../components/ConfirmModal';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -23,7 +26,8 @@ function fmtARS(n) {
 
 function fmtFecha(isoDate) {
   if (!isoDate) return '—';
-  const d = new Date(isoDate + 'T00:00:00');
+  const d = new Date(isoDate.includes('T') ? isoDate : isoDate + 'T00:00:00');
+  if (isNaN(d)) return '—';
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
@@ -56,6 +60,8 @@ function Status({ tone = 'default', children }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function Financiera() {
+  const { toast } = useToast();
+  const confirm   = useConfirm();
   const [tab, setTab] = useState('dashboard');
   const [pct, setPct] = useState(3);
   const [vendedores, setVendedores] = useState([]);
@@ -95,6 +101,11 @@ export default function Financiera() {
   const [newVend, setNewVend] = useState('');
   const [savingVend, setSavingVend] = useState(false);
 
+  // Inline error states (replaces silent console.error)
+  const [dashError, setDashError] = useState('');
+  const [compsError, setCompsError] = useState('');
+  const [pagosError, setPagosError] = useState('');
+
   // ── Live calculations ──────────────────────────────────────────────────────
   const monto = parseFloat(cMonto) || 0;
   const finCalc = monto * (pct / 100);
@@ -110,51 +121,65 @@ export default function Financiera() {
 
   // ── Load config + vendedores on mount ─────────────────────────────────────
   useEffect(() => {
+    let mounted = true;
     Promise.all([configApi.get(), vendsApi.list()])
       .then(([cfg, vends]) => {
+        if (!mounted) return;
         setPct(parseFloat(cfg.pct_financiera) || 3);
         setVendedores(vends);
       })
       .catch(console.error);
+    return () => { mounted = false; };
   }, []);
 
   // ── Dashboard data ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (tab !== 'dashboard') return;
+    let mounted = true;
+    setDashError('');
     const todayStr = new Date().toLocaleDateString('sv');
     Promise.all([
       compApi.totales({ desde: todayStr, hasta: todayStr }),
       compApi.list({ limit: 6 }),
     ])
       .then(([totals, list]) => {
+        if (!mounted) return;
         setDashData(totals);
         setRecentComps(list.data || []);
       })
-      .catch(console.error);
+      .catch(err => { if (mounted) setDashError(err.message); });
+    return () => { mounted = false; };
   }, [tab]);
 
   // ── Comprobantes tab ───────────────────────────────────────────────────────
   useEffect(() => {
     if (tab !== 'comprobantes') return;
+    let mounted = true;
     setLoadingComps(true);
+    setCompsError('');
     const params = {};
     if (compVendFilter !== 'todos') params.vendedor = compVendFilter;
     compApi
       .list(params)
-      .then(res => setComps(res.data || []))
-      .catch(console.error)
-      .finally(() => setLoadingComps(false));
+      .then(res => { if (mounted) setComps(res.data || []); })
+      .catch(err => { if (mounted) setCompsError(err.message); })
+      .finally(() => { if (mounted) setLoadingComps(false); });
+    return () => { mounted = false; };
   }, [tab, compVendFilter]);
 
   // ── Pagos tab ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (tab !== 'pagos') return;
+    let mounted = true;
+    setPagosError('');
     Promise.all([pagosApi.list(), pagosApi.totales()])
       .then(([list, tots]) => {
+        if (!mounted) return;
         setPagosList(list.data || []);
         setPagosTotales(tots);
       })
-      .catch(console.error);
+      .catch(err => { if (mounted) setPagosError(err.message); });
+    return () => { mounted = false; };
   }, [tab]);
 
   // ── OCR file handling ──────────────────────────────────────────────────────
@@ -221,14 +246,16 @@ export default function Financiera() {
     }
   }
 
-  // ── Delete comprobante ─────────────────────────────────────────────────────
+  // ── Delete comprobante ────────────────────────────────────────────────���────
   async function handleDeleteComp(id) {
-    if (!confirm('¿Eliminar este comprobante?')) return;
+    const ok = await confirm({ title: 'Eliminar comprobante', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
     try {
       await compApi.delete(id);
       setComps(prev => prev.filter(c => c.id !== id));
+      toast.success('Comprobante eliminado.');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   }
 
@@ -247,8 +274,9 @@ export default function Financiera() {
       setPRef('');
       const tots = await pagosApi.totales();
       setPagosTotales(tots);
+      toast.success('Pago registrado.');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setSavingPago(false);
     }
@@ -262,20 +290,23 @@ export default function Financiera() {
       const v = await vendsApi.create({ nombre: newVend.trim() });
       setVendedores(prev => [...prev, v]);
       setNewVend('');
+      toast.success(`Vendedor "${v.nombre}" creado.`);
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setSavingVend(false);
     }
   }
 
   async function handleDeleteVend(id) {
-    if (!confirm('¿Eliminar vendedor?')) return;
+    const ok = await confirm({ title: 'Eliminar vendedor', message: 'Se eliminarán también sus estadísticas asociadas.', confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
     try {
       await vendsApi.delete(id);
       setVendedores(prev => prev.filter(v => v.id !== id));
+      toast.success('Vendedor eliminado.');
     } catch (e) {
-      alert(e.message);
+      toast.error(e.message);
     }
   }
 
@@ -324,6 +355,11 @@ export default function Financiera() {
       ════════════════════════════════════════════════════════ */}
       {tab === 'dashboard' && (
         <>
+          {dashError && (
+            <div className="card" style={{ padding: '12px 16px', color: 'var(--neg)', fontSize: 13, marginBottom: 16 }}>
+              Error cargando dashboard: {dashError}
+            </div>
+          )}
           {/* KPI cards */}
           <div className="row" style={{ marginBottom: 16 }}>
             <div className="card card-tight" style={{ flex: 1 }}>
@@ -372,7 +408,20 @@ export default function Financiera() {
             <div className="card-hd">
               <h3>Comprobantes recientes</h3>
               <div className="flex-row" style={{ gap: 8 }}>
-                <button className="btn btn-sm">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => exportCsv(
+                    'comprobantes-recientes-' + new Date().toLocaleDateString('sv') + '.csv',
+                    recentComps,
+                    [
+                      { key: 'fecha',      label: 'Fecha'      },
+                      { key: 'cliente',    label: 'Cliente'    },
+                      { key: 'tipo_pago',  label: 'Tipo pago'  },
+                      { key: 'monto',      label: 'Monto'      },
+                      { key: 'vendedor',   label: 'Vendedor'   },
+                    ]
+                  )}
+                >
                   <Icons.Download size={13} /> Exportar CSV
                 </button>
               </div>
@@ -705,7 +754,11 @@ export default function Financiera() {
               </select>
             </div>
           </div>
-          {loadingComps ? (
+          {compsError ? (
+            <div style={{ padding: '12px 16px', color: 'var(--neg)', fontSize: 13 }}>
+              Error cargando comprobantes: {compsError}
+            </div>
+          ) : loadingComps ? (
             <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
               Cargando…
             </div>
@@ -768,6 +821,11 @@ export default function Financiera() {
       ════════════════════════════════════════════════════════ */}
       {tab === 'pagos' && (
         <div className="split-2">
+          {pagosError && (
+            <div style={{ gridColumn: '1 / -1', padding: '12px 16px', color: 'var(--neg)', fontSize: 13, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              Error cargando pagos: {pagosError}
+            </div>
+          )}
           {/* Left column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Register pago */}
