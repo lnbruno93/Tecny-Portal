@@ -432,4 +432,13 @@ describe('GET /api/ventas/dashboard', () => {
     expect(res.body.diferencias.faltantes).toBe(50);
     expect(res.body.diferencias.neto).toBe(-30);
   });
+
+  it('indicadores: ticket promedio y top productos', async () => {
+    // Reusa las 2 ventas de 2026-01-15 (totales 500 y 300) → ticket promedio 400
+    const res = await request(app).get('/api/ventas/dashboard?desde=2026-01-15&hasta=2026-01-15').set(auth());
+    expect(res.body.ticket_promedio_usd).toBe(400);
+    expect(Array.isArray(res.body.top_productos)).toBe(true);
+    expect(res.body.top_productos.map(p => p.descripcion).sort()).toEqual(['A', 'B']);
+    expect(Array.isArray(res.body.top_vendedores)).toBe(true);
+  });
 });

@@ -299,7 +299,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     // Filtro base de ventas del período (excluye canceladas y borradas)
     const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2`;
 
-    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas] = await Promise.all([
+    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend] = await Promise.all([
       // Totales de ventas
       db.query(`SELECT COUNT(*) AS count, COALESCE(SUM(total_usd),0) AS ingresos_usd, COALESCE(SUM(ganancia_usd),0) AS ganancia_bruta_usd FROM ventas v WHERE ${BASE}`, p),
       // Por método de pago (monto en moneda original + equivalente USD)
@@ -342,6 +342,16 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       db.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p),
       // Ventas por etiqueta
       db.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p),
+      // Top productos (por unidades)
+      db.query(`SELECT vi.descripcion, SUM(vi.cantidad)::int AS unidades
+                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id WHERE ${BASE}
+                GROUP BY vi.descripcion ORDER BY unidades DESC, vi.descripcion LIMIT 5`, p),
+      // Top vendedores (por total facturado en USD)
+      db.query(`SELECT ve.nombre AS vendedor,
+                       COALESCE(SUM(CASE WHEN vi.moneda='ARS' AND v.tc_venta>0 THEN vi.precio_vendido*vi.cantidad/v.tc_venta ELSE vi.precio_vendido*vi.cantidad END),0) AS total_usd,
+                       COUNT(*)::int AS items
+                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN vendedores ve ON ve.id = vi.vendedor_id
+                WHERE ${BASE} GROUP BY ve.nombre ORDER BY total_usd DESC LIMIT 5`, p),
     ]);
 
     // Ingresos por moneda (a partir del desglose de métodos)
@@ -380,6 +390,9 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       diferencias: { sobrepagos: round2(Number(dif.rows[0].sobrepagos)), faltantes: round2(Number(dif.rows[0].faltantes)), neto: round2(Number(dif.rows[0].sobrepagos) - Number(dif.rows[0].faltantes)) },
       por_horario: horario.rows.map(r => ({ hora: r.hora, n: parseInt(r.n) })),
       por_etiqueta: etiquetas.rows.map(r => ({ etiqueta: r.etiqueta, n: parseInt(r.n) })),
+      ticket_promedio_usd: parseInt(t.count) > 0 ? round2(ingresosVentas / parseInt(t.count)) : 0,
+      top_productos: topProd.rows.map(r => ({ descripcion: r.descripcion, unidades: r.unidades })),
+      top_vendedores: topVend.rows.map(r => ({ vendedor: r.vendedor, total_usd: round2(Number(r.total_usd)), items: r.items })),
     });
   } catch (err) { next(err); }
 });

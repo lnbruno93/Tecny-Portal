@@ -114,6 +114,25 @@ function Dashboard({ d }) {
           </div>
         </div>
       </div>
+      <div className="row" style={{ marginTop: 12 }}>
+        <div className="card card-tight" style={{ flex: 1 }}>
+          <div className="kpi-label">Ticket promedio</div>
+          <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.ticket_promedio_usd)}</div>
+          <div className="muted tiny" style={{ marginTop: 4 }}>{d.ventas_count} venta{d.ventas_count === 1 ? '' : 's'}</div>
+        </div>
+        <div className="card card-tight" style={{ flex: 1 }}>
+          <div className="kpi-label" style={{ marginBottom: 8 }}>Top productos</div>
+          {(d.top_productos || []).length === 0 ? <div className="muted tiny">—</div> : d.top_productos.map((p, k) => (
+            <div key={k} className="flex-between" style={{ fontSize: 12, padding: '2px 0' }}><span>{p.descripcion}</span><span className="mono muted">{p.unidades}u</span></div>
+          ))}
+        </div>
+        <div className="card card-tight" style={{ flex: 1 }}>
+          <div className="kpi-label" style={{ marginBottom: 8 }}>Top vendedores</div>
+          {(d.top_vendedores || []).length === 0 ? <div className="muted tiny">—</div> : d.top_vendedores.map((v, k) => (
+            <div key={k} className="flex-between" style={{ fontSize: 12, padding: '2px 0' }}><span>{v.vendedor}</span><span className="mono pos">u$s{fmt(v.total_usd)}</span></div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -357,6 +376,18 @@ export default function Ventas() {
     const ok = await confirm({ title: 'Eliminar venta rápida', message: '¿Seguro?', confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
     try { await ventas.deleteRapida(id); await loadRapidas(); } catch (e) { toast.error(e.message); }
+  }
+
+  async function crearContactoRapido(nombre) {
+    const n = nombre.trim();
+    if (!n) return;
+    try {
+      const c = await contactosApi.create({ nombre: n, tipo: 'cliente' });
+      setContactos(prev => [...prev, c]);
+      setVForm(f => ({ ...f, cliente_nombre: c.nombre, cliente_id: c.id }));
+      setClienteDrop(false);
+      toast.success('Contacto creado y vinculado.');
+    } catch (e) { toast.error(e.message); }
   }
 
   // ── Venta rápida ──
@@ -648,17 +679,25 @@ export default function Ventas() {
                         onFocus={() => setClienteDrop(true)}
                         onBlur={() => setTimeout(() => setClienteDrop(false), 150)} />
                       {clienteDrop && (() => {
-                        const q = vForm.cliente_nombre.trim().toLowerCase();
-                        const matches = contactos.filter(c => (`${c.nombre} ${c.apellido || ''}`).toLowerCase().includes(q)).slice(0, 8);
-                        if (!matches.length) return null;
+                        const q = vForm.cliente_nombre.trim();
+                        const ql = q.toLowerCase();
+                        const matches = contactos.filter(c => (`${c.nombre} ${c.apellido || ''}`).toLowerCase().includes(ql)).slice(0, 8);
+                        const exact = contactos.some(c => `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`.trim().toLowerCase() === ql);
+                        const showCreate = q.length >= 2 && !exact;
+                        if (!matches.length && !showCreate) return null;
                         return (
-                          <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 200, overflowY: 'auto', marginTop: 2, padding: 4 }}>
+                          <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
                             {matches.map(c => (
                               <div key={c.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }}
                                 onMouseDown={() => { setVForm(f => ({ ...f, cliente_nombre: `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`, cliente_id: c.id })); setClienteDrop(false); }}>
                                 {c.nombre}{c.apellido ? ' ' + c.apellido : ''} {c.tipo && <span className="muted tiny">· {c.tipo}</span>}
                               </div>
                             ))}
+                            {showCreate && (
+                              <div className="nav-item" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }} onMouseDown={() => crearContactoRapido(q)}>
+                                <Icons.Plus size={12} /> Crear contacto «{q}»
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
