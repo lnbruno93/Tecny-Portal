@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi } from '../lib/api';
+import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -30,7 +30,7 @@ const ESTADO_LABEL = { acreditado: 'Acreditado', pendiente: 'Pendiente', cancela
 const GARANTIA_FALLBACK = 'Este comprobante es tu nota de compra y avala la operación comercial entre partes. No es una factura ni comprobante fiscal.\n\nNos responsabilizamos por 12 meses, desde la fecha de compra, ante cualquier error, falla o mal funcionamiento propio de software y hardware.\n\niPro | Tech Reseller';
 
 const EMPTY_VENTA = {
-  fecha: todayStr(), hora: '', cliente_nombre: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
+  fecha: todayStr(), hora: '', cliente_nombre: '', cliente_id: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
   vendedor_id: '', comision: '', tc_venta: '', estado: 'pendiente', notas: '',
   canjeOn: false, canjeDesc: '', canjeValor: '', canjeStock: false,
 };
@@ -141,6 +141,8 @@ export default function Ventas() {
   const [metodos, setMetodos] = useState([]);
   const [garantias, setGarantias] = useState([]);
   const [clientesCC, setClientesCC] = useState([]);
+  const [contactos, setContactos] = useState([]);
+  const [clienteDrop, setClienteDrop] = useState(false);
 
   // Modales
   const [showVenta, setShowVenta] = useState(false);
@@ -174,10 +176,10 @@ export default function Ventas() {
 
   const loadCatalogos = useCallback(async () => {
     const safe = (p) => p.then(r => r).catch(() => []);
-    const [v, e, m, g, cc] = await Promise.all([
-      safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()),
+    const [v, e, m, g, cc, ct] = await Promise.all([
+      safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
     ]);
-    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(cc);
+    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(cc); setContactos(ct);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
@@ -212,7 +214,7 @@ export default function Ventas() {
     setVForm({
       ...EMPTY_VENTA,
       fecha: (v.fecha || '').substring(0, 10), hora: v.hora ? v.hora.substring(0, 5) : '',
-      cliente_nombre: v.cliente_nombre || '', cliente_cc_id: v.cliente_cc_id || '', etiqueta_id: v.etiqueta_id || '', garantia_id: v.garantia_id || '',
+      cliente_nombre: v.cliente_nombre || '', cliente_id: v.cliente_id || '', cliente_cc_id: v.cliente_cc_id || '', etiqueta_id: v.etiqueta_id || '', garantia_id: v.garantia_id || '',
       vendedor_id: (v.items.find(i => i.vendedor_id) || {}).vendedor_id || '', comision: v.items[0]?.comision || '',
       tc_venta: v.tc_venta || '', estado: v.estado, notas: v.notas || '',
       canjeOn: (v.canjes || []).length > 0, canjeDesc: v.canjes?.[0]?.descripcion || '', canjeValor: v.canjes?.[0]?.valor_toma || '',
@@ -323,7 +325,7 @@ export default function Ventas() {
     const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
     const payload = {
       fecha: vForm.fecha, hora: vForm.hora || null, cliente_nombre: vForm.cliente_nombre.trim() || null,
-      cliente_cc_id: vForm.cliente_cc_id || null,
+      cliente_id: vForm.cliente_id || null, cliente_cc_id: vForm.cliente_cc_id || null,
       etiqueta_id: vForm.etiqueta_id || null, garantia_id: vForm.garantia_id || null,
       estado: vForm.estado, tc_venta: vForm.tc_venta ? Number(vForm.tc_venta) : null,
       notas: vForm.notas.trim() || null, items, pagos: pagosPayload, canjes,
@@ -638,7 +640,30 @@ export default function Ventas() {
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Comisión (USD)</label><input type="number" className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Cliente</label><input className="input" placeholder="Nombre del cliente" value={vForm.cliente_nombre} onChange={e => setVF('cliente_nombre', e.target.value)} /></div>
+                    <div className="field" style={{ flex: 1, position: 'relative' }}>
+                      <label className="field-label">Cliente</label>
+                      <input className="input" placeholder="Nombre del cliente" autoComplete="off"
+                        value={vForm.cliente_nombre}
+                        onChange={e => { setVForm(f => ({ ...f, cliente_nombre: e.target.value, cliente_id: '' })); setClienteDrop(true); }}
+                        onFocus={() => setClienteDrop(true)}
+                        onBlur={() => setTimeout(() => setClienteDrop(false), 150)} />
+                      {clienteDrop && (() => {
+                        const q = vForm.cliente_nombre.trim().toLowerCase();
+                        const matches = contactos.filter(c => (`${c.nombre} ${c.apellido || ''}`).toLowerCase().includes(q)).slice(0, 8);
+                        if (!matches.length) return null;
+                        return (
+                          <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 200, overflowY: 'auto', marginTop: 2, padding: 4 }}>
+                            {matches.map(c => (
+                              <div key={c.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }}
+                                onMouseDown={() => { setVForm(f => ({ ...f, cliente_nombre: `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`, cliente_id: c.id })); setClienteDrop(false); }}>
+                                {c.nombre}{c.apellido ? ' ' + c.apellido : ''} {c.tipo && <span className="muted tiny">· {c.tipo}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                      {vForm.cliente_id && <div className="tiny pos" style={{ marginTop: 2 }}>✓ vinculado a la base de clientes</div>}
+                    </div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
                   <div className="field">
@@ -647,6 +672,12 @@ export default function Ventas() {
                       <option value="">— Ninguno —</option>
                       {clientesCC.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}</option>)}
                     </select>
+                    {(() => {
+                      const cc = clientesCC.find(c => String(c.id) === String(vForm.cliente_cc_id));
+                      if (!cc) return null;
+                      const s = Number(cc.saldo) || 0;
+                      return <div className="tiny" style={{ marginTop: 4 }}>Saldo actual: {s > 0 ? <span className="neg">debe u$s{fmt(s)}</span> : s < 0 ? <span className="pos">a favor u$s{fmt(-s)}</span> : <span className="muted">sin deuda</span>}</div>;
+                    })()}
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /></div>

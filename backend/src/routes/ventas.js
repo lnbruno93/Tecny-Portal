@@ -317,12 +317,24 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p),
       // Egresos del período (USD)
       db.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND fecha >= $1 AND fecha <= $2`, p),
-      // Diferencias de pago (sobrepagos / faltantes)
-      db.query(`WITH dif AS (
-                  SELECT v.total_usd,
-                    COALESCE((SELECT SUM(monto_usd) FROM venta_pagos pp WHERE pp.venta_id = v.id),0)
-                    + COALESCE((SELECT SUM(CASE WHEN cc.moneda='ARS' AND v.tc_venta>0 THEN cc.valor_toma/v.tc_venta ELSE cc.valor_toma END) FROM canjes cc WHERE cc.venta_id = v.id),0) AS cubierto
-                  FROM ventas v WHERE ${BASE}
+      // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
+      db.query(`WITH bv AS (
+                  SELECT v.id, v.total_usd, v.tc_venta FROM ventas v WHERE ${BASE}
+                ),
+                pa AS (
+                  SELECT pp.venta_id, SUM(pp.monto_usd) AS pagos_usd
+                  FROM venta_pagos pp JOIN bv ON bv.id = pp.venta_id GROUP BY pp.venta_id
+                ),
+                ca AS (
+                  SELECT cc.venta_id,
+                         SUM(CASE WHEN cc.moneda = 'ARS' AND bv.tc_venta > 0 THEN cc.valor_toma/bv.tc_venta ELSE cc.valor_toma END) AS canje_usd
+                  FROM canjes cc JOIN bv ON bv.id = cc.venta_id GROUP BY cc.venta_id
+                ),
+                dif AS (
+                  SELECT bv.total_usd, COALESCE(pa.pagos_usd,0) + COALESCE(ca.canje_usd,0) AS cubierto
+                  FROM bv
+                  LEFT JOIN pa ON pa.venta_id = bv.id
+                  LEFT JOIN ca ON ca.venta_id = bv.id
                 )
                 SELECT COALESCE(SUM(CASE WHEN cubierto-total_usd > 0 THEN cubierto-total_usd ELSE 0 END),0) AS sobrepagos,
                        COALESCE(SUM(CASE WHEN cubierto-total_usd < 0 THEN total_usd-cubierto ELSE 0 END),0) AS faltantes FROM dif`, p),

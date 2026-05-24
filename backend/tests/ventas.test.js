@@ -414,4 +414,22 @@ describe('GET /api/ventas/dashboard', () => {
     const d = res.body;
     expect(d.ganancia_neta_usd).toBeCloseTo(d.ganancia_bruta_usd - d.egresos_usd, 1);
   });
+
+  it('diferencias (sobrepagos/faltantes) se calculan correctamente', async () => {
+    const fecha = '2026-01-15'; // fecha aislada para aislar el cálculo
+    // Venta A: total 500, paga 450 → faltante 50
+    await request(app).post('/api/ventas').set(auth()).send({
+      fecha, items: [{ descripcion: 'A', cantidad: 1, precio_vendido: 500, costo: 400, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 450, moneda: 'USD' }],
+    });
+    // Venta B: total 300, paga 320 → sobrepago 20
+    await request(app).post('/api/ventas').set(auth()).send({
+      fecha, items: [{ descripcion: 'B', cantidad: 1, precio_vendido: 300, costo: 250, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 320, moneda: 'USD' }],
+    });
+    const res = await request(app).get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`).set(auth());
+    expect(res.body.diferencias.sobrepagos).toBe(20);
+    expect(res.body.diferencias.faltantes).toBe(50);
+    expect(res.body.diferencias.neto).toBe(-30);
+  });
 });
