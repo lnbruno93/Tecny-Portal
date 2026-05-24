@@ -13,7 +13,7 @@ function fmt(n) {
   if (v >= 1_000) return (v / 1_000).toFixed(0) + 'K';
   return Math.round(v).toLocaleString('es-AR');
 }
-function fmtARS(n) { return 'ARS ' + fmt(n); }
+function fmtUSD(n) { return 'USD ' + fmt(n); }
 function fmtFecha(iso) {
   if (!iso) return '—';
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -153,58 +153,77 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
   );
 }
 
-// ─── INLINE ADD ROW ───────────────────────────────────────────────────────────
-// Fila de entrada siempre visible al pie de la tabla.
-// Enter en Monto → guarda y queda lista para el siguiente registro.
+// ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles) ───────────────────
+// Tab en Monto o Verificado → guarda esa fila y pasa a la siguiente.
+// Enter en Monto → guarda esa fila.
+// No hay botón de guardar: el flujo es 100 % teclado.
 
-const EMPTY_ROW = () => ({
-  fecha: todayISO(), tipo: 'compra',
+const ROW_COUNT = 5;
+const mkRow = (prev = null) => ({
+  _id:         Math.random().toString(36).slice(2),
+  fecha:       prev?.fecha || todayISO(),
+  tipo:        prev?.tipo  || 'compra',
   producto: '', modelo: '', tamano: '', color: '', imei_serial: '',
   monto: '', verificado: false,
 });
 
-function InlineAddRow({ clienteId, onSave }) {
-  const [data, setData]   = useState(EMPTY_ROW());
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
-  const firstRef = useRef(null);
+function InlineAddRows({ clienteId, onSave }) {
+  const [rows, setRows]     = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
+  const [saving, setSaving] = useState({});
+  const [errs,   setErrs]   = useState({});
 
-  function set(field, val) {
-    setData(r => ({ ...r, [field]: val }));
-    if (error) setError('');
+  // Callback refs planos: key `${idx}_${col}` → elemento DOM
+  const cr = useRef({});
+  const setRef    = (i, col) => el => { cr.current[`${i}_${col}`] = el; };
+  const focusCell = (i, col) => cr.current[`${i}_${col}`]?.focus();
+
+  function upd(i, field, val) {
+    setRows(rs => rs.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
+    if (errs[i]) setErrs(e => { const n = { ...e }; delete n[i]; return n; });
   }
 
-  async function save() {
-    if (!data.monto || Number(data.monto) <= 0) {
-      setError('Ingresá el monto'); return;
-    }
-    setSaving(true); setError('');
-    const isItemType = ['compra', 'devolucion'].includes(data.tipo);
+  async function saveRow(i) {
+    const row = rows[i];
+    if (!row.monto || Number(row.monto) <= 0) return;
+    setSaving(s => ({ ...s, [i]: true }));
+    const isItemType = ['compra', 'devolucion'].includes(row.tipo);
     try {
       await cuentas.createMovimiento({
         cliente_cc_id: clienteId,
-        fecha:         data.fecha,
-        tipo:          data.tipo,
-        monto_total:   Number(data.monto),
+        fecha:         row.fecha,
+        tipo:          row.tipo,
+        monto_total:   Number(row.monto),
         items: isItemType ? [{
-          producto:    data.producto    || null,
-          modelo:      data.modelo      || null,
-          tamano:      data.tamano      || null,
-          color:       data.color       || null,
-          imei_serial: data.imei_serial || null,
-          valor:       Number(data.monto),
-          verificado:  data.verificado,
+          producto:    row.producto    || null,
+          modelo:      row.modelo      || null,
+          tamano:      row.tamano      || null,
+          color:       row.color       || null,
+          imei_serial: row.imei_serial || null,
+          valor:       Number(row.monto),
+          verificado:  row.verificado,
         }] : [],
       });
-      // Mantiene fecha y tipo → lista para el siguiente ítem del mismo pedido
-      setData(d => ({ ...EMPTY_ROW(), fecha: d.fecha, tipo: d.tipo }));
+      // Resetea la fila pero mantiene fecha y tipo para carga rápida
+      setRows(rs => rs.map((r, idx) =>
+        idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
+      ));
+      setErrs(e => { const n = { ...e }; delete n[i]; return n; });
       onSave();
-      setTimeout(() => firstRef.current?.focus(), 40);
+      // Foco a la primera celda editable de la siguiente fila
+      setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'producto'), 40);
     } catch (e) {
-      setError(e.message || 'Error al guardar');
+      setErrs(err => ({ ...err, [i]: e.message || 'Error al guardar' }));
     } finally {
-      setSaving(false);
+      setSaving(s => { const n = { ...s }; delete n[i]; return n; });
     }
+  }
+
+  function handleLastKey(e, i) {
+    if (e.key !== 'Tab' || e.shiftKey) return;
+    e.preventDefault();
+    const row = rows[i];
+    if (row.monto && Number(row.monto) > 0) saveRow(i);
+    else focusCell((i + 1) % ROW_COUNT, 'producto');
   }
 
   const inp = {
@@ -216,89 +235,95 @@ function InlineAddRow({ clienteId, onSave }) {
 
   return (
     <>
-      {error && (
-        <tr>
-          <td colSpan={10} style={{
-            padding: '3px 10px', fontSize: 12,
-            color: 'var(--neg)', background: 'rgba(239,68,68,0.08)',
-            borderTop: '1px solid rgba(239,68,68,0.2)',
-          }}>
-            ⚠ {error}
+      {rows.map((row, i) => (
+        <tr key={row._id} style={{
+          background: 'rgba(99,102,241,0.04)',
+          borderTop: i === 0 ? '2px solid var(--accent)' : '1px solid var(--hairline)',
+          opacity: saving[i] ? 0.5 : 1,
+          transition: 'opacity 0.15s',
+        }}>
+          {/* Fecha */}
+          <td style={{ padding: '4px 5px' }}>
+            <input type="date" style={inp}
+              value={row.fecha}
+              onChange={e => upd(i, 'fecha', e.target.value)} />
+          </td>
+          {/* Tipo */}
+          <td style={{ padding: '4px 5px' }}>
+            <select style={{ ...inp, cursor: 'pointer' }}
+              value={row.tipo}
+              onChange={e => upd(i, 'tipo', e.target.value)}>
+              <option value="compra">+ Compra</option>
+              <option value="pago">− Pago</option>
+              <option value="devolucion">− Devolución</option>
+              <option value="parte_de_pago">− Parte pago</option>
+              <option value="entrega_mercaderia">− Entrega</option>
+            </select>
+          </td>
+          {/* Producto */}
+          <td style={{ padding: '4px 5px' }}>
+            <input ref={setRef(i, 'producto')} style={inp} placeholder="iPhone"
+              value={row.producto}
+              onChange={e => upd(i, 'producto', e.target.value)} />
+          </td>
+          {/* Modelo */}
+          <td style={{ padding: '4px 5px' }}>
+            <input style={inp} placeholder="17 Pro Max"
+              value={row.modelo}
+              onChange={e => upd(i, 'modelo', e.target.value)} />
+          </td>
+          {/* Cap. */}
+          <td style={{ padding: '4px 5px' }}>
+            <input style={inp} placeholder="256GB"
+              value={row.tamano}
+              onChange={e => upd(i, 'tamano', e.target.value)} />
+          </td>
+          {/* Color */}
+          <td style={{ padding: '4px 5px' }}>
+            <input style={inp} placeholder="Negro"
+              value={row.color}
+              onChange={e => upd(i, 'color', e.target.value)} />
+          </td>
+          {/* IMEI / Serial */}
+          <td style={{ padding: '4px 5px' }}>
+            <input style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}
+              placeholder="358123…"
+              value={row.imei_serial}
+              onChange={e => upd(i, 'imei_serial', e.target.value)} />
+          </td>
+          {/* Monto */}
+          <td style={{ padding: '4px 5px' }}>
+            <input
+              ref={setRef(i, 'monto')}
+              type="number" min="0"
+              style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
+              placeholder="0"
+              value={row.monto}
+              onChange={e => upd(i, 'monto', e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
+                else handleLastKey(e, i);
+              }}
+            />
+          </td>
+          {/* Verificado */}
+          <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+            <input type="checkbox"
+              checked={row.verificado}
+              onChange={e => upd(i, 'verificado', e.target.checked)}
+              onKeyDown={e => handleLastKey(e, i)}
+            />
+          </td>
+          {/* Estado inline */}
+          <td style={{ padding: '4px 5px', textAlign: 'center' }}>
+            {saving[i]
+              ? <span className="muted tiny">…</span>
+              : errs[i]
+                ? <span style={{ color: 'var(--neg)', fontSize: 11 }} title={errs[i]}>⚠</span>
+                : null}
           </td>
         </tr>
-      )}
-      <tr style={{
-        background: 'rgba(99,102,241,0.07)',
-        borderTop: '2px solid var(--accent)',
-        position: 'sticky', bottom: 0,
-      }}>
-        {/* Fecha */}
-        <td style={{ padding: '5px 6px' }}>
-          <input type="date" style={inp} value={data.fecha}
-            onChange={e => set('fecha', e.target.value)} />
-        </td>
-        {/* Tipo */}
-        <td style={{ padding: '5px 6px' }}>
-          <select style={{ ...inp, cursor: 'pointer' }} value={data.tipo}
-            onChange={e => set('tipo', e.target.value)}>
-            <option value="compra">+ Compra</option>
-            <option value="pago">− Pago</option>
-            <option value="devolucion">− Devolución</option>
-            <option value="parte_de_pago">− Parte pago</option>
-            <option value="entrega_mercaderia">− Entrega</option>
-          </select>
-        </td>
-        {/* Producto */}
-        <td style={{ padding: '5px 6px' }}>
-          <input ref={firstRef} style={inp} placeholder="iPhone"
-            value={data.producto} onChange={e => set('producto', e.target.value)} />
-        </td>
-        {/* Modelo */}
-        <td style={{ padding: '5px 6px' }}>
-          <input style={inp} placeholder="17 Pro Max 256GB"
-            value={data.modelo} onChange={e => set('modelo', e.target.value)} />
-        </td>
-        {/* Cap. */}
-        <td style={{ padding: '5px 6px' }}>
-          <input style={inp} placeholder="256GB"
-            value={data.tamano} onChange={e => set('tamano', e.target.value)} />
-        </td>
-        {/* Color */}
-        <td style={{ padding: '5px 6px' }}>
-          <input style={inp} placeholder="Negro"
-            value={data.color} onChange={e => set('color', e.target.value)} />
-        </td>
-        {/* IMEI */}
-        <td style={{ padding: '5px 6px' }}>
-          <input style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}
-            placeholder="358123456789"
-            value={data.imei_serial} onChange={e => set('imei_serial', e.target.value)} />
-        </td>
-        {/* Monto */}
-        <td style={{ padding: '5px 6px' }}>
-          <input type="number" style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
-            placeholder="0" min="0" value={data.monto}
-            onChange={e => set('monto', e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && save()} />
-        </td>
-        {/* Verificado */}
-        <td style={{ padding: '5px 8px', textAlign: 'center' }}>
-          <input type="checkbox" checked={data.verificado}
-            onChange={e => set('verificado', e.target.checked)} />
-        </td>
-        {/* Guardar */}
-        <td style={{ padding: '5px 6px' }}>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={save}
-            disabled={saving || !data.monto}
-            style={{ height: 30, minWidth: 38, fontSize: 13, padding: '0 10px' }}
-            title="Guardar (Enter)"
-          >
-            {saving ? '…' : '✓'}
-          </button>
-        </td>
-      </tr>
+      ))}
     </>
   );
 }
@@ -481,14 +506,14 @@ export default function CuentasCC() {
           <>
             <div className="row" style={{ marginBottom: 20 }}>
               {[
-                { label: 'Deuda total · ARS', val: <span className="mono neg">{fmt(rgData.total_deuda)}</span>, sub: 'clientes que nos deben' },
+                { label: 'Deuda total · USD', val: <span className="mono neg">{fmt(rgData.total_deuda)}</span>, sub: 'clientes que nos deben' },
                 { label: 'Clientes activos', val: <span className="mono">{rgData.cant_clientes}</span>, sub: 'en cuenta corriente' },
-                { label: 'Crédito a favor · ARS', val: <span className="mono pos">{fmt(rgData.total_credito)}</span>, sub: 'les debemos a clientes' },
-                { label: 'Neto · ARS', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmt(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
+                { label: 'Crédito a favor · USD', val: <span className="mono pos">{fmt(rgData.total_credito)}</span>, sub: 'les debemos a clientes' },
+                { label: 'Neto · USD', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmt(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
               ].map(k => (
                 <div key={k.label} className="card card-tight" style={{ flex: 1 }}>
                   <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value"><span className="muted" style={{ fontSize: 12 }}>ARS </span>{k.val}</div>
+                  <div className="kpi-value"><span className="muted" style={{ fontSize: 12 }}>USD </span>{k.val}</div>
                   <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
                 </div>
               ))}
@@ -511,7 +536,7 @@ export default function CuentasCC() {
                         <td className="muted mono">{String(i + 1).padStart(2, '0')}</td>
                         <td><div style={{ fontWeight: 600 }}>{c.nombre} {c.apellido}</div></td>
                         <td>{catBadge(c.categoria)}</td>
-                        <td className="num mono neg" style={{ fontWeight: 700 }}>ARS {fmt(c.saldo)}</td>
+                        <td className="num mono neg" style={{ fontWeight: 700 }}>USD {fmt(c.saldo)}</td>
                         <td>
                           <div className="bar-track" style={{ height: 6 }}><div className="bar-fill" style={{ width: pct + '%' }} /></div>
                           <div className="muted tiny mono" style={{ marginTop: 3, textAlign: 'right' }}>{pct}%</div>
@@ -617,7 +642,7 @@ export default function CuentasCC() {
                   fontSize: 13, fontWeight: 700,
                   color: Number(c.saldo) > 0 ? 'var(--neg)' : Number(c.saldo) < 0 ? 'var(--pos)' : 'var(--text-muted)',
                 }}>
-                  {Number(c.saldo) !== 0 ? fmtARS(c.saldo) : 'Sin saldo'}
+                  {Number(c.saldo) !== 0 ? fmtUSD(c.saldo) : 'Sin saldo'}
                 </div>
               </div>
             ))}
@@ -658,13 +683,13 @@ export default function CuentasCC() {
                     <div className="muted tiny">Saldo</div>
                     <div className={'mono ' + (Number(resumen.saldo) > 0 ? 'neg' : Number(resumen.saldo) < 0 ? 'pos' : 'muted')}
                       style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>
-                      ARS {fmt(resumen.saldo)}
+                      USD {fmt(resumen.saldo)}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div className="muted tiny">Total comprado</div>
                     <div className="mono" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.1 }}>
-                      ARS {fmt(resumen.total_compras || 0)}
+                      USD {fmt(resumen.total_compras || 0)}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -712,7 +737,7 @@ export default function CuentasCC() {
 
                 <thead>
                   <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
-                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto ARS', '✓', ''].map((h, i) => (
+                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -761,7 +786,7 @@ export default function CuentasCC() {
                         </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
                           <span className={t.signo > 0 ? 'neg' : 'pos'}>
-                            {t.signo > 0 ? '+' : '−'}ARS {fmt(m.monto_total)}
+                            {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_total)}
                           </span>
                         </td>
                         <td style={{ ...cell, textAlign: 'center' }}>
@@ -779,7 +804,7 @@ export default function CuentasCC() {
                   })}
 
                   {/* ── Fila de entrada inline ── */}
-                  <InlineAddRow
+                  <InlineAddRows
                     key={selectedId}
                     clienteId={selectedId}
                     onSave={reloadDetail}
