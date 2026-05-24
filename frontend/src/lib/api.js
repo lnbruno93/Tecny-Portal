@@ -135,6 +135,47 @@ export const usados = {
   bulkUpdate: (items) => api('/api/usados/bulk', 'PUT', { updates: items }),
 };
 
+export const inventario = {
+  productos:       (params = {}) => api('/api/inventario/productos?' + new URLSearchParams(params)),
+  metricas:        () => api('/api/inventario/productos/metricas'),
+  createProducto:  (data) => api('/api/inventario/productos', 'POST', data),
+  updateProducto:  (id, data) => api(`/api/inventario/productos/${id}`, 'PUT', data),
+  deleteProducto:  (id) => api(`/api/inventario/productos/${id}`, 'DELETE'),
+  bulkProductos:   (productos) => api('/api/inventario/productos/bulk', 'POST', { productos }),
+  categorias:      () => api('/api/inventario/categorias'),
+  createCategoria: (data) => api('/api/inventario/categorias', 'POST', data),
+  deleteCategoria: (id) => api(`/api/inventario/categorias/${id}`, 'DELETE'),
+  depositos:       () => api('/api/inventario/depositos'),
+  createDeposito:  (data) => api('/api/inventario/depositos', 'POST', data),
+  deleteDeposito:  (id) => api(`/api/inventario/depositos/${id}`, 'DELETE'),
+};
+
+export const ventas = {
+  list:            (params = {}) => api('/api/ventas?' + new URLSearchParams(params)),
+  create:          (data) => api('/api/ventas', 'POST', data),
+  update:          (id, data) => api(`/api/ventas/${id}`, 'PUT', data),
+  delete:          (id) => api(`/api/ventas/${id}`, 'DELETE'),
+  dashboard:       (params = {}) => api('/api/ventas/dashboard?' + new URLSearchParams(params)),
+  etiquetas:       () => api('/api/ventas/etiquetas'),
+  createEtiqueta:  (data) => api('/api/ventas/etiquetas', 'POST', data),
+  deleteEtiqueta:  (id) => api(`/api/ventas/etiquetas/${id}`, 'DELETE'),
+  metodosPago:     () => api('/api/ventas/metodos-pago'),
+  egresos:         (params = {}) => api('/api/ventas/egresos?' + new URLSearchParams(params)),
+  createEgreso:    (data) => api('/api/ventas/egresos', 'POST', data),
+  deleteEgreso:    (id) => api(`/api/ventas/egresos/${id}`, 'DELETE'),
+  rapidas:         (params = {}) => api('/api/ventas/ventas-rapidas?' + new URLSearchParams(params)),
+  createRapida:    (data) => api('/api/ventas/ventas-rapidas', 'POST', data),
+  updateRapida:    (id, data) => api(`/api/ventas/ventas-rapidas/${id}`, 'PUT', data),
+  deleteRapida:    (id) => api(`/api/ventas/ventas-rapidas/${id}`, 'DELETE'),
+  garantias:       () => api('/api/ventas/garantias'),
+  createGarantia:  (data) => api('/api/ventas/garantias', 'POST', data),
+  updateGarantia:  (id, data) => api(`/api/ventas/garantias/${id}`, 'PUT', data),
+  deleteGarantia:  (id) => api(`/api/ventas/garantias/${id}`, 'DELETE'),
+  comprobantes:    (id) => api(`/api/ventas/${id}/comprobantes`),
+  getComprobante:  (cid) => api(`/api/ventas/comprobantes/${cid}`),
+  uploadComprobante: (id, data) => api(`/api/ventas/${id}/comprobantes`, 'POST', data),
+};
+
 export const usuarios = {
   list: () => api('/api/usuarios'),
   create: (data) => api('/api/usuarios', 'POST', data),
