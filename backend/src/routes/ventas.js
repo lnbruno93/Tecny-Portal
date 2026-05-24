@@ -29,7 +29,8 @@ const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 function genOrderId() {
   const yy = new Date().getFullYear().toString().slice(-2);
-  return `ORD-${yy}-${crypto.randomBytes(4).toString('hex')}`;
+  // 6 bytes (12 hex) → colisión despreciable incluso con millones de órdenes
+  return `ORD-${yy}-${crypto.randomBytes(6).toString('hex')}`;
 }
 
 // Error con status 400 (validación de negocio)
