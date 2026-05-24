@@ -8,15 +8,17 @@ import { useConfirm } from '../components/ConfirmModal';
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function fmt(n) {
-  const v = Math.abs(Number(n));
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (v >= 1_000) return (v / 1_000).toFixed(0) + 'K';
-  return Math.round(v).toLocaleString('es-AR');
+  // Siempre número completo con separador de miles — ej: 30.450
+  return Math.round(Math.abs(Number(n))).toLocaleString('es-AR');
 }
 function fmtUSD(n) { return 'USD ' + fmt(n); }
 function fmtFecha(iso) {
   if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  // Acepta 'YYYY-MM-DD' e ISO completo ('2026-05-23T03:00:00.000Z')
+  const s = String(iso).slice(0, 10);
+  const d = new Date(s + 'T00:00:00');
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -152,6 +154,52 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
     </div>
   );
 }
+
+// ─── Datalists para desplegables de producto ─────────────────────────────────
+// Se renderizan una vez fuera de la tabla y los inputs los referencian por id.
+
+const CC_DATALISTS = (
+  <>
+    <datalist id="cc-dl-producto">
+      <option value="iPhone" />
+      <option value="Samsung Galaxy" />
+      <option value="Motorola" />
+      <option value="Xiaomi" />
+      <option value="iPad" />
+      <option value="MacBook" />
+      <option value="Apple Watch" />
+      <option value="AirPods" />
+      <option value="Tablet Android" />
+    </datalist>
+    <datalist id="cc-dl-modelo">
+      <option value="16 Pro Max" /><option value="16 Pro" /><option value="16 Plus" /><option value="16" />
+      <option value="15 Pro Max" /><option value="15 Pro" /><option value="15 Plus" /><option value="15" />
+      <option value="14 Pro Max" /><option value="14 Pro" /><option value="14 Plus" /><option value="14" />
+      <option value="13 Pro Max" /><option value="13 Pro" /><option value="13" />
+      <option value="SE (3ra gen)" />
+      <option value="S25 Ultra" /><option value="S25+" /><option value="S25" />
+      <option value="S24 Ultra" /><option value="S24+" /><option value="S24" />
+      <option value="A55" /><option value="A35" /><option value="A15" />
+      <option value="Pro 11 M4" /><option value="Pro 13 M4" /><option value="Air M2" />
+      <option value="Air 13 M3" /><option value="Mini 7" />
+    </datalist>
+    <datalist id="cc-dl-tamano">
+      <option value="64GB" />
+      <option value="128GB" />
+      <option value="256GB" />
+      <option value="512GB" />
+      <option value="1TB" />
+    </datalist>
+    <datalist id="cc-dl-color">
+      <option value="Negro" /><option value="Blanco" /><option value="Azul" />
+      <option value="Rosa" /><option value="Verde" /><option value="Rojo" />
+      <option value="Dorado" /><option value="Plateado" /><option value="Violeta" />
+      <option value="Natural Titanium" /><option value="Desert Titanium" />
+      <option value="Black Titanium" /><option value="White Titanium" />
+      <option value="Grafito" /><option value="Medianoche" /><option value="Blanco Estelar" />
+    </datalist>
+  </>
+);
 
 // ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles) ───────────────────
 // Compra / Devolución → columnas de producto completas.
@@ -342,22 +390,22 @@ function InlineAddRows({ clienteId, onSave }) {
               /* ── Compra / Devolución: columnas de producto ───────────── */
               <>
                 <td style={{ padding: '4px 5px' }}>
-                  <input ref={setRef(i, 'first')} style={inp} placeholder="iPhone"
+                  <input ref={setRef(i, 'first')} list="cc-dl-producto" style={inp} placeholder="iPhone"
                     value={row.producto}
                     onChange={e => upd(i, 'producto', e.target.value)} />
                 </td>
                 <td style={{ padding: '4px 5px' }}>
-                  <input style={inp} placeholder="17 Pro Max"
+                  <input list="cc-dl-modelo" style={inp} placeholder="16 Pro Max"
                     value={row.modelo}
                     onChange={e => upd(i, 'modelo', e.target.value)} />
                 </td>
                 <td style={{ padding: '4px 5px' }}>
-                  <input style={inp} placeholder="256GB"
+                  <input list="cc-dl-tamano" style={inp} placeholder="256GB"
                     value={row.tamano}
                     onChange={e => upd(i, 'tamano', e.target.value)} />
                 </td>
                 <td style={{ padding: '4px 5px' }}>
-                  <input style={inp} placeholder="Negro"
+                  <input list="cc-dl-color" style={inp} placeholder="Negro"
                     value={row.color}
                     onChange={e => upd(i, 'color', e.target.value)} />
                 </td>
@@ -797,6 +845,7 @@ export default function CuentasCC() {
 
             {/* ── Tabla spreadsheet ── */}
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              {CC_DATALISTS}
               <table style={{
                 width: '100%', borderCollapse: 'collapse',
                 tableLayout: 'fixed', minWidth: 860,
