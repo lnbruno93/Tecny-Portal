@@ -23,7 +23,7 @@ router.get('/', async (req, res, next) => {
 
     const { rows } = await db.query(
       `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
-              COALESCE(SUM(CASE WHEN m.tipo='compra' THEN m.monto_usd ELSE -m.monto_usd END), 0) AS saldo_usd,
+              COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) AS saldo_usd,
               COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
          FROM proveedores p
          LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
@@ -49,16 +49,34 @@ router.get('/:id', async (req, res, next) => {
 });
 
 router.post('/', validate(createProveedorSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
-    const { nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas } = req.body;
-    const { rows } = await db.query(
+    const { nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas, saldo_inicial } = req.body;
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `INSERT INTO proveedores (nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [nombre, contacto_nombre ?? null, contacto_apellido ?? null, whatsapp ?? null, ubicacion ?? null, notas ?? null]
     );
-    await audit('proveedores', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+    const prov = rows[0];
+
+    // Saldo inicial → movimiento de apertura (USD). Suma al saldo como deuda.
+    const ini = round2(Number(saldo_inicial) || 0);
+    if (ini > 0) {
+      await client.query(
+        `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, monto_usd)
+         VALUES ($1, CURRENT_DATE, 'saldo_inicial', 'Saldo inicial', $2, 'USD', $2)`,
+        [prov.id, ini]
+      );
+    }
+
+    await client.query('COMMIT');
+    await audit('proveedores', 'INSERT', prov.id, { despues: { ...prov, saldo_inicial: ini }, user_id: req.user.id });
+    res.status(201).json({ ...prov, saldo_usd: ini, movimientos: ini > 0 ? 1 : 0 });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
@@ -182,12 +200,12 @@ router.get('/resumen/saldos', async (_req, res, next) => {
   try {
     const { rows } = await db.query(
       `SELECT p.id, p.nombre,
-              COALESCE(SUM(CASE WHEN m.tipo='compra' THEN m.monto_usd ELSE -m.monto_usd END), 0) AS saldo_usd
+              COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) AS saldo_usd
          FROM proveedores p
          LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
         WHERE p.deleted_at IS NULL
         GROUP BY p.id
-       HAVING COALESCE(SUM(CASE WHEN m.tipo='compra' THEN m.monto_usd ELSE -m.monto_usd END), 0) <> 0
+       HAVING COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) <> 0
         ORDER BY saldo_usd DESC`
     );
     const total_deuda_usd = round2(rows.reduce((s, r) => s + Number(r.saldo_usd), 0));

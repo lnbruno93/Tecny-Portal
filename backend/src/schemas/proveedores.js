@@ -7,9 +7,12 @@ const createProveedorSchema = z.object({
   whatsapp:          z.string().trim().max(40).optional().nullable(),
   ubicacion:         z.string().trim().max(200).optional().nullable(),
   notas:             z.string().trim().max(2000).optional().nullable(),
+  // Saldo inicial en USD (lo que ya le debemos al arrancar la cuenta). Opcional.
+  saldo_inicial:     z.coerce.number().min(0).optional().nullable(),
 });
 
-const updateProveedorSchema = createProveedorSchema.partial().refine(
+// Para actualizar NO se permite saldo_inicial (es solo de apertura)
+const updateProveedorSchema = createProveedorSchema.omit({ saldo_inicial: true }).partial().refine(
   d => Object.values(d).some(v => v !== undefined),
   { message: 'Al menos un campo es requerido para actualizar' }
 );

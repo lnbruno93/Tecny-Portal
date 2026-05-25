@@ -21,8 +21,9 @@ function fmtFecha(iso) {
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra: { label: 'Compra', tone: 'neg', signo: +1 },
-  pago:   { label: 'Pago',   tone: 'pos', signo: -1 },
+  compra:        { label: 'Compra',        tone: 'neg',     signo: +1 },
+  pago:          { label: 'Pago',          tone: 'pos',     signo: -1 },
+  saldo_inicial: { label: 'Saldo inicial', tone: 'default', signo: +1 },
 };
 
 function Status({ tone = 'default', children }) {
@@ -294,7 +295,7 @@ function InlineAddRows({ proveedorId, onSave, onSaveDone, onSaveError }) {
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 
 const EMPTY_PROV = () => ({
-  nombre: '', contacto_nombre: '', contacto_apellido: '', whatsapp: '', ubicacion: '', notas: '',
+  nombre: '', contacto_nombre: '', contacto_apellido: '', whatsapp: '', ubicacion: '', notas: '', saldo_inicial: '',
 });
 
 export default function Proveedores() {
@@ -370,6 +371,7 @@ export default function Proveedores() {
         whatsapp:          provForm.whatsapp.trim()          || null,
         ubicacion:         provForm.ubicacion.trim()         || null,
         notas:             provForm.notas.trim()             || null,
+        saldo_inicial:     provForm.saldo_inicial ? Number(provForm.saldo_inicial) : null,
       });
       setList(prev => [nuevo, ...prev]);
       setSelectedId(nuevo.id);
@@ -710,10 +712,18 @@ export default function Proveedores() {
                       value={provForm.ubicacion} onChange={e => setProvForm(f => ({ ...f, ubicacion: e.target.value }))} />
                   </div>
                 </div>
-                <div className="field">
-                  <label className="field-label">Notas internas</label>
-                  <input type="text" className="input" placeholder="Ej: paga a 30 días"
-                    value={provForm.notas} onChange={e => setProvForm(f => ({ ...f, notas: e.target.value }))} />
+                <div className="row" style={{ gap: 12 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="field-label">Notas internas</label>
+                    <input type="text" className="input" placeholder="Ej: paga a 30 días"
+                      value={provForm.notas} onChange={e => setProvForm(f => ({ ...f, notas: e.target.value }))} />
+                  </div>
+                  <div className="field" style={{ width: 160 }}>
+                    <label className="field-label">Saldo inicial (USD)</label>
+                    <input type="number" min="0" step="0.01" className="input" placeholder="0"
+                      value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
+                    <div className="muted tiny" style={{ marginTop: 4 }}>Lo que ya le debés (opcional).</div>
+                  </div>
                 </div>
                 {provError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{provError}</div>}
               </div>

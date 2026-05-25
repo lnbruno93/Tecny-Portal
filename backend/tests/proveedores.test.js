@@ -54,6 +54,22 @@ describe('Proveedores — CRUD', () => {
     expect((await request(app).get('/api/proveedores/abc').set(auth())).status).toBe(400);
     expect((await request(app).get('/api/proveedores/999999').set(auth())).status).toBe(404);
   });
+
+  it('arranca con saldo inicial si se provee', async () => {
+    const created = await request(app).post('/api/proveedores').set(auth())
+      .send({ nombre: 'Proveedor con Saldo Inicial', saldo_inicial: 1500 });
+    expect(created.status).toBe(201);
+    expect(Number(created.body.saldo_usd)).toBe(1500);
+
+    const movs = await request(app).get(`/api/proveedores/${created.body.id}/movimientos`).set(auth());
+    expect(movs.body).toHaveLength(1);
+    expect(movs.body[0].tipo).toBe('saldo_inicial');
+
+    // El saldo del listado lo refleja, pero NO cuenta como "compra"
+    const list = await request(app).get('/api/proveedores').set(auth());
+    const row = list.body.find(p => p.id === created.body.id);
+    expect(Number(row.saldo_usd)).toBe(1500);
+  });
 });
 
 describe('Proveedores — cuenta corriente', () => {
