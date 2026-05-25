@@ -114,6 +114,76 @@ describe('Ledger de cajas', () => {
     expect(fin[0].id).toBe(c2.id);
   });
 
+  it('una VENTA con caja normal ingresa a la caja y se revierte al cancelar/borrar', async () => {
+    const caja = await crearCaja({ saldo_inicial: 0 });
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      cliente_nombre: 'Cliente Caja',
+      estado: 'acreditado',
+      items: [{ descripcion: 'Producto X', cantidad: 1, precio_vendido: 950, costo: 800, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: caja.id, metodo_nombre: caja.nombre, monto: 950, moneda: 'USD' }],
+    });
+    expect(venta.status).toBe(201);
+
+    // caja: 0 + 950 = 950, con un movimiento origen 'venta'
+    let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(950);
+    const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
+    expect(movs.body.some(m => m.origen === 'venta' && m.tipo === 'ingreso')).toBe(true);
+
+    // cancelar la venta (solo metadatos) → revierte el ingreso
+    await request(app).put(`/api/ventas/${venta.body.id}`).set(auth()).send({ estado: 'cancelado' });
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+
+    // reactivar → vuelve a ingresar
+    await request(app).put(`/api/ventas/${venta.body.id}`).set(auth()).send({ estado: 'acreditado' });
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(950);
+
+    // borrar → revierte definitivamente
+    await request(app).delete(`/api/ventas/${venta.body.id}`).set(auth());
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+  });
+
+  it('una VENTA con la caja FINANCIERA no impacta la caja; al adjuntar comprobante crea el comprobante de Financiera', async () => {
+    // marcar % de retención de Financiera
+    const cfg = await request(app).put('/api/config').set(auth()).send({ pct_financiera: 10 });
+    expect(cfg.status).toBe(200);
+
+    const cajaFin = await crearCaja({ saldo_inicial: 0, es_financiera: true });
+    expect(cajaFin.es_financiera).toBe(true);
+
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      cliente_nombre: 'Cliente Financiera',
+      estado: 'acreditado',
+      items: [{ descripcion: 'Producto Fin', cantidad: 1, precio_vendido: 1000, costo: 700, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaFin.id, metodo_nombre: cajaFin.nombre, monto: 1000, moneda: 'USD' }],
+    });
+    expect(venta.status).toBe(201);
+
+    // la caja financiera NO recibe ingreso (va por comprobante)
+    const row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === cajaFin.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+
+    // adjuntar comprobante → se auto-genera el comprobante de Financiera (comisión 10%)
+    const comp = await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
+      .send({ archivo_data: 'data:image/png;base64,iVBORw0KGgo=', archivo_nombre: 'comp.png', archivo_tipo: 'image/png' });
+    expect(comp.status).toBe(201);
+    expect(comp.body.comprobante_financiera).toBeTruthy();
+    expect(Number(comp.body.comprobante_financiera.monto)).toBe(1000);
+    expect(Number(comp.body.comprobante_financiera.monto_financiera)).toBe(100); // 1000 × 10%
+    expect(Number(comp.body.comprobante_financiera.monto_neto)).toBe(900);
+
+    // adjuntar un segundo comprobante NO duplica el de Financiera
+    const comp2 = await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
+      .send({ archivo_data: 'data:image/png;base64,iVBORw0KGgo=', archivo_nombre: 'comp2.png', archivo_tipo: 'image/png' });
+    expect(comp2.status).toBe(201);
+    expect(comp2.body.comprobante_financiera).toBeNull();
+  });
+
   it('un ajuste en una caja ARS requiere tipo de cambio', async () => {
     const caja = await crearCaja({ moneda: 'ARS' });
     const sinTc = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())

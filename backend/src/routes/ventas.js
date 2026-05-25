@@ -7,6 +7,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
 } = require('../schemas/ventas');
@@ -24,6 +25,30 @@ function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
 
 // Una venta retiene (descuenta) stock mientras no esté cancelada.
 function retieneStock(estado) { return estado !== 'cancelado'; }
+
+// Sincroniza los ingresos de caja de una venta con el ledger (Fase 2b).
+// Idempotente: revierte los movimientos previos y re-postea según el estado actual.
+// Los pagos en cuenta corriente NO impactan caja; los de la caja financiera tampoco
+// (esos generan el comprobante de Financiera al adjuntar el respaldo).
+async function syncVentaCaja(client, venta, userId) {
+  await reverseCajaMovimientos(client, 'ventas', venta.id);
+  if (!retieneStock(venta.estado)) return; // venta cancelada → sin ingresos de caja
+  const fin = await client.query('SELECT id FROM metodos_pago WHERE es_financiera = true AND deleted_at IS NULL');
+  const finId = fin.rows[0]?.id ?? null;
+  const { rows: pagos } = await client.query(
+    `SELECT metodo_pago_id, monto, moneda, tc FROM venta_pagos
+      WHERE venta_id = $1 AND es_cuenta_corriente = false AND metodo_pago_id IS NOT NULL`, [venta.id]
+  );
+  for (const p of pagos) {
+    if (finId && p.metodo_pago_id === finId) continue; // financiera → comprobante, no caja
+    await postCajaMovimiento(client, {
+      caja_id: p.metodo_pago_id, fecha: venta.fecha, tipo: 'ingreso',
+      monto: p.monto, moneda: p.moneda, tc: p.tc,
+      origen: 'venta', ref_tabla: 'ventas', ref_id: venta.id,
+      concepto: `Venta ${venta.order_id}`, user_id: userId,
+    });
+  }
+}
 
 // Si hay un pago en cuenta corriente, exige un cliente de cuenta corriente.
 function validarCuentaCorriente(pagos, clienteCcId) {
@@ -331,6 +356,8 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     await insertarDetalle(client, venta, b);
     // Deuda de cuenta corriente (si corresponde)
     await sincronizarCuentaCorriente(client, venta);
+    // Ingresos de caja por los pagos (Fase 2b)
+    await syncVentaCaja(client, venta, req.user.id);
 
     await client.query('COMMIT');
     await audit('ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
@@ -385,6 +412,9 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       );
       await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc });
       await sincronizarCuentaCorriente(client, vrows[0]);
+      await syncVentaCaja(client, vrows[0], req.user.id);
+      // Si la venta quedó cancelada, revertir el comprobante de Financiera linkeado
+      if (!retieneStock(vrows[0].estado)) await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
       await client.query('COMMIT');
       await audit('ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       return res.json(vrows[0]);
@@ -394,9 +424,11 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     if (oldHolds && !newHolds) {
       const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
       await reponerStock(client, items); // cancelación: liberar stock
+      await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]); // revertir comprobante de Financiera
     } else if (!oldHolds && newHolds) {
       const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
       await descontarStock(client, items); // reactivación: re-descontar (valida disponibilidad)
+      await client.query('UPDATE comprobantes SET deleted_at = NULL WHERE venta_id = $1', [id]); // restaurar comprobante de Financiera
     }
     const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora } = b;
     const { rows } = await client.query(
@@ -408,6 +440,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       [estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, id]
     );
     await sincronizarCuentaCorriente(client, rows[0]);
+    await syncVentaCaja(client, rows[0], req.user.id);
     await client.query('COMMIT');
     await audit('ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
@@ -438,6 +471,9 @@ router.delete('/:id', async (req, res, next) => {
     }
     // Revertir la deuda de cuenta corriente generada por esta venta
     await client.query('UPDATE movimientos_cc SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
+    // Revertir ingresos de caja y el comprobante de Financiera generados por esta venta
+    await reverseCajaMovimientos(client, 'ventas', id);
+    await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await client.query('COMMIT');
     await audit('ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });

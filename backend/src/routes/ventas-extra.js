@@ -203,20 +203,60 @@ router.delete('/egresos/:id', async (req, res, next) => {
 /* ═══════════════════════ COMPROBANTES DE VENTA ═══════════════════════ */
 
 router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const venta = await db.query('SELECT id FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!venta.rows[0]) return res.status(404).json({ error: 'Venta no encontrada' });
+    await client.query('BEGIN');
+    const ventaRes = await client.query(
+      'SELECT id, fecha, cliente_nombre, order_id, estado FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]
+    );
+    if (!ventaRes.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
+    const venta = ventaRes.rows[0];
+
     const { archivo_data, archivo_nombre, archivo_tipo } = req.body;
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO venta_comprobantes (venta_id, archivo_data, archivo_nombre, archivo_tipo)
        VALUES ($1,$2,$3,$4) RETURNING id, archivo_nombre, archivo_tipo, created_at`,
       [id, archivo_data, archivo_nombre ?? null, archivo_tipo ?? null]
     );
+
+    // Auto-comprobante de Financiera: si la venta (activa) tiene un pago con la
+    // caja financiera y todavía no se generó el comprobante, crearlo con la
+    // comisión = monto × pct_financiera (de Config). Evita el doble registro.
+    let comprobanteFinanciera = null;
+    if (venta.estado !== 'cancelado') {
+      const pagoFin = await client.query(
+        `SELECT vp.monto FROM venta_pagos vp
+           JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
+          WHERE vp.venta_id = $1 AND mp.es_financiera = true AND mp.deleted_at IS NULL
+          LIMIT 1`, [id]
+      );
+      const yaExiste = await client.query('SELECT 1 FROM comprobantes WHERE venta_id = $1 AND deleted_at IS NULL LIMIT 1', [id]);
+      if (pagoFin.rows[0] && !yaExiste.rows[0]) {
+        const monto = Number(pagoFin.rows[0].monto);
+        const { rows: cfg } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
+        const pct = Number(cfg[0]?.pct_financiera || 0);
+        const monto_financiera = round2(monto * pct / 100);
+        const monto_neto = round2(monto - monto_financiera);
+        const ins = await client.query(
+          `INSERT INTO comprobantes (fecha, cliente, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo, venta_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, monto, monto_financiera, monto_neto`,
+          [venta.fecha, venta.cliente_nombre ?? null, monto, monto_financiera, monto_neto, venta.order_id,
+           archivo_data, archivo_nombre ?? null, archivo_tipo ?? null, id]
+        );
+        comprobanteFinanciera = ins.rows[0];
+        await audit('comprobantes', 'INSERT', ins.rows[0].id, { despues: { venta_id: id, auto: true, monto, monto_financiera }, user_id: req.user.id });
+      }
+    }
+
+    await client.query('COMMIT');
     await audit('venta_comprobantes', 'INSERT', rows[0].id, { despues: { venta_id: id, nombre: archivo_nombre }, user_id: req.user.id });
-    res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+    res.status(201).json({ ...rows[0], comprobante_financiera: comprobanteFinanciera });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.get('/:id/comprobantes', async (req, res, next) => {
