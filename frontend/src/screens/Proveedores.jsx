@@ -311,6 +311,7 @@ export default function Proveedores() {
   const [loadingMovs, setLoadingMovs]   = useState(false);
 
   const [showProv, setShowProv]   = useState(false);
+  const [editId, setEditId]       = useState(null);   // null = alta; id = edición
   const [provForm, setProvForm]   = useState(EMPTY_PROV);
   const [provSaving, setProvSaving] = useState(false);
   const [provError, setProvError] = useState('');
@@ -341,7 +342,7 @@ export default function Proveedores() {
   useEffect(() => {
     setPrimaryAction({
       label: 'Nuevo proveedor',
-      onClick: () => { setProvForm(EMPTY_PROV()); setProvError(''); setShowProv(true); },
+      onClick: () => { setEditId(null); setProvForm(EMPTY_PROV()); setProvError(''); setShowProv(true); },
     });
     return () => setPrimaryAction(null);
   }, [setPrimaryAction]); // eslint-disable-line
@@ -360,23 +361,43 @@ export default function Proveedores() {
     };
   }, [movs, selected]);
 
-  async function handleCreateProv() {
+  function openCreateProv() {
+    setEditId(null); setProvForm(EMPTY_PROV()); setProvError(''); setShowProv(true);
+  }
+  function openEditProv(p) {
+    setEditId(p.id);
+    setProvForm({
+      nombre: p.nombre || '', contacto_nombre: p.contacto_nombre || '',
+      contacto_apellido: p.contacto_apellido || '', whatsapp: p.whatsapp || '',
+      ubicacion: p.ubicacion || '', notas: p.notas || '', saldo_inicial: '',
+    });
+    setProvError(''); setShowProv(true);
+  }
+
+  async function handleSaveProv() {
     if (!provForm.nombre.trim()) { setProvError('El nombre del proveedor es obligatorio.'); return; }
     setProvSaving(true); setProvError('');
+    const base = {
+      nombre:            provForm.nombre.trim(),
+      contacto_nombre:   provForm.contacto_nombre.trim()   || null,
+      contacto_apellido: provForm.contacto_apellido.trim() || null,
+      whatsapp:          provForm.whatsapp.trim()          || null,
+      ubicacion:         provForm.ubicacion.trim()         || null,
+      notas:             provForm.notas.trim()             || null,
+    };
     try {
-      const nuevo = await provApi.create({
-        nombre:            provForm.nombre.trim(),
-        contacto_nombre:   provForm.contacto_nombre.trim()   || null,
-        contacto_apellido: provForm.contacto_apellido.trim() || null,
-        whatsapp:          provForm.whatsapp.trim()          || null,
-        ubicacion:         provForm.ubicacion.trim()         || null,
-        notas:             provForm.notas.trim()             || null,
-        saldo_inicial:     provForm.saldo_inicial ? Number(provForm.saldo_inicial) : null,
-      });
-      setList(prev => [nuevo, ...prev]);
-      setSelectedId(nuevo.id);
+      if (editId) {
+        const upd = await provApi.update(editId, base);
+        // upd no trae saldo_usd/movimientos (agregados) → se preservan los de la lista
+        setList(prev => prev.map(p => p.id === editId ? { ...p, ...upd } : p));
+        toast.success('Proveedor actualizado.');
+      } else {
+        const nuevo = await provApi.create({ ...base, saldo_inicial: provForm.saldo_inicial ? Number(provForm.saldo_inicial) : null });
+        setList(prev => [nuevo, ...prev]);
+        setSelectedId(nuevo.id);
+      }
       setShowProv(false);
-    } catch (e) { setProvError(e.message || 'No se pudo crear el proveedor.'); }
+    } catch (e) { setProvError(e.message || 'No se pudo guardar el proveedor.'); }
     finally { setProvSaving(false); }
   }
 
@@ -460,8 +481,7 @@ export default function Proveedores() {
           <div className="page-sub">Cuentas por pagar · registro tipo planilla</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-primary"
-            onClick={() => { setProvForm(EMPTY_PROV()); setProvError(''); setShowProv(true); }}>
+          <button className="btn btn-primary" onClick={openCreateProv}>
             <Icons.Plus size={14} /> Nuevo proveedor
           </button>
         </div>
@@ -562,6 +582,9 @@ export default function Proveedores() {
                       {kpis.cantMovimientos}
                     </div>
                   </div>
+                  <button className="icon-btn" title="Editar proveedor" onClick={() => openEditProv(selected)}>
+                    <Icons.Edit size={15} />
+                  </button>
                   <button className="icon-btn" title="Eliminar proveedor" onClick={() => handleDeleteProv(selected)}>
                     <Icons.Trash size={15} />
                   </button>
@@ -678,7 +701,7 @@ export default function Proveedores() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowProv(false)}>
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-hd">
-              <h3>Nuevo proveedor</h3>
+              <h3>{editId ? 'Editar proveedor' : 'Nuevo proveedor'}</h3>
               <button className="icon-btn" onClick={() => setShowProv(false)}><Icons.X size={16} /></button>
             </div>
             <div className="modal-body">
@@ -718,20 +741,22 @@ export default function Proveedores() {
                     <input type="text" className="input" placeholder="Ej: paga a 30 días"
                       value={provForm.notas} onChange={e => setProvForm(f => ({ ...f, notas: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ width: 160 }}>
-                    <label className="field-label">Saldo inicial (USD)</label>
-                    <input type="number" min="0" step="0.01" className="input" placeholder="0"
-                      value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
-                    <div className="muted tiny" style={{ marginTop: 4 }}>Lo que ya le debés (opcional).</div>
-                  </div>
+                  {!editId && (
+                    <div className="field" style={{ width: 160 }}>
+                      <label className="field-label">Saldo inicial (USD)</label>
+                      <input type="number" min="0" step="0.01" className="input" placeholder="0"
+                        value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
+                      <div className="muted tiny" style={{ marginTop: 4 }}>Lo que ya le debés (opcional).</div>
+                    </div>
+                  )}
                 </div>
                 {provError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{provError}</div>}
               </div>
             </div>
             <div className="modal-ft">
               <button className="btn btn-ghost" onClick={() => setShowProv(false)} disabled={provSaving}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleCreateProv} disabled={provSaving}>
-                {provSaving ? 'Guardando…' : 'Crear proveedor'}
+              <button className="btn btn-primary" onClick={handleSaveProv} disabled={provSaving}>
+                {provSaving ? 'Guardando…' : (editId ? 'Guardar cambios' : 'Crear proveedor')}
               </button>
             </div>
           </div>
