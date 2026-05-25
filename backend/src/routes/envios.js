@@ -113,24 +113,24 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
 });
 
 router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+  const {
+    fecha, cliente, telefono, direccion, barrio,
+    costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, items,
+  } = req.body;
+
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-
-    const { rows: before } = await db.query(
-      'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL', [id]
+    await client.query('BEGIN');
+    // Lock de la fila dentro de la tx para serializar ediciones concurrentes
+    const { rows: before } = await client.query(
+      'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
-    if (!before[0]) return res.status(404).json({ error: 'Envío no encontrado' });
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
 
-    const {
-      fecha, cliente, telefono, direccion, barrio,
-      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, items,
-    } = req.body;
-
-    const client = await db.connect();
-    try {
-      await client.query('BEGIN');
-      const { rows } = await client.query(
+    const { rows } = await client.query(
         `UPDATE envios SET
           fecha         = COALESCE($1,  fecha),
           cliente       = COALESCE($2,  cliente),
@@ -163,14 +163,11 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       await client.query('COMMIT');
       await audit('envios', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
       res.json(rows[0]);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 

@@ -249,6 +249,19 @@ describe('Ledger de cajas', () => {
     expect(Number(row.saldo_actual)).toBe(0);
   });
 
+  it('rechaza un pago cuya moneda no coincide con la de la caja (no corrompe el saldo)', async () => {
+    const cajaArs = await crearCaja({ moneda: 'ARS', saldo_inicial: 0 });
+    const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+      .send({ nombre: 'Mismatch ' + Math.random(), categoria: 'VIP' });
+    // B2B postea en USD; con una caja ARS debe rechazar
+    const pago = await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago', monto_total: 100, caja_id: cajaArs.id });
+    expect(pago.status).toBe(400);
+    // el saldo de la caja no cambió
+    const row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === cajaArs.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+  });
+
   it('un ajuste en una caja ARS requiere tipo de cambio', async () => {
     const caja = await crearCaja({ moneda: 'ARS' });
     const sinTc = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
