@@ -13,8 +13,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const { execSync } = require('child_process');
-
-const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas', 'usados', 'inventario', 'ventas'];
+const { TOOLS } = require('../../src/lib/tools');
 
 const TEST_USER = {
   nombre:   'Test Admin',

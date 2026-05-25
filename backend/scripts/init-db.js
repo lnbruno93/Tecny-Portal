@@ -8,6 +8,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
+const { TOOLS } = require('../src/lib/tools');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -45,13 +46,12 @@ async function main() {
     if (rows.length > 0) {
       console.log(`Usuario "${ADMIN_USERNAME}" ya existe — sin cambios`);
     } else {
-      const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
       const { rows: newUser } = await pool.query(
         'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id',
         [ADMIN_NOMBRE, ADMIN_USERNAME, ADMIN_EMAIL, hash, 'admin']
       );
 
-      const TOOLS = ['cotizador','financiera','cajas','envios','usuarios'];
       for (const tool of TOOLS) {
         await pool.query(
           'INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1,$2,$3)',

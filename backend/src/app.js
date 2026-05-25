@@ -101,7 +101,11 @@ app.get('/health', async (_req, res) => {
   let dbError = null;
 
   try {
-    await db.query('SELECT 1');
+    // Timeout explícito y corto: el health-check no debe colgarse esperando al pool/DB.
+    await Promise.race([
+      db.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('health DB timeout')), 3_000)),
+    ]);
     dbLatency = Date.now() - start;
   } catch (err) {
     dbStatus = 'error';
@@ -192,7 +196,11 @@ app.use((err, req, res, _next) => {
   if (status >= 500) {
     (req.log || logger).error({ err }, err.message);
   }
-  res.status(status).json({ error: err.message || 'Error interno' });
+  // Errores 5xx: mensaje genérico al cliente — el detalle (err.message de pg, etc.)
+  // puede filtrar nombres de tablas/columnas/constraints. Ya queda logueado server-side.
+  // Errores <500 (validación/negocio): el mensaje es intencional y seguro de mostrar.
+  const clientError = status >= 500 ? 'Error interno' : (err.message || 'Error');
+  res.status(status).json({ error: clientError });
 });
 
 module.exports = app;

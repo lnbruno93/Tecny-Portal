@@ -7,10 +7,15 @@ const validate = require('../lib/validate');
 const { loginSchema, changePasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
+const { TOOLS } = require('../lib/tools');
+
+// Costo de bcrypt — 12 rounds (resistencia a cracking offline; costo de CPU despreciable en login)
+const BCRYPT_ROUNDS = 12;
 
 // Hash dummy precalculado — garantiza tiempo constante aunque el usuario no exista
-// Previene timing attacks que permiten enumerar usuarios válidos
-const DUMMY_HASH = bcrypt.hashSync('__dummy_password_for_timing__', 10);
+// Previene timing attacks que permiten enumerar usuarios válidos.
+// Usa el MISMO costo que los hashes reales para que el tiempo sea comparable.
+const DUMMY_HASH = bcrypt.hashSync('__dummy_password_for_timing__', BCRYPT_ROUNDS);
 
 // algoritmo fijo: previene algorithm confusion attacks (none, RS256, etc.)
 const JWT_ALGORITHM = 'HS256';
@@ -51,7 +56,6 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
       [user.id]
     );
-    const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
     const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
     const permissions = { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) };
 
@@ -76,7 +80,6 @@ router.get('/me', requireAuth, async (req, res, next) => {
       'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
       [req.user.id]
     );
-    const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados'];
     const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
     res.json({ ...rows[0], perms: { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) } });
   } catch (err) {
@@ -112,7 +115,7 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
 
-    const hash = await bcrypt.hash(newPassword, 10);
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await db.query(
       'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
       [hash, user.id]

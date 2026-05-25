@@ -6,8 +6,9 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
+const { TOOLS } = require('../lib/tools');
 
-const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados','inventario','ventas'];
+const BCRYPT_ROUNDS = 12;
 
 // requireAuth aplicado en app.js al montar /api/usuarios
 router.use(adminOnly);
@@ -37,7 +38,7 @@ router.get('/', async (_req, res, next) => {
 router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
   try {
     const { nombre, username, email, password, role, perms } = req.body;
-    const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const client = await db.connect();
     try {
@@ -80,7 +81,7 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     if (!before[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const { nombre, username, email, password, role, perms } = req.body;
-    const hash = password ? await bcrypt.hash(password, 10) : null;
+    const hash = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : null;
 
     const client = await db.connect();
     try {

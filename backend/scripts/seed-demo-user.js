@@ -13,15 +13,11 @@
  */
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
+const { TOOLS } = require('../src/lib/tools');
 
 const USERNAME = process.env.DEMO_USERNAME || 'demo';
 const PASSWORD = process.env.DEMO_PASSWORD || 'demo12345';
 const NOMBRE   = process.env.DEMO_NOMBRE   || 'Demo';
-
-const TOOLS = [
-  'cotizador', 'financiera', 'cajas', 'envios',
-  'usuarios', 'cuentas', 'usados', 'inventario', 'ventas',
-];
 
 async function main() {
   if (!process.env.DATABASE_URL) {

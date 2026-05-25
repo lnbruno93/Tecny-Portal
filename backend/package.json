@@ -12,7 +12,7 @@
     "migrate:create": "node-pg-migrate -m migrations create"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",
