@@ -7,6 +7,7 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
+  cajaSchema, updateCajaSchema,
 } = require('../schemas/cajas');
 
 
@@ -145,6 +146,74 @@ router.delete('/inversiones/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ─── CAJAS (cuentas de dinero = metodos_pago) ───────────────
+// Gestión central de las cajas donde caen los pagos. La lista de ventas
+// (GET /api/ventas/metodos-pago) lee solo las activas; acá se administran todas.
+
+router.get('/cajas', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT id, nombre, moneda, activo, orden FROM metodos_pago WHERE deleted_at IS NULL ORDER BY orden, nombre'
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
+  try {
+    const { nombre, moneda, activo, orden } = req.body;
+    const { rows } = await db.query(
+      `INSERT INTO metodos_pago (nombre, moneda, activo, orden)
+       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0))
+       RETURNING id, nombre, moneda, activo, orden`,
+      [nombre, moneda, activo ?? null, orden ?? null]
+    );
+    await audit('metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una caja con ese nombre' });
+    next(err);
+  }
+});
+
+router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const before = await db.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (!before.rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
+
+    const { nombre, moneda, activo, orden } = req.body;
+    const { rows } = await db.query(
+      `UPDATE metodos_pago SET
+         nombre = COALESCE($1, nombre),
+         moneda = COALESCE($2, moneda),
+         activo = COALESCE($3, activo),
+         orden  = COALESCE($4, orden)
+       WHERE id = $5 RETURNING id, nombre, moneda, activo, orden`,
+      [nombre ?? null, moneda ?? null, activo ?? null, orden ?? null, id]
+    );
+    await audit('metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una caja con ese nombre' });
+    next(err);
+  }
+});
+
+router.delete('/cajas/:id', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { rows } = await db.query(
+      'UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
+    await audit('metodos_pago', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 // ─── RESUMEN ────────────────────────────────────────────────
