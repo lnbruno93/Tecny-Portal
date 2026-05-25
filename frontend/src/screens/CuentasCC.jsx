@@ -685,7 +685,7 @@ export default function CuentasCC() {
       <div>
         <div className="page-head">
           <div>
-            <h1 className="page-title">Venta Mayorista & Gestión B2B</h1>
+            <h1 className="page-title">Venta & Gestión B2B</h1>
             <div className="page-sub">Vista global de saldos B2B</div>
           </div>
           <div className="page-actions">
@@ -770,7 +770,7 @@ export default function CuentasCC() {
       {/* Page head */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">Venta Mayorista & Gestión B2B</h1>
+          <h1 className="page-title">Venta & Gestión B2B</h1>
           <div className="page-sub">Clientes B2B · registro tipo planilla</div>
         </div>
         <div className="page-actions">

@@ -35,9 +35,31 @@ const queryInversionesSchema = z.object({
   limit:       z.coerce.number().int().positive().max(200).optional(),
 });
 
+// ─── CAJAS (cuentas de dinero = metodos_pago) ───────────────
+// Las cajas son las cuentas donde caen los pagos (USD Efectivo, Banco, Mercado Pago…).
+// Se gestionan desde la hoja "Config Cajas" del módulo Cajas.
+
+const cajaSchema = z.object({
+  nombre: z.string().trim().min(1, 'Nombre requerido').max(80),
+  moneda: z.enum(['USD', 'ARS', 'USDT'], { error: 'moneda debe ser: USD, ARS, USDT' }).default('ARS'),
+  activo: z.boolean().optional(),
+  orden:  z.coerce.number().int().min(0).optional(),
+});
+
+const updateCajaSchema = z.object({
+  nombre: z.string().trim().min(1).max(80).optional(),
+  moneda: z.enum(['USD', 'ARS', 'USDT']).optional(),
+  activo: z.boolean().optional(),
+  orden:  z.coerce.number().int().min(0).optional(),
+}).refine(d => Object.values(d).some(v => v !== undefined), {
+  message: 'Al menos un campo es requerido para actualizar',
+});
+
 module.exports = {
   createDeudaSchema,
   queryDeudasSchema,
   createInversionSchema,
   queryInversionesSchema,
+  cajaSchema,
+  updateCajaSchema,
 };

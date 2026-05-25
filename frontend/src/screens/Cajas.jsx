@@ -106,6 +106,13 @@ export default function Cajas() {
   const [invCreating, setInvCreating] = useState(false);
   const [invError, setInvError] = useState('');
 
+  // ── Config Cajas (cuentas de dinero = metodos_pago) ───────────────────────
+  const [cajasList, setCajasList] = useState([]);
+  const [loadingCajas, setLoadingCajas] = useState(false);
+  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS' });
+  const [cajaSaving, setCajaSaving] = useState(false);
+  const [cajaError, setCajaError] = useState('');
+
   // ── Tab-aware primary action ──────────────────────────────────────────────
   const { setPrimaryAction } = usePageActions();
   useEffect(() => {
@@ -114,14 +121,25 @@ export default function Cajas() {
         label: 'Nuevo movimiento',
         onClick: () => { setDeudaForm(EMPTY_DEUDA()); setDeudaError(''); setShowDeuda(true); },
       });
-    } else {
+    } else if (tab === 'inversiones') {
       setPrimaryAction({
         label: 'Nueva inversión',
         onClick: () => { setInvForm(EMPTY_INV()); setInvError(''); setShowInv(true); },
       });
+    } else {
+      setPrimaryAction(null); // Config Cajas usa formulario inline
     }
     return () => setPrimaryAction(null);
   }, [tab, setPrimaryAction]);
+
+  // Cargar cajas al entrar a la hoja Config
+  async function loadCajas() {
+    setLoadingCajas(true);
+    try { setCajasList(await cajas.listCajas() || []); }
+    catch (e) { console.error(e); }
+    finally { setLoadingCajas(false); }
+  }
+  useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleCreateContacto(e) {
@@ -284,6 +302,32 @@ export default function Cajas() {
     } catch (e) { toast.error(e.message); }
   }
 
+  // ── Config Cajas handlers ──────────────────────────────────────────────────
+  async function handleCreateCaja(e) {
+    e.preventDefault();
+    if (!cajaForm.nombre.trim()) { setCajaError('El nombre es obligatorio.'); return; }
+    setCajaSaving(true); setCajaError('');
+    try {
+      await cajas.createCaja({ nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda });
+      setCajaForm({ nombre: '', moneda: 'ARS' });
+      toast.success('Caja creada.');
+      loadCajas();
+    } catch (e) { setCajaError(e.message || 'No se pudo crear la caja.'); }
+    finally { setCajaSaving(false); }
+  }
+
+  async function handleToggleCaja(c) {
+    try { await cajas.updateCaja(c.id, { activo: !c.activo }); loadCajas(); }
+    catch (e) { toast.error(e.message); }
+  }
+
+  async function handleDeleteCaja(c) {
+    const ok = await confirm({ title: 'Eliminar caja', message: `¿Eliminar "${c.nombre}"? No afecta movimientos ya registrados.`, confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    try { await cajas.deleteCaja(c.id); toast.success('Caja eliminada.'); loadCajas(); }
+    catch (e) { toast.error(e.message); }
+  }
+
   return (
     <div>
       {/* Page head */}
@@ -294,7 +338,7 @@ export default function Cajas() {
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className="tabs">
-            {[{ value: 'deudas', label: 'Deudas' }, { value: 'inversiones', label: 'Inversiones' }].map(t => (
+            {[{ value: 'deudas', label: 'Deudas' }, { value: 'inversiones', label: 'Inversiones' }, { value: 'config', label: 'Config Cajas' }].map(t => (
               <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')}
                       onClick={() => { setTab(t.value); setSelectedContactoId(null); }}>
                 {t.label}
@@ -512,6 +556,78 @@ export default function Cajas() {
                 </tbody>
               </table>
             )}
+          </div>
+        </>
+      )}
+
+      {/* ── CONFIG CAJAS TAB ───────────────────────────────────────────── */}
+      {tab === 'config' && (
+        <>
+          <div className="card card-tight" style={{ marginBottom: 16 }}>
+            <div className="card-hd"><h3>Nueva caja</h3></div>
+            <form onSubmit={handleCreateCaja} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', padding: '4px 2px' }}>
+              <div className="field" style={{ flex: 2, minWidth: 220 }}>
+                <label className="field-label">Nombre</label>
+                <input className="input" placeholder="ej. USD Efectivo, Banco Galicia, Mercado Pago"
+                       value={cajaForm.nombre} onChange={e => setCajaForm(f => ({ ...f, nombre: e.target.value }))} />
+              </div>
+              <div className="field" style={{ width: 130 }}>
+                <label className="field-label">Moneda</label>
+                <select className="input" value={cajaForm.moneda} onChange={e => setCajaForm(f => ({ ...f, moneda: e.target.value }))}>
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                  <option value="USDT">USDT</option>
+                </select>
+              </div>
+              <button className="btn btn-primary" type="submit" disabled={cajaSaving}>
+                {cajaSaving ? 'Guardando…' : '+ Agregar caja'}
+              </button>
+            </form>
+            {cajaError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 8 }}>{cajaError}</div>}
+          </div>
+
+          <div className="card card-flush">
+            <div className="card-hd"><h3>Cajas — {cajasList.length}</h3></div>
+            {loadingCajas ? (
+              <div className="empty">Cargando…</div>
+            ) : cajasList.length === 0 ? (
+              <div className="empty">Sin cajas. Creá la primera arriba.</div>
+            ) : (
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Moneda</th>
+                    <th>Estado</th>
+                    <th style={{ width: 40 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cajasList.map(c => (
+                    <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
+                      <td style={{ fontWeight: 600 }}>{c.nombre}</td>
+                      <td><span className="ccy">{c.moneda}</span></td>
+                      <td>
+                        <button className={'badge ' + (c.activo ? 'badge-pos' : 'badge-warn')}
+                                style={{ cursor: 'pointer', border: 'none' }}
+                                onClick={() => handleToggleCaja(c)}
+                                title="Click para activar / desactivar">
+                          {c.activo ? 'Activa' : 'Inactiva'}
+                        </button>
+                      </td>
+                      <td>
+                        <button className="icon-btn" onClick={() => handleDeleteCaja(c)}>
+                          <Icons.Trash size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="muted tiny" style={{ padding: '10px 14px' }}>
+              Las cajas son las cuentas donde caen los pagos (Ventas, B2B, Financiera, Envíos). Las inactivas no aparecen al cargar nuevos pagos.
+            </div>
           </div>
         </>
       )}

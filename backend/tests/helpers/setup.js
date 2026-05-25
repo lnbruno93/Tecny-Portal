@@ -36,7 +36,7 @@ async function setupTestDb() {
   await pool.query(`
     TRUNCATE TABLE
       audit_logs,
-      egresos, ventas_rapidas, canjes, venta_comprobantes, venta_pagos, venta_items, ventas, etiquetas, plantillas_garantia,
+      egresos, ventas_rapidas, canjes, venta_comprobantes, venta_pagos, venta_items, ventas, etiquetas, metodos_pago, plantillas_garantia,
       productos, categorias, depositos,
       items_movimiento_cc, movimientos_cc, clientes_cc,
       envio_items, envios,
@@ -44,6 +44,19 @@ async function setupTestDb() {
       comprobantes, pagos, vendedores,
       user_permissions, users
     RESTART IDENTITY CASCADE
+  `);
+
+  // Re-seed de metodos_pago (cajas) — se truncó arriba; replica el seed de la migración 002
+  // para que cada test arranque con un estado determinístico de cajas.
+  await pool.query(`
+    INSERT INTO metodos_pago (nombre, moneda, orden) VALUES
+      ('USD | Efectivo',      'USD',  1),
+      ('Pesos Ars | Efectivo','ARS',  2),
+      ('Pesos Ars | BBVA GL', 'ARS',  3),
+      ('Pesos Ars | BBVA LB', 'ARS',  4),
+      ('USD | BBVA GL',       'USD',  5),
+      ('Binance | GL',        'USDT', 6)
+    ON CONFLICT DO NOTHING
   `);
 
   // Crear usuario admin de prueba
@@ -72,6 +85,7 @@ async function teardownTestDb(pool) {
     await pool.query(`
       TRUNCATE TABLE
         audit_logs,
+        egresos, metodos_pago,
         items_movimiento_cc, movimientos_cc, clientes_cc,
         envio_items, envios,
         movimientos_inversiones, movimientos_deudas, contactos,

@@ -11,7 +11,7 @@ const COMMANDS = [
   { id: 'financiera', path: '/financiera', label: 'Financiera',  desc: 'Comprobantes, pagos y OCR',       icon: 'Trend'      },
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',       desc: 'Deudas e inversiones',            icon: 'Wallet'     },
   { id: 'envios',     path: '/envios',     label: 'Envíos',      desc: 'Despachos a domicilio',           icon: 'Truck'      },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Venta Mayorista & Gestión B2B', desc: 'Clientes B2B y cuenta corriente', icon: 'Receipt'    },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', desc: 'Clientes B2B y cuenta corriente', icon: 'Receipt'    },
   { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            desc: 'Catálogo de precios USD',         icon: 'Phone'      },
   { id: 'historial',  path: '/historial',  label: 'Historial',   desc: 'Auditoría de cambios',            icon: 'Refresh'    },
   { id: 'usuarios',   path: '/usuarios',   label: 'Usuarios',    desc: 'Gestión de acceso',               icon: 'Users'      },
