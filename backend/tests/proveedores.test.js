@@ -70,6 +70,25 @@ describe('Proveedores — CRUD', () => {
     const row = list.body.find(p => p.id === created.body.id);
     expect(Number(row.saldo_usd)).toBe(1500);
   });
+
+  it('permite editar (ajustar) el saldo inicial', async () => {
+    const created = await request(app).post('/api/proveedores').set(auth())
+      .send({ nombre: 'Edit Saldo Inicial', saldo_inicial: 1000 });
+
+    // Subir a 1500
+    const upd = await request(app).put(`/api/proveedores/${created.body.id}`).set(auth())
+      .send({ saldo_inicial: 1500 });
+    expect(upd.status).toBe(200);
+    let row = (await request(app).get('/api/proveedores').set(auth())).body.find(p => p.id === created.body.id);
+    expect(Number(row.saldo_usd)).toBe(1500);
+    expect(Number(row.saldo_inicial)).toBe(1500);
+
+    // Bajar a 0 → quita el movimiento de apertura
+    await request(app).put(`/api/proveedores/${created.body.id}`).set(auth()).send({ saldo_inicial: 0 });
+    row = (await request(app).get('/api/proveedores').set(auth())).body.find(p => p.id === created.body.id);
+    expect(Number(row.saldo_inicial)).toBe(0);
+    expect(Number(row.saldo_usd)).toBe(0);
+  });
 });
 
 describe('Proveedores — cuenta corriente', () => {

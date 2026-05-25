@@ -11,8 +11,8 @@ const createProveedorSchema = z.object({
   saldo_inicial:     z.coerce.number().min(0).optional().nullable(),
 });
 
-// Para actualizar NO se permite saldo_inicial (es solo de apertura)
-const updateProveedorSchema = createProveedorSchema.omit({ saldo_inicial: true }).partial().refine(
+// Al actualizar también se puede ajustar el saldo inicial (movimiento de apertura)
+const updateProveedorSchema = createProveedorSchema.partial().refine(
   d => Object.values(d).some(v => v !== undefined),
   { message: 'Al menos un campo es requerido para actualizar' }
 );

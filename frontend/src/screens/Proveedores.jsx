@@ -369,7 +369,8 @@ export default function Proveedores() {
     setProvForm({
       nombre: p.nombre || '', contacto_nombre: p.contacto_nombre || '',
       contacto_apellido: p.contacto_apellido || '', whatsapp: p.whatsapp || '',
-      ubicacion: p.ubicacion || '', notas: p.notas || '', saldo_inicial: '',
+      ubicacion: p.ubicacion || '', notas: p.notas || '',
+      saldo_inicial: Number(p.saldo_inicial) > 0 ? String(Number(p.saldo_inicial)) : '',
     });
     setProvError(''); setShowProv(true);
   }
@@ -387,10 +388,13 @@ export default function Proveedores() {
     };
     try {
       if (editId) {
-        const upd = await provApi.update(editId, base);
-        // upd no trae saldo_usd/movimientos (agregados) → se preservan los de la lista
-        setList(prev => prev.map(p => p.id === editId ? { ...p, ...upd } : p));
+        await provApi.update(editId, {
+          ...base,
+          saldo_inicial: provForm.saldo_inicial === '' ? 0 : Number(provForm.saldo_inicial),
+        });
         toast.success('Proveedor actualizado.');
+        loadList();                  // refresca saldo (el saldo inicial pudo cambiar)
+        reloadMovs();                // refresca la planilla del proveedor seleccionado
       } else {
         const nuevo = await provApi.create({ ...base, saldo_inicial: provForm.saldo_inicial ? Number(provForm.saldo_inicial) : null });
         setList(prev => [nuevo, ...prev]);
@@ -741,14 +745,12 @@ export default function Proveedores() {
                     <input type="text" className="input" placeholder="Ej: paga a 30 días"
                       value={provForm.notas} onChange={e => setProvForm(f => ({ ...f, notas: e.target.value }))} />
                   </div>
-                  {!editId && (
-                    <div className="field" style={{ width: 160 }}>
-                      <label className="field-label">Saldo inicial (USD)</label>
-                      <input type="number" min="0" step="0.01" className="input" placeholder="0"
-                        value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
-                      <div className="muted tiny" style={{ marginTop: 4 }}>Lo que ya le debés (opcional).</div>
-                    </div>
-                  )}
+                  <div className="field" style={{ width: 160 }}>
+                    <label className="field-label">Saldo inicial (USD)</label>
+                    <input type="number" min="0" step="0.01" className="input" placeholder="0"
+                      value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
+                    <div className="muted tiny" style={{ marginTop: 4 }}>{editId ? 'Ajusta la apertura (0 = sin saldo inicial).' : 'Lo que ya le debés (opcional).'}</div>
+                  </div>
                 </div>
                 {provError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{provError}</div>}
               </div>

@@ -24,6 +24,7 @@ router.get('/', async (req, res, next) => {
     const { rows } = await db.query(
       `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
               COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) AS saldo_usd,
+              COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
               COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
          FROM proveedores p
          LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
@@ -80,14 +81,16 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
 });
 
 router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const before = await db.query('SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!before.rows[0]) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
+    await client.query('BEGIN');
+    const before = await client.query('SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
 
-    const { nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas } = req.body;
-    const { rows } = await db.query(
+    const { nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas, saldo_inicial } = req.body;
+    const { rows } = await client.query(
       `UPDATE proveedores SET
          nombre            = COALESCE($1, nombre),
          contacto_nombre   = COALESCE($2, contacto_nombre),
@@ -98,9 +101,33 @@ router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
        WHERE id = $7 RETURNING *`,
       [nombre ?? null, contacto_nombre ?? null, contacto_apellido ?? null, whatsapp ?? null, ubicacion ?? null, notas ?? null, id]
     );
+
+    // Ajuste del saldo inicial (movimiento de apertura) si vino en el body
+    if (saldo_inicial !== undefined && saldo_inicial !== null) {
+      const ini = round2(Number(saldo_inicial) || 0);
+      const ap = await client.query(
+        `SELECT id FROM proveedor_movimientos WHERE proveedor_id = $1 AND tipo = 'saldo_inicial' AND deleted_at IS NULL ORDER BY id LIMIT 1`, [id]
+      );
+      if (ini > 0 && ap.rows[0]) {
+        await client.query('UPDATE proveedor_movimientos SET monto = $1, monto_usd = $1 WHERE id = $2', [ini, ap.rows[0].id]);
+      } else if (ini > 0) {
+        await client.query(
+          `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, monto_usd)
+           VALUES ($1, CURRENT_DATE, 'saldo_inicial', 'Saldo inicial', $2, 'USD', $2)`, [id, ini]
+        );
+      } else if (ap.rows[0]) {
+        // ini == 0 → quitar el saldo inicial
+        await client.query('UPDATE proveedor_movimientos SET deleted_at = NOW() WHERE id = $1', [ap.rows[0].id]);
+      }
+    }
+
+    await client.query('COMMIT');
     await audit('proveedores', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.delete('/:id', async (req, res, next) => {
