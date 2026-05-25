@@ -28,6 +28,7 @@ const {
   createMovimientoCCSchema,
   TIPOS_MOVIMIENTO_CC,
 } = require('../schemas/cuentas');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 
 // Helper: SQL para calcular saldo de un cliente (subquery reutilizable — usada solo en GET /:id)
 // Para el listado usamos un JOIN en lugar de subquery correlacionada (ver abajo).
@@ -226,7 +227,7 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
   try {
     const {
       cliente_cc_id, fecha, tipo, descripcion, monto_total, notas,
-      items = [],
+      caja_id, items = [],
     } = req.body;
 
     await client.query('BEGIN');
@@ -243,12 +244,22 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // Insertar movimiento
     const { rows: movRows } = await client.query(
       `INSERT INTO movimientos_cc
-         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas)
-       VALUES ($1,$2,$3,$4,$5,$6)
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
-      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null]
+      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null]
     );
     const mov = movRows[0];
+
+    // Un PAGO del cliente mayorista (pago / parte_de_pago) ingresa a una caja.
+    // monto_total ya está normalizado en USD por la UI.
+    if (['pago', 'parte_de_pago'].includes(tipo) && caja_id) {
+      await postCajaMovimiento(client, {
+        caja_id, fecha, tipo: 'ingreso', monto: monto_total, moneda: 'USD', tc: null,
+        origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
+        concepto: `Pago B2B #${cliente_cc_id}`, user_id: req.user.id,
+      });
+    }
 
     // Insertar items solo para compra/devolucion (ignorar el resto)
     let insertedItems = [];
@@ -293,19 +304,27 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
 });
 
 router.delete('/movimientos/:id', async (req, res, next) => {
-  try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query(
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       'UPDATE movimientos_cc SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
+    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    // Revertir el ingreso de caja asociado (si lo hubo)
+    await reverseCajaMovimientos(client, 'movimientos_cc', id);
+    await client.query('COMMIT');
     await audit('movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 

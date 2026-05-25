@@ -5,6 +5,28 @@ const audit = require('../lib/audit');
 const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../schemas/envios');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+
+// Sincroniza el impacto de un envío en el ledger de cajas: revierte los ingresos
+// previos y, si el envío no está cancelado, re-postea un ingreso por cada item
+// 'pago' que tenga una caja asignada (metodo_pago_id). Idempotente.
+async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
+  await reverseCajaMovimientos(client, 'envios', envioId);
+  if (estado === 'Cancelado') return;
+  const { rows: pagos } = await client.query(
+    `SELECT metodo_pago_id, monto FROM envio_items
+      WHERE envio_id = $1 AND tipo = 'pago' AND metodo_pago_id IS NOT NULL AND monto > 0`,
+    [envioId]
+  );
+  for (const p of pagos) {
+    await postCajaMovimiento(client, {
+      caja_id: p.metodo_pago_id, fecha, tipo: 'ingreso',
+      monto: p.monto, moneda: 'ARS', tc: null,
+      origen: 'envio', ref_tabla: 'envios', ref_id: envioId,
+      concepto: `Cobro envío #${envioId}`, user_id: userId,
+    });
+  }
+}
 
 
 router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => {
@@ -71,10 +93,11 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
 
       for (const item of items) {
         await client.query(
-          'INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago) VALUES ($1,$2,$3,$4,$5)',
-          [envio.id, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null]
+          'INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id) VALUES ($1,$2,$3,$4,$5,$6)',
+          [envio.id, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null, item.metodo_pago_id ?? null]
         );
       }
+      await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
       await client.query('COMMIT');
       await audit('envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
       res.status(201).json(envio);
@@ -130,11 +153,13 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
         await client.query('DELETE FROM envio_items WHERE envio_id = $1', [id]);
         for (const item of items) {
           await client.query(
-            'INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago) VALUES ($1,$2,$3,$4,$5)',
-            [id, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null]
+            'INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id) VALUES ($1,$2,$3,$4,$5,$6)',
+            [id, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null, item.metodo_pago_id ?? null]
           );
         }
       }
+      // Recalcular el impacto en caja (cambió la lista de pagos y/o el estado)
+      await syncEnvioCaja(client, id, rows[0].fecha, rows[0].estado, req.user.id);
       await client.query('COMMIT');
       await audit('envios', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
       res.json(rows[0]);
@@ -150,19 +175,27 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
 });
 
 router.delete('/:id', async (req, res, next) => {
-  try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query(
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       'UPDATE envios SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Envío no encontrado' });
+    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
+    // Revertir los ingresos de caja asociados a este envío
+    await reverseCajaMovimientos(client, 'envios', id);
+    await client.query('COMMIT');
     await audit('envios', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 

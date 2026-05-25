@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { envios } from '../lib/api';
+import { envios, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -27,7 +27,7 @@ const EMPTY_FORM = {
   horario: '', operador: '', notas: '',
   prioridad: '', estado: 'Pendiente',
 };
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '' };
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '' };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -78,6 +78,13 @@ export default function Envios() {
   const [deletingId, setDeletingId] = useState(null);
   // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
   const [dateFilter, setDateFilter] = useState(null);
+  const [cajasArs, setCajasArs] = useState([]); // cajas ARS para asignar el cobro
+
+  useEffect(() => {
+    cajasApi.listCajas()
+      .then(list => setCajasArs((list || []).filter(c => c.activo !== false && c.moneda === 'ARS')))
+      .catch(console.error);
+  }, []);
 
   // ── Create modal ──
   const [showCreate, setShowCreate] = useState(false);
@@ -126,6 +133,7 @@ export default function Envios() {
             descripcion: i.descripcion.trim() || null,
             monto: Number(i.monto) || 0,
             metodo_pago: i.metodo_pago.trim() || null,
+            metodo_pago_id: (i.tipo === 'pago' && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
           })),
       };
       const nuevo = await envios.create(payload);
@@ -783,6 +791,16 @@ export default function Envios() {
                               <Icons.X size={14} />
                             </button>
                           </div>
+                          {it.tipo === 'pago' && cajasArs.length > 0 && (
+                            <div className="field" style={{ marginBottom: 0, marginTop: 8 }}>
+                              <label className="field-label">Caja (ARS) donde ingresa el cobro</label>
+                              <select className="input" value={it.metodo_pago_id}
+                                onChange={e => setItem(idx, 'metodo_pago_id', e.target.value)}>
+                                <option value="">Sin caja (no impacta)…</option>
+                                {cajasArs.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

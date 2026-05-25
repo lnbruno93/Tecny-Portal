@@ -184,6 +184,71 @@ describe('Ledger de cajas', () => {
     expect(comp2.body.comprobante_financiera).toBeNull();
   });
 
+  it('un PAGO B2B (cuenta corriente) ingresa a la caja y se revierte al borrarlo', async () => {
+    const caja = await crearCaja({ saldo_inicial: 0 });
+    const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+      .send({ nombre: 'Mayorista Caja ' + Math.random(), categoria: 'A+' });
+    expect(cli.status).toBe(201);
+
+    const pago = await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago', monto_total: 300, caja_id: caja.id });
+    expect(pago.status).toBe(201);
+
+    // caja: 0 + 300 = 300, movimiento origen 'b2b'
+    let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(300);
+    const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
+    expect(movs.body.some(m => m.origen === 'b2b' && m.tipo === 'ingreso')).toBe(true);
+
+    // borrar el pago → caja vuelve a 0
+    await request(app).delete(`/api/cuentas/movimientos/${pago.body.id}`).set(auth());
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+  });
+
+  it('una COMPRA B2B no toca la caja (solo el pago ingresa)', async () => {
+    const caja = await crearCaja({ saldo_inicial: 0 });
+    const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+      .send({ nombre: 'Mayorista Compra ' + Math.random(), categoria: 'A-' });
+    await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 1000, caja_id: caja.id });
+    const row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+  });
+
+  it('un COBRO de envío ingresa a la caja ARS, se revierte al cancelar y al borrar', async () => {
+    const caja = await crearCaja({ moneda: 'ARS', saldo_inicial: 0 });
+    const envio = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Envío', direccion: 'Calle 123', estado: 'Pendiente',
+      items: [
+        { tipo: 'producto', descripcion: 'Caja x1', monto: 0 },
+        { tipo: 'pago', descripcion: 'Efectivo', monto: 50000, metodo_pago_id: caja.id },
+      ],
+    });
+    expect(envio.status).toBe(201);
+
+    // caja ARS: 0 + 50000 = 50000 (saldo nativo en ARS)
+    let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(50000);
+    const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
+    expect(movs.body.some(m => m.origen === 'envio' && m.tipo === 'ingreso')).toBe(true);
+
+    // cancelar el envío → revierte el ingreso
+    await request(app).put(`/api/envios/${envio.body.id}`).set(auth()).send({ estado: 'Cancelado' });
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+
+    // reactivar (Entregado) → vuelve a ingresar
+    await request(app).put(`/api/envios/${envio.body.id}`).set(auth()).send({ estado: 'Entregado' });
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(50000);
+
+    // borrar → revierte definitivamente
+    await request(app).delete(`/api/envios/${envio.body.id}`).set(auth());
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+  });
+
   it('un ajuste en una caja ARS requiere tipo de cambio', async () => {
     const caja = await crearCaja({ moneda: 'ARS' });
     const sinTc = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
