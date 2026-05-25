@@ -76,7 +76,7 @@ const EMPTY_INV   = () => ({ fecha: todayISO(), contacto_id: '', monto: '', tasa
 export default function Cajas() {
   const { toast } = useToast();
   const confirm   = useConfirm();
-  const [tab, setTab] = useState('deudas');
+  const [tab, setTab] = useState('config');
 
   // Deudas
   const [deudaMovs, setDeudaMovs] = useState([]);
@@ -412,7 +412,7 @@ export default function Cajas() {
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className="tabs">
-            {[{ value: 'deudas', label: 'Deudas' }, { value: 'inversiones', label: 'Inversiones' }, { value: 'config', label: 'Config Cajas' }, { value: 'movimientos', label: 'Movimientos' }].map(t => (
+            {[{ value: 'config', label: 'Config Cajas' }, { value: 'deudas', label: 'Deudas a cobrar' }, { value: 'inversiones', label: 'Inversiones' }, { value: 'movimientos', label: 'Historial Movimientos' }].map(t => (
               <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')}
                       onClick={() => { setTab(t.value); setSelectedContactoId(null); }}>
                 {t.label}
