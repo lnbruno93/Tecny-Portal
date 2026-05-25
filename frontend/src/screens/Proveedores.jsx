@@ -21,8 +21,8 @@ function fmtFecha(iso) {
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra:        { label: 'Compra',        tone: 'neg',     signo: +1 },
-  pago:          { label: 'Pago',          tone: 'pos',     signo: -1 },
+  compra:        { label: 'Compra',        tone: 'pos',     signo: +1 },
+  pago:          { label: 'Pago',          tone: 'neg',     signo: -1 },
   saldo_inicial: { label: 'Saldo inicial', tone: 'default', signo: +1 },
 };
 
@@ -666,7 +666,7 @@ export default function Proveedores() {
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
-                          <span className={t.signo > 0 ? 'neg' : 'pos'}>
+                          <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_usd)}
                           </span>
                         </td>

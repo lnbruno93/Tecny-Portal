@@ -23,10 +23,10 @@ function fmtFecha(iso) {
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra:             { label: 'Compra',        tone: 'neg',  signo: +1 },
-  pago:               { label: 'Pago',          tone: 'pos',  signo: -1 },
+  compra:             { label: 'Compra',        tone: 'pos',  signo: +1 },
+  pago:               { label: 'Pago',          tone: 'neg',  signo: -1 },
   devolucion:         { label: 'Devolución',     tone: 'pos',  signo: -1 },
-  parte_de_pago:      { label: 'Parte pago',     tone: 'pos',  signo: -1 },
+  parte_de_pago:      { label: 'Parte pago',     tone: 'neg',  signo: -1 },
   entrega_mercaderia: { label: 'Entrega',        tone: 'info', signo: -1 },
 };
 const CAT_TONE = { 'VIP': 'accent', 'A+': 'pos', 'A-': 'default' };
@@ -984,7 +984,7 @@ export default function CuentasCC() {
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
-                          <span className={t.signo > 0 ? 'neg' : 'pos'}>
+                          <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_total)}
                           </span>
                         </td>
