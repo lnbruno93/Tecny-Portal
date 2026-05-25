@@ -27,3 +27,4 @@ pino.log
 # ─── Misc ─────────────────────────────────────────────────────────────────────
 Index.html
 index_backup.html
+.claude/settings.local.json
