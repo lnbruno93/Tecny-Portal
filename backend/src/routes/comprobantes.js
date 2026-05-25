@@ -71,7 +71,13 @@ router.get('/', validate(queryComprobantesSchema, 'query'), async (req, res, nex
     const [countRes, dataRes] = await Promise.all([
       db.query(`SELECT COUNT(*) ${baseQuery}`, params),
       db.query(
-        `SELECT c.*, v.nombre AS vendedor_nombre ${baseQuery}
+        // Columnas explícitas SIN archivo_data (base64): no debe viajar en el listado.
+        // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay adjunto.
+        `SELECT c.id, c.fecha, c.cliente, c.vendedor_id, c.monto, c.monto_financiera, c.monto_neto,
+                c.referencia, c.archivo_nombre, c.archivo_tipo, c.venta_id, c.created_at,
+                (c.archivo_data IS NOT NULL) AS tiene_archivo,
+                v.nombre AS vendedor_nombre
+         ${baseQuery}
          ORDER BY c.fecha DESC, c.id DESC
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
@@ -95,8 +101,10 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
       [fecha, cliente, vendedor_id ?? null, monto, monto_financiera, monto_neto ?? monto, referencia ?? null,
        archivo_data ?? null, archivo_nombre ?? null, archivo_tipo ?? null]
     );
-    await audit('comprobantes', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
+    // Excluir el base64 del audit (infla la tabla) y de la respuesta (el cliente ya lo tiene)
+    const { archivo_data: _blob, ...comprobante } = rows[0];
+    await audit('comprobantes', 'INSERT', rows[0].id, { despues: comprobante, user_id: req.user.id });
+    res.status(201).json(comprobante);
   } catch (err) {
     next(err);
   }
@@ -114,7 +122,8 @@ router.delete('/:id', async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'No encontrado' });
 
-    await audit('comprobantes', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const { archivo_data: _blob, ...comprobante } = rows[0];
+    await audit('comprobantes', 'DELETE', id, { antes: comprobante, user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     next(err);

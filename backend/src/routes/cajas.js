@@ -282,19 +282,24 @@ router.get('/movimientos', validate(queryLedgerSchema, 'query'), async (req, res
   } catch (err) { next(err); }
 });
 
-// Historial de movimientos de una caja
+// Historial de movimientos de una caja (paginado — esta tabla crece rápido)
 router.get('/cajas/:id/movimientos', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      `SELECT id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, created_at
-         FROM caja_movimientos
-        WHERE caja_id = $1 AND deleted_at IS NULL
-        ORDER BY fecha DESC, id DESC`,
-      [id]
-    );
-    res.json(rows);
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    const [countRes, dataRes] = await Promise.all([
+      db.query('SELECT COUNT(*) FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL', [id]),
+      db.query(
+        `SELECT id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, created_at
+           FROM caja_movimientos
+          WHERE caja_id = $1 AND deleted_at IS NULL
+          ORDER BY fecha DESC, id DESC
+          LIMIT $2 OFFSET $3`,
+        [id, limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
 

@@ -370,7 +370,7 @@ export default function Cajas() {
   async function openCajaLedger(c) {
     setCajaSel(c);
     setAjusteForm({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
-    try { setCajaMovs(await cajas.cajaMovimientos(c.id) || []); }
+    try { const r = await cajas.cajaMovimientos(c.id); setCajaMovs(r.data || []); }
     catch (e) { toast.error(e.message); setCajaMovs([]); }
   }
   async function handleSaldoInicial(c, valor) {
@@ -392,7 +392,7 @@ export default function Cajas() {
       });
       toast.success('Ajuste registrado.');
       setAjusteForm({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
-      setCajaMovs(await cajas.cajaMovimientos(cajaSel.id) || []);
+      { const r = await cajas.cajaMovimientos(cajaSel.id); setCajaMovs(r.data || []); }
       loadCajas();
     } catch (e) { toast.error(e.message || 'No se pudo registrar.'); }
     finally { setAjusteSaving(false); }
