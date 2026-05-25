@@ -689,6 +689,7 @@ export default function Proveedores() {
                   {/* ── Fila de entrada inline ── */}
                   <InlineAddRows
                     key={selectedId}
+                    proveedorId={selectedId}
                     onSave={handleOptimisticSave}
                     onSaveDone={handleSaveDone}
                     onSaveError={handleSaveError}
