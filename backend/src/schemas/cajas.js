@@ -40,19 +40,32 @@ const queryInversionesSchema = z.object({
 // Se gestionan desde la hoja "Config Cajas" del módulo Cajas.
 
 const cajaSchema = z.object({
-  nombre: z.string().trim().min(1, 'Nombre requerido').max(80),
-  moneda: z.enum(['USD', 'ARS', 'USDT'], { error: 'moneda debe ser: USD, ARS, USDT' }).default('ARS'),
-  activo: z.boolean().optional(),
-  orden:  z.coerce.number().int().min(0).optional(),
+  nombre:        z.string().trim().min(1, 'Nombre requerido').max(80),
+  moneda:        z.enum(['USD', 'ARS', 'USDT'], { error: 'moneda debe ser: USD, ARS, USDT' }).default('ARS'),
+  activo:        z.boolean().optional(),
+  orden:         z.coerce.number().int().min(0).optional(),
+  saldo_inicial: z.coerce.number().optional(),  // saldo de apertura (en la moneda de la caja)
+  es_financiera: z.boolean().optional(),         // marca esta caja como "la financiera"
 });
 
 const updateCajaSchema = z.object({
-  nombre: z.string().trim().min(1).max(80).optional(),
-  moneda: z.enum(['USD', 'ARS', 'USDT']).optional(),
-  activo: z.boolean().optional(),
-  orden:  z.coerce.number().int().min(0).optional(),
+  nombre:        z.string().trim().min(1).max(80).optional(),
+  moneda:        z.enum(['USD', 'ARS', 'USDT']).optional(),
+  activo:        z.boolean().optional(),
+  orden:         z.coerce.number().int().min(0).optional(),
+  saldo_inicial: z.coerce.number().optional(),
+  es_financiera: z.boolean().optional(),
 }).refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'Al menos un campo es requerido para actualizar',
+});
+
+// Ajuste manual de caja (ingreso/egreso suelto, origen 'ajuste')
+const cajaAjusteSchema = z.object({
+  fecha:    z.string().date('Fecha inválida — usar YYYY-MM-DD'),
+  tipo:     z.enum(['ingreso', 'egreso'], { error: 'tipo debe ser: ingreso, egreso' }),
+  monto:    z.coerce.number().positive('El monto debe ser mayor a 0'),
+  tc:       z.coerce.number().positive().optional().nullable(),  // requerido si la caja es ARS
+  concepto: z.string().trim().max(300).optional().nullable(),
 });
 
 module.exports = {
@@ -62,4 +75,5 @@ module.exports = {
   queryInversionesSchema,
   cajaSchema,
   updateCajaSchema,
+  cajaAjusteSchema,
 };

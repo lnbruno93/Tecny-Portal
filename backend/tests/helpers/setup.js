@@ -36,6 +36,7 @@ async function setupTestDb() {
   await pool.query(`
     TRUNCATE TABLE
       audit_logs,
+      caja_movimientos,
       egresos, ventas_rapidas, canjes, venta_comprobantes, venta_pagos, venta_items, ventas, etiquetas, metodos_pago, plantillas_garantia,
       productos, categorias, depositos,
       proveedor_movimiento_items, proveedor_movimientos, proveedores,
@@ -86,6 +87,7 @@ async function teardownTestDb(pool) {
     await pool.query(`
       TRUNCATE TABLE
         audit_logs,
+        caja_movimientos,
         egresos, metodos_pago,
         proveedor_movimiento_items, proveedor_movimientos, proveedores,
         items_movimiento_cc, movimientos_cc, clientes_cc,

@@ -239,7 +239,7 @@ export default function Ventas() {
       canjeOn: (v.canjes || []).length > 0, canjeDesc: v.canjes?.[0]?.descripcion || '', canjeValor: v.canjes?.[0]?.valor_toma || '',
     });
     setCart((v.items || []).map(it => ({ producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
-    setPagos((v.pagos || []).map(p => ({ metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '', es_cuenta_corriente: !!p.es_cuenta_corriente })));
+    setPagos((v.pagos || []).map(p => ({ metodo_pago_id: p.metodo_pago_id ?? null, metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '', es_cuenta_corriente: !!p.es_cuenta_corriente })));
     setShowVenta(true);
   }
 
@@ -286,16 +286,16 @@ export default function Ventas() {
   const setItem = (i, k, v) => setCart(c => c.map((it, j) => j === i ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
   const rmItem = (i) => setCart(c => c.filter((_, j) => j !== i));
 
-  const addPago = () => setPagos(p => [...p, { metodo_nombre: '', monto: '', moneda: 'ARS', tc: '', es_cuenta_corriente: false }]);
+  const addPago = () => setPagos(p => [...p, { metodo_pago_id: null, metodo_nombre: '', monto: '', moneda: 'ARS', tc: '', es_cuenta_corriente: false }]);
   const setPago = (i, k, v) => setPagos(p => p.map((pg, j) => j === i ? { ...pg, [k]: v } : pg));
   const rmPago = (i) => setPagos(p => p.filter((_, j) => j !== i));
   function setPagoMetodo(i, value) {
     if (value === '__CC__') {
-      setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_nombre: 'Cuenta corriente', es_cuenta_corriente: true, moneda: pg.moneda || 'USD' } : pg));
+      setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_pago_id: null, metodo_nombre: 'Cuenta corriente', es_cuenta_corriente: true, moneda: pg.moneda || 'USD' } : pg));
       return;
     }
     const m = metodos.find(x => x.nombre === value);
-    setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_nombre: value, es_cuenta_corriente: false, moneda: m ? m.moneda : pg.moneda } : pg));
+    setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_pago_id: m ? m.id : null, metodo_nombre: value, es_cuenta_corriente: false, moneda: m ? m.moneda : pg.moneda } : pg));
   }
 
   function onComprobFiles(e) {
@@ -338,6 +338,7 @@ export default function Ventas() {
     }));
     if (!items.length) { setVentaError('Agregá al menos un producto con descripción.'); return; }
     const pagosPayload = pagos.filter(p => p.metodo_nombre && (Number(p.monto) || 0) > 0).map(p => ({
+      metodo_pago_id: p.metodo_pago_id ?? null,
       metodo_nombre: p.metodo_nombre, monto: Number(p.monto) || 0, moneda: p.moneda, tc: p.tc ? Number(p.tc) : null,
       es_cuenta_corriente: !!p.es_cuenta_corriente,
     }));

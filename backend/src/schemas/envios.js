@@ -5,6 +5,8 @@ const envioItemSchema = z.object({
   descripcion: z.string().trim().max(300).optional().nullable(),
   monto:       z.number().min(0).default(0),
   metodo_pago: z.string().trim().max(100).optional().nullable(),
+  // Caja (ARS) donde ingresa el cobro de un item 'pago'
+  metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
 });
 
 const baseEnvio = z.object({

@@ -109,9 +109,14 @@ export default function Cajas() {
   // ── Config Cajas (cuentas de dinero = metodos_pago) ───────────────────────
   const [cajasList, setCajasList] = useState([]);
   const [loadingCajas, setLoadingCajas] = useState(false);
-  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS' });
+  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS', saldo_inicial: '' });
   const [cajaSaving, setCajaSaving] = useState(false);
   const [cajaError, setCajaError] = useState('');
+  // Ledger de una caja (modal con movimientos + ajuste manual + saldo inicial)
+  const [cajaSel, setCajaSel] = useState(null);
+  const [cajaMovs, setCajaMovs] = useState([]);
+  const [ajusteForm, setAjusteForm] = useState({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
+  const [ajusteSaving, setAjusteSaving] = useState(false);
 
   // ── Tab-aware primary action ──────────────────────────────────────────────
   const { setPrimaryAction } = usePageActions();
@@ -308,8 +313,8 @@ export default function Cajas() {
     if (!cajaForm.nombre.trim()) { setCajaError('El nombre es obligatorio.'); return; }
     setCajaSaving(true); setCajaError('');
     try {
-      await cajas.createCaja({ nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda });
-      setCajaForm({ nombre: '', moneda: 'ARS' });
+      await cajas.createCaja({ nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda, saldo_inicial: cajaForm.saldo_inicial ? Number(cajaForm.saldo_inicial) : 0 });
+      setCajaForm({ nombre: '', moneda: 'ARS', saldo_inicial: '' });
       toast.success('Caja creada.');
       loadCajas();
     } catch (e) { setCajaError(e.message || 'No se pudo crear la caja.'); }
@@ -321,10 +326,51 @@ export default function Cajas() {
     catch (e) { toast.error(e.message); }
   }
 
+  async function handleToggleFinanciera(c) {
+    try { await cajas.updateCaja(c.id, { es_financiera: !c.es_financiera }); loadCajas(); }
+    catch (e) { toast.error(e.message); }
+  }
+
   async function handleDeleteCaja(c) {
     const ok = await confirm({ title: 'Eliminar caja', message: `¿Eliminar "${c.nombre}"? No afecta movimientos ya registrados.`, confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
     try { await cajas.deleteCaja(c.id); toast.success('Caja eliminada.'); loadCajas(); }
+    catch (e) { toast.error(e.message); }
+  }
+
+  // ── Ledger de caja ──
+  async function openCajaLedger(c) {
+    setCajaSel(c);
+    setAjusteForm({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
+    try { setCajaMovs(await cajas.cajaMovimientos(c.id) || []); }
+    catch (e) { toast.error(e.message); setCajaMovs([]); }
+  }
+  async function handleSaldoInicial(c, valor) {
+    const v = valor === '' ? 0 : Number(valor);
+    if (Number(c.saldo_inicial) === v) return;
+    try { await cajas.updateCaja(c.id, { saldo_inicial: v }); loadCajas(); }
+    catch (e) { toast.error(e.message); }
+  }
+  async function handleCreateAjuste(e) {
+    e.preventDefault();
+    if (!ajusteForm.monto || Number(ajusteForm.monto) <= 0) { toast.error('El monto debe ser mayor a 0.'); return; }
+    if (cajaSel.moneda === 'ARS' && (!ajusteForm.tc || Number(ajusteForm.tc) <= 0)) { toast.error('Para una caja en ARS ingresá el TC.'); return; }
+    setAjusteSaving(true);
+    try {
+      await cajas.createCajaAjuste(cajaSel.id, {
+        fecha: ajusteForm.fecha, tipo: ajusteForm.tipo, monto: Number(ajusteForm.monto),
+        tc: cajaSel.moneda === 'ARS' ? Number(ajusteForm.tc) : null,
+        concepto: ajusteForm.concepto || null,
+      });
+      toast.success('Ajuste registrado.');
+      setAjusteForm({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
+      setCajaMovs(await cajas.cajaMovimientos(cajaSel.id) || []);
+      loadCajas();
+    } catch (e) { toast.error(e.message || 'No se pudo registrar.'); }
+    finally { setAjusteSaving(false); }
+  }
+  async function handleDeleteCajaMov(m) {
+    try { await cajas.deleteCajaMov(m.id); setCajaMovs(prev => prev.filter(x => x.id !== m.id)); loadCajas(); }
     catch (e) { toast.error(e.message); }
   }
 
@@ -571,13 +617,18 @@ export default function Cajas() {
                 <input className="input" placeholder="ej. USD Efectivo, Banco Galicia, Mercado Pago"
                        value={cajaForm.nombre} onChange={e => setCajaForm(f => ({ ...f, nombre: e.target.value }))} />
               </div>
-              <div className="field" style={{ width: 130 }}>
+              <div className="field" style={{ width: 110 }}>
                 <label className="field-label">Moneda</label>
                 <select className="input" value={cajaForm.moneda} onChange={e => setCajaForm(f => ({ ...f, moneda: e.target.value }))}>
                   <option value="ARS">ARS</option>
                   <option value="USD">USD</option>
                   <option value="USDT">USDT</option>
                 </select>
+              </div>
+              <div className="field" style={{ width: 140 }}>
+                <label className="field-label">Saldo inicial</label>
+                <input type="number" step="0.01" className="input" placeholder="0"
+                       value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
               </div>
               <button className="btn btn-primary" type="submit" disabled={cajaSaving}>
                 {cajaSaving ? 'Guardando…' : '+ Agregar caja'}
@@ -598,8 +649,11 @@ export default function Cajas() {
                   <tr>
                     <th>Nombre</th>
                     <th>Moneda</th>
+                    <th className="num">Saldo inicial</th>
+                    <th className="num">Saldo actual</th>
                     <th>Estado</th>
-                    <th style={{ width: 40 }}></th>
+                    <th>Financiera</th>
+                    <th style={{ width: 80 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -607,6 +661,16 @@ export default function Cajas() {
                     <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
                       <td style={{ fontWeight: 600 }}>{c.nombre}</td>
                       <td><span className="ccy">{c.moneda}</span></td>
+                      <td className="num">
+                        <input type="number" step="0.01" defaultValue={Number(c.saldo_inicial) || 0}
+                               key={`si-${c.id}-${c.saldo_inicial}`}
+                               className="input num" style={{ maxWidth: 110, textAlign: 'right' }}
+                               onBlur={e => handleSaldoInicial(c, e.target.value)}
+                               title="Saldo de apertura — editá y salí del campo para guardar" />
+                      </td>
+                      <td className="num mono" style={{ fontWeight: 700 }}>
+                        {Number(c.saldo_actual || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                      </td>
                       <td>
                         <button className={'badge ' + (c.activo ? 'badge-pos' : 'badge-warn')}
                                 style={{ cursor: 'pointer', border: 'none' }}
@@ -616,7 +680,18 @@ export default function Cajas() {
                         </button>
                       </td>
                       <td>
-                        <button className="icon-btn" onClick={() => handleDeleteCaja(c)}>
+                        <button className={'badge ' + (c.es_financiera ? 'badge-accent' : '')}
+                                style={{ cursor: 'pointer', border: 'none', background: c.es_financiera ? undefined : 'transparent' }}
+                                onClick={() => handleToggleFinanciera(c)}
+                                title="Marcar como la caja de la financiera (genera auto-comprobante al vender con ella)">
+                          {c.es_financiera ? '★ Financiera' : <span className="dim">marcar</span>}
+                        </button>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="icon-btn" title="Movimientos / ajuste" onClick={() => openCajaLedger(c)}>
+                          <Icons.Eye size={14} />
+                        </button>
+                        <button className="icon-btn" title="Eliminar caja" onClick={() => handleDeleteCaja(c)}>
                           <Icons.Trash size={13} />
                         </button>
                       </td>
@@ -630,6 +705,65 @@ export default function Cajas() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Modal: Ledger de caja (movimientos + ajuste) ─────────────── */}
+      {cajaSel && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setCajaSel(null)}>
+          <div className="modal" style={{ maxWidth: 640 }}>
+            <div className="modal-hd">
+              <h3>{cajaSel.nombre} <span className="ccy">{cajaSel.moneda}</span></h3>
+              <button className="icon-btn" onClick={() => setCajaSel(null)}><Icons.X size={16} /></button>
+            </div>
+            <div className="modal-body">
+              {/* Ajuste manual */}
+              <form onSubmit={handleCreateAjuste} className="card card-tight" style={{ marginBottom: 14 }}>
+                <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div className="field" style={{ width: 120 }}><label className="field-label">Tipo</label>
+                    <select className="input" value={ajusteForm.tipo} onChange={e => setAjusteForm(f => ({ ...f, tipo: e.target.value }))}>
+                      <option value="ingreso">Ingreso (+)</option>
+                      <option value="egreso">Egreso (−)</option>
+                    </select></div>
+                  <div className="field" style={{ width: 130 }}><label className="field-label">Fecha</label>
+                    <input type="date" className="input" value={ajusteForm.fecha} onChange={e => setAjusteForm(f => ({ ...f, fecha: e.target.value }))} /></div>
+                  <div className="field" style={{ width: 110 }}><label className="field-label">Monto</label>
+                    <input type="number" step="0.01" className="input" value={ajusteForm.monto} onChange={e => setAjusteForm(f => ({ ...f, monto: e.target.value }))} /></div>
+                  {cajaSel.moneda === 'ARS' && (
+                    <div className="field" style={{ width: 90 }}><label className="field-label">TC</label>
+                      <input type="number" step="0.01" className="input" value={ajusteForm.tc} onChange={e => setAjusteForm(f => ({ ...f, tc: e.target.value }))} /></div>
+                  )}
+                  <div className="field" style={{ flex: 1, minWidth: 120 }}><label className="field-label">Concepto</label>
+                    <input className="input" placeholder="ej. arqueo, retiro" value={ajusteForm.concepto} onChange={e => setAjusteForm(f => ({ ...f, concepto: e.target.value }))} /></div>
+                  <button className="btn btn-primary btn-sm" type="submit" disabled={ajusteSaving}>{ajusteSaving ? '…' : 'Agregar'}</button>
+                </div>
+                <div className="muted tiny" style={{ marginTop: 6 }}>Ajuste manual de caja (arqueo, corrección, retiro). Los movimientos de otros módulos se reflejan automáticamente (Fase 2b).</div>
+              </form>
+
+              {/* Historial */}
+              {cajaMovs.length === 0 ? (
+                <div className="empty">Sin movimientos todavía.</div>
+              ) : (
+                <table className="tbl">
+                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Origen</th><th>Concepto</th><th className="num">Monto</th><th style={{ width: 32 }}></th></tr></thead>
+                  <tbody>
+                    {cajaMovs.map(m => (
+                      <tr key={m.id}>
+                        <td className="muted mono tiny">{fmtFecha(m.fecha)}</td>
+                        <td><span className={'badge ' + (m.tipo === 'ingreso' ? 'badge-pos' : 'badge-warn')}>{m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}</span></td>
+                        <td className="tiny muted">{m.origen}</td>
+                        <td className="tiny">{m.concepto || '—'}</td>
+                        <td className="num mono" style={{ fontWeight: 600 }}>
+                          <span className={m.tipo === 'ingreso' ? 'pos' : 'neg'}>{m.tipo === 'ingreso' ? '+' : '−'}{Number(m.monto).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                        </td>
+                        <td>{m.origen === 'ajuste' && <button className="icon-btn" onClick={() => handleDeleteCajaMov(m)}><Icons.Trash size={12} /></button>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Modal: Nuevo contacto ────────────────────────────────────── */}

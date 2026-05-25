@@ -50,6 +50,8 @@ const createMovimientoCCSchema = z.object({
   tipo:          z.enum(TIPOS_MOVIMIENTO_CC, { error: `Tipo debe ser: ${TIPOS_MOVIMIENTO_CC.join(', ')}` }),
   descripcion:   z.string().trim().max(500).optional().nullable(),
   monto_total:   z.number().positive('El monto debe ser mayor a 0'),
+  // Caja donde ingresa el pago (solo aplica a tipos 'pago'/'parte_de_pago')
+  caja_id:       z.coerce.number().int().positive().optional().nullable(),
   notas:         z.string().trim().max(1000).optional().nullable(),
   // items solo aplica a compra/devolucion — la ruta ignora items en otros tipos
   items:         z.array(itemMovimientoCCSchema).max(200, 'Máximo 200 ítems por movimiento').optional().default([]),

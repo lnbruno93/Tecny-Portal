@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { cuentas } from '../lib/api';
+import { cuentas, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -23,10 +23,10 @@ function fmtFecha(iso) {
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra:             { label: 'Compra',        tone: 'neg',  signo: +1 },
-  pago:               { label: 'Pago',          tone: 'pos',  signo: -1 },
+  compra:             { label: 'Compra',        tone: 'pos',  signo: +1 },
+  pago:               { label: 'Pago',          tone: 'neg',  signo: -1 },
   devolucion:         { label: 'Devolución',     tone: 'pos',  signo: -1 },
-  parte_de_pago:      { label: 'Parte pago',     tone: 'pos',  signo: -1 },
+  parte_de_pago:      { label: 'Parte pago',     tone: 'neg',  signo: -1 },
   entrega_mercaderia: { label: 'Entrega',        tone: 'info', signo: -1 },
 };
 const CAT_TONE = { 'VIP': 'accent', 'A+': 'pos', 'A-': 'default' };
@@ -234,9 +234,11 @@ const mkRow = (prev = null) => ({
   monto: '',
   // Solo pagos: ARS + TC → monto se auto-calcula
   ars: '', tc: '',
+  // Solo pagos: caja USD donde ingresa el dinero
+  caja_id: prev?.caja_id || '',
 });
 
-function InlineAddRows({ clienteId, onSave, onSaveDone, onSaveError }) {
+function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError }) {
   const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
   const [errs, setErrs] = useState({});
 
@@ -302,6 +304,7 @@ function InlineAddRows({ clienteId, onSave, onSaveDone, onSaveError }) {
     cuentas.createMovimiento({
       cliente_cc_id: clienteId,
       fecha: row.fecha, tipo: row.tipo, monto_total: Number(row.monto),
+      caja_id: (!isItem && row.caja_id) ? Number(row.caja_id) : null,
       items: isItem ? [itemData] : [],
     })
     .then(real => onSaveDone(tempId, real))
@@ -395,6 +398,15 @@ function InlineAddRows({ clienteId, onSave, onSaveDone, onSaveError }) {
                       else handleLastKey(e, i);
                     }}
                   />
+                  <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
+                  <select
+                    style={{ ...inp, flex: '1.4 1 0', cursor: 'pointer' }}
+                    title="Caja donde ingresa el pago"
+                    value={row.caja_id}
+                    onChange={e => upd(i, 'caja_id', e.target.value)}>
+                    <option value="">Caja (opcional)…</option>
+                    {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
                 </div>
               </td>
             ) : (
@@ -483,6 +495,7 @@ export default function CuentasCC() {
   const [rgData, setRgData]       = useState(null);
   const [loadingClientes, setLoadingClientes] = useState(true);
   const [loadingDetail, setLoadingDetail]     = useState(false);
+  const [cajasUsd, setCajasUsd] = useState([]); // cajas USD/USDT para los pagos (monto en USD)
 
   const [showEdit, setShowEdit]             = useState(false);
   const [showClienteModal, setShowClienteModal] = useState(false);
@@ -493,6 +506,13 @@ export default function CuentasCC() {
   const { setPrimaryAction } = usePageActions();
   const notasTimerRef = useRef(null);
   useEffect(() => () => clearTimeout(notasTimerRef.current), []);
+
+  // ── Cargar cajas (para asignar el pago a una caja USD) ──
+  useEffect(() => {
+    cajasApi.listCajas()
+      .then(list => setCajasUsd((list || []).filter(c => c.activo !== false && (c.moneda === 'USD' || c.moneda === 'USDT'))))
+      .catch(console.error);
+  }, []);
 
   // ── Cargar lista ──
   useEffect(() => {
@@ -984,7 +1004,7 @@ export default function CuentasCC() {
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
-                          <span className={t.signo > 0 ? 'neg' : 'pos'}>
+                          <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_total)}
                           </span>
                         </td>
@@ -1008,6 +1028,7 @@ export default function CuentasCC() {
                   <InlineAddRows
                     key={selectedId}
                     clienteId={selectedId}
+                    cajas={cajasUsd}
                     onSave={handleOptimisticSave}
                     onSaveDone={handleSaveDone}
                     onSaveError={handleSaveError}
