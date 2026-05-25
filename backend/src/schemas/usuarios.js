@@ -1,6 +1,5 @@
 const { z } = require('zod');
-
-const TOOLS = ['cotizador','financiera','cajas','envios','usuarios','cuentas','usados','inventario','ventas'];
+const { TOOLS } = require('../lib/tools');
 
 // Política de contraseñas unificada — igual que changePasswordSchema en auth.js
 const MIN_PASSWORD_LENGTH = 8;
