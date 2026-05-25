@@ -98,6 +98,10 @@ export const cajas = {
   createCaja: (data) => api('/api/cajas/cajas', 'POST', data),
   updateCaja: (id, data) => api(`/api/cajas/cajas/${id}`, 'PUT', data),
   deleteCaja: (id) => api(`/api/cajas/cajas/${id}`, 'DELETE'),
+  // Ledger global (todas las cajas) con filtros + totales
+  ledger: (params = {}) => api('/api/cajas/movimientos?' + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v != null))
+  )),
   // Ledger por caja (saldo/historial + ajustes manuales)
   cajaMovimientos: (id) => api(`/api/cajas/cajas/${id}/movimientos`),
   createCajaAjuste: (id, data) => api(`/api/cajas/cajas/${id}/movimientos`, 'POST', data),

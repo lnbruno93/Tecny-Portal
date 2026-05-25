@@ -8,7 +8,7 @@ const { toUsd, round2 } = require('../lib/money');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
-  cajaSchema, updateCajaSchema, cajaAjusteSchema,
+  cajaSchema, updateCajaSchema, cajaAjusteSchema, queryLedgerSchema,
 } = require('../schemas/cajas');
 
 
@@ -238,6 +238,49 @@ router.delete('/cajas/:id', async (req, res, next) => {
 });
 
 // ─── MOVIMIENTOS DE CAJA (ledger) ───────────────────────────
+
+// Ledger global: movimientos de TODAS las cajas con filtros + totales (vista dedicada).
+// Totales en USD (denominador común; movimientos ARS sin TC aportan 0 USD).
+router.get('/movimientos', validate(queryLedgerSchema, 'query'), async (req, res, next) => {
+  try {
+    const { caja_id, desde, hasta, origen, tipo } = req.query;
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
+
+    const conditions = ['cm.deleted_at IS NULL'];
+    const params = [];
+    if (caja_id) { params.push(caja_id); conditions.push(`cm.caja_id = $${params.length}`); }
+    if (desde)   { params.push(desde);   conditions.push(`cm.fecha >= $${params.length}`); }
+    if (hasta)   { params.push(hasta);   conditions.push(`cm.fecha <= $${params.length}`); }
+    if (origen)  { params.push(origen);  conditions.push(`cm.origen = $${params.length}`); }
+    if (tipo)    { params.push(tipo);    conditions.push(`cm.tipo = $${params.length}`); }
+    const where = conditions.join(' AND ');
+    const baseFrom = `FROM caja_movimientos cm JOIN metodos_pago mp ON mp.id = cm.caja_id WHERE ${where}`;
+
+    const [countRes, totRes, dataRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) ${baseFrom}`, params),
+      db.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN cm.tipo = 'ingreso' THEN cm.monto_usd ELSE 0 END), 0) AS ingresos_usd,
+           COALESCE(SUM(CASE WHEN cm.tipo = 'egreso'  THEN cm.monto_usd ELSE 0 END), 0) AS egresos_usd
+         ${baseFrom}`, params),
+      db.query(
+        `SELECT cm.id, cm.fecha, cm.caja_id, mp.nombre AS caja_nombre, mp.moneda,
+                cm.tipo, cm.monto, cm.monto_usd, cm.origen, cm.ref_tabla, cm.ref_id, cm.concepto, cm.created_at
+         ${baseFrom}
+         ORDER BY cm.fecha DESC, cm.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]),
+    ]);
+
+    const total = parseInt(countRes.rows[0].count);
+    const ingresos_usd = round2(Number(totRes.rows[0].ingresos_usd));
+    const egresos_usd  = round2(Number(totRes.rows[0].egresos_usd));
+    res.json({
+      ...paginatedResponse(dataRes.rows, total, { page, limit }),
+      totales: { ingresos_usd, egresos_usd, neto_usd: round2(ingresos_usd - egresos_usd), count: total },
+    });
+  } catch (err) { next(err); }
+});
 
 // Historial de movimientos de una caja
 router.get('/cajas/:id/movimientos', async (req, res, next) => {

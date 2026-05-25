@@ -68,6 +68,18 @@ const cajaAjusteSchema = z.object({
   concepto: z.string().trim().max(300).optional().nullable(),
 });
 
+// Ledger global: movimientos de todas las cajas con filtros (vista dedicada)
+const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste'];
+const queryLedgerSchema = z.object({
+  caja_id: z.coerce.number().int().positive().optional(),
+  desde:   z.string().date().optional(),
+  hasta:   z.string().date().optional(),
+  origen:  z.enum(ORIGENES_CAJA).optional(),
+  tipo:    z.enum(['ingreso', 'egreso']).optional(),
+  page:    z.coerce.number().int().positive().optional(),
+  limit:   z.coerce.number().int().positive().max(200).optional(),
+});
+
 module.exports = {
   createDeudaSchema,
   queryDeudasSchema,
@@ -76,4 +88,5 @@ module.exports = {
   cajaSchema,
   updateCajaSchema,
   cajaAjusteSchema,
+  queryLedgerSchema,
 };

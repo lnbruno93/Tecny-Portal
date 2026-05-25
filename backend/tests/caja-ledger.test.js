@@ -385,6 +385,37 @@ describe('Ledger de cajas', () => {
     expect(Number(row.saldo_actual)).toBe(0);
   });
 
+  it('el ledger global lista movimientos de todas las cajas con filtros y totales en USD', async () => {
+    const cajaA = await crearCaja({ saldo_inicial: 0 });            // USD
+    const cajaB = await crearCaja({ saldo_inicial: 0 });            // USD
+    await request(app).post(`/api/cajas/cajas/${cajaA.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'ingreso', monto: 200, concepto: 'A+' });
+    await request(app).post(`/api/cajas/cajas/${cajaB.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'egreso', monto: 50, concepto: 'B-' });
+
+    // sin filtro: incluye ambos
+    const all = await request(app).get('/api/cajas/movimientos').set(auth());
+    expect(all.status).toBe(200);
+    expect(Array.isArray(all.body.data)).toBe(true);
+    expect(all.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(all.body.data[0]).toHaveProperty('caja_nombre');
+    expect(all.body.totales).toHaveProperty('neto_usd');
+
+    // filtro por caja A: solo su ingreso
+    const soloA = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaA.id}`).set(auth());
+    expect(soloA.body.data.every(m => m.caja_id === cajaA.id)).toBe(true);
+    expect(Number(soloA.body.totales.ingresos_usd)).toBe(200);
+    expect(Number(soloA.body.totales.egresos_usd)).toBe(0);
+
+    // filtro por tipo egreso
+    const soloEgr = await request(app).get('/api/cajas/movimientos?tipo=egreso').set(auth());
+    expect(soloEgr.body.data.every(m => m.tipo === 'egreso')).toBe(true);
+
+    // filtro por origen ajuste
+    const soloAjuste = await request(app).get('/api/cajas/movimientos?origen=ajuste').set(auth());
+    expect(soloAjuste.body.data.every(m => m.origen === 'ajuste')).toBe(true);
+  });
+
   it('un ajuste en una caja ARS requiere tipo de cambio', async () => {
     const caja = await crearCaja({ moneda: 'ARS' });
     const sinTc = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
