@@ -10,6 +10,7 @@ const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { syncFinancieraComprobante } = require('../lib/financiera');
 const {
   etiquetaSchema, garantiaSchema, updateGarantiaSchema, comprobanteVentaSchema,
   createEgresoSchema, queryEgresosSchema, createVentaRapidaSchema, updateVentaRapidaSchema,
@@ -209,7 +210,7 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
   try {
     await client.query('BEGIN');
     const ventaRes = await client.query(
-      'SELECT id, fecha, cliente_nombre, order_id, estado FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]
+      'SELECT id, estado FROM ventas WHERE id = $1 AND deleted_at IS NULL', [id]
     );
     if (!ventaRes.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
     const venta = ventaRes.rows[0];
@@ -221,33 +222,12 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
       [id, archivo_data, archivo_nombre ?? null, archivo_tipo ?? null]
     );
 
-    // Auto-comprobante de Financiera: si la venta (activa) tiene un pago con la
-    // caja financiera y todavía no se generó el comprobante, crearlo con la
-    // comisión = monto × pct_financiera (de Config). Evita el doble registro.
-    let comprobanteFinanciera = null;
-    if (venta.estado !== 'cancelado') {
-      const pagoFin = await client.query(
-        `SELECT vp.monto FROM venta_pagos vp
-           JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
-          WHERE vp.venta_id = $1 AND mp.es_financiera = true AND mp.deleted_at IS NULL
-          LIMIT 1`, [id]
-      );
-      const yaExiste = await client.query('SELECT 1 FROM comprobantes WHERE venta_id = $1 AND deleted_at IS NULL LIMIT 1', [id]);
-      if (pagoFin.rows[0] && !yaExiste.rows[0]) {
-        const monto = Number(pagoFin.rows[0].monto);
-        const { rows: cfg } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
-        const pct = Number(cfg[0]?.pct_financiera || 0);
-        const monto_financiera = round2(monto * pct / 100);
-        const monto_neto = round2(monto - monto_financiera);
-        const ins = await client.query(
-          `INSERT INTO comprobantes (fecha, cliente, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo, venta_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, monto, monto_financiera, monto_neto`,
-          [venta.fecha, venta.cliente_nombre ?? null, monto, monto_financiera, monto_neto, venta.order_id,
-           archivo_data, archivo_nombre ?? null, archivo_tipo ?? null, id]
-        );
-        comprobanteFinanciera = ins.rows[0];
-        await audit('comprobantes', 'INSERT', ins.rows[0].id, { despues: { venta_id: id, auto: true, monto, monto_financiera }, user_id: req.user.id });
-      }
+    // Reconciliar el comprobante de Financiera (única fuente de verdad): si la venta
+    // está activa y tiene un pago con la caja financiera, lo crea/recalcula con la
+    // comisión = monto × pct_financiera (de Config), sin duplicar.
+    const comprobanteFinanciera = await syncFinancieraComprobante(client, id, venta.estado);
+    if (comprobanteFinanciera) {
+      await audit('comprobantes', 'INSERT', comprobanteFinanciera.id, { despues: { venta_id: id, auto: true, monto: comprobanteFinanciera.monto, monto_financiera: comprobanteFinanciera.monto_financiera }, user_id: req.user.id });
     }
 
     await client.query('COMMIT');

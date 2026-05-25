@@ -8,6 +8,7 @@ const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { syncFinancieraComprobante } = require('../lib/financiera');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
 } = require('../schemas/ventas');
@@ -50,42 +51,9 @@ async function syncVentaCaja(client, venta, userId) {
   }
 }
 
-// Mantiene consistente el comprobante de Financiera linkeado a la venta.
-// Invariante: el comprobante debe existir (deleted_at IS NULL) sí y solo sí
-//   (a) la venta está activa (no cancelada),
-//   (b) sigue teniendo un pago con la caja financiera, y
-//   (c) tiene al menos un archivo de comprobante adjunto.
-// No crea filas nuevas (la creación, con la comisión, vive en POST /:id/comprobantes);
-// solo restaura o revierte la fila existente según el estado actual. Idempotente.
-async function syncFinancieraComprobante(client, ventaId, estado) {
-  let pagoFin = null;
-  if (retieneStock(estado)) {
-    const fin = await client.query(
-      `SELECT vp.monto FROM venta_pagos vp
-         JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
-        WHERE vp.venta_id = $1 AND mp.es_financiera = true AND mp.deleted_at IS NULL
-        LIMIT 1`, [ventaId]
-    );
-    const file = await client.query('SELECT 1 FROM venta_comprobantes WHERE venta_id = $1 LIMIT 1', [ventaId]);
-    if (fin.rows[0] && file.rows[0]) pagoFin = fin.rows[0];
-  }
-  if (!pagoFin) {
-    // No corresponde: revertir el comprobante si existe.
-    await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [ventaId]);
-    return;
-  }
-  // Restaurar (si estaba revertido) y recalcular la comisión con el monto y % actuales.
-  const monto = Number(pagoFin.monto);
-  const { rows: cfg } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
-  const pct = Number(cfg[0]?.pct_financiera || 0);
-  const monto_financiera = round2(monto * pct / 100);
-  const monto_neto = round2(monto - monto_financiera);
-  await client.query(
-    `UPDATE comprobantes SET deleted_at = NULL, monto = $2, monto_financiera = $3, monto_neto = $4
-      WHERE venta_id = $1`,
-    [ventaId, monto, monto_financiera, monto_neto]
-  );
-}
+// El ciclo de vida del comprobante de Financiera vive en lib/financiera.js
+// (`syncFinancieraComprobante`), única fuente de verdad compartida con el flujo
+// de adjuntar comprobante (ventas-extra.js).
 
 // Si hay un pago en cuenta corriente, exige un cliente de cuenta corriente.
 function validarCuentaCorriente(pagos, clienteCcId) {
