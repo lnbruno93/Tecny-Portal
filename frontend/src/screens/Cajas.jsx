@@ -326,6 +326,11 @@ export default function Cajas() {
     catch (e) { toast.error(e.message); }
   }
 
+  async function handleToggleFinanciera(c) {
+    try { await cajas.updateCaja(c.id, { es_financiera: !c.es_financiera }); loadCajas(); }
+    catch (e) { toast.error(e.message); }
+  }
+
   async function handleDeleteCaja(c) {
     const ok = await confirm({ title: 'Eliminar caja', message: `¿Eliminar "${c.nombre}"? No afecta movimientos ya registrados.`, confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
@@ -647,6 +652,7 @@ export default function Cajas() {
                     <th className="num">Saldo inicial</th>
                     <th className="num">Saldo actual</th>
                     <th>Estado</th>
+                    <th>Financiera</th>
                     <th style={{ width: 80 }}></th>
                   </tr>
                 </thead>
@@ -671,6 +677,14 @@ export default function Cajas() {
                                 onClick={() => handleToggleCaja(c)}
                                 title="Click para activar / desactivar">
                           {c.activo ? 'Activa' : 'Inactiva'}
+                        </button>
+                      </td>
+                      <td>
+                        <button className={'badge ' + (c.es_financiera ? 'badge-accent' : '')}
+                                style={{ cursor: 'pointer', border: 'none', background: c.es_financiera ? undefined : 'transparent' }}
+                                onClick={() => handleToggleFinanciera(c)}
+                                title="Marcar como la caja de la financiera (genera auto-comprobante al vender con ella)">
+                          {c.es_financiera ? '★ Financiera' : <span className="dim">marcar</span>}
                         </button>
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>

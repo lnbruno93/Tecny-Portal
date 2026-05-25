@@ -7,6 +7,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { toUsd, round2 } = require('../lib/money');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
 } = require('../schemas/proveedores');
@@ -81,10 +82,10 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
 });
 
 router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
     await client.query('BEGIN');
     const before = await client.query('SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
@@ -199,6 +200,15 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
       }
     }
 
+    // Un PAGO a proveedor sale de una caja → egreso en el ledger (si se indicó caja)
+    if (tipo === 'pago' && caja_id) {
+      await postCajaMovimiento(client, {
+        caja_id, fecha, tipo: 'egreso', monto, moneda, tc,
+        origen: 'proveedor', ref_tabla: 'proveedor_movimientos', ref_id: mov.id,
+        concepto: 'Pago a proveedor', user_id: req.user.id,
+      });
+    }
+
     await client.query('COMMIT');
     await audit('proveedor_movimientos', 'INSERT', mov.id, { despues: { ...mov, items: insertedItems }, user_id: req.user.id });
     res.status(201).json({ ...mov, items: insertedItems });
@@ -209,16 +219,24 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
 });
 
 router.delete('/movimientos/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       'UPDATE proveedor_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
+    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    // Revertir el egreso de caja asociado (si lo hubo)
+    await reverseCajaMovimientos(client, 'proveedor_movimientos', id);
+    await client.query('COMMIT');
     await audit('proveedor_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 // ─── RESUMEN (saldos por proveedor) ─────────────────────────

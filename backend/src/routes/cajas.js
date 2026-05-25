@@ -156,7 +156,7 @@ router.delete('/inversiones/:id', async (req, res, next) => {
 router.get('/cajas', async (_req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT mp.id, mp.nombre, mp.moneda, mp.activo, mp.orden, mp.saldo_inicial,
+      `SELECT mp.id, mp.nombre, mp.moneda, mp.activo, mp.orden, mp.saldo_inicial, mp.es_financiera,
               mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo_actual,
               COUNT(cm.id) FILTER (WHERE cm.id IS NOT NULL) AS movimientos
          FROM metodos_pago mp
@@ -170,46 +170,58 @@ router.get('/cajas', async (_req, res, next) => {
 });
 
 router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
-    const { nombre, moneda, activo, orden, saldo_inicial } = req.body;
-    const { rows } = await db.query(
-      `INSERT INTO metodos_pago (nombre, moneda, activo, orden, saldo_inicial)
-       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0), COALESCE($5, 0))
-       RETURNING id, nombre, moneda, activo, orden, saldo_inicial`,
-      [nombre, moneda, activo ?? null, orden ?? null, saldo_inicial ?? null]
+    const { nombre, moneda, activo, orden, saldo_inicial, es_financiera } = req.body;
+    await client.query('BEGIN');
+    if (es_financiera) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true');
+    const { rows } = await client.query(
+      `INSERT INTO metodos_pago (nombre, moneda, activo, orden, saldo_inicial, es_financiera)
+       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0), COALESCE($5, 0), COALESCE($6, false))
+       RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera`,
+      [nombre, moneda, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null]
     );
+    await client.query('COMMIT');
     await audit('metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una caja con ese nombre' });
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const before = await db.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!before.rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
+    await client.query('BEGIN');
+    const before = await client.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Caja no encontrada' }); }
 
-    const { nombre, moneda, activo, orden, saldo_inicial } = req.body;
-    const { rows } = await db.query(
+    const { nombre, moneda, activo, orden, saldo_inicial, es_financiera } = req.body;
+    // Solo una caja puede ser la financiera: desmarcar las demás
+    if (es_financiera === true) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true AND id <> $1', [id]);
+    const { rows } = await client.query(
       `UPDATE metodos_pago SET
          nombre        = COALESCE($1, nombre),
          moneda        = COALESCE($2, moneda),
          activo        = COALESCE($3, activo),
          orden         = COALESCE($4, orden),
-         saldo_inicial = COALESCE($5, saldo_inicial)
-       WHERE id = $6 RETURNING id, nombre, moneda, activo, orden, saldo_inicial`,
-      [nombre ?? null, moneda ?? null, activo ?? null, orden ?? null, saldo_inicial ?? null, id]
+         saldo_inicial = COALESCE($5, saldo_inicial),
+         es_financiera = COALESCE($6, es_financiera)
+       WHERE id = $7 RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera`,
+      [nombre ?? null, moneda ?? null, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null, id]
     );
+    await client.query('COMMIT');
     await audit('metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una caja con ese nombre' });
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 router.delete('/cajas/:id', async (req, res, next) => {

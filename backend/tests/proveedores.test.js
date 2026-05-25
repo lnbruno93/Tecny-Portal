@@ -53,6 +53,9 @@ describe('Proveedores — CRUD', () => {
   it('valida ID inválido (400) y proveedor inexistente (404)', async () => {
     expect((await request(app).get('/api/proveedores/abc').set(auth())).status).toBe(400);
     expect((await request(app).get('/api/proveedores/999999').set(auth())).status).toBe(404);
+    // PUT y DELETE con ID inválido también responden 400 (sin crashear el pool)
+    expect((await request(app).put('/api/proveedores/abc').set(auth()).send({ nombre: 'x' })).status).toBe(400);
+    expect((await request(app).delete('/api/proveedores/movimientos/abc').set(auth())).status).toBe(400);
   });
 
   it('arranca con saldo inicial si se provee', async () => {

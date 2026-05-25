@@ -45,6 +45,7 @@ const cajaSchema = z.object({
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
   saldo_inicial: z.coerce.number().optional(),  // saldo de apertura (en la moneda de la caja)
+  es_financiera: z.boolean().optional(),         // marca esta caja como "la financiera"
 });
 
 const updateCajaSchema = z.object({
@@ -53,6 +54,7 @@ const updateCajaSchema = z.object({
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
   saldo_inicial: z.coerce.number().optional(),
+  es_financiera: z.boolean().optional(),
 }).refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'Al menos un campo es requerido para actualizar',
 });
