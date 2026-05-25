@@ -45,6 +45,52 @@ export default function Usuarios() {
   const [editPerms, setEditPerms]   = useState({});
   const [saving, setSaving]         = useState(false);
 
+  // ── Alta de usuario ─────────────────────────────────────────────────────
+  const EMPTY_NEW = { nombre: '', username: '', email: '', password: '', role: 'op', perms: {} };
+  const [showCreate, setShowCreate] = useState(false);
+  const [newUser, setNewUser]       = useState(EMPTY_NEW);
+  const [creating, setCreating]     = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  function openCreate() {
+    setNewUser(EMPTY_NEW);
+    setCreateError('');
+    setShowCreate(true);
+  }
+  const setNU = (field, val) => setNewUser(u => ({ ...u, [field]: val }));
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    const nombre = newUser.nombre.trim();
+    const username = newUser.username.trim().toLowerCase();
+    if (!nombre) { setCreateError('El nombre es obligatorio.'); return; }
+    if (username.length < 2) { setCreateError('El usuario debe tener al menos 2 caracteres.'); return; }
+    if (!/^[a-z0-9_]+$/.test(username)) { setCreateError('Usuario: solo minúsculas, números y guión bajo.'); return; }
+    if (newUser.password.length < 8 || !/[A-Za-z]/.test(newUser.password) || !/[0-9]/.test(newUser.password)) {
+      setCreateError('La contraseña debe tener mínimo 8 caracteres, con al menos una letra y un número.');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      const created = await usuariosApi.create({
+        nombre,
+        username,
+        email: newUser.email.trim() || null,
+        password: newUser.password,
+        role: newUser.role,
+        perms: newUser.role === 'admin' ? {} : newUser.perms,
+      });
+      setUsers(prev => [created, ...prev]);
+      setShowCreate(false);
+      toast.success('Usuario creado.');
+    } catch (err) {
+      setCreateError(err.message || 'No se pudo crear el usuario.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
   useEffect(() => {
     setLoading(true);
     usuariosApi.list()
@@ -123,6 +169,10 @@ export default function Usuarios() {
           }}>
             <Icons.Refresh size={15} />
             Actualizar
+          </button>
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Icons.Plus size={15} />
+            Nuevo usuario
           </button>
         </div>
       </div>
@@ -342,6 +392,102 @@ export default function Usuarios() {
           </div>
         );
       })()}
+
+      {/* ── Modal: nuevo usuario ──────────────────────────────────────────── */}
+      {showCreate && (
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Nuevo usuario</h3>
+              <button className="icon-btn" onClick={() => setShowCreate(false)}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCreate}>
+              <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto' }}>
+                <div className="stack" style={{ gap: 16 }}>
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input className="input" placeholder="Juan Pérez" value={newUser.nombre}
+                        onChange={e => setNU('nombre', e.target.value)} autoFocus />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Usuario <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input className="input mono" placeholder="juanp" value={newUser.username}
+                        onChange={e => setNU('username', e.target.value.toLowerCase())} />
+                      <div className="muted tiny" style={{ marginTop: 3 }}>Solo minúsculas, números y guión bajo.</div>
+                    </div>
+                  </div>
+
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Email <span className="muted">(opcional)</span></label>
+                      <input type="email" className="input" placeholder="juan@empresa.com" value={newUser.email}
+                        onChange={e => setNU('email', e.target.value)} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input type="password" className="input" placeholder="••••••••" value={newUser.password}
+                        onChange={e => setNU('password', e.target.value)} autoComplete="new-password" />
+                      <div className="muted tiny" style={{ marginTop: 3 }}>Mínimo 8 caracteres, con al menos una letra y un número.</div>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label">Rol</label>
+                    <div className="seg">
+                      <button type="button" className={`seg-btn${newUser.role === 'op' ? ' on' : ''}`}
+                        onClick={() => setNU('role', 'op')}>Operador</button>
+                      <button type="button" className={`seg-btn${newUser.role === 'admin' ? ' on' : ''}`}
+                        onClick={() => setNU('role', 'admin')}>Admin</button>
+                    </div>
+                    <div className="muted tiny" style={{ marginTop: 4 }}>
+                      {newUser.role === 'admin'
+                        ? 'Admin: acceso total a todos los módulos (los permisos se ignoran).'
+                        : 'Operador: solo accede a las tools que marques abajo.'}
+                    </div>
+                  </div>
+
+                  {newUser.role === 'op' && (
+                    <div className="field">
+                      <label className="field-label">Permisos (tools)</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                        {TOOLS.map(t => (
+                          <label key={t} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                            background: newUser.perms[t] ? 'var(--surface-2)' : 'var(--surface)',
+                            border: `1px solid ${newUser.perms[t] ? 'var(--border-strong)' : 'var(--border)'}`,
+                            borderRadius: 8, cursor: 'pointer',
+                          }}>
+                            <input type="checkbox" checked={newUser.perms[t] || false}
+                              onChange={e => setNewUser(u => ({ ...u, perms: { ...u.perms, [t]: e.target.checked } }))}
+                              style={{ accentColor: 'var(--accent)' }} />
+                            <span style={{ fontWeight: 600, fontSize: 13 }}>{TOOL_LABELS[t]}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="muted tiny" style={{ marginTop: 4 }}>
+                        El usuario debe volver a iniciar sesión para que los permisos tomen efecto.
+                      </div>
+                    </div>
+                  )}
+
+                  {createError && (
+                    <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={creating}>
+                  {creating ? 'Creando…' : 'Crear usuario'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
