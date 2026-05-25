@@ -1,3 +1,5 @@
+import '@testing-library/jest-dom/vitest';
+
 // Setup de tests — localStorage en memoria (evita el quirk de jsdom con origin opaco).
 const store = new Map();
 const localStorageMock = {

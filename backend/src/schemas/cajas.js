@@ -44,7 +44,7 @@ const cajaSchema = z.object({
   moneda:        z.enum(['USD', 'ARS', 'USDT'], { error: 'moneda debe ser: USD, ARS, USDT' }).default('ARS'),
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
-  saldo_inicial: z.coerce.number().optional(),  // saldo de apertura (en la moneda de la caja)
+  saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),  // saldo de apertura (en la moneda de la caja)
   es_financiera: z.boolean().optional(),         // marca esta caja como "la financiera"
 });
 
@@ -53,7 +53,7 @@ const updateCajaSchema = z.object({
   moneda:        z.enum(['USD', 'ARS', 'USDT']).optional(),
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
-  saldo_inicial: z.coerce.number().optional(),
+  saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),
   es_financiera: z.boolean().optional(),
 }).refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'Al menos un campo es requerido para actualizar',

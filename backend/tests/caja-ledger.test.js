@@ -53,7 +53,7 @@ describe('Ledger de cajas', () => {
 
     // historial
     const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
-    expect(movs.body).toHaveLength(2);
+    expect(movs.body.data).toHaveLength(2);
 
     // borrar el egreso → saldo vuelve a 800
     const del = await request(app).delete(`/api/cajas/cajas/movimientos/${egr.body.id}`).set(auth());
@@ -81,7 +81,7 @@ describe('Ledger de cajas', () => {
     let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
     expect(Number(row.saldo_actual)).toBe(700);
     const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
-    expect(movs.body.some(m => m.origen === 'proveedor' && m.tipo === 'egreso')).toBe(true);
+    expect(movs.body.data.some(m => m.origen === 'proveedor' && m.tipo === 'egreso')).toBe(true);
 
     // borrar el pago → caja vuelve a 1000
     await request(app).delete(`/api/proveedores/movimientos/${pago.body.id}`).set(auth());
@@ -129,7 +129,7 @@ describe('Ledger de cajas', () => {
     let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
     expect(Number(row.saldo_actual)).toBe(950);
     const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
-    expect(movs.body.some(m => m.origen === 'venta' && m.tipo === 'ingreso')).toBe(true);
+    expect(movs.body.data.some(m => m.origen === 'venta' && m.tipo === 'ingreso')).toBe(true);
 
     // cancelar la venta (solo metadatos) → revierte el ingreso
     await request(app).put(`/api/ventas/${venta.body.id}`).set(auth()).send({ estado: 'cancelado' });
@@ -267,6 +267,9 @@ describe('Ledger de cajas', () => {
     expect(Number(comps[0].monto)).toBe(2000);
     expect(Number(comps[0].monto_financiera)).toBe(200); // 2000 × 10%
     expect(Number(comps[0].monto_neto)).toBe(1800);
+    // el listado NO debe traer el base64; sí un booleano tiene_archivo
+    expect(comps[0].archivo_data).toBeUndefined();
+    expect(comps[0].tiene_archivo).toBe(true);
   });
 
   it('adjuntar archivo con pago NO financiero y luego editar a financiero crea el comprobante', async () => {
@@ -321,7 +324,7 @@ describe('Ledger de cajas', () => {
     let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
     expect(Number(row.saldo_actual)).toBe(300);
     const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
-    expect(movs.body.some(m => m.origen === 'b2b' && m.tipo === 'ingreso')).toBe(true);
+    expect(movs.body.data.some(m => m.origen === 'b2b' && m.tipo === 'ingreso')).toBe(true);
 
     // borrar el pago → caja vuelve a 0
     await request(app).delete(`/api/cuentas/movimientos/${pago.body.id}`).set(auth());
@@ -354,7 +357,7 @@ describe('Ledger de cajas', () => {
     let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
     expect(Number(row.saldo_actual)).toBe(50000);
     const movs = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
-    expect(movs.body.some(m => m.origen === 'envio' && m.tipo === 'ingreso')).toBe(true);
+    expect(movs.body.data.some(m => m.origen === 'envio' && m.tipo === 'ingreso')).toBe(true);
 
     // cancelar el envío → revierte el ingreso
     await request(app).put(`/api/envios/${envio.body.id}`).set(auth()).send({ estado: 'Cancelado' });
@@ -383,6 +386,23 @@ describe('Ledger de cajas', () => {
     // el saldo de la caja no cambió
     const row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === cajaArs.id);
     expect(Number(row.saldo_actual)).toBe(0);
+  });
+
+  it('el historial por caja viene paginado (data + pagination)', async () => {
+    const caja = await crearCaja({ saldo_inicial: 0 });
+    await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'ingreso', monto: 10, concepto: 'x' });
+    const r = await request(app).get(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth());
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.data)).toBe(true);
+    expect(r.body.pagination).toHaveProperty('total');
+    expect(r.body.pagination).toHaveProperty('pages');
+  });
+
+  it('rechaza un saldo inicial negativo (400)', async () => {
+    const res = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Neg ' + Math.random().toString(36).slice(2, 7), moneda: 'USD', saldo_inicial: -100 });
+    expect(res.status).toBe(400);
   });
 
   it('el ledger global lista movimientos de todas las cajas con filtros y totales en USD', async () => {

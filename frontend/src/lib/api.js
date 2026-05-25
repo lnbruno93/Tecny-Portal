@@ -102,8 +102,8 @@ export const cajas = {
   ledger: (params = {}) => api('/api/cajas/movimientos?' + new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v != null))
   )),
-  // Ledger por caja (saldo/historial + ajustes manuales)
-  cajaMovimientos: (id) => api(`/api/cajas/cajas/${id}/movimientos`),
+  // Ledger por caja (saldo/historial + ajustes manuales) — respuesta paginada { data, pagination }
+  cajaMovimientos: (id, params = {}) => api(`/api/cajas/cajas/${id}/movimientos?` + new URLSearchParams(params)),
   createCajaAjuste: (id, data) => api(`/api/cajas/cajas/${id}/movimientos`, 'POST', data),
   deleteCajaMov: (id) => api(`/api/cajas/cajas/movimientos/${id}`, 'DELETE'),
   // Resumen agregado por contacto_id
