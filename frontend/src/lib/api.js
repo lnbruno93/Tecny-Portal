@@ -126,6 +126,18 @@ export const cuentas = {
   deleteMovimiento: (id) => api(`/api/cuentas/movimientos/${id}`, 'DELETE'),
 };
 
+export const proveedores = {
+  list: (params = {}) => api('/api/proveedores?' + new URLSearchParams(params)),
+  get: (id) => api(`/api/proveedores/${id}`),
+  create: (data) => api('/api/proveedores', 'POST', data),
+  update: (id, data) => api(`/api/proveedores/${id}`, 'PUT', data),
+  delete: (id) => api(`/api/proveedores/${id}`, 'DELETE'),
+  movimientos: (id) => api(`/api/proveedores/${id}/movimientos`),
+  createMovimiento: (data) => api('/api/proveedores/movimientos', 'POST', data),
+  deleteMovimiento: (id) => api(`/api/proveedores/movimientos/${id}`, 'DELETE'),
+  saldos: () => api('/api/proveedores/resumen/saldos'),
+};
+
 export const contactos = {
   list: (params = {}) => api('/api/contactos?' + new URLSearchParams(params)),
   create: (data) => api('/api/contactos', 'POST', data),
