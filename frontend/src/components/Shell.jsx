@@ -74,15 +74,15 @@ function UpdateBanner() {
 // null perm = siempre visible
 const NAV_MAIN = [
   { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null          },
-  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador'   },
-  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera'  },
-  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas'       },
-  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios'      },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas'     },
-  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados'      },
-  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario'  },
   { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas'      },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas'     },
+  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas'       },
+  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario'  },
   { id: 'proveedores',path: '/proveedores',label: 'Proveedores',icon: 'Building',   perm: 'proveedores' },
+  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera'  },
+  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador'   },
+  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados'      },
+  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios'      },
 ];
 
 const NAV_SYS = [
