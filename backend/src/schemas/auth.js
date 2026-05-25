@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { passwordField } = require('../lib/password');
 
 const loginSchema = z.object({
   username: z.string().trim().min(1).optional(),
@@ -11,7 +12,7 @@ const loginSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Contraseña actual requerida'),
-  newPassword:     z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres'),
+  newPassword:     passwordField(),
 });
 
 module.exports = { loginSchema, changePasswordSchema };

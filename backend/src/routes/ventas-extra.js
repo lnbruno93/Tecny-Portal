@@ -95,13 +95,13 @@ router.post('/garantias', validate(garantiaSchema), async (req, res, next) => {
 });
 
 router.put('/garantias/:id', validate(updateGarantiaSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
     await client.query('BEGIN');
     const { rows: before } = await client.query('SELECT * FROM plantillas_garantia WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!before[0]) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'Garantía no encontrada' }); }
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Garantía no encontrada' }); }
     const { nombre, texto, es_default } = req.body;
     if (es_default) await client.query('UPDATE plantillas_garantia SET es_default = false WHERE es_default = true AND id <> $1', [id]);
     const { rows } = await client.query(
