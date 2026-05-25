@@ -93,11 +93,15 @@ export const cajas = {
   inversiones: (params = {}) => api('/api/cajas/inversiones?' + new URLSearchParams(params)),
   createInversion: (data) => api('/api/cajas/inversiones', 'POST', data),
   deleteInversion: (id) => api(`/api/cajas/inversiones/${id}`, 'DELETE'),
-  // Config Cajas (cuentas de dinero = metodos_pago): nombre, moneda, activo, orden
+  // Config Cajas (cuentas de dinero = metodos_pago): nombre, moneda, activo, orden, saldo_inicial
   listCajas: () => api('/api/cajas/cajas'),
   createCaja: (data) => api('/api/cajas/cajas', 'POST', data),
   updateCaja: (id, data) => api(`/api/cajas/cajas/${id}`, 'PUT', data),
   deleteCaja: (id) => api(`/api/cajas/cajas/${id}`, 'DELETE'),
+  // Ledger por caja (saldo/historial + ajustes manuales)
+  cajaMovimientos: (id) => api(`/api/cajas/cajas/${id}/movimientos`),
+  createCajaAjuste: (id, data) => api(`/api/cajas/cajas/${id}/movimientos`, 'POST', data),
+  deleteCajaMov: (id) => api(`/api/cajas/cajas/movimientos/${id}`, 'DELETE'),
   // Resumen agregado por contacto_id
   resumen: () => api('/api/cajas/resumen'),
 };
