@@ -77,6 +77,33 @@ describe('Proveedores — cuenta corriente', () => {
     expect(Number(row.movimientos)).toBe(2);
   });
 
+  it('una compra carga ítems (productos comprados), igual que B2B', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor con Items' });
+    const compra = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 1900, moneda: 'USD',
+      items: [
+        { producto: 'iPhone', modelo: '15 Pro', color: 'Titanio', imei_serial: '111', valor: 950 },
+        { producto: 'iPhone', modelo: '15 Pro', color: 'Negro',   imei_serial: '222', valor: 950 },
+      ],
+    });
+    expect(compra.status).toBe(201);
+    expect(compra.body.items).toHaveLength(2);
+
+    // El GET de movimientos los devuelve embebidos
+    const movs = await request(app).get(`/api/proveedores/${prov.id}/movimientos`).set(auth());
+    const mov = movs.body.find(m => m.id === compra.body.id);
+    expect(mov.items).toHaveLength(2);
+    expect(mov.items[0].imei_serial).toBe('111');
+
+    // Un pago no lleva ítems aunque se envíen
+    const pago = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'pago', monto: 500, moneda: 'USD',
+      items: [{ producto: 'no debería guardarse', valor: 1 }],
+    });
+    expect(pago.status).toBe(201);
+    expect(pago.body.items).toHaveLength(0);
+  });
+
   it('convierte ARS a USD con el TC; rechaza ARS sin TC', async () => {
     const prov = await crearProveedor({ nombre: 'Proveedor ARS' });
 

@@ -105,7 +105,12 @@ router.get('/:id/movimientos', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
-      `SELECT m.*, mp.nombre AS caja_nombre
+      `SELECT m.*, mp.nombre AS caja_nombre,
+              COALESCE(
+                (SELECT json_agg(i.* ORDER BY i.id)
+                   FROM proveedor_movimiento_items i
+                  WHERE i.proveedor_movimiento_id = m.id), '[]'
+              ) AS items
          FROM proveedor_movimientos m
          LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
         WHERE m.proveedor_id = $1 AND m.deleted_at IS NULL
@@ -116,21 +121,46 @@ router.get('/:id/movimientos', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Registro de compra/pago — igual al flujo B2B: una COMPRA carga ítems (productos
+// comprados); un PAGO no. Transaccional (movimiento + ítems atómicos).
 router.post('/movimientos', validate(createMovimientoProveedorSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
-    const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas } = req.body;
-    const prov = await db.query('SELECT id FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [proveedor_id]);
-    if (!prov.rows[0]) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;
+
+    await client.query('BEGIN');
+    const prov = await client.query('SELECT id FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
+    if (!prov.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
 
     const monto_usd = round2(toUsd(monto, moneda, tc));
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd, caja_id, notas)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [proveedor_id, fecha, tipo, descripcion ?? null, monto, moneda, tc ?? null, monto_usd, caja_id ?? null, notas ?? null]
     );
-    await audit('proveedor_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+    const mov = rows[0];
+
+    // Ítems solo en compras (los pagos no llevan productos)
+    const insertedItems = [];
+    if (tipo === 'compra' && items.length > 0) {
+      for (const it of items) {
+        const { rows: ir } = await client.query(
+          `INSERT INTO proveedor_movimiento_items (proveedor_movimiento_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          [mov.id, it.producto ?? null, it.modelo ?? null, it.tamano ?? null, it.color ?? null,
+           it.imei_serial ?? null, it.valor ?? null, it.verificado ?? false, it.notas ?? null]
+        );
+        insertedItems.push(ir[0]);
+      }
+    }
+
+    await client.query('COMMIT');
+    await audit('proveedor_movimientos', 'INSERT', mov.id, { despues: { ...mov, items: insertedItems }, user_id: req.user.id });
+    res.status(201).json({ ...mov, items: insertedItems });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.delete('/movimientos/:id', async (req, res, next) => {

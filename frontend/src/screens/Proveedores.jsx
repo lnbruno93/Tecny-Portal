@@ -10,7 +10,8 @@ const fmtUsd = (n) => 'US$ ' + Number(n || 0).toLocaleString('es-AR', { minimumF
 const fmtFecha = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('es-AR') : '—';
 
 const EMPTY_PROV = () => ({ nombre: '', contacto_nombre: '', contacto_apellido: '', whatsapp: '', ubicacion: '', notas: '' });
-const EMPTY_MOV  = () => ({ fecha: todayISO(), tipo: 'compra', descripcion: '', monto: '', moneda: 'USD', tc: '', caja_id: '', notas: '' });
+const EMPTY_ITEM = () => ({ producto: '', modelo: '', tamano: '', color: '', imei_serial: '', valor: '' });
+const EMPTY_MOV  = () => ({ fecha: todayISO(), tipo: 'compra', descripcion: '', monto: '', moneda: 'USD', tc: '', caja_id: '', notas: '', items: [EMPTY_ITEM()] });
 
 export default function Proveedores() {
   const { toast } = useToast();
@@ -84,10 +85,22 @@ export default function Proveedores() {
     } catch (e) { toast.error(e.message); }
   }
 
+  // Helpers de ítems (solo para compra)
+  const addItem = () => setMovForm(f => ({ ...f, items: [...f.items, EMPTY_ITEM()] }));
+  const updItem = (i, field, val) => setMovForm(f => ({ ...f, items: f.items.map((it, idx) => idx === i ? { ...it, [field]: val } : it) }));
+  const removeItem = (i) => setMovForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
+  const itemsValidos = (movForm.items || []).filter(it => it.producto || it.modelo || it.imei_serial || it.valor);
+  const totalItems = itemsValidos.reduce((s, it) => s + (Number(it.valor) || 0), 0);
+
   async function handleCreateMov(e) {
     e.preventDefault();
-    if (!movForm.monto || Number(movForm.monto) <= 0) { setMovError('El monto debe ser mayor a 0.'); return; }
+    const isCompra = movForm.tipo === 'compra';
+    const monto = isCompra ? totalItems : Number(movForm.monto);
+
+    if (isCompra && itemsValidos.length === 0) { setMovError('Agregá al menos un producto comprado.'); return; }
+    if (!monto || monto <= 0) { setMovError('El monto debe ser mayor a 0.'); return; }
     if (movForm.moneda === 'ARS' && (!movForm.tc || Number(movForm.tc) <= 0)) { setMovError('Para ARS ingresá el tipo de cambio.'); return; }
+
     setMovSaving(true); setMovError('');
     try {
       await provApi.createMovimiento({
@@ -95,14 +108,19 @@ export default function Proveedores() {
         fecha: movForm.fecha,
         tipo: movForm.tipo,
         descripcion: movForm.descripcion || null,
-        monto: Number(movForm.monto),
+        monto,
         moneda: movForm.moneda,
         tc: movForm.moneda === 'ARS' ? Number(movForm.tc) : null,
-        caja_id: movForm.caja_id ? Number(movForm.caja_id) : null,
+        caja_id: !isCompra && movForm.caja_id ? Number(movForm.caja_id) : null,
         notas: movForm.notas || null,
+        items: isCompra ? itemsValidos.map(it => ({
+          producto: it.producto || null, modelo: it.modelo || null, tamano: it.tamano || null,
+          color: it.color || null, imei_serial: it.imei_serial || null,
+          valor: it.valor ? Number(it.valor) : null,
+        })) : [],
       });
       setShowMov(false);
-      toast.success(movForm.tipo === 'compra' ? 'Compra registrada.' : 'Pago registrado.');
+      toast.success(isCompra ? 'Compra registrada.' : 'Pago registrado.');
       selectProveedor(selected);  // refresca movimientos
       loadList();                 // refresca saldos
     } catch (e) { setMovError(e.message || 'No se pudo registrar.'); }
@@ -191,7 +209,15 @@ export default function Proveedores() {
                         <tr key={m.id}>
                           <td className="muted mono tiny">{fmtFecha(m.fecha)}</td>
                           <td><span className={'badge ' + (m.tipo === 'compra' ? 'badge-warn' : 'badge-pos')}>{m.tipo === 'compra' ? 'Compra' : 'Pago'}</span></td>
-                          <td className="tiny">{m.descripcion || '—'}{m.caja_nombre ? ` · ${m.caja_nombre}` : ''}</td>
+                          <td className="tiny">
+                            {Array.isArray(m.items) && m.items.length > 0
+                              ? <span title={m.items.map(it => [it.producto, it.modelo, it.color, it.imei_serial].filter(Boolean).join(' ')).join('\n')}>
+                                  {m.items.map(it => [it.producto, it.modelo].filter(Boolean).join(' ')).filter(Boolean).slice(0, 2).join(', ') || 'productos'}
+                                  {m.items.length > 1 ? ` · ${m.items.length} ítems` : ''}
+                                </span>
+                              : (m.descripcion || '—')}
+                            {m.caja_nombre ? ` · ${m.caja_nombre}` : ''}
+                          </td>
                           <td className="num mono">{fmtUsd(m.monto_usd).replace('US$ ', '')}</td>
                           <td><button className="icon-btn" onClick={() => handleDeleteMov(m)}><Icons.Trash size={13} /></button></td>
                         </tr>
@@ -241,7 +267,7 @@ export default function Proveedores() {
       {/* Modal: Nueva compra / pago */}
       {showMov && selected && (
         <div className="modal-overlay" onClick={() => setShowMov(false)}>
-          <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 660 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Compra / Pago — {selected.nombre}</h3><button className="icon-btn" onClick={() => setShowMov(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleCreateMov}>
               <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
@@ -254,26 +280,67 @@ export default function Proveedores() {
                   <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha</label>
                     <input type="date" className="input" value={movForm.fecha} onChange={e => setMovForm(f => ({ ...f, fecha: e.target.value }))} /></div>
                 </div>
-                <div className="field"><label className="field-label">Detalle</label>
-                  <input className="input" placeholder={movForm.tipo === 'compra' ? 'ej. 10 iPhone 15' : 'ej. transferencia'} value={movForm.descripcion} onChange={e => setMovForm(f => ({ ...f, descripcion: e.target.value }))} /></div>
-                <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}><label className="field-label">Monto</label>
-                    <input type="number" step="0.01" className="input" value={movForm.monto} onChange={e => setMovForm(f => ({ ...f, monto: e.target.value }))} /></div>
-                  <div className="field" style={{ width: 110 }}><label className="field-label">Moneda</label>
-                    <select className="input" value={movForm.moneda} onChange={e => setMovForm(f => ({ ...f, moneda: e.target.value }))}>
-                      <option value="USD">USD</option><option value="ARS">ARS</option><option value="USDT">USDT</option>
-                    </select></div>
-                  {movForm.moneda === 'ARS' && (
-                    <div className="field" style={{ width: 110 }}><label className="field-label">TC</label>
-                      <input type="number" step="0.01" className="input" value={movForm.tc} onChange={e => setMovForm(f => ({ ...f, tc: e.target.value }))} /></div>
-                  )}
-                </div>
-                {movForm.tipo === 'pago' && cajas.length > 0 && (
-                  <div className="field"><label className="field-label">Caja (de dónde sale el pago)</label>
-                    <select className="input" value={movForm.caja_id} onChange={e => setMovForm(f => ({ ...f, caja_id: e.target.value }))}>
-                      <option value="">— Sin especificar —</option>
-                      {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
-                    </select></div>
+                <div className="field"><label className="field-label">Detalle (opcional)</label>
+                  <input className="input" placeholder={movForm.tipo === 'compra' ? 'ej. pedido mayorista #123' : 'ej. transferencia'} value={movForm.descripcion} onChange={e => setMovForm(f => ({ ...f, descripcion: e.target.value }))} /></div>
+
+                {movForm.tipo === 'compra' ? (
+                  <>
+                    <div className="field">
+                      <label className="field-label">Productos comprados</label>
+                      <table className="tbl" style={{ fontSize: 13 }}>
+                        <thead><tr><th>Producto</th><th>Modelo</th><th>Color</th><th>IMEI/Serial</th><th className="num">Valor</th><th style={{ width: 32 }}></th></tr></thead>
+                        <tbody>
+                          {movForm.items.map((it, i) => (
+                            <tr key={i}>
+                              <td><input className="input" style={{ minWidth: 90 }} placeholder="iPhone" value={it.producto} onChange={e => updItem(i, 'producto', e.target.value)} /></td>
+                              <td><input className="input" style={{ minWidth: 80 }} placeholder="15 Pro" value={it.modelo} onChange={e => updItem(i, 'modelo', e.target.value)} /></td>
+                              <td><input className="input" style={{ minWidth: 64 }} value={it.color} onChange={e => updItem(i, 'color', e.target.value)} /></td>
+                              <td><input className="input" style={{ minWidth: 90 }} value={it.imei_serial} onChange={e => updItem(i, 'imei_serial', e.target.value)} /></td>
+                              <td><input type="number" step="0.01" className="input num" style={{ maxWidth: 90 }} value={it.valor} onChange={e => updItem(i, 'valor', e.target.value)} /></td>
+                              <td>{movForm.items.length > 1 && <button type="button" className="icon-btn" onClick={() => removeItem(i)}><Icons.Trash size={12} /></button>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={addItem}>+ Agregar producto</button>
+                    </div>
+                    <div className="row" style={{ gap: 12, alignItems: 'flex-end' }}>
+                      <div className="field" style={{ width: 110 }}><label className="field-label">Moneda</label>
+                        <select className="input" value={movForm.moneda} onChange={e => setMovForm(f => ({ ...f, moneda: e.target.value }))}>
+                          <option value="USD">USD</option><option value="ARS">ARS</option><option value="USDT">USDT</option>
+                        </select></div>
+                      {movForm.moneda === 'ARS' && (
+                        <div className="field" style={{ width: 110 }}><label className="field-label">TC</label>
+                          <input type="number" step="0.01" className="input" value={movForm.tc} onChange={e => setMovForm(f => ({ ...f, tc: e.target.value }))} /></div>
+                      )}
+                      <div className="field" style={{ flex: 1, textAlign: 'right' }}>
+                        <label className="field-label">Total compra</label>
+                        <div className="mono" style={{ fontSize: 18, fontWeight: 700 }}><span className="ccy">{movForm.moneda}</span> {totalItems.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="row" style={{ gap: 12 }}>
+                      <div className="field" style={{ flex: 1 }}><label className="field-label">Monto</label>
+                        <input type="number" step="0.01" className="input" value={movForm.monto} onChange={e => setMovForm(f => ({ ...f, monto: e.target.value }))} /></div>
+                      <div className="field" style={{ width: 110 }}><label className="field-label">Moneda</label>
+                        <select className="input" value={movForm.moneda} onChange={e => setMovForm(f => ({ ...f, moneda: e.target.value }))}>
+                          <option value="USD">USD</option><option value="ARS">ARS</option><option value="USDT">USDT</option>
+                        </select></div>
+                      {movForm.moneda === 'ARS' && (
+                        <div className="field" style={{ width: 110 }}><label className="field-label">TC</label>
+                          <input type="number" step="0.01" className="input" value={movForm.tc} onChange={e => setMovForm(f => ({ ...f, tc: e.target.value }))} /></div>
+                      )}
+                    </div>
+                    {cajas.length > 0 && (
+                      <div className="field"><label className="field-label">Caja (de dónde sale el pago)</label>
+                        <select className="input" value={movForm.caja_id} onChange={e => setMovForm(f => ({ ...f, caja_id: e.target.value }))}>
+                          <option value="">— Sin especificar —</option>
+                          {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                        </select></div>
+                    )}
+                  </>
                 )}
                 {movError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{movError}</div>}
               </div>

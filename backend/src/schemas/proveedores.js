@@ -14,6 +14,18 @@ const updateProveedorSchema = createProveedorSchema.partial().refine(
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 
+// Ítem de una compra (productos comprados) — espejo de items_movimiento_cc (B2B)
+const itemProveedorSchema = z.object({
+  producto:    z.string().trim().max(100).optional().nullable(),
+  modelo:      z.string().trim().max(100).optional().nullable(),
+  tamano:      z.string().trim().max(50).optional().nullable(),
+  color:       z.string().trim().max(50).optional().nullable(),
+  imei_serial: z.string().trim().max(100).optional().nullable(),
+  valor:       z.coerce.number().nonnegative('Valor no puede ser negativo').optional().nullable(),
+  verificado:  z.boolean().optional().default(false),
+  notas:       z.string().trim().max(500).optional().nullable(),
+});
+
 const createMovimientoProveedorSchema = z.object({
   proveedor_id: z.coerce.number().int().positive('proveedor_id inválido'),
   fecha:        z.string().date('Fecha inválida — usar YYYY-MM-DD'),
@@ -24,6 +36,8 @@ const createMovimientoProveedorSchema = z.object({
   tc:           z.coerce.number().positive().optional().nullable(),
   caja_id:      z.coerce.number().int().positive().optional().nullable(),
   notas:        z.string().trim().max(1000).optional().nullable(),
+  // items solo aplica a 'compra' (productos comprados); la ruta los ignora en 'pago'
+  items:        z.array(itemProveedorSchema).max(200, 'Máximo 200 ítems por compra').optional().default([]),
 }).refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
   message: 'Para montos en ARS se requiere el tipo de cambio (tc)',
   path: ['tc'],
