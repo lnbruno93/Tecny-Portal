@@ -177,11 +177,14 @@ describe('Ledger de cajas', () => {
     expect(Number(comp.body.comprobante_financiera.monto_financiera)).toBe(100); // 1000 × 10%
     expect(Number(comp.body.comprobante_financiera.monto_neto)).toBe(900);
 
-    // adjuntar un segundo comprobante NO duplica el de Financiera
+    // adjuntar un segundo comprobante NO duplica el de Financiera (devuelve el mismo)
     const comp2 = await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
       .send({ archivo_data: 'data:image/png;base64,iVBORw0KGgo=', archivo_nombre: 'comp2.png', archivo_tipo: 'image/png' });
     expect(comp2.status).toBe(201);
-    expect(comp2.body.comprobante_financiera).toBeNull();
+    expect(comp2.body.comprobante_financiera.id).toBe(comp.body.comprobante_financiera.id); // misma fila, no se duplica
+    const r = await request(app).get(`/api/comprobantes?buscar=${encodeURIComponent(venta.body.order_id)}`).set(auth());
+    const list = (r.body.data || r.body).filter(c => c.referencia === venta.body.order_id);
+    expect(list.length).toBe(1); // sigue habiendo un solo comprobante activo
   });
 
   // ── Consistencia del ciclo de vida del comprobante de Financiera ──
@@ -264,6 +267,44 @@ describe('Ledger de cajas', () => {
     expect(Number(comps[0].monto)).toBe(2000);
     expect(Number(comps[0].monto_financiera)).toBe(200); // 2000 × 10%
     expect(Number(comps[0].monto_neto)).toBe(1800);
+  });
+
+  it('adjuntar archivo con pago NO financiero y luego editar a financiero crea el comprobante', async () => {
+    await request(app).put('/api/config').set(auth()).send({ pct_financiera: 10 });
+    const cajaFin = await crearCaja({ saldo_inicial: 0, es_financiera: true });
+    const cajaNormal = await crearCaja({ saldo_inicial: 0 });
+
+    // venta pagada con caja NORMAL (no financiera)
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Edge', estado: 'acreditado',
+      items: [{ descripcion: 'P', cantidad: 1, precio_vendido: 1000, costo: 1, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaNormal.id, metodo_nombre: cajaNormal.nombre, monto: 1000, moneda: 'USD' }],
+    });
+    const orderId = venta.body.order_id;
+
+    // adjuntar comprobante: como el pago NO es financiero, no se crea comprobante de Financiera
+    const comp = await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
+      .send({ archivo_data: 'data:image/png;base64,iVBORw0KGgo=', archivo_nombre: 'c.png', archivo_tipo: 'image/png' });
+    expect(comp.status).toBe(201);
+    expect(comp.body.comprobante_financiera).toBeNull();
+
+    const compsActivos = async () => {
+      const r = await request(app).get(`/api/comprobantes?buscar=${encodeURIComponent(orderId)}`).set(auth());
+      const list = r.body.data || r.body;
+      return list.filter(c => c.referencia === orderId);
+    };
+    expect((await compsActivos()).length).toBe(0);
+
+    // fullEdit: cambiar el pago a la caja financiera (el archivo ya está adjunto)
+    await request(app).put(`/api/ventas/${venta.body.id}`).set(auth()).send({
+      estado: 'acreditado',
+      items: [{ descripcion: 'P', cantidad: 1, precio_vendido: 1000, costo: 1, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaFin.id, metodo_nombre: cajaFin.nombre, monto: 1000, moneda: 'USD' }],
+    });
+    // ahora el comprobante de Financiera debe existir (creado por el sync)
+    const comps = await compsActivos();
+    expect(comps.length).toBe(1);
+    expect(Number(comps[0].monto_financiera)).toBe(100); // 1000 × 10%
   });
 
   it('un PAGO B2B (cuenta corriente) ingresa a la caja y se revierte al borrarlo', async () => {
