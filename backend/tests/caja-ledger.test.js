@@ -184,6 +184,88 @@ describe('Ledger de cajas', () => {
     expect(comp2.body.comprobante_financiera).toBeNull();
   });
 
+  // ── Consistencia del ciclo de vida del comprobante de Financiera ──
+  // Helper: comprobantes de Financiera ACTIVOS para una venta (por su order_id en referencia).
+  async function compsActivos(orderId) {
+    const r = await request(app).get(`/api/comprobantes?buscar=${encodeURIComponent(orderId)}`).set(auth());
+    const list = r.body.data || r.body;
+    return list.filter(c => c.referencia === orderId);
+  }
+
+  async function crearVentaFinanciera(monto = 1000) {
+    const cajaFin = await crearCaja({ saldo_inicial: 0, es_financiera: true });
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'CF', estado: 'acreditado',
+      items: [{ descripcion: 'P', cantidad: 1, precio_vendido: monto, costo: 1, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaFin.id, metodo_nombre: cajaFin.nombre, monto, moneda: 'USD' }],
+    });
+    await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
+      .send({ archivo_data: 'data:image/png;base64,iVBORw0KGgo=', archivo_nombre: 'c.png', archivo_tipo: 'image/png' });
+    return { ventaId: venta.body.id, orderId: venta.body.order_id, cajaFin };
+  }
+
+  it('fullEdit que quita el pago financiera revierte el comprobante (no queda huérfano)', async () => {
+    await request(app).put('/api/config').set(auth()).send({ pct_financiera: 10 });
+    const { ventaId, orderId } = await crearVentaFinanciera(1000);
+    expect((await compsActivos(orderId)).length).toBe(1);
+
+    // fullEdit: reemplazar el pago financiera por uno con una caja normal
+    const cajaNormal = await crearCaja({ saldo_inicial: 0 });
+    const edit = await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      estado: 'acreditado',
+      items: [{ descripcion: 'P', cantidad: 1, precio_vendido: 1000, costo: 1, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaNormal.id, metodo_nombre: cajaNormal.nombre, monto: 1000, moneda: 'USD' }],
+    });
+    expect(edit.status).toBe(200);
+    // el comprobante de Financiera ya no debe existir
+    expect((await compsActivos(orderId)).length).toBe(0);
+  });
+
+  it('cancelar revierte el comprobante; reactivar lo restaura solo si el pago financiera sigue', async () => {
+    await request(app).put('/api/config').set(auth()).send({ pct_financiera: 10 });
+    const { ventaId, orderId, cajaFin } = await crearVentaFinanciera(1000);
+    expect((await compsActivos(orderId)).length).toBe(1);
+
+    // cancelar (solo metadatos) → revierte
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({ estado: 'cancelado' });
+    expect((await compsActivos(orderId)).length).toBe(0);
+
+    // reactivar con el pago financiera intacto → restaura
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({ estado: 'acreditado' });
+    expect((await compsActivos(orderId)).length).toBe(1);
+
+    // cancelar de nuevo, quitar el pago financiera (fullEdit) mientras está cancelada, reactivar → NO restaura
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({ estado: 'cancelado' });
+    const cajaNormal = await crearCaja({ saldo_inicial: 0 });
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      estado: 'cancelado',
+      items: [{ descripcion: 'P', cantidad: 1, precio_vendido: 1000, costo: 1, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaNormal.id, metodo_nombre: cajaNormal.nombre, monto: 1000, moneda: 'USD' }],
+    });
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({ estado: 'acreditado' });
+    expect((await compsActivos(orderId)).length).toBe(0);
+    void cajaFin;
+  });
+
+  it('fullEdit que cambia el monto del pago financiera recalcula la comisión del comprobante', async () => {
+    await request(app).put('/api/config').set(auth()).send({ pct_financiera: 10 });
+    const { ventaId, orderId, cajaFin } = await crearVentaFinanciera(1000);
+    let comps = await compsActivos(orderId);
+    expect(Number(comps[0].monto_financiera)).toBe(100); // 1000 × 10%
+
+    // editar el monto del pago financiera a 2000
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      estado: 'acreditado',
+      items: [{ descripcion: 'P', cantidad: 1, precio_vendido: 2000, costo: 1, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaFin.id, metodo_nombre: cajaFin.nombre, monto: 2000, moneda: 'USD' }],
+    });
+    comps = await compsActivos(orderId);
+    expect(comps.length).toBe(1);
+    expect(Number(comps[0].monto)).toBe(2000);
+    expect(Number(comps[0].monto_financiera)).toBe(200); // 2000 × 10%
+    expect(Number(comps[0].monto_neto)).toBe(1800);
+  });
+
   it('un PAGO B2B (cuenta corriente) ingresa a la caja y se revierte al borrarlo', async () => {
     const caja = await crearCaja({ saldo_inicial: 0 });
     const cli = await request(app).post('/api/cuentas/clientes').set(auth())
