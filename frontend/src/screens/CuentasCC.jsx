@@ -4,22 +4,11 @@ import { cuentas, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function fmt(n) {
-  // Siempre número completo con separador de miles — ej: 30.450
-  return Math.round(Math.abs(Number(n))).toLocaleString('es-AR');
-}
 function fmtUSD(n) { return 'USD ' + fmt(n); }
-function fmtFecha(iso) {
-  if (!iso) return '—';
-  // Acepta 'YYYY-MM-DD' e ISO completo ('2026-05-23T03:00:00.000Z')
-  const s = String(iso).slice(0, 10);
-  const d = new Date(s + 'T00:00:00');
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
@@ -753,7 +742,7 @@ export default function CuentasCC() {
                 { label: 'Deuda total · USD', val: <span className="mono neg">{fmt(rgData.total_deuda)}</span>, sub: 'clientes que nos deben' },
                 { label: 'Clientes activos', val: <span className="mono">{rgData.cant_clientes}</span>, sub: 'en cuenta corriente' },
                 { label: 'Crédito a favor · USD', val: <span className="mono pos">{fmt(rgData.total_credito)}</span>, sub: 'les debemos a clientes' },
-                { label: 'Neto · USD', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmt(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
+                { label: 'Neto · USD', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmtSigned(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
               ].map(k => (
                 <div key={k.label} className="card card-tight" style={{ flex: 1 }}>
                   <div className="kpi-label">{k.label}</div>

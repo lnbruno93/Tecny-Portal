@@ -4,18 +4,9 @@ import { cajas, contactos as contactosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { fmt, fmtFecha } from '../lib/format';
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  return Math.round(v).toLocaleString('es-AR');
-}
-function fmtFecha(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
-  if (isNaN(d)) return '—';
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
 function todayISO() {
   return new Date().toLocaleDateString('sv'); // YYYY-MM-DD
 }

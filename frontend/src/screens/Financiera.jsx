@@ -10,23 +10,12 @@ import {
 import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { fmt, fmtFecha } from '../lib/format';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  return Math.round(v).toLocaleString('es-AR');
-}
-
 function fmtARS(n) {
   return 'ARS ' + fmt(n);
-}
-
-function fmtFecha(isoDate) {
-  if (!isoDate) return '—';
-  const d = new Date(isoDate.includes('T') ? isoDate : isoDate + 'T00:00:00');
-  if (isNaN(d)) return '—';
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────

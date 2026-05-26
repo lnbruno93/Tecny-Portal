@@ -4,12 +4,7 @@ import { usados as usadosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
-
-// ─── Formatter ───────────────────────────────────────────────────────────────
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  return Math.round(v).toLocaleString('es-AR');
-}
+import { fmt } from '../lib/format';
 
 function relDate(iso) {
   if (!iso) return '—';

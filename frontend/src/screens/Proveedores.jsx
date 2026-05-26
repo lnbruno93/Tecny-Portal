@@ -4,20 +4,11 @@ import { proveedores as provApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { fmt, fmtFecha } from '../lib/format';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function fmt(n) {
-  return Math.round(Math.abs(Number(n))).toLocaleString('es-AR');
-}
 function fmtUSD(n) { return 'USD ' + fmt(n); }
-function fmtFecha(iso) {
-  if (!iso) return '—';
-  const s = String(iso).slice(0, 10);
-  const d = new Date(s + 'T00:00:00');
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
