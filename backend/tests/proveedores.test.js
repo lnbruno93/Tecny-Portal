@@ -65,8 +65,8 @@ describe('Proveedores — CRUD', () => {
     expect(Number(created.body.saldo_usd)).toBe(1500);
 
     const movs = await request(app).get(`/api/proveedores/${created.body.id}/movimientos`).set(auth());
-    expect(movs.body).toHaveLength(1);
-    expect(movs.body[0].tipo).toBe('saldo_inicial');
+    expect(movs.body.data).toHaveLength(1);
+    expect(movs.body.data[0].tipo).toBe('saldo_inicial');
 
     // El saldo del listado lo refleja, pero NO cuenta como "compra"
     const list = await request(app).get('/api/proveedores').set(auth());
@@ -129,7 +129,7 @@ describe('Proveedores — cuenta corriente', () => {
 
     // El GET de movimientos los devuelve embebidos
     const movs = await request(app).get(`/api/proveedores/${prov.id}/movimientos`).set(auth());
-    const mov = movs.body.find(m => m.id === compra.body.id);
+    const mov = movs.body.data.find(m => m.id === compra.body.id);
     expect(mov.items).toHaveLength(2);
     expect(mov.items[0].imei_serial).toBe('111');
 
@@ -162,7 +162,7 @@ describe('Proveedores — cuenta corriente', () => {
 
     const movs = await request(app).get(`/api/proveedores/${prov.id}/movimientos`).set(auth());
     expect(movs.status).toBe(200);
-    expect(movs.body.length).toBe(1);
+    expect(movs.body.data.length).toBe(1);
 
     const del = await request(app).delete(`/api/proveedores/movimientos/${mov.body.id}`).set(auth());
     expect(del.status).toBe(200);
