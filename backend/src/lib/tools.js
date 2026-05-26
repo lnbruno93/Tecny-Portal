@@ -3,7 +3,7 @@
 // Al agregar un módulo nuevo, sumarlo solo acá.
 const TOOLS = [
   'cotizador', 'financiera', 'cajas', 'envios',
-  'usuarios', 'cuentas', 'usados', 'inventario', 'ventas', 'proveedores',
+  'usuarios', 'cuentas', 'usados', 'inventario', 'ventas', 'proveedores', 'proyectos',
 ];
 
 module.exports = { TOOLS };

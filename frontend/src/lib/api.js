@@ -147,6 +147,17 @@ export const proveedores = {
   saldos: () => api('/api/proveedores/resumen/saldos'),
 };
 
+export const proyectos = {
+  list: (params = {}) => api('/api/proyectos?' + new URLSearchParams(params)),
+  get: (id) => api(`/api/proyectos/${id}`),
+  create: (data) => api('/api/proyectos', 'POST', data),
+  update: (id, data) => api(`/api/proyectos/${id}`, 'PUT', data),
+  delete: (id) => api(`/api/proyectos/${id}`, 'DELETE'),
+  movimientos: (id, params = {}) => api(`/api/proyectos/${id}/movimientos?` + new URLSearchParams(params)),
+  createMovimiento: (data) => api('/api/proyectos/movimientos', 'POST', data),
+  deleteMovimiento: (id) => api(`/api/proyectos/movimientos/${id}`, 'DELETE'),
+};
+
 export const contactos = {
   list: (params = {}) => api('/api/contactos?' + new URLSearchParams(params)),
   create: (data) => api('/api/contactos', 'POST', data),

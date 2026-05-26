@@ -84,6 +84,7 @@ const NAV_MAIN = [
   { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 3 },
   { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados',      group: 3 },
   { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios',      group: 4 },
+  { id: 'proyectos',  path: '/proyectos',  label: 'Proyectos',  icon: 'Calendar',   perm: 'proyectos',   group: 5 },
 ];
 
 const NAV_SYS = [
@@ -103,6 +104,7 @@ const SCREEN_LABELS = {
   proveedores: 'Proveedores',
   usados:     'Usados | Cotizador',
   inventario: 'Inventario',
+  proyectos:  'Proyectos',
   ventas:     'Ventas',
   historial:  'Historial',
   usuarios:   'Usuarios',
