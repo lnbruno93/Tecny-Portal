@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
@@ -142,6 +143,7 @@ export default function Ventas() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { setPrimaryAction } = usePageActions();
+  const navigate = useNavigate();
 
   const [lista, setLista] = useState([]);
   const [dash, setDash] = useState(null);
@@ -342,6 +344,14 @@ export default function Ventas() {
       metodo_nombre: p.metodo_nombre, monto: Number(p.monto) || 0, moneda: p.moneda, tc: p.tc ? Number(p.tc) : null,
       es_cuenta_corriente: !!p.es_cuenta_corriente,
     }));
+    // Caja Financiera: si un pago la usa, exigir el comprobante (en alta) para que
+    // se auto-genere el comprobante de Financiera y no haya doble carga.
+    const finCaja = metodos.find(m => m.es_financiera);
+    const usaFinanciera = !!finCaja && pagosPayload.some(p => p.metodo_pago_id === finCaja.id);
+    if (!editId && usaFinanciera && comprobantes.length === 0) {
+      setVentaError('Esta venta se cobra por la Financiera: adjuntá el comprobante antes de guardar.');
+      return;
+    }
     const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
     const payload = {
       fecha: vForm.fecha, hora: vForm.hora || null, cliente_nombre: vForm.cliente_nombre.trim() || null,
@@ -359,6 +369,9 @@ export default function Ventas() {
       if (!editId && procRapidaId) { try { await ventas.updateRapida(procRapidaId, { estado: 'procesada', venta_id: venta.id }); } catch (_) {} }
       toast.success(editId ? 'Venta actualizada.' : 'Venta registrada.');
       setShowVenta(false);
+      // Cobro por Financiera: el comprobante de Financiera ya se auto-generó al
+      // adjuntar el respaldo → llevamos al usuario a esa sección a verificarlo.
+      if (!editId && usaFinanciera) { navigate('/financiera'); return; }
       await Promise.all([loadDash(), loadLista(), loadRapidas()]);
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
   }
