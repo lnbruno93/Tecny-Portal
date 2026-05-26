@@ -2,12 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { historial as historialApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
-
-// ─── Formatter ───────────────────────────────────────────────────────────────
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  return Math.round(v).toLocaleString('es-AR');
-}
+import { fmt } from '../lib/format';
 
 function rel(iso) {
   if (!iso) return '—';

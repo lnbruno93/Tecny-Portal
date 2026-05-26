@@ -4,12 +4,7 @@ import { usuarios as usuariosApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { TOOLS } from '../lib/tools';
-
-// ─── Formatter ───────────────────────────────────────────────────────────────
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  return Math.round(v).toLocaleString('es-AR');
-}
+import { fmt } from '../lib/format';
 
 const TOOL_LABELS = {
   cotizador:  'Cotizador',

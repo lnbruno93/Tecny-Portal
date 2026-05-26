@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { config as configApi } from '../lib/api';
-
-// ─── Formatter ───────────────────────────────────────────────────────────────
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  return Math.round(v).toLocaleString('es-AR');
-}
+import { fmt } from '../lib/format';
 
 const SYSTEM_LIMITS = [
   { t: 'OCR rate-limit',   d: '10 solicitudes/hora por usuario' },
