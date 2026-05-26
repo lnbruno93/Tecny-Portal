@@ -31,19 +31,6 @@ function fmtFecha(isoDate) {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const TIPOS_PAGO = [
-  'Efectivo',
-  'Transferencia BBVA LB',
-  'Transferencia BBVA GL',
-  'Recaudadora',
-  'USD',
-  'USDT',
-  'USD BBVA LB',
-  'USD BBVA GL',
-  'Tarjeta de Crédito',
-  'PayPal',
-  'Takenos',
-];
 
 // ─── Helper components ───────────────────────────────────────────────────────
 
@@ -79,7 +66,6 @@ export default function Financiera() {
   const [cCliente, setCCliente] = useState('');
   const [cVendId, setCVendId] = useState('');
   const [cMonto, setCMonto] = useState('');
-  const [cTipo, setCTipo] = useState('Transferencia BBVA LB');
   const [cFile, setCFile] = useState(null); // { name, base64, size, mimeType }
   const [ocrResult, setOcrResult] = useState(null); // { monto }
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -239,7 +225,7 @@ export default function Financiera() {
         monto: montoNum,
         monto_financiera: montoFin,
         monto_neto: montoNeto,
-        referencia: cTipo || null,
+        referencia: null,
         archivo_data: cFile?.base64 || null,
         archivo_nombre: cFile?.name || null,
         archivo_tipo: cFile?.mimeType || null,
@@ -248,7 +234,6 @@ export default function Financiera() {
       setCCliente('');
       setCVendId('');
       setCMonto('');
-      setCTipo('Transferencia BBVA LB');
       setCFile(null);
       setOcrResult(null);
       setTab('comprobantes');
@@ -448,7 +433,7 @@ export default function Financiera() {
                     <th>Fecha</th>
                     <th>Cliente</th>
                     <th>Vendedor</th>
-                    <th>Forma de pago</th>
+                    <th>Referencia</th>
                     <th className="num">Bruto</th>
                     <th className="num">Retención</th>
                     <th className="num">Neto</th>
@@ -555,19 +540,6 @@ export default function Financiera() {
                 </div>
               </div>
 
-              {/* Forma de pago */}
-              <div className="field" style={{ marginBottom: 12 }}>
-                <div className="field-label">Forma de pago</div>
-                <select
-                  className="input"
-                  value={cTipo}
-                  onChange={e => setCTipo(e.target.value)}
-                >
-                  {TIPOS_PAGO.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
 
               {/* Dropzone */}
               <div className="field" style={{ marginBottom: 18 }}>
@@ -673,7 +645,6 @@ export default function Financiera() {
                     setCCliente('');
                     setCVendId('');
                     setCMonto('');
-                    setCTipo('Transferencia BBVA LB');
                     setCFile(null);
                     setOcrResult(null);
                     setSaveError('');
@@ -787,7 +758,7 @@ export default function Financiera() {
                   <th>Fecha</th>
                   <th>Cliente</th>
                   <th>Vendedor</th>
-                  <th>Forma de pago</th>
+                  <th>Referencia</th>
                   <th className="num">Bruto</th>
                   <th className="num">Retención</th>
                   <th className="num">Neto</th>
