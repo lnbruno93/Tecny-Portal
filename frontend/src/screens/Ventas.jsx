@@ -228,6 +228,7 @@ export default function Ventas() {
   const [prodSearch, setProdSearch] = useState('');
   const [prodResults, setProdResults] = useState([]);
   const prodTimer = useRef(null);
+  const prodReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
   const setVF = (k, v) => setVForm(f => ({ ...f, [k]: v }));
 
   function openEdit(v) {
@@ -269,11 +270,12 @@ export default function Ventas() {
     setProdSearch(q);
     clearTimeout(prodTimer.current);
     if (q.trim().length < 2) { setProdResults([]); return; }
+    const reqId = ++prodReq.current;
     prodTimer.current = setTimeout(async () => {
       try {
         const res = await inventario.productos({ solo_stock: 'true', limit: 8, buscar: q.trim() });
-        setProdResults(res.data || []);
-      } catch (_) { setProdResults([]); }
+        if (reqId === prodReq.current) setProdResults(res.data || []);
+      } catch (_) { if (reqId === prodReq.current) setProdResults([]); }
     }, 300);
   }
   function addProd(p) {
@@ -363,15 +365,19 @@ export default function Ventas() {
     setSavingVenta(true);
     try {
       const venta = editId ? await ventas.update(editId, payload) : await ventas.create(payload);
+      let uploadFalló = false;
       for (const c of comprobantes) {
-        try { await ventas.uploadComprobante(venta.id, { archivo_data: c.data, archivo_nombre: c.nombre, archivo_tipo: c.tipo }); } catch (_) {}
+        try { await ventas.uploadComprobante(venta.id, { archivo_data: c.data, archivo_nombre: c.nombre, archivo_tipo: c.tipo }); }
+        catch (e) { uploadFalló = true; console.warn('Error al adjuntar comprobante:', e); }
       }
       if (!editId && procRapidaId) { try { await ventas.updateRapida(procRapidaId, { estado: 'procesada', venta_id: venta.id }); } catch (_) {} }
-      toast.success(editId ? 'Venta actualizada.' : 'Venta registrada.');
+      // Si el adjunto falló no podemos cantar éxito (y en el flujo financiera el
+      // comprobante de Financiera NO se habría auto-generado): avisamos.
+      if (uploadFalló) toast.error('La venta se guardó, pero el comprobante no se pudo adjuntar. Subilo de nuevo desde la venta.');
+      else toast.success(editId ? 'Venta actualizada.' : 'Venta registrada.');
       setShowVenta(false);
-      // Cobro por Financiera: el comprobante de Financiera ya se auto-generó al
-      // adjuntar el respaldo → llevamos al usuario a esa sección a verificarlo.
-      if (!editId && usaFinanciera) { navigate('/financiera'); return; }
+      // Cobro por Financiera con comprobante OK: ya se auto-generó el de Financiera → ir a verificarlo.
+      if (!editId && usaFinanciera && !uploadFalló) { navigate('/financiera'); return; }
       await Promise.all([loadDash(), loadLista(), loadRapidas()]);
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
   }
