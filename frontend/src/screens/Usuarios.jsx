@@ -3,6 +3,7 @@ import { Icons } from '../components/Icons';
 import { usuarios as usuariosApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { TOOLS } from '../lib/tools';
 
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -11,8 +12,6 @@ function fmt(n) {
   if (v >= 1_000) return (v / 1_000).toFixed(0) + 'K';
   return Math.round(v).toLocaleString('es-AR');
 }
-
-const TOOLS = ['cotizador', 'financiera', 'cajas', 'envios', 'usuarios', 'cuentas', 'usados', 'inventario', 'ventas', 'proveedores'];
 
 const TOOL_LABELS = {
   cotizador:  'Cotizador',
