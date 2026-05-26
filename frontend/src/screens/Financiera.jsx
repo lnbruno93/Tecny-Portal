@@ -83,8 +83,10 @@ export default function Financiera() {
   const [cMonto, setCMonto] = useState('');
   const [cTipo, setCTipo] = useState('Transferencia BBVA LB');
   const [cFile, setCFile] = useState(null); // { name, base64, size, mimeType }
-  const [ocrResult, setOcrResult] = useState(null); // { monto_detectado, confianza }
+  const [ocrResult, setOcrResult] = useState(null); // { monto }
   const [ocrLoading, setOcrLoading] = useState(false);
+  // Visor del comprobante adjunto
+  const [viewFile, setViewFile] = useState(null); // { src, nombre, tipo } | 'loading' | null
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const fileInputRef = useRef(null);
@@ -190,14 +192,14 @@ export default function Financiera() {
       const dataUrl = e.target.result;
       const base64 = dataUrl.split(',')[1];
       setCFile({ name: file.name, size: file.size, base64, mimeType: file.type });
+      // OCR solo para imágenes (el backend no procesa PDF)
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { setOcrResult(null); return; }
       setOcrLoading(true);
       setOcrResult(null);
       try {
-        const result = await ocrApi.extract(base64);
+        const result = await ocrApi.extract(base64, file.type);  // { monto }
         setOcrResult(result);
-        if (result.monto_detectado && (result.confianza || 0) > 0.7) {
-          setCMonto(String(result.monto_detectado));
-        }
+        if (result.monto) setCMonto(String(result.monto));
       } catch (err) {
         console.warn('OCR error:', err);
       } finally {
@@ -205,6 +207,19 @@ export default function Financiera() {
       }
     };
     reader.readAsDataURL(file);
+  }
+
+  // Abrir/ver el archivo adjunto de un comprobante (se trae bajo demanda, no viaja en el listado)
+  async function openArchivo(id) {
+    setViewFile('loading');
+    try {
+      const r = await compApi.archivo(id); // { data, nombre, tipo }
+      const src = r.data.startsWith('data:') ? r.data : `data:${r.tipo || 'image/png'};base64,${r.data}`;
+      setViewFile({ src, nombre: r.nombre, tipo: r.tipo });
+    } catch (err) {
+      toast.error(err.message || 'No se pudo abrir el archivo.');
+      setViewFile(null);
+    }
   }
 
   // ── Save comprobante ───────────────────────────────────────────────────────
@@ -460,8 +475,11 @@ export default function Financiera() {
                         {fmt(c.monto_neto)}
                       </td>
                       <td>
-                        {c.archivo_data
-                          ? <Status tone="pos">OCR</Status>
+                        {c.tiene_archivo
+                          ? <button type="button" className="btn btn-ghost btn-sm"
+                              onClick={(e) => { e.stopPropagation(); openArchivo(c.id); }}>
+                              <Icons.Eye size={13} /> Ver
+                            </button>
                           : <span className="dim">—</span>}
                       </td>
                     </tr>
@@ -581,7 +599,7 @@ export default function Financiera() {
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{cFile.name}</div>
                       <div className="muted tiny">
                         {(cFile.size / 1024).toFixed(0)} KB
-                        {ocrResult && ` · OCR extrajo ${fmtARS(ocrResult.monto_detectado)} · confianza ${Math.round((ocrResult.confianza || 0) * 100)}%`}
+                        {ocrResult && ocrResult.monto && ` · OCR extrajo ${fmtARS(ocrResult.monto)}`}
                       </div>
                     </>
                   ) : (
@@ -797,8 +815,11 @@ export default function Financiera() {
                       {fmt(c.monto_neto)}
                     </td>
                     <td>
-                      {c.archivo_data
-                        ? <button className="icon-btn"><Icons.Eye size={15} /></button>
+                      {c.tiene_archivo
+                        ? <button className="icon-btn" title="Ver comprobante"
+                            onClick={(e) => { e.stopPropagation(); openArchivo(c.id); }}>
+                            <Icons.Eye size={15} />
+                          </button>
                         : <span className="dim tiny">—</span>}
                     </td>
                     <td>
@@ -1026,6 +1047,33 @@ export default function Financiera() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Visor de comprobante adjunto ──────────────────────────────────── */}
+      {viewFile && (
+        <div className="modal-overlay" onClick={() => setViewFile(null)}>
+          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>{viewFile === 'loading' ? 'Cargando…' : (viewFile.nombre || 'Comprobante')}</h3>
+              <button className="icon-btn" onClick={() => setViewFile(null)}><Icons.X size={16} /></button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              {viewFile === 'loading' ? (
+                <div className="empty">Cargando archivo…</div>
+              ) : viewFile.tipo === 'application/pdf' ? (
+                <iframe title="comprobante" src={viewFile.src} style={{ width: '100%', height: '70vh', border: 0 }} />
+              ) : (
+                <img src={viewFile.src} alt={viewFile.nombre || 'comprobante'} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8 }} />
+              )}
+            </div>
+            {viewFile !== 'loading' && (
+              <div className="modal-ft">
+                <a className="btn btn-ghost" href={viewFile.src} download={viewFile.nombre || 'comprobante'}>Descargar</a>
+                <button className="btn btn-primary" onClick={() => setViewFile(null)}>Cerrar</button>
               </div>
             )}
           </div>
