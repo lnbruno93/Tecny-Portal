@@ -160,16 +160,17 @@ describe('GET /api/cuentas/clientes', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.pagination).toHaveProperty('total');
 
     // Todos los items tienen saldo numérico
-    res.body.forEach(c => {
+    res.body.data.forEach(c => {
       expect(typeof Number(c.saldo)).toBe('number');
       expect(Number.isNaN(Number(c.saldo))).toBe(false);
     });
 
-    const found = res.body.find(c => c.id === clienteId);
+    const found = res.body.data.find(c => c.id === clienteId);
     expect(found).toBeDefined();
     expect(Number(found.saldo)).toBe(0);
   });
@@ -180,8 +181,8 @@ describe('GET /api/cuentas/clientes', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    const ids = res.body.map(c => c.id);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    const ids = res.body.data.map(c => c.id);
     expect(ids).toContain(clienteId);
   });
 
@@ -191,7 +192,7 @@ describe('GET /api/cuentas/clientes', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    res.body.forEach(c => expect(c.categoria).toBe('VIP'));
+    res.body.data.forEach(c => expect(c.categoria).toBe('VIP'));
   });
 });
 
@@ -408,16 +409,17 @@ describe('GET /api/cuentas/clientes/:id/movimientos', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(5); // compra + pago + parte + entrega + devolucion
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(5); // compra + pago + parte + entrega + devolucion
+    expect(res.body.pagination).toHaveProperty('total');
 
     // Cada movimiento tiene campo items (aunque sea [])
-    res.body.forEach(m => {
+    res.body.data.forEach(m => {
       expect(Array.isArray(m.items)).toBe(true);
     });
 
     // La compra tiene sus items
-    const compra = res.body.find(m => m.id === movCompraId);
+    const compra = res.body.data.find(m => m.id === movCompraId);
     expect(compra).toBeDefined();
     expect(compra.items.length).toBe(1);
     expect(compra.items[0].modelo).toBe('15 Pro');
@@ -587,7 +589,7 @@ describe('DELETE /api/cuentas/clientes/:id', () => {
       .get('/api/cuentas/clientes')
       .set('Authorization', `Bearer ${adminToken}`);
 
-    const ids = res.body.map(c => c.id);
+    const ids = res.body.data.map(c => c.id);
     expect(ids).not.toContain(clienteId);
   });
 

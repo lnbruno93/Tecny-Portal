@@ -307,6 +307,8 @@ export default function Proveedores() {
   const [list, setList]       = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [movs, setMovs]       = useState([]);
+  const [movsPag, setMovsPag] = useState({ page: 1, pages: 1, total: 0 });
+  const [loadingMasMovs, setLoadingMasMovs] = useState(false);
   const [loadingList, setLoadingList]   = useState(true);
   const [loadingMovs, setLoadingMovs]   = useState(false);
 
@@ -332,15 +334,25 @@ export default function Proveedores() {
     if (list.length > 0 && !selectedId) setSelectedId(list[0].id);
   }, [list]); // eslint-disable-line
 
-  // ── Cargar movimientos ──
+  // ── Cargar movimientos (paginado con "ver más") ──
   useEffect(() => {
     if (!selectedId) { setMovs([]); return; }
     setLoadingMovs(true);
     setMovs([]);
-    provApi.movimientos(selectedId)
-      .then(r => setMovs(r || [])).catch(console.error)
+    provApi.movimientos(selectedId, { page: 1, limit: 100 })
+      .then(r => { setMovs(r.data || []); setMovsPag(r.pagination || { page: 1, pages: 1, total: 0 }); })
+      .catch(console.error)
       .finally(() => setLoadingMovs(false));
   }, [selectedId]);
+
+  function loadMasMovs() {
+    if (!selectedId || loadingMasMovs) return;
+    setLoadingMasMovs(true);
+    provApi.movimientos(selectedId, { page: movsPag.page + 1, limit: 100 })
+      .then(r => { setMovs(prev => [...prev, ...(r.data || [])]); setMovsPag(r.pagination || movsPag); })
+      .catch(console.error)
+      .finally(() => setLoadingMasMovs(false));
+  }
 
   useEffect(() => {
     setPrimaryAction({
@@ -425,7 +437,9 @@ export default function Proveedores() {
 
   function reloadMovs() {
     if (!selectedId) return;
-    provApi.movimientos(selectedId).then(r => setMovs(r || [])).catch(console.error);
+    provApi.movimientos(selectedId, { page: 1, limit: 100 })
+      .then(r => { setMovs(r.data || []); setMovsPag(r.pagination || { page: 1, pages: 1, total: 0 }); })
+      .catch(console.error);
     provApi.list(search ? { buscar: search } : {}).then(r => setList(r || [])).catch(console.error);
   }
 
@@ -688,6 +702,16 @@ export default function Proveedores() {
                       </tr>
                     );
                   })}
+
+                  {movsPag.page < movsPag.pages && (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '8px' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={loadMasMovs} disabled={loadingMasMovs}>
+                          {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movs.length} de ${movsPag.total})`}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
 
                   {/* ── Fila de entrada inline ── */}
                   <InlineAddRows

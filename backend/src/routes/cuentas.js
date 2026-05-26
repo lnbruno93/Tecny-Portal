@@ -22,6 +22,7 @@ const db      = require('../config/database');
 const validate  = require('../lib/validate');
 const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
+const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {
   createClienteCCSchema,
   updateClienteCCSchema,
@@ -63,26 +64,30 @@ router.get('/clientes', async (req, res, next) => {
     }
 
     const where = filters.join(' AND ');
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
 
     // JOIN en lugar de subquery correlacionada — calcula todos los saldos en un solo pase
     // antes: 1 + N queries (una por cliente). Ahora: siempre 1 query total.
-    const { rows } = await db.query(
-      `SELECT c.*,
-              COALESCE(s.saldo, 0) AS saldo
-       FROM clientes_cc c
-       LEFT JOIN (
-         SELECT cliente_cc_id,
-                SUM(CASE WHEN tipo IN ('compra', 'saldo_inicial') THEN monto_total ELSE -monto_total END) AS saldo
-         FROM movimientos_cc
-         WHERE deleted_at IS NULL
-         GROUP BY cliente_cc_id
-       ) s ON s.cliente_cc_id = c.id
-       WHERE ${where}
-       ORDER BY c.nombre, c.apellido
-       LIMIT 500`,
-      params
-    );
-    res.json(rows);
+    const [countRes, dataRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) FROM clientes_cc c WHERE ${where}`, params),
+      db.query(
+        `SELECT c.*,
+                COALESCE(s.saldo, 0) AS saldo
+         FROM clientes_cc c
+         LEFT JOIN (
+           SELECT cliente_cc_id,
+                  SUM(CASE WHEN tipo IN ('compra', 'saldo_inicial') THEN monto_total ELSE -monto_total END) AS saldo
+           FROM movimientos_cc
+           WHERE deleted_at IS NULL
+           GROUP BY cliente_cc_id
+         ) s ON s.cliente_cc_id = c.id
+         WHERE ${where}
+         ORDER BY c.nombre, c.apellido
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) {
     next(err);
   }
@@ -203,13 +208,17 @@ router.get('/clientes/:id/movimientos', async (req, res, next) => {
     );
     if (!c[0]) return res.status(404).json({ error: 'Cliente no encontrado' });
 
-    // Movimientos del cliente (sin paginación — la cuenta puede ser larga pero raramente >500)
+    // Movimientos del cliente (paginado — una cuenta activa puede tener miles)
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    const { rows: countRows } = await db.query(
+      'SELECT COUNT(*) FROM movimientos_cc WHERE cliente_cc_id = $1 AND deleted_at IS NULL', [id]
+    );
     const { rows: movs } = await db.query(
       `SELECT * FROM movimientos_cc
        WHERE cliente_cc_id = $1 AND deleted_at IS NULL
        ORDER BY fecha DESC, id DESC
-       LIMIT 500`,
-      [id]
+       LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
     );
 
     // Items de todos los movimientos, traídos en una sola query
@@ -233,7 +242,7 @@ router.get('/clientes/:id/movimientos', async (req, res, next) => {
     });
 
     const result = movs.map(m => ({ ...m, items: itemsByMov[m.id] || [] }));
-    res.json(result);
+    res.json(paginatedResponse(result, parseInt(countRows[0].count), { page, limit }));
   } catch (err) {
     next(err);
   }

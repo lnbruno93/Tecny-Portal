@@ -496,6 +496,9 @@ export default function CuentasCC() {
   const [loadingClientes, setLoadingClientes] = useState(true);
   const [loadingDetail, setLoadingDetail]     = useState(false);
   const [cajasUsd, setCajasUsd] = useState([]); // cajas USD/USDT para los pagos (monto en USD)
+  const [clientesPag, setClientesPag] = useState({ page: 1, pages: 1, total: 0 }); // paginación del listado
+  const [movsPag, setMovsPag]         = useState({ page: 1, pages: 1, total: 0 }); // paginación de movimientos
+  const [loadingMasMovs, setLoadingMasMovs] = useState(false);
 
   const [showEdit, setShowEdit]             = useState(false);
   const [showClienteModal, setShowClienteModal] = useState(false);
@@ -514,30 +517,52 @@ export default function CuentasCC() {
       .catch(console.error);
   }, []);
 
-  // ── Cargar lista ──
-  useEffect(() => {
+  // ── Cargar lista (paginada con "ver más") ──
+  function loadClientes(page = 1, append = false) {
     setLoadingClientes(true);
-    const params = {};
+    const params = { page, limit: 100 };
     if (catFilter !== 'todas') params.categoria = catFilter;
     cuentas.clientes(params)
-      .then(setClientes).catch(console.error)
+      .then(r => {
+        const data = r.data || [];
+        setClientes(prev => append ? [...prev, ...data] : data);
+        setClientesPag(r.pagination || { page: 1, pages: 1, total: data.length });
+      })
+      .catch(console.error)
       .finally(() => setLoadingClientes(false));
-  }, [catFilter]);
+  }
+  useEffect(() => { loadClientes(1, false); /* eslint-disable-next-line */ }, [catFilter]);
 
   useEffect(() => {
     if (clientes.length > 0 && !selectedId) setSelectedId(clientes[0].id);
   }, [clientes]); // eslint-disable-line
 
-  // ── Cargar detalle ──
+  // ── Cargar detalle (movimientos paginados) ──
   useEffect(() => {
     if (!selectedId) return;
     setLoadingDetail(true);
     setClienteDetail(null);
-    Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId)])
-      .then(([resumen, movimientos]) => setClienteDetail({ resumen, movimientos }))
+    Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId, { page: 1, limit: 100 })])
+      .then(([resumen, movsResp]) => {
+        setClienteDetail({ resumen, movimientos: movsResp.data || [] });
+        setMovsPag(movsResp.pagination || { page: 1, pages: 1, total: 0 });
+      })
       .catch(console.error)
       .finally(() => setLoadingDetail(false));
   }, [selectedId]);
+
+  // Cargar más movimientos antiguos (append)
+  function loadMasMovimientos() {
+    if (!selectedId || loadingMasMovs) return;
+    setLoadingMasMovs(true);
+    cuentas.movimientos(selectedId, { page: movsPag.page + 1, limit: 100 })
+      .then(r => {
+        setClienteDetail(prev => prev ? { ...prev, movimientos: [...prev.movimientos, ...(r.data || [])] } : prev);
+        setMovsPag(r.pagination || movsPag);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingMasMovs(false));
+  }
 
   useEffect(() => {
     if (tab !== 'resumen') return;
@@ -865,6 +890,12 @@ export default function CuentasCC() {
                 </div>
               </div>
             ))}
+            {!loadingClientes && clientesPag.page < clientesPag.pages && (
+              <button className="btn btn-ghost btn-sm" style={{ width: '100%', margin: '8px 0' }}
+                onClick={() => loadClientes(clientesPag.page + 1, true)}>
+                Ver más clientes ({clientes.length} de {clientesPag.total})
+              </button>
+            )}
           </div>
         </div>
 
@@ -1024,6 +1055,16 @@ export default function CuentasCC() {
                       </tr>
                     );
                   })}
+
+                  {movsPag.page < movsPag.pages && (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '8px' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={loadMasMovimientos} disabled={loadingMasMovs}>
+                          {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movimientos.length} de ${movsPag.total})`}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
 
                   {/* ── Fila de entrada inline ── */}
                   <InlineAddRows
