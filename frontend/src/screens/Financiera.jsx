@@ -192,8 +192,8 @@ export default function Financiera() {
       const dataUrl = e.target.result;
       const base64 = dataUrl.split(',')[1];
       setCFile({ name: file.name, size: file.size, base64, mimeType: file.type });
-      // OCR solo para imágenes (el backend no procesa PDF)
-      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { setOcrResult(null); return; }
+      // OCR para imágenes y PDF (Claude procesa ambos nativamente)
+      if (!/^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.type)) { setOcrResult(null); return; }
       setOcrLoading(true);
       setOcrResult(null);
       try {
