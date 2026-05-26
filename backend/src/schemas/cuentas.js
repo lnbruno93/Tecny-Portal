@@ -15,6 +15,8 @@ const createClienteCCSchema = z.object({
   direccion:   z.string().trim().max(200).optional().nullable(),
   categoria:   z.enum(CATEGORIAS_CC, { error: `Categoría debe ser: ${CATEGORIAS_CC.join(', ')}` }),
   notas:       z.string().trim().max(1000).optional().nullable(),
+  // Saldo de apertura opcional: el cliente arranca debiéndonos este monto (en USD)
+  saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),
 });
 
 const updateClienteCCSchema = createClienteCCSchema.partial().refine(

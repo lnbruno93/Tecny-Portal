@@ -479,7 +479,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
 
 const EMPTY_CLIENTE = {
   nombre: '', apellido: '', contacto: '', marca_redes: '',
-  provincia: '', localidad: '', direccion: '', categoria: 'A-', notas: '',
+  provincia: '', localidad: '', direccion: '', categoria: 'A-', notas: '', saldo_inicial: '',
 };
 
 export default function CuentasCC() {
@@ -591,6 +591,7 @@ export default function CuentasCC() {
         direccion:   clienteForm.direccion.trim()   || null,
         categoria:   clienteForm.categoria,
         notas:       clienteForm.notas.trim()       || null,
+        saldo_inicial: clienteForm.saldo_inicial !== '' ? Number(clienteForm.saldo_inicial) : 0,
       });
       setClientes(prev => [nuevo, ...prev]);
       setSelectedId(nuevo.id);
@@ -1109,6 +1110,12 @@ export default function CuentasCC() {
                   <label className="field-label">Notas internas</label>
                   <input type="text" className="input" placeholder="Ej: cobra los viernes"
                     value={clienteForm.notas} onChange={e => setClienteForm(f => ({ ...f, notas: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label className="field-label">Saldo inicial · USD <span className="muted">(opcional)</span></label>
+                  <input type="number" min="0" step="0.01" className="input mono" placeholder="0"
+                    value={clienteForm.saldo_inicial} onChange={e => setClienteForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
+                  <div className="muted tiny" style={{ marginTop: 3 }}>Si el cliente ya nos debe algo, arrancá su cuenta con ese saldo.</div>
                 </div>
                 {clienteError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{clienteError}</div>}
               </div>

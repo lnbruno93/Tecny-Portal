@@ -92,6 +92,36 @@ describe('POST /api/cuentas/clientes', () => {
     expect(res.body.contacto).toBe('+54 11 9999-8888');
   });
 
+  it('crea cliente con saldo inicial → el saldo arranca en ese monto', async () => {
+    const res = await request(app)
+      .post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Mayorista', apellido: 'Inicial', categoria: 'A+', saldo_inicial: 1500 });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.saldo)).toBe(1500);
+
+    // el saldo persiste en el detalle y en el resumen
+    const det = await request(app).get(`/api/cuentas/clientes/${res.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(Number(det.body.saldo)).toBe(1500);
+    const resumen = await request(app).get(`/api/cuentas/clientes/${res.body.id}/resumen`).set('Authorization', `Bearer ${adminToken}`);
+    expect(Number(resumen.body.saldo)).toBe(1500);
+    expect(Number(resumen.body.total_saldo_inicial)).toBe(1500);
+
+    // un pago posterior reduce el saldo
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: res.body.id, fecha: '2026-05-26', tipo: 'pago', monto_total: 500 });
+    const det2 = await request(app).get(`/api/cuentas/clientes/${res.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(Number(det2.body.saldo)).toBe(1000); // 1500 - 500
+  });
+
+  it('rechaza un saldo inicial negativo → 400', async () => {
+    const res = await request(app)
+      .post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Neg', categoria: 'A-', saldo_inicial: -10 });
+    expect(res.status).toBe(400);
+  });
+
   it('rechaza categoría inválida → 400', async () => {
     const res = await request(app)
       .post('/api/cuentas/clientes')

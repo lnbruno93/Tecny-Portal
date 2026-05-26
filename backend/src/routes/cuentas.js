@@ -35,7 +35,7 @@ const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedge
 const SALDO_SQL = `
   COALESCE((
     SELECT SUM(
-      CASE WHEN tipo = 'compra'
+      CASE WHEN tipo IN ('compra', 'saldo_inicial')
            THEN  monto_total
            ELSE -monto_total
       END
@@ -72,7 +72,7 @@ router.get('/clientes', async (req, res, next) => {
        FROM clientes_cc c
        LEFT JOIN (
          SELECT cliente_cc_id,
-                SUM(CASE WHEN tipo = 'compra' THEN monto_total ELSE -monto_total END) AS saldo
+                SUM(CASE WHEN tipo IN ('compra', 'saldo_inicial') THEN monto_total ELSE -monto_total END) AS saldo
          FROM movimientos_cc
          WHERE deleted_at IS NULL
          GROUP BY cliente_cc_id
@@ -107,9 +107,11 @@ router.get('/clientes/:id', async (req, res, next) => {
 });
 
 router.post('/clientes', validate(createClienteCCSchema), async (req, res, next) => {
+  const { nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas, saldo_inicial } = req.body;
+  const client = await db.connect();
   try {
-    const { nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas } = req.body;
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `INSERT INTO clientes_cc
          (nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -117,10 +119,25 @@ router.post('/clientes', validate(createClienteCCSchema), async (req, res, next)
       [nombre, apellido ?? null, contacto ?? null, marca_redes ?? null,
        provincia ?? null, localidad ?? null, direccion ?? null, categoria, notas ?? null]
     );
-    await audit('clientes_cc', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json({ ...rows[0], saldo: 0 });
+    const cliente = rows[0];
+
+    // Saldo de apertura: movimiento 'saldo_inicial' (suma como compra → el cliente nos debe)
+    const saldo = Number(saldo_inicial) || 0;
+    if (saldo > 0) {
+      await client.query(
+        `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, descripcion, monto_total)
+         VALUES ($1, CURRENT_DATE, 'saldo_inicial', 'Saldo inicial', $2)`,
+        [cliente.id, saldo]
+      );
+    }
+    await client.query('COMMIT');
+    await audit('clientes_cc', 'INSERT', cliente.id, { despues: { ...cliente, saldo_inicial: saldo }, user_id: req.user.id });
+    res.status(201).json({ ...cliente, saldo });
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -348,7 +365,8 @@ router.get('/clientes/:id/resumen', async (req, res, next) => {
          COALESCE(SUM(CASE WHEN tipo = 'devolucion'         THEN monto_total ELSE 0 END), 0) AS total_devoluciones,
          COALESCE(SUM(CASE WHEN tipo = 'parte_de_pago'      THEN monto_total ELSE 0 END), 0) AS total_parte_de_pago,
          COALESCE(SUM(CASE WHEN tipo = 'entrega_mercaderia' THEN monto_total ELSE 0 END), 0) AS total_entrega_mercaderia,
-         COALESCE(SUM(CASE WHEN tipo = 'compra' THEN monto_total ELSE -monto_total END), 0)  AS saldo,
+         COALESCE(SUM(CASE WHEN tipo = 'saldo_inicial'      THEN monto_total ELSE 0 END), 0) AS total_saldo_inicial,
+         COALESCE(SUM(CASE WHEN tipo IN ('compra', 'saldo_inicial') THEN monto_total ELSE -monto_total END), 0)  AS saldo,
          COUNT(*) FILTER (WHERE tipo = 'compra') AS cant_compras,
          COUNT(*)                                AS cant_movimientos
        FROM movimientos_cc
@@ -371,7 +389,7 @@ router.get('/resumen-general', async (req, res, next) => {
         SELECT
           c.id, c.nombre, c.apellido, c.categoria,
           COALESCE(SUM(
-            CASE WHEN m.tipo = 'compra' THEN m.monto_total ELSE -m.monto_total END
+            CASE WHEN m.tipo IN ('compra', 'saldo_inicial') THEN m.monto_total ELSE -m.monto_total END
           ), 0) AS saldo
         FROM clientes_cc c
         LEFT JOIN movimientos_cc m
