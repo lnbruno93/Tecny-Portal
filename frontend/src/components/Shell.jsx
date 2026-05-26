@@ -72,17 +72,18 @@ function UpdateBanner() {
 
 // Navigation structure — perm: key en user.perms, adminOnly: solo role=admin
 // null perm = siempre visible
+// `group` agrupa visualmente el menú (separador entre grupos distintos).
 const NAV_MAIN = [
-  { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null          },
-  { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas'      },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas'     },
-  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas'       },
-  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario'  },
-  { id: 'proveedores',path: '/proveedores',label: 'Proveedores',icon: 'Building',   perm: 'proveedores' },
-  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera'  },
-  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador'   },
-  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados'      },
-  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios'      },
+  { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null,          group: 1 },
+  { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas',      group: 1 },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
+  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas',       group: 2 },
+  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario',  group: 2 },
+  { id: 'proveedores',path: '/proveedores',label: 'Proveedores',icon: 'Building',   perm: 'proveedores', group: 2 },
+  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera',  group: 2 },
+  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 3 },
+  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados',      group: 3 },
+  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios',      group: 4 },
 ];
 
 const NAV_SYS = [
@@ -149,19 +150,24 @@ function Sidebar({ badges = {}, open, onClose }) {
         </div>
 
         <div className="nav-section">Herramientas</div>
-        {visibleMain.map((n) => {
+        {visibleMain.map((n, i) => {
           const I = Icons[n.icon];
+          // Separador entre grupos (no antes del primer ítem visible)
+          const prev = visibleMain[i - 1];
+          const divider = prev && prev.group !== n.group;
           return (
-            <NavLink
-              key={n.id}
-              to={n.path}
-              className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
-              onClick={onClose}
-            >
-              <span className="ico">{I && <I size={17} />}</span>
-              <span>{n.label}</span>
-              {badges[n.id] != null && <span className="badge">{badges[n.id]}</span>}
-            </NavLink>
+            <div key={n.id}>
+              {divider && <div className="nav-divider" />}
+              <NavLink
+                to={n.path}
+                className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
+                onClick={onClose}
+              >
+                <span className="ico">{I && <I size={17} />}</span>
+                <span>{n.label}</span>
+                {badges[n.id] != null && <span className="badge">{badges[n.id]}</span>}
+              </NavLink>
+            </div>
           );
         })}
 

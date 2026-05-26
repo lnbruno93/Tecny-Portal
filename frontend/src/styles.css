@@ -188,6 +188,11 @@ body {
   color: var(--text-dim);
   padding: 14px 12px 6px;
 }
+.nav-divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 8px 12px;
+}
 .nav-item {
   display: flex;
   align-items: center;

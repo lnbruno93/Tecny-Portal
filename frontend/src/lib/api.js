@@ -68,6 +68,7 @@ export const comprobantes = {
   totales: (params = {}) => api('/api/comprobantes/totales?' + new URLSearchParams(params)),
   create: (data) => api('/api/comprobantes', 'POST', data),
   delete: (id) => api(`/api/comprobantes/${id}`, 'DELETE'),
+  archivo: (id) => api(`/api/comprobantes/${id}/archivo`),  // { data, nombre, tipo }
 };
 
 export const pagos = {
@@ -219,5 +220,6 @@ export const historial = {
 };
 
 export const ocr = {
-  extract: (imageBase64) => api('/api/ocr', 'POST', { image: imageBase64 }),
+  // El backend espera { imageData, mediaType } y devuelve { monto }
+  extract: (imageData, mediaType) => api('/api/ocr', 'POST', { imageData, mediaType }),
 };
