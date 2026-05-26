@@ -30,6 +30,11 @@ router.post('/', ocrLimiter, validate(ocrSchema), async (req, res, next) => {
     // Extraer solo el contenido base64 (sin el prefijo "data:image/...;base64,")
     const base64 = imageData.includes(',') ? imageData.split(',')[1] : imageData;
 
+    // PDF → bloque 'document'; imagen → bloque 'image'. Claude procesa ambos nativamente.
+    const fileBlock = mediaType === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: mediaType, data: base64 } };
+
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 256,
@@ -37,10 +42,7 @@ router.post('/', ocrLimiter, validate(ocrSchema), async (req, res, next) => {
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: base64 },
-            },
+            fileBlock,
             {
               type: 'text',
               text: `Analizá este comprobante/factura y extraé el monto total a pagar o cobrar.

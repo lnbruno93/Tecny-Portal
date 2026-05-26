@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, saveToken } from './api';
+import { api, saveToken, ocr, comprobantes } from './api';
 
 describe('api() — cliente HTTP', () => {
   beforeEach(() => {
@@ -45,5 +45,21 @@ describe('api() — cliente HTTP', () => {
   it('usa el campo "error" del backend en respuestas de error', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'Datos inválidos' }) });
     await expect(api('/api/x')).rejects.toThrow('Datos inválidos');
+  });
+
+  // Guard de contrato: el OCR debe mandar { imageData, mediaType } (no { image }).
+  // Era el bug que tenía roto el OCR de Financiera.
+  it('ocr.extract envía { imageData, mediaType } al backend', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ monto: '1500' }) });
+    await ocr.extract('BASE64DATA', 'image/png');
+    const [url, opts] = global.fetch.mock.calls[0];
+    expect(url).toContain('/api/ocr');
+    expect(JSON.parse(opts.body)).toEqual({ imageData: 'BASE64DATA', mediaType: 'image/png' });
+  });
+
+  it('comprobantes.archivo pega al endpoint del archivo adjunto', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: 'x', tipo: 'image/png' }) });
+    await comprobantes.archivo(42);
+    expect(global.fetch.mock.calls[0][0]).toContain('/api/comprobantes/42/archivo');
   });
 });
