@@ -17,6 +17,7 @@ export default function Proyectos() {
   const confirm   = useConfirm();
   const { setPrimaryAction } = usePageActions();
 
+  const [vista, setVista] = useState('panorama'); // 'panorama' (todos) | 'detalle' (uno)
   const [list, setList] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState('');
@@ -153,6 +154,14 @@ export default function Proyectos() {
 
   const r = detalle?.resumen || {};
 
+  // Totales globales del panorama (sumados del listado)
+  const global = useMemo(() => list.reduce((a, p) => ({
+    proyectos: a.proyectos + 1,
+    total_usd: a.total_usd + Number(p.total_usd || 0),
+    total_ars: a.total_ars + Number(p.total_ars || 0),
+    movimientos: a.movimientos + Number(p.cant_movimientos || 0),
+  }), { proyectos: 0, total_usd: 0, total_ars: 0, movimientos: 0 }), [list]);
+
   return (
     <div>
       <div className="page-head">
@@ -160,8 +169,72 @@ export default function Proyectos() {
           <div className="page-title">Proyectos</div>
           <div className="page-sub">Desarrollo e inversiones por proyecto · línea de tiempo y totales</div>
         </div>
+        <div className="page-actions">
+          <div className="tabs">
+            <button className={'tab' + (vista === 'panorama' ? ' active' : '')} onClick={() => setVista('panorama')}>Panorama</button>
+            <button className={'tab' + (vista === 'detalle' ? ' active' : '')} onClick={() => setVista('detalle')}>Detalle</button>
+          </div>
+        </div>
       </div>
 
+      {/* ── PANORAMA: todos los proyectos de un vistazo ── */}
+      {vista === 'panorama' && (
+        <>
+          <div className="row" style={{ marginBottom: 14 }}>
+            <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="kpi-label">Proyectos</div>
+              <div className="kpi-value mono">{global.proyectos}</div>
+            </div>
+            <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="kpi-label">Invertido · USD</div>
+              <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>u$s {fmt(global.total_usd)}</div>
+            </div>
+            <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="kpi-label">Invertido · $</div>
+              <div className="kpi-value mono">$ {fmt(global.total_ars)}</div>
+            </div>
+            <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="kpi-label">Movimientos</div>
+              <div className="kpi-value mono">{global.movimientos}</div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 10 }}>
+            <input className="input" style={{ maxWidth: 320 }} placeholder="Buscar proyecto…" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+
+          <div className="card card-flush">
+            {loadingList ? <div className="empty">Cargando…</div>
+              : list.length === 0 ? <div className="empty">Sin proyectos. Creá el primero con "Nuevo proyecto".</div>
+              : (
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Proyecto</th><th>Objetivo</th><th>Creado</th><th>Período</th>
+                      <th style={{ textAlign: 'right' }}>$ ARS</th><th style={{ textAlign: 'right' }}>USD</th><th style={{ textAlign: 'right' }}>Mov.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map(p => (
+                      <tr key={p.id} className="tbl-row-click" style={{ cursor: 'pointer' }}
+                        onClick={() => { setSelectedId(p.id); setVista('detalle'); }}>
+                        <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                        <td className="muted tiny" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.objetivo || '—'}</td>
+                        <td className="mono tiny">{fmtFecha(p.fecha_creacion)}</td>
+                        <td className="mono tiny">{p.desde ? `${fmtFecha(p.desde)} → ${fmtFecha(p.hasta)}` : '—'}</td>
+                        <td className="mono" style={{ textAlign: 'right' }}>{Number(p.total_ars) > 0 ? '$ ' + fmt(p.total_ars) : '—'}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{Number(p.total_usd) > 0 ? 'u$s ' + fmt(p.total_usd) : '—'}</td>
+                        <td className="mono tiny" style={{ textAlign: 'right' }}>{p.cant_movimientos}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </div>
+        </>
+      )}
+
+      {vista === 'detalle' && (
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, alignItems: 'start' }}>
         {/* ── Lista ── */}
         <div className="card card-flush" style={{ maxHeight: '78vh', display: 'flex', flexDirection: 'column' }}>
@@ -302,6 +375,7 @@ export default function Proyectos() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Modal: nuevo proyecto ── */}
       {showCreate && (

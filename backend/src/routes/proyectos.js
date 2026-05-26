@@ -32,7 +32,8 @@ router.get('/', async (req, res, next) => {
               COALESCE(m.cant, 0)      AS cant_movimientos
        FROM proyectos p
        LEFT JOIN (
-         SELECT proyecto_id, SUM(monto) AS total_ars, SUM(monto_usd) AS total_usd, COUNT(*) AS cant
+         SELECT proyecto_id, SUM(monto) AS total_ars, SUM(monto_usd) AS total_usd, COUNT(*) AS cant,
+                MIN(fecha) AS desde, MAX(fecha) AS hasta
          FROM proyecto_movimientos WHERE deleted_at IS NULL GROUP BY proyecto_id
        ) m ON m.proyecto_id = p.id
        WHERE ${filters.join(' AND ')}
