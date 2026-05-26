@@ -317,11 +317,14 @@ export default function Proveedores() {
   const [provError, setProvError] = useState('');
 
   // ── Cargar lista ──
+  const listReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
   function loadList() {
     setLoadingList(true);
+    const reqId = ++listReq.current;
     provApi.list(search ? { buscar: search } : {})
-      .then(r => setList(r || [])).catch(console.error)
-      .finally(() => setLoadingList(false));
+      .then(r => { if (reqId === listReq.current) setList(r || []); })
+      .catch(console.error)
+      .finally(() => { if (reqId === listReq.current) setLoadingList(false); });
   }
   useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [search]);
 

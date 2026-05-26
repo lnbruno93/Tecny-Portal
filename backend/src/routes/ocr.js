@@ -63,8 +63,10 @@ Si no podés determinar el monto con certeza, respondé exactamente: null`,
 
     res.json({ monto: monto || null });
   } catch (err) {
+    // No filtrar el error crudo del proveedor (Anthropic) al cliente: se loguea
+    // completo del lado servidor pero se responde con un mensaje genérico.
     logger.error({ err }, 'OCR error');
-    next(err);
+    next(Object.assign(new Error('No se pudo procesar el comprobante. Probá con otra imagen o cargá el monto a mano.'), { status: 502 }));
   }
 });
 

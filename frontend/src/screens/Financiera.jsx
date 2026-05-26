@@ -198,6 +198,7 @@ export default function Financiera() {
     setViewFile('loading');
     try {
       const r = await compApi.archivo(id); // { data, nombre, tipo }
+      if (typeof r?.data !== 'string' || !r.data) { toast.error('Este comprobante no tiene archivo adjunto.'); setViewFile(null); return; }
       const src = r.data.startsWith('data:') ? r.data : `data:${r.tipo || 'image/png'};base64,${r.data}`;
       setViewFile({ src, nombre: r.nombre, tipo: r.tipo });
     } catch (err) {
