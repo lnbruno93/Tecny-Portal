@@ -13,6 +13,9 @@ const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedge
 async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
   await reverseCajaMovimientos(client, 'envios', envioId);
   if (estado === 'Cancelado') return;
+  // Los cobros de envío son siempre en ARS (el form captura "Monto ARS"); el front
+  // solo ofrece cajas ARS. Dejar moneda 'ARS' fija es intencional: la guarda de
+  // postCajaMovimiento rechaza una caja no-ARS, evitando contaminar su saldo.
   const { rows: pagos } = await client.query(
     `SELECT metodo_pago_id, monto FROM envio_items
       WHERE envio_id = $1 AND tipo = 'pago' AND metodo_pago_id IS NOT NULL AND monto > 0`,
