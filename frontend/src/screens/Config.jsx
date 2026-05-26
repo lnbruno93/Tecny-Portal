@@ -5,8 +5,6 @@ import { config as configApi } from '../lib/api';
 // ─── Formatter ───────────────────────────────────────────────────────────────
 function fmt(n) {
   const v = Math.abs(Number(n));
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (v >= 1_000) return (v / 1_000).toFixed(0) + 'K';
   return Math.round(v).toLocaleString('es-AR');
 }
 
