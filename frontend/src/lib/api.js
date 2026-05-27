@@ -122,6 +122,21 @@ export const cambios = {
   deleteMovimiento: (id) => api(`/api/cambios/movimientos/${id}`, 'DELETE'),
 };
 
+export const tarjetas = {
+  entidades:       () => api('/api/tarjetas/entidades'),
+  entidad:         (id) => api(`/api/tarjetas/entidades/${id}`),
+  createEntidad:   (data) => api('/api/tarjetas/entidades', 'POST', data),
+  updateEntidad:   (id, data) => api(`/api/tarjetas/entidades/${id}`, 'PUT', data),
+  deleteEntidad:   (id) => api(`/api/tarjetas/entidades/${id}`, 'DELETE'),
+  createPlan:      (data) => api('/api/tarjetas/planes', 'POST', data),
+  updatePlan:      (id, data) => api(`/api/tarjetas/planes/${id}`, 'PUT', data),
+  deletePlan:      (id) => api(`/api/tarjetas/planes/${id}`, 'DELETE'),
+  movimientos:     (id) => api(`/api/tarjetas/entidades/${id}/movimientos`),
+  createCobro:       (data) => api('/api/tarjetas/cobros', 'POST', data),
+  createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
+  deleteMovimiento:  (id) => api(`/api/tarjetas/movimientos/${id}`, 'DELETE'),
+};
+
 export const envios = {
   list: (params = {}) => api('/api/envios?' + new URLSearchParams(params)),
   get: (id) => api(`/api/envios/${id}`),

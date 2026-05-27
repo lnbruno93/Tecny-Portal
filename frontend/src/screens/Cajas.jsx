@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { cajas, contactos as contactosApi } from '../lib/api';
+import { cajas, contactos as contactosApi, tarjetas as tarjetasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -108,7 +108,9 @@ export default function Cajas() {
   // ── Config Cajas (cuentas de dinero = metodos_pago) ───────────────────────
   const [cajasList, setCajasList] = useState([]);
   const [loadingCajas, setLoadingCajas] = useState(false);
-  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS', saldo_inicial: '' });
+  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS', saldo_inicial: '', es_tarjeta: false, tarjeta_entidad_id: '', tarjeta_plan_id: '' });
+  const [tarjetaEntidades, setTarjetaEntidades] = useState([]);
+  const [tarjetaPlanes, setTarjetaPlanes] = useState([]);
   const [cajaSaving, setCajaSaving] = useState(false);
   const [cajaError, setCajaError] = useState('');
   // Ledger de una caja (modal con movimientos + ajuste manual + saldo inicial)
@@ -151,6 +153,12 @@ export default function Cajas() {
     finally { setLoadingCajas(false); }
   }
   useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);
+  // Tarjetas para configurar un método como tarjeta (si el usuario tiene el permiso)
+  useEffect(() => { if (tab === 'config') tarjetasApi.entidades().then(r => setTarjetaEntidades(Array.isArray(r) ? r : [])).catch(() => setTarjetaEntidades([])); }, [tab]);
+  useEffect(() => {
+    if (!cajaForm.es_tarjeta || !cajaForm.tarjeta_entidad_id) { setTarjetaPlanes([]); return; }
+    tarjetasApi.entidad(cajaForm.tarjeta_entidad_id).then(r => setTarjetaPlanes(r.planes || [])).catch(() => setTarjetaPlanes([]));
+  }, [cajaForm.es_tarjeta, cajaForm.tarjeta_entidad_id]);
 
   // Movimientos (ledger): cargar lista de cajas (para el filtro) y los datos al entrar / cambiar filtros
   useEffect(() => { if (tab === 'movimientos' && cajasList.length === 0) loadCajas(); }, [tab]); // eslint-disable-line
@@ -330,8 +338,14 @@ export default function Cajas() {
     if (!cajaForm.nombre.trim()) { setCajaError('El nombre es obligatorio.'); return; }
     setCajaSaving(true); setCajaError('');
     try {
-      await cajas.createCaja({ nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda, saldo_inicial: cajaForm.saldo_inicial ? Number(cajaForm.saldo_inicial) : 0 });
-      setCajaForm({ nombre: '', moneda: 'ARS', saldo_inicial: '' });
+      await cajas.createCaja({
+        nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda,
+        saldo_inicial: cajaForm.saldo_inicial ? Number(cajaForm.saldo_inicial) : 0,
+        es_tarjeta: !!cajaForm.es_tarjeta,
+        tarjeta_entidad_id: cajaForm.es_tarjeta && cajaForm.tarjeta_entidad_id ? Number(cajaForm.tarjeta_entidad_id) : null,
+        tarjeta_plan_id: cajaForm.es_tarjeta && cajaForm.tarjeta_plan_id ? Number(cajaForm.tarjeta_plan_id) : null,
+      });
+      setCajaForm({ nombre: '', moneda: 'ARS', saldo_inicial: '', es_tarjeta: false, tarjeta_entidad_id: '', tarjeta_plan_id: '' });
       toast.success('Caja creada.');
       loadCajas();
     } catch (e) { setCajaError(e.message || 'No se pudo crear la caja.'); }
@@ -647,6 +661,30 @@ export default function Cajas() {
                 <input type="number" step="0.01" className="input" placeholder="0"
                        value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
               </div>
+              {tarjetaEntidades.length > 0 && (
+                <label className="field" style={{ width: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={cajaForm.es_tarjeta} onChange={e => setCajaForm(f => ({ ...f, es_tarjeta: e.target.checked, tarjeta_entidad_id: '', tarjeta_plan_id: '' }))} style={{ accentColor: 'var(--accent)' }} />
+                  <span style={{ fontSize: 12 }}>Es tarjeta</span>
+                </label>
+              )}
+              {cajaForm.es_tarjeta && (
+                <>
+                  <div className="field" style={{ width: 130 }}>
+                    <label className="field-label">Tarjeta</label>
+                    <select className="input" value={cajaForm.tarjeta_entidad_id} onChange={e => setCajaForm(f => ({ ...f, tarjeta_entidad_id: e.target.value, tarjeta_plan_id: '' }))}>
+                      <option value="">—</option>
+                      {tarjetaEntidades.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="field" style={{ width: 130 }}>
+                    <label className="field-label">Plan</label>
+                    <select className="input" value={cajaForm.tarjeta_plan_id} onChange={e => setCajaForm(f => ({ ...f, tarjeta_plan_id: e.target.value }))}>
+                      <option value="">—</option>
+                      {tarjetaPlanes.map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.pct}%)</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
               <button className="btn btn-primary" type="submit" disabled={cajaSaving}>
                 {cajaSaving ? 'Guardando…' : '+ Agregar caja'}
               </button>

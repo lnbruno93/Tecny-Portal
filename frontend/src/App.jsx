@@ -26,6 +26,7 @@ const Proveedores = lazy(() => import('./screens/Proveedores'));
 const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
 const Cambios    = lazy(() => import('./screens/Cambios'));
+const Tarjetas   = lazy(() => import('./screens/Tarjetas'));
 
 function PageLoader() {
   return (
@@ -161,6 +162,12 @@ export default function App() {
                   <Route path="cambios" element={
                     <RequirePermission perm="cambios">
                       <ErrorBoundary><Cambios /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+
+                  <Route path="tarjetas" element={
+                    <RequirePermission perm="tarjetas">
+                      <ErrorBoundary><Tarjetas /></ErrorBoundary>
                     </RequirePermission>
                   } />
 

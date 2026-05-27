@@ -20,6 +20,7 @@ const TOOL_LABELS = {
   proyectos:  'Proyectos',
   contactos:  'Contactos',
   cambios:    'Cambios de Divisa',
+  tarjetas:   'Tarjetas de Crédito',
 };
 
 function initials(nombre) {

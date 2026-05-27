@@ -157,6 +157,7 @@ router.get('/cajas', async (_req, res, next) => {
   try {
     const { rows } = await db.query(
       `SELECT mp.id, mp.nombre, mp.moneda, mp.activo, mp.orden, mp.saldo_inicial, mp.es_financiera,
+              mp.es_tarjeta, mp.tarjeta_entidad_id, mp.tarjeta_plan_id,
               mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo_actual,
               COUNT(cm.id) FILTER (WHERE cm.id IS NOT NULL) AS movimientos
          FROM metodos_pago mp
@@ -172,14 +173,14 @@ router.get('/cajas', async (_req, res, next) => {
 router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
-    const { nombre, moneda, activo, orden, saldo_inicial, es_financiera } = req.body;
+    const { nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, tarjeta_entidad_id, tarjeta_plan_id } = req.body;
     await client.query('BEGIN');
     if (es_financiera) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true');
     const { rows } = await client.query(
-      `INSERT INTO metodos_pago (nombre, moneda, activo, orden, saldo_inicial, es_financiera)
-       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0), COALESCE($5, 0), COALESCE($6, false))
-       RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera`,
-      [nombre, moneda, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null]
+      `INSERT INTO metodos_pago (nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, tarjeta_entidad_id, tarjeta_plan_id)
+       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0), COALESCE($5, 0), COALESCE($6, false), COALESCE($7, false), $8, $9)
+       RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, tarjeta_entidad_id, tarjeta_plan_id`,
+      [nombre, moneda, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null, es_tarjeta ?? null, tarjeta_entidad_id ?? null, tarjeta_plan_id ?? null]
     );
     await client.query('COMMIT');
     await audit('metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
@@ -200,9 +201,15 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
     const before = await client.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Caja no encontrada' }); }
 
-    const { nombre, moneda, activo, orden, saldo_inicial, es_financiera } = req.body;
+    const { nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, tarjeta_entidad_id, tarjeta_plan_id } = req.body;
     // Solo una caja puede ser la financiera: desmarcar las demás
     if (es_financiera === true) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true AND id <> $1', [id]);
+    // Valores finales del vínculo de tarjeta (evita borrarlo en updates parciales).
+    // Si se marca es_tarjeta=false, se limpia entidad/plan.
+    const b0 = before.rows[0];
+    const finalEsTarjeta = es_tarjeta ?? b0.es_tarjeta;
+    const finalEntidad = finalEsTarjeta === false ? null : (tarjeta_entidad_id !== undefined ? tarjeta_entidad_id : b0.tarjeta_entidad_id);
+    const finalPlan    = finalEsTarjeta === false ? null : (tarjeta_plan_id   !== undefined ? tarjeta_plan_id   : b0.tarjeta_plan_id);
     const { rows } = await client.query(
       `UPDATE metodos_pago SET
          nombre        = COALESCE($1, nombre),
@@ -210,9 +217,13 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
          activo        = COALESCE($3, activo),
          orden         = COALESCE($4, orden),
          saldo_inicial = COALESCE($5, saldo_inicial),
-         es_financiera = COALESCE($6, es_financiera)
-       WHERE id = $7 RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera`,
-      [nombre ?? null, moneda ?? null, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null, id]
+         es_financiera = COALESCE($6, es_financiera),
+         es_tarjeta          = $7,
+         tarjeta_entidad_id  = $8,
+         tarjeta_plan_id     = $9
+       WHERE id = $10 RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, tarjeta_entidad_id, tarjeta_plan_id`,
+      [nombre ?? null, moneda ?? null, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null,
+       finalEsTarjeta, finalEntidad, finalPlan, id]
     );
     await client.query('COMMIT');
     await audit('metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
