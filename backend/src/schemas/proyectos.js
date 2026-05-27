@@ -1,11 +1,11 @@
 const { z } = require('zod');
 
+// Comparación date-only (lexical sobre strings ISO) — sin parsear con new Date()
+// en la TZ local, para no arrastrar el bug de zona horaria. z.string().date()
+// valida que sea una fecha de calendario real (YYYY-MM-DD).
 const fecha = z.string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)')
-  .refine(d => {
-    const date = new Date(d + 'T00:00:00');
-    return !isNaN(date) && date >= new Date('2000-01-01T00:00:00');
-  }, 'Fecha inválida o anterior al año 2000');
+  .date('Fecha inválida (YYYY-MM-DD)')
+  .refine(d => d >= '2000-01-01', 'Fecha anterior al año 2000');
 
 const createProyectoSchema = z.object({
   nombre:         z.string().trim().min(1, 'Nombre requerido').max(150),
