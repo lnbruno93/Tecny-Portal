@@ -61,6 +61,15 @@ describe('Tarjetas — cobro automático desde Ventas', () => {
     expect(Number(t.saldo)).toBe(76500);
   });
 
+  it('el estado de cuenta unificado (GET /movimientos) lista los cobros', async () => {
+    const res = await request(app).get('/api/tarjetas/movimientos').set(auth());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    const cobro = res.body.find(m => m.tipo === 'cobro' && m.metodo_pago_id === metodoTarjeta);
+    expect(cobro).toBeTruthy();
+    expect(cobro.metodo_nombre).toBe('Tarjeta de Crédito | 3 Cuotas');
+  });
+
   it('cancelar la venta revierte el cobro automático', async () => {
     const venta = await request(app).post('/api/ventas').set(auth()).send({
       fecha: hoy, cliente_nombre: 'Cancelable', estado: 'acreditado', tc_venta: 1000,

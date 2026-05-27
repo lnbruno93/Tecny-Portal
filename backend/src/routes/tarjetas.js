@@ -37,6 +37,23 @@ router.get('/', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Estado de cuenta unificado: todos los movimientos de todas las tarjetas
+// (cobros + liquidaciones), en orden cronológico para armar el saldo acumulado.
+router.get('/movimientos', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT m.*, mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
+         FROM tarjeta_movimientos m
+         JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+         LEFT JOIN metodos_pago mc ON mc.id = m.caja_id
+         LEFT JOIN ventas v ON v.id = m.venta_id
+        WHERE m.deleted_at IS NULL
+        ORDER BY m.fecha ASC, m.id ASC`
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
