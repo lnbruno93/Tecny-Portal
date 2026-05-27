@@ -386,37 +386,40 @@ export default function Inventario() {
       ) : productos.length === 0 ? (
         <div className="empty">Sin productos</div>
       ) : (
-        <div className="card card-flush">
+        <div className="card card-flush" style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Modelo</th><th>Clase</th><th>Cant.</th><th>Detalle</th><th>Proveedor</th>
-                <th>Costo</th><th>Precio</th><th>Estado</th><th></th>
+                <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
+                <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
+                <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
+                <th>IMEI/Serial</th><th>Tipo</th><th>Categoría</th><th>Proveedor</th>
+                <th style={{ textAlign: 'right' }}>Stock</th><th>Estado</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {productos.map(p => {
-                const detalle = [p.gb ? p.gb + 'GB' : '', p.color || '', p.bateria != null ? p.bateria + '%' : ''].filter(Boolean).join(' · ');
-                return (
-                  <tr key={p.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{p.nombre}</div>
-                      {p.imei && <div className="muted tiny mono">IMEI {p.imei}</div>}
-                    </td>
-                    <td className="muted">{p.clase === 'celular' ? 'Celular' : 'Accesorio'}</td>
-                    <td className="mono">{p.cantidad}</td>
-                    <td className="muted tiny">{detalle || '—'}</td>
-                    <td className="muted">{p.proveedor || '—'}</td>
-                    <td className="mono">{money(p.costo, p.costo_moneda)}</td>
-                    <td className="mono pos" style={{ fontWeight: 600 }}>{money(p.precio_venta, p.precio_moneda)}</td>
-                    <td>{estadoBadge(p.estado)}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button className="icon-btn" title="Editar" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {productos.map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                  <td className="mono">{p.gb || '—'}</td>
+                  <td className="mono">{p.bateria != null ? p.bateria + '%' : '—'}</td>
+                  <td>{p.color || '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmt(p.costo)}</td>
+                  <td><span className="ccy">{p.costo_moneda}</span></td>
+                  <td className="mono pos" style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.precio_venta)}</td>
+                  <td><span className="ccy">{p.precio_moneda}</span></td>
+                  <td className="mono tiny">{p.imei || '—'}</td>
+                  <td className="muted">{p.tipo_carga === 'lote' ? 'Stock' : 'Unitario'}</td>
+                  <td className="muted">{p.categoria_nombre || '—'}</td>
+                  <td className="muted">{p.proveedor || '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{p.cantidad}</td>
+                  <td>{estadoBadge(p.estado)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button className="icon-btn" title="Editar" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
+                    <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
