@@ -11,7 +11,7 @@ const EMPTY_FORM = {
   fecha: new Date().toLocaleDateString('sv'),
   cliente: '', telefono: '', direccion: '', barrio: '',
   horario: '', operador: '', notas: '',
-  prioridad: '', estado: 'Pendiente',
+  prioridad: '', estado: 'Pendiente', registrar_venta: false,
 };
 const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '' };
 
@@ -111,6 +111,7 @@ export default function Envios() {
         prioridad: form.prioridad || null,
         estado: form.estado || 'Pendiente',
         costo_envio: 0,
+        registrar_venta: !!form.registrar_venta,
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
           .filter(i => i.descripcion.trim() || i.tipo === 'pago')
@@ -791,6 +792,11 @@ export default function Envios() {
                       ))}
                     </div>
                   </div>
+
+                  <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <input type="checkbox" checked={form.registrar_venta} onChange={e => setForm(f => ({ ...f, registrar_venta: e.target.checked }))} style={{ accentColor: 'var(--accent)' }} />
+                    <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(crea la venta con los productos; la plata la maneja el envío)</span></span>
+                  </label>
 
                   {createError && (
                     <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>

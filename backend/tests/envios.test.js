@@ -192,3 +192,35 @@ describe('DELETE /api/envios/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('Envío → Venta (registrar_venta)', () => {
+  const auth = () => ({ Authorization: `Bearer ${token}` });
+  let cajaArs;
+  const saldoCaja = async () => Number((await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === cajaArs).saldo_actual);
+
+  beforeAll(async () => {
+    const c = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja Envíos R', moneda: 'ARS', saldo_inicial: 0 });
+    cajaArs = c.body.id;
+  });
+
+  it('crea la venta asociada, no duplica la plata, y al borrar el envío se borra la venta', async () => {
+    const antes = await saldoCaja();
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Envío', direccion: 'Calle 1', registrar_venta: true,
+      items: [{ tipo: 'producto', descripcion: 'iPhone', monto: 500000 }, { tipo: 'pago', monto: 500000, metodo_pago_id: cajaArs }],
+    });
+    expect(env.status).toBe(201);
+    expect(env.body.venta_id).toBeTruthy();
+    // La caja sube 500000 una sola vez (lo postea el envío, no la venta)
+    expect(await saldoCaja()).toBe(antes + 500000);
+    // La venta existe con el cliente del envío
+    const ventas = await request(app).get('/api/ventas').set(auth());
+    const v = ventas.body.data.find(x => x.id === env.body.venta_id);
+    expect(v).toBeTruthy();
+    expect(v.cliente_nombre).toBe('Cliente Envío');
+    // Borrar el envío borra la venta asociada
+    await request(app).delete(`/api/envios/${env.body.id}`).set(auth());
+    const ventas2 = await request(app).get('/api/ventas').set(auth());
+    expect(ventas2.body.data.some(x => x.id === env.body.venta_id)).toBe(false);
+  });
+});

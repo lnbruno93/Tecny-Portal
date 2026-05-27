@@ -6,6 +6,7 @@ const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { crearVentaDesdeEnvio } = require('../lib/ventaDesdeEnvio');
 
 // Sincroniza el impacto de un envío en el ledger de cajas: revierte los ingresos
 // previos y, si el envío no está cancelado, re-postea un ingreso por cada item
@@ -80,7 +81,7 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
   try {
     const {
       fecha, cliente, telefono, direccion, barrio,
-      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, items,
+      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, items, registrar_venta,
     } = req.body;
 
     const client = await db.connect();
@@ -101,6 +102,15 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
         );
       }
       await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
+
+      // Registrar la venta asociada (solo registro de productos; el dinero lo maneja el envío)
+      if (registrar_venta) {
+        const venta = await crearVentaDesdeEnvio(client, envio, items, req.user.id);
+        if (venta) {
+          await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [venta.id, envio.id]);
+          envio.venta_id = venta.id;
+        }
+      }
       await client.query('COMMIT');
       await audit('envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
       res.status(201).json(envio);
@@ -163,6 +173,10 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       }
       // Recalcular el impacto en caja (cambió la lista de pagos y/o el estado)
       await syncEnvioCaja(client, id, rows[0].fecha, rows[0].estado, req.user.id);
+      // Si el envío se cancela y tenía venta asociada, cancelar también la venta
+      if (rows[0].estado === 'Cancelado' && before[0].venta_id) {
+        await client.query("UPDATE ventas SET estado = 'cancelado' WHERE id = $1 AND deleted_at IS NULL", [before[0].venta_id]);
+      }
       await client.query('COMMIT');
       await audit('envios', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
       res.json(rows[0]);
@@ -188,6 +202,10 @@ router.delete('/:id', async (req, res, next) => {
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
     // Revertir los ingresos de caja asociados a este envío
     await reverseCajaMovimientos(client, 'envios', id);
+    // Borrar también la venta asociada (si se había registrado desde este envío)
+    if (rows[0].venta_id) {
+      await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL', [rows[0].venta_id]);
+    }
     await client.query('COMMIT');
     await audit('envios', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
