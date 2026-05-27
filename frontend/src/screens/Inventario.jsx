@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
+import { readXlsxRows, writeXlsx } from '../lib/xlsx';
+import { mapStockRows } from '../lib/importStock';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -30,7 +32,15 @@ const ESTADO_DISPLAY = {
   reservado:  { label: 'Reservado',  tone: 'info' },
 };
 
-const PLANTILLA_COLS = ['nombre', 'clase', 'tipo_carga', 'imei', 'gb', 'color', 'bateria', 'categoria', 'deposito', 'proveedor', 'costo', 'costo_moneda', 'precio_venta', 'precio_moneda', 'cantidad', 'estado'];
+// Encabezados EXACTOS de la planilla del negocio (misma base para importar y exportar).
+const PLANTILLA_HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
+  'MONEDA COSTO(ARS/USD)', 'PRECIO', 'MONEDA PRECIO(ARS/USD)', 'IMEI(solo iph)', 'TIPO(unitario, stock)',
+  'CATEGORIA', 'PROVEEDOR', 'STOCK(solo acc)', 'ID DEPOSITO(SÓLO NÚMERO)'];
+// Filas de ejemplo: un celular (IMEI, sin STOCK) y un accesorio (STOCK, sin IMEI).
+const PLANTILLA_EJEMPLO = [
+  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', '1'],
+  ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', '1'],
+];
 
 // Parser CSV mínimo (soporta comillas, comas y saltos dentro de campos)
 function parseCsv(text) {
@@ -209,108 +219,61 @@ export default function Inventario() {
     } catch (e) { toast.error(e.message); }
   }
 
-  // ── Export / plantilla / import (CSV) ──
-  function exportProductos() {
-    if (!productos.length) { toast.error('No hay productos para exportar.'); return; }
-    const rows = productos.map(p => ({
-      nombre: p.nombre, clase: p.clase, tipo_carga: p.tipo_carga, imei: p.imei || '',
-      gb: p.gb || '', color: p.color || '', bateria: p.bateria ?? '',
-      categoria: p.categoria_nombre || '', deposito: p.deposito_nombre || '', proveedor: p.proveedor || '',
-      costo: p.costo, costo_moneda: p.costo_moneda, precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
-      cantidad: p.cantidad, estado: p.estado,
-    }));
-    exportCsv('inventario.csv', rows, PLANTILLA_COLS.map(k => ({ key: k, label: k })));
+  // ── Export / plantilla / import (misma base de columnas que la planilla) ──
+  // Convierte un producto a una fila en el orden EXACTO de PLANTILLA_HEADERS.
+  function productoARow(p) {
+    return [
+      p.nombre || '', p.gb || '', p.bateria ?? '', p.color || '',
+      p.costo ?? '', p.costo_moneda || '', p.precio_venta ?? '', p.precio_moneda || '',
+      p.imei || '', p.tipo_carga === 'lote' ? 'stock' : 'Unitario',
+      p.categoria_nombre || '', p.proveedor || '',
+      p.clase === 'accesorio' ? (p.cantidad ?? '') : '', p.deposito_id ?? '',
+    ];
+  }
+  // Filas (arrays) → objetos keyed por header, para exportCsv.
+  const rowsToObjects = (rows) => rows.map(r => Object.fromEntries(PLANTILLA_HEADERS.map((h, i) => [h, r[i]])));
+  const plantillaCols = () => PLANTILLA_HEADERS.map(h => ({ key: h, label: h }));
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
   }
 
-  function descargarPlantilla() {
-    const ejemplo = [{
-      nombre: 'iPhone 15 Pro', clase: 'celular', tipo_carga: 'unitario', imei: '356938035643809',
-      gb: '256', color: 'Natural', bateria: '92', categoria: 'Celulares', deposito: 'Local Centro',
-      proveedor: 'Juan Distribuidor', costo: '800', costo_moneda: 'USD', precio_venta: '950', precio_moneda: 'USD',
-      cantidad: '1', estado: 'disponible',
-    }];
-    exportCsv('plantilla_stock.csv', ejemplo, PLANTILLA_COLS.map(k => ({ key: k, label: k })));
+  function exportProductos() {
+    if (!productos.length) { toast.error('No hay productos para exportar.'); return; }
+    exportCsv('inventario.csv', rowsToObjects(productos.map(productoARow)), plantillaCols());
+  }
+
+  function descargarPlantillaXlsx() {
+    downloadBlob(writeXlsx([PLANTILLA_HEADERS, ...PLANTILLA_EJEMPLO]), 'plantilla_stock.xlsx');
+  }
+  function descargarPlantillaCsv() {
+    exportCsv('plantilla_stock.csv', rowsToObjects(PLANTILLA_EJEMPLO), plantillaCols());
   }
 
   function openImport() { setImportRows([]); setImportError(''); setShowImport(true); }
 
-  function onImportFile(e) {
+  async function onImportFile(e) {
     setImportError('');
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const rows = parseCsv(String(ev.target.result));
-        if (rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
-        // Normaliza encabezados (sin acentos, espacios ni símbolos) y los matchea
-        // por alias, para tolerar variantes ("Precio", "Precio de venta", "Costo USD", etc.)
-        const norm = (s) => String(s ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
-        const ALIASES = {
-          nombre: ['nombre', 'modelo', 'producto'],
-          clase: ['clase'],
-          tipo_carga: ['tipocarga', 'carga'],
-          estado: ['estado'],
-          imei: ['imei'],
-          gb: ['gb', 'almacenamiento'],
-          color: ['color'],
-          bateria: ['bateria', 'bat'],
-          categoria: ['categoria', 'categoria1', 'rubro'],
-          deposito: ['deposito', 'sucursal'],
-          proveedor: ['proveedor'],
-          costo: ['costo', 'costos', 'compra', 'costounitario'],
-          costo_moneda: ['costomoneda', 'monedacosto'],
-          precio_venta: ['precioventa', 'precio', 'venta', 'preciodeventa', 'preciolista'],
-          precio_moneda: ['preciomoneda', 'monedaprecio', 'monedaventa'],
-          cantidad: ['cantidad', 'stock', 'qty', 'unidades'],
-        };
-        const headersN = rows[0].map(norm);
-        const idx = (key) => {
-          for (const alias of (ALIASES[key] || [norm(key)])) { const i = headersN.indexOf(alias); if (i >= 0) return i; }
-          return -1;
-        };
-        // Parseo de número tolerante: ignora símbolos ($), maneja coma decimal y separador de miles.
-        const parseNum = (v) => {
-          let s = String(v ?? '').replace(/[^0-9.,-]/g, '').trim();
-          if (!s) return 0;
-          s = (s.includes(',') && !s.includes('.')) ? s.replace(',', '.') : s.replace(/,/g, '');
-          const n = Number(s); return isNaN(n) ? 0 : n;
-        };
-        const pick = (val, opts, def) => { const x = String(val ?? '').trim().toLowerCase(); return opts.includes(x) ? x : def; };
-        const findCat = (n) => categorias.find(c => c.nombre.toLowerCase() === String(n ?? '').trim().toLowerCase());
-        const findDep = (d) => depositos.find(x => x.nombre.toLowerCase() === String(d ?? '').trim().toLowerCase());
-        const mapped = rows.slice(1).map(r => {
-          const get = (col) => idx(col) >= 0 ? r[idx(col)] : '';
-          const nombre = String(get('nombre') || get('modelo') || '').trim();
-          const cat = findCat(get('categoria'));
-          const dep = findDep(get('deposito'));
-          const bat = String(get('bateria')).trim();
-          const body = {
-            nombre,
-            clase: pick(get('clase'), ['celular', 'accesorio'], 'celular'),
-            tipo_carga: pick(get('tipo_carga'), ['unitario', 'lote'], 'unitario'),
-            estado: pick(get('estado'), ['disponible', 'vendido', 'en_tecnico', 'reservado'], 'disponible'),
-            imei: String(get('imei')).trim() || null,
-            gb: String(get('gb')).trim() || null,
-            color: String(get('color')).trim() || null,
-            bateria: bat === '' ? null : Math.max(0, Math.min(100, Math.round(Number(bat) || 0))),
-            categoria_id: cat ? cat.id : null,
-            deposito_id: dep ? dep.id : null,
-            proveedor: String(get('proveedor')).trim() || null,
-            costo: parseNum(get('costo')),
-            costo_moneda: String(get('costo_moneda')).trim().toUpperCase() === 'ARS' ? 'ARS' : 'USD',
-            precio_venta: parseNum(get('precio_venta')),
-            precio_moneda: String(get('precio_moneda')).trim().toUpperCase() === 'ARS' ? 'ARS' : 'USD',
-            cantidad: Math.max(0, Math.round(parseNum(get('cantidad')) || 1)),
-          };
-          return { body, error: nombre ? null : 'Falta el nombre' };
-        });
-        setImportRows(mapped);
-      } catch (err) {
-        setImportError('No se pudo leer el archivo. ¿Es un CSV válido?');
-      }
-    };
-    reader.readAsText(file);
+    const isXlsx = /\.xlsx$/i.test(file.name);
+    try {
+      // Lee .xlsx (Excel) nativo o .csv; ambos terminan como filas de celdas.
+      const rows = isXlsx
+        ? await readXlsxRows(await file.arrayBuffer())
+        : parseCsv(await file.text());
+      if (!rows || rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
+      const mapped = mapStockRows(rows, { categorias, depositos });
+      if (mapped.length === 0) { setImportError('No se encontraron filas con datos.'); return; }
+      setImportRows(mapped);
+    } catch (err) {
+      setImportError(isXlsx
+        ? 'No se pudo leer el Excel. ¿Es un .xlsx válido?'
+        : 'No se pudo leer el archivo. ¿Es un CSV válido?');
+    } finally {
+      e.target.value = ''; // permite re-seleccionar el mismo archivo
+    }
   }
 
   async function confirmImport() {
@@ -379,7 +342,8 @@ export default function Inventario() {
           <button className="btn" onClick={() => { loadProductos(); loadMetricas(); }}>
             <Icons.Refresh size={14} /> Actualizar
           </button>
-          <button className="btn" onClick={descargarPlantilla}><Icons.Download size={14} /> Plantilla</button>
+          <button className="btn" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
+          <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
           <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
           <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
           <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Catálogos</button>
@@ -440,37 +404,40 @@ export default function Inventario() {
       ) : productos.length === 0 ? (
         <div className="empty">Sin productos</div>
       ) : (
-        <div className="card card-flush">
+        <div className="card card-flush" style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Modelo</th><th>Clase</th><th>Cant.</th><th>Detalle</th><th>Proveedor</th>
-                <th>Costo</th><th>Precio</th><th>Estado</th><th></th>
+                <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
+                <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
+                <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
+                <th>IMEI/Serial</th><th>Tipo</th><th>Categoría</th><th>Proveedor</th>
+                <th style={{ textAlign: 'right' }}>Stock</th><th>Estado</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {productos.map(p => {
-                const detalle = [p.gb ? p.gb + 'GB' : '', p.color || '', p.bateria != null ? p.bateria + '%' : ''].filter(Boolean).join(' · ');
-                return (
-                  <tr key={p.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{p.nombre}</div>
-                      {p.imei && <div className="muted tiny mono">IMEI {p.imei}</div>}
-                    </td>
-                    <td className="muted">{p.clase === 'celular' ? 'Celular' : 'Accesorio'}</td>
-                    <td className="mono">{p.cantidad}</td>
-                    <td className="muted tiny">{detalle || '—'}</td>
-                    <td className="muted">{p.proveedor || '—'}</td>
-                    <td className="mono">{money(p.costo, p.costo_moneda)}</td>
-                    <td className="mono pos" style={{ fontWeight: 600 }}>{money(p.precio_venta, p.precio_moneda)}</td>
-                    <td>{estadoBadge(p.estado)}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button className="icon-btn" title="Editar" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {productos.map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 600 }}>{p.nombre}</td>
+                  <td className="mono">{p.gb || '—'}</td>
+                  <td className="mono">{p.bateria != null ? p.bateria + '%' : '—'}</td>
+                  <td>{p.color || '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmt(p.costo)}</td>
+                  <td><span className="ccy">{p.costo_moneda}</span></td>
+                  <td className="mono pos" style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.precio_venta)}</td>
+                  <td><span className="ccy">{p.precio_moneda}</span></td>
+                  <td className="mono tiny">{p.imei || '—'}</td>
+                  <td className="muted">{p.tipo_carga === 'lote' ? 'Stock' : 'Unitario'}</td>
+                  <td className="muted">{p.categoria_nombre || '—'}</td>
+                  <td className="muted">{p.proveedor || '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{p.cantidad}</td>
+                  <td>{estadoBadge(p.estado)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button className="icon-btn" title="Editar" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
+                    <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -590,12 +557,15 @@ export default function Inventario() {
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                Subí un archivo <strong>.csv</strong> con las columnas de la plantilla. Categorías y depósitos se vinculan por nombre.
+                Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong>. Se detecta cada columna por su nombre (tolera aclaraciones como “(solo iph)”). Accesorio si trae STOCK, celular si trae IMEI. El depósito se vincula por su ID y la categoría por nombre.
               </p>
-              <button className="btn btn-sm" onClick={descargarPlantilla} style={{ marginBottom: 12 }}><Icons.Download size={13} /> Descargar plantilla</button>
+              <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
+                <button className="btn btn-sm" onClick={descargarPlantillaXlsx}><Icons.Download size={13} /> Plantilla .xlsx</button>
+                <button className="btn btn-sm" onClick={descargarPlantillaCsv}><Icons.Download size={13} /> Plantilla .csv</button>
+              </div>
               <div className="field">
-                <label className="field-label">Archivo CSV</label>
-                <input type="file" accept=".csv,text/csv" className="input" onChange={onImportFile} />
+                <label className="field-label">Archivo (.xlsx o .csv)</label>
+                <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="input" onChange={onImportFile} />
               </div>
               {importRows.length > 0 && (
                 <div style={{ marginTop: 12 }}>
