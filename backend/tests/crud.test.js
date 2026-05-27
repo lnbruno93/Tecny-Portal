@@ -103,6 +103,17 @@ describe('POST /api/usuarios', () => {
     expect(res.status).toBe(409);
   });
 
+  it('permite recrear un usuario con el mismo username/email tras borrarlo', async () => {
+    const mk = (nombre) => ({ nombre, username: 'reuse01', email: 'reuse01@x.com', password: 'pass12345', role: 'op',
+      perms: { cotizador: false, financiera: false, cajas: false, envios: false, usuarios: false } });
+    const u1 = await request(app).post('/api/usuarios').set('Authorization', `Bearer ${adminToken}`).send(mk('Reusable'));
+    expect(u1.status).toBe(201);
+    const del = await request(app).delete(`/api/usuarios/${u1.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+    const u2 = await request(app).post('/api/usuarios').set('Authorization', `Bearer ${adminToken}`).send(mk('Reusable 2'));
+    expect(u2.status).toBe(201); // antes daba 409 por el UNIQUE que ignoraba deleted_at
+  });
+
   it('rechaza nombre vacío → 400', async () => {
     const res = await request(app)
       .post('/api/usuarios')
