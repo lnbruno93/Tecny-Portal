@@ -113,20 +113,31 @@ export default function Capital() {
         </div>
       </div>
 
-      {/* Composición del patrimonio: una card por componente (verde suma, rojo resta) */}
-      <div className="card-hd" style={{ padding: '0 2px 8px' }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>Composición del patrimonio</div>
-        <div className="muted tiny">Verde suma, rojo resta · cada moneda por separado (sin TC)</div>
-      </div>
-      <div className="row" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
-        {patrimonio.cards.map(c => (
-          <div key={c.label} className="card card-tight" style={{ flex: '1 1 180px', minWidth: 180 }}>
-            <div className="kpi-label">{c.label}</div>
-            <div className="kpi-value mono" style={{ color: c.tone === 'neg' ? 'var(--neg)' : 'var(--pos)', fontSize: 20 }}>
-              {c.montos.map(([pre, v], i) => <div key={i}>{(c.tone === 'neg' ? '− ' : '') + pre + ' ' + fmt(v)}</div>)}
+      {/* Composición del patrimonio: panel único agrupado en Suman / Restan */}
+      <div className="card card-flush" style={{ marginBottom: 14 }}>
+        <div className="card-hd">
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Composición del patrimonio</div>
+          <div className="muted tiny">Verde suma, rojo resta · cada moneda por separado (sin TC)</div>
+        </div>
+        {[{ titulo: 'Suman', tone: 'pos' }, { titulo: 'Restan', tone: 'neg' }].map(g => {
+          const color = g.tone === 'neg' ? 'var(--neg)' : 'var(--pos)';
+          return (
+            <div key={g.tone}>
+              <div className="kpi-label" style={{ padding: '12px 16px 2px' }}>{g.titulo}</div>
+              {patrimonio.cards.filter(c => c.tone === g.tone).map(c => (
+                <div key={c.label} className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: '0 0 auto' }} />
+                    <span style={{ fontWeight: 600 }}>{c.label}</span>
+                  </span>
+                  <span className="mono" style={{ color, display: 'inline-flex', gap: 18, fontWeight: 700 }}>
+                    {c.montos.map(([pre, v], i) => <span key={i}>{(g.tone === 'neg' ? '− ' : '') + pre + ' ' + fmt(v)}</span>)}
+                  </span>
+                </div>
+              ))}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Estado de cada caja */}
