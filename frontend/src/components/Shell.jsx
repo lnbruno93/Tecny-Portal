@@ -155,6 +155,7 @@ function Sidebar({ badges = {}, open, onClose }) {
           </div>
         </div>
 
+        <div className="sidebar-scroll">
         <div className="nav-section">Herramientas</div>
         {visibleMain.map((n, i) => {
           const I = Icons[n.icon];
@@ -198,6 +199,7 @@ function Sidebar({ badges = {}, open, onClose }) {
             })}
           </>
         )}
+        </div>
 
         <UserPill />
       </aside>

@@ -146,7 +146,23 @@ body {
   padding: 14px 10px;
   gap: 4px;
   min-height: 0;
+  overflow: hidden; /* el scroll vive en .sidebar-scroll; brand y user-pill quedan fijos */
 }
+/* Área scrolleable del menú: brand (arriba) y user-pill (abajo) quedan pinneados */
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* scrollbar finita y discreta */
+  scrollbar-width: thin;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.brand { flex-shrink: 0; }
+.user-pill { flex-shrink: 0; }
 .brand {
   display: flex;
   align-items: center;
