@@ -3,36 +3,34 @@ import { render, screen, waitFor } from '@testing-library/react';
 
 vi.mock('../lib/api', () => ({
   tarjetas: {
-    entidades: vi.fn().mockResolvedValue([
-      { id: 1, nombre: 'Visa', activo: true, saldo_ars: '40000', saldo_usd: '0', comision_total: '20000', movimientos: 3 },
+    list: vi.fn().mockResolvedValue([
+      { id: 7, nombre: 'Tarjeta de Crédito | 3 Cuotas', moneda: 'ARS', comision_pct: '23.5', saldo: '76500', comision_total: '23500', bruto_total: '100000', movimientos: 1 },
     ]),
-    entidad: vi.fn().mockResolvedValue({
-      id: 1, nombre: 'Visa', activo: true,
-      planes: [{ id: 5, nombre: '3 cuotas', pct: '10' }],
-      resumen: { saldo_ars: '40000', saldo_usd: '0', comision_total: '20000', movimientos: 3 },
+    get: vi.fn().mockResolvedValue({
+      id: 7, nombre: 'Tarjeta de Crédito | 3 Cuotas', moneda: 'ARS', comision_pct: '23.5',
+      resumen: { saldo: '76500', comision_total: '23500', bruto_total: '100000', movimientos: 1 },
     }),
     movimientos: vi.fn().mockResolvedValue([
-      { id: 9, fecha: '2026-05-10', tipo: 'cobro', plan_nombre: '3 cuotas', moneda: 'ARS', monto_bruto: '200000', monto_comision: '20000', monto_neto: '180000', caja_nombre: null, venta_order_id: null },
+      { id: 1, fecha: '2026-05-10', tipo: 'cobro', moneda: 'ARS', monto_bruto: '100000', monto_comision: '23500', monto_neto: '76500', venta_order_id: 'ORD-26-abc', caja_nombre: null },
     ]),
-    createEntidad: vi.fn(), updateEntidad: vi.fn(), deleteEntidad: vi.fn(),
-    createPlan: vi.fn(), updatePlan: vi.fn(), deletePlan: vi.fn(),
-    createCobro: vi.fn(), createLiquidacion: vi.fn(), deleteMovimiento: vi.fn(),
+    createLiquidacion: vi.fn(), deleteMovimiento: vi.fn(),
   },
-  cajas: { listCajas: vi.fn().mockResolvedValue([{ id: 9, nombre: 'Caja Pesos', moneda: 'ARS' }]) },
+  cajas: { listCajas: vi.fn().mockResolvedValue([{ id: 9, nombre: 'Caja Pesos', moneda: 'ARS', es_tarjeta: false }]) },
 }));
 
 import Tarjetas from './Tarjetas';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
-import { PageActionsProvider } from '../contexts/PageActionsContext';
 
 describe('Pantalla Tarjetas de Crédito', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('lista tarjetas, muestra planes y saldo del detalle', async () => {
-    render(<ToastProvider><ConfirmProvider><PageActionsProvider><Tarjetas /></PageActionsProvider></ConfirmProvider></ToastProvider>);
-    expect(await screen.findByText('Visa')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('Falta cobrar · $')).toBeInTheDocument());
-    expect(screen.getAllByText(/3 cuotas/).length).toBeGreaterThan(0); // plan badge + fila
+  it('lista las tarjetas y muestra el saldo + comisión del detalle', async () => {
+    render(<ToastProvider><ConfirmProvider><Tarjetas /></ConfirmProvider></ToastProvider>);
+    expect(await screen.findByText('Tarjeta de Crédito | 3 Cuotas')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Te deben (falta cobrar)')).toBeInTheDocument());
+    expect(screen.getByText('Comisión financiera')).toBeInTheDocument();
+    // El cobro automático aparece referenciando la venta
+    expect(screen.getByText(/Venta ORD-26-abc/)).toBeInTheDocument();
   });
 });

@@ -123,16 +123,10 @@ export const cambios = {
 };
 
 export const tarjetas = {
-  entidades:       () => api('/api/tarjetas/entidades'),
-  entidad:         (id) => api(`/api/tarjetas/entidades/${id}`),
-  createEntidad:   (data) => api('/api/tarjetas/entidades', 'POST', data),
-  updateEntidad:   (id, data) => api(`/api/tarjetas/entidades/${id}`, 'PUT', data),
-  deleteEntidad:   (id) => api(`/api/tarjetas/entidades/${id}`, 'DELETE'),
-  createPlan:      (data) => api('/api/tarjetas/planes', 'POST', data),
-  updatePlan:      (id, data) => api(`/api/tarjetas/planes/${id}`, 'PUT', data),
-  deletePlan:      (id) => api(`/api/tarjetas/planes/${id}`, 'DELETE'),
-  movimientos:     (id) => api(`/api/tarjetas/entidades/${id}/movimientos`),
-  createCobro:       (data) => api('/api/tarjetas/cobros', 'POST', data),
+  // Las "tarjetas" son métodos de pago marcados como tal en Cajas (solo lectura acá).
+  list:              () => api('/api/tarjetas'),
+  get:               (id) => api(`/api/tarjetas/${id}`),
+  movimientos:       (id) => api(`/api/tarjetas/${id}/movimientos`),
   createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
   deleteMovimiento:  (id) => api(`/api/tarjetas/movimientos/${id}`, 'DELETE'),
 };
