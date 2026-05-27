@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('../lib/api', () => ({
   cajas: {
@@ -40,13 +41,11 @@ import Capital from './Capital';
 describe('Pantalla 360 & Capital', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('muestra el patrimonio, su composición, las cajas y los movimientos', async () => {
+  it('pestaña Capital: muestra el patrimonio, su composición y las cajas', async () => {
     render(<Capital />);
     expect(await screen.findByText('Patrimonio · ARS')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USD')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USDT')).toBeInTheDocument();
-    // cada caja aparece como su propia fila en la composición
-    expect(screen.getAllByText('Caja Cripto').length).toBeGreaterThanOrEqual(1);
     // composición del patrimonio (categorías agregadas)
     expect(screen.getByText('Composición del patrimonio')).toBeInTheDocument();
     expect(screen.getByText('Cajas (todas)')).toBeInTheDocument();
@@ -55,9 +54,17 @@ describe('Pantalla 360 & Capital', () => {
     expect(screen.getByText('Deudas de clientes B2B a cobrar')).toBeInTheDocument();
     expect(screen.getByText('Inversiones (a devolver)')).toBeInTheDocument();
     expect(screen.getByText('Deudas a proveedores (a pagar)')).toBeInTheDocument();
-    // cajas (aparece en la tabla y en el filtro de caja)
+    // detalle por caja en la tabla "Estado de cada caja"
+    expect(screen.getAllByText('Caja Cripto').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Caja Pesos').length).toBeGreaterThanOrEqual(1);
-    // movimiento del ledger
+    // el ledger NO se muestra en la pestaña Capital
+    expect(screen.queryByText('Venta X')).not.toBeInTheDocument();
+  });
+
+  it('pestaña Movimientos: muestra el ledger', async () => {
+    render(<Capital />);
+    await screen.findByText('Patrimonio · ARS');
+    await userEvent.click(screen.getByRole('button', { name: 'Movimientos' }));
     await waitFor(() => expect(screen.getByText('Venta X')).toBeInTheDocument());
   });
 });

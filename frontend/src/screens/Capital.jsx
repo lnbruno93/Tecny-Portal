@@ -26,6 +26,7 @@ const montoCell = (v, prefix) => {
 const EMPTY_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '', page: 1 };
 
 export default function Capital() {
+  const [tab, setTab] = useState('capital');          // 'capital' | 'movimientos'
   const [cajasList, setCajasList] = useState([]);
   const [metricas, setMetricas] = useState({});       // valor de inventario a costo (USD/ARS)
   const [resumen, setResumen] = useState({ deudas: [], inversiones: [] }); // deudas a cobrar + inversiones
@@ -45,10 +46,13 @@ export default function Capital() {
     cuentas.resumenGeneral().then(r => setCcGeneral(r || {})).catch(() => {});
     proveedores.saldos().then(r => setProvSaldos(r || {})).catch(() => {});
   }, []);
+  // El ledger se carga solo cuando estás en la pestaña Movimientos (serán muchas
+  // operaciones diarias; no tiene sentido traerlas mientras mirás el Capital).
   useEffect(() => {
+    if (tab !== 'movimientos') return;
     setLoading(true);
     cajas.ledger(filtros).then(setLedger).catch(() => {}).finally(() => setLoading(false));
-  }, [filtros]);
+  }, [filtros, tab]);
 
   // Patrimonio total: descompone el capital en sus partes, totalizado por moneda
   // (ARS, USD y USDT por separado — no se convierte por TC para no inventar una tasa).
@@ -84,13 +88,22 @@ export default function Capital() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 20 }}>
+      <div className="page-head" style={{ marginBottom: 16 }}>
         <div>
           <h1 className="page-title">360 &amp; Capital</h1>
           <div className="page-sub">Capital total, estado de cada caja y todos los movimientos en un solo lugar</div>
         </div>
       </div>
 
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        {[{ value: 'capital', label: 'Capital' }, { value: 'movimientos', label: 'Movimientos' }].map(t => (
+          <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')} onClick={() => setTab(t.value)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'capital' && <>
       {/* Patrimonio total por moneda (efectivo + inventario + inversiones + a cobrar + B2B) */}
       <div className="row" style={{ marginBottom: 14 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
@@ -159,7 +172,9 @@ export default function Capital() {
           </tbody>
         </table>
       </div>
+      </>}
 
+      {tab === 'movimientos' && <>
       {/* Totales del ledger (USD) */}
       <div className="row" style={{ marginBottom: 12 }}>
         <div className="card card-tight" style={{ flex: 1 }}><div className="kpi-label">Ingresos · USD</div><div className="kpi-value mono pos">u$s {fmt(ledger.totales.ingresos_usd)}</div></div>
@@ -236,6 +251,7 @@ export default function Capital() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }
