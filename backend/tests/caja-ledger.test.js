@@ -91,14 +91,14 @@ describe('Ledger de cajas', () => {
 
   it('un egreso impacta la caja y se revierte al borrarlo', async () => {
     const caja = await crearCaja({ saldo_inicial: 500 });
-    const egr = await request(app).post('/api/ventas/egresos').set(auth())
-      .send({ fecha: hoy, concepto: 'Alquiler', monto: 200, moneda: 'USD', metodo_pago_id: caja.id });
+    const egr = await request(app).post('/api/egresos').set(auth())
+      .send({ fecha: hoy, concepto: 'Alquiler', monto: 200, moneda: 'USD', metodo_pago_id: caja.id, estado: 'pagado' });
     expect(egr.status).toBe(201);
 
     let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
     expect(Number(row.saldo_actual)).toBe(300); // 500 - 200
 
-    await request(app).delete(`/api/ventas/egresos/${egr.body.id}`).set(auth());
+    await request(app).delete(`/api/egresos/${egr.body.id}`).set(auth());
     row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
     expect(Number(row.saldo_actual)).toBe(500);
   });

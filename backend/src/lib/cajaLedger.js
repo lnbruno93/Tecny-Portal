@@ -14,7 +14,7 @@ function grupoMoneda(m) { return m === 'ARS' ? 'ARS' : 'USD'; }
  * Inserta un movimiento en el ledger de una caja. Debe ejecutarse con un client
  * de transacción. No-op si falta caja_id o el monto no es positivo.
  *   tipo: 'ingreso' | 'egreso'
- *   origen: 'venta' | 'b2b' | 'financiera' | 'envio' | 'egreso' | 'proveedor' | 'transferencia'
+ *   origen: 'venta' | 'b2b' | 'financiera' | 'envio' | 'egreso' | 'proveedor' | 'transferencia' | 'cambio' | 'tarjeta'
  *
  * Valida que la moneda del movimiento coincida (por grupo) con la de la caja:
  * como el saldo se calcula sobre el `monto` nativo, mezclar monedas lo corrompe.

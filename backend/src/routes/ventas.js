@@ -9,6 +9,7 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncFinancieraComprobante } = require('../lib/financiera');
+const { syncTarjetaCobros } = require('../lib/tarjetas');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
 } = require('../schemas/ventas');
@@ -34,14 +35,14 @@ function retieneStock(estado) { return estado !== 'cancelado'; }
 async function syncVentaCaja(client, venta, userId) {
   await reverseCajaMovimientos(client, 'ventas', venta.id);
   if (!retieneStock(venta.estado)) return; // venta cancelada → sin ingresos de caja
-  const fin = await client.query('SELECT id FROM metodos_pago WHERE es_financiera = true AND deleted_at IS NULL');
-  const finId = fin.rows[0]?.id ?? null;
   const { rows: pagos } = await client.query(
-    `SELECT metodo_pago_id, monto, moneda, tc FROM venta_pagos
-      WHERE venta_id = $1 AND es_cuenta_corriente = false AND metodo_pago_id IS NOT NULL`, [venta.id]
+    `SELECT vp.metodo_pago_id, vp.monto, vp.moneda, vp.tc, mp.es_financiera, mp.es_tarjeta
+       FROM venta_pagos vp JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
+      WHERE vp.venta_id = $1 AND vp.es_cuenta_corriente = false AND vp.metodo_pago_id IS NOT NULL`, [venta.id]
   );
   for (const p of pagos) {
-    if (finId && p.metodo_pago_id === finId) continue; // financiera → comprobante, no caja
+    // Financiera → comprobante; Tarjeta → cobro pendiente. Ninguno entra a una caja acá.
+    if (p.es_financiera || p.es_tarjeta) continue;
     await postCajaMovimiento(client, {
       caja_id: p.metodo_pago_id, fecha: venta.fecha, tipo: 'ingreso',
       monto: p.monto, moneda: p.moneda, tc: p.tc,
@@ -217,7 +218,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       db.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda = 'ARS' AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p),
       // Egresos del período (USD)
-      db.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND fecha >= $1 AND fecha <= $2`, p),
+      db.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p),
       // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
       db.query(`WITH bv AS (
                   SELECT v.id, v.total_usd, v.tc_venta FROM ventas v WHERE ${BASE}
@@ -363,6 +364,8 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     await sincronizarCuentaCorriente(client, venta);
     // Ingresos de caja por los pagos (Fase 2b)
     await syncVentaCaja(client, venta, req.user.id);
+    // Cobros de tarjeta por los pagos con método tarjeta
+    await syncTarjetaCobros(client, venta.id, venta.estado);
 
     await client.query('COMMIT');
     await audit('ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
@@ -420,6 +423,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await syncVentaCaja(client, vrows[0], req.user.id);
       // Re-derivar el comprobante de Financiera (cancelación, o quitar/agregar el pago financiera)
       await syncFinancieraComprobante(client, id, vrows[0].estado);
+      await syncTarjetaCobros(client, id, vrows[0].estado);
       await client.query('COMMIT');
       await audit('ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       return res.json(vrows[0]);
@@ -446,6 +450,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     await syncVentaCaja(client, rows[0], req.user.id);
     // Re-derivar el comprobante de Financiera (cancelar / reactivar)
     await syncFinancieraComprobante(client, id, rows[0].estado);
+    await syncTarjetaCobros(client, id, rows[0].estado);
     await client.query('COMMIT');
     await audit('ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
@@ -479,6 +484,8 @@ router.delete('/:id', async (req, res, next) => {
     // Revertir ingresos de caja y el comprobante de Financiera generados por esta venta
     await reverseCajaMovimientos(client, 'ventas', id);
     await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
+    // Revertir los cobros de tarjeta generados por esta venta
+    await syncTarjetaCobros(client, id, 'cancelado');
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await client.query('COMMIT');
     await audit('ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });

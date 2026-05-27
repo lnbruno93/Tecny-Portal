@@ -25,6 +25,9 @@ const Ventas     = lazy(() => import('./screens/Ventas'));
 const Proveedores = lazy(() => import('./screens/Proveedores'));
 const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
+const Egresos    = lazy(() => import('./screens/Egresos'));
+const Cambios    = lazy(() => import('./screens/Cambios'));
+const Tarjetas   = lazy(() => import('./screens/Tarjetas'));
 
 function PageLoader() {
   return (
@@ -114,6 +117,11 @@ export default function App() {
                       <ErrorBoundary><Cajas /></ErrorBoundary>
                     </RequirePermission>
                   } />
+                  <Route path="egresos" element={
+                    <RequirePermission perm="cajas">
+                      <ErrorBoundary><Egresos /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
                   <Route path="envios" element={
                     <RequirePermission perm="envios">
                       <ErrorBoundary><Envios /></ErrorBoundary>
@@ -154,6 +162,18 @@ export default function App() {
                   <Route path="contactos" element={
                     <RequirePermission perm="contactos">
                       <ErrorBoundary><Contactos /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+
+                  <Route path="cambios" element={
+                    <RequirePermission perm="cambios">
+                      <ErrorBoundary><Cambios /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+
+                  <Route path="tarjetas" element={
+                    <RequirePermission perm="tarjetas">
+                      <ErrorBoundary><Tarjetas /></ErrorBoundary>
                     </RequirePermission>
                   } />
 

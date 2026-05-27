@@ -1,5 +1,5 @@
 // Sub-recursos de Ventas: etiquetas, métodos de pago, plantillas de garantía,
-// egresos, comprobantes de venta y ventas rápidas.
+// comprobantes de venta y ventas rápidas. (Egresos se movió a /api/egresos.)
 // Se monta en /api/ventas junto al router principal (routes/ventas.js).
 const router = require('express').Router();
 const db = require('../config/database');
@@ -7,13 +7,10 @@ const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
-const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2 } = require('../lib/money');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const {
   etiquetaSchema, garantiaSchema, updateGarantiaSchema, comprobanteVentaSchema,
-  createEgresoSchema, queryEgresosSchema, createVentaRapidaSchema, updateVentaRapidaSchema,
+  createVentaRapidaSchema, updateVentaRapidaSchema,
 } = require('../schemas/ventas');
 
 router.use(requireAuth);
@@ -132,73 +129,6 @@ router.delete('/garantias/:id', async (req, res, next) => {
     await audit('plantillas_garantia', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) { next(err); }
-});
-
-/* ═══════════════════════ EGRESOS ═══════════════════════ */
-
-router.get('/egresos', validate(queryEgresosSchema, 'query'), async (req, res, next) => {
-  try {
-    const { desde, hasta } = req.query;
-    const conditions = ['deleted_at IS NULL'];
-    const params = [];
-    if (desde) { params.push(desde); conditions.push(`fecha >= $${params.length}`); }
-    if (hasta) { params.push(hasta); conditions.push(`fecha <= $${params.length}`); }
-    const where = conditions.join(' AND ');
-    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM egresos WHERE ${where}`, params),
-      db.query(`SELECT * FROM egresos WHERE ${where} ORDER BY fecha DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, limit, offset]),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
-  } catch (err) { next(err); }
-});
-
-router.post('/egresos', validate(createEgresoSchema), async (req, res, next) => {
-  const client = await db.connect();
-  try {
-    const { fecha, concepto, monto, moneda, tc, metodo_pago_id, notas } = req.body;
-    const monto_usd = round2(toUsd(monto, moneda, tc));
-    await client.query('BEGIN');
-    const { rows } = await client.query(
-      `INSERT INTO egresos (fecha, concepto, monto, moneda, tc, monto_usd, metodo_pago_id, notas, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [fecha, concepto, monto, moneda, tc ?? null, monto_usd, metodo_pago_id ?? null, notas ?? null, req.user.id]
-    );
-    // Un egreso sale de una caja → egreso en el ledger (si se indicó la caja)
-    if (metodo_pago_id) {
-      await postCajaMovimiento(client, {
-        caja_id: metodo_pago_id, fecha, tipo: 'egreso', monto, moneda, tc,
-        origen: 'egreso', ref_tabla: 'egresos', ref_id: rows[0].id,
-        concepto: concepto || 'Egreso', user_id: req.user.id,
-      });
-    }
-    await client.query('COMMIT');
-    await audit('egresos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    await client.query('ROLLBACK');
-    next(err);
-  } finally { client.release(); }
-});
-
-router.delete('/egresos/:id', async (req, res, next) => {
-  const id = parseId(req.params.id);
-  if (!id) return res.status(400).json({ error: 'ID inválido' });
-  const client = await db.connect();
-  try {
-    await client.query('BEGIN');
-    const { rows } = await client.query(
-      'UPDATE egresos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Egreso no encontrado' }); }
-    await reverseCajaMovimientos(client, 'egresos', id);
-    await client.query('COMMIT');
-    await audit('egresos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
-    res.json({ ok: true });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    next(err);
-  } finally { client.release(); }
 });
 
 /* ═══════════════════════ COMPROBANTES DE VENTA ═══════════════════════ */

@@ -19,6 +19,8 @@ const TOOL_LABELS = {
   proveedores: 'Proveedores',
   proyectos:  'Proyectos',
   contactos:  'Contactos',
+  cambios:    'Cambios de Divisa',
+  tarjetas:   'Tarjetas de Crédito',
 };
 
 function initials(nombre) {

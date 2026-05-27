@@ -37,7 +37,9 @@ async function setupTestDb() {
     TRUNCATE TABLE
       audit_logs,
       caja_movimientos,
-      egresos, ventas_rapidas, canjes, venta_comprobantes, venta_pagos, venta_items, ventas, etiquetas, metodos_pago, plantillas_garantia,
+      cambio_movimientos, cambio_entidades,
+      tarjeta_movimientos,
+      egresos, egresos_recurrentes, egreso_categorias, ventas_rapidas, canjes, venta_comprobantes, venta_pagos, venta_items, ventas, etiquetas, metodos_pago, plantillas_garantia,
       productos, categorias, depositos,
       proveedor_movimiento_items, proveedor_movimientos, proveedores,
       proyecto_movimientos, proyecto_participantes, proyectos,
@@ -89,7 +91,9 @@ async function teardownTestDb(pool) {
       TRUNCATE TABLE
         audit_logs,
         caja_movimientos,
-        egresos, metodos_pago,
+        cambio_movimientos, cambio_entidades,
+        tarjeta_movimientos,
+        egresos, egresos_recurrentes, egreso_categorias, metodos_pago,
         proveedor_movimiento_items, proveedor_movimientos, proveedores,
         items_movimiento_cc, movimientos_cc, clientes_cc,
         envio_items, envios,

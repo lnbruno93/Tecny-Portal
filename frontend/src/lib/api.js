@@ -111,6 +111,43 @@ export const cajas = {
   resumen: () => api('/api/cajas/resumen'),
 };
 
+export const egresos = {
+  list:        (params = {}) => api('/api/egresos?' + new URLSearchParams(params)),
+  create:      (data) => api('/api/egresos', 'POST', data),
+  update:      (id, data) => api(`/api/egresos/${id}`, 'PUT', data),
+  delete:      (id) => api(`/api/egresos/${id}`, 'DELETE'),
+  categorias:       () => api('/api/egresos/categorias'),
+  createCategoria:  (data) => api('/api/egresos/categorias', 'POST', data),
+  updateCategoria:  (id, data) => api(`/api/egresos/categorias/${id}`, 'PUT', data),
+  deleteCategoria:  (id) => api(`/api/egresos/categorias/${id}`, 'DELETE'),
+  recurrentes:      () => api('/api/egresos/recurrentes'),
+  createRecurrente: (data) => api('/api/egresos/recurrentes', 'POST', data),
+  updateRecurrente: (id, data) => api(`/api/egresos/recurrentes/${id}`, 'PUT', data),
+  deleteRecurrente: (id) => api(`/api/egresos/recurrentes/${id}`, 'DELETE'),
+  generar:          (periodo) => api('/api/egresos/generar', 'POST', { periodo }),
+};
+
+export const cambios = {
+  entidades:       () => api('/api/cambios/entidades'),
+  entidad:         (id) => api(`/api/cambios/entidades/${id}`),
+  createEntidad:   (data) => api('/api/cambios/entidades', 'POST', data),
+  updateEntidad:   (id, data) => api(`/api/cambios/entidades/${id}`, 'PUT', data),
+  deleteEntidad:   (id) => api(`/api/cambios/entidades/${id}`, 'DELETE'),
+  movimientos:     (id) => api(`/api/cambios/entidades/${id}/movimientos`),
+  createMovimiento: (data) => api('/api/cambios/movimientos', 'POST', data),
+  deleteMovimiento: (id) => api(`/api/cambios/movimientos/${id}`, 'DELETE'),
+};
+
+export const tarjetas = {
+  // Las "tarjetas" son métodos de pago marcados como tal en Cajas (solo lectura acá).
+  list:              () => api('/api/tarjetas'),
+  movimientosAll:    () => api('/api/tarjetas/movimientos'),
+  get:               (id) => api(`/api/tarjetas/${id}`),
+  movimientos:       (id) => api(`/api/tarjetas/${id}/movimientos`),
+  createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
+  deleteMovimiento:  (id) => api(`/api/tarjetas/movimientos/${id}`, 'DELETE'),
+};
+
 export const envios = {
   list: (params = {}) => api('/api/envios?' + new URLSearchParams(params)),
   get: (id) => api(`/api/envios/${id}`),
@@ -198,9 +235,6 @@ export const ventas = {
   createEtiqueta:  (data) => api('/api/ventas/etiquetas', 'POST', data),
   deleteEtiqueta:  (id) => api(`/api/ventas/etiquetas/${id}`, 'DELETE'),
   metodosPago:     () => api('/api/ventas/metodos-pago'),
-  egresos:         (params = {}) => api('/api/ventas/egresos?' + new URLSearchParams(params)),
-  createEgreso:    (data) => api('/api/ventas/egresos', 'POST', data),
-  deleteEgreso:    (id) => api(`/api/ventas/egresos/${id}`, 'DELETE'),
   rapidas:         (params = {}) => api('/api/ventas/ventas-rapidas?' + new URLSearchParams(params)),
   createRapida:    (data) => api('/api/ventas/ventas-rapidas', 'POST', data),
   updateRapida:    (id, data) => api(`/api/ventas/ventas-rapidas/${id}`, 'PUT', data),
