@@ -44,12 +44,13 @@ describe('Pantalla 360 & Capital', () => {
     expect(screen.getByText('Patrimonio · USDT')).toBeInTheDocument();
     // cada caja aparece como su propia fila en la composición
     expect(screen.getAllByText('Caja Cripto').length).toBeGreaterThanOrEqual(1);
-    // composición del patrimonio
+    // composición del patrimonio (categorías agregadas)
     expect(screen.getByText('Composición del patrimonio')).toBeInTheDocument();
-    expect(screen.getByText('Inventario (a costo)')).toBeInTheDocument();
-    expect(screen.getByText('Inversiones')).toBeInTheDocument();
-    expect(screen.getByText('Deudas a cobrar')).toBeInTheDocument();
-    expect(screen.getByText('Cuenta corriente B2B')).toBeInTheDocument();
+    expect(screen.getByText('Cajas (todas)')).toBeInTheDocument();
+    expect(screen.getByText('Stock / Inventario')).toBeInTheDocument();
+    expect(screen.getByText('Deudas de clientes a cobrar')).toBeInTheDocument();
+    expect(screen.getByText('Deudas de clientes B2B a cobrar')).toBeInTheDocument();
+    expect(screen.getByText('Inversiones (a devolver)')).toBeInTheDocument();
     // cajas (aparece en la tabla y en el filtro de caja)
     expect(screen.getAllByText('Caja Pesos').length).toBeGreaterThanOrEqual(1);
     // movimiento del ledger

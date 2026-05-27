@@ -16,6 +16,13 @@ const ORIGEN_TONE = {
 const Badge = ({ tone = 'default', children }) => <span className={`badge badge-${tone}`}>{children}</span>;
 const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
 
+// Celda de monto con signo: null → '—'; negativo → en rojo con '−' (ej. inversiones a devolver).
+const montoCell = (v, prefix) => {
+  if (v == null) return <span className="dim">—</span>;
+  const neg = Number(v) < 0;
+  return <span style={neg ? { color: 'var(--neg)' } : undefined}>{(neg ? '−' : '') + prefix + ' ' + fmt(v)}</span>;
+};
+
 const EMPTY_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '', page: 1 };
 
 export default function Capital() {
@@ -42,34 +49,28 @@ export default function Capital() {
   }, [filtros]);
 
   // Patrimonio total: descompone el capital en sus partes, totalizado por moneda
-  // (ARS y USD por separado — no se convierte por TC para no inventar una tasa).
-  // Cada caja entra como su propia fila para ver el dinero registrado en cada una.
+  // (ARS, USD y USDT por separado — no se convierte por TC para no inventar una tasa).
+  // "Cajas (todas)" es el agregado; el detalle por caja vive en la tabla de más abajo.
   const patrimonio = useMemo(() => {
     const n = (x) => Number(x || 0);
     const inv = metricas || {};
-    // Una fila por caja: el saldo va a la columna de su moneda (ARS/USD/USDT por separado).
-    const cajaRows = cajasList.map(c => {
-      const saldo = n(c.saldo_actual);
-      return {
-        label: c.nombre, sub: c.moneda, caja: true,
-        ars:  c.moneda === 'ARS'  ? saldo : null,
-        usd:  c.moneda === 'USD'  ? saldo : null,
-        usdt: c.moneda === 'USDT' ? saldo : null,
-      };
-    });
+    const cajasArs  = cajasList.filter(c => c.moneda === 'ARS').reduce((s, c) => s + n(c.saldo_actual), 0);
+    const cajasUsd  = cajasList.filter(c => c.moneda === 'USD').reduce((s, c) => s + n(c.saldo_actual), 0);
+    const cajasUsdt = cajasList.filter(c => c.moneda === 'USDT').reduce((s, c) => s + n(c.saldo_actual), 0);
     const invArs = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
     const invUsd = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
-    const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
     const deudasArs = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
     const deudasUsd = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
-    const ccUsd = n(ccGeneral.neto);
-    const conceptRows = [
-      { label: 'Inventario (a costo)', ars: invArs,         usd: invUsd, usdt: null },
-      { label: 'Inversiones',          ars: inversionesArs, usd: null,   usdt: null },
-      { label: 'Deudas a cobrar',      ars: deudasArs,      usd: deudasUsd, usdt: null },
-      { label: 'Cuenta corriente B2B', ars: null,           usd: ccUsd,  usdt: null },
+    const b2bUsd = n(ccGeneral.neto);
+    // Las inversiones son dinero que nos invirtieron y debemos devolver → restan.
+    const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
+    const rows = [
+      { label: 'Cajas (todas)',                   ars: cajasArs,        usd: cajasUsd, usdt: cajasUsdt },
+      { label: 'Stock / Inventario',              ars: invArs,          usd: invUsd,   usdt: null },
+      { label: 'Deudas de clientes a cobrar',     ars: deudasArs,       usd: deudasUsd, usdt: null },
+      { label: 'Deudas de clientes B2B a cobrar', ars: null,            usd: b2bUsd,   usdt: null },
+      { label: 'Inversiones (a devolver)',        ars: -inversionesArs, usd: null,     usdt: null },
     ];
-    const rows = [...cajaRows, ...conceptRows];
     const totalArs  = rows.reduce((s, r) => s + (r.ars  || 0), 0);
     const totalUsd  = rows.reduce((s, r) => s + (r.usd  || 0), 0);
     const totalUsdt = rows.reduce((s, r) => s + (r.usdt || 0), 0);
@@ -112,22 +113,19 @@ export default function Capital() {
             <tr><th>Concepto</th><th style={{ textAlign: 'right' }}>ARS</th><th style={{ textAlign: 'right' }}>USD</th><th style={{ textAlign: 'right' }}>USDT</th></tr>
           </thead>
           <tbody>
-            {patrimonio.rows.map((r, i) => (
-              <tr key={r.caja ? `caja-${i}` : r.label}>
-                <td style={{ fontWeight: 600 }}>
-                  {r.label}
-                  {r.caja && <span className="muted tiny" style={{ marginLeft: 6 }}>caja · {r.sub}</span>}
-                </td>
-                <td className="mono" style={{ textAlign: 'right' }}>{r.ars  == null ? <span className="dim">—</span> : '$ ' + fmt(r.ars)}</td>
-                <td className="mono" style={{ textAlign: 'right' }}>{r.usd  == null ? <span className="dim">—</span> : 'u$s ' + fmt(r.usd)}</td>
-                <td className="mono" style={{ textAlign: 'right' }}>{r.usdt == null ? <span className="dim">—</span> : 'USDT ' + fmt(r.usdt)}</td>
+            {patrimonio.rows.map(r => (
+              <tr key={r.label}>
+                <td style={{ fontWeight: 600 }}>{r.label}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{montoCell(r.ars, '$')}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{montoCell(r.usd, 'u$s')}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{montoCell(r.usdt, 'USDT')}</td>
               </tr>
             ))}
             <tr style={{ borderTop: '2px solid var(--border)' }}>
               <td style={{ fontWeight: 800 }}>Total</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>$ {fmt(patrimonio.totalArs)}</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>u$s {fmt(patrimonio.totalUsd)}</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>USDT {fmt(patrimonio.totalUsdt)}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>{montoCell(patrimonio.totalArs, '$')}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>{montoCell(patrimonio.totalUsd, 'u$s')}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>{montoCell(patrimonio.totalUsdt, 'USDT')}</td>
             </tr>
           </tbody>
         </table>
