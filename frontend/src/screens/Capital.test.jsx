@@ -30,6 +30,9 @@ vi.mock('../lib/api', () => ({
   cuentas: {
     resumenGeneral: vi.fn().mockResolvedValue({ total_deuda: 1200, total_credito: 200, neto: 1000 }),
   },
+  proveedores: {
+    saldos: vi.fn().mockResolvedValue({ proveedores: [{ id: 1, nombre: 'Prov A', saldo_usd: '700' }], total_deuda_usd: 700 }),
+  },
 }));
 
 import Capital from './Capital';
@@ -51,6 +54,7 @@ describe('Pantalla 360 & Capital', () => {
     expect(screen.getByText('Deudas de clientes a cobrar')).toBeInTheDocument();
     expect(screen.getByText('Deudas de clientes B2B a cobrar')).toBeInTheDocument();
     expect(screen.getByText('Inversiones (a devolver)')).toBeInTheDocument();
+    expect(screen.getByText('Deudas a proveedores (a pagar)')).toBeInTheDocument();
     // cajas (aparece en la tabla y en el filtro de caja)
     expect(screen.getAllByText('Caja Pesos').length).toBeGreaterThanOrEqual(1);
     // movimiento del ledger

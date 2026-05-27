@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { cajas, inventario, cuentas } from '../lib/api';
+import { cajas, inventario, cuentas, proveedores } from '../lib/api';
 import { fmt, fmtFecha } from '../lib/format';
 
 // Origen de cada movimiento del ledger (incluye los módulos financieros nuevos).
@@ -30,6 +30,7 @@ export default function Capital() {
   const [metricas, setMetricas] = useState({});       // valor de inventario a costo (USD/ARS)
   const [resumen, setResumen] = useState({ deudas: [], inversiones: [] }); // deudas a cobrar + inversiones
   const [ccGeneral, setCcGeneral] = useState({});      // cuenta corriente B2B (USD)
+  const [provSaldos, setProvSaldos] = useState({});    // lo que le debemos a proveedores (USD)
   const [filtros, setFiltros] = useState(EMPTY_FILTROS);
   const [ledger, setLedger] = useState({ data: [], pagination: { pages: 1, page: 1, total: 0 }, totales: { ingresos_usd: 0, egresos_usd: 0, neto_usd: 0, count: 0 } });
   const [loading, setLoading] = useState(false);
@@ -42,6 +43,7 @@ export default function Capital() {
     inventario.metricas().then(r => setMetricas(r || {})).catch(() => {});
     cajas.resumen().then(r => setResumen({ deudas: r?.deudas || [], inversiones: r?.inversiones || [] })).catch(() => {});
     cuentas.resumenGeneral().then(r => setCcGeneral(r || {})).catch(() => {});
+    proveedores.saldos().then(r => setProvSaldos(r || {})).catch(() => {});
   }, []);
   useEffect(() => {
     setLoading(true);
@@ -64,18 +66,21 @@ export default function Capital() {
     const b2bUsd = n(ccGeneral.neto);
     // Las inversiones son dinero que nos invirtieron y debemos devolver → restan.
     const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
+    // Lo que le debemos a proveedores (USD) → resta.
+    const provUsd = n(provSaldos.total_deuda_usd);
     const rows = [
       { label: 'Cajas (todas)',                   ars: cajasArs,        usd: cajasUsd, usdt: cajasUsdt },
       { label: 'Stock / Inventario',              ars: invArs,          usd: invUsd,   usdt: null },
       { label: 'Deudas de clientes a cobrar',     ars: deudasArs,       usd: deudasUsd, usdt: null },
       { label: 'Deudas de clientes B2B a cobrar', ars: null,            usd: b2bUsd,   usdt: null },
       { label: 'Inversiones (a devolver)',        ars: -inversionesArs, usd: null,     usdt: null },
+      { label: 'Deudas a proveedores (a pagar)',  ars: null,            usd: -provUsd, usdt: null },
     ];
     const totalArs  = rows.reduce((s, r) => s + (r.ars  || 0), 0);
     const totalUsd  = rows.reduce((s, r) => s + (r.usd  || 0), 0);
     const totalUsdt = rows.reduce((s, r) => s + (r.usdt || 0), 0);
     return { rows, totalArs, totalUsd, totalUsdt };
-  }, [cajasList, metricas, resumen, ccGeneral]);
+  }, [cajasList, metricas, resumen, ccGeneral, provSaldos]);
 
   return (
     <div>
