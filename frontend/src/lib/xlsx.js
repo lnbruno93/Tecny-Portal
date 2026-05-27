@@ -134,6 +134,74 @@ function parseSheet(xml, strings) {
   return out;
 }
 
+// ───────────────────────────── Escritor (.xlsx) ─────────────────────────────
+// Genera un .xlsx mínimo (método store, sin compresión) desde un array de filas.
+// Usado para la plantilla descargable. Todas las celdas como texto (inlineStr):
+// alcanza para una plantilla y el importador parsea números desde texto igual.
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(u8) {
+  let c = 0xffffffff;
+  for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function escXml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function colLetter(i) { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+const le16 = (n) => [n & 0xff, (n >> 8) & 0xff];
+const le32 = (n) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
+
+// aoa: array de filas (cada fila array de celdas). Devuelve un Blob .xlsx.
+export function writeXlsx(aoa) {
+  const sheetRows = aoa.map((row, ri) => {
+    const cells = row.map((val, ci) => {
+      if (val === '' || val == null) return '';
+      return `<c r="${colLetter(ci)}${ri + 1}" t="inlineStr"><is><t xml:space="preserve">${escXml(val)}</t></is></c>`;
+    }).join('');
+    return `<row r="${ri + 1}">${cells}</row>`;
+  }).join('');
+
+  const files = [
+    ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'],
+    ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Stock" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'],
+    ['xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`],
+  ];
+
+  const te = new TextEncoder();
+  const chunks = [];
+  let offset = 0;
+  const central = [];
+  for (const [name, text] of files) {
+    const nameB = te.encode(name);
+    const data = te.encode(text);
+    const crc = crc32(data);
+    const localOff = offset;
+    const local = [...le32(0x04034b50), ...le16(20), ...le16(0), ...le16(0), ...le16(0), ...le16(0),
+      ...le32(crc), ...le32(data.length), ...le32(data.length), ...le16(nameB.length), ...le16(0)];
+    chunks.push(new Uint8Array(local), nameB, data);
+    offset += local.length + nameB.length + data.length;
+    central.push({ hdr: [...le32(0x02014b50), ...le16(20), ...le16(20), ...le16(0), ...le16(0), ...le16(0), ...le16(0),
+      ...le32(crc), ...le32(data.length), ...le32(data.length), ...le16(nameB.length), ...le16(0), ...le16(0),
+      ...le16(0), ...le16(0), ...le32(0), ...le32(localOff)], nameB });
+  }
+  const cdStart = offset;
+  let cdSize = 0;
+  for (const c of central) { const a = new Uint8Array(c.hdr); chunks.push(a, c.nameB); cdSize += a.length + c.nameB.length; }
+  chunks.push(new Uint8Array([...le32(0x06054b50), ...le16(0), ...le16(0), ...le16(files.length),
+    ...le16(files.length), ...le32(cdSize), ...le32(cdStart), ...le16(0)]));
+
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
 // API pública: ArrayBuffer del .xlsx → Promise<string[][]> (filas de celdas).
 export async function readXlsxRows(arrayBuffer) {
   const u8 = new Uint8Array(arrayBuffer);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readXlsxRows } from './xlsx';
+import { readXlsxRows, writeXlsx } from './xlsx';
 
 // ── Constructor mínimo de .xlsx en memoria (ZIP con deflate-raw) para testear ──
 // Cubre el pipeline completo: parseo del ZIP + descompresión + parseo de la hoja.
@@ -84,5 +84,20 @@ describe('readXlsxRows', () => {
   it('rechaza un archivo que no es ZIP', async () => {
     const notZip = enc.encode('hola, esto no es un xlsx').buffer;
     await expect(readXlsxRows(notZip)).rejects.toThrow();
+  });
+});
+
+describe('writeXlsx (round-trip)', () => {
+  it('lo que escribe se puede volver a leer igual', async () => {
+    const aoa = [
+      ['Nombre', 'GB(solo iph)', 'COSTO', 'IMEI(solo iph)'],
+      ['iPhone 15 Pro', '256', '800', '356938035643809'],
+      ['Funda', '', '3', ''], // celda vacía intermedia
+    ];
+    const blob = writeXlsx(aoa);
+    const rows = await readXlsxRows(await blob.arrayBuffer());
+    expect(rows[0]).toEqual(['Nombre', 'GB(solo iph)', 'COSTO', 'IMEI(solo iph)']);
+    expect(rows[1]).toEqual(['iPhone 15 Pro', '256', '800', '356938035643809']);
+    expect(rows[2]).toEqual(['Funda', '', '3']); // hueco preservado como ''
   });
 });

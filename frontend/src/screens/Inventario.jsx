@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
-import { readXlsxRows } from '../lib/xlsx';
+import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows } from '../lib/importStock';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -32,7 +32,15 @@ const ESTADO_DISPLAY = {
   reservado:  { label: 'Reservado',  tone: 'info' },
 };
 
-const PLANTILLA_COLS = ['nombre', 'clase', 'tipo_carga', 'imei', 'gb', 'color', 'bateria', 'categoria', 'deposito', 'proveedor', 'costo', 'costo_moneda', 'precio_venta', 'precio_moneda', 'cantidad', 'estado'];
+// Encabezados EXACTOS de la planilla del negocio (misma base para importar y exportar).
+const PLANTILLA_HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
+  'MONEDA COSTO(ARS/USD)', 'PRECIO', 'MONEDA PRECIO(ARS/USD)', 'IMEI(solo iph)', 'TIPO(unitario, stock)',
+  'CATEGORIA', 'PROVEEDOR', 'STOCK(solo acc)', 'ID DEPOSITO(SÓLO NÚMERO)'];
+// Filas de ejemplo: un celular (IMEI, sin STOCK) y un accesorio (STOCK, sin IMEI).
+const PLANTILLA_EJEMPLO = [
+  ['iPhone 15 Pro', '256', '92', 'Natural', '800', 'USD', '950', 'USD', '356938035643809', 'Unitario', 'iPhone Nuevo', 'Juan Distribuidor', '', '1'],
+  ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', '1'],
+];
 
 // Parser CSV mínimo (soporta comillas, comas y saltos dentro de campos)
 function parseCsv(text) {
@@ -211,27 +219,36 @@ export default function Inventario() {
     } catch (e) { toast.error(e.message); }
   }
 
-  // ── Export / plantilla / import (CSV) ──
-  function exportProductos() {
-    if (!productos.length) { toast.error('No hay productos para exportar.'); return; }
-    const rows = productos.map(p => ({
-      nombre: p.nombre, clase: p.clase, tipo_carga: p.tipo_carga, imei: p.imei || '',
-      gb: p.gb || '', color: p.color || '', bateria: p.bateria ?? '',
-      categoria: p.categoria_nombre || '', deposito: p.deposito_nombre || '', proveedor: p.proveedor || '',
-      costo: p.costo, costo_moneda: p.costo_moneda, precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
-      cantidad: p.cantidad, estado: p.estado,
-    }));
-    exportCsv('inventario.csv', rows, PLANTILLA_COLS.map(k => ({ key: k, label: k })));
+  // ── Export / plantilla / import (misma base de columnas que la planilla) ──
+  // Convierte un producto a una fila en el orden EXACTO de PLANTILLA_HEADERS.
+  function productoARow(p) {
+    return [
+      p.nombre || '', p.gb || '', p.bateria ?? '', p.color || '',
+      p.costo ?? '', p.costo_moneda || '', p.precio_venta ?? '', p.precio_moneda || '',
+      p.imei || '', p.tipo_carga === 'lote' ? 'stock' : 'Unitario',
+      p.categoria_nombre || '', p.proveedor || '',
+      p.clase === 'accesorio' ? (p.cantidad ?? '') : '', p.deposito_id ?? '',
+    ];
+  }
+  // Filas (arrays) → objetos keyed por header, para exportCsv.
+  const rowsToObjects = (rows) => rows.map(r => Object.fromEntries(PLANTILLA_HEADERS.map((h, i) => [h, r[i]])));
+  const plantillaCols = () => PLANTILLA_HEADERS.map(h => ({ key: h, label: h }));
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
   }
 
-  function descargarPlantilla() {
-    const ejemplo = [{
-      nombre: 'iPhone 15 Pro', clase: 'celular', tipo_carga: 'unitario', imei: '356938035643809',
-      gb: '256', color: 'Natural', bateria: '92', categoria: 'Celulares', deposito: 'Local Centro',
-      proveedor: 'Juan Distribuidor', costo: '800', costo_moneda: 'USD', precio_venta: '950', precio_moneda: 'USD',
-      cantidad: '1', estado: 'disponible',
-    }];
-    exportCsv('plantilla_stock.csv', ejemplo, PLANTILLA_COLS.map(k => ({ key: k, label: k })));
+  function exportProductos() {
+    if (!productos.length) { toast.error('No hay productos para exportar.'); return; }
+    exportCsv('inventario.csv', rowsToObjects(productos.map(productoARow)), plantillaCols());
+  }
+
+  function descargarPlantillaXlsx() {
+    downloadBlob(writeXlsx([PLANTILLA_HEADERS, ...PLANTILLA_EJEMPLO]), 'plantilla_stock.xlsx');
+  }
+  function descargarPlantillaCsv() {
+    exportCsv('plantilla_stock.csv', rowsToObjects(PLANTILLA_EJEMPLO), plantillaCols());
   }
 
   function openImport() { setImportRows([]); setImportError(''); setShowImport(true); }
@@ -325,7 +342,8 @@ export default function Inventario() {
           <button className="btn" onClick={() => { loadProductos(); loadMetricas(); }}>
             <Icons.Refresh size={14} /> Actualizar
           </button>
-          <button className="btn" onClick={descargarPlantilla}><Icons.Download size={14} /> Plantilla</button>
+          <button className="btn" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
+          <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
           <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
           <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
           <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Catálogos</button>
@@ -541,7 +559,10 @@ export default function Inventario() {
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
                 Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong>. Se detecta cada columna por su nombre (tolera aclaraciones como “(solo iph)”). Accesorio si trae STOCK, celular si trae IMEI. El depósito se vincula por su ID y la categoría por nombre.
               </p>
-              <button className="btn btn-sm" onClick={descargarPlantilla} style={{ marginBottom: 12 }}><Icons.Download size={13} /> Descargar plantilla</button>
+              <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
+                <button className="btn btn-sm" onClick={descargarPlantillaXlsx}><Icons.Download size={13} /> Plantilla .xlsx</button>
+                <button className="btn btn-sm" onClick={descargarPlantillaCsv}><Icons.Download size={13} /> Plantilla .csv</button>
+              </div>
               <div className="field">
                 <label className="field-label">Archivo (.xlsx o .csv)</label>
                 <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="input" onChange={onImportFile} />
