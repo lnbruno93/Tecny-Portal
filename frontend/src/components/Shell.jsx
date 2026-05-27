@@ -2,7 +2,7 @@
 // Adapted from design handoff shell.jsx for Vite + React with react-router-dom.
 
 import { useState, useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -243,6 +243,7 @@ function UserPill() {
 
 function Topbar({ onMenuClick, onSearchClick }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { primaryAction } = usePageActions();
   const segment = location.pathname.split('/').filter(Boolean)[0] || 'inicio';
   const label = SCREEN_LABELS[segment] || segment;
@@ -252,6 +253,9 @@ function Topbar({ onMenuClick, onSearchClick }) {
       <button className="icon-btn hamburger-btn" title="Menu" onClick={onMenuClick}>
         <Icons.Menu size={17} />
       </button>
+      {segment !== 'inicio' && (
+        <button className="icon-btn" title="Volver" onClick={() => navigate(-1)} style={{ fontSize: 18, lineHeight: 1 }}>←</button>
+      )}
       <div className="crumbs">
         <span>Portal</span>
         <span className="sep">/</span>

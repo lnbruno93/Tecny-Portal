@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../lib/api', () => ({
   cajas: {
@@ -42,7 +43,7 @@ describe('Pantalla 360 & Capital', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it('pestaña Capital: muestra el patrimonio, su composición y las cajas', async () => {
-    render(<Capital />);
+    render(<MemoryRouter><Capital /></MemoryRouter>);
     expect(await screen.findByText('Patrimonio · ARS')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USD')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USDT')).toBeInTheDocument();
@@ -62,7 +63,7 @@ describe('Pantalla 360 & Capital', () => {
   });
 
   it('pestaña Movimientos: muestra el ledger', async () => {
-    render(<Capital />);
+    render(<MemoryRouter><Capital /></MemoryRouter>);
     await screen.findByText('Patrimonio · ARS');
     await userEvent.click(screen.getByRole('button', { name: 'Movimientos' }));
     await waitFor(() => expect(screen.getByText('Venta X')).toBeInTheDocument());
