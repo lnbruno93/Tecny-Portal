@@ -30,6 +30,7 @@ const {
   TIPOS_MOVIMIENTO_CC,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { syncContactoSafe } = require('../lib/contactosSync');
 
 // Helper: SQL para calcular saldo de un cliente (subquery reutilizable — usada solo en GET /:id)
 // Para el listado usamos un JOIN en lugar de subquery correlacionada (ver abajo).
@@ -137,6 +138,11 @@ router.post('/clientes', validate(createClienteCCSchema), async (req, res, next)
     }
     await client.query('COMMIT');
     await audit('clientes_cc', 'INSERT', cliente.id, { despues: { ...cliente, saldo_inicial: saldo }, user_id: req.user.id });
+    // Agenda central (best-effort, fuera de la transacción)
+    await syncContactoSafe(db, {
+      origen: 'b2b', ref_tabla: 'clientes_cc', ref_id: cliente.id,
+      nombre: cliente.nombre, apellido: cliente.apellido, telefono: cliente.contacto,
+    });
     res.status(201).json({ ...cliente, saldo });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -172,6 +178,11 @@ router.put('/clientes/:id', validate(updateClienteCCSchema), async (req, res, ne
       [nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas, id]
     );
     await audit('clientes_cc', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+    // Agenda central (best-effort)
+    await syncContactoSafe(db, {
+      origen: 'b2b', ref_tabla: 'clientes_cc', ref_id: rows[0].id,
+      nombre: rows[0].nombre, apellido: rows[0].apellido, telefono: rows[0].contacto,
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);

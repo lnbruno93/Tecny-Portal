@@ -24,6 +24,7 @@ const inventarioRoutes   = require('./routes/inventario');
 const ventasRoutes       = require('./routes/ventas');
 const ventasExtraRoutes  = require('./routes/ventas-extra');
 const proveedoresRoutes  = require('./routes/proveedores');
+const proyectosRoutes    = require('./routes/proyectos');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -163,8 +164,11 @@ app.use('/api/historial',     requireAuth, requirePermission('financiera'), hist
 app.use('/api/config',        requireAuth, requirePermission('financiera'), configRoutes);
 app.use('/api/ocr',           requireAuth, requirePermission('financiera'), ocrRoutes);
 
+// Contactos — agenda compartida (la usan Ventas, Cajas, Proyectos para quick-add).
+// Solo requiere sesión; la pantalla "Contactos" se gatea por permiso en el front.
+app.use('/api/contactos',     requireAuth, contactosRoutes);
+
 // Cajas — requiere permiso "cajas"
-app.use('/api/contactos',     requireAuth, requirePermission('cajas'), contactosRoutes);
 app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRoutes);
 
 // Envíos — requiere permiso "envios"
@@ -185,6 +189,7 @@ app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasRo
 
 // Proveedores — requiere permiso "proveedores" (cuentas por pagar)
 app.use('/api/proveedores',   requireAuth, requirePermission('proveedores'), proveedoresRoutes);
+app.use('/api/proyectos',     requireAuth, requirePermission('proyectos'),   proyectosRoutes);
 
 // Usuarios — solo admin (requireAuth aquí + adminOnly dentro del router)
 app.use('/api/usuarios',      requireAuth, usuariosRoutes);

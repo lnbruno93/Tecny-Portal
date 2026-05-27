@@ -4,5 +4,5 @@
 // Al agregar un módulo nuevo, sumarlo acá y en el backend.
 export const TOOLS = [
   'cotizador', 'financiera', 'cajas', 'envios',
-  'usuarios', 'cuentas', 'usados', 'inventario', 'ventas', 'proveedores',
+  'usuarios', 'cuentas', 'usados', 'inventario', 'ventas', 'proveedores', 'proyectos', 'contactos',
 ];

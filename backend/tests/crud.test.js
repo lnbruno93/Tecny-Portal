@@ -272,12 +272,19 @@ describe('POST /api/contactos', () => {
     expect(res.status).toBe(400);
   });
 
-  it('usuario sin permiso cajas → 403', async () => {
+  it('agenda compartida: cualquier usuario autenticado puede crear contacto → 201', async () => {
+    // Contactos es un recurso compartido (lo usan Ventas, Cajas, Proyectos para
+    // quick-add), así que solo requiere sesión, no un permiso de módulo.
     const res = await request(app)
       .post('/api/contactos')
       .set('Authorization', `Bearer ${opToken}`)
       .send({ nombre: 'Test', tipo: 'cliente' });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
+  });
+
+  it('sin token → 401', async () => {
+    const res = await request(app).post('/api/contactos').send({ nombre: 'X', tipo: 'cliente' });
+    expect(res.status).toBe(401);
   });
 });
 
