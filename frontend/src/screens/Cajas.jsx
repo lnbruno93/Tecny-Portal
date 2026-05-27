@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cajas, contactos as contactosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -55,6 +56,7 @@ const EMPTY_INV   = () => ({ fecha: todayISO(), contacto_id: '', monto: '', tasa
 export default function Cajas() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  const navigate  = useNavigate();
   const [tab, setTab] = useState('config');
 
   // Deudas
@@ -376,7 +378,12 @@ export default function Cajas() {
       {/* Page head */}
       <div className="page-head" style={{ marginBottom: 20 }}>
         <div>
-          <h1 className="page-title">Cajas</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h1 className="page-title">Cajas</h1>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/capital')} title="Ir a 360 & Capital">
+              360 &amp; Capital →
+            </button>
+          </div>
           <div className="page-sub">Deudas e inversiones por contacto</div>
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
