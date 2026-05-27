@@ -5,6 +5,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import EgresosPanel from './EgresosPanel';
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 function todayISO() {
@@ -401,7 +402,7 @@ export default function Cajas() {
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className="tabs">
-            {[{ value: 'config', label: 'Config Cajas' }, { value: 'deudas', label: 'Deudas a cobrar' }, { value: 'inversiones', label: 'Inversiones' }, { value: 'movimientos', label: 'Historial Movimientos' }].map(t => (
+            {[{ value: 'config', label: 'Config Cajas' }, { value: 'egresos', label: 'Egresos' }, { value: 'deudas', label: 'Deudas a cobrar' }, { value: 'inversiones', label: 'Inversiones' }, { value: 'movimientos', label: 'Historial Movimientos' }].map(t => (
               <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')}
                       onClick={() => { setTab(t.value); setSelectedContactoId(null); }}>
                 {t.label}
@@ -417,6 +418,9 @@ export default function Cajas() {
           </button>
         </div>
       </div>
+
+      {/* ── EGRESOS TAB ────────────────────────────────────────────────── */}
+      {tab === 'egresos' && <EgresosPanel />}
 
       {/* ── DEUDAS TAB ─────────────────────────────────────────────────── */}
       {tab === 'deudas' && (

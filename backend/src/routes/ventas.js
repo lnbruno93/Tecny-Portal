@@ -217,7 +217,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       db.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda = 'ARS' AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p),
       // Egresos del período (USD)
-      db.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND fecha >= $1 AND fecha <= $2`, p),
+      db.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p),
       // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
       db.query(`WITH bv AS (
                   SELECT v.id, v.total_usd, v.tc_venta FROM ventas v WHERE ${BASE}

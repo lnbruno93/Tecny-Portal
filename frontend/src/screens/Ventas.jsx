@@ -168,7 +168,6 @@ export default function Ventas() {
   // Modales
   const [showVenta, setShowVenta] = useState(false);
   const [showRapida, setShowRapida] = useState(false);
-  const [showEgreso, setShowEgreso] = useState(false);
   const [showGarantias, setShowGarantias] = useState(false);
   const [showEtiquetas, setShowEtiquetas] = useState(false);
   const [nuevaEtiqueta, setNuevaEtiqueta] = useState('');
@@ -427,21 +426,6 @@ export default function Ventas() {
     } catch (err) { toast.error(err.message); } finally { setSavingRapida(false); }
   }
 
-  // ── Egreso ──
-  const [eForm, setEForm] = useState({ fecha: todayStr(), concepto: '', monto: '', moneda: 'USD', tc: '', notas: '' });
-  const [savingEgreso, setSavingEgreso] = useState(false);
-  async function handleSaveEgreso(e) {
-    e.preventDefault();
-    if (!eForm.concepto.trim()) return;
-    setSavingEgreso(true);
-    try {
-      await ventas.createEgreso({ fecha: eForm.fecha, concepto: eForm.concepto.trim(), monto: Number(eForm.monto) || 0, moneda: eForm.moneda, tc: eForm.tc ? Number(eForm.tc) : null, notas: eForm.notas.trim() || null });
-      toast.success('Egreso registrado.');
-      setShowEgreso(false); setEForm({ fecha: todayStr(), concepto: '', monto: '', moneda: 'USD', tc: '', notas: '' });
-      await loadDash();
-    } catch (err) { toast.error(err.message); } finally { setSavingEgreso(false); }
-  }
-
   // ── Garantías (gestión) ──
   const [gForm, setGForm] = useState({ id: null, nombre: '', texto: '', es_default: false });
   const [savingGar, setSavingGar] = useState(false);
@@ -557,7 +541,6 @@ export default function Ventas() {
         <div className="page-actions">
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
           <button className="btn" onClick={() => setShowRapida(true)}><Icons.Bolt size={14} /> Venta rápida</button>
-          <button className="btn" onClick={() => setShowEgreso(true)} style={{ color: 'var(--neg)' }}><Icons.ArrowDownRight size={14} /> Egreso</button>
           <button className="btn" onClick={exportarExcel}><Icons.Download size={14} /> Exportar</button>
           <button className="btn btn-primary" onClick={() => openVenta(null)}><Icons.Plus size={14} /> Nueva venta</button>
         </div>
@@ -832,28 +815,6 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* ── Modal Egreso ── */}
-      {showEgreso && (
-        <div className="modal-overlay" onClick={() => setShowEgreso(false)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Nuevo egreso</h3><button className="icon-btn" onClick={() => setShowEgreso(false)}><Icons.X size={16} /></button></div>
-            <form onSubmit={handleSaveEgreso}>
-              <div className="modal-body">
-                <div className="row">
-                  <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={eForm.fecha} onChange={e => setEForm(f => ({ ...f, fecha: e.target.value }))} /></div>
-                  <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={eForm.concepto} onChange={e => setEForm(f => ({ ...f, concepto: e.target.value }))} /></div>
-                </div>
-                <div className="row">
-                  <div className="field" style={{ flex: 1 }}><label className="field-label">Monto</label><div className="flex-row" style={{ gap: 6 }}><input type="number" className="input mono" placeholder="0" value={eForm.monto} onChange={e => setEForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 80 }} value={eForm.moneda} onChange={e => setEForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select></div></div>
-                  <div className="field" style={{ flex: 1 }}><label className="field-label">TC (si es ARS)</label><input type="number" className="input mono" placeholder="1425" value={eForm.tc} onChange={e => setEForm(f => ({ ...f, tc: e.target.value }))} /></div>
-                </div>
-                <div className="field"><label className="field-label">Notas</label><input className="input" value={eForm.notas} onChange={e => setEForm(f => ({ ...f, notas: e.target.value }))} /></div>
-              </div>
-              <div className="modal-ft"><button type="button" className="btn btn-ghost" onClick={() => setShowEgreso(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={savingEgreso}>{savingEgreso ? 'Guardando…' : 'Guardar egreso'}</button></div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ── Modal Garantías ── */}
       {showGarantias && (

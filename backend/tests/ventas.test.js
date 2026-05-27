@@ -290,7 +290,7 @@ describe('Etiquetas, métodos de pago, egresos y ventas rápidas', () => {
   });
 
   it('crea un egreso y calcula monto_usd por TC', async () => {
-    const res = await request(app).post('/api/ventas/egresos').set(auth())
+    const res = await request(app).post('/api/egresos').set(auth())
       .send({ fecha: hoy, concepto: 'Alquiler', monto: 142500, moneda: 'ARS', tc: 1425 });
     expect(res.status).toBe(201);
     expect(Number(res.body.monto_usd)).toBe(100);

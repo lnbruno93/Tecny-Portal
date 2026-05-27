@@ -120,39 +120,7 @@ describe('Garantías', () => {
   });
 });
 
-/* ═══════════ EGRESOS ═══════════ */
-describe('Egresos', () => {
-  it('crea un egreso en USD (monto_usd = monto)', async () => {
-    const res = await request(app).post('/api/ventas/egresos').set(auth())
-      .send({ fecha: hoy, concepto: 'Alquiler', monto: 500, moneda: 'USD' });
-    expect(res.status).toBe(201);
-    expect(Number(res.body.monto_usd)).toBe(500);
-  });
-
-  it('crea un egreso en ARS y lo convierte a USD con el TC', async () => {
-    const res = await request(app).post('/api/ventas/egresos').set(auth())
-      .send({ fecha: hoy, concepto: 'Servicios', monto: 142500, moneda: 'ARS', tc: 1425 });
-    expect(res.status).toBe(201);
-    expect(Number(res.body.monto_usd)).toBe(100); // 142500 / 1425
-  });
-
-  it('lista con filtro de fechas y forma paginada', async () => {
-    const res = await request(app).get(`/api/ventas/egresos?desde=${hoy}&hasta=${hoy}&limit=10`).set(auth());
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.data)).toBe(true);
-    expect(res.body.pagination).toHaveProperty('total');
-    expect(res.body.data.length).toBeGreaterThan(0);
-  });
-
-  it('borra un egreso y devuelve 404 al reintentar', async () => {
-    const created = await request(app).post('/api/ventas/egresos').set(auth())
-      .send({ fecha: hoy, concepto: 'Temp', monto: 10, moneda: 'USD' });
-    const del = await request(app).delete(`/api/ventas/egresos/${created.body.id}`).set(auth());
-    expect(del.status).toBe(200);
-    const del2 = await request(app).delete(`/api/ventas/egresos/${created.body.id}`).set(auth());
-    expect(del2.status).toBe(404);
-  });
-});
+/* Egresos: ahora viven en su propio módulo → tests/egresos.test.js */
 
 /* ═══════════ COMPROBANTES DE VENTA ═══════════ */
 describe('Comprobantes de venta', () => {
