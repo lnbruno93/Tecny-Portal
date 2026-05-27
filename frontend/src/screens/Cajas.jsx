@@ -686,6 +686,7 @@ export default function Cajas() {
                     <th className="num">Saldo actual</th>
                     <th>Estado</th>
                     <th>Financiera</th>
+                    <th>Tarjeta</th>
                     <th style={{ width: 80 }}></th>
                   </tr>
                 </thead>
@@ -719,6 +720,11 @@ export default function Cajas() {
                                 title="Marcar como la caja de la financiera (genera auto-comprobante al vender con ella)">
                           {c.es_financiera ? '★ Financiera' : <span className="dim">marcar</span>}
                         </button>
+                      </td>
+                      <td>
+                        {c.es_tarjeta
+                          ? <span className="badge badge-info" title="Método tarjeta — comisión de la financiera">Tarjeta · {fmt(c.comision_pct || 0)}%</span>
+                          : <span className="dim">—</span>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="icon-btn" title="Movimientos / ajuste" onClick={() => openCajaLedger(c)}>
