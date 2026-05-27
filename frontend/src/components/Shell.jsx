@@ -105,6 +105,7 @@ const SCREEN_LABELS = {
   cambios:    'Cambios de Divisa',
   tarjetas:   'Tarjetas de Crédito',
   cajas:      'Cajas',
+  capital:    '360 & Capital',
   egresos:    'Egresos',
   envios:     'Envíos',
   cuentas:    'Venta & Gestión B2B',

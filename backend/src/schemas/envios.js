@@ -23,6 +23,7 @@ const baseEnvio = z.object({
   estado:        z.enum(['Pendiente','En camino','Entregado','Cancelado']).default('Pendiente'),
   prioridad:     z.enum(['Alta','Media','Baja']).optional().nullable(),
   items:         z.array(envioItemSchema).default([]),
+  registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
 });
 
 const createEnvioSchema = baseEnvio;

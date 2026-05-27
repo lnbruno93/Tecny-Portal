@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cajas, contactos as contactosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -14,16 +15,6 @@ function todayISO() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const TIPO_TONE  = { amigo: 'info', familiar: 'accent', cliente: 'pos', inversor: 'warn', 'ipro team': 'default' };
 const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'iPro team' };
-
-// Origen de un movimiento de caja (ledger)
-const ORIGEN_LABEL = {
-  venta: 'Venta', b2b: 'B2B', financiera: 'Financiera', envio: 'Envío',
-  egreso: 'Egreso', proveedor: 'Proveedor', transferencia: 'Transferencia', ajuste: 'Ajuste',
-};
-const ORIGEN_TONE = {
-  venta: 'pos', b2b: 'pos', financiera: 'accent', envio: 'pos',
-  egreso: 'neg', proveedor: 'neg', transferencia: 'info', ajuste: 'warn',
-};
 
 function Badge({ tone = 'default', children }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
@@ -65,6 +56,7 @@ const EMPTY_INV   = () => ({ fecha: todayISO(), contacto_id: '', monto: '', tasa
 export default function Cajas() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  const navigate  = useNavigate();
   const [tab, setTab] = useState('config');
 
   // Deudas
@@ -117,12 +109,7 @@ export default function Cajas() {
   const [ajusteForm, setAjusteForm] = useState({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
   const [ajusteSaving, setAjusteSaving] = useState(false);
 
-  // ── Movimientos (ledger global de todas las cajas) ────────────────────────
-  const EMPTY_LEDGER_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '', page: 1 };
-  const [ledgerFiltros, setLedgerFiltros] = useState(EMPTY_LEDGER_FILTROS);
-  const [ledgerData, setLedgerData] = useState({ data: [], pagination: { pages: 1, page: 1, total: 0 }, totales: { ingresos_usd: 0, egresos_usd: 0, neto_usd: 0, count: 0 } });
-  const [loadingLedger, setLoadingLedger] = useState(false);
-  const setLF = (field, val) => setLedgerFiltros(f => ({ ...f, [field]: val, page: field === 'page' ? val : 1 }));
+  // (El ledger global / historial de movimientos vive ahora en la pantalla "360 & Capital".)
 
   // ── Tab-aware primary action ──────────────────────────────────────────────
   const { setPrimaryAction } = usePageActions();
@@ -152,16 +139,6 @@ export default function Cajas() {
   }
   useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);
 
-  // Movimientos (ledger): cargar lista de cajas (para el filtro) y los datos al entrar / cambiar filtros
-  useEffect(() => { if (tab === 'movimientos' && cajasList.length === 0) loadCajas(); }, [tab]); // eslint-disable-line
-  useEffect(() => {
-    if (tab !== 'movimientos') return;
-    setLoadingLedger(true);
-    cajas.ledger(ledgerFiltros)
-      .then(setLedgerData)
-      .catch(e => toast.error(e.message))
-      .finally(() => setLoadingLedger(false));
-  }, [tab, ledgerFiltros]); // eslint-disable-line
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleCreateContacto(e) {
@@ -401,12 +378,17 @@ export default function Cajas() {
       {/* Page head */}
       <div className="page-head" style={{ marginBottom: 20 }}>
         <div>
-          <h1 className="page-title">Cajas</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h1 className="page-title">Cajas</h1>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/capital')} title="Ir a 360 & Capital">
+              360 &amp; Capital →
+            </button>
+          </div>
           <div className="page-sub">Deudas e inversiones por contacto</div>
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className="tabs">
-            {[{ value: 'config', label: 'Config Cajas' }, { value: 'deudas', label: 'Deudas a cobrar' }, { value: 'inversiones', label: 'Inversiones' }, { value: 'movimientos', label: 'Historial Movimientos' }].map(t => (
+            {[{ value: 'config', label: 'Config Cajas' }, { value: 'deudas', label: 'Deudas a cobrar' }, { value: 'inversiones', label: 'Inversiones' }].map(t => (
               <button key={t.value} className={'tab' + (tab === t.value ? ' active' : '')}
                       onClick={() => { setTab(t.value); setSelectedContactoId(null); }}>
                 {t.label}
@@ -805,118 +787,6 @@ export default function Cajas() {
         </div>
       )}
 
-      {/* ── MOVIMIENTOS TAB (ledger global) ──────────────────────────── */}
-      {tab === 'movimientos' && (
-        <>
-          {/* Totales (USD) */}
-          <div className="row" style={{ marginBottom: 12 }}>
-            <div className="card card-tight" style={{ flex: 1 }}>
-              <div className="kpi-label">Ingresos · USD</div>
-              <div className="kpi-value mono pos">u$s {fmt(ledgerData.totales.ingresos_usd)}</div>
-            </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
-              <div className="kpi-label">Egresos · USD</div>
-              <div className="kpi-value mono neg">u$s {fmt(ledgerData.totales.egresos_usd)}</div>
-            </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
-              <div className="kpi-label">Neto · USD</div>
-              <div className={'kpi-value mono ' + (Number(ledgerData.totales.neto_usd) >= 0 ? 'pos' : 'neg')}>u$s {fmt(ledgerData.totales.neto_usd)}</div>
-            </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
-              <div className="kpi-label">Movimientos</div>
-              <div className="kpi-value mono">{ledgerData.totales.count}</div>
-            </div>
-          </div>
-
-          {/* Filtros */}
-          <div className="card card-tight" style={{ marginBottom: 12 }}>
-            <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div className="field" style={{ marginBottom: 0, minWidth: 160 }}>
-                <label className="field-label">Caja</label>
-                <select className="input" value={ledgerFiltros.caja_id} onChange={e => setLF('caja_id', e.target.value)}>
-                  <option value="">Todas</option>
-                  {cajasList.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label className="field-label">Desde</label>
-                <input type="date" className="input" value={ledgerFiltros.desde} onChange={e => setLF('desde', e.target.value)} />
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label className="field-label">Hasta</label>
-                <input type="date" className="input" value={ledgerFiltros.hasta} onChange={e => setLF('hasta', e.target.value)} />
-              </div>
-              <div className="field" style={{ marginBottom: 0, minWidth: 140 }}>
-                <label className="field-label">Origen</label>
-                <select className="input" value={ledgerFiltros.origen} onChange={e => setLF('origen', e.target.value)}>
-                  <option value="">Todos</option>
-                  {Object.entries(ORIGEN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div className="field" style={{ marginBottom: 0, minWidth: 120 }}>
-                <label className="field-label">Tipo</label>
-                <select className="input" value={ledgerFiltros.tipo} onChange={e => setLF('tipo', e.target.value)}>
-                  <option value="">Todos</option>
-                  <option value="ingreso">Ingreso</option>
-                  <option value="egreso">Egreso</option>
-                </select>
-              </div>
-              <button className="btn btn-ghost" style={{ marginBottom: 0 }} onClick={() => setLedgerFiltros(EMPTY_LEDGER_FILTROS)}>
-                Limpiar
-              </button>
-            </div>
-          </div>
-
-          {/* Tabla */}
-          <div className="card card-flush">
-            <div className="card-hd">
-              <div style={{ fontWeight: 600, fontSize: 14 }}>Movimientos — {ledgerData.totales.count}</div>
-              <div className="muted tiny">Totales en USD (los montos en ARS sin tipo de cambio aportan 0 al total USD)</div>
-            </div>
-            {loadingLedger ? (
-              <div className="empty">Cargando movimientos…</div>
-            ) : ledgerData.data.length === 0 ? (
-              <div className="empty">Sin movimientos para los filtros elegidos.</div>
-            ) : (
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Fecha</th><th>Caja</th><th>Origen</th><th>Concepto</th>
-                    <th style={{ textAlign: 'right' }}>Monto</th>
-                    <th style={{ textAlign: 'right' }}>USD</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledgerData.data.map(m => {
-                    const signo = m.tipo === 'ingreso' ? '+' : '−';
-                    const tone = m.tipo === 'ingreso' ? 'pos' : 'neg';
-                    return (
-                      <tr key={m.id}>
-                        <td className="mono tiny">{fmtFecha(m.fecha)}</td>
-                        <td>{m.caja_nombre} <span className="muted tiny">{m.moneda}</span></td>
-                        <td><Badge tone={ORIGEN_TONE[m.origen] || 'default'}>{ORIGEN_LABEL[m.origen] || m.origen}</Badge></td>
-                        <td className="muted tiny">{m.concepto || '—'}</td>
-                        <td className={'mono ' + tone} style={{ textAlign: 'right', fontWeight: 700 }}>{signo}{fmt(m.monto)}</td>
-                        <td className="mono tiny" style={{ textAlign: 'right' }}>{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {/* Paginación */}
-            {ledgerData.pagination.pages > 1 && (
-              <div className="flex-row" style={{ justifyContent: 'center', gap: 12, padding: 12, alignItems: 'center' }}>
-                <button className="btn btn-ghost btn-sm" disabled={ledgerFiltros.page <= 1}
-                  onClick={() => setLF('page', ledgerFiltros.page - 1)}>Anterior</button>
-                <span className="muted tiny">Página {ledgerData.pagination.page} de {ledgerData.pagination.pages}</span>
-                <button className="btn btn-ghost btn-sm" disabled={ledgerFiltros.page >= ledgerData.pagination.pages}
-                  onClick={() => setLF('page', ledgerFiltros.page + 1)}>Siguiente</button>
-              </div>
-            )}
-          </div>
-        </>
-      )}
 
       {/* ── Modal: Nuevo contacto ────────────────────────────────────── */}
       {showContacto && (
