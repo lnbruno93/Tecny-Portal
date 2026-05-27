@@ -47,7 +47,7 @@ export default function Cambios() {
   function loadDetalle() {
     if (!selectedId) { setDetalle(null); setMovs([]); return; }
     Promise.all([cambiosApi.entidad(selectedId), cambiosApi.movimientos(selectedId)])
-      .then(([det, m]) => { setDetalle(det); setMovs(m || []); })
+      .then(([det, m]) => { setDetalle(det); setMovs(m.data || []); })
       .catch(e => toast.error(e.message));
   }
   useEffect(() => { loadDetalle(); setMov(EMPTY_MOV); }, [selectedId]); // eslint-disable-line

@@ -18,6 +18,7 @@ const createRecurrenteSchema = z.object({
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   monto:          z.coerce.number().min(0).default(0),
   moneda:         z.enum(MONEDAS).default('USD'),
+  tc:             z.coerce.number().positive().optional().nullable(),  // TC para recurrentes en ARS
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   dia_del_mes:    z.coerce.number().int().min(1).max(31).default(1),
   activo:         z.boolean().optional().default(true),

@@ -10,9 +10,13 @@ const db       = require('../config/database');
 const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
+const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { createLiquidacionSchema } = require('../schemas/tarjetas');
+
+// Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
+const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
 
 // Saldo pendiente de un método = neto cobrado − neto liquidado (lo que falta cobrar).
 const RESUMEN_SQL = `
@@ -37,20 +41,33 @@ router.get('/', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// Estado de cuenta unificado: todos los movimientos de todas las tarjetas
-// (cobros + liquidaciones), en orden cronológico para armar el saldo acumulado.
-router.get('/movimientos', async (_req, res, next) => {
+// Estado de cuenta unificado (paginado): movimientos de todas las tarjetas con su
+// saldo acumulado calculado en el server (window) para que sea correcto aun paginando.
+router.get('/movimientos', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT m.*, mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
-         FROM tarjeta_movimientos m
-         JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
-         LEFT JOIN metodos_pago mc ON mc.id = m.caja_id
-         LEFT JOIN ventas v ON v.id = m.venta_id
-        WHERE m.deleted_at IS NULL
-        ORDER BY m.fecha ASC, m.id ASC`
-    );
-    res.json(rows);
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    const [countRes, dataRes] = await Promise.all([
+      db.query('SELECT COUNT(*) FROM tarjeta_movimientos WHERE deleted_at IS NULL'),
+      db.query(
+        `WITH base AS (
+           SELECT m.id, m.metodo_pago_id, m.fecha, m.tipo, m.moneda, m.monto_bruto, m.pct,
+                  m.monto_comision, m.monto_neto, m.caja_id, m.venta_id,
+                  SUM(CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END)
+                      OVER (ORDER BY m.fecha, m.id) AS saldo_acum
+             FROM tarjeta_movimientos m
+            WHERE m.deleted_at IS NULL
+         )
+         SELECT b.*, mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
+           FROM base b
+           JOIN metodos_pago mp ON mp.id = b.metodo_pago_id
+           LEFT JOIN metodos_pago mc ON mc.id = b.caja_id
+           LEFT JOIN ventas v ON v.id = b.venta_id
+          ORDER BY b.fecha DESC, b.id DESC
+          LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -73,15 +90,20 @@ router.get('/:id/movimientos', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
-         FROM tarjeta_movimientos m
-         LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-         LEFT JOIN ventas v ON v.id = m.venta_id
-        WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL
-        ORDER BY m.fecha DESC, m.id DESC`, [id]
-    );
-    res.json(rows);
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    const [countRes, dataRes] = await Promise.all([
+      db.query('SELECT COUNT(*) FROM tarjeta_movimientos WHERE metodo_pago_id = $1 AND deleted_at IS NULL', [id]),
+      db.query(
+        `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
+           FROM tarjeta_movimientos m
+           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+           LEFT JOIN ventas v ON v.id = m.venta_id
+          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL
+          ORDER BY m.fecha DESC, m.id DESC
+          LIMIT $2 OFFSET $3`, [id, limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -96,6 +118,12 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     const caja = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]);
     if (!caja.rows[0]) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'La caja seleccionada no existe.' }); }
     const moneda = caja.rows[0].moneda;
+    // La liquidación debe entrar a una caja de la misma moneda que la tarjeta;
+    // si no, el saldo pendiente (que está en la moneda de los cobros) se corrompería.
+    if (grupoMoneda(moneda) !== grupoMoneda(mp.rows[0].moneda)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `La caja (${moneda}) no coincide con la moneda de la tarjeta (${mp.rows[0].moneda}).` });
+    }
     const m = round2(Number(monto));
     const { rows } = await client.query(
       `INSERT INTO tarjeta_movimientos (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, caja_id, comentarios, user_id)
@@ -122,6 +150,13 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    const { rows: before } = await client.query('SELECT tipo, venta_id FROM tarjeta_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    // Los cobros se generan/revierten desde Ventas; no se borran a mano (desincronizaría la venta).
+    if (before[0].tipo === 'cobro') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Este cobro proviene de una venta. Se ajusta editando o cancelando la venta, no desde acá.' });
+    }
     const { rows } = await client.query('UPDATE tarjeta_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]);
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     await reverseCajaMovimientos(client, 'tarjeta_movimientos', id); // revierte la caja si era una liquidación

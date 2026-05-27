@@ -16,6 +16,17 @@ function calcUsd({ monto, tc, monto_usd }) {
   return 0;
 }
 
+// Inserta participantes en un solo INSERT multi-fila (evita N+1).
+async function insertParticipantes(client, proyectoId, participantes) {
+  const ids = [...new Set((participantes || []).map(Number).filter(Boolean))];
+  if (ids.length === 0) return;
+  const values = ids.map((_, i) => `($1, $${i + 2})`).join(', ');
+  await client.query(
+    `INSERT INTO proyecto_participantes (proyecto_id, contacto_id) VALUES ${values} ON CONFLICT DO NOTHING`,
+    [proyectoId, ...ids]
+  );
+}
+
 // ─── PROYECTOS ──────────────────────────────────────────────────────────────
 
 // Lista de proyectos con totales invertidos ($ y USD) y cantidad de movimientos.
@@ -79,12 +90,7 @@ router.post('/', validate(createProyectoSchema), async (req, res, next) => {
       [nombre, objetivo ?? null, fecha_creacion ?? null]
     );
     const proyecto = rows[0];
-    for (const cid of participantes) {
-      await client.query(
-        'INSERT INTO proyecto_participantes (proyecto_id, contacto_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-        [proyecto.id, cid]
-      );
-    }
+    await insertParticipantes(client, proyecto.id, participantes);
     await client.query('COMMIT');
     await audit('proyectos', 'INSERT', proyecto.id, { despues: proyecto, user_id: req.user.id });
     res.status(201).json({ ...proyecto, total_ars: 0, total_usd: 0, cant_movimientos: 0 });
@@ -111,9 +117,7 @@ router.put('/:id', validate(updateProyectoSchema), async (req, res, next) => {
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proyecto no encontrado' }); }
     if (participantes !== undefined) {
       await client.query('DELETE FROM proyecto_participantes WHERE proyecto_id = $1', [id]);
-      for (const cid of participantes) {
-        await client.query('INSERT INTO proyecto_participantes (proyecto_id, contacto_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, cid]);
-      }
+      await insertParticipantes(client, id, participantes);
     }
     await client.query('COMMIT');
     await audit('proyectos', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });

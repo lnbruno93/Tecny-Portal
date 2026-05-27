@@ -10,9 +10,12 @@ vi.mock('../lib/api', () => ({
       id: 1, nombre: 'El Dorado', activo: true,
       resumen: { saldo_usd: '400', entregado_usd: '1000', recibido_usd: '600', movimientos: 2 },
     }),
-    movimientos: vi.fn().mockResolvedValue([
-      { id: 5, fecha: '2026-05-01', tipo: 'entrega_ars', monto_ars: '1000000', tc: '1000', monto_usd: '1000', caja_nombre: 'Caja Pesos', comentarios: null },
-    ]),
+    movimientos: vi.fn().mockResolvedValue({
+      data: [
+        { id: 5, fecha: '2026-05-01', tipo: 'entrega_ars', monto_ars: '1000000', tc: '1000', monto_usd: '1000', caja_nombre: 'Caja Pesos', comentarios: null },
+      ],
+      pagination: { page: 1, pages: 1, total: 1 },
+    }),
     createEntidad: vi.fn(), updateEntidad: vi.fn(), deleteEntidad: vi.fn(),
     createMovimiento: vi.fn(), deleteMovimiento: vi.fn(),
   },

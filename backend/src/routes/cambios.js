@@ -8,6 +8,7 @@ const db       = require('../config/database');
 const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
+const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { createEntidadSchema, updateEntidadSchema, createMovimientoSchema } = require('../schemas/cambios');
@@ -103,14 +104,19 @@ router.get('/entidades/:id/movimientos', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      `SELECT m.*, mp.nombre AS caja_nombre
-         FROM cambio_movimientos m
-         LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-        WHERE m.entidad_id = $1 AND m.deleted_at IS NULL
-        ORDER BY m.fecha DESC, m.id DESC`, [id]
-    );
-    res.json(rows);
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    const [countRes, dataRes] = await Promise.all([
+      db.query('SELECT COUNT(*) FROM cambio_movimientos WHERE entidad_id = $1 AND deleted_at IS NULL', [id]),
+      db.query(
+        `SELECT m.*, mp.nombre AS caja_nombre
+           FROM cambio_movimientos m
+           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+          WHERE m.entidad_id = $1 AND m.deleted_at IS NULL
+          ORDER BY m.fecha DESC, m.id DESC
+          LIMIT $2 OFFSET $3`, [id, limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
 

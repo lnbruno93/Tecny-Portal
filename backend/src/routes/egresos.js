@@ -94,11 +94,11 @@ router.get('/recurrentes', async (_req, res, next) => {
 
 router.post('/recurrentes', validate(createRecurrenteSchema), async (req, res, next) => {
   try {
-    const { concepto, categoria_id, monto, moneda, metodo_pago_id, dia_del_mes, activo } = req.body;
+    const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
     const { rows } = await db.query(
-      `INSERT INTO egresos_recurrentes (concepto, categoria_id, monto, moneda, metodo_pago_id, dia_del_mes, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [concepto, categoria_id ?? null, monto, moneda, metodo_pago_id ?? null, dia_del_mes, activo]
+      `INSERT INTO egresos_recurrentes (concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [concepto, categoria_id ?? null, monto, moneda, tc ?? null, metodo_pago_id ?? null, dia_del_mes, activo]
     );
     await audit('egresos_recurrentes', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
@@ -109,18 +109,19 @@ router.put('/recurrentes/:id', validate(updateRecurrenteSchema), async (req, res
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { concepto, categoria_id, monto, moneda, metodo_pago_id, dia_del_mes, activo } = req.body;
+    const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
     const { rows } = await db.query(
       `UPDATE egresos_recurrentes SET
          concepto       = COALESCE($1, concepto),
          categoria_id   = COALESCE($2, categoria_id),
          monto          = COALESCE($3, monto),
          moneda         = COALESCE($4, moneda),
-         metodo_pago_id = COALESCE($5, metodo_pago_id),
-         dia_del_mes    = COALESCE($6, dia_del_mes),
-         activo         = COALESCE($7, activo)
-       WHERE id = $8 AND deleted_at IS NULL RETURNING *`,
-      [concepto ?? null, categoria_id ?? null, monto ?? null, moneda ?? null,
+         tc             = COALESCE($5, tc),
+         metodo_pago_id = COALESCE($6, metodo_pago_id),
+         dia_del_mes    = COALESCE($7, dia_del_mes),
+         activo         = COALESCE($8, activo)
+       WHERE id = $9 AND deleted_at IS NULL RETURNING *`,
+      [concepto ?? null, categoria_id ?? null, monto ?? null, moneda ?? null, tc ?? null,
        metodo_pago_id ?? null, dia_del_mes ?? null, activo ?? null, id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Recurrente no encontrado' });
@@ -154,13 +155,13 @@ router.post('/generar', validate(generarPeriodoSchema), async (req, res, next) =
     for (const r of recs) {
       const dia = Math.min(r.dia_del_mes, lastDay);
       const fecha = `${periodo}-${String(dia).padStart(2, '0')}`;
-      const monto_usd = round2(toUsd(Number(r.monto), r.moneda, null));
+      const monto_usd = round2(toUsd(Number(r.monto), r.moneda, r.tc));
       const { rows } = await db.query(
-        `INSERT INTO egresos (fecha, concepto, monto, moneda, monto_usd, metodo_pago_id, categoria_id, estado, recurrente_id, periodo, user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'pendiente',$8,$9,$10)
+        `INSERT INTO egresos (fecha, concepto, monto, moneda, tc, monto_usd, metodo_pago_id, categoria_id, estado, recurrente_id, periodo, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pendiente',$9,$10,$11)
          ON CONFLICT (recurrente_id, periodo) WHERE recurrente_id IS NOT NULL AND deleted_at IS NULL
          DO NOTHING RETURNING id`,
-        [fecha, r.concepto, r.monto, r.moneda, monto_usd, r.metodo_pago_id, r.categoria_id, r.id, periodo, req.user.id]
+        [fecha, r.concepto, r.monto, r.moneda, r.tc ?? null, monto_usd, r.metodo_pago_id, r.categoria_id, r.id, periodo, req.user.id]
       );
       if (rows[0]) generados++;
     }
