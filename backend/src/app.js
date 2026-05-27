@@ -164,8 +164,11 @@ app.use('/api/historial',     requireAuth, requirePermission('financiera'), hist
 app.use('/api/config',        requireAuth, requirePermission('financiera'), configRoutes);
 app.use('/api/ocr',           requireAuth, requirePermission('financiera'), ocrRoutes);
 
+// Contactos — agenda compartida (la usan Ventas, Cajas, Proyectos para quick-add).
+// Solo requiere sesión; la pantalla "Contactos" se gatea por permiso en el front.
+app.use('/api/contactos',     requireAuth, contactosRoutes);
+
 // Cajas — requiere permiso "cajas"
-app.use('/api/contactos',     requireAuth, requirePermission('cajas'), contactosRoutes);
 app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRoutes);
 
 // Envíos — requiere permiso "envios"

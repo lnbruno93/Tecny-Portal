@@ -8,17 +8,22 @@ const { createContactoSchema, updateContactoSchema, queryContactosSchema } = req
 
 router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) => {
   try {
-    const { buscar, tipo, limit = 500, offset = 0 } = req.query;
+    const { buscar, tipo, origen, limit = 500, offset = 0 } = req.query;
     const conditions = ['deleted_at IS NULL'];
     const params = [];
 
     if (buscar) {
       params.push(`%${buscar}%`);
-      conditions.push(`(nombre ILIKE $${params.length} OR apellido ILIKE $${params.length})`);
+      const i = params.length;
+      conditions.push(`(nombre ILIKE $${i} OR apellido ILIKE $${i} OR email ILIKE $${i} OR telefono ILIKE $${i} OR dni ILIKE $${i})`);
     }
     if (tipo) {
       params.push(tipo);
       conditions.push(`tipo = $${params.length}`);
+    }
+    if (origen) {
+      params.push(origen);
+      conditions.push(`origen = $${params.length}`);
     }
 
     const where = conditions.join(' AND ');
@@ -34,10 +39,11 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
 
 router.post('/', validate(createContactoSchema), async (req, res, next) => {
   try {
-    const { nombre, apellido, tipo } = req.body;
+    const { nombre, apellido, telefono, dni, email, tipo, origen } = req.body;
     const { rows } = await db.query(
-      'INSERT INTO contactos (nombre, apellido, tipo) VALUES ($1,$2,$3) RETURNING *',
-      [nombre, apellido ?? null, tipo]
+      `INSERT INTO contactos (nombre, apellido, telefono, dni, email, tipo, origen)
+       VALUES ($1,$2,$3,$4,$5,COALESCE($6,'cliente'),COALESCE($7,'manual')) RETURNING *`,
+      [nombre, apellido ?? null, telefono ?? null, dni ?? null, (email || null), tipo ?? null, origen ?? null]
     );
     await audit('contactos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
@@ -56,14 +62,18 @@ router.put('/:id', validate(updateContactoSchema), async (req, res, next) => {
     );
     if (!before[0]) return res.status(404).json({ error: 'Contacto no encontrado' });
 
-    const { nombre, apellido, tipo } = req.body;
+    const { nombre, apellido, telefono, dni, email, tipo, origen } = req.body;
     const { rows } = await db.query(
       `UPDATE contactos SET
         nombre   = COALESCE($1, nombre),
         apellido = COALESCE($2, apellido),
-        tipo     = COALESCE($3, tipo)
-       WHERE id = $4 RETURNING *`,
-      [nombre, apellido, tipo, id]
+        telefono = COALESCE($3, telefono),
+        dni      = COALESCE($4, dni),
+        email    = COALESCE($5, email),
+        tipo     = COALESCE($6, tipo),
+        origen   = COALESCE($7, origen)
+       WHERE id = $8 RETURNING *`,
+      [nombre, apellido, telefono, dni, (email === '' ? null : email), tipo, origen, id]
     );
     await audit('contactos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);

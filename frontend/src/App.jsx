@@ -24,6 +24,7 @@ const Inventario = lazy(() => import('./screens/Inventario'));
 const Ventas     = lazy(() => import('./screens/Ventas'));
 const Proveedores = lazy(() => import('./screens/Proveedores'));
 const Proyectos  = lazy(() => import('./screens/Proyectos'));
+const Contactos  = lazy(() => import('./screens/Contactos'));
 
 function PageLoader() {
   return (
@@ -147,6 +148,12 @@ export default function App() {
                   <Route path="proyectos" element={
                     <RequirePermission perm="proyectos">
                       <ErrorBoundary><Proyectos /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+
+                  <Route path="contactos" element={
+                    <RequirePermission perm="contactos">
+                      <ErrorBoundary><Contactos /></ErrorBoundary>
                     </RequirePermission>
                   } />
 

@@ -18,6 +18,7 @@ const TOOL_LABELS = {
   ventas:     'Ventas',
   proveedores: 'Proveedores',
   proyectos:  'Proyectos',
+  contactos:  'Contactos',
 };
 
 function initials(nombre) {
