@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { cajas } from '../lib/api';
+import { cajas, inventario, cuentas } from '../lib/api';
 import { fmt, fmtFecha } from '../lib/format';
 
 // Origen de cada movimiento del ledger (incluye los módulos financieros nuevos).
@@ -20,24 +20,58 @@ const EMPTY_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '',
 
 export default function Capital() {
   const [cajasList, setCajasList] = useState([]);
+  const [metricas, setMetricas] = useState({});       // valor de inventario a costo (USD/ARS)
+  const [resumen, setResumen] = useState({ deudas: [], inversiones: [] }); // deudas a cobrar + inversiones
+  const [ccGeneral, setCcGeneral] = useState({});      // cuenta corriente B2B (USD)
   const [filtros, setFiltros] = useState(EMPTY_FILTROS);
   const [ledger, setLedger] = useState({ data: [], pagination: { pages: 1, page: 1, total: 0 }, totales: { ingresos_usd: 0, egresos_usd: 0, neto_usd: 0, count: 0 } });
   const [loading, setLoading] = useState(false);
   const setLF = (field, val) => setFiltros(f => ({ ...f, [field]: val, page: field === 'page' ? val : 1 }));
 
-  useEffect(() => { cajas.listCajas().then(r => setCajasList(Array.isArray(r) ? r : [])).catch(() => {}); }, []);
+  // Fuentes del patrimonio total: cajas (efectivo), inventario (a costo),
+  // cajas/resumen (deudas a cobrar + inversiones) y cuentas B2B (neto a cobrar)
+  useEffect(() => {
+    cajas.listCajas().then(r => setCajasList(Array.isArray(r) ? r : [])).catch(() => {});
+    inventario.metricas().then(r => setMetricas(r || {})).catch(() => {});
+    cajas.resumen().then(r => setResumen({ deudas: r?.deudas || [], inversiones: r?.inversiones || [] })).catch(() => {});
+    cuentas.resumenGeneral().then(r => setCcGeneral(r || {})).catch(() => {});
+  }, []);
   useEffect(() => {
     setLoading(true);
     cajas.ledger(filtros).then(setLedger).catch(() => {}).finally(() => setLoading(false));
   }, [filtros]);
 
-  // Capital total por moneda (suma de saldos actuales de cada caja)
+  // Capital en efectivo por moneda (suma de saldos actuales de cada caja)
   const capital = useMemo(() => {
     const m = {};
     for (const c of cajasList) m[c.moneda] = (m[c.moneda] || 0) + Number(c.saldo_actual || 0);
     return m;
   }, [cajasList]);
-  const monedas = ['ARS', 'USD', 'USDT'].filter(mo => capital[mo] !== undefined);
+
+  // Patrimonio total: descompone el capital en sus partes, totalizado por moneda
+  // (ARS y USD por separado — no se convierte por TC para no inventar una tasa).
+  const patrimonio = useMemo(() => {
+    const n = (x) => Number(x || 0);
+    const inv = metricas || {};
+    const efectivoArs = n(capital.ARS);
+    const efectivoUsd = n(capital.USD) + n(capital.USDT);
+    const invArs = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
+    const invUsd = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
+    const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
+    const deudasArs = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
+    const deudasUsd = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
+    const ccUsd = n(ccGeneral.neto);
+    const rows = [
+      { label: 'Efectivo en cajas',    ars: efectivoArs,    usd: efectivoUsd },
+      { label: 'Inventario (a costo)', ars: invArs,         usd: invUsd },
+      { label: 'Inversiones',          ars: inversionesArs, usd: null },
+      { label: 'Deudas a cobrar',      ars: deudasArs,      usd: deudasUsd },
+      { label: 'Cuenta corriente B2B', ars: null,           usd: ccUsd },
+    ];
+    const totalArs = rows.reduce((s, r) => s + (r.ars || 0), 0);
+    const totalUsd = rows.reduce((s, r) => s + (r.usd || 0), 0);
+    return { rows, totalArs, totalUsd };
+  }, [capital, metricas, resumen, ccGeneral]);
 
   return (
     <div>
@@ -48,16 +82,43 @@ export default function Capital() {
         </div>
       </div>
 
-      {/* Capital total por moneda */}
+      {/* Patrimonio total por moneda (efectivo + inventario + inversiones + a cobrar + B2B) */}
       <div className="row" style={{ marginBottom: 14 }}>
-        {monedas.length === 0
-          ? <div className="card card-tight" style={{ flex: 1 }}><div className="kpi-label">Capital</div><div className="kpi-value mono">—</div></div>
-          : monedas.map(mo => (
-            <div key={mo} className="card card-tight" style={{ flex: 1 }}>
-              <div className="kpi-label">Capital · {mo}</div>
-              <div className="kpi-value mono" style={{ color: Number(capital[mo]) >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{sym(mo)} {fmt(capital[mo])}</div>
-            </div>
-          ))}
+        <div className="card card-tight" style={{ flex: 1 }}>
+          <div className="kpi-label">Patrimonio · ARS</div>
+          <div className="kpi-value mono" style={{ color: patrimonio.totalArs >= 0 ? 'var(--pos)' : 'var(--neg)' }}>$ {fmt(patrimonio.totalArs)}</div>
+        </div>
+        <div className="card card-tight" style={{ flex: 1 }}>
+          <div className="kpi-label">Patrimonio · USD</div>
+          <div className="kpi-value mono" style={{ color: patrimonio.totalUsd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>u$s {fmt(patrimonio.totalUsd)}</div>
+        </div>
+      </div>
+
+      {/* Composición del patrimonio */}
+      <div className="card card-flush" style={{ marginBottom: 14 }}>
+        <div className="card-hd">
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Composición del patrimonio</div>
+          <div className="muted tiny">Cada moneda se totaliza por separado (sin conversión por TC)</div>
+        </div>
+        <table className="tbl">
+          <thead>
+            <tr><th>Concepto</th><th style={{ textAlign: 'right' }}>ARS</th><th style={{ textAlign: 'right' }}>USD</th></tr>
+          </thead>
+          <tbody>
+            {patrimonio.rows.map(r => (
+              <tr key={r.label}>
+                <td style={{ fontWeight: 600 }}>{r.label}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{r.ars == null ? <span className="dim">—</span> : '$ ' + fmt(r.ars)}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{r.usd == null ? <span className="dim">—</span> : 'u$s ' + fmt(r.usd)}</td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: '2px solid var(--border)' }}>
+              <td style={{ fontWeight: 800 }}>Total</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>$ {fmt(patrimonio.totalArs)}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>u$s {fmt(patrimonio.totalUsd)}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       {/* Estado de cada caja */}
