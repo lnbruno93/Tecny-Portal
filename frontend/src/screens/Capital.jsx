@@ -41,37 +41,35 @@ export default function Capital() {
     cajas.ledger(filtros).then(setLedger).catch(() => {}).finally(() => setLoading(false));
   }, [filtros]);
 
-  // Capital en efectivo por moneda (suma de saldos actuales de cada caja)
-  const capital = useMemo(() => {
-    const m = {};
-    for (const c of cajasList) m[c.moneda] = (m[c.moneda] || 0) + Number(c.saldo_actual || 0);
-    return m;
-  }, [cajasList]);
-
   // Patrimonio total: descompone el capital en sus partes, totalizado por moneda
   // (ARS y USD por separado — no se convierte por TC para no inventar una tasa).
+  // Cada caja entra como su propia fila para ver el dinero registrado en cada una.
   const patrimonio = useMemo(() => {
     const n = (x) => Number(x || 0);
     const inv = metricas || {};
-    const efectivoArs = n(capital.ARS);
-    const efectivoUsd = n(capital.USD) + n(capital.USDT);
+    // Una fila por caja: el saldo va a la columna de su moneda (USDT cuenta como USD).
+    const cajaRows = cajasList.map(c => {
+      const esArs = c.moneda === 'ARS';
+      const saldo = n(c.saldo_actual);
+      return { label: c.nombre, sub: c.moneda, caja: true, ars: esArs ? saldo : null, usd: esArs ? null : saldo };
+    });
     const invArs = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
     const invUsd = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
     const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
     const deudasArs = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
     const deudasUsd = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
     const ccUsd = n(ccGeneral.neto);
-    const rows = [
-      { label: 'Efectivo en cajas',    ars: efectivoArs,    usd: efectivoUsd },
+    const conceptRows = [
       { label: 'Inventario (a costo)', ars: invArs,         usd: invUsd },
       { label: 'Inversiones',          ars: inversionesArs, usd: null },
       { label: 'Deudas a cobrar',      ars: deudasArs,      usd: deudasUsd },
       { label: 'Cuenta corriente B2B', ars: null,           usd: ccUsd },
     ];
+    const rows = [...cajaRows, ...conceptRows];
     const totalArs = rows.reduce((s, r) => s + (r.ars || 0), 0);
     const totalUsd = rows.reduce((s, r) => s + (r.usd || 0), 0);
     return { rows, totalArs, totalUsd };
-  }, [capital, metricas, resumen, ccGeneral]);
+  }, [cajasList, metricas, resumen, ccGeneral]);
 
   return (
     <div>
@@ -105,9 +103,12 @@ export default function Capital() {
             <tr><th>Concepto</th><th style={{ textAlign: 'right' }}>ARS</th><th style={{ textAlign: 'right' }}>USD</th></tr>
           </thead>
           <tbody>
-            {patrimonio.rows.map(r => (
-              <tr key={r.label}>
-                <td style={{ fontWeight: 600 }}>{r.label}</td>
+            {patrimonio.rows.map((r, i) => (
+              <tr key={r.caja ? `caja-${i}` : r.label}>
+                <td style={{ fontWeight: 600 }}>
+                  {r.label}
+                  {r.caja && <span className="muted tiny" style={{ marginLeft: 6 }}>caja · {r.sub}</span>}
+                </td>
                 <td className="mono" style={{ textAlign: 'right' }}>{r.ars == null ? <span className="dim">—</span> : '$ ' + fmt(r.ars)}</td>
                 <td className="mono" style={{ textAlign: 'right' }}>{r.usd == null ? <span className="dim">—</span> : 'u$s ' + fmt(r.usd)}</td>
               </tr>
