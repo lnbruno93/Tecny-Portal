@@ -26,6 +26,7 @@ const Proveedores = lazy(() => import('./screens/Proveedores'));
 const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
 const Egresos    = lazy(() => import('./screens/Egresos'));
+const Capital    = lazy(() => import('./screens/Capital'));
 const Cambios    = lazy(() => import('./screens/Cambios'));
 const Tarjetas   = lazy(() => import('./screens/Tarjetas'));
 
@@ -120,6 +121,11 @@ export default function App() {
                   <Route path="egresos" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Egresos /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="capital" element={
+                    <RequirePermission perm="cajas">
+                      <ErrorBoundary><Capital /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="envios" element={

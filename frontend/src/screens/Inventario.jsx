@@ -243,8 +243,39 @@ export default function Inventario() {
       try {
         const rows = parseCsv(String(ev.target.result));
         if (rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
-        const headers = rows[0].map(h => h.trim().toLowerCase());
-        const idx = (name) => headers.indexOf(name);
+        // Normaliza encabezados (sin acentos, espacios ni símbolos) y los matchea
+        // por alias, para tolerar variantes ("Precio", "Precio de venta", "Costo USD", etc.)
+        const norm = (s) => String(s ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+        const ALIASES = {
+          nombre: ['nombre', 'modelo', 'producto'],
+          clase: ['clase'],
+          tipo_carga: ['tipocarga', 'carga'],
+          estado: ['estado'],
+          imei: ['imei'],
+          gb: ['gb', 'almacenamiento'],
+          color: ['color'],
+          bateria: ['bateria', 'bat'],
+          categoria: ['categoria', 'categoria1', 'rubro'],
+          deposito: ['deposito', 'sucursal'],
+          proveedor: ['proveedor'],
+          costo: ['costo', 'costos', 'compra', 'costounitario'],
+          costo_moneda: ['costomoneda', 'monedacosto'],
+          precio_venta: ['precioventa', 'precio', 'venta', 'preciodeventa', 'preciolista'],
+          precio_moneda: ['preciomoneda', 'monedaprecio', 'monedaventa'],
+          cantidad: ['cantidad', 'stock', 'qty', 'unidades'],
+        };
+        const headersN = rows[0].map(norm);
+        const idx = (key) => {
+          for (const alias of (ALIASES[key] || [norm(key)])) { const i = headersN.indexOf(alias); if (i >= 0) return i; }
+          return -1;
+        };
+        // Parseo de número tolerante: ignora símbolos ($), maneja coma decimal y separador de miles.
+        const parseNum = (v) => {
+          let s = String(v ?? '').replace(/[^0-9.,-]/g, '').trim();
+          if (!s) return 0;
+          s = (s.includes(',') && !s.includes('.')) ? s.replace(',', '.') : s.replace(/,/g, '');
+          const n = Number(s); return isNaN(n) ? 0 : n;
+        };
         const pick = (val, opts, def) => { const x = String(val ?? '').trim().toLowerCase(); return opts.includes(x) ? x : def; };
         const findCat = (n) => categorias.find(c => c.nombre.toLowerCase() === String(n ?? '').trim().toLowerCase());
         const findDep = (d) => depositos.find(x => x.nombre.toLowerCase() === String(d ?? '').trim().toLowerCase());
@@ -266,11 +297,11 @@ export default function Inventario() {
             categoria_id: cat ? cat.id : null,
             deposito_id: dep ? dep.id : null,
             proveedor: String(get('proveedor')).trim() || null,
-            costo: Number(String(get('costo')).replace(',', '.')) || 0,
+            costo: parseNum(get('costo')),
             costo_moneda: String(get('costo_moneda')).trim().toUpperCase() === 'ARS' ? 'ARS' : 'USD',
-            precio_venta: Number(String(get('precio_venta') || get('precio')).replace(',', '.')) || 0,
+            precio_venta: parseNum(get('precio_venta')),
             precio_moneda: String(get('precio_moneda')).trim().toUpperCase() === 'ARS' ? 'ARS' : 'USD',
-            cantidad: Math.max(0, Math.round(Number(get('cantidad')) || 1)),
+            cantidad: Math.max(0, Math.round(parseNum(get('cantidad')) || 1)),
           };
           return { body, error: nombre ? null : 'Falta el nombre' };
         });
