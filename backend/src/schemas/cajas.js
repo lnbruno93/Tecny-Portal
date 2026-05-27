@@ -46,6 +46,8 @@ const cajaSchema = z.object({
   orden:         z.coerce.number().int().min(0).optional(),
   saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),  // saldo de apertura (en la moneda de la caja)
   es_financiera: z.boolean().optional(),         // marca esta caja como "la financiera"
+  es_tarjeta:    z.boolean().optional(),         // marca este método como tarjeta (cobro automático desde Ventas)
+  comision_pct:  z.coerce.number().min(0).max(100).optional().nullable(), // % que retiene la financiera
 });
 
 const updateCajaSchema = z.object({
@@ -55,6 +57,8 @@ const updateCajaSchema = z.object({
   orden:         z.coerce.number().int().min(0).optional(),
   saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),
   es_financiera: z.boolean().optional(),
+  es_tarjeta:    z.boolean().optional(),
+  comision_pct:  z.coerce.number().min(0).max(100).optional().nullable(),
 }).refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'Al menos un campo es requerido para actualizar',
 });

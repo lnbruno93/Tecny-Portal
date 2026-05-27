@@ -18,6 +18,7 @@ vi.mock('../lib/api', () => ({
     createInversion: vi.fn(), deleteInversion: vi.fn(),
   },
   contactos: { list: vi.fn().mockResolvedValue([]), create: vi.fn() },
+  tarjetas: { entidades: vi.fn().mockResolvedValue([]), entidad: vi.fn().mockResolvedValue({ planes: [] }) },
 }));
 
 import { cajas as cajasApi } from '../lib/api';

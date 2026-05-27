@@ -108,7 +108,7 @@ export default function Cajas() {
   // ── Config Cajas (cuentas de dinero = metodos_pago) ───────────────────────
   const [cajasList, setCajasList] = useState([]);
   const [loadingCajas, setLoadingCajas] = useState(false);
-  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS', saldo_inicial: '' });
+  const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS', saldo_inicial: '', es_tarjeta: false, comision_pct: '' });
   const [cajaSaving, setCajaSaving] = useState(false);
   const [cajaError, setCajaError] = useState('');
   // Ledger de una caja (modal con movimientos + ajuste manual + saldo inicial)
@@ -330,8 +330,13 @@ export default function Cajas() {
     if (!cajaForm.nombre.trim()) { setCajaError('El nombre es obligatorio.'); return; }
     setCajaSaving(true); setCajaError('');
     try {
-      await cajas.createCaja({ nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda, saldo_inicial: cajaForm.saldo_inicial ? Number(cajaForm.saldo_inicial) : 0 });
-      setCajaForm({ nombre: '', moneda: 'ARS', saldo_inicial: '' });
+      await cajas.createCaja({
+        nombre: cajaForm.nombre.trim(), moneda: cajaForm.moneda,
+        saldo_inicial: cajaForm.saldo_inicial ? Number(cajaForm.saldo_inicial) : 0,
+        es_tarjeta: !!cajaForm.es_tarjeta,
+        comision_pct: cajaForm.es_tarjeta && cajaForm.comision_pct !== '' ? Number(cajaForm.comision_pct) : null,
+      });
+      setCajaForm({ nombre: '', moneda: 'ARS', saldo_inicial: '', es_tarjeta: false, comision_pct: '' });
       toast.success('Caja creada.');
       loadCajas();
     } catch (e) { setCajaError(e.message || 'No se pudo crear la caja.'); }
@@ -647,6 +652,17 @@ export default function Cajas() {
                 <input type="number" step="0.01" className="input" placeholder="0"
                        value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
               </div>
+              <label className="field" style={{ width: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={cajaForm.es_tarjeta} onChange={e => setCajaForm(f => ({ ...f, es_tarjeta: e.target.checked, comision_pct: '' }))} style={{ accentColor: 'var(--accent)' }} />
+                <span style={{ fontSize: 12 }}>Es tarjeta</span>
+              </label>
+              {cajaForm.es_tarjeta && (
+                <div className="field" style={{ width: 120 }}>
+                  <label className="field-label">% comisión</label>
+                  <input type="number" min="0" max="100" step="0.1" className="input mono" placeholder="23.5"
+                         value={cajaForm.comision_pct} onChange={e => setCajaForm(f => ({ ...f, comision_pct: e.target.value }))} />
+                </div>
+              )}
               <button className="btn btn-primary" type="submit" disabled={cajaSaving}>
                 {cajaSaving ? 'Guardando…' : '+ Agregar caja'}
               </button>
@@ -670,6 +686,7 @@ export default function Cajas() {
                     <th className="num">Saldo actual</th>
                     <th>Estado</th>
                     <th>Financiera</th>
+                    <th>Tarjeta</th>
                     <th style={{ width: 80 }}></th>
                   </tr>
                 </thead>
@@ -703,6 +720,11 @@ export default function Cajas() {
                                 title="Marcar como la caja de la financiera (genera auto-comprobante al vender con ella)">
                           {c.es_financiera ? '★ Financiera' : <span className="dim">marcar</span>}
                         </button>
+                      </td>
+                      <td>
+                        {c.es_tarjeta
+                          ? <span className="badge badge-info" title="Método tarjeta — comisión de la financiera">Tarjeta · {Number(c.comision_pct || 0)}%</span>
+                          : <span className="dim">—</span>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="icon-btn" title="Movimientos / ajuste" onClick={() => openCajaLedger(c)}>

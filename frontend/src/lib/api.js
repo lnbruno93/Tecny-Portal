@@ -138,6 +138,16 @@ export const cambios = {
   deleteMovimiento: (id) => api(`/api/cambios/movimientos/${id}`, 'DELETE'),
 };
 
+export const tarjetas = {
+  // Las "tarjetas" son métodos de pago marcados como tal en Cajas (solo lectura acá).
+  list:              () => api('/api/tarjetas'),
+  movimientosAll:    () => api('/api/tarjetas/movimientos'),
+  get:               (id) => api(`/api/tarjetas/${id}`),
+  movimientos:       (id) => api(`/api/tarjetas/${id}/movimientos`),
+  createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
+  deleteMovimiento:  (id) => api(`/api/tarjetas/movimientos/${id}`, 'DELETE'),
+};
+
 export const envios = {
   list: (params = {}) => api('/api/envios?' + new URLSearchParams(params)),
   get: (id) => api(`/api/envios/${id}`),
