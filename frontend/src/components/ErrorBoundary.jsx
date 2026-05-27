@@ -3,11 +3,12 @@
 // Úsalo como: <ErrorBoundary><Screen /></ErrorBoundary>
 
 import { Component } from 'react';
+import { isChunkLoadError, reloadForNewVersion } from '../lib/chunkReload';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, reloading: false };
   }
 
   static getDerivedStateFromError(error) {
@@ -15,12 +16,28 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    // Chunk viejo tras un deploy → recargar para tomar el bundle nuevo.
+    if (isChunkLoadError(error) && reloadForNewVersion()) {
+      this.setState({ reloading: true });
+      return;
+    }
     // En producción con Sentry: Sentry.captureException(error, { extra: info })
     console.error('[ErrorBoundary]', error, info.componentStack);
   }
 
   render() {
     if (!this.state.hasError) return this.props.children;
+
+    if (this.state.reloading) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 28 }}>⏳</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Actualizando a la última versión…</div>
+        </div>
+      );
+    }
+
+    const chunkErr = isChunkLoadError(this.state.error);
 
     return (
       <div style={{
@@ -63,7 +80,7 @@ export default class ErrorBoundary extends Component {
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => { this.setState({ hasError: false, error: null }); }}
+            onClick={() => { chunkErr ? window.location.reload() : this.setState({ hasError: false, error: null }); }}
           >
             Reintentar
           </button>
