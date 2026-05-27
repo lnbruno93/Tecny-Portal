@@ -16,13 +16,6 @@ const ORIGEN_TONE = {
 const Badge = ({ tone = 'default', children }) => <span className={`badge badge-${tone}`}>{children}</span>;
 const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
 
-// Celda de monto con signo: null → '—'; negativo → en rojo con '−' (ej. inversiones a devolver).
-const montoCell = (v, prefix) => {
-  if (v == null) return <span className="dim">—</span>;
-  const neg = Number(v) < 0;
-  return <span style={neg ? { color: 'var(--neg)' } : undefined}>{(neg ? '−' : '') + prefix + ' ' + fmt(v)}</span>;
-};
-
 const EMPTY_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '', page: 1 };
 
 export default function Capital() {
@@ -72,18 +65,18 @@ export default function Capital() {
     const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
     // Lo que le debemos a proveedores (USD) → resta.
     const provUsd = n(provSaldos.total_deuda_usd);
-    const rows = [
-      { label: 'Cajas (todas)',                   ars: cajasArs,        usd: cajasUsd, usdt: cajasUsdt },
-      { label: 'Stock / Inventario',              ars: invArs,          usd: invUsd,   usdt: null },
-      { label: 'Deudas de clientes a cobrar',     ars: deudasArs,       usd: deudasUsd, usdt: null },
-      { label: 'Deudas de clientes B2B a cobrar', ars: null,            usd: b2bUsd,   usdt: null },
-      { label: 'Inversiones (a devolver)',        ars: -inversionesArs, usd: null,     usdt: null },
-      { label: 'Deudas a proveedores (a pagar)',  ars: null,            usd: -provUsd, usdt: null },
+    // Cards de composición (lo que suma en verde, lo que resta en rojo).
+    const cards = [
+      { label: 'Inversiones recibidas',           tone: 'neg', montos: [['$', inversionesArs]] },
+      { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [['$', deudasArs], ['u$s', deudasUsd]] },
+      { label: 'Deudas de clientes B2B a cobrar', tone: 'pos', montos: [['u$s', b2bUsd]] },
+      { label: 'Stock valorizado',                tone: 'pos', montos: [['$', invArs], ['u$s', invUsd]] },
+      { label: 'Deudas a proveedores a pagar',    tone: 'neg', montos: [['u$s', provUsd]] },
     ];
-    const totalArs  = rows.reduce((s, r) => s + (r.ars  || 0), 0);
-    const totalUsd  = rows.reduce((s, r) => s + (r.usd  || 0), 0);
-    const totalUsdt = rows.reduce((s, r) => s + (r.usdt || 0), 0);
-    return { rows, totalArs, totalUsd, totalUsdt };
+    const totalArs  = cajasArs  + invArs + deudasArs - inversionesArs;
+    const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd - provUsd;
+    const totalUsdt = cajasUsdt;
+    return { cards, totalArs, totalUsd, totalUsdt };
   }, [cajasList, metricas, resumen, ccGeneral, provSaldos]);
 
   return (
@@ -120,33 +113,20 @@ export default function Capital() {
         </div>
       </div>
 
-      {/* Composición del patrimonio */}
-      <div className="card card-flush" style={{ marginBottom: 14 }}>
-        <div className="card-hd">
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Composición del patrimonio</div>
-          <div className="muted tiny">Cada moneda se totaliza por separado (sin conversión por TC)</div>
-        </div>
-        <table className="tbl">
-          <thead>
-            <tr><th>Concepto</th><th style={{ textAlign: 'right' }}>ARS</th><th style={{ textAlign: 'right' }}>USD</th><th style={{ textAlign: 'right' }}>USDT</th></tr>
-          </thead>
-          <tbody>
-            {patrimonio.rows.map(r => (
-              <tr key={r.label}>
-                <td style={{ fontWeight: 600 }}>{r.label}</td>
-                <td className="mono" style={{ textAlign: 'right' }}>{montoCell(r.ars, '$')}</td>
-                <td className="mono" style={{ textAlign: 'right' }}>{montoCell(r.usd, 'u$s')}</td>
-                <td className="mono" style={{ textAlign: 'right' }}>{montoCell(r.usdt, 'USDT')}</td>
-              </tr>
-            ))}
-            <tr style={{ borderTop: '2px solid var(--border)' }}>
-              <td style={{ fontWeight: 800 }}>Total</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>{montoCell(patrimonio.totalArs, '$')}</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>{montoCell(patrimonio.totalUsd, 'u$s')}</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>{montoCell(patrimonio.totalUsdt, 'USDT')}</td>
-            </tr>
-          </tbody>
-        </table>
+      {/* Composición del patrimonio: una card por componente (verde suma, rojo resta) */}
+      <div className="card-hd" style={{ padding: '0 2px 8px' }}>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Composición del patrimonio</div>
+        <div className="muted tiny">Verde suma, rojo resta · cada moneda por separado (sin TC)</div>
+      </div>
+      <div className="row" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
+        {patrimonio.cards.map(c => (
+          <div key={c.label} className="card card-tight" style={{ flex: '1 1 180px', minWidth: 180 }}>
+            <div className="kpi-label">{c.label}</div>
+            <div className="kpi-value mono" style={{ color: c.tone === 'neg' ? 'var(--neg)' : 'var(--pos)', fontSize: 20 }}>
+              {c.montos.map(([pre, v], i) => <div key={i}>{(c.tone === 'neg' ? '− ' : '') + pre + ' ' + fmt(v)}</div>)}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Estado de cada caja */}

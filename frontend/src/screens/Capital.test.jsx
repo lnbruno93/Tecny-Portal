@@ -46,14 +46,13 @@ describe('Pantalla 360 & Capital', () => {
     expect(await screen.findByText('Patrimonio · ARS')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USD')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USDT')).toBeInTheDocument();
-    // composición del patrimonio (categorías agregadas)
+    // composición del patrimonio (una card por componente)
     expect(screen.getByText('Composición del patrimonio')).toBeInTheDocument();
-    expect(screen.getByText('Cajas (todas)')).toBeInTheDocument();
-    expect(screen.getByText('Stock / Inventario')).toBeInTheDocument();
+    expect(screen.getByText('Inversiones recibidas')).toBeInTheDocument();
     expect(screen.getByText('Deudas de clientes a cobrar')).toBeInTheDocument();
     expect(screen.getByText('Deudas de clientes B2B a cobrar')).toBeInTheDocument();
-    expect(screen.getByText('Inversiones (a devolver)')).toBeInTheDocument();
-    expect(screen.getByText('Deudas a proveedores (a pagar)')).toBeInTheDocument();
+    expect(screen.getByText('Stock valorizado')).toBeInTheDocument();
+    expect(screen.getByText('Deudas a proveedores a pagar')).toBeInTheDocument();
     // detalle por caja en la tabla "Estado de cada caja"
     expect(screen.getAllByText('Caja Cripto').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Caja Pesos').length).toBeGreaterThanOrEqual(1);
