@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { cajas, inventario, cuentas, proveedores } from '../lib/api';
 import { fmt, fmtFecha } from '../lib/format';
 
@@ -20,7 +19,6 @@ const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
 const EMPTY_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '', page: 1 };
 
 export default function Capital() {
-  const navigate = useNavigate();
   const [tab, setTab] = useState('capital');          // 'capital' | 'movimientos'
   const [cajasList, setCajasList] = useState([]);
   const [metricas, setMetricas] = useState({});       // valor de inventario a costo (USD/ARS)
@@ -90,12 +88,9 @@ export default function Capital() {
   return (
     <div>
       <div className="page-head" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="icon-btn" title="Volver a Cajas" onClick={() => navigate('/cajas')} style={{ fontSize: 20, lineHeight: 1 }}>←</button>
-          <div>
-            <h1 className="page-title">360 &amp; Capital</h1>
-            <div className="page-sub">Capital total, estado de cada caja y todos los movimientos en un solo lugar</div>
-          </div>
+        <div>
+          <h1 className="page-title">360 &amp; Capital</h1>
+          <div className="page-sub">Capital total, estado de cada caja y todos los movimientos en un solo lugar</div>
         </div>
       </div>
 
