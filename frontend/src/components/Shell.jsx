@@ -81,11 +81,12 @@ const NAV_MAIN = [
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas',       group: 2 },
   { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario',  group: 2 },
   { id: 'proveedores',path: '/proveedores',label: 'Proveedores',icon: 'Building',   perm: 'proveedores', group: 2 },
-  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera',  group: 2 },
-  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 3 },
-  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados',      group: 3 },
-  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios',      group: 4 },
-  { id: 'proyectos',  path: '/proyectos',  label: 'Proyectos',  icon: 'Calendar',   perm: 'proyectos',   group: 5 },
+  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera',  group: 3 },
+  { id: 'cambios',    path: '/cambios',    label: 'Cambios de Divisa', icon: 'Dollar', perm: 'cambios',  group: 3 },
+  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 4 },
+  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados',      group: 4 },
+  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios',      group: 5 },
+  { id: 'proyectos',  path: '/proyectos',  label: 'Proyectos',  icon: 'Calendar',   perm: 'proyectos',   group: 6 },
 ];
 
 const NAV_SYS = [
@@ -99,6 +100,7 @@ const SCREEN_LABELS = {
   inicio:     'Inicio',
   cotizador:  'Cotizador',
   financiera: 'Financiera',
+  cambios:    'Cambios de Divisa',
   cajas:      'Cajas',
   envios:     'Envíos',
   cuentas:    'Venta & Gestión B2B',

@@ -69,7 +69,7 @@ const cajaAjusteSchema = z.object({
 });
 
 // Ledger global: movimientos de todas las cajas con filtros (vista dedicada)
-const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste'];
+const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste', 'cambio', 'tarjeta'];
 const queryLedgerSchema = z.object({
   caja_id: z.coerce.number().int().positive().optional(),
   desde:   z.string().date().optional(),

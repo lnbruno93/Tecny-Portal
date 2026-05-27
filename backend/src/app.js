@@ -16,6 +16,7 @@ const configRoutes       = require('./routes/config');
 const ocrRoutes          = require('./routes/ocr');
 const contactosRoutes    = require('./routes/contactos');
 const cajasRoutes        = require('./routes/cajas');
+const cambiosRoutes      = require('./routes/cambios');
 const enviosRoutes       = require('./routes/envios');
 const usuariosRoutes     = require('./routes/usuarios');
 const cuentasRoutes      = require('./routes/cuentas');
@@ -170,6 +171,7 @@ app.use('/api/contactos',     requireAuth, contactosRoutes);
 
 // Cajas — requiere permiso "cajas"
 app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRoutes);
+app.use('/api/cambios',       requireAuth, requirePermission('cambios'), cambiosRoutes);
 
 // Envíos — requiere permiso "envios"
 app.use('/api/envios',        requireAuth, requirePermission('envios'), enviosRoutes);

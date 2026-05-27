@@ -111,6 +111,17 @@ export const cajas = {
   resumen: () => api('/api/cajas/resumen'),
 };
 
+export const cambios = {
+  entidades:       () => api('/api/cambios/entidades'),
+  entidad:         (id) => api(`/api/cambios/entidades/${id}`),
+  createEntidad:   (data) => api('/api/cambios/entidades', 'POST', data),
+  updateEntidad:   (id, data) => api(`/api/cambios/entidades/${id}`, 'PUT', data),
+  deleteEntidad:   (id) => api(`/api/cambios/entidades/${id}`, 'DELETE'),
+  movimientos:     (id) => api(`/api/cambios/entidades/${id}/movimientos`),
+  createMovimiento: (data) => api('/api/cambios/movimientos', 'POST', data),
+  deleteMovimiento: (id) => api(`/api/cambios/movimientos/${id}`, 'DELETE'),
+};
+
 export const envios = {
   list: (params = {}) => api('/api/envios?' + new URLSearchParams(params)),
   get: (id) => api(`/api/envios/${id}`),
