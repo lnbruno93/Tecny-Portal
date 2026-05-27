@@ -9,6 +9,7 @@ const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { syncContactoSafe } = require('../lib/contactosSync');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
 } = require('../schemas/proveedores');
@@ -75,6 +76,11 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
 
     await client.query('COMMIT');
     await audit('proveedores', 'INSERT', prov.id, { despues: { ...prov, saldo_inicial: ini }, user_id: req.user.id });
+    // Agenda central (best-effort, fuera de la transacción)
+    await syncContactoSafe(db, {
+      origen: 'proveedores', ref_tabla: 'proveedores', ref_id: prov.id,
+      nombre: prov.contacto_nombre || prov.nombre, apellido: prov.contacto_apellido, telefono: prov.whatsapp,
+    });
     res.status(201).json({ ...prov, saldo_usd: ini, movimientos: ini > 0 ? 1 : 0 });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -125,6 +131,11 @@ router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
 
     await client.query('COMMIT');
     await audit('proveedores', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
+    // Agenda central (best-effort, fuera de la transacción)
+    await syncContactoSafe(db, {
+      origen: 'proveedores', ref_tabla: 'proveedores', ref_id: rows[0].id,
+      nombre: rows[0].contacto_nombre || rows[0].nombre, apellido: rows[0].contacto_apellido, telefono: rows[0].whatsapp,
+    });
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');

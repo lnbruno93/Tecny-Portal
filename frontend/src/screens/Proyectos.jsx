@@ -33,6 +33,9 @@ export default function Proyectos() {
   const [form, setForm] = useState(EMPTY_PROY);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  // Quick-add de contacto desde el modal de proyecto
+  const [nuevoContacto, setNuevoContacto] = useState('');
+  const [addingContacto, setAddingContacto] = useState(false);
 
   // Alta de movimiento (fila inline)
   const [mov, setMov] = useState(EMPTY_MOV);
@@ -84,6 +87,20 @@ export default function Proyectos() {
     if (parseFloat(mov.monto_usd) > 0) return parseFloat(mov.monto_usd);
     return 0;
   }, [mov.monto, mov.tc, mov.monto_usd]);
+
+  // Crea un contacto nuevo (origen manual) sin salir del modal y lo marca como participante.
+  async function handleQuickAddContacto() {
+    const nom = nuevoContacto.trim();
+    if (!nom) return;
+    setAddingContacto(true);
+    try {
+      const c = await contactosApi.create({ nombre: nom, origen: 'manual' });
+      setContactos(prev => [...prev, c].sort((a, b) => nombreContacto(a).localeCompare(nombreContacto(b))));
+      setForm(f => ({ ...f, participantes: [...f.participantes, c.id] }));
+      setNuevoContacto('');
+      toast.success('Contacto creado y agregado.');
+    } catch (err) { toast.error(err.message); } finally { setAddingContacto(false); }
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -399,6 +416,15 @@ export default function Proyectos() {
                   </div>
                   <div className="field">
                     <label className="field-label">Participantes <span className="muted">(de tus contactos)</span></label>
+                    {/* Quick-add: crear un contacto nuevo sin salir del modal */}
+                    <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
+                      <input className="input" style={{ flex: 1 }} placeholder="Nuevo contacto (nombre)…" value={nuevoContacto}
+                        onChange={e => setNuevoContacto(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddContacto(); } }} />
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={addingContacto || !nuevoContacto.trim()} onClick={handleQuickAddContacto}>
+                        {addingContacto ? '…' : '+ Agregar'}
+                      </button>
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6, maxHeight: 160, overflow: 'auto' }}>
                       {contactos.length === 0 && <div className="muted tiny">No hay contactos cargados.</div>}
                       {contactos.map(c => {
