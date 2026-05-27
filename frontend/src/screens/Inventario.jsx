@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
+import { readXlsxRows } from '../lib/xlsx';
+import { mapStockRows } from '../lib/importStock';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -234,83 +236,27 @@ export default function Inventario() {
 
   function openImport() { setImportRows([]); setImportError(''); setShowImport(true); }
 
-  function onImportFile(e) {
+  async function onImportFile(e) {
     setImportError('');
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const rows = parseCsv(String(ev.target.result));
-        if (rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
-        // Normaliza encabezados (sin acentos, espacios ni símbolos) y los matchea
-        // por alias, para tolerar variantes ("Precio", "Precio de venta", "Costo USD", etc.)
-        const norm = (s) => String(s ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
-        const ALIASES = {
-          nombre: ['nombre', 'modelo', 'producto'],
-          clase: ['clase'],
-          tipo_carga: ['tipocarga', 'carga'],
-          estado: ['estado'],
-          imei: ['imei'],
-          gb: ['gb', 'almacenamiento'],
-          color: ['color'],
-          bateria: ['bateria', 'bat'],
-          categoria: ['categoria', 'categoria1', 'rubro'],
-          deposito: ['deposito', 'sucursal'],
-          proveedor: ['proveedor'],
-          costo: ['costo', 'costos', 'compra', 'costounitario'],
-          costo_moneda: ['costomoneda', 'monedacosto'],
-          precio_venta: ['precioventa', 'precio', 'venta', 'preciodeventa', 'preciolista'],
-          precio_moneda: ['preciomoneda', 'monedaprecio', 'monedaventa'],
-          cantidad: ['cantidad', 'stock', 'qty', 'unidades'],
-        };
-        const headersN = rows[0].map(norm);
-        const idx = (key) => {
-          for (const alias of (ALIASES[key] || [norm(key)])) { const i = headersN.indexOf(alias); if (i >= 0) return i; }
-          return -1;
-        };
-        // Parseo de número tolerante: ignora símbolos ($), maneja coma decimal y separador de miles.
-        const parseNum = (v) => {
-          let s = String(v ?? '').replace(/[^0-9.,-]/g, '').trim();
-          if (!s) return 0;
-          s = (s.includes(',') && !s.includes('.')) ? s.replace(',', '.') : s.replace(/,/g, '');
-          const n = Number(s); return isNaN(n) ? 0 : n;
-        };
-        const pick = (val, opts, def) => { const x = String(val ?? '').trim().toLowerCase(); return opts.includes(x) ? x : def; };
-        const findCat = (n) => categorias.find(c => c.nombre.toLowerCase() === String(n ?? '').trim().toLowerCase());
-        const findDep = (d) => depositos.find(x => x.nombre.toLowerCase() === String(d ?? '').trim().toLowerCase());
-        const mapped = rows.slice(1).map(r => {
-          const get = (col) => idx(col) >= 0 ? r[idx(col)] : '';
-          const nombre = String(get('nombre') || get('modelo') || '').trim();
-          const cat = findCat(get('categoria'));
-          const dep = findDep(get('deposito'));
-          const bat = String(get('bateria')).trim();
-          const body = {
-            nombre,
-            clase: pick(get('clase'), ['celular', 'accesorio'], 'celular'),
-            tipo_carga: pick(get('tipo_carga'), ['unitario', 'lote'], 'unitario'),
-            estado: pick(get('estado'), ['disponible', 'vendido', 'en_tecnico', 'reservado'], 'disponible'),
-            imei: String(get('imei')).trim() || null,
-            gb: String(get('gb')).trim() || null,
-            color: String(get('color')).trim() || null,
-            bateria: bat === '' ? null : Math.max(0, Math.min(100, Math.round(Number(bat) || 0))),
-            categoria_id: cat ? cat.id : null,
-            deposito_id: dep ? dep.id : null,
-            proveedor: String(get('proveedor')).trim() || null,
-            costo: parseNum(get('costo')),
-            costo_moneda: String(get('costo_moneda')).trim().toUpperCase() === 'ARS' ? 'ARS' : 'USD',
-            precio_venta: parseNum(get('precio_venta')),
-            precio_moneda: String(get('precio_moneda')).trim().toUpperCase() === 'ARS' ? 'ARS' : 'USD',
-            cantidad: Math.max(0, Math.round(parseNum(get('cantidad')) || 1)),
-          };
-          return { body, error: nombre ? null : 'Falta el nombre' };
-        });
-        setImportRows(mapped);
-      } catch (err) {
-        setImportError('No se pudo leer el archivo. ¿Es un CSV válido?');
-      }
-    };
-    reader.readAsText(file);
+    const isXlsx = /\.xlsx$/i.test(file.name);
+    try {
+      // Lee .xlsx (Excel) nativo o .csv; ambos terminan como filas de celdas.
+      const rows = isXlsx
+        ? await readXlsxRows(await file.arrayBuffer())
+        : parseCsv(await file.text());
+      if (!rows || rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
+      const mapped = mapStockRows(rows, { categorias, depositos });
+      if (mapped.length === 0) { setImportError('No se encontraron filas con datos.'); return; }
+      setImportRows(mapped);
+    } catch (err) {
+      setImportError(isXlsx
+        ? 'No se pudo leer el Excel. ¿Es un .xlsx válido?'
+        : 'No se pudo leer el archivo. ¿Es un CSV válido?');
+    } finally {
+      e.target.value = ''; // permite re-seleccionar el mismo archivo
+    }
   }
 
   async function confirmImport() {
@@ -590,12 +536,12 @@ export default function Inventario() {
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                Subí un archivo <strong>.csv</strong> con las columnas de la plantilla. Categorías y depósitos se vinculan por nombre.
+                Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong>. Se detecta cada columna por su nombre (tolera aclaraciones como “(solo iph)”). Accesorio si trae STOCK, celular si trae IMEI. El depósito se vincula por su ID y la categoría por nombre.
               </p>
               <button className="btn btn-sm" onClick={descargarPlantilla} style={{ marginBottom: 12 }}><Icons.Download size={13} /> Descargar plantilla</button>
               <div className="field">
-                <label className="field-label">Archivo CSV</label>
-                <input type="file" accept=".csv,text/csv" className="input" onChange={onImportFile} />
+                <label className="field-label">Archivo (.xlsx o .csv)</label>
+                <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="input" onChange={onImportFile} />
               </div>
               {importRows.length > 0 && (
                 <div style={{ marginTop: 12 }}>
