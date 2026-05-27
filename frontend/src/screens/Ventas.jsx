@@ -200,7 +200,9 @@ export default function Ventas() {
     const [v, e, m, g, cc, ct] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
     ]);
-    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(cc); setContactos(ct);
+    // El endpoint de clientes B2B está paginado → { data, pagination }. Tomamos el array.
+    const ccArr = Array.isArray(cc) ? cc : (cc?.data ?? []);
+    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ct);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
