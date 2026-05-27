@@ -12,7 +12,7 @@ let pool, token, cajaArs, metodoTarjeta;
 const auth = () => ({ Authorization: `Bearer ${token}` });
 const hoy  = new Date().toISOString().split('T')[0];
 const saldoCaja = async (id) => Number((await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === id).saldo_actual);
-const movimientos = async (id) => (await request(app).get(`/api/tarjetas/${id}/movimientos`).set(auth())).body;
+const movimientos = async (id) => (await request(app).get(`/api/tarjetas/${id}/movimientos`).set(auth())).body.data;
 const tarjetas = async () => (await request(app).get('/api/tarjetas').set(auth())).body;
 
 beforeAll(async () => {
@@ -64,8 +64,9 @@ describe('Tarjetas — cobro automático desde Ventas', () => {
   it('el estado de cuenta unificado (GET /movimientos) lista los cobros', async () => {
     const res = await request(app).get('/api/tarjetas/movimientos').set(auth());
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    const cobro = res.body.find(m => m.tipo === 'cobro' && m.metodo_pago_id === metodoTarjeta);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.pagination).toHaveProperty('total');
+    const cobro = res.body.data.find(m => m.tipo === 'cobro' && m.metodo_pago_id === metodoTarjeta);
     expect(cobro).toBeTruthy();
     expect(cobro.metodo_nombre).toBe('Tarjeta de Crédito | 3 Cuotas');
   });
@@ -92,6 +93,19 @@ describe('Tarjetas — liquidación', () => {
     expect(await saldoCaja(cajaArs)).toBe(saldoCajaAntes + 50000);
     const t = (await tarjetas()).find(x => x.id === metodoTarjeta);
     expect(Number(t.saldo)).toBe(saldoTarjeta - 50000); // 26500
+  });
+
+  it('rechaza liquidar en una caja de otra moneda (R1)', async () => {
+    const cajaUsd = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja USD tarj', moneda: 'USD', saldo_inicial: 0 });
+    const l = await request(app).post('/api/tarjetas/liquidaciones').set(auth())
+      .send({ metodo_pago_id: metodoTarjeta, fecha: hoy, monto: 100, caja_id: cajaUsd.body.id });
+    expect(l.status).toBe(400); // tarjeta ARS, caja USD
+  });
+
+  it('no permite borrar un cobro autogenerado por una venta (R4)', async () => {
+    const cobro = (await movimientos(metodoTarjeta)).find(m => m.tipo === 'cobro');
+    const del = await request(app).delete(`/api/tarjetas/movimientos/${cobro.id}`).set(auth());
+    expect(del.status).toBe(400);
   });
 
   it('borrar la liquidación revierte la caja', async () => {

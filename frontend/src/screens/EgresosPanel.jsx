@@ -278,14 +278,14 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
 
 // ── Sub-modal: recurrentes ──
 function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, toast, confirm }) {
-  const EMPTY_R = { concepto: '', categoria_id: '', monto: '', moneda: 'USD', metodo_pago_id: '', dia_del_mes: 1 };
+  const EMPTY_R = { concepto: '', categoria_id: '', monto: '', moneda: 'USD', tc: '', metodo_pago_id: '', dia_del_mes: 1 };
   const [form, setForm] = useState(EMPTY_R);
   async function add() {
     if (!form.concepto.trim()) return;
     try {
       await egresosApi.createRecurrente({
         concepto: form.concepto.trim(), categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
-        monto: Number(form.monto) || 0, moneda: form.moneda,
+        monto: Number(form.monto) || 0, moneda: form.moneda, tc: form.tc ? Number(form.tc) : null,
         metodo_pago_id: form.metodo_pago_id ? Number(form.metodo_pago_id) : null, dia_del_mes: Number(form.dia_del_mes) || 1,
       });
       setForm(EMPTY_R); onChange();
@@ -304,6 +304,9 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 2 }}><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
             <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select></div></div>
+            {form.moneda === 'ARS' && (
+              <div className="field" style={{ width: 80 }}><label className="field-label tiny">TC</label><input type="number" min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /></div>
+            )}
             <div className="field" style={{ width: 70 }}><label className="field-label tiny">Día</label><input type="number" min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
           </div>
           <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>

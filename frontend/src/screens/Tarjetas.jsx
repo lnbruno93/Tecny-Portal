@@ -30,7 +30,7 @@ export default function Tarjetas() {
   function loadList() {
     setLoadingList(true);
     tarjetasApi.list().then(r => setList(r || [])).catch(e => toast.error(e.message)).finally(() => setLoadingList(false));
-    tarjetasApi.movimientosAll().then(r => setAllMovs(r || [])).catch(() => {});
+    tarjetasApi.movimientosAll().then(r => setAllMovs(r.data || [])).catch(() => {});
   }
   useEffect(() => { loadList(); }, []); // eslint-disable-line
   useEffect(() => { cajasApi.listCajas().then(r => setCajas(Array.isArray(r) ? r : [])).catch(() => {}); }, []);
@@ -43,7 +43,7 @@ export default function Tarjetas() {
   function loadDetalle() {
     if (!selectedId) { setDetalle(null); setMovs([]); return; }
     Promise.all([tarjetasApi.get(selectedId), tarjetasApi.movimientos(selectedId)])
-      .then(([det, m]) => { setDetalle(det); setMovs(m || []); })
+      .then(([det, m]) => { setDetalle(det); setMovs(m.data || []); })
       .catch(e => toast.error(e.message));
   }
   useEffect(() => { loadDetalle(); setLiq({ fecha: todayISO(), monto: '', caja_id: '' }); }, [selectedId]); // eslint-disable-line
@@ -56,15 +56,9 @@ export default function Tarjetas() {
     return a;
   }, { bruto: 0, comision: 0, saldo: 0, liquidado: 0 }), [list]);
 
-  // Estado de cuenta: saldo acumulado a lo largo del tiempo (cobro suma neto, liquidación resta)
-  const estadoCuenta = useMemo(() => {
-    let run = 0;
-    const rows = (allMovs || []).map(m => {
-      run += (m.tipo === 'cobro' ? 1 : -1) * Number(m.monto_neto || 0);
-      return { ...m, saldo_acum: Math.round(run * 100) / 100 };
-    });
-    return rows.reverse(); // más reciente arriba (con su saldo acumulado de ese momento)
-  }, [allMovs]);
+  // El estado de cuenta viene del server ya ordenado (más reciente arriba) y con el
+  // saldo acumulado calculado (window sobre todo el historial), así que se usa tal cual.
+  const estadoCuenta = allMovs;
 
   async function handleLiquidar(e) {
     e.preventDefault();

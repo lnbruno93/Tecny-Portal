@@ -237,6 +237,18 @@ router.delete('/cajas/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { rows: caja } = await db.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (!caja[0]) return res.status(404).json({ error: 'Caja no encontrada' });
+    // No permitir borrar una caja en uso: perdería trazabilidad de dinero ya registrado.
+    if (caja[0].es_financiera) return res.status(409).json({ error: 'No se puede borrar: es la caja Financiera. Desmarcala primero.' });
+    if (caja[0].es_tarjeta)    return res.status(409).json({ error: 'No se puede borrar: es un método tarjeta. Desmarcá "Es tarjeta" primero.' });
+    const [{ rows: mov }, { rows: egr }] = await Promise.all([
+      db.query('SELECT 1 FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL LIMIT 1', [id]),
+      db.query("SELECT 1 FROM egresos WHERE metodo_pago_id = $1 AND estado = 'pendiente' AND deleted_at IS NULL LIMIT 1", [id]),
+    ]);
+    if (mov[0]) return res.status(409).json({ error: 'No se puede borrar: tiene movimientos registrados. Desactivala en su lugar.' });
+    if (egr[0]) return res.status(409).json({ error: 'No se puede borrar: tiene egresos pendientes asociados.' });
+
     const { rows } = await db.query(
       'UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );

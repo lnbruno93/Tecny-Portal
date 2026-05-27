@@ -87,4 +87,14 @@ describe('Egresos — recurrentes', () => {
     expect(gen).toBeTruthy();
     expect(gen.fecha.startsWith('2026-06-05')).toBe(true);
   });
+
+  it('un recurrente en ARS con TC genera el egreso con monto_usd correcto (R3)', async () => {
+    await request(app).post('/api/egresos/recurrentes').set(auth())
+      .send({ concepto: 'Expensas oficina', monto: 142500, moneda: 'ARS', tc: 1425, dia_del_mes: 10 });
+    await request(app).post('/api/egresos/generar').set(auth()).send({ periodo: '2026-07' });
+    const list = await request(app).get('/api/egresos?estado=pendiente&desde=2026-07-01&hasta=2026-07-31').set(auth());
+    const gen = list.body.data.find(e => e.concepto === 'Expensas oficina');
+    expect(gen).toBeTruthy();
+    expect(Number(gen.monto_usd)).toBe(100); // 142500 / 1425
+  });
 });

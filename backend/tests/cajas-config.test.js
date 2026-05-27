@@ -71,6 +71,16 @@ describe('Config Cajas — CRUD', () => {
     expect(badId.status).toBe(400);
   });
 
+  it('no permite borrar una caja en uso (financiera o con movimientos) — R2', async () => {
+    const fin = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja Fin R2', moneda: 'ARS', es_financiera: true });
+    expect((await request(app).delete(`/api/cajas/cajas/${fin.body.id}`).set(auth())).status).toBe(409);
+
+    const c = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja Mov R2', moneda: 'USD', saldo_inicial: 0 });
+    await request(app).post(`/api/cajas/cajas/${c.body.id}/movimientos`).set(auth())
+      .send({ fecha: new Date().toISOString().split('T')[0], tipo: 'ingreso', monto: 100, concepto: 'arqueo' });
+    expect((await request(app).delete(`/api/cajas/cajas/${c.body.id}`).set(auth())).status).toBe(409);
+  });
+
   it('la caja desactivada NO aparece en los métodos activos de ventas', async () => {
     const created = await request(app).post('/api/cajas/cajas').set(auth())
       .send({ nombre: 'Caja Inactiva', moneda: 'USD', activo: false });
