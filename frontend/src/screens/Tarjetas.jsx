@@ -91,7 +91,7 @@ export default function Tarjetas() {
                   borderLeft: selectedId === t.id ? '3px solid var(--accent)' : '3px solid transparent',
                 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{t.nombre}</div>
-                  <div className="muted tiny" style={{ marginTop: 2 }}>Comisión {fmt(t.comision_pct || 0)}%</div>
+                  <div className="muted tiny" style={{ marginTop: 2 }}>Comisión {Number(t.comision_pct || 0)}%</div>
                   <div className="mono tiny" style={{ marginTop: 2, color: Number(t.saldo) > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
                     Te deben: {sym(t.moneda)} {fmt(t.saldo)}
                   </div>
@@ -106,7 +106,7 @@ export default function Tarjetas() {
             <div className="stack" style={{ gap: 14 }}>
               <div className="card">
                 <div style={{ fontWeight: 700, fontSize: 18 }}>{detalle.nombre}</div>
-                <div className="muted tiny" style={{ marginTop: 4 }}>Comisión de la financiera: {fmt(detalle.comision_pct || 0)}%</div>
+                <div className="muted tiny" style={{ marginTop: 4 }}>Comisión de la financiera: {Number(detalle.comision_pct || 0)}%</div>
               </div>
 
               <div className="row">

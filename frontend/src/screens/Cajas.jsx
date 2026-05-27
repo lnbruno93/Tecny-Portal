@@ -723,7 +723,7 @@ export default function Cajas() {
                       </td>
                       <td>
                         {c.es_tarjeta
-                          ? <span className="badge badge-info" title="Método tarjeta — comisión de la financiera">Tarjeta · {fmt(c.comision_pct || 0)}%</span>
+                          ? <span className="badge badge-info" title="Método tarjeta — comisión de la financiera">Tarjeta · {Number(c.comision_pct || 0)}%</span>
                           : <span className="dim">—</span>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
