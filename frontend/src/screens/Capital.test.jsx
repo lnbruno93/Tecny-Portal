@@ -53,9 +53,10 @@ describe('Pantalla 360 & Capital', () => {
     expect(screen.getByText('Deudas de clientes B2B a cobrar')).toBeInTheDocument();
     expect(screen.getByText('Stock valorizado')).toBeInTheDocument();
     expect(screen.getByText('Deudas a proveedores a pagar')).toBeInTheDocument();
-    // detalle por caja en la tabla "Estado de cada caja"
-    expect(screen.getAllByText('Caja Cripto').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Caja Pesos').length).toBeGreaterThanOrEqual(1);
+    // cada caja entra como fila en "Suman" dentro de la composición
+    expect(screen.getByText('Caja Cripto')).toBeInTheDocument();
+    expect(screen.getByText('Caja Pesos')).toBeInTheDocument();
+    expect(screen.getByText('Caja USD')).toBeInTheDocument();
     // el ledger NO se muestra en la pestaña Capital
     expect(screen.queryByText('Venta X')).not.toBeInTheDocument();
   });

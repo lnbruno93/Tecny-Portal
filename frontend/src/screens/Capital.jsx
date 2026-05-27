@@ -66,11 +66,17 @@ export default function Capital() {
     // Lo que le debemos a proveedores (USD) → resta.
     const provUsd = n(provSaldos.total_deuda_usd);
     // Cards de composición (lo que suma en verde, lo que resta en rojo).
+    // Cada caja entra como su propia fila en "Suman".
+    const cajaCards = cajasList.map(c => ({
+      label: c.nombre, tone: 'pos', moneda: c.moneda,
+      montos: [[sym(c.moneda), n(c.saldo_actual)]],
+    }));
     const cards = [
-      { label: 'Inversiones recibidas',           tone: 'neg', montos: [['$', inversionesArs]] },
+      ...cajaCards,
       { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [['$', deudasArs], ['u$s', deudasUsd]] },
       { label: 'Deudas de clientes B2B a cobrar', tone: 'pos', montos: [['u$s', b2bUsd]] },
       { label: 'Stock valorizado',                tone: 'pos', montos: [['$', invArs], ['u$s', invUsd]] },
+      { label: 'Inversiones recibidas',           tone: 'neg', montos: [['$', inversionesArs]] },
       { label: 'Deudas a proveedores a pagar',    tone: 'neg', montos: [['u$s', provUsd]] },
     ];
     const totalArs  = cajasArs  + invArs + deudasArs - inversionesArs;
@@ -124,14 +130,18 @@ export default function Capital() {
           return (
             <div key={g.tone}>
               <div className="kpi-label" style={{ padding: '12px 16px 2px' }}>{g.titulo}</div>
-              {patrimonio.cards.filter(c => c.tone === g.tone).map(c => (
-                <div key={c.label} className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+              {patrimonio.cards.filter(c => c.tone === g.tone).map((c, idx) => (
+                <div key={c.label + idx} className="flex-row" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: '0 0 auto' }} />
                     <span style={{ fontWeight: 600 }}>{c.label}</span>
+                    {c.moneda && <span className="ccy" style={{ marginLeft: 2 }}>{c.moneda}</span>}
                   </span>
-                  <span className="mono" style={{ color, display: 'inline-flex', gap: 18, fontWeight: 700 }}>
-                    {c.montos.map(([pre, v], i) => <span key={i}>{(g.tone === 'neg' ? '− ' : '') + pre + ' ' + fmt(v)}</span>)}
+                  <span className="mono" style={{ display: 'inline-flex', gap: 18, fontWeight: 700 }}>
+                    {c.montos.map(([pre, v], i) => {
+                      const resta = g.tone === 'neg' || Number(v) < 0;
+                      return <span key={i} style={{ color: resta ? 'var(--neg)' : 'var(--pos)' }}>{(resta ? '− ' : '') + pre + ' ' + fmt(v)}</span>;
+                    })}
                   </span>
                 </div>
               ))}
@@ -140,29 +150,6 @@ export default function Capital() {
         })}
       </div>
 
-      {/* Estado de cada caja */}
-      <div className="card card-flush" style={{ marginBottom: 14 }}>
-        <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Cajas — {cajasList.length}</div></div>
-        <table className="tbl">
-          <thead>
-            <tr><th>Caja</th><th>Moneda</th><th style={{ textAlign: 'right' }}>Saldo actual</th><th>Tipo</th><th>Estado</th></tr>
-          </thead>
-          <tbody>
-            {cajasList.length === 0 && <tr><td colSpan={5} className="empty">Sin cajas. Creá una en Cajas → Config.</td></tr>}
-            {cajasList.map(c => (
-              <tr key={c.id} style={{ opacity: c.activo ? 1 : 0.55 }}>
-                <td style={{ fontWeight: 600 }}>{c.nombre}</td>
-                <td><span className="ccy">{c.moneda}</span></td>
-                <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(c.moneda)} {fmt(c.saldo_actual)}</td>
-                <td>
-                  {c.es_financiera ? <Badge tone="accent">Financiera</Badge> : c.es_tarjeta ? <Badge tone="info">Tarjeta {Number(c.comision_pct || 0)}%</Badge> : <span className="dim">—</span>}
-                </td>
-                <td><Badge tone={c.activo ? 'pos' : 'warn'}>{c.activo ? 'Activa' : 'Inactiva'}</Badge></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
       </>}
 
       {tab === 'movimientos' && <>
