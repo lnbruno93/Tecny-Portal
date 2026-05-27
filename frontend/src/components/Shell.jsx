@@ -79,6 +79,7 @@ const NAV_MAIN = [
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas',       group: 2 },
+  { id: 'egresos',    path: '/egresos',    label: 'Egresos',    icon: 'ArrowDownRight', perm: 'cajas',   group: 2 },
   { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario',  group: 2 },
   { id: 'proveedores',path: '/proveedores',label: 'Proveedores',icon: 'Building',   perm: 'proveedores', group: 2 },
   { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera',  group: 2 },
@@ -100,6 +101,7 @@ const SCREEN_LABELS = {
   cotizador:  'Cotizador',
   financiera: 'Financiera',
   cajas:      'Cajas',
+  egresos:    'Egresos',
   envios:     'Envíos',
   cuentas:    'Venta & Gestión B2B',
   contactos:  'Contactos',
@@ -167,7 +169,7 @@ function Sidebar({ badges = {}, open, onClose }) {
                 className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
                 onClick={onClose}
               >
-                <span className="ico">{I && <I size={17} />}</span>
+                <span className="ico">{I && <I size={16} />}</span>
                 <span>{n.label}</span>
                 {badges[n.id] != null && <span className="badge">{badges[n.id]}</span>}
               </NavLink>
@@ -189,7 +191,7 @@ function Sidebar({ badges = {}, open, onClose }) {
                   className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
                   onClick={onClose}
                 >
-                  <span className="ico">{I && <I size={17} />}</span>
+                  <span className="ico">{I && <I size={16} />}</span>
                   <span>{n.label}</span>
                 </NavLink>
               );

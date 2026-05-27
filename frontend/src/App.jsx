@@ -25,6 +25,7 @@ const Ventas     = lazy(() => import('./screens/Ventas'));
 const Proveedores = lazy(() => import('./screens/Proveedores'));
 const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
+const Egresos    = lazy(() => import('./screens/Egresos'));
 
 function PageLoader() {
   return (
@@ -112,6 +113,11 @@ export default function App() {
                   <Route path="cajas/*" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Cajas /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="egresos" element={
+                    <RequirePermission perm="cajas">
+                      <ErrorBoundary><Egresos /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="envios" element={
