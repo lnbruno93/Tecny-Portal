@@ -94,7 +94,7 @@ export default function Proyectos() {
     if (!nom) return;
     setAddingContacto(true);
     try {
-      const c = await contactosApi.create({ nombre: nom, origen: 'manual' });
+      const c = await contactosApi.create({ nombre: nom, origen: 'proyectos' });
       setContactos(prev => [...prev, c].sort((a, b) => nombreContacto(a).localeCompare(nombreContacto(b))));
       setForm(f => ({ ...f, participantes: [...f.participantes, c.id] }));
       setNuevoContacto('');

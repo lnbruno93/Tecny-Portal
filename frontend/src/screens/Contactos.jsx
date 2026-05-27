@@ -12,6 +12,7 @@ const ORIGENES = [
   { value: 'b2b',         label: 'Gestión B2B', cls: 'badge badge-info' },
   { value: 'proveedores', label: 'Proveedores', cls: 'badge' },
   { value: 'envios',      label: 'Envíos',      cls: 'badge' },
+  { value: 'proyectos',   label: 'Proyectos',   cls: 'badge badge-info' },
 ];
 const TIPOS = ['cliente', 'amigo', 'familiar', 'inversor', 'ipro team'];
 const origenMeta = (o) => ORIGENES.find(x => x.value === o) || { label: o || '—', cls: 'badge' };

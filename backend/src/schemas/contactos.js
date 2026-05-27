@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const TIPOS_CONTACTO = ['amigo','familiar','cliente','inversor','ipro team'];
-const ORIGENES = ['ventas','b2b','proveedores','envios','manual'];
+const ORIGENES = ['ventas','b2b','proveedores','envios','manual','proyectos'];
 
 const createContactoSchema = z.object({
   nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
