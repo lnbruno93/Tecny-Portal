@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../lib/api', () => {
@@ -31,24 +31,49 @@ vi.mock('../lib/api', () => {
   };
 });
 
-import { ventas as ventasApi } from '../lib/api';
+import { ventas as ventasApi, cuentas as cuentasApi } from '../lib/api';
 import Ventas from './Ventas';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
-import { PageActionsProvider } from '../contexts/PageActionsContext';
+import { PageActionsProvider, usePageActions } from '../contexts/PageActionsContext';
+
+// La acción "Nueva venta" se registra vía contexto (la dispara el botón del Shell).
+// Como el test no monta el Shell, exponemos un botón que dispara esa acción.
+function ActionTrigger() {
+  const { primaryAction } = usePageActions();
+  return primaryAction ? <button onClick={primaryAction.onClick}>__abrir__</button> : null;
+}
+
+function renderVentas() {
+  return render(
+    <MemoryRouter>
+      <ToastProvider><ConfirmProvider><PageActionsProvider>
+        <Ventas />
+        <ActionTrigger />
+      </PageActionsProvider></ConfirmProvider></ToastProvider>
+    </MemoryRouter>
+  );
+}
 
 describe('Pantalla Ventas', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it('monta sin crashear y carga el dashboard + lista', async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider><ConfirmProvider><PageActionsProvider>
-          <Ventas />
-        </PageActionsProvider></ConfirmProvider></ToastProvider>
-      </MemoryRouter>
-    );
+    renderVentas();
     await waitFor(() => expect(ventasApi.dashboard).toHaveBeenCalled());
     await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+  });
+
+  it('abre "Nueva venta" sin crashear con clientes B2B paginados', async () => {
+    // El endpoint de clientes B2B está paginado → { data, pagination }.
+    cuentasApi.clientes.mockResolvedValueOnce({
+      data: [{ id: 7, nombre: 'Mayorista', apellido: 'SA' }],
+      pagination: { page: 1, pages: 1, total: 1 },
+    });
+    renderVentas();
+    await waitFor(() => expect(cuentasApi.clientes).toHaveBeenCalled());
+    fireEvent.click(await screen.findByText('__abrir__'));
+    // El selector de cliente CC debe renderizar la opción (clientesCC tratado como array).
+    expect(await screen.findByText('Mayorista SA')).toBeInTheDocument();
   });
 });

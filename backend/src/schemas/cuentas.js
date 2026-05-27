@@ -41,13 +41,15 @@ const itemMovimientoCCSchema = z.object({
 
 const createMovimientoCCSchema = z.object({
   cliente_cc_id: z.number().int().positive('ID de cliente requerido'),
+  // Comparación date-only (lexical sobre strings ISO YYYY-MM-DD), siempre contra
+  // el "hoy" en UTC — la misma base que usa el front (new Date().toISOString()).
+  // Evita el bug de zona horaria: parsear con new Date(d+'T00:00:00') usaba la TZ
+  // local del server y, pasada la medianoche UTC, rechazaba el día actual como "futuro".
   fecha:         z.string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)')
+    .date('Fecha inválida (YYYY-MM-DD)')
     .refine(d => {
-      const date = new Date(d + 'T00:00:00');
-      const now  = new Date();
-      const min  = new Date('2000-01-01T00:00:00');
-      return date <= now && date >= min;
+      const todayUTC = new Date().toISOString().split('T')[0];
+      return d >= '2000-01-01' && d <= todayUTC;
     }, 'La fecha no puede ser futura ni anterior al año 2000'),
   tipo:          z.enum(TIPOS_MOVIMIENTO_CC, { error: `Tipo debe ser: ${TIPOS_MOVIMIENTO_CC.join(', ')}` }),
   descripcion:   z.string().trim().max(500).optional().nullable(),
