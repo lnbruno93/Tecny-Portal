@@ -6,6 +6,7 @@ vi.mock('../lib/api', () => ({
     listCajas: vi.fn().mockResolvedValue([
       { id: 1, nombre: 'Caja Pesos', moneda: 'ARS', saldo_actual: '150000', activo: true, es_financiera: false, es_tarjeta: false },
       { id: 2, nombre: 'Caja USD', moneda: 'USD', saldo_actual: '900', activo: true, es_financiera: false, es_tarjeta: false },
+      { id: 3, nombre: 'Caja Cripto', moneda: 'USDT', saldo_actual: '250', activo: true, es_financiera: false, es_tarjeta: false },
     ]),
     ledger: vi.fn().mockResolvedValue({
       data: [
@@ -40,6 +41,9 @@ describe('Pantalla 360 & Capital', () => {
     render(<Capital />);
     expect(await screen.findByText('Patrimonio · ARS')).toBeInTheDocument();
     expect(screen.getByText('Patrimonio · USD')).toBeInTheDocument();
+    expect(screen.getByText('Patrimonio · USDT')).toBeInTheDocument();
+    // cada caja aparece como su propia fila en la composición
+    expect(screen.getAllByText('Caja Cripto').length).toBeGreaterThanOrEqual(1);
     // composición del patrimonio
     expect(screen.getByText('Composición del patrimonio')).toBeInTheDocument();
     expect(screen.getByText('Inventario (a costo)')).toBeInTheDocument();

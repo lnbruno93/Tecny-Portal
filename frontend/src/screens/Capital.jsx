@@ -47,11 +47,15 @@ export default function Capital() {
   const patrimonio = useMemo(() => {
     const n = (x) => Number(x || 0);
     const inv = metricas || {};
-    // Una fila por caja: el saldo va a la columna de su moneda (USDT cuenta como USD).
+    // Una fila por caja: el saldo va a la columna de su moneda (ARS/USD/USDT por separado).
     const cajaRows = cajasList.map(c => {
-      const esArs = c.moneda === 'ARS';
       const saldo = n(c.saldo_actual);
-      return { label: c.nombre, sub: c.moneda, caja: true, ars: esArs ? saldo : null, usd: esArs ? null : saldo };
+      return {
+        label: c.nombre, sub: c.moneda, caja: true,
+        ars:  c.moneda === 'ARS'  ? saldo : null,
+        usd:  c.moneda === 'USD'  ? saldo : null,
+        usdt: c.moneda === 'USDT' ? saldo : null,
+      };
     });
     const invArs = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
     const invUsd = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
@@ -60,15 +64,16 @@ export default function Capital() {
     const deudasUsd = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
     const ccUsd = n(ccGeneral.neto);
     const conceptRows = [
-      { label: 'Inventario (a costo)', ars: invArs,         usd: invUsd },
-      { label: 'Inversiones',          ars: inversionesArs, usd: null },
-      { label: 'Deudas a cobrar',      ars: deudasArs,      usd: deudasUsd },
-      { label: 'Cuenta corriente B2B', ars: null,           usd: ccUsd },
+      { label: 'Inventario (a costo)', ars: invArs,         usd: invUsd, usdt: null },
+      { label: 'Inversiones',          ars: inversionesArs, usd: null,   usdt: null },
+      { label: 'Deudas a cobrar',      ars: deudasArs,      usd: deudasUsd, usdt: null },
+      { label: 'Cuenta corriente B2B', ars: null,           usd: ccUsd,  usdt: null },
     ];
     const rows = [...cajaRows, ...conceptRows];
-    const totalArs = rows.reduce((s, r) => s + (r.ars || 0), 0);
-    const totalUsd = rows.reduce((s, r) => s + (r.usd || 0), 0);
-    return { rows, totalArs, totalUsd };
+    const totalArs  = rows.reduce((s, r) => s + (r.ars  || 0), 0);
+    const totalUsd  = rows.reduce((s, r) => s + (r.usd  || 0), 0);
+    const totalUsdt = rows.reduce((s, r) => s + (r.usdt || 0), 0);
+    return { rows, totalArs, totalUsd, totalUsdt };
   }, [cajasList, metricas, resumen, ccGeneral]);
 
   return (
@@ -90,6 +95,10 @@ export default function Capital() {
           <div className="kpi-label">Patrimonio · USD</div>
           <div className="kpi-value mono" style={{ color: patrimonio.totalUsd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>u$s {fmt(patrimonio.totalUsd)}</div>
         </div>
+        <div className="card card-tight" style={{ flex: 1 }}>
+          <div className="kpi-label">Patrimonio · USDT</div>
+          <div className="kpi-value mono" style={{ color: patrimonio.totalUsdt >= 0 ? 'var(--pos)' : 'var(--neg)' }}>USDT {fmt(patrimonio.totalUsdt)}</div>
+        </div>
       </div>
 
       {/* Composición del patrimonio */}
@@ -100,7 +109,7 @@ export default function Capital() {
         </div>
         <table className="tbl">
           <thead>
-            <tr><th>Concepto</th><th style={{ textAlign: 'right' }}>ARS</th><th style={{ textAlign: 'right' }}>USD</th></tr>
+            <tr><th>Concepto</th><th style={{ textAlign: 'right' }}>ARS</th><th style={{ textAlign: 'right' }}>USD</th><th style={{ textAlign: 'right' }}>USDT</th></tr>
           </thead>
           <tbody>
             {patrimonio.rows.map((r, i) => (
@@ -109,14 +118,16 @@ export default function Capital() {
                   {r.label}
                   {r.caja && <span className="muted tiny" style={{ marginLeft: 6 }}>caja · {r.sub}</span>}
                 </td>
-                <td className="mono" style={{ textAlign: 'right' }}>{r.ars == null ? <span className="dim">—</span> : '$ ' + fmt(r.ars)}</td>
-                <td className="mono" style={{ textAlign: 'right' }}>{r.usd == null ? <span className="dim">—</span> : 'u$s ' + fmt(r.usd)}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{r.ars  == null ? <span className="dim">—</span> : '$ ' + fmt(r.ars)}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{r.usd  == null ? <span className="dim">—</span> : 'u$s ' + fmt(r.usd)}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{r.usdt == null ? <span className="dim">—</span> : 'USDT ' + fmt(r.usdt)}</td>
               </tr>
             ))}
             <tr style={{ borderTop: '2px solid var(--border)' }}>
               <td style={{ fontWeight: 800 }}>Total</td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>$ {fmt(patrimonio.totalArs)}</td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>u$s {fmt(patrimonio.totalUsd)}</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 800 }}>USDT {fmt(patrimonio.totalUsdt)}</td>
             </tr>
           </tbody>
         </table>
