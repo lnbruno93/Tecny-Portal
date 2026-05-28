@@ -4,7 +4,7 @@
 //      toast.error('No se pudo guardar');
 //      toast.info('Procesando…');
 
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 
 const ToastContext = createContext(null);
 
@@ -31,16 +31,26 @@ export function ToastProvider({ children }) {
     return id;
   }, [dismiss]);
 
-  const toast = {
+  // CRÍTICO: memoizamos `toast` para que su referencia sea estable entre
+  // renders del provider. Sin esto, cada vez que se agrega o quita un toast
+  // (cambia `toasts` → re-render), `toast` sería un objeto nuevo. Componentes
+  // que tengan `toast` en las deps de useEffect (Desglose360, etc.) entrarían
+  // en loop si su effect dispara errores que generan toast.error → render
+  // → nueva ref → effect → error → loop. Memoizando, la cadena se rompe.
+  const toast = useMemo(() => ({
     success: (msg, opts) => push(msg, 'success', opts?.duration ?? 4000),
     error:   (msg, opts) => push(msg, 'error',   opts?.duration ?? 6000),
     info:    (msg, opts) => push(msg, 'info',    opts?.duration ?? 4000),
     warn:    (msg, opts) => push(msg, 'warn',    opts?.duration ?? 5000),
     dismiss,
-  };
+  }), [push, dismiss]);
+
+  // El value del provider también memoizado para evitar re-renders innecesarios
+  // en todos los consumers cuando este componente se re-renderiza por sus props.
+  const value = useMemo(() => ({ toast }), [toast]);
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={value}>
       {children}
       <ToastContainer toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>

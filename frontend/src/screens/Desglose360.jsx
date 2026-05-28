@@ -18,7 +18,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
-import { useToast } from '../contexts/ToastContext';
 
 function fmt(n) { return Math.round(Number(n) || 0).toLocaleString('es-AR'); }
 function money(n, moneda) {
@@ -57,7 +56,6 @@ const ESTADO_LABEL = {
 };
 
 export default function Desglose360() {
-  const { toast } = useToast();
   const navigate = useNavigate();
 
   const [por, setPor] = useState('categoria');
@@ -68,6 +66,10 @@ export default function Desglose360() {
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ filas: [], totales: {} });
+  // Error inline (no toast): si el fetch falla, lo mostramos en la pantalla.
+  // Decisión deliberada — evitamos cualquier riesgo de cadena toast → render → effect
+  // → toast → loop. La pantalla es read-only, no hay urgencia de notificación lateral.
+  const [error, setError] = useState(null);
 
   // Carga con debounce para la búsqueda (no consultamos en cada tecla).
   useEffect(() => {
@@ -79,13 +81,14 @@ export default function Desglose360() {
       if (buscar.trim()) params.buscar = buscar.trim();
 
       setLoading(true);
+      setError(null);
       inventario.desglose(params)
-        .then(setData)
-        .catch(e => toast.error(e.message))
+        .then(d => { setData(d); setError(null); })
+        .catch(e => setError(e.message || 'No se pudo cargar el desglose'))
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(t);
-  }, [por, clase, estadoFiltro, soloStock, buscar, toast]);
+  }, [por, clase, estadoFiltro, soloStock, buscar]);
 
   // Sort: por inversión total descendente (lo más invertido primero, "dónde está la plata").
   const filasOrdenadas = useMemo(() => {
@@ -209,8 +212,20 @@ export default function Desglose360() {
         </div>
       </div>
 
-      {/* ── Tabla ── */}
-      {loading ? (
+      {/* ── Estado / Tabla ── */}
+      {error ? (
+        <div className="card card-tight" style={{ background: 'rgba(255, 80, 80, 0.08)', border: '1px solid var(--neg)', color: 'var(--text)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Icons.X size={16} style={{ color: 'var(--neg)' }} />
+            <strong>No se pudo cargar el desglose</strong>
+          </div>
+          <div className="muted tiny" style={{ marginBottom: 10 }}>{error}</div>
+          <div className="muted tiny">
+            Si recién acabamos de subir esta vista, el backend puede estar todavía desplegando.
+            Esperá un par de minutos e intentá de nuevo.
+          </div>
+        </div>
+      ) : loading ? (
         <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Calculando…</div>
       ) : filasOrdenadas.length === 0 ? (
         <div className="empty">Sin resultados para los filtros aplicados.</div>
