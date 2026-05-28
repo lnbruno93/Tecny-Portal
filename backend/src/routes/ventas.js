@@ -23,7 +23,7 @@ function genOrderId() {
   return `ORD-${yy}-${crypto.randomBytes(6).toString('hex')}`;
 }
 
-const { err400, retieneStock, necesidadPorProducto, descontarStock, reponerStock } = require('../lib/ventaCore');
+const { err400, retieneStock, descontarStock, reponerStock } = require('../lib/ventaCore');
 
 // Sincroniza los ingresos de caja de una venta con el ledger (Fase 2b).
 // Idempotente: revierte los movimientos previos y re-postea según el estado actual.
