@@ -5,8 +5,14 @@ const envioItemSchema = z.object({
   descripcion: z.string().trim().max(300).optional().nullable(),
   monto:       z.number().min(0).default(0),
   metodo_pago: z.string().trim().max(100).optional().nullable(),
-  // Caja (ARS) donde ingresa el cobro de un item 'pago'
+  // Caja donde ingresa el cobro de un item 'pago' (cualquier moneda; el frontend
+  // excluye financieras y tarjetas).
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
+  // Moneda del pago (debe coincidir con el grupo de la caja: ARS o USD/USDT).
+  // El frontend la infiere de la caja elegida; default 'ARS' para compat.
+  moneda: z.enum(['ARS','USD','USDT']).optional().default('ARS'),
+  // TC opcional — necesario para items en ARS si querés monto_usd preciso.
+  tc: z.number().positive().optional().nullable(),
   // Producto linkeado (para items 'producto'): si se setea + registrar_venta=true,
   // la venta auto-creada descuenta stock real de ese producto.
   producto_id: z.coerce.number().int().positive().optional().nullable(),

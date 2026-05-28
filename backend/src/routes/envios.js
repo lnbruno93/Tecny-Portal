@@ -12,34 +12,35 @@ const { revertirEfectosVenta } = require('../lib/cancelarVenta');
 // Sincroniza el impacto de un envío en el ledger de cajas: revierte los ingresos
 // previos y, si el envío no está cancelado, re-postea un ingreso por cada item
 // 'pago' que tenga una caja asignada (metodo_pago_id). Idempotente.
+// La moneda del pago se respeta (debe coincidir con el grupo de la caja; lo valida
+// postCajaMovimiento). TC opcional, útil para calcular monto_usd cuando moneda='ARS'.
 async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
   await reverseCajaMovimientos(client, 'envios', envioId);
   if (estado === 'Cancelado') return;
-  // Los cobros de envío son siempre en ARS (el form captura "Monto ARS"); el front
-  // solo ofrece cajas ARS. Dejar moneda 'ARS' fija es intencional: la guarda de
-  // postCajaMovimiento rechaza una caja no-ARS, evitando contaminar su saldo.
   const { rows: pagos } = await client.query(
-    `SELECT metodo_pago_id, monto FROM envio_items
+    `SELECT metodo_pago_id, monto, moneda, tc FROM envio_items
       WHERE envio_id = $1 AND tipo = 'pago' AND metodo_pago_id IS NOT NULL AND monto > 0`,
     [envioId]
   );
   for (const p of pagos) {
     await postCajaMovimiento(client, {
       caja_id: p.metodo_pago_id, fecha, tipo: 'ingreso',
-      monto: p.monto, moneda: 'ARS', tc: null,
+      monto: p.monto, moneda: p.moneda || 'ARS', tc: p.tc ?? null,
       origen: 'envio', ref_tabla: 'envios', ref_id: envioId,
       concepto: `Cobro envío #${envioId}`, user_id: userId,
     });
   }
 }
 
-// Inserta los items del envío (incluye producto_id si vino).
+// Inserta los items del envío (incluye producto_id, moneda y tc si vinieron).
 async function insertarItems(client, envioId, items) {
   for (const item of items || []) {
     await client.query(
-      `INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [envioId, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null, item.metodo_pago_id ?? null, item.producto_id ?? null]
+      `INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id, moneda, tc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [envioId, item.tipo, item.descripcion ?? null, item.monto,
+       item.metodo_pago ?? null, item.metodo_pago_id ?? null, item.producto_id ?? null,
+       item.moneda || 'ARS', item.tc ?? null]
     );
   }
 }

@@ -14,7 +14,7 @@ const EMPTY_FORM = {
   prioridad: '', estado: 'Pendiente', registrar_venta: false,
   tc: '', // TC del envío (requerido cuando registrar_venta y hay items 'producto')
 };
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '' };
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'ARS', tc: '' };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -65,7 +65,10 @@ export default function Envios() {
   const [deletingId, setDeletingId] = useState(null);
   // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
   const [dateFilter, setDateFilter] = useState(null);
-  const [cajasArs, setCajasArs] = useState([]); // cajas ARS para asignar el cobro
+  // Todas las cajas activas (cualquier moneda) salvo financieras y tarjetas:
+  // esas requieren flujos especiales (comprobante de Financiera, cobros pendientes
+  // de tarjeta con comisión) que viven en Ventas y no están portados a Envíos.
+  const [cajasPago, setCajasPago] = useState([]);
   // Búsqueda de productos para linkear: igual que en Ventas — debounce + backend search.
   // Un solo "search activo a la vez" (itemIdx identifica qué item del form está buscando).
   const [prodSearch, setProdSearch] = useState({ itemIdx: null, q: '', results: [], loading: false });
@@ -74,7 +77,7 @@ export default function Envios() {
 
   useEffect(() => {
     cajasApi.listCajas()
-      .then(list => setCajasArs((list || []).filter(c => c.activo !== false && c.moneda === 'ARS')))
+      .then(list => setCajasPago((list || []).filter(c => c.activo !== false && !c.es_financiera && !c.es_tarjeta)))
       .catch(console.error);
   }, []);
 
@@ -117,6 +120,18 @@ export default function Envios() {
   function unpickProducto(idx) {
     setItems(i => i.map((it, j) => j !== idx ? it : ({ ...it, producto_id: '', descripcion: '', monto: '', _imei: '' })));
   }
+  // Setea la caja del pago e infiere la moneda directamente (debe coincidir con el grupo
+  // de la caja para que el ledger acepte el movimiento).
+  function pickCajaPago(idx, cajaId) {
+    const c = cajasPago.find(x => String(x.id) === String(cajaId));
+    setItems(i => i.map((it, j) => j !== idx ? it : ({
+      ...it,
+      metodo_pago_id: cajaId,
+      moneda: c ? c.moneda : (it.moneda || 'ARS'),
+      // Si la caja no es ARS, limpiamos TC (no aporta nada para USD/USDT).
+      tc: c && c.moneda !== 'ARS' ? '' : it.tc,
+    })));
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -157,6 +172,8 @@ export default function Envios() {
             metodo_pago: i.metodo_pago.trim() || null,
             metodo_pago_id: (i.tipo === 'pago' && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
             producto_id: (i.tipo === 'producto' && i.producto_id) ? Number(i.producto_id) : null,
+            moneda: i.tipo === 'pago' ? (i.moneda || 'ARS') : 'ARS',
+            tc: (i.tipo === 'pago' && i.tc) ? Number(i.tc) : null,
           })),
       };
       const nuevo = await envios.create(payload);
@@ -839,7 +856,7 @@ export default function Envios() {
                               </div>
                             )}
                             <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Monto ARS</label>
+                              <label className="field-label">Monto {it.tipo === 'pago' ? <span className="muted tiny">({it.moneda || 'ARS'})</span> : <span className="muted tiny">(ARS)</span>}</label>
                               <input type="number" className="input mono" placeholder="0"
                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                             </div>
@@ -849,14 +866,23 @@ export default function Envios() {
                               <Icons.X size={14} />
                             </button>
                           </div>
-                          {it.tipo === 'pago' && cajasArs.length > 0 && (
-                            <div className="field" style={{ marginBottom: 0, marginTop: 8 }}>
-                              <label className="field-label">Caja (ARS) donde ingresa el cobro</label>
-                              <select className="input" value={it.metodo_pago_id}
-                                onChange={e => setItem(idx, 'metodo_pago_id', e.target.value)}>
-                                <option value="">Sin caja (no impacta)…</option>
-                                {cajasArs.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                              </select>
+                          {it.tipo === 'pago' && cajasPago.length > 0 && (
+                            <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
+                              <div className="field" style={{ marginBottom: 0 }}>
+                                <label className="field-label">Caja donde ingresa el cobro</label>
+                                <select className="input" value={it.metodo_pago_id}
+                                  onChange={e => pickCajaPago(idx, e.target.value)}>
+                                  <option value="">Sin caja (no impacta)…</option>
+                                  {cajasPago.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.moneda}</option>)}
+                                </select>
+                              </div>
+                              {it.metodo_pago_id && it.moneda === 'ARS' && (
+                                <div className="field" style={{ marginBottom: 0 }}>
+                                  <label className="field-label">TC <span className="muted tiny">(opcional)</span></label>
+                                  <input type="number" className="input mono" placeholder="USD/ARS"
+                                         value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
