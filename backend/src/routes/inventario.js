@@ -1,10 +1,24 @@
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
+
+// Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
+// (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
+// merece su propio carril para evitar que un usuario o un script accidental llene
+// la tabla productos en minutos.
+const bulkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `bulk:${req.user?.id || req.ip}`,
+  message: { error: 'Demasiadas cargas masivas. Probá de nuevo en unos minutos.' },
+});
 const {
   nombreSchema,
   createProductoSchema,
@@ -226,7 +240,7 @@ router.delete('/productos/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/productos/bulk', validate(bulkProductoSchema), async (req, res, next) => {
+router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {
   const productos = req.body.productos;
 
   // Revalidamos FKs ANTES de empezar a insertar: si alguna categoría/depósito no existe,

@@ -50,6 +50,11 @@ function readZipEntries(dv, u8) {
   return entries;
 }
 
+// Tope anti-ZIP-bomb: una entrada descomprimida no puede exceder 50 MB. Suficiente
+// para cualquier .xlsx de stock realista (sharedStrings de un libro grande son ~1 MB)
+// y blinda contra archivos maliciosos con ratio de compresión 1000:1.
+const MAX_ENTRY_BYTES = 50 * 1024 * 1024;
+
 async function readEntry(entries, dv, u8, name) {
   const e = entries[name];
   if (!e) return null;
@@ -58,15 +63,35 @@ async function readEntry(entries, dv, u8, name) {
   const lextra  = dv.getUint16(e.localOff + 28, true);
   const dataStart = e.localOff + 30 + lfnLen + lextra;
   const data = u8.subarray(dataStart, dataStart + e.compSize);
-  if (e.method === 0) return new TextDecoder().decode(data); // almacenado (sin comprimir)
+  if (e.method === 0) {
+    if (data.length > MAX_ENTRY_BYTES) throw new Error(`xlsx: entrada ${name} demasiado grande`);
+    return new TextDecoder().decode(data);
+  }
   if (e.method !== 8) throw new Error(`xlsx: método de compresión no soportado (${e.method})`);
   // Patrón writable/readable (no usa Blob.stream(), que no existe en jsdom/tests)
   const ds = new DecompressionStream('deflate-raw');
   const writer = ds.writable.getWriter();
   writer.write(data);
   writer.close();
-  const buf = await new Response(ds.readable).arrayBuffer();
-  return new TextDecoder().decode(new Uint8Array(buf));
+  // Lectura por chunks con tope acumulado: si el output crece más de MAX_ENTRY_BYTES,
+  // abortamos antes de explotar la RAM.
+  const reader = ds.readable.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_ENTRY_BYTES) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+      throw new Error(`xlsx: entrada ${name} excede el tope descomprimido`);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return new TextDecoder().decode(out);
 }
 
 // Resuelve la ruta de la primera hoja desde workbook.xml + sus rels.
