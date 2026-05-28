@@ -499,13 +499,18 @@ body {
 }
 
 /* ── Tables ───────────────────────────────────────────────────────── */
-.tbl {
+/* `.tbl` y `.table` son sinónimos. La auditoría detectó que Ventas e
+   Inventario usaban `className="table"` que no estaba definida, dejando
+   las tablas sin estilo (sin padding, sin sticky thead, sin hover). En
+   lugar de refactorear las pantallas, declaramos el alias acá: cero
+   riesgo de regresión y queda absorbido para futuros copy-paste. */
+.tbl, .table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
 }
-.tbl thead th {
+.tbl thead th, .table thead th {
   text-align: left;
   font-weight: 600;
   font-size: 11px;
@@ -517,17 +522,17 @@ body {
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0;
 }
-.tbl tbody td {
+.tbl tbody td, .table tbody td {
   padding: 12px 14px;
   border-bottom: 1px solid var(--hairline);
   color: var(--text);
   vertical-align: middle;
 }
-.tbl tbody tr:hover td { background: var(--surface-2); }
-.tbl tbody tr:last-child td { border-bottom: 0; }
-.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
-.tbl .muted { color: var(--text-muted); }
-.tbl tr.tbl-row-click { cursor: pointer; }
+.tbl tbody tr:hover td, .table tbody tr:hover td { background: var(--surface-2); }
+.tbl tbody tr:last-child td, .table tbody tr:last-child td { border-bottom: 0; }
+.tbl .num, .table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl .muted, .table .muted { color: var(--text-muted); }
+.tbl tr.tbl-row-click, .table tr.tbl-row-click { cursor: pointer; }
 
 /* ── EditableCell: feedback de hover para celdas editables ──
    Indica visualmente que la celda es clickeable para editar in-place. */
@@ -668,8 +673,15 @@ body {
   position: relative;
 }
 .tabs button:hover { color: var(--text); }
-.tabs button.on { color: var(--text); }
-.tabs button.on::after {
+/* `.on` y `.active` son sinónimos a propósito: hay pantallas históricas
+   (Cajas/Financiera/Capital/Tarjetas/Proyectos/Ventas) que usan `.active`
+   y otras (CuentasCC) que usan `.on`. Soportamos ambas para no romper
+   ninguna. La auditoría de mayo-2026 detectó que las primeras quedaban
+   "sin tab activo visible" porque el CSS solo aceptaba `.on`. */
+.tabs button.on,
+.tabs button.active { color: var(--text); }
+.tabs button.on::after,
+.tabs button.active::after {
   content: "";
   position: absolute;
   left: 12px; right: 12px; bottom: -1px;
