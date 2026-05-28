@@ -32,10 +32,11 @@ const baseEnvio = z.object({
   registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
 });
 
-const createEnvioSchema = baseEnvio;
+// .strict(): un campo extra en POST/PUT da 400 (defensa contra typos del cliente)
+const createEnvioSchema = baseEnvio.strict();
 
 // PUT — todo opcional. items sin default para que undefined signifique "no tocar"
-const updateEnvioSchema = baseEnvio.omit({ items: true }).partial().extend({
+const updateEnvioSchema = baseEnvio.omit({ items: true }).strict().partial().extend({
   items: z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').optional(),
 });
 

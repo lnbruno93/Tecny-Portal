@@ -9,7 +9,7 @@ const createDeudaSchema = z.object({
   monto_ars:   z.number().min(0).default(0),
   monto_usd:   z.number().min(0).default(0),
   concepto:    z.string().trim().max(500).optional().nullable(),
-}).refine(d => d.monto_ars > 0 || d.monto_usd > 0, {
+}).strict().refine(d => d.monto_ars > 0 || d.monto_usd > 0, {
   message: 'Al menos monto_ars o monto_usd debe ser mayor a 0',
   path: ['monto_ars'],
 });
@@ -27,7 +27,7 @@ const createInversionSchema = z.object({
   contacto_id: z.number().int().positive('contacto_id inválido'),
   monto:       z.number().positive('Monto debe ser positivo'),
   tasa:        z.string().trim().max(50).optional().nullable(),
-});
+}).strict();
 
 const queryInversionesSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
@@ -48,7 +48,7 @@ const cajaSchema = z.object({
   es_financiera: z.boolean().optional(),         // marca esta caja como "la financiera"
   es_tarjeta:    z.boolean().optional(),         // marca este método como tarjeta (cobro automático desde Ventas)
   comision_pct:  z.coerce.number().min(0).max(100).optional().nullable(), // % que retiene la financiera
-});
+}).strict();
 
 const updateCajaSchema = z.object({
   nombre:        z.string().trim().min(1).max(80).optional(),
@@ -59,7 +59,7 @@ const updateCajaSchema = z.object({
   es_financiera: z.boolean().optional(),
   es_tarjeta:    z.boolean().optional(),
   comision_pct:  z.coerce.number().min(0).max(100).optional().nullable(),
-}).refine(d => Object.values(d).some(v => v !== undefined), {
+}).strict().refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'Al menos un campo es requerido para actualizar',
 });
 
@@ -70,7 +70,7 @@ const cajaAjusteSchema = z.object({
   monto:    z.coerce.number().positive('El monto debe ser mayor a 0'),
   tc:       z.coerce.number().positive().optional().nullable(),  // requerido si la caja es ARS
   concepto: z.string().trim().max(300).optional().nullable(),
-});
+}).strict();
 
 // Ledger global: movimientos de todas las cajas con filtros (vista dedicada)
 const ORIGENES_CAJA = ['venta', 'b2b', 'financiera', 'envio', 'egreso', 'proveedor', 'transferencia', 'ajuste', 'cambio', 'tarjeta'];
