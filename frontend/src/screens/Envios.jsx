@@ -15,7 +15,9 @@ const EMPTY_FORM = {
   tc: '', // TC del envío (requerido cuando registrar_venta y hay items 'producto')
   cliente_cc_id: '', // requerido si algún pago es CC
 };
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'ARS', tc: '', es_cuenta_corriente: false };
+// Default USD: los productos del inventario son típicamente USD y los precios
+// del envío "tipo Ventas" se manejan en USD. El usuario puede cambiar a ARS/USDT.
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -895,9 +897,23 @@ export default function Envios() {
                               </div>
                             )}
                             <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Monto <span className="muted tiny">({it.moneda || 'ARS'})</span></label>
-                              <input type="number" className="input mono" placeholder="0"
-                                value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                              <label className="field-label">Monto</label>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <input type="number" className="input mono" placeholder="0" style={{ flex: 1 }}
+                                  value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                                {/* Selector de moneda: USD por default. En 'pago' la inferimos de la caja (read-only chip);
+                                    en 'producto' es editable (al pickear un producto se actualiza, pero el usuario puede cambiarla). */}
+                                {it.tipo === 'pago' ? (
+                                  <span className="ccy" style={{ alignSelf: 'center', padding: '0 6px' }}>{it.moneda || 'USD'}</span>
+                                ) : (
+                                  <select className="input" style={{ width: 76 }} value={it.moneda || 'USD'}
+                                          onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                                    <option>USD</option>
+                                    <option>ARS</option>
+                                    <option>USDT</option>
+                                  </select>
+                                )}
+                              </div>
                             </div>
                             <button type="button" className="icon-btn"
                               style={{ marginBottom: 1, visibility: items.length > 1 ? 'visible' : 'hidden' }}
