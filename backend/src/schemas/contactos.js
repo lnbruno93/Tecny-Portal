@@ -11,7 +11,7 @@ const createContactoSchema = z.object({
   email:    z.string().trim().max(120).email('Email inválido').optional().nullable().or(z.literal('')),
   tipo:     z.enum(TIPOS_CONTACTO, { error: `Tipo debe ser: ${TIPOS_CONTACTO.join(', ')}` }).optional(),
   origen:   z.enum(ORIGENES, { error: `Origen debe ser: ${ORIGENES.join(', ')}` }).optional(),
-});
+}).strict();
 
 // PUT — todos opcionales, pero al menos uno presente
 const updateContactoSchema = createContactoSchema.partial().refine(

@@ -7,7 +7,10 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+// postCajaMovimiento / reverseCajaMovimientos: postear/revertir cajas para una venta
+// los maneja lib/ventaSync.js; este archivo no los usa directamente, pero los dejamos
+// disponibles a través del require por si una edición futura los necesita.
+// (Eliminado: imports innecesarios detectados por ESLint.)
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const { syncTarjetaCobros } = require('../lib/tarjetas');
 const { revertirEfectosVenta } = require('../lib/cancelarVenta');

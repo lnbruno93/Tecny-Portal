@@ -27,7 +27,6 @@ const {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
-  TIPOS_MOVIMIENTO_CC,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');

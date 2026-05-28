@@ -12,7 +12,7 @@ const baseComprobante = z.object({
   archivo_data:     z.string().max(7 * 1024 * 1024, 'Archivo demasiado grande (máx. 5MB)').optional().nullable(),
   archivo_nombre:   z.string().trim().max(255).optional().nullable(),
   archivo_tipo:     z.enum(['image/jpeg','image/png','image/webp','application/pdf']).optional().nullable(),
-});
+}).strict();
 
 const createComprobanteSchema = baseComprobante;
 

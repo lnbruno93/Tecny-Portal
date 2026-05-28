@@ -5,7 +5,7 @@ const fecha = z.string().date('Fecha inválida (YYYY-MM-DD)').refine(d => d >= '
 const createEntidadSchema = z.object({
   nombre: z.string().trim().min(1, 'Nombre requerido').max(120),
   activo: z.boolean().optional().default(true),
-});
+}).strict();
 const updateEntidadSchema = createEntidadSchema.partial().refine(
   d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' }
 );
@@ -23,7 +23,7 @@ const createMovimientoSchema = z.object({
   monto_usd:   z.coerce.number().min(0).optional().default(0),
   caja_id:     z.coerce.number().int().positive('Elegí la caja'),
   comentarios: z.string().trim().max(1000).optional().nullable(),
-}).superRefine((d, ctx) => {
+}).strict().superRefine((d, ctx) => {
   if (d.tipo === 'entrega_ars') {
     if (!(d.monto_ars > 0)) ctx.addIssue({ code: 'custom', path: ['monto_ars'], message: 'El monto en $ debe ser mayor a 0' });
     if (!(d.tc > 0))        ctx.addIssue({ code: 'custom', path: ['tc'], message: 'El tipo de cambio es requerido' });

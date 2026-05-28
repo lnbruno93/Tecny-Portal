@@ -15,7 +15,7 @@ const createUsuarioSchema = z.object({
   password: passwordField(),
   role:     z.enum(['admin','op']).default('op'),
   perms:    permsSchema,
-});
+}).strict();
 
 // Para actualizar: perms SIN default para que un body vacío {} no lo active
 const permsUpdateSchema = z.object(
@@ -30,7 +30,7 @@ const updateUsuarioSchema = z.object({
   password: passwordField().optional(),
   role:     z.enum(['admin','op']).optional(),
   perms:    permsUpdateSchema.optional(),  // opcional y SIN default de nivel superior
-}).refine(
+}).strict().refine(
   d => Object.values(d).some(v => v !== undefined),
   { message: 'Al menos un campo es requerido para actualizar' }
 );

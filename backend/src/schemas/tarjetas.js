@@ -10,6 +10,6 @@ const createLiquidacionSchema = z.object({
   monto:          z.coerce.number().positive('El monto debe ser mayor a 0'),
   caja_id:        z.coerce.number().int().positive('Elegí la caja donde entra'),
   comentarios:    z.string().trim().max(1000).optional().nullable(),
-});
+}).strict();
 
 module.exports = { createLiquidacionSchema };

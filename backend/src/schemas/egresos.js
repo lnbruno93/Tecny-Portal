@@ -7,7 +7,7 @@ const fecha = z.string().date('Fecha inválida (YYYY-MM-DD)').refine(d => d >= '
 // ── Categorías ──
 const createCategoriaSchema = z.object({
   nombre: z.string().trim().min(1, 'Nombre requerido').max(60),
-});
+}).strict();
 const updateCategoriaSchema = createCategoriaSchema.partial().refine(
   d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' }
 );
@@ -22,7 +22,7 @@ const createRecurrenteSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   dia_del_mes:    z.coerce.number().int().min(1).max(31).default(1),
   activo:         z.boolean().optional().default(true),
-});
+}).strict();
 const updateRecurrenteSchema = createRecurrenteSchema.partial().refine(
   d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' }
 );
@@ -38,7 +38,7 @@ const createEgresoSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   estado:         z.enum(['pendiente', 'pagado']).default('pendiente'),
   notas:          z.string().trim().max(1000).optional().nullable(),
-}).refine(d => d.estado !== 'pagado' || d.metodo_pago_id, {
+}).strict().refine(d => d.estado !== 'pagado' || d.metodo_pago_id, {
   message: 'Para marcar un egreso como pagado hay que indicar de qué caja sale',
   path: ['metodo_pago_id'],
 });
@@ -54,7 +54,7 @@ const updateEgresoSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   estado:         z.enum(['pendiente', 'pagado']).optional(),
   notas:          z.string().trim().max(1000).optional().nullable(),
-}).refine(d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' });
+}).strict().refine(d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' });
 
 const queryEgresosSchema = z.object({
   desde:        z.string().date().optional(),
@@ -69,7 +69,7 @@ const queryEgresosSchema = z.object({
 // Generar egresos pendientes de los recurrentes para un período (YYYY-MM).
 const generarPeriodoSchema = z.object({
   periodo: z.string().regex(/^\d{4}-\d{2}$/, 'Período debe ser YYYY-MM'),
-});
+}).strict();
 
 module.exports = {
   createCategoriaSchema, updateCategoriaSchema,
