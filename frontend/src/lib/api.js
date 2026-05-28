@@ -212,6 +212,7 @@ export const usados = {
 export const inventario = {
   productos:       (params = {}) => api('/api/inventario/productos?' + new URLSearchParams(params)),
   metricas:        () => api('/api/inventario/productos/metricas'),
+  proveedoresList: () => api('/api/inventario/productos/proveedores'),
   foto:            (id) => api(`/api/inventario/productos/${id}/foto`),
   createProducto:  (data) => api('/api/inventario/productos', 'POST', data),
   updateProducto:  (id, data) => api(`/api/inventario/productos/${id}`, 'PUT', data),

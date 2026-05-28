@@ -13,6 +13,7 @@ const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 
 let pool;
 let token;
+let catBase; // categoría compartida obligatoria al crear productos
 
 const auth = () => ({ Authorization: `Bearer ${token}` });
 
@@ -22,6 +23,8 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   token = res.body.token;
+  const cat = await request(app).post('/api/inventario/categorias').set(auth()).send({ nombre: 'Base Test' });
+  catBase = cat.body.id;
 });
 
 afterAll(async () => {
@@ -78,6 +81,7 @@ describe('Productos', () => {
     const res = await request(app).post('/api/inventario/productos').set(auth()).send({
       tipo_carga: 'unitario',
       clase: 'celular',
+      categoria_id: catBase,
       nombre: 'iPhone 15 Pro',
       imei: '356938035643809',
       gb: '256',
@@ -122,7 +126,7 @@ describe('Productos', () => {
 
   it('filtra por clase accesorio (no incluye el celular)', async () => {
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      clase: 'accesorio', tipo_carga: 'lote', nombre: 'AirPods Pro 3', cantidad: 22, costo: 150,
+      clase: 'accesorio', tipo_carga: 'lote', categoria_id: catBase, nombre: 'AirPods Pro 3', cantidad: 22, costo: 150,
     });
     const res = await request(app).get('/api/inventario/productos?clase=accesorio').set(auth());
     expect(res.status).toBe(200);
@@ -158,7 +162,7 @@ describe('Foto del producto (lazy load)', () => {
   const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   it('el listado NO incluye foto_data pero marca tiene_foto', async () => {
     const c = await request(app).post('/api/inventario/productos').set(auth())
-      .send({ nombre: 'Con Foto', clase: 'celular', foto_data: b64, foto_nombre: 'f.png', foto_tipo: 'image/png' });
+      .send({ nombre: 'Con Foto', clase: 'celular', categoria_id: catBase, foto_data: b64, foto_nombre: 'f.png', foto_tipo: 'image/png' });
     const list = await request(app).get('/api/inventario/productos?buscar=Con Foto').set(auth());
     const p = list.body.data.find(x => x.id === c.body.id);
     expect(p).toBeDefined();
@@ -171,7 +175,7 @@ describe('Foto del producto (lazy load)', () => {
   });
 
   it('producto sin foto → 404 en el endpoint de foto', async () => {
-    const c = await request(app).post('/api/inventario/productos').set(auth()).send({ nombre: 'Sin Foto', clase: 'celular' });
+    const c = await request(app).post('/api/inventario/productos').set(auth()).send({ nombre: 'Sin Foto', clase: 'celular', categoria_id: catBase });
     const foto = await request(app).get(`/api/inventario/productos/${c.body.id}/foto`).set(auth());
     expect(foto.status).toBe(404);
   });
@@ -188,13 +192,70 @@ describe('GET /api/inventario/productos/metricas', () => {
   });
 });
 
+// ─── Proveedores (combo de edición inline) ───────────────────
+describe('GET /api/inventario/productos/proveedores', () => {
+  it('devuelve los proveedores únicos vistos en productos vivos', async () => {
+    // Sumamos algunos productos con proveedor para que aparezcan
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'ProvProd 1', clase: 'celular', categoria_id: catBase,
+      costo: 100, precio_venta: 200, proveedor: 'Mayorista Alfa',
+    });
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'ProvProd 2', clase: 'celular', categoria_id: catBase,
+      costo: 100, precio_venta: 200, proveedor: '  Mayorista Alfa  ', // mismo, con espacios
+    });
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'ProvProd 3', clase: 'celular', categoria_id: catBase,
+      costo: 100, precio_venta: 200, proveedor: 'Zeta Distribuidor',
+    });
+    const res = await request(app).get('/api/inventario/productos/proveedores').set(auth());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toContain('Mayorista Alfa');
+    expect(res.body).toContain('Zeta Distribuidor');
+    // Vienen sin duplicados (TRIM + DISTINCT) y ordenados
+    const idxA = res.body.indexOf('Mayorista Alfa');
+    const idxZ = res.body.indexOf('Zeta Distribuidor');
+    expect(idxA).toBeLessThan(idxZ);
+    expect(res.body.filter(p => p === 'Mayorista Alfa').length).toBe(1);
+  });
+});
+
+// ─── Conteo por categoría (insumo de Data Science) ───────────
+describe('GET /api/inventario/categorias — productos_count', () => {
+  it('devuelve el conteo de productos y stock disponible por categoría', async () => {
+    const res = await request(app).get('/api/inventario/categorias').set(auth());
+    expect(res.status).toBe(200);
+    // 'Base Test' es la categoría que usaron casi todos los productos del archivo.
+    // Filtrá por nombre para no depender del orden de creación.
+    const base = res.body.find(c => c.nombre === 'Base Test');
+    expect(base).toBeDefined();
+    // Tras todos los tests previos hay productos asignados a 'Base Test'
+    // (incluyendo el accesorio de 22 u, AirPods Pro 3, no borrado).
+    expect(Number(base.productos_count)).toBeGreaterThan(0);
+    // El stock_disponible incluye solo los productos con estado='disponible'.
+    expect(Number(base.stock_disponible)).toBeGreaterThanOrEqual(22);
+  });
+
+  it('una categoría recién creada y sin productos tiene count 0', async () => {
+    const c = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Categoría Vacía' });
+    expect(c.status).toBe(201);
+    const list = await request(app).get('/api/inventario/categorias').set(auth());
+    const vacia = list.body.find(x => x.id === c.body.id);
+    expect(vacia).toBeDefined();
+    expect(Number(vacia.productos_count)).toBe(0);
+    expect(Number(vacia.stock_disponible)).toBe(0);
+  });
+});
+
 // ─── Carga masiva ────────────────────────────────────────────
 describe('POST /api/inventario/productos/bulk', () => {
   it('crea varios productos en una transacción', async () => {
     const res = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
       productos: [
-        { nombre: 'iPhone 13', clase: 'celular', costo: 400, precio_venta: 500 },
-        { nombre: 'iPhone 14', clase: 'celular', costo: 500, precio_venta: 620 },
+        { nombre: 'iPhone 13', clase: 'celular', categoria_id: catBase, costo: 400, precio_venta: 500 },
+        { nombre: 'iPhone 14', clase: 'celular', categoria_id: catBase, costo: 500, precio_venta: 620 },
       ],
     });
     expect(res.status).toBe(201);

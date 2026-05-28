@@ -136,16 +136,6 @@ export default function Inicio() {
             <h1>{saludo}, {nombreCorto}</h1>
             <div className="sub">{fmtFecha()} · cargando datos…</div>
           </div>
-          <div className="quick">
-            <button className="btn btn-primary" onClick={() => navigate('/cotizador')}>
-              <span className="ico"><Icons.Calculator size={15} /></span>
-              Nueva cotización
-            </button>
-            <button className="btn" onClick={() => navigate('/financiera')}>
-              <span className="ico"><Icons.Upload size={15} /></span>
-              Cargar comprobante
-            </button>
-          </div>
         </div>
 
       </div>
@@ -179,16 +169,6 @@ export default function Inicio() {
           <div className="sub">
             {fmtFecha()} · financiera al {pctFin.toFixed(1)}% · {activityItems.length} eventos recientes
           </div>
-        </div>
-        <div className="quick">
-          <button className="btn btn-primary" onClick={() => navigate('/cotizador')}>
-            <span className="ico"><Icons.Calculator size={15} /></span>
-            Nueva cotización
-          </button>
-          <button className="btn" onClick={() => navigate('/financiera')}>
-            <span className="ico"><Icons.Upload size={15} /></span>
-            Cargar comprobante
-          </button>
         </div>
       </div>
 
