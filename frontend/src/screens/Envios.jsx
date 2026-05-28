@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { envios, cajas as cajasApi, inventario } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -66,16 +66,15 @@ export default function Envios() {
   // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
   const [dateFilter, setDateFilter] = useState(null);
   const [cajasArs, setCajasArs] = useState([]); // cajas ARS para asignar el cobro
-  const [productosInv, setProductosInv] = useState([]); // productos disponibles para linkear desde un envío
+  // Búsqueda de productos para linkear: igual que en Ventas — debounce + backend search.
+  // Un solo "search activo a la vez" (itemIdx identifica qué item del form está buscando).
+  const [prodSearch, setProdSearch] = useState({ itemIdx: null, q: '', results: [], loading: false });
+  const prodTimer = useRef(null);
+  const prodReq   = useRef(0);
 
   useEffect(() => {
     cajasApi.listCajas()
       .then(list => setCajasArs((list || []).filter(c => c.activo !== false && c.moneda === 'ARS')))
-      .catch(console.error);
-    // Solo productos disponibles (con stock o sin trackear) para no llenar el picker
-    // con vendidos/cancelados. Limit alto pero acotado.
-    inventario.productos({ solo_stock: 'true', limit: 200 })
-      .then(r => setProductosInv(Array.isArray(r?.data) ? r.data : []))
       .catch(console.error);
   }, []);
 
@@ -91,16 +90,33 @@ export default function Envios() {
   const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
-  // Al elegir un producto del inventario, auto-completa descripción y monto con el precio de venta.
-  const pickProducto = (idx, productoId) => {
-    const p = productosInv.find(x => String(x.id) === String(productoId));
+
+  // Búsqueda asincrónica de productos: debounce 300ms, backend filtra por nombre/IMEI/color/gb.
+  function searchProductos(itemIdx, q) {
+    setProdSearch(s => ({ ...s, itemIdx, q, loading: q.trim().length >= 2 }));
+    clearTimeout(prodTimer.current);
+    if (q.trim().length < 2) { setProdSearch(s => ({ ...s, results: [], loading: false })); return; }
+    const reqId = ++prodReq.current;
+    prodTimer.current = setTimeout(async () => {
+      try {
+        const res = await inventario.productos({ solo_stock: 'true', limit: 8, buscar: q.trim() });
+        if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: res?.data || [], loading: false }));
+      } catch (_) { if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: [], loading: false })); }
+    }, 300);
+  }
+  function pickProducto(idx, p) {
     setItems(i => i.map((it, j) => j !== idx ? it : ({
       ...it,
-      producto_id: productoId,
-      descripcion: p ? [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · ') : it.descripcion,
-      monto: p ? String(p.precio_venta || '') : it.monto,
+      producto_id: p.id,
+      descripcion: [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · '),
+      monto: String(p.precio_venta || ''),
+      _imei: p.imei || '', // solo para mostrar en la UI, no se envía
     })));
-  };
+    setProdSearch({ itemIdx: null, q: '', results: [], loading: false });
+  }
+  function unpickProducto(idx) {
+    setItems(i => i.map((it, j) => j !== idx ? it : ({ ...it, producto_id: '', descripcion: '', monto: '', _imei: '' })));
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -132,7 +148,8 @@ export default function Envios() {
         tc: (form.registrar_venta && form.tc) ? Number(form.tc) : null,
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
-          .filter(i => i.descripcion.trim() || i.tipo === 'pago' || i.producto_id)
+          // tipo 'producto' SIEMPRE va linkeado (no se permite texto libre); 'pago' va siempre.
+          .filter(i => i.tipo === 'pago' || (i.tipo === 'producto' && i.producto_id))
           .map(i => ({
             tipo: i.tipo,
             descripcion: i.descripcion.trim() || null,
@@ -776,16 +793,51 @@ export default function Envios() {
                             <div className="field" style={{ marginBottom: 0 }}>
                               <label className="field-label">Tipo</label>
                               <select className="input" value={it.tipo}
-                                onChange={e => setItem(idx, 'tipo', e.target.value)}>
+                                onChange={e => { setItem(idx, 'tipo', e.target.value); if (e.target.value === 'pago') unpickProducto(idx); }}>
                                 <option value="producto">Producto</option>
                                 <option value="pago">Pago</option>
                               </select>
                             </div>
-                            <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Descripción</label>
-                              <input className="input" placeholder={it.tipo === 'pago' ? 'Método de pago…' : 'Producto…'}
-                                value={it.descripcion} onChange={e => setItem(idx, 'descripcion', e.target.value)} />
-                            </div>
+                            {/* Si es producto SIN linkear → input de búsqueda. Si está linkeado → muestra read-only. Si es pago → input libre. */}
+                            {it.tipo === 'producto' && !it.producto_id ? (
+                              <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
+                                <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
+                                <input className="input" placeholder="Empezá a tipear…"
+                                       value={prodSearch.itemIdx === idx ? prodSearch.q : ''}
+                                       onChange={e => searchProductos(idx, e.target.value)}
+                                       onFocus={() => setProdSearch(s => ({ ...s, itemIdx: idx }))} />
+                                {prodSearch.itemIdx === idx && prodSearch.q.trim().length >= 2 && (
+                                  <div className="card card-tight" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto', padding: 0 }}>
+                                    {prodSearch.loading && <div className="muted tiny" style={{ padding: '8px 10px' }}>Buscando…</div>}
+                                    {!prodSearch.loading && prodSearch.results.length === 0 && <div className="muted tiny" style={{ padding: '8px 10px' }}>Sin resultados</div>}
+                                    {prodSearch.results.map(p => (
+                                      <button type="button" key={p.id}
+                                              onClick={() => pickProducto(idx, p)}
+                                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderBottom: '1px solid var(--hairline)', color: 'var(--text)' }}>
+                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{[p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · ')}</div>
+                                        <div className="muted tiny mono">{p.imei ? 'IMEI ' + p.imei : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="field" style={{ marginBottom: 0 }}>
+                                <label className="field-label">{it.tipo === 'producto' ? 'Producto seleccionado' : 'Descripción'}</label>
+                                {it.tipo === 'producto' ? (
+                                  <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 10px' }}>
+                                    <div style={{ overflow: 'hidden' }}>
+                                      <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{it.descripcion}</div>
+                                      {it._imei && <div className="muted tiny mono">IMEI {it._imei}</div>}
+                                    </div>
+                                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
+                                  </div>
+                                ) : (
+                                  <input className="input" placeholder="Método de pago…"
+                                         value={it.descripcion} onChange={e => setItem(idx, 'descripcion', e.target.value)} />
+                                )}
+                              </div>
+                            )}
                             <div className="field" style={{ marginBottom: 0 }}>
                               <label className="field-label">Monto ARS</label>
                               <input type="number" className="input mono" placeholder="0"
@@ -804,20 +856,6 @@ export default function Envios() {
                                 onChange={e => setItem(idx, 'metodo_pago_id', e.target.value)}>
                                 <option value="">Sin caja (no impacta)…</option>
                                 {cajasArs.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                              </select>
-                            </div>
-                          )}
-                          {it.tipo === 'producto' && productosInv.length > 0 && (
-                            <div className="field" style={{ marginBottom: 0, marginTop: 8 }}>
-                              <label className="field-label">Producto del inventario <span className="muted tiny">(opcional — descuenta stock al registrar la venta)</span></label>
-                              <select className="input" value={it.producto_id}
-                                onChange={e => pickProducto(idx, e.target.value)}>
-                                <option value="">Sin linkear (texto libre)…</option>
-                                {productosInv.map(p => (
-                                  <option key={p.id} value={p.id}>
-                                    {[p.nombre, p.gb && p.gb + 'GB', p.color, p.imei && 'IMEI ' + p.imei].filter(Boolean).join(' · ')}
-                                  </option>
-                                ))}
                               </select>
                             </div>
                           )}
