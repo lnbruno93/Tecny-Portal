@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
@@ -101,6 +102,23 @@ export default function Inventario() {
   const [soloStock, setSoloStock] = useState(false);
   const [search, setSearch] = useState('');
 
+  // ── Drill-down desde Desglose 360 ──
+  // Si llegamos con query params (?proveedor=X, ?categoria_id=N, etc.) los aplicamos
+  // al fetch como filtros adicionales y mostramos un chip "Filtrado por: X · Limpiar".
+  // No agregamos UI permanente: si el usuario quiere editar el filtro, vuelve al desglose.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const drillFilters = useMemo(() => {
+    const ALLOWED = ['categoria_id', 'deposito_id', 'estado', 'proveedor', 'nombre', 'gb', 'color'];
+    const out = {};
+    for (const k of ALLOWED) {
+      const v = searchParams.get(k);
+      if (v) out[k] = v;
+    }
+    return out;
+  }, [searchParams]);
+  const hasDrillDown = Object.keys(drillFilters).length > 0;
+  function clearDrillDown() { setSearchParams({}); }
+
   // Modal alta/edición
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -130,6 +148,9 @@ export default function Inventario() {
       if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
       if (soloStock) params.solo_stock = 'true';
       if (search.trim()) params.buscar = search.trim();
+      // Drill-down: aplicamos los filtros que vinieron por URL al fetch.
+      // El backend rechaza claves desconocidas (Zod), así que sólo pasamos lo válido.
+      Object.assign(params, drillFilters);
       const res = await inventario.productos(params);
       setProductos(res.data || []);
       setTotal(res.pagination?.total || 0);
@@ -139,7 +160,7 @@ export default function Inventario() {
     } finally {
       setLoading(false);
     }
-  }, [page, claseFilter, soloStock, search, toast]);
+  }, [page, claseFilter, soloStock, search, toast, drillFilters]);
 
   const loadMetricas = useCallback(async () => {
     try { setMetricas(await inventario.metricas()); } catch (_) {}
@@ -379,7 +400,12 @@ export default function Inventario() {
       {/* ── Page head ── */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">Inventario</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h1 className="page-title">Inventario</h1>
+            <Link to="/inventario/desglose" className="btn btn-ghost btn-sm" title="Vista 360 de tu stock por categoría, proveedor, modelo y más">
+              Desglose 360 →
+            </Link>
+          </div>
           <div className="page-sub">Stock de equipos y accesorios · costos, depósitos y proveedores</div>
         </div>
         <div className="page-actions">
@@ -441,6 +467,28 @@ export default function Inventario() {
           </div>
         </div>
       </div>
+
+      {/* ── Chip de drill-down ── */}
+      {hasDrillDown && (
+        <div className="card card-tight" style={{ marginBottom: 12, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <Icons.Filter size={14} />
+          <span className="muted tiny">Filtrado desde Desglose 360:</span>
+          {Object.entries(drillFilters).map(([k, v]) => {
+            // Mostramos el nombre humano cuando podamos resolverlo
+            let label = v;
+            if (k === 'categoria_id') label = categorias.find(c => String(c.id) === String(v))?.nombre || `Categoría #${v}`;
+            if (k === 'deposito_id')  label = depositos.find(d => String(d.id) === String(v))?.nombre || `Depósito #${v}`;
+            if (k === 'estado')       label = ({ disponible: 'Disponible', vendido: 'Vendido', en_tecnico: 'En técnico', reservado: 'Reservado' }[v]) || v;
+            const niceKey = ({ categoria_id: 'Categoría', deposito_id: 'Depósito', estado: 'Estado', proveedor: 'Proveedor', nombre: 'Modelo', gb: 'GB', color: 'Color' })[k] || k;
+            return (
+              <span key={k} className="badge badge-info" style={{ fontSize: 12 }}>{niceKey}: {label}</span>
+            );
+          })}
+          <button className="btn btn-sm" onClick={clearDrillDown} title="Limpiar filtro y ver todo">
+            <Icons.X size={13} /> Limpiar
+          </button>
+        </div>
+      )}
 
       {/* ── Tabla ── */}
       {loading ? (

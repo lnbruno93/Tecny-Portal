@@ -249,6 +249,96 @@ describe('GET /api/inventario/categorias — productos_count', () => {
   });
 });
 
+// ─── Desglose 360 (agrupación dinámica) ──────────────────────
+describe('GET /api/inventario/desglose', () => {
+  it('agrupa por proveedor y suma stock/inversión correctamente', async () => {
+    // Productos cargados en el test de proveedores (3 con Mayorista Alfa / Zeta).
+    // Sumamos uno con cantidad > 1 para validar SUM(cantidad).
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Lote Test', clase: 'accesorio', tipo_carga: 'lote',
+      categoria_id: catBase, costo: 10, precio_venta: 25, cantidad: 5,
+      proveedor: 'Mayorista Alfa',
+    });
+    const res = await request(app).get('/api/inventario/desglose?por=proveedor').set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.por).toBe('proveedor');
+    expect(Array.isArray(res.body.filas)).toBe(true);
+    const alfa = res.body.filas.find(f => f.valor === 'Mayorista Alfa');
+    expect(alfa).toBeDefined();
+    // 2 productos cantidad 1 (de los tests de proveedores) + 1 producto cantidad 5
+    expect(alfa.stock).toBeGreaterThanOrEqual(7);
+    // Inversión USD del lote test: 10 * 5 = 50, más los 100 * 1 * 2 = 200 ⇒ ≥ 250
+    expect(alfa.inv_usd).toBeGreaterThanOrEqual(250);
+    // Margen = valorizado - inversión
+    expect(alfa.margen_usd).toBe(alfa.valorizado_usd - alfa.inv_usd);
+  });
+
+  it('agrupa por categoría con LEFT JOIN (etiqueta legible)', async () => {
+    const res = await request(app).get('/api/inventario/desglose?por=categoria').set(auth());
+    expect(res.status).toBe(200);
+    const base = res.body.filas.find(f => f.valor === 'Base Test');
+    expect(base).toBeDefined();
+    expect(base.valor_id).toBeTruthy();
+    expect(base.productos).toBeGreaterThan(0);
+  });
+
+  it('agrupa por estado', async () => {
+    const res = await request(app).get('/api/inventario/desglose?por=estado').set(auth());
+    expect(res.status).toBe(200);
+    const disp = res.body.filas.find(f => f.valor === 'disponible');
+    expect(disp).toBeDefined();
+  });
+
+  it('respeta el filtro solo_stock', async () => {
+    const conFiltro = await request(app).get('/api/inventario/desglose?por=estado&solo_stock=true').set(auth());
+    expect(conFiltro.status).toBe(200);
+    // Con solo_stock no debería aparecer "vendido" ni "en_tecnico"
+    const malos = conFiltro.body.filas.filter(f => ['vendido', 'en_tecnico'].includes(f.valor));
+    expect(malos.length).toBe(0);
+  });
+
+  it('respeta el filtro clase', async () => {
+    const res = await request(app).get('/api/inventario/desglose?por=modelo&clase=accesorio').set(auth());
+    expect(res.status).toBe(200);
+    // Solo accesorios → los modelos celulares no deberían aparecer
+    expect(res.body.filas.find(f => f.valor === 'iPhone 13')).toBeUndefined();
+  });
+
+  it('los totales deben coincidir con la suma de las filas (por la misma dim)', async () => {
+    const res = await request(app).get('/api/inventario/desglose?por=categoria').set(auth());
+    const sumFilasInvUsd = res.body.filas.reduce((a, f) => a + f.inv_usd, 0);
+    // Tolerancia por redondeo float
+    expect(Math.abs(sumFilasInvUsd - res.body.totales.inv_usd)).toBeLessThan(0.01);
+  });
+
+  it('rechaza dimensión inválida → 400', async () => {
+    const res = await request(app).get('/api/inventario/desglose?por=fantasma').set(auth());
+    expect(res.status).toBe(400);
+  });
+
+  it('requiere "por" → 400', async () => {
+    const res = await request(app).get('/api/inventario/desglose').set(auth());
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─── Filtros exactos para drill-down ──────────────────────────
+describe('GET /api/inventario/productos — filtros exactos', () => {
+  it('filtra por proveedor exacto (NO substring)', async () => {
+    const res = await request(app).get('/api/inventario/productos?proveedor=Mayorista Alfa').set(auth());
+    expect(res.status).toBe(200);
+    // Todos los devueltos tienen ese proveedor (TRIM-comparado)
+    expect(res.body.data.every(p => (p.proveedor || '').trim() === 'Mayorista Alfa')).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
+
+  it('filtra por nombre exacto', async () => {
+    const res = await request(app).get('/api/inventario/productos?nombre=Lote Test').set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.data.every(p => p.nombre === 'Lote Test')).toBe(true);
+  });
+});
+
 // ─── Carga masiva ────────────────────────────────────────────
 describe('POST /api/inventario/productos/bulk', () => {
   it('crea varios productos en una transacción', async () => {

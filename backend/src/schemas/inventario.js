@@ -75,9 +75,30 @@ const queryProductosSchema = z.object({
   estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),
+  // Filtros EXACTOS (igualdad). Útiles para drill-down desde Desglose 360
+  // — distintos de `buscar` que es ILIKE sobre múltiples columnas.
+  nombre:       z.string().trim().max(200).optional(),
+  proveedor:    z.string().trim().max(200).optional(),
+  gb:           z.string().trim().max(20).optional(),
+  color:        z.string().trim().max(60).optional(),
   solo_stock:   z.coerce.boolean().optional(),
   page:         z.coerce.number().int().positive().optional(),
   limit:        z.coerce.number().int().positive().max(200).optional(),
+});
+
+// Desglose 360: agrupar el inventario por una dimensión y aplicar filtros.
+// Las 7 dimensiones expuestas se mapean a una expresión SQL segura en el
+// router (no se concatena input del cliente al SQL).
+const DIMENSIONES_DESGLOSE = ['categoria', 'proveedor', 'modelo', 'estado', 'deposito', 'gb', 'color'];
+const queryDesgloseSchema = z.object({
+  por:          z.enum(DIMENSIONES_DESGLOSE),
+  clase:        z.enum(['celular', 'accesorio']).optional(),
+  estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
+  categoria_id: z.coerce.number().int().positive().optional(),
+  deposito_id:  z.coerce.number().int().positive().optional(),
+  proveedor:    z.string().trim().max(200).optional(),
+  solo_stock:   z.coerce.boolean().optional(),
+  buscar:       z.string().trim().max(200).optional(),
 });
 
 module.exports = {
@@ -86,4 +107,6 @@ module.exports = {
   updateProductoSchema,
   bulkProductoSchema,
   queryProductosSchema,
+  queryDesgloseSchema,
+  DIMENSIONES_DESGLOSE,
 };
