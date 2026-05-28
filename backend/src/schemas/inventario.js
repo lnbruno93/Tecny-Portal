@@ -34,17 +34,25 @@ const baseProducto = z.object({
 const unitarioCoherente = (p) => !(p.clase === 'celular' && p.tipo_carga === 'unitario' && p.cantidad !== 1);
 const unitarioMsg = { message: 'Un celular unitario debe tener cantidad = 1', path: ['cantidad'] };
 
+// Categoría obligatoria al crear/cargar bulk (para que el inventario sea analizable).
+// En UPDATE queda opcional: los productos legacy sin categoría se pueden editar
+// (asignándoles una en ese momento) sin que el backend bloquee otros cambios.
+const categoriaRequerida = (p) => p.categoria_id != null && Number(p.categoria_id) > 0;
+const categoriaMsg = { message: 'La categoría es obligatoria', path: ['categoria_id'] };
+
 // .strict(): un campo extra (typo del cliente, JS field leak) da 400 explícito
 // en vez de pasar silencioso y persistirse sin querer / ser ignorado.
-// NOTA: categoría es opcional a nivel API (preserva compat con productos legacy),
-// pero la UI la exige al crear/cargar bulk (validación en frontend).
-const createProductoSchema = baseProducto.strict().refine(unitarioCoherente, unitarioMsg);
+const createProductoSchema = baseProducto.strict()
+  .refine(unitarioCoherente, unitarioMsg)
+  .refine(categoriaRequerida, categoriaMsg);
 
 const updateProductoSchema = baseProducto.strict().partial(); // partial → coherencia se chequea al leer DB
 
 // Carga masiva: array de productos (sin foto para mantener el payload acotado).
 // Refines: coherencia unitario por item + sin IMEIs duplicados dentro del lote (no hay UNIQUE en DB todavía).
-const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).strict().refine(unitarioCoherente, unitarioMsg);
+const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).strict()
+  .refine(unitarioCoherente, unitarioMsg)
+  .refine(categoriaRequerida, categoriaMsg);
 const bulkProductoSchema = z.object({
   productos: z.array(productoEnBulk)
     .min(1, 'Al menos un producto')

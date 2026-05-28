@@ -14,6 +14,7 @@ const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 let pool;
 let token;
 let envioId;
+let catBase;
 
 const hoy  = new Date().toISOString().split('T')[0];
 const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0];
@@ -25,6 +26,9 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   token = res.body.token;
+  const cat = await request(app).post('/api/inventario/categorias')
+    .set({ Authorization: `Bearer ${token}` }).send({ nombre: 'Base Test' });
+  catBase = cat.body.id;
 });
 
 afterAll(async () => {
@@ -227,7 +231,7 @@ describe('Envío → Venta (registrar_venta)', () => {
   it('con tc + producto_id: la venta tiene total_usd real y descuenta stock', async () => {
     // Producto unitario para linkear desde el envío
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'iPhone Test', clase: 'celular', tipo_carga: 'unitario',
+      nombre: 'iPhone Test', clase: 'celular', tipo_carga: 'unitario', categoria_id: catBase,
       costo: 600, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD', cantidad: 1,
     });
     expect(prod.status).toBe(201);
@@ -252,7 +256,7 @@ describe('Envío → Venta (registrar_venta)', () => {
 
   it('cancelar el envío revierte los efectos de la venta y la marca cancelada', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'iPhone Cancel', clase: 'celular', tipo_carga: 'unitario',
+      nombre: 'iPhone Cancel', clase: 'celular', tipo_carga: 'unitario', categoria_id: catBase,
       costo: 400, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD', cantidad: 1,
     });
     const env = await request(app).post('/api/envios').set(auth()).send({

@@ -8,12 +8,12 @@ const request = require('supertest');
 const app     = require('../src/app');
 const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 
-let pool, token;
+let pool, token, catBase;
 const auth = () => ({ Authorization: `Bearer ${token}` });
 
 async function crearProducto(over = {}) {
   const res = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', nombre: 'iPhone Foto',
+    tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase, nombre: 'iPhone Foto',
     costo: 800, precio_venta: 950, cantidad: 1, ...over,
   });
   return res.body;
@@ -24,6 +24,8 @@ beforeAll(async () => {
   const res = await request(app).post('/api/auth/login')
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   token = res.body.token;
+  const cat = await request(app).post('/api/inventario/categorias').set(auth()).send({ nombre: 'Base Test' });
+  catBase = cat.body.id;
 });
 
 afterAll(async () => { await teardownTestDb(pool); });

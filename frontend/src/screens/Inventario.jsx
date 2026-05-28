@@ -623,12 +623,19 @@ export default function Inventario() {
                   </div>
                   <div className="stack" style={{ gap: 4 }}>
                     {categorias.length === 0 && <div className="muted tiny">Sin categorías</div>}
-                    {categorias.map(c => (
-                      <div key={c.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
-                        <span>{c.nombre}</span>
-                        <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delCategoria(c)}><Icons.Trash size={13} /></button>
-                      </div>
-                    ))}
+                    {categorias.map(c => {
+                      const count = Number(c.productos_count ?? 0);
+                      const stock = Number(c.stock_disponible ?? 0);
+                      return (
+                        <div key={c.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.nombre}>{c.nombre}</span>
+                          <span className="muted tiny" style={{ marginRight: 8, whiteSpace: 'nowrap' }} title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
+                            {count} prod · {stock} u
+                          </span>
+                          <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delCategoria(c)}><Icons.Trash size={13} /></button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 <div style={{ flex: 1 }}>
