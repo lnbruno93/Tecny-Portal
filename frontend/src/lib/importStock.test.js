@@ -96,12 +96,27 @@ describe('mapStockRows', () => {
 
   it('compat: encabezados limpios de la plantilla CSV', () => {
     const rows = [
-      ['nombre', 'clase', 'costo', 'costo_moneda', 'precio_venta', 'precio_moneda', 'imei', 'cantidad'],
-      ['iPhone 15', 'celular', '800', 'USD', '950', 'USD', '356938035643809', '']];
+      ['nombre', 'clase', 'categoria', 'costo', 'costo_moneda', 'precio_venta', 'precio_moneda', 'imei', 'cantidad'],
+      ['iPhone 15', 'celular', 'iPhone Nuevo', '800', 'USD', '950', 'USD', '356938035643809', '']];
     const [{ body, error }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
     expect(body.nombre).toBe('iPhone 15');
     expect(body.costo).toBe(800);
     expect(body.precio_venta).toBe(950);
+    expect(body.categoria_id).toBe(11); // ctx categorías incluye 'iPhone Nuevo' id 11
+  });
+
+  it('bloquea filas sin categoría (la queremos siempre para análisis posterior)', () => {
+    const rows = [HEADERS,
+      ['iPhone sin cat', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', '', 'P']];
+    const [{ error }] = mapStockRows(rows, ctx);
+    expect(error).toMatch(/categor/i);
+  });
+
+  it('marca error si la categoría del archivo no existe en el sistema', () => {
+    const rows = [HEADERS,
+      ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'Categoria Fantasma', 'P']];
+    const [{ error }] = mapStockRows(rows, ctx);
+    expect(error).toMatch(/no existe/i);
   });
 });

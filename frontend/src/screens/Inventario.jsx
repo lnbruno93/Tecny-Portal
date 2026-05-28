@@ -184,6 +184,8 @@ export default function Inventario() {
   async function handleSave(e) {
     e.preventDefault();
     if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
+    // Categoría requerida al crear (en edits de productos legacy queda opcional para no bloquear).
+    if (!editId && !form.categoria_id) { setFormError('La categoría es obligatoria.'); return; }
     setSaving(true); setFormError('');
     const num = (v) => v === '' || v == null ? null : Number(v);
     const payload = {
@@ -354,7 +356,7 @@ export default function Inventario() {
           <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
           <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
           <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
-          <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Catálogos</button>
+          <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
           <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
         </div>
       </div>
@@ -499,9 +501,9 @@ export default function Inventario() {
                   <div className="field"><label className="field-label">IMEI (opcional)</label><input className="input mono" placeholder="356938035643809" value={form.imei} onChange={e => setF('imei', e.target.value)} /></div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Categoría</label>
-                      <select className="input" value={form.categoria_id} onChange={e => setF('categoria_id', e.target.value)}>
-                        <option value="">Sin categoría</option>
+                      <label className="field-label">Categoría <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <select className="input" value={form.categoria_id} onChange={e => setF('categoria_id', e.target.value)} required>
+                        <option value="">— Elegir —</option>
                         {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
                     </div>
@@ -608,7 +610,7 @@ export default function Inventario() {
         <div className="modal-overlay" onClick={() => setShowCatalogos(false)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Categorías y depósitos</h3>
+              <h3>Categorías &amp; Depósitos</h3>
               <button className="icon-btn" onClick={() => setShowCatalogos(false)}><Icons.X size={16} /></button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>

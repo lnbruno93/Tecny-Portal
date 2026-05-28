@@ -36,6 +36,8 @@ const unitarioMsg = { message: 'Un celular unitario debe tener cantidad = 1', pa
 
 // .strict(): un campo extra (typo del cliente, JS field leak) da 400 explícito
 // en vez de pasar silencioso y persistirse sin querer / ser ignorado.
+// NOTA: categoría es opcional a nivel API (preserva compat con productos legacy),
+// pero la UI la exige al crear/cargar bulk (validación en frontend).
 const createProductoSchema = baseProducto.strict().refine(unitarioCoherente, unitarioMsg);
 
 const updateProductoSchema = baseProducto.strict().partial(); // partial → coherencia se chequea al leer DB

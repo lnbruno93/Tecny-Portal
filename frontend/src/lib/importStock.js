@@ -137,9 +137,12 @@ export function mapStockRows(rows, { categorias = [], depositos = [] } = {}) {
       };
 
       // Validaciones que evitan importar stock que rompe ventas/valorizado.
+      const categoriaRaw = String(get('categoria')).trim();
       let error = null;
       if (!nombre) error = 'Falta el nombre';
       else if (depError) error = depError;
+      else if (!categoriaRaw) error = 'Falta la categoría';
+      else if (!cat) error = `Categoría "${categoriaRaw}" no existe (creala en Categorías & Depósitos)`;
       else if (!(costo > 0)) error = 'Costo en 0 o inválido';
       else if (!(precio_venta > 0)) error = 'Precio en 0 o inválido';
       else if (clase === 'accesorio' && cantidad < 1) error = 'Stock en 0';
