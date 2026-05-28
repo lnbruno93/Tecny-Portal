@@ -6,7 +6,8 @@ const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
-const { crearVentaDesdeEnvio } = require('../lib/ventaDesdeEnvio');
+const { crearVentaDesdeEnvio, actualizarVentaDesdeEnvio } = require('../lib/ventaDesdeEnvio');
+const { revertirEfectosVenta } = require('../lib/cancelarVenta');
 
 // Sincroniza el impacto de un envío en el ledger de cajas: revierte los ingresos
 // previos y, si el envío no está cancelado, re-postea un ingreso por cada item
@@ -29,6 +30,17 @@ async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
       origen: 'envio', ref_tabla: 'envios', ref_id: envioId,
       concepto: `Cobro envío #${envioId}`, user_id: userId,
     });
+  }
+}
+
+// Inserta los items del envío (incluye producto_id si vino).
+async function insertarItems(client, envioId, items) {
+  for (const item of items || []) {
+    await client.query(
+      `INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [envioId, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null, item.metodo_pago_id ?? null, item.producto_id ?? null]
+    );
   }
 }
 
@@ -70,7 +82,7 @@ router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => 
       db.query(countQuery, params),
       db.query(dataQuery,  [...params, limit, offset]),
     ]);
-    const total = parseInt(countRes.rows[0].count);
+    const total = parseInt(countRes.rows[0].count) || 0;
     res.json(paginatedResponse(dataRes.rows.map(r => ({ ...r, items: r.items || [] })), total, { page, limit }));
   } catch (err) {
     next(err);
@@ -81,38 +93,36 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
   try {
     const {
       fecha, cliente, telefono, direccion, barrio,
-      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, items, registrar_venta,
+      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, items, registrar_venta,
     } = req.body;
 
     const client = await db.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        `INSERT INTO envios (fecha, cliente, telefono, direccion, barrio, costo_envio, total_cobrado, horario, operador, notas, estado, prioridad)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        `INSERT INTO envios (fecha, cliente, telefono, direccion, barrio, costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [fecha, cliente, telefono ?? null, direccion, barrio ?? null, costo_envio, total_cobrado,
-         horario ?? null, operador ?? null, notas ?? null, estado, prioridad ?? null]
+         horario ?? null, operador ?? null, notas ?? null, estado, prioridad ?? null, tc ?? null]
       );
       const envio = rows[0];
 
-      for (const item of items) {
-        await client.query(
-          'INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id) VALUES ($1,$2,$3,$4,$5,$6)',
-          [envio.id, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null, item.metodo_pago_id ?? null]
-        );
-      }
+      await insertarItems(client, envio.id, items);
       await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
 
-      // Registrar la venta asociada (solo registro de productos; el dinero lo maneja el envío)
+      // Registrar la venta asociada: si hay items 'producto', crea una venta real
+      // que linkea producto_id (cuando se proveyó) y descuenta stock.
+      let ventaCreada = null;
       if (registrar_venta) {
-        const venta = await crearVentaDesdeEnvio(client, envio, items, req.user.id);
-        if (venta) {
-          await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [venta.id, envio.id]);
-          envio.venta_id = venta.id;
+        ventaCreada = await crearVentaDesdeEnvio(client, envio, items, req.user.id);
+        if (ventaCreada) {
+          await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [ventaCreada.id, envio.id]);
+          envio.venta_id = ventaCreada.id;
         }
       }
       await client.query('COMMIT');
       await audit('envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
+      if (ventaCreada) await audit('ventas', 'INSERT', ventaCreada.id, { despues: ventaCreada, _origen: 'envio', user_id: req.user.id });
       res.status(201).json(envio);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -131,7 +141,7 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
 
   const {
     fecha, cliente, telefono, direccion, barrio,
-    costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, items,
+    costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, items,
   } = req.body;
 
   const client = await db.connect();
@@ -156,30 +166,41 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
           operador      = COALESCE($9,  operador),
           notas         = COALESCE($10, notas),
           estado        = COALESCE($11, estado),
-          prioridad     = COALESCE($12, prioridad)
-        WHERE id = $13 RETURNING *`,
+          prioridad     = COALESCE($12, prioridad),
+          tc            = COALESCE($13, tc)
+        WHERE id = $14 RETURNING *`,
         [fecha, cliente, telefono, direccion, barrio, costo_envio, total_cobrado,
-         horario, operador, notas, estado, prioridad, id]
+         horario, operador, notas, estado, prioridad, tc, id]
       );
+      const envio = rows[0];
 
+      let ventaSincronizada = null;
       if (items !== undefined) {
         await client.query('DELETE FROM envio_items WHERE envio_id = $1', [id]);
-        for (const item of items) {
-          await client.query(
-            'INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id) VALUES ($1,$2,$3,$4,$5,$6)',
-            [id, item.tipo, item.descripcion ?? null, item.monto, item.metodo_pago ?? null, item.metodo_pago_id ?? null]
-          );
+        await insertarItems(client, id, items);
+        // Si hay venta asociada y no se canceló, sincronizar venta_items (re-crear) y stock.
+        if (envio.venta_id && envio.estado !== 'Cancelado') {
+          ventaSincronizada = await actualizarVentaDesdeEnvio(client, envio, items, req.user.id);
         }
       }
       // Recalcular el impacto en caja (cambió la lista de pagos y/o el estado)
-      await syncEnvioCaja(client, id, rows[0].fecha, rows[0].estado, req.user.id);
-      // Si el envío se cancela y tenía venta asociada, cancelar también la venta
-      if (rows[0].estado === 'Cancelado' && before[0].venta_id) {
-        await client.query("UPDATE ventas SET estado = 'cancelado' WHERE id = $1 AND deleted_at IS NULL", [before[0].venta_id]);
+      await syncEnvioCaja(client, id, envio.fecha, envio.estado, req.user.id);
+
+      // Si el envío se cancela y tenía venta asociada, revertir efectos + marcar cancelada
+      let ventaCancelada = null;
+      if (envio.estado === 'Cancelado' && before[0].venta_id) {
+        const { rows: vrows } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [before[0].venta_id]);
+        if (vrows[0]) {
+          await revertirEfectosVenta(client, vrows[0]);
+          await client.query("UPDATE ventas SET estado = 'cancelado' WHERE id = $1 AND deleted_at IS NULL", [before[0].venta_id]);
+          ventaCancelada = vrows[0];
+        }
       }
       await client.query('COMMIT');
-      await audit('envios', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
-      res.json(rows[0]);
+      await audit('envios', 'UPDATE', id, { antes: before[0], despues: envio, user_id: req.user.id });
+      if (ventaSincronizada) await audit('ventas', 'UPDATE', ventaSincronizada.id, { despues: ventaSincronizada, _origen: 'envio', user_id: req.user.id });
+      if (ventaCancelada)    await audit('ventas', 'UPDATE', ventaCancelada.id,    { antes: ventaCancelada, despues: { ...ventaCancelada, estado: 'cancelado' }, _origen: 'envio', user_id: req.user.id });
+      res.json(envio);
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -195,19 +216,28 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query(
-      'UPDATE envios SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
-      [id]
+    const { rows: before } = await client.query(
+      'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
-    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
-    // Revertir los ingresos de caja asociados a este envío
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
+
+    // Revertir los ingresos de caja del envío
     await reverseCajaMovimientos(client, 'envios', id);
-    // Borrar también la venta asociada (si se había registrado desde este envío)
-    if (rows[0].venta_id) {
-      await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL', [rows[0].venta_id]);
+
+    // Si tiene venta asociada, hacer rollback financiero completo + soft-delete venta
+    let ventaBorrada = null;
+    if (before[0].venta_id) {
+      const { rows: vrows } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [before[0].venta_id]);
+      if (vrows[0]) {
+        await revertirEfectosVenta(client, vrows[0]);
+        await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [before[0].venta_id]);
+        ventaBorrada = vrows[0];
+      }
     }
+    await client.query('UPDATE envios SET deleted_at = NOW() WHERE id = $1', [id]);
     await client.query('COMMIT');
-    await audit('envios', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    await audit('envios', 'DELETE', id, { antes: before[0], user_id: req.user.id });
+    if (ventaBorrada) await audit('ventas', 'DELETE', ventaBorrada.id, { antes: ventaBorrada, _origen: 'envio', user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

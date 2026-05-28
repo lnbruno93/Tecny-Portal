@@ -223,4 +223,51 @@ describe('Envío → Venta (registrar_venta)', () => {
     const ventas2 = await request(app).get('/api/ventas').set(auth());
     expect(ventas2.body.data.some(x => x.id === env.body.venta_id)).toBe(false);
   });
+
+  it('con tc + producto_id: la venta tiene total_usd real y descuenta stock', async () => {
+    // Producto unitario para linkear desde el envío
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'iPhone Test', clase: 'celular', tipo_carga: 'unitario',
+      costo: 600, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD', cantidad: 1,
+    });
+    expect(prod.status).toBe(201);
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente TC', direccion: 'Calle 2', registrar_venta: true, tc: 1000,
+      items: [{ tipo: 'producto', descripcion: 'iPhone Test', monto: 700000, producto_id: prod.body.id }],
+    });
+    expect(env.status).toBe(201);
+    expect(env.body.venta_id).toBeTruthy();
+    // 700.000 ARS / 1000 = 700 USD; ganancia = 700 − 600 = 100 USD
+    const v = (await request(app).get(`/api/ventas`).set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(Number(v.total_usd)).toBe(700);
+    expect(Number(v.ganancia_usd)).toBe(100);
+    // El producto unitario quedó marcado como vendido (stock descontado)
+    const pAfter = (await request(app).get(`/api/inventario/productos?buscar=iPhone Test`).set(auth())).body.data.find(x => x.id === prod.body.id);
+    expect(pAfter.estado).toBe('vendido');
+    // Al borrar el envío, se repone el stock
+    await request(app).delete(`/api/envios/${env.body.id}`).set(auth());
+    const pRestored = (await request(app).get(`/api/inventario/productos?buscar=iPhone Test`).set(auth())).body.data.find(x => x.id === prod.body.id);
+    expect(pRestored.estado).toBe('disponible');
+  });
+
+  it('cancelar el envío revierte los efectos de la venta y la marca cancelada', async () => {
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'iPhone Cancel', clase: 'celular', tipo_carga: 'unitario',
+      costo: 400, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD', cantidad: 1,
+    });
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Cancel', direccion: 'Calle 3', registrar_venta: true, tc: 1000,
+      items: [{ tipo: 'producto', descripcion: 'iPhone Cancel', monto: 500000, producto_id: prod.body.id }],
+    });
+    expect((await request(app).get(`/api/inventario/productos?buscar=iPhone Cancel`).set(auth())).body.data.find(x => x.id === prod.body.id).estado).toBe('vendido');
+    // Cancelar el envío
+    const upd = await request(app).put(`/api/envios/${env.body.id}`).set(auth()).send({ estado: 'Cancelado' });
+    expect(upd.status).toBe(200);
+    // El producto vuelve a disponible (stock repuesto)
+    const pAfter = (await request(app).get(`/api/inventario/productos?buscar=iPhone Cancel`).set(auth())).body.data.find(x => x.id === prod.body.id);
+    expect(pAfter.estado).toBe('disponible');
+    // La venta sigue existiendo pero en estado 'cancelado'
+    const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('cancelado');
+  });
 });
