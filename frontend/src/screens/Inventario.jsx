@@ -7,6 +7,7 @@ import { mapStockRows } from '../lib/importStock';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import EditableCell from '../components/EditableCell';
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
 function fmt(n) {
@@ -90,6 +91,7 @@ export default function Inventario() {
   const [metricas, setMetricas] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [depositos, setDepositos] = useState([]);
+  const [proveedoresList, setProveedoresList] = useState([]); // distinct, para combo de edición inline
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -145,13 +147,45 @@ export default function Inventario() {
 
   const loadCatalogos = useCallback(async () => {
     try {
-      const [c, d] = await Promise.all([inventario.categorias(), inventario.depositos()]);
-      setCategorias(c); setDepositos(d);
+      const [c, d, prov] = await Promise.all([
+        inventario.categorias(),
+        inventario.depositos(),
+        inventario.proveedoresList().catch(() => []),
+      ]);
+      setCategorias(c); setDepositos(d); setProveedoresList(prov || []);
     } catch (_) {}
   }, []);
 
   useEffect(() => { loadCatalogos(); loadMetricas(); }, [loadCatalogos, loadMetricas]);
   useEffect(() => { loadProductos(); }, [loadProductos]);
+
+  // ── Edición inline: PATCH un campo y mergear en memoria ──
+  // Optimismo controlado: actualizamos el state ANTES de la respuesta,
+  // pero re-cargamos métricas / categorías al final por si cambió costo o categoría
+  // (afecta inv_*_usd y productos_count). En caso de error, revertimos.
+  const inlineUpdate = useCallback(async (id, field, value) => {
+    const before = productos.find(p => p.id === id);
+    if (!before) return;
+    // Update optimista
+    setProductos(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+    try {
+      const updated = await inventario.updateProducto(id, { [field]: value });
+      // Reemplazamos con la fila normalizada por el backend
+      // (puede haber rellenado categoria_nombre, etc., si el front sólo conocía categoria_id).
+      setProductos(prev => prev.map(p => p.id === id ? { ...p, ...updated, categoria_nombre: categorias.find(c => c.id === updated.categoria_id)?.nombre ?? p.categoria_nombre, deposito_nombre: depositos.find(d => d.id === updated.deposito_id)?.nombre ?? p.deposito_nombre } : p));
+      // Recargo métricas (costo/precio/cantidad pueden haber cambiado).
+      loadMetricas();
+      // Si cambió la categoría → conteo por categoría también cambia.
+      if (field === 'categoria_id') loadCatalogos();
+      // Si tocaron proveedor → puede haber un nombre nuevo a sumar al combo.
+      if (field === 'proveedor') loadCatalogos();
+    } catch (e) {
+      // Rollback
+      setProductos(prev => prev.map(p => p.id === id ? before : p));
+      toast.error(e.message || 'No se pudo guardar');
+      throw e;
+    }
+  }, [productos, categorias, depositos, loadMetricas, loadCatalogos, toast]);
 
   // Búsqueda con debounce → vuelve a page 1
   useEffect(() => {
@@ -426,28 +460,141 @@ export default function Inventario() {
               </tr>
             </thead>
             <tbody>
-              {productos.map(p => (
-                <tr key={p.id}>
-                  <td style={{ fontWeight: 600 }}>{p.nombre}</td>
-                  <td className="mono">{p.gb || '—'}</td>
-                  <td className="mono">{p.bateria != null ? p.bateria + '%' : '—'}</td>
-                  <td>{p.color || '—'}</td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{fmt(p.costo)}</td>
-                  <td><span className="ccy">{p.costo_moneda}</span></td>
-                  <td className="mono pos" style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.precio_venta)}</td>
-                  <td><span className="ccy">{p.precio_moneda}</span></td>
-                  <td className="mono tiny">{p.imei || '—'}</td>
-                  <td className="muted">{p.tipo_carga === 'lote' ? 'Stock' : 'Unitario'}</td>
-                  <td className="muted">{p.categoria_nombre || '—'}</td>
-                  <td className="muted">{p.proveedor || '—'}</td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{p.cantidad}</td>
-                  <td>{estadoBadge(p.estado)}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button className="icon-btn" title="Editar" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
-                    <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
-                  </td>
-                </tr>
-              ))}
+              {productos.map(p => {
+                const save = (field) => (val) => inlineUpdate(p.id, field, val);
+                const catOptions = categorias.map(c => ({ value: c.id, label: c.nombre }));
+                const provOptions = proveedoresList.map(s => ({ value: s, label: s }));
+                return (
+                  <tr key={p.id}>
+                    <EditableCell
+                      value={p.nombre}
+                      type="text"
+                      align="left"
+                      className="cell-strong"
+                      onSave={save('nombre')}
+                      inputProps={{ maxLength: 200 }}
+                      emptyToNull={false}
+                    />
+                    <EditableCell
+                      value={p.gb || ''}
+                      type="text"
+                      align="left"
+                      className="mono"
+                      onSave={save('gb')}
+                      inputProps={{ maxLength: 20 }}
+                    />
+                    <EditableCell
+                      value={p.bateria}
+                      display={p.bateria != null ? p.bateria + '%' : '—'}
+                      type="number"
+                      align="left"
+                      className="mono"
+                      onSave={save('bateria')}
+                      parse={v => v === '' ? null : Number(v)}
+                      inputProps={{ min: 0, max: 100, step: 1 }}
+                    />
+                    <EditableCell
+                      value={p.color || ''}
+                      type="text"
+                      align="left"
+                      onSave={save('color')}
+                      inputProps={{ maxLength: 60 }}
+                    />
+                    <EditableCell
+                      value={p.costo}
+                      display={fmt(p.costo)}
+                      type="number"
+                      align="right"
+                      className="mono"
+                      onSave={save('costo')}
+                      parse={v => v === '' ? 0 : Number(v)}
+                      emptyToNull={false}
+                      inputProps={{ min: 0, step: 1 }}
+                    />
+                    <EditableCell
+                      value={p.costo_moneda}
+                      display={<span className="ccy">{p.costo_moneda}</span>}
+                      type="select"
+                      options={[{ value: 'USD', label: 'USD' }, { value: 'ARS', label: 'ARS' }]}
+                      onSave={save('costo_moneda')}
+                      emptyToNull={false}
+                    />
+                    <EditableCell
+                      value={p.precio_venta}
+                      display={<span className="pos" style={{ fontWeight: 600 }}>{fmt(p.precio_venta)}</span>}
+                      type="number"
+                      align="right"
+                      className="mono"
+                      onSave={save('precio_venta')}
+                      parse={v => v === '' ? 0 : Number(v)}
+                      emptyToNull={false}
+                      inputProps={{ min: 0, step: 1 }}
+                    />
+                    <EditableCell
+                      value={p.precio_moneda}
+                      display={<span className="ccy">{p.precio_moneda}</span>}
+                      type="select"
+                      options={[{ value: 'USD', label: 'USD' }, { value: 'ARS', label: 'ARS' }]}
+                      onSave={save('precio_moneda')}
+                      emptyToNull={false}
+                    />
+                    <EditableCell
+                      value={p.imei || ''}
+                      type="text"
+                      align="left"
+                      className="mono tiny"
+                      onSave={save('imei')}
+                      inputProps={{ maxLength: 50 }}
+                    />
+                    <EditableCell
+                      value={p.tipo_carga}
+                      display={<span className="muted">{p.tipo_carga === 'lote' ? 'Stock' : 'Unitario'}</span>}
+                      type="select"
+                      options={[{ value: 'unitario', label: 'Unitario' }, { value: 'lote', label: 'Stock' }]}
+                      onSave={save('tipo_carga')}
+                      emptyToNull={false}
+                    />
+                    <EditableCell
+                      value={p.categoria_id}
+                      display={<span className="muted">{p.categoria_nombre || '—'}</span>}
+                      type="combo"
+                      options={catOptions}
+                      onSave={save('categoria_id')}
+                      parse={v => v === '' ? null : Number(v)}
+                    />
+                    <EditableCell
+                      value={p.proveedor || ''}
+                      display={<span className="muted">{p.proveedor || '—'}</span>}
+                      type="combo"
+                      options={provOptions}
+                      onSave={save('proveedor')}
+                      inputProps={{ maxLength: 200 }}
+                    />
+                    <EditableCell
+                      value={p.cantidad}
+                      type="number"
+                      align="right"
+                      className="mono"
+                      onSave={save('cantidad')}
+                      parse={v => v === '' ? 0 : Number(v)}
+                      emptyToNull={false}
+                      inputProps={{ min: 0, step: 1 }}
+                    />
+                    <EditableCell
+                      value={p.estado}
+                      display={estadoBadge(p.estado)}
+                      type="select"
+                      options={Object.entries(ESTADO_DISPLAY).map(([v, m]) => ({ value: v, label: m.label }))}
+                      onSave={save('estado')}
+                      emptyToNull={false}
+                    />
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button className="icon-btn" title="Editar (modal completo)" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
+                      <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

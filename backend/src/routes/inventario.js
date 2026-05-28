@@ -143,6 +143,24 @@ router.get('/productos/metricas', async (_req, res, next) => {
   try { res.json(await fetchMetricas()); } catch (err) { next(err); }
 });
 
+// Proveedores únicos vistos en productos vivos. Insumo del combo de edición
+// inline (Inventario): no tenemos tabla de proveedores como FK, así que esto
+// es la mejor fuente de verdad para autocompletar. DISTINCT chico (≤cientos
+// en cualquier escenario realista) → query sin paginación.
+router.get('/productos/proveedores', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT DISTINCT TRIM(proveedor) AS proveedor
+        FROM productos
+       WHERE deleted_at IS NULL
+         AND proveedor IS NOT NULL
+         AND TRIM(proveedor) <> ''
+       ORDER BY proveedor
+    `);
+    res.json(rows.map(r => r.proveedor));
+  } catch (err) { next(err); }
+});
+
 /* ───────────────────────── Productos ───────────────────────── */
 
 router.get('/productos', validate(queryProductosSchema, 'query'), async (req, res, next) => {

@@ -192,6 +192,35 @@ describe('GET /api/inventario/productos/metricas', () => {
   });
 });
 
+// ─── Proveedores (combo de edición inline) ───────────────────
+describe('GET /api/inventario/productos/proveedores', () => {
+  it('devuelve los proveedores únicos vistos en productos vivos', async () => {
+    // Sumamos algunos productos con proveedor para que aparezcan
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'ProvProd 1', clase: 'celular', categoria_id: catBase,
+      costo: 100, precio_venta: 200, proveedor: 'Mayorista Alfa',
+    });
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'ProvProd 2', clase: 'celular', categoria_id: catBase,
+      costo: 100, precio_venta: 200, proveedor: '  Mayorista Alfa  ', // mismo, con espacios
+    });
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'ProvProd 3', clase: 'celular', categoria_id: catBase,
+      costo: 100, precio_venta: 200, proveedor: 'Zeta Distribuidor',
+    });
+    const res = await request(app).get('/api/inventario/productos/proveedores').set(auth());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toContain('Mayorista Alfa');
+    expect(res.body).toContain('Zeta Distribuidor');
+    // Vienen sin duplicados (TRIM + DISTINCT) y ordenados
+    const idxA = res.body.indexOf('Mayorista Alfa');
+    const idxZ = res.body.indexOf('Zeta Distribuidor');
+    expect(idxA).toBeLessThan(idxZ);
+    expect(res.body.filter(p => p === 'Mayorista Alfa').length).toBe(1);
+  });
+});
+
 // ─── Conteo por categoría (insumo de Data Science) ───────────
 describe('GET /api/inventario/categorias — productos_count', () => {
   it('devuelve el conteo de productos y stock disponible por categoría', async () => {
