@@ -1,0 +1,267 @@
+/**
+ * Desglose 360 — vista pivot del inventario.
+ *
+ * Permite agrupar todo el stock por una dimensión (categoría, proveedor,
+ * modelo, estado, depósito, GB, color) y aplicarle filtros globales. Cada
+ * fila es clickeable: lleva al listado de Inventario con ese filtro aplicado
+ * (drill-down). Acompaña los KPIs totales arriba y un export CSV.
+ *
+ * Decisiones de diseño:
+ *   - Una sola dimensión a la vez (selector "Agrupar por") → la tabla
+ *     queda enfocada y los números no se cortan en columnas chiquitas.
+ *   - Backend hace el GROUP BY → no traemos miles de filas al cliente.
+ *   - Drill-down via query params en /inventario (no rompe la navegación
+ *     ni la URL si el usuario quiere compartir el link).
+ */
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Icons } from '../components/Icons';
+import { inventario } from '../lib/api';
+import { exportCsv } from '../lib/exportCsv';
+import { useToast } from '../contexts/ToastContext';
+
+function fmt(n) { return Math.round(Number(n) || 0).toLocaleString('es-AR'); }
+function money(n, moneda) {
+  const sym = moneda === 'ARS' ? '$' : 'u$s';
+  return sym + fmt(n);
+}
+
+const DIMENSIONES = [
+  { value: 'categoria', label: 'Categoría' },
+  { value: 'proveedor', label: 'Proveedor' },
+  { value: 'modelo',    label: 'Modelo' },
+  { value: 'estado',    label: 'Estado' },
+  { value: 'deposito',  label: 'Depósito' },
+  { value: 'gb',        label: 'GB' },
+  { value: 'color',     label: 'Color' },
+];
+
+// Cómo construir la URL de drill-down según la dimensión.
+// Para FKs usamos el id; para texto libre, el valor; para estado, su clave.
+const DRILLDOWN_PARAM = {
+  categoria: (row) => ({ categoria_id: row.valor_id }),
+  proveedor: (row) => row.valor === 'Sin proveedor' ? {} : ({ proveedor: row.valor }),
+  modelo:    (row) => ({ nombre: row.valor }),
+  estado:    (row) => ({ estado: row.valor }),
+  deposito:  (row) => ({ deposito_id: row.valor_id }),
+  gb:        (row) => row.valor === '(sin GB)'    ? {} : ({ gb: row.valor }),
+  color:     (row) => row.valor === '(sin color)' ? {} : ({ color: row.valor }),
+};
+
+// Etiqueta del estado en formato lindo para la grilla (la dim devuelve raw enum).
+const ESTADO_LABEL = {
+  disponible: 'Disponible',
+  vendido:    'Vendido',
+  en_tecnico: 'En técnico',
+  reservado:  'Reservado',
+};
+
+export default function Desglose360() {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  const [por, setPor] = useState('categoria');
+  const [clase, setClase] = useState(''); // '' | 'celular' | 'accesorio'
+  const [estadoFiltro, setEstadoFiltro] = useState(''); // '' | 'disponible' | ...
+  const [soloStock, setSoloStock] = useState(true);
+  const [buscar, setBuscar] = useState('');
+
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState({ filas: [], totales: {} });
+
+  // Carga con debounce para la búsqueda (no consultamos en cada tecla).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const params = { por };
+      if (clase) params.clase = clase;
+      if (estadoFiltro) params.estado = estadoFiltro;
+      if (soloStock) params.solo_stock = 'true';
+      if (buscar.trim()) params.buscar = buscar.trim();
+
+      setLoading(true);
+      inventario.desglose(params)
+        .then(setData)
+        .catch(e => toast.error(e.message))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [por, clase, estadoFiltro, soloStock, buscar, toast]);
+
+  // Sort: por inversión total descendente (lo más invertido primero, "dónde está la plata").
+  const filasOrdenadas = useMemo(() => {
+    return [...(data.filas || [])].sort((a, b) => {
+      const ta = (a.inv_usd || 0) + (a.inv_ars || 0) / 1000; // peso simbólico
+      const tb = (b.inv_usd || 0) + (b.inv_ars || 0) / 1000;
+      return tb - ta;
+    });
+  }, [data.filas]);
+
+  function drillDown(row) {
+    const params = (DRILLDOWN_PARAM[por] || (() => ({})))(row);
+    const qs = new URLSearchParams(params).toString();
+    navigate(`/inventario${qs ? `?${qs}` : ''}`);
+  }
+
+  function exportarCsv() {
+    const dimLabel = DIMENSIONES.find(d => d.value === por)?.label || 'Dimensión';
+    const rows = [
+      [dimLabel, 'Productos', 'Stock (u)', 'Inv USD', 'Inv ARS', 'Valorizado USD', 'Valorizado ARS', 'Margen USD', 'Margen ARS'],
+      ...filasOrdenadas.map(f => [
+        por === 'estado' ? (ESTADO_LABEL[f.valor] || f.valor) : f.valor,
+        f.productos, f.stock,
+        f.inv_usd, f.inv_ars, f.valorizado_usd, f.valorizado_ars,
+        f.margen_usd, f.margen_ars,
+      ]),
+    ];
+    exportCsv(rows, `desglose-${por}.csv`);
+  }
+
+  const tot = data.totales || {};
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <div className="page-head">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Link to="/inventario" className="btn btn-sm" title="Volver a Inventario">
+              <Icons.ArrowRight size={13} style={{ transform: 'rotate(180deg)' }} /> Inventario
+            </Link>
+            <h1 className="page-title">Desglose 360</h1>
+          </div>
+          <div className="page-sub">Tu stock filtrado y agrupado · click en una fila para ver el detalle</div>
+        </div>
+        <div className="page-actions">
+          <button className="btn" onClick={exportarCsv} disabled={loading || !filasOrdenadas.length}>
+            <Icons.Download size={14} /> Exportar CSV
+          </button>
+        </div>
+      </div>
+
+      {/* ── KPIs ── */}
+      <div className="row" style={{ marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
+        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+          <div className="kpi-label">Productos</div>
+          <div className="kpi-value mono">{fmt(tot.productos)}</div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>{fmt(tot.stock)} unidades en total</div>
+        </div>
+        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+          <div className="kpi-label">Inversión USD</div>
+          <div className="kpi-value mono">{money(tot.inv_usd, 'USD')}</div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.inv_ars ? money(tot.inv_ars, 'ARS') + ' ARS' : '—'}</div>
+        </div>
+        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+          <div className="kpi-label">Valorizado venta USD</div>
+          <div className="kpi-value mono pos">{money(tot.valorizado_usd, 'USD')}</div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.valorizado_ars ? money(tot.valorizado_ars, 'ARS') + ' ARS' : '—'}</div>
+        </div>
+        <div className="card card-tight" style={{ flex: '1 1 180px' }}>
+          <div className="kpi-label">Margen potencial USD</div>
+          <div className="kpi-value mono" style={{ color: (tot.margen_usd || 0) >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+            {money(tot.margen_usd, 'USD')}
+          </div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>
+            {tot.inv_usd ? `+${Math.round(((tot.margen_usd || 0) / tot.inv_usd) * 100)}%` : '—'} sobre la inversión
+          </div>
+        </div>
+      </div>
+
+      {/* ── Controles ── */}
+      <div className="card card-tight" style={{ marginBottom: 14 }}>
+        <div className="flex-row" style={{ gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div>
+            <div className="muted tiny" style={{ marginBottom: 4 }}>Agrupar por</div>
+            <div className="seg">
+              {DIMENSIONES.map(d => (
+                <button key={d.value} className={por === d.value ? 'on' : ''} onClick={() => setPor(d.value)}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div>
+            <div className="muted tiny" style={{ marginBottom: 4 }}>Clase</div>
+            <select className="input" style={{ minWidth: 130 }} value={clase} onChange={e => setClase(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="celular">Celulares</option>
+              <option value="accesorio">Accesorios</option>
+            </select>
+          </div>
+          <div>
+            <div className="muted tiny" style={{ marginBottom: 4 }}>Estado</div>
+            <select className="input" style={{ minWidth: 130 }} value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)}>
+              <option value="">Todos</option>
+              <option value="disponible">Disponible</option>
+              <option value="vendido">Vendido</option>
+              <option value="en_tecnico">En técnico</option>
+              <option value="reservado">Reservado</option>
+            </select>
+          </div>
+          <label className="flex-row" style={{ gap: 6, fontSize: 13, color: 'var(--text-muted)', cursor: 'pointer', alignSelf: 'flex-end', paddingBottom: 8 }}>
+            <input type="checkbox" checked={soloStock} onChange={e => setSoloStock(e.target.checked)} />
+            Solo en stock
+          </label>
+          <div className="input-group" style={{ width: 240, alignSelf: 'flex-end' }}>
+            <span className="addon addon-l"><Icons.Search size={14} /></span>
+            <input className="input" placeholder="Buscar nombre, IMEI, color…" value={buscar} onChange={e => setBuscar(e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabla ── */}
+      {loading ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Calculando…</div>
+      ) : filasOrdenadas.length === 0 ? (
+        <div className="empty">Sin resultados para los filtros aplicados.</div>
+      ) : (
+        <div className="card card-flush" style={{ overflowX: 'auto' }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>{DIMENSIONES.find(d => d.value === por)?.label}</th>
+                <th style={{ textAlign: 'right' }}>Productos</th>
+                <th style={{ textAlign: 'right' }}>Stock (u)</th>
+                <th style={{ textAlign: 'right' }}>Inv USD</th>
+                <th style={{ textAlign: 'right' }}>Inv ARS</th>
+                <th style={{ textAlign: 'right' }}>Valorizado USD</th>
+                <th style={{ textAlign: 'right' }}>Valorizado ARS</th>
+                <th style={{ textAlign: 'right' }}>Margen USD</th>
+                <th style={{ textAlign: 'right' }}>%</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filasOrdenadas.map((f, idx) => {
+                const pct = f.inv_usd ? Math.round((f.margen_usd / f.inv_usd) * 100) : null;
+                const label = por === 'estado' ? (ESTADO_LABEL[f.valor] || f.valor) : f.valor;
+                return (
+                  <tr key={(f.valor_id || '') + ':' + f.valor + ':' + idx} className="tbl-row-click" onClick={() => drillDown(f)} title="Ver el detalle en Inventario">
+                    <td style={{ fontWeight: 600 }}>{label}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(f.productos)}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmt(f.stock)}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{f.inv_usd ? money(f.inv_usd, 'USD') : <span className="muted">—</span>}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{f.inv_ars ? money(f.inv_ars, 'ARS') : <span className="muted">—</span>}</td>
+                    <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_usd ? money(f.valorizado_usd, 'USD') : <span className="muted">—</span>}</td>
+                    <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_ars ? money(f.valorizado_ars, 'ARS') : <span className="muted">—</span>}</td>
+                    <td className="mono" style={{ textAlign: 'right', color: f.margen_usd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                      {f.margen_usd ? money(f.margen_usd, 'USD') : <span className="muted">—</span>}
+                    </td>
+                    <td className="mono muted tiny" style={{ textAlign: 'right' }}>{pct != null ? pct + '%' : '—'}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
+                      <Icons.ChevronRight size={14} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="muted tiny" style={{ marginTop: 10 }}>
+        Tip: click en cualquier fila te lleva al inventario filtrado por ese valor.
+      </div>
+    </div>
+  );
+}

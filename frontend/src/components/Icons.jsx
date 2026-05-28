@@ -43,6 +43,7 @@ export const Icons = {
   TrendUp: (p) => <ICO {...p}><path d="M3 17 9 11l4 4 8-9" /><path d="M14 6h7v7" /></ICO>,
   TrendDown: (p) => <ICO {...p}><path d="M3 7l6 6 4-4 8 9" /><path d="M14 18h7v-7" /></ICO>,
   Box: (p) => <ICO {...p}><path d="M3 7v10l9 5 9-5V7l-9-5Z" /><path d="M3 7l9 5 9-5M12 12v10" /></ICO>,
+  PieChart: (p) => <ICO {...p}><path d="M12 2v10l8.5 5A10 10 0 1 1 12 2Z" /><path d="M12 2a10 10 0 0 1 10 10h-10Z" /></ICO>,
   Send: (p) => <ICO {...p}><path d="M3 11 21 3l-8 18-2-8Z" /></ICO>,
   Edit: (p) => <ICO {...p}><path d="M4 20h4l11-11-4-4L4 16Z" /><path d="m14 6 4 4" /></ICO>,
   Trash: (p) => <ICO {...p}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></ICO>,
