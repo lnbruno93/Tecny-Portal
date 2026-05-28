@@ -125,6 +125,23 @@ describe('GET /api/cajas/deudas', () => {
     expect(res.body.data.length).toBeGreaterThanOrEqual(2);
     expect(res.body.pagination).toBeDefined();
   });
+
+  // Regresión: el frontend Cajas.jsx pide ?limit=500 para traer el ledger completo
+  // y agruparlo en memoria. Antes el schema tenía max(200) → 400 "Datos inválidos"
+  // y la pantalla "Deudas a cobrar" mostraba todo en 0 sin mensaje claro al user.
+  it('acepta limit=500 (el frontend lo usa para traer todo el ledger)', async () => {
+    const res = await request(app)
+      .get('/api/cajas/deudas?limit=500')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('rechaza limit > 500 → 400 (techo para evitar payloads enormes)', async () => {
+    const res = await request(app)
+      .get('/api/cajas/deudas?limit=501')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
 });
 
 // ─── Inversiones ──────────────────────────────────────────────
