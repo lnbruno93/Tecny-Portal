@@ -113,6 +113,7 @@ export default function Envios() {
       producto_id: p.id,
       descripcion: [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · '),
       monto: String(p.precio_venta || ''),
+      moneda: p.precio_moneda || 'USD',  // heredada del producto del inventario (típicamente USD)
       _imei: p.imei || '', // solo para mostrar en la UI, no se envía
     })));
     setProdSearch({ itemIdx: null, q: '', results: [], loading: false });
@@ -172,8 +173,9 @@ export default function Envios() {
             metodo_pago: i.metodo_pago.trim() || null,
             metodo_pago_id: (i.tipo === 'pago' && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
             producto_id: (i.tipo === 'producto' && i.producto_id) ? Number(i.producto_id) : null,
-            moneda: i.tipo === 'pago' ? (i.moneda || 'ARS') : 'ARS',
-            tc: (i.tipo === 'pago' && i.tc) ? Number(i.tc) : null,
+            // moneda del item: en pago la setea pickCajaPago; en producto la heredada del inventario (precio_moneda).
+            moneda: i.moneda || 'ARS',
+            tc: i.tc ? Number(i.tc) : null,
           })),
       };
       const nuevo = await envios.create(payload);
@@ -856,7 +858,7 @@ export default function Envios() {
                               </div>
                             )}
                             <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Monto {it.tipo === 'pago' ? <span className="muted tiny">({it.moneda || 'ARS'})</span> : <span className="muted tiny">(ARS)</span>}</label>
+                              <label className="field-label">Monto <span className="muted tiny">({it.moneda || 'ARS'})</span></label>
                               <input type="number" className="input mono" placeholder="0"
                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                             </div>

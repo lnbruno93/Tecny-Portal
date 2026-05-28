@@ -25,23 +25,26 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
   const productos = (items || []).filter(i => i.tipo === 'producto');
   if (productos.length === 0) return null;
 
-  // Total/ganancia: si hay TC, convertimos ARS→USD; sino quedan en 0 (la venta
-  // entra como registro sin total — caller decide si la quiere contar o no).
+  // Total/ganancia: convertimos cada item a USD según SU moneda (no asumir ARS).
+  //   · 'USD'/'USDT' → 1:1 (no necesita TC).
+  //   · 'ARS' → necesita envio.tc para convertir; sino queda 0 (registro sin total).
   let totalUsd = 0;
   let costoUsd = 0;
-  if (envio.tc && Number(envio.tc) > 0) {
-    for (const it of productos) {
-      const monto = round2(Number(it.monto) || 0);
-      totalUsd += toUsd(monto, 'ARS', envio.tc);
-      // Si linkeamos producto_id, la ganancia es total - costo del producto
-      // (lo leemos a continuación, antes del descuento). Sino, costoUsd queda 0.
+  for (const it of productos) {
+    const monto = round2(Number(it.monto) || 0);
+    const moneda = it.moneda || 'ARS';
+    if (moneda === 'ARS') {
+      if (envio.tc && Number(envio.tc) > 0) totalUsd += toUsd(monto, 'ARS', envio.tc);
+      // sin TC, item ARS no aporta al total
+    } else {
+      totalUsd += monto; // USD o USDT
     }
-    totalUsd = round2(totalUsd);
   }
+  totalUsd = round2(totalUsd);
 
-  // Si hay producto_id linkeados, descontamos stock y traemos costos para ganancia.
+  // Si hay producto_id linkeados, traemos costos para ganancia (también convertidos a USD).
   const linkedItems = productos.filter(p => p.producto_id);
-  if (linkedItems.length > 0 && envio.tc && Number(envio.tc) > 0) {
+  if (linkedItems.length > 0) {
     const ids = [...new Set(linkedItems.map(p => p.producto_id))];
     const { rows: prods } = await client.query(
       'SELECT id, costo, costo_moneda FROM productos WHERE id = ANY($1::int[]) AND deleted_at IS NULL',
@@ -50,7 +53,13 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
     const costoPorId = new Map(prods.map(p => [p.id, p]));
     for (const it of linkedItems) {
       const p = costoPorId.get(it.producto_id);
-      if (p) costoUsd += toUsd(Number(p.costo) || 0, p.costo_moneda || 'USD', envio.tc);
+      if (!p) continue;
+      const costoMon = p.costo_moneda || 'USD';
+      if (costoMon === 'ARS') {
+        if (envio.tc && Number(envio.tc) > 0) costoUsd += toUsd(Number(p.costo) || 0, 'ARS', envio.tc);
+      } else {
+        costoUsd += Number(p.costo) || 0;
+      }
     }
     costoUsd = round2(costoUsd);
   }
@@ -65,23 +74,20 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
 
   for (const it of productos) {
     const precio = round2(Number(it.monto) || 0);
-    // costo_unitario por venta_item: si linkeado, leer del producto; sino 0.
+    const moneda = it.moneda || 'ARS';
     let costoItem = 0;
     if (it.producto_id) {
       const { rows: pr } = await client.query(
         'SELECT costo, costo_moneda FROM productos WHERE id = $1 AND deleted_at IS NULL',
         [it.producto_id]
       );
-      if (pr[0]) {
-        // Si el envío trae TC y el producto está en USD, lo dejamos en USD; sino convertimos.
-        costoItem = round2(Number(pr[0].costo) || 0);
-      }
+      if (pr[0]) costoItem = round2(Number(pr[0].costo) || 0);
     }
     const ganancia = round2(precio - costoItem);
     await client.query(
       `INSERT INTO venta_items (venta_id, producto_id, descripcion, cantidad, precio_vendido, costo, moneda, comision, ganancia)
-       VALUES ($1,$2,$3,1,$4,$5,'ARS',0,$6)`,
-      [venta.id, it.producto_id || null, it.descripcion || 'Producto', precio, costoItem, ganancia]
+       VALUES ($1,$2,$3,1,$4,$5,$6,0,$7)`,
+      [venta.id, it.producto_id || null, it.descripcion || 'Producto', precio, costoItem, moneda, ganancia]
     );
   }
 
@@ -112,22 +118,33 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
   const productos = (items || []).filter(i => i.tipo === 'producto');
   let totalUsd = 0, costoUsd = 0;
   const hasTc = envio.tc && Number(envio.tc) > 0;
-  if (hasTc) {
-    for (const it of productos) totalUsd += toUsd(Number(it.monto) || 0, 'ARS', envio.tc);
-    totalUsd = round2(totalUsd);
+  for (const it of productos) {
+    const monto = round2(Number(it.monto) || 0);
+    const moneda = it.moneda || 'ARS';
+    if (moneda === 'ARS') {
+      if (hasTc) totalUsd += toUsd(monto, 'ARS', envio.tc);
+    } else {
+      totalUsd += monto;
+    }
   }
+  totalUsd = round2(totalUsd);
   for (const it of productos) {
     const precio = round2(Number(it.monto) || 0);
+    const moneda = it.moneda || 'ARS';
     let costoItem = 0;
     if (it.producto_id) {
       const { rows: pr } = await client.query('SELECT costo, costo_moneda FROM productos WHERE id = $1 AND deleted_at IS NULL', [it.producto_id]);
-      if (pr[0]) costoItem = round2(Number(pr[0].costo) || 0);
-      if (hasTc) costoUsd += toUsd(costoItem, pr[0]?.costo_moneda || 'USD', envio.tc);
+      if (pr[0]) {
+        costoItem = round2(Number(pr[0].costo) || 0);
+        const costoMon = pr[0].costo_moneda || 'USD';
+        if (costoMon === 'ARS') { if (hasTc) costoUsd += toUsd(costoItem, 'ARS', envio.tc); }
+        else costoUsd += costoItem;
+      }
     }
     await client.query(
       `INSERT INTO venta_items (venta_id, producto_id, descripcion, cantidad, precio_vendido, costo, moneda, comision, ganancia)
-       VALUES ($1,$2,$3,1,$4,$5,'ARS',0,$6)`,
-      [envio.venta_id, it.producto_id || null, it.descripcion || 'Producto', precio, costoItem, round2(precio - costoItem)]
+       VALUES ($1,$2,$3,1,$4,$5,$6,0,$7)`,
+      [envio.venta_id, it.producto_id || null, it.descripcion || 'Producto', precio, costoItem, moneda, round2(precio - costoItem)]
     );
   }
   const gananciaUsd = round2(totalUsd - costoUsd);

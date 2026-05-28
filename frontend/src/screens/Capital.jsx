@@ -61,8 +61,8 @@ export default function Capital() {
     const deudasArs = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
     const deudasUsd = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
     const b2bUsd = n(ccGeneral.neto);
-    // Las inversiones son dinero que nos invirtieron y debemos devolver → restan.
-    const inversionesArs = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
+    // Las inversiones son dinero (en USD) que nos invirtieron y debemos devolver → restan.
+    const inversionesUsd = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
     // Lo que le debemos a proveedores (USD) → resta.
     const provUsd = n(provSaldos.total_deuda_usd);
     // Cards de composición (lo que suma en verde, lo que resta en rojo).
@@ -76,11 +76,11 @@ export default function Capital() {
       { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [['$', deudasArs], ['u$s', deudasUsd]] },
       { label: 'Deudas de clientes B2B a cobrar', tone: 'pos', montos: [['u$s', b2bUsd]] },
       { label: 'Stock valorizado',                tone: 'pos', montos: [['$', invArs], ['u$s', invUsd]] },
-      { label: 'Inversiones recibidas',           tone: 'neg', montos: [['$', inversionesArs]] },
+      { label: 'Inversiones recibidas',           tone: 'neg', montos: [['u$s', inversionesUsd]] },
       { label: 'Deudas a proveedores a pagar',    tone: 'neg', montos: [['u$s', provUsd]] },
     ];
-    const totalArs  = cajasArs  + invArs + deudasArs - inversionesArs;
-    const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd - provUsd;
+    const totalArs  = cajasArs  + invArs + deudasArs;
+    const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd - provUsd - inversionesUsd;
     const totalUsdt = cajasUsdt;
     return { cards, totalArs, totalUsd, totalUsdt };
   }, [cajasList, metricas, resumen, ccGeneral, provSaldos]);
