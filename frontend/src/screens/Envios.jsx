@@ -375,7 +375,7 @@ export default function Envios() {
           <h1 className="page-title">Envíos</h1>
           <div className="page-sub">Despachos a domicilio · prioridad · items producto y pago</div>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', gap: 8 }}>
           <button
             className="btn"
             onClick={() => {
@@ -387,6 +387,9 @@ export default function Envios() {
             }}
           >
             <Icons.Refresh size={14} /> Actualizar
+          </button>
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Icons.Plus size={14} /> Nuevo envío
           </button>
         </div>
       </div>
