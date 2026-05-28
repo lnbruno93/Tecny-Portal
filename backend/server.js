@@ -37,11 +37,18 @@ if (process.env.SENTRY_DSN) {
 const app    = require('./src/app');
 const logger = require('./src/lib/logger');
 const db     = require('./src/config/database');
+const { startPurgaJob } = require('./src/lib/audit');
 
 const PORT = process.env.PORT || 3001;
 
 const server = app.listen(PORT, () => {
   logger.info({ port: PORT, env: process.env.NODE_ENV || 'production' }, 'iPro API iniciada');
+
+  // Job interno: cada 24h purga audit_logs > AUDIT_RETENCION_DIAS días (default 365).
+  // Sin esto la tabla crecía infinita y rompía /historial. Single-instance only
+  // — cuando escalemos a múltiples workers hay que migrar a pg_cron o Railway Scheduler.
+  const diasRetencion = Number(process.env.AUDIT_RETENCION_DIAS) || 365;
+  startPurgaJob({ diasRetencion, intervalHours: 24 });
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────

@@ -19,6 +19,17 @@ function necesidadPorProducto(items) {
 
 // Bloquea las filas (FOR UPDATE, orden estable para evitar deadlocks), valida
 // disponibilidad y descuenta stock. Lanza err400 si no hay stock o el unitario ya se vendió.
+//
+// Reglas de validación:
+//   1. Unitario ya vendido → rechazar (con o sin trackeo). El estado es la fuente
+//      de verdad para unitarios.
+//   2. trackear_stock=true → validar cantidad (caso normal).
+//   3. trackear_stock=false en tipo_carga='lote' → validamos cantidad IGUAL. Antes
+//      de mayo-2026 acá había un bug: lotes "no trackeados" se podían vender
+//      ilimitado porque el chequeo se saltaba. Para lotes, la cantidad ES el stock;
+//      si querés un lote infinito tenés que setearlo en una cantidad alta a
+//      propósito. trackear_stock=false en lotes pasa a ser efectivamente lo mismo
+//      que con tracking — se mantiene el flag por compatibilidad histórica.
 async function descontarStock(client, items) {
   const need = necesidadPorProducto(items);
   for (const id of [...need.keys()].sort((a, b) => a - b)) {
@@ -30,7 +41,10 @@ async function descontarStock(client, items) {
     if (!p) throw err400('Un producto ya no existe en el inventario.');
     const qty = need.get(id);
     if (p.tipo_carga === 'unitario' && p.estado === 'vendido') throw err400(`"${p.nombre}" ya figura como vendido.`);
-    if (p.trackear_stock && p.cantidad < qty) throw err400(`Stock insuficiente de "${p.nombre}" (disponible: ${p.cantidad}, pedido: ${qty}).`);
+    const debeValidarCantidad = p.trackear_stock || p.tipo_carga === 'lote';
+    if (debeValidarCantidad && p.cantidad < qty) {
+      throw err400(`Stock insuficiente de "${p.nombre}" (disponible: ${p.cantidad}, pedido: ${qty}).`);
+    }
     await client.query(
       `UPDATE productos
          SET cantidad = GREATEST(cantidad - $1, 0),

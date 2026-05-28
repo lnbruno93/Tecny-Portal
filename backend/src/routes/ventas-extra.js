@@ -174,7 +174,11 @@ router.get('/:id/comprobantes', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { rows } = await db.query(
-      'SELECT id, archivo_nombre, archivo_tipo, created_at FROM venta_comprobantes WHERE venta_id = $1 ORDER BY id', [id]
+      `SELECT id, archivo_nombre, archivo_tipo, created_at
+         FROM venta_comprobantes
+        WHERE venta_id = $1 AND deleted_at IS NULL
+        ORDER BY id`,
+      [id]
     );
     res.json(rows);
   } catch (err) { next(err); }
@@ -188,7 +192,7 @@ router.get('/comprobantes/:cid', async (req, res, next) => {
       `SELECT vc.archivo_data, vc.archivo_nombre, vc.archivo_tipo
          FROM venta_comprobantes vc
          JOIN ventas v ON v.id = vc.venta_id AND v.deleted_at IS NULL
-        WHERE vc.id = $1`, [cid]
+        WHERE vc.id = $1 AND vc.deleted_at IS NULL`, [cid]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Comprobante no encontrado' });
     res.json(rows[0]);

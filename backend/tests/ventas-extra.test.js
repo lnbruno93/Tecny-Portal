@@ -167,6 +167,30 @@ describe('Comprobantes de venta', () => {
     const res = await request(app).get('/api/ventas/comprobantes/999999').set(auth());
     expect(res.status).toBe(404);
   });
+
+  // A3: archivos adjuntos quedan soft-deleted al cancelar/borrar la venta.
+  // Antes de mayo-2026 los venta_comprobantes seguían vivos y accesibles
+  // (riesgo de leak y storage sin tope).
+  it('A3: al borrar la venta, los comprobantes adjuntos quedan inaccesibles', async () => {
+    // Venta nueva con un comprobante adjunto
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, estado: 'acreditado',
+      items: [{ descripcion: 'X', cantidad: 1, precio_vendido: 100, costo: 50, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+    });
+    const c = await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
+      .send({ archivo_data: 'iVBORw0KGgo=', archivo_nombre: 'r.png', archivo_tipo: 'image/png' });
+    expect(c.status).toBe(201);
+    const cid = c.body.id;
+    // Borramos la venta
+    await request(app).delete(`/api/ventas/${venta.body.id}`).set(auth());
+    // Listado por venta → vacío (ya está borrada + comprobantes soft-deleted)
+    const listAfter = await request(app).get(`/api/ventas/${venta.body.id}/comprobantes`).set(auth());
+    expect(listAfter.body.length).toBe(0);
+    // GET por cid → 404 (deleted_at IS NULL filtra la fila)
+    const one = await request(app).get(`/api/ventas/comprobantes/${cid}`).set(auth());
+    expect(one.status).toBe(404);
+  });
 });
 
 /* ═══════════ VENTAS RÁPIDAS ═══════════ */

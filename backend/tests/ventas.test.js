@@ -444,3 +444,40 @@ describe('GET /api/ventas/dashboard', () => {
     expect(Array.isArray(res.body.top_vendedores)).toBe(true);
   });
 });
+
+// ─── A2: lote sin trackear_stock no debe vender ilimitado ─────────
+// Regresión: la auditoría detectó que el chequeo de cantidad solo aplicaba
+// si trackear_stock=true. Para tipo_carga='lote' la cantidad ES el stock,
+// por lo que ahora se valida SIEMPRE.
+describe('Ventas — stock de lote sin trackear (A2)', () => {
+  it('rechaza una venta que supera la cantidad de un lote, aunque trackear_stock=false', async () => {
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Lote NoTrackeado A2', clase: 'accesorio', tipo_carga: 'lote',
+      categoria_id: catBase, costo: 10, precio_venta: 25, cantidad: 3,
+      trackear_stock: false,
+    });
+    expect(prod.status).toBe(201);
+    // Pedimos 5 cuando solo hay 3
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Excede stock',
+      items: [{ producto_id: prod.body.id, descripcion: 'Lote NoTrackeado A2', cantidad: 5, precio_vendido: 25, costo: 10, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 125, moneda: 'USD' }],
+    });
+    expect(venta.status).toBe(400);
+    expect(venta.body.error).toMatch(/stock insuficiente/i);
+  });
+
+  it('vender exactamente la cantidad disponible sí funciona', async () => {
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Lote NoTrackeado A2 OK', clase: 'accesorio', tipo_carga: 'lote',
+      categoria_id: catBase, costo: 10, precio_venta: 25, cantidad: 3,
+      trackear_stock: false,
+    });
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Justo',
+      items: [{ producto_id: prod.body.id, descripcion: 'Lote NoTrackeado A2 OK', cantidad: 3, precio_vendido: 25, costo: 10, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 75, moneda: 'USD' }],
+    });
+    expect(venta.status).toBe(201);
+  });
+});
