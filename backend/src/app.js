@@ -88,6 +88,25 @@ app.use(rateLimit({
 
 app.use(express.json({ limit: '10mb' }));
 
+// Endpoint para violaciones de CSP del frontend (browsers postean reports acá).
+// Lo logueamos para enterarnos de intentos de carga externa / scripts inyectados
+// y agarrar problemas que el CSP frenó. No requiere auth (las browsers no envían
+// credenciales en este POST). Rate-limit propio para no inundar logs ante un
+// atacante que dispare cientos de violaciones.
+const cspReportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,                       // 100 reports/min/IP es generoso
+  standardHeaders: false, legacyHeaders: false,
+  message: { error: 'rate-limit' },
+});
+// CSP envía `application/csp-report` o `application/reports+json` (Reporting API)
+app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '64kb' }), (req, res) => {
+  const report = req.body && (req.body['csp-report'] || (Array.isArray(req.body) ? req.body[0]?.body : req.body));
+  // Loguear como warning para que aparezca en alertas pero no en error
+  logger.warn({ csp: report, ua: req.headers['user-agent'] }, 'csp violation');
+  res.status(204).end();
+});
+
 // Logging de requests (silencia /health para no generar ruido)
 app.use(pinoHttp({
   logger,

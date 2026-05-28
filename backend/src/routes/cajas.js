@@ -5,6 +5,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
+const { createCachedFetcher } = require('../lib/cacheTtl');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
@@ -365,44 +366,47 @@ router.delete('/cajas/movimientos/:id', async (req, res, next) => {
 
 // ─── RESUMEN ────────────────────────────────────────────────
 
+// Resumen agregado por contacto. Cacheado 20s — la vista Capital lo recarga al
+// montar y los saldos no cambian al segundo. Ventana corta para reflejar
+// movimientos nuevos sin sentir lag.
+const fetchResumenCajas = createCachedFetcher('cajas:resumen', 20_000, async () => {
+  const [{ rows: deudas }, { rows: inv }] = await Promise.all([
+    db.query(`
+      SELECT m.contacto_id,
+        SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END) AS saldo_ars,
+        SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END) AS saldo_usd,
+        COUNT(*) AS movimientos
+      FROM movimientos_deudas m
+      JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+      WHERE m.deleted_at IS NULL
+      GROUP BY m.contacto_id
+      HAVING ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END))
+           + ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END)) > 0
+    `),
+    db.query(`
+      WITH ultima_tasa AS (
+        SELECT DISTINCT ON (contacto_id)
+          contacto_id, tasa
+        FROM movimientos_inversiones
+        WHERE tasa IS NOT NULL AND deleted_at IS NULL
+        ORDER BY contacto_id, fecha DESC, id DESC
+      )
+      SELECT m.contacto_id,
+        SUM(m.monto) AS total_invertido,
+        COUNT(*) AS movimientos,
+        ut.tasa AS ultima_tasa
+      FROM movimientos_inversiones m
+      JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+      LEFT JOIN ultima_tasa ut ON ut.contacto_id = m.contacto_id
+      WHERE m.deleted_at IS NULL
+      GROUP BY m.contacto_id, ut.tasa
+    `),
+  ]);
+  return { deudas, inversiones: inv };
+});
+
 router.get('/resumen', async (_req, res, next) => {
-  try {
-    const [{ rows: deudas }, { rows: inv }] = await Promise.all([
-      db.query(`
-        SELECT m.contacto_id,
-          SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END) AS saldo_ars,
-          SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END) AS saldo_usd,
-          COUNT(*) AS movimientos
-        FROM movimientos_deudas m
-        JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
-        WHERE m.deleted_at IS NULL
-        GROUP BY m.contacto_id
-        HAVING ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END))
-             + ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END)) > 0
-      `),
-      db.query(`
-        WITH ultima_tasa AS (
-          SELECT DISTINCT ON (contacto_id)
-            contacto_id, tasa
-          FROM movimientos_inversiones
-          WHERE tasa IS NOT NULL AND deleted_at IS NULL
-          ORDER BY contacto_id, fecha DESC, id DESC
-        )
-        SELECT m.contacto_id,
-          SUM(m.monto) AS total_invertido,
-          COUNT(*) AS movimientos,
-          ut.tasa AS ultima_tasa
-        FROM movimientos_inversiones m
-        JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
-        LEFT JOIN ultima_tasa ut ON ut.contacto_id = m.contacto_id
-        WHERE m.deleted_at IS NULL
-        GROUP BY m.contacto_id, ut.tasa
-      `),
-    ]);
-    res.json({ deudas, inversiones: inv });
-  } catch (err) {
-    next(err);
-  }
+  try { res.json(await fetchResumenCajas()); } catch (err) { next(err); }
 });
 
 module.exports = router;

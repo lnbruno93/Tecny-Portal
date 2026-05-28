@@ -276,7 +276,7 @@ export default function Cajas() {
   const mayorSaldo        = useMemo(() => contactosDeuda.length ? Math.max(...contactosDeuda.map(c => c.saldo_ars)) : 0, [contactosDeuda]);
 
   // KPIs for inversiones
-  const totalInvARS       = useMemo(() => inversiones.reduce((s, m) => s + (parseFloat(m.monto) || 0), 0), [inversiones]);
+  const totalInvUSD       = useMemo(() => inversiones.reduce((s, m) => s + (parseFloat(m.monto) || 0), 0), [inversiones]);
   const inversoresActivos = useMemo(() => new Set(inversiones.map(m => m.contacto_id)).size, [inversiones]);
 
   // Delete handlers
@@ -554,7 +554,7 @@ export default function Cajas() {
           {/* KPIs */}
           <div className="row" style={{ marginBottom: 20, gap: 12 }}>
             {[
-              { label: 'Total invertido · ARS', value: <><span className="ccy">ARS</span><span className="mono">{fmt(totalInvARS)}</span></>, sub: `${inversiones.length} movimientos` },
+              { label: 'Total invertido · USD', value: <><span className="ccy">USD</span><span className="mono">{fmt(totalInvUSD)}</span></>, sub: `${inversiones.length} movimientos` },
               { label: 'Inversores activos', value: <span className="mono">{inversoresActivos}</span>, sub: 'contactos únicos' },
               { label: 'Último ingreso', value: <span className="mono" style={{ fontSize: 16 }}>{inversiones[0] ? fmtFecha(inversiones[0].fecha) : '—'}</span>, sub: inversiones[0]?.nombre || '' },
             ].map(k => (
@@ -580,7 +580,7 @@ export default function Cajas() {
                     <th>Inversor</th>
                     <th>Tipo</th>
                     <th>Tasa</th>
-                    <th className="num">Monto ARS</th>
+                    <th className="num">Monto USD</th>
                     <th style={{ width: 40 }}></th>
                   </tr>
                 </thead>
@@ -595,7 +595,7 @@ export default function Cajas() {
                           ? <span className="badge badge-info" style={{ fontSize: 11 }}>{m.tasa}</span>
                           : <span className="dim">—</span>}
                       </td>
-                      <td className="num mono" style={{ fontWeight: 600 }}>{fmt(m.monto)}</td>
+                      <td className="num mono" style={{ fontWeight: 600 }}>u$s {fmt(m.monto)}</td>
                       <td>
                         <button className="icon-btn" onClick={() => handleDeleteInversion(m.id)}>
                           <Icons.Trash size={13} />
@@ -953,8 +953,8 @@ export default function Cajas() {
                     </select>
                   </div>
                   <div className="field">
-                    <label className="field-label">Monto ARS <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    <input type="number" min="1" step="0.01" className="input" placeholder="ej. 500000"
+                    <label className="field-label">Monto USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <input type="number" min="1" step="0.01" className="input" placeholder="ej. 5000"
                       value={invForm.monto}
                       onChange={e => setInvForm(f => ({ ...f, monto: e.target.value }))} />
                   </div>

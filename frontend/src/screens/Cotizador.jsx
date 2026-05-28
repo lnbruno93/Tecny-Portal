@@ -23,7 +23,7 @@ const COEFS = {
 function TabTarjetas() {
   const [tc, setTc]         = useState(1200);
   const [prods, setProds]   = useState([
-    { id: 1, nom: 'iPhone 16 Pro', vari: '256GB Natural Titanium', usd: 1185 },
+    { id: 1, nom: 'iPhone 16 Pro 256GB Natural Titanium', vari: '', usd: 1185 },
   ]);
   const [copiado, setCopiado] = useState(false);
 
@@ -129,23 +129,14 @@ function TabTarjetas() {
                   </button>
                 )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
                 <div className="field">
-                  <div className="field-label">Modelo</div>
+                  <div className="field-label">Producto &amp; Detalle</div>
                   <input
                     className="input"
-                    placeholder="ej. iPhone 16 Pro"
+                    placeholder="ej. iPhone 16 Pro 256GB Natural Titanium"
                     value={p.nom}
                     onChange={e => setProd(p.id, 'nom', e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <div className="field-label">Variante</div>
-                  <input
-                    className="input"
-                    placeholder="ej. 256GB Natural"
-                    value={p.vari}
-                    onChange={e => setProd(p.id, 'vari', e.target.value)}
                   />
                 </div>
                 <div className="field">

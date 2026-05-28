@@ -52,7 +52,7 @@ const createVentaSchema = z.object({
   items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto'),
   pagos:          z.array(ventaPagoSchema).default([]),
   canjes:         z.array(canjeSchema).default([]),
-});
+}).strict();
 
 // Edición de metadatos (no se editan items/pagos para no descuadrar el stock).
 const updateVentaSchema = z.object({
@@ -69,7 +69,7 @@ const updateVentaSchema = z.object({
   items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto').optional(),
   pagos:          z.array(ventaPagoSchema).optional(),
   canjes:         z.array(canjeSchema).optional(),
-});
+}).strict();
 
 /* ── Plantillas de garantía ── */
 const garantiaSchema = z.object({

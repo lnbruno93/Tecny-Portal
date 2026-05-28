@@ -5,11 +5,20 @@ const envioItemSchema = z.object({
   descripcion: z.string().trim().max(300).optional().nullable(),
   monto:       z.number().min(0).default(0),
   metodo_pago: z.string().trim().max(100).optional().nullable(),
-  // Caja (ARS) donde ingresa el cobro de un item 'pago'
+  // Caja donde ingresa el cobro de un item 'pago' (cualquier moneda; el frontend
+  // excluye financieras y tarjetas).
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
+  // Moneda del pago (debe coincidir con el grupo de la caja: ARS o USD/USDT).
+  // El frontend la infiere de la caja elegida; default 'ARS' para compat.
+  moneda: z.enum(['ARS','USD','USDT']).optional().default('ARS'),
+  // TC opcional — necesario para items en ARS si querés monto_usd preciso.
+  tc: z.number().positive().optional().nullable(),
   // Producto linkeado (para items 'producto'): si se setea + registrar_venta=true,
   // la venta auto-creada descuenta stock real de ese producto.
   producto_id: z.coerce.number().int().positive().optional().nullable(),
+  // Cuenta corriente: cuando es true, este pago genera deuda en movimientos_cc
+  // (a través de la venta auto-creada). Requiere envío.cliente_cc_id y registrar_venta.
+  es_cuenta_corriente: z.boolean().optional().default(false),
 });
 
 const baseEnvio = z.object({
@@ -28,14 +37,18 @@ const baseEnvio = z.object({
   // Tipo de cambio del envío. Usado para calcular total_usd de la venta auto-creada
   // cuando los items son en ARS. Opcional: si no viene, la venta queda con total_usd=0.
   tc:            z.number().positive().optional().nullable(),
+  // Cliente de cuenta corriente B2B vinculado al envío. Requerido si algún item
+  // 'pago' es es_cuenta_corriente=true (para asociar la deuda con un cliente).
+  cliente_cc_id: z.coerce.number().int().positive().optional().nullable(),
   items:         z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').default([]),
   registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
 });
 
-const createEnvioSchema = baseEnvio;
+// .strict(): un campo extra en POST/PUT da 400 (defensa contra typos del cliente)
+const createEnvioSchema = baseEnvio.strict();
 
 // PUT — todo opcional. items sin default para que undefined signifique "no tocar"
-const updateEnvioSchema = baseEnvio.omit({ items: true }).partial().extend({
+const updateEnvioSchema = baseEnvio.omit({ items: true }).strict().partial().extend({
   items: z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').optional(),
 });
 

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { envios, cajas as cajasApi } from '../lib/api';
+import { envios, cajas as cajasApi, inventario, cuentas as cuentasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -12,8 +12,12 @@ const EMPTY_FORM = {
   cliente: '', telefono: '', direccion: '', barrio: '',
   horario: '', operador: '', notas: '',
   prioridad: '', estado: 'Pendiente', registrar_venta: false,
+  tc: '', // TC del envío (requerido cuando registrar_venta y hay items 'producto')
+  cliente_cc_id: '', // requerido si algún pago es CC
 };
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '' };
+// Default USD: los productos del inventario son típicamente USD y los precios
+// del envío "tipo Ventas" se manejan en USD. El usuario puede cambiar a ARS/USDT.
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -64,12 +68,24 @@ export default function Envios() {
   const [deletingId, setDeletingId] = useState(null);
   // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
   const [dateFilter, setDateFilter] = useState(null);
-  const [cajasArs, setCajasArs] = useState([]); // cajas ARS para asignar el cobro
+  // TODAS las cajas activas (incluye financieras y tarjetas). Las cajas
+  // financiera/tarjeta y la opción CC requieren "Registrar como venta" — el
+  // frontend lo marca con un disabled/warning cuando aplica.
+  const [cajasPago, setCajasPago] = useState([]);
+  const [clientesCc, setClientesCc] = useState([]); // para asignar CC al envío
+  // Búsqueda de productos para linkear: igual que en Ventas — debounce + backend search.
+  // Un solo "search activo a la vez" (itemIdx identifica qué item del form está buscando).
+  const [prodSearch, setProdSearch] = useState({ itemIdx: null, q: '', results: [], loading: false });
+  const prodTimer = useRef(null);
+  const prodReq   = useRef(0);
 
   useEffect(() => {
     cajasApi.listCajas()
-      .then(list => setCajasArs((list || []).filter(c => c.activo !== false && c.moneda === 'ARS')))
+      .then(list => setCajasPago((list || []).filter(c => c.activo !== false)))
       .catch(console.error);
+    cuentasApi.clientes({ limit: 200 })
+      .then(list => setClientesCc(Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : [])))
+      .catch(() => {});
   }, []);
 
   // ── Create modal ──
@@ -81,9 +97,82 @@ export default function Envios() {
 
   const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
   const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM }]);
+  const addProducto = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'producto' }]);
+  const addPago = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'pago', moneda: 'ARS' }]);
   const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
+
+  // Resumen del envío en USD: convierte cada monto según su moneda y el TC del item / envío.
+  // USD/USDT → 1:1; ARS → divide por (item.tc || form.tc).
+  const summary = useMemo(() => {
+    const toUsd = (monto, moneda, itemTc) => {
+      const m = Number(monto) || 0;
+      if (!m) return 0;
+      if (moneda === 'ARS') {
+        const tc = Number(itemTc) || Number(form.tc) || 0;
+        return tc > 0 ? m / tc : 0;
+      }
+      return m; // USD o USDT
+    };
+    let totalUsd = 0, pagosUsd = 0;
+    for (const it of items) {
+      const usd = toUsd(it.monto, it.moneda || 'ARS', it.tc);
+      if (it.tipo === 'producto') totalUsd += usd;
+      else if (it.tipo === 'pago') pagosUsd += usd;
+    }
+    return { totalUsd, pagosUsd, diferenciaUsd: totalUsd - pagosUsd };
+  }, [items, form.tc]);
+  const cubierto = Math.abs(summary.diferenciaUsd) < 0.01;
+
+  // Búsqueda asincrónica de productos: debounce 300ms, backend filtra por nombre/IMEI/color/gb.
+  function searchProductos(itemIdx, q) {
+    setProdSearch(s => ({ ...s, itemIdx, q, loading: q.trim().length >= 2 }));
+    clearTimeout(prodTimer.current);
+    if (q.trim().length < 2) { setProdSearch(s => ({ ...s, results: [], loading: false })); return; }
+    const reqId = ++prodReq.current;
+    prodTimer.current = setTimeout(async () => {
+      try {
+        const res = await inventario.productos({ solo_stock: 'true', limit: 8, buscar: q.trim() });
+        if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: res?.data || [], loading: false }));
+      } catch (_) { if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: [], loading: false })); }
+    }, 300);
+  }
+  function pickProducto(idx, p) {
+    setItems(i => i.map((it, j) => j !== idx ? it : ({
+      ...it,
+      producto_id: p.id,
+      descripcion: [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · '),
+      monto: String(p.precio_venta || ''),
+      moneda: p.precio_moneda || 'USD',  // heredada del producto del inventario (típicamente USD)
+      _imei: p.imei || '', // solo para mostrar en la UI, no se envía
+    })));
+    setProdSearch({ itemIdx: null, q: '', results: [], loading: false });
+  }
+  function unpickProducto(idx) {
+    setItems(i => i.map((it, j) => j !== idx ? it : ({ ...it, producto_id: '', descripcion: '', monto: '', _imei: '' })));
+  }
+  // Setea el método del pago: caja del catálogo o "Cuenta corriente" (__CC__).
+  // La moneda se infiere de la caja (debe coincidir con el grupo de la caja).
+  // Para CC, default a USD (es la moneda de movimientos_cc).
+  function pickCajaPago(idx, value) {
+    if (value === '__CC__') {
+      setItems(i => i.map((it, j) => j !== idx ? it : ({
+        ...it,
+        metodo_pago_id: '', es_cuenta_corriente: true,
+        moneda: it.moneda && it.moneda !== 'ARS' ? it.moneda : 'USD',
+        tc: '',
+      })));
+      return;
+    }
+    const c = cajasPago.find(x => String(x.id) === String(value));
+    setItems(i => i.map((it, j) => j !== idx ? it : ({
+      ...it,
+      metodo_pago_id: value, es_cuenta_corriente: false,
+      moneda: c ? c.moneda : (it.moneda || 'ARS'),
+      tc: c && c.moneda !== 'ARS' ? '' : it.tc,
+    })));
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -112,15 +201,22 @@ export default function Envios() {
         estado: form.estado || 'Pendiente',
         costo_envio: 0,
         registrar_venta: !!form.registrar_venta,
+        tc: (form.registrar_venta && form.tc) ? Number(form.tc) : null,
+        cliente_cc_id: form.cliente_cc_id ? Number(form.cliente_cc_id) : null,
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
-          .filter(i => i.descripcion.trim() || i.tipo === 'pago')
+          // tipo 'producto' SIEMPRE va linkeado (no se permite texto libre); 'pago' va siempre.
+          .filter(i => i.tipo === 'pago' || (i.tipo === 'producto' && i.producto_id))
           .map(i => ({
             tipo: i.tipo,
             descripcion: i.descripcion.trim() || null,
             monto: Number(i.monto) || 0,
             metodo_pago: i.metodo_pago.trim() || null,
-            metodo_pago_id: (i.tipo === 'pago' && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
+            metodo_pago_id: (i.tipo === 'pago' && !i.es_cuenta_corriente && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
+            producto_id: (i.tipo === 'producto' && i.producto_id) ? Number(i.producto_id) : null,
+            moneda: i.moneda || 'ARS',
+            tc: i.tc ? Number(i.tc) : null,
+            es_cuenta_corriente: i.tipo === 'pago' ? !!i.es_cuenta_corriente : false,
           })),
       };
       const nuevo = await envios.create(payload);
@@ -279,7 +375,7 @@ export default function Envios() {
           <h1 className="page-title">Envíos</h1>
           <div className="page-sub">Despachos a domicilio · prioridad · items producto y pago</div>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', gap: 8 }}>
           <button
             className="btn"
             onClick={() => {
@@ -291,6 +387,9 @@ export default function Envios() {
             }}
           >
             <Icons.Refresh size={14} /> Actualizar
+          </button>
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Icons.Plus size={14} /> Nuevo envío
           </button>
         </div>
       </div>
@@ -742,61 +841,152 @@ export default function Envios() {
                       value={form.notas} onChange={e => setF('notas', e.target.value)} />
                   </div>
 
-                  {/* Items */}
+                  {/* Items del envío — solo productos (linkeados al stock con búsqueda) */}
                   <div>
                     <div className="flex-between" style={{ marginBottom: 10 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>Items del envío</div>
-                      <button type="button" className="btn btn-sm" onClick={addItem}>
-                        <Icons.Plus size={13} /> Agregar item
+                      <button type="button" className="btn btn-sm" onClick={addProducto}>
+                        <Icons.Plus size={13} /> Agregar producto
                       </button>
                     </div>
                     <div className="stack" style={{ gap: 8 }}>
-                      {items.map((it, idx) => (
-                        <div key={idx} className="card card-tight" style={{ padding: '10px 12px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 120px auto', gap: 8, alignItems: 'end' }}>
+                      {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
+                        <div key={`p-${idx}`} className="card card-tight" style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 70px auto', gap: 8, alignItems: 'end' }}>
+                            {/* Sin linkear → búsqueda. Linkeado → display con Cambiar. */}
+                            {!it.producto_id ? (
+                              <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
+                                <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
+                                <input className="input" placeholder="Empezá a tipear…"
+                                       value={prodSearch.itemIdx === idx ? prodSearch.q : ''}
+                                       onChange={e => searchProductos(idx, e.target.value)}
+                                       onFocus={() => setProdSearch(s => ({ ...s, itemIdx: idx }))} />
+                                {prodSearch.itemIdx === idx && prodSearch.q.trim().length >= 2 && (
+                                  <div className="card card-tight" style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto', padding: 0 }}>
+                                    {prodSearch.loading && <div className="muted tiny" style={{ padding: '8px 10px' }}>Buscando…</div>}
+                                    {!prodSearch.loading && prodSearch.results.length === 0 && <div className="muted tiny" style={{ padding: '8px 10px' }}>Sin resultados</div>}
+                                    {prodSearch.results.map(p => (
+                                      <button type="button" key={p.id}
+                                              onClick={() => pickProducto(idx, p)}
+                                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderBottom: '1px solid var(--hairline)', color: 'var(--text)' }}>
+                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{[p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · ')}</div>
+                                        <div className="muted tiny mono">{p.imei ? 'IMEI ' + p.imei : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="field" style={{ marginBottom: 0 }}>
+                                <label className="field-label">Producto seleccionado</label>
+                                <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 10px' }}>
+                                  <div style={{ overflow: 'hidden' }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{it.descripcion}</div>
+                                    {it._imei && <div className="muted tiny mono">IMEI {it._imei}</div>}
+                                  </div>
+                                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
+                                </div>
+                              </div>
+                            )}
                             <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Tipo</label>
-                              <select className="input" value={it.tipo}
-                                onChange={e => setItem(idx, 'tipo', e.target.value)}>
-                                <option value="producto">Producto</option>
-                                <option value="pago">Pago</option>
-                              </select>
-                            </div>
-                            <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Descripción</label>
-                              <input className="input" placeholder={it.tipo === 'pago' ? 'Método de pago…' : 'Producto…'}
-                                value={it.descripcion} onChange={e => setItem(idx, 'descripcion', e.target.value)} />
-                            </div>
-                            <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Monto ARS</label>
+                              <label className="field-label">Monto</label>
                               <input type="number" className="input mono" placeholder="0"
                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                             </div>
-                            <button type="button" className="icon-btn"
-                              style={{ marginBottom: 1, visibility: items.length > 1 ? 'visible' : 'hidden' }}
-                              onClick={() => rmItem(idx)}>
+                            <div className="field" style={{ marginBottom: 0 }}>
+                              <label className="field-label">Moneda</label>
+                              <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                                <option>USD</option><option>ARS</option><option>USDT</option>
+                              </select>
+                            </div>
+                            <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
                               <Icons.X size={14} />
                             </button>
                           </div>
-                          {it.tipo === 'pago' && cajasArs.length > 0 && (
-                            <div className="field" style={{ marginBottom: 0, marginTop: 8 }}>
-                              <label className="field-label">Caja (ARS) donde ingresa el cobro</label>
-                              <select className="input" value={it.metodo_pago_id}
-                                onChange={e => setItem(idx, 'metodo_pago_id', e.target.value)}>
-                                <option value="">Sin caja (no impacta)…</option>
-                                {cajasArs.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                              </select>
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>
                   </div>
 
+                  {/* Pagos — sección separada como Ventas: select de método (incluye CC), monto, moneda, TC */}
+                  <div>
+                    <div className="flex-between" style={{ marginBottom: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Pagos</div>
+                      <button type="button" className="btn btn-sm" onClick={addPago}>
+                        <Icons.Plus size={13} /> Agregar método
+                      </button>
+                    </div>
+                    <div className="stack" style={{ gap: 6 }}>
+                      {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'pago').map(({ it, idx }) => (
+                        <div key={`pg-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 90px 100px auto', gap: 6, alignItems: 'center' }}>
+                          <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
+                                  onChange={e => pickCajaPago(idx, e.target.value)}>
+                            <option value="">Método…</option>
+                            {cajasPago.map(c => (
+                              <option key={c.id} value={c.id}>{c.nombre}</option>
+                            ))}
+                            <option value="__CC__">Cuenta corriente (deuda)</option>
+                          </select>
+                          <input type="number" className="input mono" placeholder="Monto"
+                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                          <select className="input" value={it.moneda || 'ARS'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                            <option>ARS</option><option>USD</option><option>USDT</option>
+                          </select>
+                          <input type="number" className="input mono" placeholder="TC"
+                                 value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
+                          <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
+                            <Icons.X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      {items.filter(i => i.tipo === 'pago').length === 0 && (
+                        <div className="muted tiny" style={{ padding: '4px 0' }}>Sin pagos cargados. Sumá un método con "Agregar método".</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Resumen tipo Ventas: Total venta · Pagos · Diferencia (Cubierto ✓) */}
+                  <div className="card card-tight" style={{ padding: '10px 12px', background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span className="muted">Total venta</span>
+                      <span className="mono">u$s {summary.totalUsd.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span className="muted">Pagos</span>
+                      <span className="mono">u$s {summary.pagosUsd.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span className="muted">Diferencia</span>
+                      <span className="mono" style={{ color: cubierto ? 'var(--pos)' : 'var(--neg)' }}>
+                        {cubierto ? 'Cubierto ✓' : `u$s ${summary.diferenciaUsd.toFixed(2)}`}
+                      </span>
+                    </div>
+                  </div>
+
                   <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
                     <input type="checkbox" checked={form.registrar_venta} onChange={e => setForm(f => ({ ...f, registrar_venta: e.target.checked }))} style={{ accentColor: 'var(--accent)' }} />
-                    <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(crea la venta con los productos; la plata la maneja el envío)</span></span>
+                    <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(requerido para Cuenta corriente / Financiera / Tarjeta)</span></span>
                   </label>
+                  {form.registrar_venta && (
+                    <>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">para items ARS</span></label>
+                        <input type="number" className="input mono" placeholder="Ej: 1000"
+                               value={form.tc} onChange={e => setF('tc', e.target.value)} />
+                      </div>
+                      {items.some(i => i.tipo === 'pago' && i.es_cuenta_corriente) && (
+                        <div className="field" style={{ marginBottom: 0 }}>
+                          <label className="field-label">Cliente de cuenta corriente <span style={{ color: 'var(--neg)' }}>*</span></label>
+                          <select className="input" value={form.cliente_cc_id} onChange={e => setF('cliente_cc_id', e.target.value)}>
+                            <option value="">— Seleccionar —</option>
+                            {clientesCc.map(c => (
+                              <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}{c.categoria ? ` (${c.categoria})` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {createError && (
                     <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>
