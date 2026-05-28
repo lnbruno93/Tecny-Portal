@@ -400,10 +400,10 @@ export default function Inventario() {
       {/* ── Page head ── */}
       <div className="page-head">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 className="page-title">Inventario</h1>
-            <Link to="/inventario/desglose" className="btn btn-sm" title="Vista 360 de tu stock por categoría, proveedor, modelo y más" style={{ marginTop: 4 }}>
-              <Icons.PieChart size={13} /> Desglose 360
+            <Link to="/inventario/desglose" className="btn btn-ghost btn-sm" title="Vista 360 de tu stock por categoría, proveedor, modelo y más">
+              Desglose 360 →
             </Link>
           </div>
           <div className="page-sub">Stock de equipos y accesorios · costos, depósitos y proveedores</div>
