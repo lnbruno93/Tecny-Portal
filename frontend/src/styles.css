@@ -1308,3 +1308,74 @@ body {
   border-top: 1px solid var(--border);
 }
 
+/* ── A11y: focus visible global ───────────────────────────────────────
+   La auditoría detectó que solo `.input:focus` tenía ring; usuarios
+   navegando por teclado quedaban perdidos en `.btn`, `.icon-btn`,
+   `.nav-item`, `.tool`, etc. `:focus-visible` solo se activa con
+   teclado (no con mouse) — no contamina el hover. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+.tool:focus-visible,
+.product:focus-visible,
+.caja:focus-visible,
+.editable-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── A11y: touch targets en mobile ──────────────────────────────────
+   Apple HIG y WCAG 2.5.5 piden mínimo 44×44 px. En desktop mantenemos
+   los tamaños chicos del look denso; en touch devices garantizamos el
+   piso. `pointer:coarse` matchea teléfonos/tablets sin importar el
+   width (no rompe iPads ni tablets grandes). */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 44px; min-height: 44px; }
+  .btn-sm { min-height: 40px; padding: 0 14px; }
+  .btn { min-height: 44px; }
+  /* Tabs / segmented: las tabs ya son altas (40px) pero el padding del
+     área clickeable se queda ajustada — la subimos un poco. */
+  .tabs button { min-height: 44px; padding: 0 16px; }
+  .seg button { min-height: 40px; }
+}
+
+/* ── A11y: tablas con scroll horizontal en mobile ───────────────────
+   17 tablas reventaban el viewport. Cualquier wrapper con clase
+   `tbl-scroll` (o el ya existente `card-flush`) habilita scroll. */
+.tbl-scroll,
+.card-flush:has(> table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── A11y: safe-area-inset para devices con notch ───────────────────
+   iOS recorta el topbar con el notch. Aplicamos padding adicional
+   sólo cuando el inset existe (env() devuelve 0 en navegadores que
+   no lo soportan). */
+.topbar { padding-top: env(safe-area-inset-top); }
+.sidebar { padding-bottom: env(safe-area-inset-bottom); }
+.toast-container { padding-bottom: env(safe-area-inset-bottom); }
+
+/* ── A11y: body lock al abrir modal ────────────────────────────────
+   Aplicado vía useModal() en JS (data attribute en body). Acá
+   solo registramos la clase para que el CSS bloquee scroll. */
+body.modal-open { overflow: hidden; }
+
+/* ── A11y: link skip-to-content ────────────────────────────────────
+   Para usuarios con teclado/lector de pantalla — saltar la sidebar
+   y caer directo en el main. Se oculta visualmente hasta foco. */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 9999;
+  padding: 8px 14px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus { top: 8px; }

@@ -5,18 +5,31 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from './Icons';
 
+// Listado completo de rutas — la auditoría detectó que faltaban 10 (Ventas,
+// Inventario, Desglose 360, Contactos, Proyectos, Egresos, Capital, Cambios,
+// Tarjetas). El ⌘K es la fuente única para navegar rápido; si una pantalla
+// crítica no aparece, el usuario tiene que ir por la sidebar.
 const COMMANDS = [
-  { id: 'inicio',     path: '/inicio',     label: 'Inicio',      desc: 'Dashboard principal',              icon: 'Grid'       },
-  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',   desc: 'Precios con cuotas y USD → ARS',  icon: 'Calculator' },
-  { id: 'financiera', path: '/financiera', label: 'Financiera',  desc: 'Comprobantes, pagos y OCR',       icon: 'Trend'      },
-  { id: 'cajas',      path: '/cajas',      label: 'Cajas',       desc: 'Deudas e inversiones',            icon: 'Wallet'     },
-  { id: 'envios',     path: '/envios',     label: 'Envíos',      desc: 'Despachos a domicilio',           icon: 'Truck'      },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', desc: 'Clientes B2B y cuenta corriente', icon: 'Receipt'    },
-  { id: 'proveedores',path: '/proveedores',label: 'Proveedores | Compras', desc: 'Compras y cuenta corriente con proveedores', icon: 'Building' },
-  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            desc: 'Catálogo de precios USD',         icon: 'Phone'      },
-  { id: 'historial',  path: '/historial',  label: 'Historial',   desc: 'Auditoría de cambios',            icon: 'Refresh'    },
-  { id: 'usuarios',   path: '/usuarios',   label: 'Usuarios',    desc: 'Gestión de acceso',               icon: 'Users'      },
-  { id: 'config',     path: '/config',     label: 'Config',      desc: 'Ajustes del portal',              icon: 'Settings'   },
+  { id: 'inicio',        path: '/inicio',              label: 'Inicio',                       desc: 'Dashboard principal',                            icon: 'Grid'       },
+  { id: 'cotizador',     path: '/cotizador',           label: 'Cotizador',                    desc: 'Precios con cuotas y USD → ARS',                 icon: 'Calculator' },
+  { id: 'usados',        path: '/usados',              label: 'Usados | Cotizador',           desc: 'Catálogo de precios USD',                        icon: 'Phone'      },
+  { id: 'ventas',        path: '/ventas',              label: 'Ventas',                       desc: 'Alta de ventas + dashboard',                     icon: 'Receipt'    },
+  { id: 'cuentas',       path: '/cuentas',             label: 'Venta & Gestión B2B',          desc: 'Clientes B2B y cuenta corriente',                icon: 'Receipt'    },
+  { id: 'inventario',    path: '/inventario',          label: 'Inventario',                   desc: 'Stock de equipos y accesorios',                  icon: 'Box'        },
+  { id: 'desglose',      path: '/inventario/desglose', label: 'Desglose 360',                 desc: 'Pivot del stock por categoría/proveedor/modelo', icon: 'PieChart'   },
+  { id: 'envios',        path: '/envios',              label: 'Envíos',                       desc: 'Despachos a domicilio',                          icon: 'Truck'      },
+  { id: 'financiera',    path: '/financiera',          label: 'Financiera',                   desc: 'Comprobantes, pagos y OCR',                      icon: 'Trend'      },
+  { id: 'proveedores',   path: '/proveedores',         label: 'Proveedores | Compras',        desc: 'Compras y cuenta corriente con proveedores',     icon: 'Building'   },
+  { id: 'egresos',       path: '/egresos',             label: 'Egresos',                      desc: 'Gastos puntuales y recurrentes',                 icon: 'ArrowDownRight' },
+  { id: 'cambios',       path: '/cambios',             label: 'Cambios de Divisa',            desc: 'Compra/venta de moneda',                         icon: 'Dollar'     },
+  { id: 'tarjetas',      path: '/tarjetas',            label: 'Tarjetas de Crédito',          desc: 'Cobros y liquidaciones',                         icon: 'CreditCard' },
+  { id: 'cajas',         path: '/cajas',               label: 'Cajas',                        desc: 'Ledger global multi-moneda',                     icon: 'Wallet'     },
+  { id: 'capital',       path: '/capital',             label: '360 & Capital',                desc: 'Vista consolidada de cajas',                     icon: 'TrendUp'    },
+  { id: 'proyectos',     path: '/proyectos',           label: 'Proyectos',                    desc: 'Inversiones agrupadas',                          icon: 'Box'        },
+  { id: 'contactos',     path: '/contactos',           label: 'Contactos',                    desc: 'Agenda unificada',                               icon: 'Users'      },
+  { id: 'historial',     path: '/historial',           label: 'Historial',                    desc: 'Auditoría de cambios',                           icon: 'Refresh'    },
+  { id: 'usuarios',      path: '/usuarios',            label: 'Usuarios',                     desc: 'Gestión de acceso',                              icon: 'Users'      },
+  { id: 'config',        path: '/config',              label: 'Config',                       desc: 'Ajustes del portal',                             icon: 'Settings'   },
 ];
 
 export default function CommandPalette({ open, onClose }) {

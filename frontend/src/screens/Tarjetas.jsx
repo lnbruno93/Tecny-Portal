@@ -87,7 +87,7 @@ export default function Tarjetas() {
     <div>
       <div className="page-head">
         <div>
-          <div className="page-title">Tarjetas de Crédito</div>
+          <h1 className="page-title">Tarjetas de Crédito</h1>
           <div className="page-sub">Se carga solo desde Ventas · comisión de la financiera, neto que te deben y liquidaciones</div>
         </div>
         {!sinTarjetas && (

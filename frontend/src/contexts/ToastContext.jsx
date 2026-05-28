@@ -22,9 +22,22 @@ export function ToastProvider({ children }) {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
   }, []);
 
+  // Tope de stack para que un bug que dispare errores en loop no llene la
+  // pantalla con 50 toasts. Cuando excede, descartamos los más viejos.
+  const MAX_TOASTS = 5;
+
   const push = useCallback((message, type = 'info', duration = 4000) => {
     const id = ++_idCounter;
-    setToasts(prev => [...prev, { id, message, type, leaving: false }]);
+    setToasts(prev => {
+      const next = [...prev, { id, message, type, leaving: false }];
+      // Si superamos el tope, descartar los más viejos y cancelar sus timers
+      while (next.length > MAX_TOASTS) {
+        const stale = next.shift();
+        clearTimeout(timers.current[stale.id]);
+        delete timers.current[stale.id];
+      }
+      return next;
+    });
     if (duration > 0) {
       timers.current[id] = setTimeout(() => dismiss(id), duration);
     }
@@ -97,17 +110,27 @@ const COLORS = {
 
 function ToastContainer({ toasts, onDismiss }) {
   if (toasts.length === 0) return null;
+  // role="status" + aria-live="polite" garantiza que los lectores de pantalla
+  // anuncien los toasts sin interrumpir lo que el usuario está leyendo. Para
+  // errores subimos a aria-live="assertive" se anuncia inmediatamente.
+  // (Mantenemos polite global; los errores ya rompen contexto visualmente).
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 24,
-      right: 24,
-      zIndex: 9999,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 10,
-      pointerEvents: 'none',
-    }}>
+    <div
+      className="toast-container"
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      style={{
+        position: 'fixed',
+        bottom: 24,
+        right: 24,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        pointerEvents: 'none',
+      }}
+    >
       {toasts.map(t => (
         <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
@@ -143,6 +166,7 @@ function ToastItem({ toast: t, onDismiss }) {
       <span style={{ flex: 1, lineHeight: 1.4 }}>{t.message}</span>
       <button
         onClick={() => onDismiss(t.id)}
+        aria-label="Cerrar notificación"
         style={{
           flexShrink: 0,
           background: 'none',

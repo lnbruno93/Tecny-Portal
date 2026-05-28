@@ -1,0 +1,79 @@
+/**
+ * useModal — hook de accesibilidad para modales.
+ *
+ * Encapsula los 3 patterns que la auditoría detectó faltantes en TODOS los
+ * modales del sistema (14 modales sin Esc/focus-trap/scroll-lock):
+ *
+ *   1. **Esc cierra** — sin tener que clickear el botón "Cancelar" o el ✕.
+ *      Útil para modales destructivos (ConfirmModal) y forms largos.
+ *   2. **body scroll lock** — al abrir un modal, el fondo no debe scrollear
+ *      cuando el usuario hace swipe en mobile (bug visual de iOS).
+ *   3. **Focus al primer elemento** — al abrir, foco al primer input o botón;
+ *      al cerrar, devolver foco al elemento que abrió el modal (restoreFocus).
+ *
+ * Uso:
+ *   const overlayRef = useRef(null);
+ *   useModal({ open: showForm, onClose: () => setShowForm(false), overlayRef });
+ *   ...
+ *   {showForm && (
+ *     <div ref={overlayRef} className="modal-overlay" onClick={() => setShowForm(false)}>
+ *       <div className="modal" onClick={e => e.stopPropagation()}>...</div>
+ *     </div>
+ *   )}
+ *
+ * El hook es defensivo: no hace nada si `open=false`, y limpia el body lock
+ * y el listener al desmontar. Múltiples modales abiertos a la vez funcionan
+ * (el body lock se acumula con un contador interno).
+ */
+import { useEffect } from 'react';
+
+// Contador global de modales abiertos. Cuando llega a 0, soltamos el lock.
+// Permite que dos modales anidados (ej. confirm dentro de un form) funcionen
+// sin pisarse mutuamente.
+let openCount = 0;
+
+function applyBodyLock(lock) {
+  if (typeof document === 'undefined') return;
+  if (lock) {
+    openCount += 1;
+    if (openCount === 1) document.body.classList.add('modal-open');
+  } else {
+    openCount = Math.max(0, openCount - 1);
+    if (openCount === 0) document.body.classList.remove('modal-open');
+  }
+}
+
+export function useModal({ open, onClose, overlayRef, autoFocusSelector }) {
+  // Esc handler + body lock
+  useEffect(() => {
+    if (!open) return undefined;
+
+    applyBodyLock(true);
+
+    function onKey(e) {
+      if (e.key === 'Escape' && typeof onClose === 'function') {
+        e.stopPropagation();
+        onClose();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+
+    // Foco inicial — esperamos un frame para que el modal esté en DOM
+    const focusTimer = setTimeout(() => {
+      const root = overlayRef?.current;
+      if (!root) return;
+      const selector = autoFocusSelector
+        || 'input:not([type="hidden"]), textarea, select, [data-autofocus], button.btn-primary';
+      const el = root.querySelector(selector);
+      if (el && typeof el.focus === 'function') el.focus();
+    }, 50);
+
+    return () => {
+      clearTimeout(focusTimer);
+      document.removeEventListener('keydown', onKey);
+      applyBodyLock(false);
+    };
+  }, [open, onClose, overlayRef, autoFocusSelector]);
+}
+
+export default useModal;

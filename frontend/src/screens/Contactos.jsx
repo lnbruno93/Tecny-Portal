@@ -108,14 +108,14 @@ export default function Contactos() {
     <div>
       <div className="page-head">
         <div>
-          <div className="page-title">Contactos</div>
+          <h1 className="page-title">Contactos</h1>
           <div className="page-sub">Agenda central · clientes, proveedores y contactos de todo el sistema</div>
         </div>
       </div>
 
       {/* Filtros */}
       <div className="flex-row" style={{ gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="input" style={{ maxWidth: 320 }} placeholder="Buscar por nombre, mail, teléfono o DNI…" value={search} onChange={e => setSearch(e.target.value)} />
+        <input type="search" inputMode="search" aria-label="Buscar contactos" className="input" style={{ maxWidth: 320 }} placeholder="Buscar por nombre, mail, teléfono o DNI…" value={search} onChange={e => setSearch(e.target.value)} />
         <select className="input" style={{ maxWidth: 200 }} value={origenFilter} onChange={e => setOrigenFilter(e.target.value)}>
           <option value="">Todos los orígenes</option>
           {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -165,27 +165,27 @@ export default function Contactos() {
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input className="input" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
+                      <label className="field-label" htmlFor="contacto-nombre">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input id="contacto-nombre" className="input" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
                     </div>
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Apellido</label>
-                      <input className="input" value={form.apellido} onChange={e => setForm(f => ({ ...f, apellido: e.target.value }))} />
+                      <label className="field-label" htmlFor="contacto-apellido">Apellido</label>
+                      <input id="contacto-apellido" className="input" value={form.apellido} onChange={e => setForm(f => ({ ...f, apellido: e.target.value }))} />
                     </div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Contacto (teléfono / WhatsApp)</label>
-                      <input className="input" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
+                      <label className="field-label" htmlFor="contacto-tel">Contacto (teléfono / WhatsApp)</label>
+                      <input id="contacto-tel" type="tel" inputMode="tel" autoComplete="tel" className="input" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
                     </div>
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">DNI</label>
-                      <input className="input" value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value }))} />
+                      <label className="field-label" htmlFor="contacto-dni">DNI</label>
+                      <input id="contacto-dni" inputMode="numeric" pattern="[0-9]*" className="input" value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value }))} />
                     </div>
                   </div>
                   <div className="field">
-                    <label className="field-label">Mail</label>
-                    <input type="email" className="input" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                    <label className="field-label" htmlFor="contacto-email">Mail</label>
+                    <input id="contacto-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" className="input" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
                   </div>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}>

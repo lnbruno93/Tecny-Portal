@@ -160,7 +160,7 @@ export default function Historial() {
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="page-head">
         <div>
-          <div className="page-title">Historial</div>
+          <h1 className="page-title">Historial</h1>
           <div className="page-sub">Auditoría completa · audit_logs con antes y después</div>
         </div>
         <div className="page-actions">

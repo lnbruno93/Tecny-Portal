@@ -115,7 +115,7 @@ export default function Cambios() {
     <div>
       <div className="page-head">
         <div>
-          <div className="page-title">Cambios de Divisa</div>
+          <h1 className="page-title">Cambios de Divisa</h1>
           <div className="page-sub">Cuenta corriente con financieras de cambio · entregás $ y te devuelven USD</div>
         </div>
       </div>
