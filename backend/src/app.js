@@ -107,6 +107,34 @@ app.post('/api/csp-report', cspReportLimiter, express.json({ type: ['application
   res.status(204).end();
 });
 
+// Errores del cliente — el frontend reporta acá errores no manejados
+// (ErrorBoundary, window.onerror, unhandledrejection). Sin auth para no
+// perder errores cuando el JWT está expirado. Rate-limited. Lo loguemos +
+// reportamos a Sentry si está configurado.
+const clientErrorLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,                          // 60 errors/min/IP es razonable
+  standardHeaders: false, legacyHeaders: false,
+  message: { error: 'rate-limit' },
+});
+app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' }), (req, res) => {
+  const { message, stack, url, userAgent, source, timestamp } = req.body || {};
+  // Logueamos como warning (no error) para no llenar el dashboard si la app
+  // tiene un loop temporal. Sentry sí lo trata como error si está configurado.
+  logger.warn({ msg_client: message, stack, url, source, timestamp, ua: userAgent, ip: req.ip }, 'client error');
+  try {
+    const Sentry = require('@sentry/node');
+    if (process.env.SENTRY_DSN) {
+      Sentry.captureMessage(message || 'client error', {
+        level: 'error',
+        tags:  { source: source || 'frontend' },
+        extra: { stack, url, userAgent, timestamp },
+      });
+    }
+  } catch { /* Sentry no disponible */ }
+  res.status(204).end();
+});
+
 // Logging de requests (silencia /health para no generar ruido)
 app.use(pinoHttp({
   logger,
@@ -164,7 +192,9 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-// Strict login rate limit: 10 failed attempts / 15 min per IP
+// Strict login rate limit: 10 failed attempts / 15 min per IP.
+// En tests no aplica (la suite de lockout dispara &gt;10 intentos a propósito
+// para validar la política per-user, que es complementaria al IP limit).
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -172,6 +202,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de login, esperá 15 minutos' },
   skipSuccessfulRequests: true,
+  skip: () => process.env.NODE_ENV === 'test',
 });
 app.use('/api/auth/login', loginLimiter);
 

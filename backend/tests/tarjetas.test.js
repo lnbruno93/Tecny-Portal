@@ -115,3 +115,76 @@ describe('Tarjetas — liquidación', () => {
     expect(await saldoCaja(cajaArs)).toBe(saldoCajaAntes - 50000);
   });
 });
+
+describe('Tarjetas — A4: liquidaciones bloquean cancelación de venta', () => {
+  // Tarjeta aislada solo para estos tests, para no acoplarnos al saldo dejado
+  // por los tests anteriores (que ya tienen un saldo positivo grande).
+  let tarjetaAislada;
+  beforeAll(async () => {
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Tarjeta A4 Aislada', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    tarjetaAislada = mt.body.id;
+  });
+
+  it('si el cobro fue 100% liquidado, cancelar la venta → 400', async () => {
+    // Venta con cobro de 80000 (sin comisión, monto_bruto = monto_neto = 80000)
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Pre-Liquidado', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'X', cantidad: 1, precio_vendido: 80000, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: tarjetaAislada, metodo_nombre: 'Tarjeta A4 Aislada', monto: 80000, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(venta.status).toBe(201);
+    // Liquidamos los 80000 enteros → saldo de tarjeta = 0
+    const liq = await request(app).post('/api/tarjetas/liquidaciones').set(auth()).send({
+      metodo_pago_id: tarjetaAislada, fecha: hoy, monto: 80000, caja_id: cajaArs,
+    });
+    expect(liq.status).toBe(201);
+    // Revertir el cobro dejaría el saldo en -80000 → bloquea
+    const del = await request(app).delete(`/api/ventas/${venta.body.id}`).set(auth());
+    expect(del.status).toBe(400);
+    expect(del.body.error).toMatch(/liquid/i);
+    // Y la venta sigue viva (rollback completo de la tx)
+    const dbCheck = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}`).set(auth());
+    expect(dbCheck.body.data.some(v => v.id === venta.body.id)).toBe(true);
+  });
+
+  it('si hay liquidación pero el saldo queda positivo, cancelar funciona', async () => {
+    // Tarjeta NUEVA con dos cobros y una liquidación parcial.
+    // Diseño del test: saldo previo a la reversión = (100+50) − 30 = 120.
+    // Revertir el cobro de 100 deja saldo en 20 (positivo) → no bloquea.
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Tarjeta A4 Liquidacion Parcial', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    // Venta 1: 100
+    const v1 = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'V1', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'A', cantidad: 1, precio_vendido: 100, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: mt.body.id, metodo_nombre: 'Tarjeta A4 Liquidacion Parcial', monto: 100, moneda: 'ARS', tc: 1000 }],
+    });
+    // Venta 2: 50 (para que quede saldo)
+    await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'V2', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'B', cantidad: 1, precio_vendido: 50, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: mt.body.id, metodo_nombre: 'Tarjeta A4 Liquidacion Parcial', monto: 50, moneda: 'ARS', tc: 1000 }],
+    });
+    // Liquidamos 30
+    await request(app).post('/api/tarjetas/liquidaciones').set(auth()).send({
+      metodo_pago_id: mt.body.id, fecha: hoy, monto: 30, caja_id: cajaArs,
+    });
+    // Cancelar V1 (cobro 100): saldo queda 20 → permitido
+    const del = await request(app).delete(`/api/ventas/${v1.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+  });
+
+  it('cancelar una venta sin liquidación posterior funciona normal', async () => {
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Tarjeta A4 Sin Liq', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Sin Liq', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'Y', cantidad: 1, precio_vendido: 30000, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: mt.body.id, metodo_nombre: 'Tarjeta A4 Sin Liq', monto: 30000, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(venta.status).toBe(201);
+    const del = await request(app).delete(`/api/ventas/${venta.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+  });
+});

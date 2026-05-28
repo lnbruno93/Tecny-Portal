@@ -70,7 +70,7 @@ export default function Config() {
     return (
       <div>
         <div className="page-head">
-          <div className="page-title">Configuración</div>
+          <h1 className="page-title">Configuración</h1>
         </div>
         <div className="empty">Cargando configuración…</div>
       </div>
@@ -82,7 +82,7 @@ export default function Config() {
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="page-head">
         <div>
-          <div className="page-title">Configuración</div>
+          <h1 className="page-title">Configuración</h1>
           <div className="page-sub">Ajustes globales del portal · sólo administradores</div>
         </div>
       </div>

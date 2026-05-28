@@ -9,7 +9,7 @@ const createProveedorSchema = z.object({
   notas:             z.string().trim().max(2000).optional().nullable(),
   // Saldo inicial en USD (lo que ya le debemos al arrancar la cuenta). Opcional.
   saldo_inicial:     z.coerce.number().min(0).optional().nullable(),
-});
+}).strict();
 
 // Al actualizar también se puede ajustar el saldo inicial (movimiento de apertura)
 const updateProveedorSchema = createProveedorSchema.partial().refine(
@@ -41,7 +41,7 @@ const createMovimientoProveedorSchema = z.object({
   notas:        z.string().trim().max(1000).optional().nullable(),
   // items solo aplica a 'compra' (productos comprados); la ruta los ignora en 'pago'
   items:        z.array(itemProveedorSchema).max(200, 'Máximo 200 ítems por compra').optional().default([]),
-}).refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
+}).strict().refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
   message: 'Para montos en ARS se requiere el tipo de cambio (tc)',
   path: ['tc'],
 });

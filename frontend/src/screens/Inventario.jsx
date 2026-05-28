@@ -5,6 +5,7 @@ import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows } from '../lib/importStock';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -101,6 +102,9 @@ export default function Inventario() {
   const [claseFilter, setClaseFilter] = useState('todos'); // todos | celular | accesorio | tecnico
   const [soloStock, setSoloStock] = useState(false);
   const [search, setSearch] = useState('');
+  // Search debounceada: no dispara una request al backend (con ILIKE multi-columna +
+  // COUNT(*)) en cada keystroke; espera 350ms tras la última tecla.
+  const dSearch = useDebouncedValue(search, 350);
 
   // ── Drill-down desde Desglose 360 ──
   // Si llegamos con query params (?proveedor=X, ?categoria_id=N, etc.) los aplicamos
@@ -147,7 +151,7 @@ export default function Inventario() {
       if (claseFilter === 'celular' || claseFilter === 'accesorio') params.clase = claseFilter;
       if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
       if (soloStock) params.solo_stock = 'true';
-      if (search.trim()) params.buscar = search.trim();
+      if (dSearch.trim()) params.buscar = dSearch.trim();
       // Drill-down: aplicamos los filtros que vinieron por URL al fetch.
       // El backend rechaza claves desconocidas (Zod), así que sólo pasamos lo válido.
       Object.assign(params, drillFilters);
@@ -160,7 +164,7 @@ export default function Inventario() {
     } finally {
       setLoading(false);
     }
-  }, [page, claseFilter, soloStock, search, toast, drillFilters]);
+  }, [page, claseFilter, soloStock, dSearch, toast, drillFilters]);
 
   const loadMetricas = useCallback(async () => {
     try { setMetricas(await inventario.metricas()); } catch (_) {}
@@ -208,11 +212,9 @@ export default function Inventario() {
     }
   }, [productos, categorias, depositos, loadMetricas, loadCatalogos, toast]);
 
-  // Búsqueda con debounce → vuelve a page 1
-  useEffect(() => {
-    const t = setTimeout(() => setPage(1), 0);
-    return () => clearTimeout(t);
-  }, [claseFilter, soloStock, search]);
+  // Cambiar filtros → volver a page 1. Usamos dSearch (no search) para que el
+  // reset ocurra junto con el fetch debounceado.
+  useEffect(() => { setPage(1); }, [claseFilter, soloStock, dSearch]);
 
   // ── Modal alta/edición ──
   function openCreate() {

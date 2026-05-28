@@ -6,7 +6,7 @@ const createUsadoSchema = z.object({
   pct_bateria: z.string().max(50).optional(),
   precio_usd:  z.number({ coerce: true }).nonnegative(),
   comentarios: z.string().max(500).optional(),
-});
+}).strict();
 
 const updateUsadoSchema = createUsadoSchema.partial().refine(
   data => Object.keys(data).length > 0,
@@ -22,6 +22,6 @@ const bulkUpdateItemSchema = z.object({
 
 const bulkUpdateUsadosSchema = z.object({
   updates: z.array(bulkUpdateItemSchema).min(1).max(500),
-});
+}).strict();
 
 module.exports = { createUsadoSchema, updateUsadoSchema, bulkUpdateUsadosSchema };

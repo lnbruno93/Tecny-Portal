@@ -20,6 +20,11 @@ const DUMMY_HASH = bcrypt.hashSync('__dummy_password_for_timing__', BCRYPT_ROUND
 // algoritmo fijo: previene algorithm confusion attacks (none, RS256, etc.)
 const JWT_ALGORITHM = 'HS256';
 
+// Política de lockout por usuario (complementa el rate limit por IP existente):
+// 10 fallos consecutivos → 15 min bloqueo. Resetea al login exitoso.
+const LOCKOUT_THRESHOLD = 10;
+const LOCKOUT_DURATION_MIN = 15;
+
 function makeToken(user) {
   // iat_ms: timestamp de emisión en milisegundos — permite comparación de precisión
   // sub-segundo contra password_changed_at (que tiene precisión de microsegundos en PG).
@@ -39,17 +44,61 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const value = username || email;
 
     const { rows } = await db.query(
-      `SELECT id, nombre, username, email, role, password_hash, password_changed_at
+      `SELECT id, nombre, username, email, role, password_hash, password_changed_at,
+              failed_login_count, lockout_until
        FROM users WHERE ${field} = $1 AND deleted_at IS NULL`,
       [value]
     );
     const user = rows[0];
 
+    // Lockout per-user: si el usuario está bloqueado, rechazamos antes de chequear
+    // la password. NO revelamos al cliente si el usuario existe (mensaje genérico).
+    // Usamos 423 Locked para que el frontend pueda mostrar un mensaje diferenciado
+    // si quiere; el body sigue genérico para que un atacante no enumere usuarios.
+    if (user && user.lockout_until && new Date(user.lockout_until) > new Date()) {
+      logger.warn({ user_id: user.id, ip: req.ip, lockout_until: user.lockout_until }, 'login bloqueado por lockout');
+      // Igual ejecutamos bcrypt para que el tiempo de respuesta sea constante.
+      await bcrypt.compare(password, DUMMY_HASH);
+      return res.status(423).json({ error: 'Cuenta temporalmente bloqueada por intentos fallidos. Probá más tarde.' });
+    }
+
     // Siempre ejecutar bcrypt.compare (tiempo constante) para no revelar si el usuario existe
     const valid = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
     if (!user || !valid) {
       logger.warn({ field, ip: req.ip }, 'login fallido');
+      // Si el usuario existe, incrementamos el contador. Si llega al threshold,
+      // seteamos lockout_until. Esto es best-effort: una falla acá NO debe romper
+      // el response 401 al cliente.
+      if (user) {
+        try {
+          const nuevo = (user.failed_login_count || 0) + 1;
+          if (nuevo >= LOCKOUT_THRESHOLD) {
+            await db.query(
+              `UPDATE users SET failed_login_count = $1,
+                      lockout_until = NOW() + INTERVAL '${LOCKOUT_DURATION_MIN} minutes'
+                 WHERE id = $2`,
+              [nuevo, user.id]
+            );
+            logger.warn({ user_id: user.id, intentos: nuevo }, 'usuario bloqueado por lockout');
+          } else {
+            await db.query('UPDATE users SET failed_login_count = $1 WHERE id = $2', [nuevo, user.id]);
+          }
+        } catch (e) {
+          logger.error({ err: e }, 'no se pudo actualizar failed_login_count');
+        }
+      }
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
+    }
+
+    // Éxito: reseteamos contador + lockout (si los había). Best-effort, no bloquea
+    // la respuesta si falla.
+    if (user.failed_login_count > 0 || user.lockout_until) {
+      try {
+        await db.query(
+          'UPDATE users SET failed_login_count = 0, lockout_until = NULL WHERE id = $1',
+          [user.id]
+        );
+      } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
 
     const { rows: perms } = await db.query(

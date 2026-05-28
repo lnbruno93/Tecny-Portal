@@ -133,6 +133,37 @@ async function purgarAuditLogsViejos(diasRetencion = 365) {
   return rowCount;
 }
 
+// Job interno de purga periódica. Se invoca desde `server.js` al arrancar
+// y dispara purgarAuditLogsViejos() cada `intervalHours` horas (default 24).
+//
+// Por qué un setInterval interno y no pg_cron / Railway Scheduler:
+//   - Cero infra extra. Una instancia → un job.
+//   - Cuando escalemos a múltiples workers, esto se debe migrar a un
+//     scheduler externo (PG advisory lock entre workers, o cron de Railway)
+//     porque cada worker dispararía el DELETE simultáneamente.
+//
+// Devuelve el handle del intervalo (para test/shutdown).
+function startPurgaJob({ diasRetencion = 365, intervalHours = 24, runOnStartup = false } = {}) {
+  // No se programa en tests para no contaminar la DB de test ni dejar timers vivos
+  // entre suites (Jest --runInBand detecta open handles).
+  if (process.env.NODE_ENV === 'test') return null;
+
+  const intervalMs = intervalHours * 60 * 60 * 1000;
+  const runOnce = async () => {
+    try { await purgarAuditLogsViejos(diasRetencion); }
+    catch (err) { logger.error({ err }, 'audit_logs purga falló — reintenta mañana'); }
+  };
+
+  if (runOnStartup) runOnce(); // útil en dev / al deployar después de mucho tiempo
+
+  const handle = setInterval(runOnce, intervalMs);
+  // .unref() evita que el timer mantenga vivo el proceso durante shutdown.
+  if (typeof handle.unref === 'function') handle.unref();
+  logger.info({ diasRetencion, intervalHours }, 'audit_logs purga job programado');
+  return handle;
+}
+
 module.exports = audit;
 module.exports.redactPII = redactPII;
 module.exports.purgarAuditLogsViejos = purgarAuditLogsViejos;
+module.exports.startPurgaJob = startPurgaJob;

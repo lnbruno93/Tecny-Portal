@@ -7,6 +7,7 @@
     "start": "npm run migrate && node server.js",
     "dev": "nodemon server.js | pino-pretty --colorize --translateTime 'SYS:HH:MM:ss'",
     "test": "jest --runInBand",
+    "lint": "eslint src/",
     "migrate": "node-pg-migrate -m migrations up",
     "migrate:down": "node-pg-migrate -m migrations down",
     "migrate:create": "node-pg-migrate -m migrations create"
@@ -32,7 +33,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/compression": "^1.8.1",
+    "eslint": "^10.4.0",
+    "globals": "^17.6.0",
     "jest": "^30.4.2",
     "nodemon": "^3.1.4",
     "pino-pretty": "^13.1.3",

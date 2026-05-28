@@ -183,8 +183,12 @@ router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
        RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct`,
       [nombre, moneda, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null, es_tarjeta ?? null, es_tarjeta ? (comision_pct ?? null) : null]
     );
+    // audit dentro de la tx con SAVEPOINT — antes corría post-COMMIT con el pool
+    // global, lo que dejaba una ventana de "cambio commiteado pero audit no" si
+    // el proceso moría entre las dos llamadas. Mismo patrón en cajas.js (PUT),
+    // cambios.js, egresos.js, cuentas.js, proveedores.js y tarjetas.js (Ola 3).
+    await audit(client, 'metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -224,8 +228,8 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
       [nombre ?? null, moneda ?? null, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null,
        finalEsTarjeta, finalComision, id]
     );
+    await audit(client, 'metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');

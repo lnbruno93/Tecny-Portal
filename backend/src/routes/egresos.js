@@ -210,8 +210,8 @@ router.post('/', validate(createEgresoSchema), async (req, res, next) => {
       [fecha, concepto, categoria_id ?? null, monto, moneda, tc ?? null, monto_usd, metodo_pago_id ?? null, estado, notas ?? null, req.user.id]
     );
     await postEgresoLedger(client, rows[0]);
+    await audit(client, 'egresos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('egresos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -255,8 +255,8 @@ router.put('/:id', validate(updateEgresoSchema), async (req, res, next) => {
     // Resincroniza el ledger: revierte lo anterior y re-postea si ahora está pagado.
     await reverseCajaMovimientos(client, 'egresos', id);
     await postEgresoLedger(client, { ...rows[0], user_id: req.user.id });
+    await audit(client, 'egresos', 'UPDATE', id, { antes: b, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('egresos', 'UPDATE', id, { antes: b, despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -275,8 +275,8 @@ router.delete('/:id', async (req, res, next) => {
     );
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Egreso no encontrado' }); }
     await reverseCajaMovimientos(client, 'egresos', id);
+    await audit(client, 'egresos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('egresos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

@@ -152,7 +152,7 @@ export default function Usuarios() {
       {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="page-head">
         <div>
-          <div className="page-title">Usuarios</div>
+          <h1 className="page-title">Usuarios</h1>
           <div className="page-sub">Accesos y permisos · admin (bypass total) u operador (granular por tool)</div>
         </div>
         <div className="page-actions">

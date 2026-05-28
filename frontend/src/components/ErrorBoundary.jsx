@@ -4,6 +4,7 @@
 
 import { Component } from 'react';
 import { isChunkLoadError, reloadForNewVersion } from '../lib/chunkReload';
+import { reportError } from '../lib/reportError';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -21,8 +22,10 @@ export default class ErrorBoundary extends Component {
       this.setState({ reloading: true });
       return;
     }
-    // En producción con Sentry: Sentry.captureException(error, { extra: info })
     console.error('[ErrorBoundary]', error, info.componentStack);
+    // Reportar al backend (que lo reenvía a Sentry si está configurado).
+    // Throttle interno en reportError: máximo 5 por sesión, 2s entre cada uno.
+    reportError(error, { source: 'ErrorBoundary', componentStack: info?.componentStack?.slice(0, 2000) });
   }
 
   render() {

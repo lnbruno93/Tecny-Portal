@@ -27,7 +27,6 @@ const {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
-  TIPOS_MOVIMIENTO_CC,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
@@ -136,8 +135,8 @@ router.post('/clientes', validate(createClienteCCSchema), async (req, res, next)
         [cliente.id, saldo]
       );
     }
+    await audit(client, 'clientes_cc', 'INSERT', cliente.id, { despues: { ...cliente, saldo_inicial: saldo }, user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('clientes_cc', 'INSERT', cliente.id, { despues: { ...cliente, saldo_inicial: saldo }, user_id: req.user.id });
     // Agenda central (best-effort, fuera de la transacción)
     await syncContactoSafe(db, {
       origen: 'b2b', ref_tabla: 'clientes_cc', ref_id: cliente.id,
@@ -324,12 +323,11 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       }
     }
 
-    await client.query('COMMIT');
-
-    await audit('movimientos_cc', 'INSERT', mov.id, {
+    await audit(client, 'movimientos_cc', 'INSERT', mov.id, {
       despues: { ...mov, items: insertedItems },
       user_id: req.user.id,
     });
+    await client.query('COMMIT');
 
     res.status(201).json({ ...mov, items: insertedItems });
   } catch (err) {
@@ -354,8 +352,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     // Revertir el ingreso de caja asociado (si lo hubo)
     await reverseCajaMovimientos(client, 'movimientos_cc', id);
+    await audit(client, 'movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

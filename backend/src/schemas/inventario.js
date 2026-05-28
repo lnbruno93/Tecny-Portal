@@ -26,7 +26,12 @@ const baseProducto = z.object({
   estado:         z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).default('disponible'),
   foto_data:      z.string().max(10_000_000).optional().nullable(),
   foto_nombre:    z.string().trim().max(255).optional().nullable(),
-  foto_tipo:      z.string().trim().max(100).optional().nullable(),
+  // Enum cerrado: la auditoría detectó que un user con permiso `inventario`
+  // podía cargar foto_tipo='image/svg+xml' con un SVG malicioso (XSS al render).
+  // CSP del frontend bloquea scripts inline, pero SVG inline puede ejecutar
+  // JS dentro del <svg> propio. Cerramos el enum para defense in depth.
+  // Mismo set que `comprobantes`/`venta_comprobantes`.
+  foto_tipo:      z.enum(['image/jpeg', 'image/png', 'image/webp']).optional().nullable(),
   observaciones:  z.string().trim().max(1000).optional().nullable(),
 });
 

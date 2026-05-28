@@ -3,6 +3,7 @@
 // Uso imperativo (hook):        const confirm = useConfirm(); await confirm({ title, message });
 
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { useModal } from '../lib/useModal';
 
 // ── Imperativo: hook useConfirm ───────────────────────────────────────────────
 const ConfirmCtx = createContext(null);
@@ -68,12 +69,22 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }) {
+  const overlayRef = useRef(null);
+  // Esc cierra (cancelar) + body scroll lock + foco al botón primario.
+  // Crítico en operaciones destructivas (delete venta, comprobante, etc.):
+  // antes no había forma rápida de cancelar por teclado.
+  useModal({ open, onClose: onCancel, overlayRef });
+
   if (!open) return null;
 
   return (
     <div
+      ref={overlayRef}
       className="modal-overlay"
       onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
       style={{ zIndex: 500 }}
     >
       <div
@@ -82,7 +93,7 @@ export function ConfirmModal({
         onClick={e => e.stopPropagation()}
       >
         <div className="modal-hd">
-          <h3 style={{ color: danger ? 'var(--neg)' : 'var(--text)' }}>{title}</h3>
+          <h3 id="confirm-modal-title" style={{ color: danger ? 'var(--neg)' : 'var(--text)' }}>{title}</h3>
         </div>
         {message && (
           <div className="modal-body">
@@ -99,7 +110,7 @@ export function ConfirmModal({
             className="btn btn-primary"
             style={danger ? { background: 'var(--neg)', boxShadow: 'none' } : {}}
             onClick={onConfirm}
-            autoFocus
+            data-autofocus
           >
             {confirmLabel}
           </button>

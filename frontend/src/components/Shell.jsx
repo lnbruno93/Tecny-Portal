@@ -267,18 +267,24 @@ function Topbar({ onMenuClick, onSearchClick }) {
         <span>Buscar comprobantes, clientes, IMEIs…</span>
         <kbd>⌘K</kbd>
       </div>
-      <button className="icon-btn" title="Notificaciones">
-        <Icons.Bell size={17} />
-      </button>
-      <button
-        className="icon-btn"
-        title={primaryAction?.label || 'Nuevo'}
-        onClick={() => primaryAction?.onClick?.()}
-        disabled={!primaryAction}
-        style={primaryAction ? { color: 'var(--accent)' } : { opacity: 0.35, cursor: 'default' }}
-      >
-        <Icons.Plus size={17} />
-      </button>
+      {/* "Notificaciones" oculto hasta que tenga feature real. La auditoría
+          detectó que aparecer sin onClick parecía bug. */}
+      {/* <button className="icon-btn" title="Notificaciones"><Icons.Bell size={17} /></button> */}
+      {/* "Nuevo" solo se renderiza cuando la pantalla actual registra una
+          primaryAction vía usePageActions(). Pantallas que no la registran
+          (Inicio, Historial, Capital, Desglose360, Forbidden, etc.) ya no
+          muestran un botón a 35% opacidad que parecía deshabilitado. */}
+      {primaryAction && (
+        <button
+          className="icon-btn"
+          title={primaryAction.label || 'Nuevo'}
+          aria-label={primaryAction.label || 'Nuevo'}
+          onClick={() => primaryAction.onClick?.()}
+          style={{ color: 'var(--accent)' }}
+        >
+          <Icons.Plus size={17} />
+        </button>
+      )}
     </div>
   );
 }

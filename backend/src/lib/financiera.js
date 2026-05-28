@@ -24,7 +24,9 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
     );
     const f = await client.query(
       `SELECT archivo_data, archivo_nombre, archivo_tipo
-         FROM venta_comprobantes WHERE venta_id = $1 ORDER BY id LIMIT 1`, [ventaId]
+         FROM venta_comprobantes
+        WHERE venta_id = $1 AND deleted_at IS NULL
+        ORDER BY id LIMIT 1`, [ventaId]
     );
     if (fin.rows[0] && f.rows[0]) { pagoFin = fin.rows[0]; file = f.rows[0]; }
   }
@@ -43,12 +45,22 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
   const monto_neto = round2(monto - monto_financiera);
 
   // Si ya hay una fila (activa o revertida), restaurarla + recalcular. Si no, crearla.
+  //
+  // IMPORTANTE: el UPDATE incluye archivo_data/nombre/tipo, no solo los montos.
+  // Antes de mayo-2026 estos no se refrescaban: si la venta era cancelada (con su
+  // comprobante soft-deleted), después se subía un archivo nuevo en venta_comprobantes,
+  // y al reactivarse, el comprobante de Financiera quedaba pegado al archivo viejo —
+  // archivo desincronizado de los montos. Riesgo de auditoría con terceros.
   const existing = await client.query('SELECT id FROM comprobantes WHERE venta_id = $1 ORDER BY id LIMIT 1', [ventaId]);
   if (existing.rows[0]) {
     const { rows } = await client.query(
-      `UPDATE comprobantes SET deleted_at = NULL, monto = $2, monto_financiera = $3, monto_neto = $4
-         WHERE venta_id = $1 RETURNING id, monto, monto_financiera, monto_neto`,
-      [ventaId, monto, monto_financiera, monto_neto]
+      `UPDATE comprobantes
+          SET deleted_at = NULL, monto = $2, monto_financiera = $3, monto_neto = $4,
+              archivo_data = $5, archivo_nombre = $6, archivo_tipo = $7
+        WHERE venta_id = $1
+       RETURNING id, monto, monto_financiera, monto_neto`,
+      [ventaId, monto, monto_financiera, monto_neto,
+       file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null]
     );
     return rows[0];
   }

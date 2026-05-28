@@ -183,7 +183,7 @@ export default function Proyectos() {
     <div>
       <div className="page-head">
         <div>
-          <div className="page-title">Proyectos</div>
+          <h1 className="page-title">Proyectos</h1>
           <div className="page-sub">Desarrollo e inversiones por proyecto · línea de tiempo y totales</div>
         </div>
         <div className="page-actions">

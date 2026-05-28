@@ -12,14 +12,14 @@ const createProyectoSchema = z.object({
   objetivo:       z.string().trim().max(2000).optional().nullable(),
   fecha_creacion: fecha.optional(),
   participantes:  z.array(z.coerce.number().int().positive()).max(50).optional().default([]),
-});
+}).strict();
 
 const updateProyectoSchema = z.object({
   nombre:         z.string().trim().min(1).max(150).optional(),
   objetivo:       z.string().trim().max(2000).optional().nullable(),
   fecha_creacion: fecha.optional(),
   participantes:  z.array(z.coerce.number().int().positive()).max(50).optional(),
-}).refine(d => Object.values(d).some(v => v !== undefined), {
+}).strict().refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'Al menos un campo es requerido para actualizar',
 });
 
@@ -34,7 +34,7 @@ const createMovimientoProyectoSchema = z.object({
   monto_usd:            z.coerce.number().min(0).optional().nullable(),       // directo, si no hay $/tc
   inversor_contacto_id: z.coerce.number().int().positive().optional().nullable(),
   comentarios:          z.string().trim().max(1000).optional().nullable(),
-}).refine(d => (Number(d.monto) > 0) || (Number(d.monto_usd) > 0) || (d.detalle && d.detalle.trim()), {
+}).strict().refine(d => (Number(d.monto) > 0) || (Number(d.monto_usd) > 0) || (d.detalle && d.detalle.trim()), {
   message: 'Cargá al menos un monto ($ o USD) o un detalle',
 });
 

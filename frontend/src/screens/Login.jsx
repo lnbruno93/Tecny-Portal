@@ -28,18 +28,24 @@ export default function Login() {
         <div className="brand-sub">Tech Reseller &amp; Celnyx</div>
         <form onSubmit={handleSubmit}>
           <div className="field">
-            <label>Usuario</label>
+            <label htmlFor="login-username">Usuario</label>
             <input
+              id="login-username"
               type="text"
               placeholder="usuario"
               autoComplete="username"
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={username}
               onChange={e => setUsername(e.target.value)}
             />
           </div>
           <div className="field">
-            <label>Contraseña</label>
+            <label htmlFor="login-password">Contraseña</label>
             <input
+              id="login-password"
               type="password"
               placeholder="••••••••"
               autoComplete="current-password"
@@ -50,7 +56,13 @@ export default function Login() {
           <button className="login-btn" type="submit" disabled={loading}>
             {loading ? 'Ingresando...' : 'Ingresar →'}
           </button>
-          {error && <div className="login-err" style={{ display: 'block' }}>{error}</div>}
+          {/* role="alert" + aria-live="assertive" para que lectores de pantalla anuncien
+              el error inmediatamente al aparecer (a11y) */}
+          {error && (
+            <div className="login-err" role="alert" aria-live="assertive" style={{ display: 'block' }}>
+              {error}
+            </div>
+          )}
         </form>
       </div>
     </div>

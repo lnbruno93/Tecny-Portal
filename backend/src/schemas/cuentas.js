@@ -17,7 +17,7 @@ const createClienteCCSchema = z.object({
   notas:       z.string().trim().max(1000).optional().nullable(),
   // Saldo de apertura opcional: el cliente arranca debiéndonos este monto (en USD)
   saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),
-});
+}).strict();
 
 const updateClienteCCSchema = createClienteCCSchema.partial().refine(
   d => Object.values(d).some(v => v !== undefined),
@@ -59,7 +59,7 @@ const createMovimientoCCSchema = z.object({
   notas:         z.string().trim().max(1000).optional().nullable(),
   // items solo aplica a compra/devolucion — la ruta ignora items en otros tipos
   items:         z.array(itemMovimientoCCSchema).max(200, 'Máximo 200 ítems por movimiento').optional().default([]),
-});
+}).strict();
 
 module.exports = {
   createClienteCCSchema,

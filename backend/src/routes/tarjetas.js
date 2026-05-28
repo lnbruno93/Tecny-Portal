@@ -135,8 +135,8 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
       origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: rows[0].id,
       concepto: 'Liquidación tarjeta', user_id: req.user.id,
     });
+    await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('tarjeta_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');

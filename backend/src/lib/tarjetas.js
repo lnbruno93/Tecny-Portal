@@ -9,7 +9,56 @@
 // la venta y los recrea desde los pagos actuales. Debe correr dentro de la tx.
 const { round2 } = require('./money');
 
+function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
+
+// Pre-check: revertir un cobro de tarjeta es seguro mientras el saldo
+// resultante de la tarjeta (SUM cobros activos − SUM liquidaciones) siga ≥ 0.
+// Si quedaría negativo, significa que la liquidación ya recibió plata por
+// este cobro y bloqueamos la cancelación pidiendo deshacer la liquidación.
+//
+// Hacemos el cálculo por (metodo_pago_id) — una venta puede tener cobros en
+// varias tarjetas; bloqueamos si CUALQUIERA quedaría en rojo.
+async function checkLiquidacionesBloqueantes(client, ventaId) {
+  const { rows } = await client.query(
+    `WITH cobros_revertir AS (
+       SELECT metodo_pago_id, COALESCE(SUM(monto_bruto), 0) AS monto_revertir
+         FROM tarjeta_movimientos
+        WHERE venta_id = $1 AND tipo = 'cobro' AND deleted_at IS NULL
+        GROUP BY metodo_pago_id
+     ),
+     saldos AS (
+       SELECT cr.metodo_pago_id, cr.monto_revertir,
+              COALESCE(SUM(CASE WHEN tm.tipo='cobro'        THEN tm.monto_bruto ELSE 0 END), 0)
+              - COALESCE(SUM(CASE WHEN tm.tipo='liquidacion' THEN tm.monto_neto  ELSE 0 END), 0) AS saldo_actual
+         FROM cobros_revertir cr
+         LEFT JOIN tarjeta_movimientos tm
+           ON tm.metodo_pago_id = cr.metodo_pago_id
+          AND tm.deleted_at IS NULL
+        GROUP BY cr.metodo_pago_id, cr.monto_revertir
+     )
+     SELECT s.metodo_pago_id, s.monto_revertir, s.saldo_actual, mp.nombre AS metodo_nombre
+       FROM saldos s
+       JOIN metodos_pago mp ON mp.id = s.metodo_pago_id
+      WHERE s.saldo_actual - s.monto_revertir < 0
+      LIMIT 1`, [ventaId]
+  );
+  if (rows[0]) {
+    throw err400(
+      `No se puede revertir esta venta: el cobro de tarjeta "${rows[0].metodo_nombre}" ` +
+      `ya fue liquidado (saldo pendiente: $${Number(rows[0].saldo_actual).toFixed(2)}, ` +
+      `monto a revertir: $${Number(rows[0].monto_revertir).toFixed(2)}). ` +
+      `Eliminá primero la liquidación correspondiente.`
+    );
+  }
+}
+
 async function syncTarjetaCobros(client, ventaId, estado) {
+  // Si vamos a borrar/cancelar, validamos primero que no haya liquidaciones
+  // posteriores que dependan de estos cobros. Si las hay, lanzamos err400 y
+  // el caller hace ROLLBACK de la transacción entera (no se cancela nada).
+  if (estado === 'cancelado') {
+    await checkLiquidacionesBloqueantes(client, ventaId);
+  }
   // Revertir cobros previos de esta venta
   await client.query(
     `UPDATE tarjeta_movimientos SET deleted_at = NOW()

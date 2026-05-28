@@ -100,7 +100,7 @@ const queryVentasSchema = z.object({
 const comprobanteVentaSchema = z.object({
   archivo_data:   z.string().min(1, 'Archivo requerido').max(9_000_000, 'Archivo demasiado grande')
                    // base64, con prefijo data-URL opcional (el frontend lo manda via FileReader.readAsDataURL).
-                   .regex(/^(data:[a-z0-9/+.\-]+;base64,)?[A-Za-z0-9+/=\s]+$/i, 'Archivo inválido (debe ser base64)'),
+                   .regex(/^(data:[a-z0-9/+.-]+;base64,)?[A-Za-z0-9+/=\s]+$/i, 'Archivo inválido (debe ser base64)'),
   archivo_nombre: z.string().trim().max(255).optional().nullable(),
   archivo_tipo:   z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], {
                    error: 'Tipo de archivo no permitido (solo jpg/png/webp/pdf)'

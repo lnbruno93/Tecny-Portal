@@ -23,16 +23,29 @@
 
 ## ¿Qué es iPro Portal?
 
-Portal de administración interna para gestionar:
+Portal de administración interna para iPro Tech / Celnyx. Módulos activos en producción:
 
 | Módulo | Descripción |
 |--------|-------------|
-| **Financiera** | Comprobantes de ventas, pagos a proveedores, comisiones, adjuntos de facturas |
-| **Cajas** | Registro de deudas e inversiones por contacto (ARS y USD) |
-| **Envíos** | Gestión de órdenes de delivery con ítems, estados y seguimiento |
-| **Usuarios** | Administración de cuentas con permisos granulares por módulo |
+| **Inicio** | Home con accesos rápidos y actividad reciente |
+| **Inventario** | Catálogo de productos (celulares + accesorios), categorías, depósitos, fotos, edición inline, Desglose 360 |
+| **Ventas** | Alta/edición de ventas con items + pagos + canjes, dashboard de métricas, plantillas de garantía |
+| **Cuentas CC** | Cuenta corriente por cliente (deuda ARS/USD, movimientos, mix de pagos) |
+| **Envíos** | Órdenes de delivery con items + pagos; opcionalmente registran una venta asociada (registrar_venta) |
+| **Cotizador** / **Usados \| Cotizador** | Cotización de nuevos y usados con copia para WhatsApp |
+| **Financiera** | Comprobantes (subida + OCR opcional con Anthropic), conciliación con ventas |
+| **Proveedores \| Compras** | Catálogo de proveedores, movimientos, saldos |
+| **Egresos** | Gastos puntuales y recurrentes, conciliados con cajas |
+| **Cambios de Divisa** | Casas de cambio: entradas ARS / salidas USD/USDT atómicas |
+| **Tarjetas de Crédito** | Cobros de tarjeta autogenerados desde ventas + liquidaciones del procesador |
+| **Cajas** + **360 & Capital** | Ledger global multi-moneda; vista consolidada de saldos por método de pago |
+| **Proyectos** | Inversiones agrupadas (CC + Capital) |
+| **Contactos** | Agenda unificada (sync automático desde clientes_cc + proveedores + participantes) |
+| **Historial** | Audit log navegable con redacción de PII |
+| **Usuarios** | Cuentas + permisos granulares por módulo |
+| **Config** | Configuración global (TC sugerido, parámetros) |
 
-El portal es **multi-usuario** con control de acceso por módulo. El frontend es una SPA de archivo único (`Index.html`) servida desde Netlify, conectada a un backend API REST en Railway.
+El portal es **multi-usuario** con control de acceso por módulo (matriz user × permission). El frontend es una **SPA React 19 + Vite + PWA** servida desde Netlify; el backend es una **API REST Node + Express + PostgreSQL** en Railway.
 
 ---
 
@@ -40,28 +53,32 @@ El portal es **multi-usuario** con control de acceso por módulo. El frontend es
 
 | Capa | Tecnología |
 |------|-----------|
-| Frontend | HTML/CSS/JS vanilla · SPA de un archivo (`Index.html`) |
+| Frontend | **React 19 + Vite 8** · PWA (service worker + manifest) · CSS custom (no framework) |
+| Frontend tests | **Vitest + @testing-library/react + jsdom** |
 | Backend | Node.js 20+ · Express 4 |
 | Base de datos | PostgreSQL (Railway managed) |
 | Auth | JWT HS256 · bcrypt |
-| Validación | Zod v4 |
-| Logging | Pino + pino-http |
-| Errores | Sentry (`@sentry/node`) |
-| Migrations | node-pg-migrate |
-| Tests | Jest 30 + Supertest |
-| Deploy frontend | Netlify (GitHub auto-deploy) |
+| Validación | Zod v4 (schemas en `backend/src/schemas/`) |
+| Logging | Pino + pino-http (con redact PII) |
+| Errores | Sentry (`@sentry/node` backend; frontend pendiente de integrar) |
+| Migrations | node-pg-migrate (carpeta `backend/migrations/`) |
+| Backend tests | Jest 30 + Supertest (DB real de tests con setup/teardown) |
+| Deploy frontend | Netlify (rama `staging` → preview · `main` → producción) |
 | Deploy backend | Railway (GitHub auto-deploy desde rama `main`) |
+
+> **Nota histórica**: la versión 0.x de la app fue una SPA vanilla en un solo archivo. Esa versión vive en `docs/legacy/Index.html` solo como referencia. La app actual es React/Vite desde fines de 2025.
 
 ---
 
 ## Arquitectura
 
 ```
-┌─────────────────────────────┐
-│       Netlify (Frontend)     │
-│   SPA: Index.html           │
-│   Vanilla JS + Tailwind     │
-└──────────┬──────────────────┘
+┌──────────────────────────────────┐
+│       Netlify (Frontend)         │
+│   SPA: React 19 + Vite + PWA     │
+│   service worker (workbox)       │
+│   chunks lazy por screen         │
+└──────────┬───────────────────────┘
            │ HTTPS / REST API
            │ Authorization: Bearer <JWT>
 ┌──────────▼──────────────────┐
@@ -140,7 +157,14 @@ npm run dev
 # → http://localhost:3001
 ```
 
-> **Frontend:** Abrí `Index.html` directamente en el browser o con Live Server. Ya apunta a `http://localhost:3001` en desarrollo.
+> **Frontend:**
+> ```bash
+> cd frontend
+> npm ci
+> cp .env.local.example .env.local   # ajustá VITE_API_URL si tu backend no es :3001
+> npm run dev                          # → http://localhost:5173
+> ```
+> Para testear: `npm test` (Vitest, watch) o `npm test -- --run` (single run).
 
 ---
 
@@ -175,10 +199,27 @@ npm run dev
 
 ```
 iPro-Portal/
-├── Index.html                    # Frontend SPA (Netlify)
-├── ONBOARDING.md                 # Este archivo
+├── README.md                     # Quickstart corto
+├── ONBOARDING.md                 # Este archivo (guía técnica completa)
 ├── docs/
-│   └── API_REFERENCE.md          # Referencia completa de endpoints
+│   ├── API_REFERENCE.md          # Referencia de endpoints
+│   ├── OPERATIONS.md             # Runbook operaciones (deploys, rollbacks, etc.)
+│   ├── STAGING.md                # Cómo trabajar con staging
+│   ├── STORAGE.md                # Política de archivos
+│   └── legacy/                   # SPA vanilla v0.x (solo referencia histórica)
+│       ├── Index.html
+│       └── index_backup.html
+├── frontend/                     # SPA React 19 + Vite + PWA
+│   ├── src/
+│   │   ├── App.jsx               # Routing + RequirePermission per route
+│   │   ├── main.jsx              # Entry + StrictMode
+│   │   ├── screens/              # 21 pantallas (Inicio, Inventario, Ventas, Envíos…)
+│   │   ├── components/           # Shell, Icons, ConfirmModal, EditableCell, CommandPalette
+│   │   ├── contexts/             # Auth, Toast, PageActions
+│   │   ├── lib/                  # api, format, exportCsv, importStock, xlsx, chunkReload
+│   │   └── styles.css            # CSS custom (no framework)
+│   ├── vite.config.js            # build + PWA + chunks
+│   └── package.json
 └── backend/
     ├── server.js                 # Entry point: dotenv → Sentry init → app.listen
     ├── jest.config.js            # Config de tests
@@ -390,10 +431,11 @@ Railway (backend auto-deploy)
     start: npm run migrate && node server.js
     health: GET /health (timeout 60s)
 
-GitHub (main branch)
-    ↓ push → trigger
-Netlify (frontend auto-deploy)
-    serve: Index.html (static)
+GitHub (main branch)               GitHub (staging branch)
+    ↓ push → trigger                   ↓ push → trigger
+Netlify (frontend producción)      Netlify (deploy preview staging)
+    build: cd frontend && vite build
+    publish: frontend/dist/
 ```
 
 ### Comando de inicio en Railway
@@ -436,7 +478,7 @@ GET /health
 
 | Decisión | Detalle |
 |----------|---------|
-| **SPA en un archivo** | `Index.html` contiene todo el frontend. Apropiado para el tamaño actual; fácil de deployar en Netlify sin build step |
+| **SPA React 19 + Vite** | Frontend moderno con chunks lazy por screen, PWA con workbox, build step en Netlify. Migración desde la SPA vanilla v0.x a fines de 2025. |
 | **Singleton pool** | `src/config/database.js` exporta un pool compartido entre todas las rutas. Evita abrir conexiones por request |
 | **Schemas Zod separados** | Cada módulo tiene su schema en `src/schemas/`. Separación clara entre validación y lógica |
 | **Paginación estándar** | `parsePagination` + `paginatedResponse` en `lib/paginate.js` — todos los endpoints de lista usan el mismo formato `{ data, pagination }` |

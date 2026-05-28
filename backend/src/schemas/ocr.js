@@ -11,6 +11,6 @@ const ocrSchema = z.object({
   mediaType: z.enum(ALLOWED_MEDIA_TYPES, {
     errorMap: () => ({ message: 'Tipo no permitido. Usar JPEG, PNG, WEBP, GIF o PDF' }),
   }),
-});
+}).strict();
 
 module.exports = { ocrSchema, ALLOWED_MEDIA_TYPES, MAX_IMAGE_BYTES };

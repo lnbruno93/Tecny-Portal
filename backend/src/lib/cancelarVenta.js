@@ -27,7 +27,11 @@ async function revertirEfectosVenta(client, venta) {
   await reverseCajaMovimientos(client, 'ventas', venta.id);
   // 4) Soft-delete del comprobante de Financiera.
   await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [venta.id]);
-  // 5) Revertir cobros de tarjeta.
+  // 5) Soft-delete de los archivos adjuntos de la venta. Antes de mayo-2026
+  // estos quedaban vivos al cancelar — riesgo de leak (sync de Financiera
+  // podía levantar un archivo de venta cancelada) y storage sin tope.
+  await client.query('UPDATE venta_comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [venta.id]);
+  // 6) Revertir cobros de tarjeta.
   await syncTarjetaCobros(client, venta.id, 'cancelado');
   return true;
 }
