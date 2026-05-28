@@ -7,6 +7,9 @@ const envioItemSchema = z.object({
   metodo_pago: z.string().trim().max(100).optional().nullable(),
   // Caja (ARS) donde ingresa el cobro de un item 'pago'
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
+  // Producto linkeado (para items 'producto'): si se setea + registrar_venta=true,
+  // la venta auto-creada descuenta stock real de ese producto.
+  producto_id: z.coerce.number().int().positive().optional().nullable(),
 });
 
 const baseEnvio = z.object({
@@ -22,7 +25,10 @@ const baseEnvio = z.object({
   notas:         z.string().trim().max(1000).optional().nullable(),
   estado:        z.enum(['Pendiente','En camino','Entregado','Cancelado']).default('Pendiente'),
   prioridad:     z.enum(['Alta','Media','Baja']).optional().nullable(),
-  items:         z.array(envioItemSchema).default([]),
+  // Tipo de cambio del envío. Usado para calcular total_usd de la venta auto-creada
+  // cuando los items son en ARS. Opcional: si no viene, la venta queda con total_usd=0.
+  tc:            z.number().positive().optional().nullable(),
+  items:         z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').default([]),
   registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
 });
 
@@ -30,7 +36,7 @@ const createEnvioSchema = baseEnvio;
 
 // PUT — todo opcional. items sin default para que undefined signifique "no tocar"
 const updateEnvioSchema = baseEnvio.omit({ items: true }).partial().extend({
-  items: z.array(envioItemSchema).optional(),
+  items: z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').optional(),
 });
 
 const queryEnviosSchema = z.object({

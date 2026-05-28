@@ -207,6 +207,21 @@ if (process.env.SENTRY_DSN) {
 }
 
 app.use((err, req, res, _next) => {
+  // Traducir errores de PostgreSQL conocidos a HTTP 4xx útiles (en vez de 500 opaco):
+  //   23503 = foreign_key_violation   → la referencia no existe (depósito/categoría/etc.)
+  //   23505 = unique_violation        → conflicto de unicidad (IMEI repetido, etc.)
+  //   23502 = not_null_violation      → falta un campo requerido
+  //   23514 = check_violation         → violación de CHECK constraint
+  // Sólo exponemos el nombre del constraint o columna (sin la tupla), para no filtrar datos.
+  if (!err.status && err.code) {
+    const pgMap = {
+      '23503': () => ({ status: 409, msg: 'Referencia inválida' + (err.constraint ? ` (${err.constraint})` : '') }),
+      '23505': () => ({ status: 409, msg: 'Conflicto de unicidad' + (err.constraint ? ` (${err.constraint})` : '') }),
+      '23502': () => ({ status: 400, msg: 'Falta un campo requerido' + (err.column ? `: ${err.column}` : '') }),
+      '23514': () => ({ status: 400, msg: 'Valor inválido' + (err.constraint ? ` (${err.constraint})` : '') }),
+    };
+    if (pgMap[err.code]) { const m = pgMap[err.code](); err.status = m.status; err.message = m.msg; }
+  }
   const status = err.status || 500;
   if (status >= 500) {
     (req.log || logger).error({ err }, err.message);

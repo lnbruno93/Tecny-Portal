@@ -30,15 +30,31 @@ const baseProducto = z.object({
   observaciones:  z.string().trim().max(1000).optional().nullable(),
 });
 
-const createProductoSchema = baseProducto;
+// Regla de coherencia: celular unitario => cantidad = 1.
+const unitarioCoherente = (p) => !(p.clase === 'celular' && p.tipo_carga === 'unitario' && p.cantidad !== 1);
+const unitarioMsg = { message: 'Un celular unitario debe tener cantidad = 1', path: ['cantidad'] };
 
-const updateProductoSchema = baseProducto.partial();
+const createProductoSchema = baseProducto.refine(unitarioCoherente, unitarioMsg);
 
-// Carga masiva: array de productos (sin foto para mantener el payload acotado)
+const updateProductoSchema = baseProducto.partial(); // partial → la coherencia se chequea al leer DB
+
+// Carga masiva: array de productos (sin foto para mantener el payload acotado).
+// Refines: coherencia unitario por item + sin IMEIs duplicados dentro del lote (no hay UNIQUE en DB todavía).
+const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).refine(unitarioCoherente, unitarioMsg);
 const bulkProductoSchema = z.object({
-  productos: z.array(baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }))
+  productos: z.array(productoEnBulk)
     .min(1, 'Al menos un producto')
-    .max(500, 'Máximo 500 productos por carga'),
+    .max(500, 'Máximo 500 productos por carga')
+    .refine((arr) => {
+      const vistos = new Set();
+      for (const p of arr) {
+        const i = (p.imei || '').trim();
+        if (!i) continue;
+        if (vistos.has(i)) return false;
+        vistos.add(i);
+      }
+      return true;
+    }, { message: 'Hay IMEIs duplicados en el lote' }),
 });
 
 const queryProductosSchema = z.object({

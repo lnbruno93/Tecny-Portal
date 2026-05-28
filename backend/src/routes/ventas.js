@@ -10,6 +10,7 @@ const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const { syncTarjetaCobros } = require('../lib/tarjetas');
+const { revertirEfectosVenta } = require('../lib/cancelarVenta');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
 } = require('../schemas/ventas');
@@ -22,11 +23,7 @@ function genOrderId() {
   return `ORD-${yy}-${crypto.randomBytes(6).toString('hex')}`;
 }
 
-// Error con status 400 (validación de negocio)
-function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
-
-// Una venta retiene (descuenta) stock mientras no esté cancelada.
-function retieneStock(estado) { return estado !== 'cancelado'; }
+const { err400, retieneStock, descontarStock, reponerStock } = require('../lib/ventaCore');
 
 // Sincroniza los ingresos de caja de una venta con el ledger (Fase 2b).
 // Idempotente: revierte los movimientos previos y re-postea según el estado actual.
@@ -95,51 +92,7 @@ function validarTc(items, pagos, tcVenta) {
   }
 }
 
-// Suma de cantidades necesarias por producto_id (ignora ítems manuales sin producto)
-function necesidadPorProducto(items) {
-  const map = new Map();
-  for (const it of items || []) {
-    if (!it.producto_id) continue;
-    map.set(it.producto_id, (map.get(it.producto_id) || 0) + (Number(it.cantidad) || 0));
-  }
-  return map;
-}
-
-// Bloquea las filas (FOR UPDATE, en orden estable para evitar deadlocks), valida
-// disponibilidad y descuenta stock. Lanza err400 si no hay stock o el unitario ya se vendió.
-async function descontarStock(client, items) {
-  const need = necesidadPorProducto(items);
-  for (const id of [...need.keys()].sort((a, b) => a - b)) {
-    const { rows } = await client.query(
-      `SELECT id, nombre, tipo_carga, estado, cantidad, trackear_stock
-         FROM productos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, [id]
-    );
-    const p = rows[0];
-    if (!p) throw err400('Un producto de la venta ya no existe en el inventario.');
-    const qty = need.get(id);
-    if (p.tipo_carga === 'unitario' && p.estado === 'vendido') throw err400(`"${p.nombre}" ya figura como vendido.`);
-    if (p.trackear_stock && p.cantidad < qty) throw err400(`Stock insuficiente de "${p.nombre}" (disponible: ${p.cantidad}, pedido: ${qty}).`);
-    await client.query(
-      `UPDATE productos
-         SET cantidad = GREATEST(cantidad - $1, 0),
-             estado   = CASE WHEN tipo_carga = 'unitario' THEN 'vendido' ELSE estado END
-       WHERE id = $2`, [qty, id]
-    );
-  }
-}
-
-// Repone stock (al eliminar o reeditar una venta). Devuelve unitarios vendidos a 'disponible'.
-async function reponerStock(client, items) {
-  const need = necesidadPorProducto(items);
-  for (const id of [...need.keys()].sort((a, b) => a - b)) {
-    await client.query(
-      `UPDATE productos
-         SET cantidad = cantidad + $1,
-             estado   = CASE WHEN tipo_carga = 'unitario' AND estado = 'vendido' THEN 'disponible' ELSE estado END
-       WHERE id = $2 AND deleted_at IS NULL`, [need.get(id), id]
-    );
-  }
-}
+// (helpers de stock movidos a lib/ventaCore.js — reusados desde envíos)
 
 // Totales de una venta en USD (normalizados por TC). { totalUsd, gananciaUsd }
 function calcularTotales(items, tc) {
@@ -472,24 +425,11 @@ router.delete('/:id', async (req, res, next) => {
     const { rows: before } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'Venta no encontrada' }); }
 
-    // Reponer stock solo si la venta aún retenía stock (una cancelada ya lo liberó)
-    let repuestos = 0;
-    if (retieneStock(before[0].estado)) {
-      const { rows: items } = await client.query('SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL', [id]);
-      await reponerStock(client, items);
-      repuestos = items.length;
-    }
-    // Revertir la deuda de cuenta corriente generada por esta venta
-    await client.query('UPDATE movimientos_cc SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
-    // Revertir ingresos de caja y el comprobante de Financiera generados por esta venta
-    await reverseCajaMovimientos(client, 'ventas', id);
-    await client.query('UPDATE comprobantes SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [id]);
-    // Revertir los cobros de tarjeta generados por esta venta
-    await syncTarjetaCobros(client, id, 'cancelado');
+    await revertirEfectosVenta(client, before[0]);
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await client.query('COMMIT');
     await audit('ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
-    res.json({ ok: true, stock_repuesto: repuestos });
+    res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

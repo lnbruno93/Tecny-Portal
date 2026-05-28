@@ -257,6 +257,14 @@ export default function Inventario() {
     setImportError('');
     const file = e.target.files?.[0];
     if (!file) return;
+    // Tope de tamaño: un .xlsx legítimo de stock está muy por debajo de 10 MB.
+    // Evita que un archivo gigante (planilla con imágenes embebidas) cuelgue la pestaña.
+    const MAX_MB = 10;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setImportError(`El archivo supera ${MAX_MB} MB. Exportá una planilla más liviana o sacale fotos/objetos embebidos.`);
+      e.target.value = '';
+      return;
+    }
     const isXlsx = /\.xlsx$/i.test(file.name);
     try {
       // Lee .xlsx (Excel) nativo o .csv; ambos terminan como filas de celdas.

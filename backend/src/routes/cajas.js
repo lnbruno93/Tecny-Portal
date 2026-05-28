@@ -377,6 +377,8 @@ router.get('/resumen', async (_req, res, next) => {
         JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
         WHERE m.deleted_at IS NULL
         GROUP BY m.contacto_id
+        HAVING ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END))
+             + ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END)) > 0
       `),
       db.query(`
         WITH ultima_tasa AS (

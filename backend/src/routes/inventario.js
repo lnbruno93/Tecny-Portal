@@ -1,10 +1,24 @@
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
+
+// Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
+// (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
+// merece su propio carril para evitar que un usuario o un script accidental llene
+// la tabla productos en minutos.
+const bulkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `bulk:${req.user?.id || req.ip}`,
+  message: { error: 'Demasiadas cargas masivas. Probá de nuevo en unos minutos.' },
+});
 const {
   nombreSchema,
   createProductoSchema,
@@ -226,14 +240,34 @@ router.delete('/productos/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/productos/bulk', validate(bulkProductoSchema), async (req, res, next) => {
+router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {
+  const productos = req.body.productos;
+
+  // Revalidamos FKs ANTES de empezar a insertar: si alguna categoría/depósito no existe,
+  // devolvemos 400 listando las filas inválidas en vez de que muera con un 23503 opaco
+  // y un ROLLBACK que tira las 499 filas válidas. Una sola query por catálogo.
+  const catIds = [...new Set(productos.map(p => p.categoria_id).filter(Boolean))];
+  const depIds = [...new Set(productos.map(p => p.deposito_id).filter(Boolean))];
+  const [catValid, depValid] = await Promise.all([
+    catIds.length ? db.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [catIds]) : { rows: [] },
+    depIds.length ? db.query('SELECT id FROM depositos  WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [depIds]) : { rows: [] },
+  ]);
+  const okCats = new Set(catValid.rows.map(r => r.id));
+  const okDeps = new Set(depValid.rows.map(r => r.id));
+  const filasInvalidas = [];
+  productos.forEach((p, i) => {
+    if (p.categoria_id != null && !okCats.has(p.categoria_id)) filasInvalidas.push({ fila: i + 1, error: `categoria_id ${p.categoria_id} no existe` });
+    if (p.deposito_id != null && !okDeps.has(p.deposito_id))  filasInvalidas.push({ fila: i + 1, error: `deposito_id ${p.deposito_id} no existe` });
+  });
+  if (filasInvalidas.length) return res.status(400).json({ error: 'Referencias inválidas en el lote', detalles: filasInvalidas });
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const cols = PRODUCTO_COLS.filter(c => !c.startsWith('foto_'));
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
     const creados = [];
-    for (const p of req.body.productos) {
+    for (const p of productos) {
       const values = cols.map(c => p[c] ?? null);
       const { rows } = await client.query(
         `INSERT INTO productos (${cols.join(',')}) VALUES (${placeholders}) RETURNING id`, values
@@ -241,7 +275,10 @@ router.post('/productos/bulk', validate(bulkProductoSchema), async (req, res, ne
       creados.push(rows[0].id);
     }
     await client.query('COMMIT');
-    await audit('productos', 'INSERT', null, { despues: { bulk: creados.length, ids: creados }, user_id: req.user.id });
+    // Un audit por producto (registro_id != null) — así el historial filtrable por producto los muestra.
+    await Promise.all(creados.map((id, i) =>
+      audit('productos', 'INSERT', id, { despues: { ...productos[i], id, _bulk: true }, user_id: req.user.id })
+    ));
     res.status(201).json({ ok: true, creados: creados.length });
   } catch (err) {
     await client.query('ROLLBACK');
