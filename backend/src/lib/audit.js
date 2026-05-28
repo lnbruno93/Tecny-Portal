@@ -58,20 +58,54 @@ function redactPII(value) {
   return out;
 }
 
-async function audit(tabla, accion, registro_id, { antes = null, despues = null, user_id = null, ...extra } = {}) {
+// audit() acepta opcionalmente un client de pg como primer arg:
+//   audit(client, 'tabla', 'INSERT', id, { ... })  → atómico dentro de la tx
+//   audit('tabla', 'INSERT', id, { ... })          → pool global (compat)
+//
+// Cuando se llama dentro de una tx, persistir el audit en la MISMA tx evita el
+// caso "el cambio se commiteó pero el audit no" (proceso muere entre COMMIT y
+// audit, error de red, latencia, etc.).
+//
+// Detección por arg type: si el primer arg tiene `.query()` y NO es un string,
+// es un pg client; sino es el `tabla` (firma vieja).
+function isPgClient(x) {
+  return x != null && typeof x === 'object' && typeof x.query === 'function';
+}
+
+async function audit(...args) {
+  let client = db;          // pool global por default
+  let useSavepoint = false; // si vino client de tx, isolamos con SAVEPOINT
+  if (isPgClient(args[0])) {
+    client = args.shift();
+    useSavepoint = true;
+  }
+  const [tabla, accion, registro_id, opts = {}] = args;
+  const { antes = null, despues = null, user_id = null, ...extra } = opts;
+  // Permitimos pasar metadata extra (ej. `_origen`) — la mergeamos en `despues` y la redactamos.
+  const desp = (despues || Object.keys(extra).length) ? { ...(despues || {}), ...extra } : null;
+  const params = [
+    tabla, accion, registro_id,
+    antes ? JSON.stringify(redactPII(antes)) : null,
+    desp  ? JSON.stringify(redactPII(desp))  : null,
+    user_id || null,
+  ];
+  const sql = `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id)
+               VALUES ($1,$2,$3,$4,$5,$6)`;
   try {
-    // Permitimos pasar metadata extra (ej. `_origen`) — la mergeamos en `despues` y la redactamos.
-    const desp = (despues || Object.keys(extra).length) ? { ...(despues || {}), ...extra } : null;
-    await db.query(
-      `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [
-        tabla, accion, registro_id,
-        antes ? JSON.stringify(redactPII(antes)) : null,
-        desp  ? JSON.stringify(redactPII(desp))  : null,
-        user_id || null,
-      ]
-    );
+    if (useSavepoint) {
+      // SAVEPOINT aísla el INSERT: si falla, NO contamina la tx exterior.
+      // El INSERT sigue siendo atómico con el resto de la tx si todo va bien.
+      await client.query('SAVEPOINT audit_sp');
+      try {
+        await client.query(sql, params);
+        await client.query('RELEASE SAVEPOINT audit_sp');
+      } catch (innerErr) {
+        try { await client.query('ROLLBACK TO SAVEPOINT audit_sp'); } catch { /* ignore */ }
+        throw innerErr;
+      }
+    } else {
+      await client.query(sql, params);
+    }
   } catch (err) {
     logger.error({ err, tabla, accion, registro_id }, 'audit log failed');
     // Reportar a Sentry si está configurado — audit failure es crítico (pérdida de trazabilidad)

@@ -320,8 +320,8 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     // Cobros de tarjeta por los pagos con método tarjeta
     await syncTarjetaCobros(client, venta.id, venta.estado);
 
+    await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     res.status(201).json(venta);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -377,8 +377,8 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       // Re-derivar el comprobante de Financiera (cancelación, o quitar/agregar el pago financiera)
       await syncFinancieraComprobante(client, id, vrows[0].estado);
       await syncTarjetaCobros(client, id, vrows[0].estado);
+      await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
-      await audit('ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       return res.json(vrows[0]);
     }
 
@@ -404,8 +404,8 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     // Re-derivar el comprobante de Financiera (cancelar / reactivar)
     await syncFinancieraComprobante(client, id, rows[0].estado);
     await syncTarjetaCobros(client, id, rows[0].estado);
+    await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -427,8 +427,8 @@ router.delete('/:id', async (req, res, next) => {
 
     await revertirEfectosVenta(client, before[0]);
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
+    await audit(client, 'ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

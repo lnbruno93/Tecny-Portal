@@ -120,9 +120,9 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
           envio.venta_id = ventaCreada.id;
         }
       }
+      await audit(client, 'envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
+      if (ventaCreada) await audit(client, 'ventas', 'INSERT', ventaCreada.id, { despues: ventaCreada, _origen: 'envio', user_id: req.user.id });
       await client.query('COMMIT');
-      await audit('envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
-      if (ventaCreada) await audit('ventas', 'INSERT', ventaCreada.id, { despues: ventaCreada, _origen: 'envio', user_id: req.user.id });
       res.status(201).json(envio);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -196,10 +196,10 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
           ventaCancelada = vrows[0];
         }
       }
+      await audit(client, 'envios', 'UPDATE', id, { antes: before[0], despues: envio, user_id: req.user.id });
+      if (ventaSincronizada) await audit(client, 'ventas', 'UPDATE', ventaSincronizada.id, { despues: ventaSincronizada, _origen: 'envio', user_id: req.user.id });
+      if (ventaCancelada)    await audit(client, 'ventas', 'UPDATE', ventaCancelada.id,    { antes: ventaCancelada, despues: { ...ventaCancelada, estado: 'cancelado' }, _origen: 'envio', user_id: req.user.id });
       await client.query('COMMIT');
-      await audit('envios', 'UPDATE', id, { antes: before[0], despues: envio, user_id: req.user.id });
-      if (ventaSincronizada) await audit('ventas', 'UPDATE', ventaSincronizada.id, { despues: ventaSincronizada, _origen: 'envio', user_id: req.user.id });
-      if (ventaCancelada)    await audit('ventas', 'UPDATE', ventaCancelada.id,    { antes: ventaCancelada, despues: { ...ventaCancelada, estado: 'cancelado' }, _origen: 'envio', user_id: req.user.id });
       res.json(envio);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -235,9 +235,9 @@ router.delete('/:id', async (req, res, next) => {
       }
     }
     await client.query('UPDATE envios SET deleted_at = NOW() WHERE id = $1', [id]);
+    await audit(client, 'envios', 'DELETE', id, { antes: before[0], user_id: req.user.id });
+    if (ventaBorrada) await audit(client, 'ventas', 'DELETE', ventaBorrada.id, { antes: ventaBorrada, _origen: 'envio', user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('envios', 'DELETE', id, { antes: before[0], user_id: req.user.id });
-    if (ventaBorrada) await audit('ventas', 'DELETE', ventaBorrada.id, { antes: ventaBorrada, _origen: 'envio', user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
