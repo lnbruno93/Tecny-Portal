@@ -17,7 +17,10 @@ const createDeudaSchema = z.object({
 const queryDeudasSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
   page:        z.coerce.number().int().positive().optional(),
-  limit:       z.coerce.number().int().positive().max(200).optional(),
+  // El frontend pide limit=500 para traer el ledger completo de un solo golpe
+  // (el listado se agrupa por contacto en memoria). max(200) rompía la pantalla
+  // de Deudas a cobrar con 400 "Datos inválidos" → KPIs en 0 sin pista visible.
+  limit:       z.coerce.number().int().positive().max(500).optional(),
 });
 
 // ─── INVERSIONES ────────────────────────────────────────────
@@ -32,7 +35,8 @@ const createInversionSchema = z.object({
 const queryInversionesSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
   page:        z.coerce.number().int().positive().optional(),
-  limit:       z.coerce.number().int().positive().max(200).optional(),
+  // Mismo motivo que queryDeudasSchema: el frontend pide limit=500.
+  limit:       z.coerce.number().int().positive().max(500).optional(),
 });
 
 // ─── CAJAS (cuentas de dinero = metodos_pago) ───────────────
