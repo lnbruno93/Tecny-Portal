@@ -97,6 +97,8 @@ export default function Envios() {
 
   const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
   const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM }]);
+  const addProducto = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'producto' }]);
+  const addPago = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'pago', moneda: 'ARS' }]);
   const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
@@ -836,28 +838,20 @@ export default function Envios() {
                       value={form.notas} onChange={e => setF('notas', e.target.value)} />
                   </div>
 
-                  {/* Items */}
+                  {/* Items del envío — solo productos (linkeados al stock con búsqueda) */}
                   <div>
                     <div className="flex-between" style={{ marginBottom: 10 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>Items del envío</div>
-                      <button type="button" className="btn btn-sm" onClick={addItem}>
-                        <Icons.Plus size={13} /> Agregar item
+                      <button type="button" className="btn btn-sm" onClick={addProducto}>
+                        <Icons.Plus size={13} /> Agregar producto
                       </button>
                     </div>
                     <div className="stack" style={{ gap: 8 }}>
-                      {items.map((it, idx) => (
-                        <div key={idx} className="card card-tight" style={{ padding: '10px 12px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 120px auto', gap: 8, alignItems: 'end' }}>
-                            <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Tipo</label>
-                              <select className="input" value={it.tipo}
-                                onChange={e => { setItem(idx, 'tipo', e.target.value); if (e.target.value === 'pago') unpickProducto(idx); }}>
-                                <option value="producto">Producto</option>
-                                <option value="pago">Pago</option>
-                              </select>
-                            </div>
-                            {/* Si es producto SIN linkear → input de búsqueda. Si está linkeado → muestra read-only. Si es pago → input libre. */}
-                            {it.tipo === 'producto' && !it.producto_id ? (
+                      {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
+                        <div key={`p-${idx}`} className="card card-tight" style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 70px auto', gap: 8, alignItems: 'end' }}>
+                            {/* Sin linkear → búsqueda. Linkeado → display con Cambiar. */}
+                            {!it.producto_id ? (
                               <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
                                 <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
                                 <input className="input" placeholder="Empezá a tipear…"
@@ -881,72 +875,70 @@ export default function Envios() {
                               </div>
                             ) : (
                               <div className="field" style={{ marginBottom: 0 }}>
-                                <label className="field-label">{it.tipo === 'producto' ? 'Producto seleccionado' : 'Descripción'}</label>
-                                {it.tipo === 'producto' ? (
-                                  <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 10px' }}>
-                                    <div style={{ overflow: 'hidden' }}>
-                                      <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{it.descripcion}</div>
-                                      {it._imei && <div className="muted tiny mono">IMEI {it._imei}</div>}
-                                    </div>
-                                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
+                                <label className="field-label">Producto seleccionado</label>
+                                <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 10px' }}>
+                                  <div style={{ overflow: 'hidden' }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{it.descripcion}</div>
+                                    {it._imei && <div className="muted tiny mono">IMEI {it._imei}</div>}
                                   </div>
-                                ) : (
-                                  <input className="input" placeholder="Método de pago…"
-                                         value={it.descripcion} onChange={e => setItem(idx, 'descripcion', e.target.value)} />
-                                )}
+                                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
+                                </div>
                               </div>
                             )}
                             <div className="field" style={{ marginBottom: 0 }}>
                               <label className="field-label">Monto</label>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <input type="number" className="input mono" placeholder="0" style={{ flex: 1 }}
-                                  value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
-                                {/* Selector de moneda: USD por default. En 'pago' la inferimos de la caja (read-only chip);
-                                    en 'producto' es editable (al pickear un producto se actualiza, pero el usuario puede cambiarla). */}
-                                {it.tipo === 'pago' ? (
-                                  <span className="ccy" style={{ alignSelf: 'center', padding: '0 6px' }}>{it.moneda || 'USD'}</span>
-                                ) : (
-                                  <select className="input" style={{ width: 76 }} value={it.moneda || 'USD'}
-                                          onChange={e => setItem(idx, 'moneda', e.target.value)}>
-                                    <option>USD</option>
-                                    <option>ARS</option>
-                                    <option>USDT</option>
-                                  </select>
-                                )}
-                              </div>
+                              <input type="number" className="input mono" placeholder="0"
+                                value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                             </div>
-                            <button type="button" className="icon-btn"
-                              style={{ marginBottom: 1, visibility: items.length > 1 ? 'visible' : 'hidden' }}
-                              onClick={() => rmItem(idx)}>
+                            <div className="field" style={{ marginBottom: 0 }}>
+                              <label className="field-label">Moneda</label>
+                              <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                                <option>USD</option><option>ARS</option><option>USDT</option>
+                              </select>
+                            </div>
+                            <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
                               <Icons.X size={14} />
                             </button>
                           </div>
-                          {it.tipo === 'pago' && cajasPago.length > 0 && (
-                            <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
-                              <div className="field" style={{ marginBottom: 0 }}>
-                                <label className="field-label">Método de pago</label>
-                                <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
-                                  onChange={e => pickCajaPago(idx, e.target.value)}>
-                                  <option value="">Sin método (no impacta)…</option>
-                                  {cajasPago.map(c => (
-                                    <option key={c.id} value={c.id}>
-                                      {c.nombre} · {c.moneda}{c.es_financiera ? ' (Financiera)' : c.es_tarjeta ? ` (Tarjeta ${Number(c.comision_pct||0)}%)` : ''}
-                                    </option>
-                                  ))}
-                                  <option value="__CC__">Cuenta corriente (deuda) · USD</option>
-                                </select>
-                              </div>
-                              {it.metodo_pago_id && it.moneda === 'ARS' && !it.es_cuenta_corriente && (
-                                <div className="field" style={{ marginBottom: 0 }}>
-                                  <label className="field-label">TC <span className="muted tiny">(opcional)</span></label>
-                                  <input type="number" className="input mono" placeholder="USD/ARS"
-                                         value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
-                                </div>
-                              )}
-                            </div>
-                          )}
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Pagos — sección separada como Ventas: select de método (incluye CC), monto, moneda, TC */}
+                  <div>
+                    <div className="flex-between" style={{ marginBottom: 10 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Pagos</div>
+                      <button type="button" className="btn btn-sm" onClick={addPago}>
+                        <Icons.Plus size={13} /> Agregar método
+                      </button>
+                    </div>
+                    <div className="stack" style={{ gap: 6 }}>
+                      {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'pago').map(({ it, idx }) => (
+                        <div key={`pg-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 90px 100px auto', gap: 6, alignItems: 'center' }}>
+                          <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
+                                  onChange={e => pickCajaPago(idx, e.target.value)}>
+                            <option value="">Método…</option>
+                            {cajasPago.map(c => (
+                              <option key={c.id} value={c.id}>{c.nombre}</option>
+                            ))}
+                            <option value="__CC__">Cuenta corriente (deuda)</option>
+                          </select>
+                          <input type="number" className="input mono" placeholder="Monto"
+                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                          <select className="input" value={it.moneda || 'ARS'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                            <option>ARS</option><option>USD</option><option>USDT</option>
+                          </select>
+                          <input type="number" className="input mono" placeholder="TC"
+                                 value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
+                          <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
+                            <Icons.X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      {items.filter(i => i.tipo === 'pago').length === 0 && (
+                        <div className="muted tiny" style={{ padding: '4px 0' }}>Sin pagos cargados. Sumá un método con "Agregar método".</div>
+                      )}
                     </div>
                   </div>
 
