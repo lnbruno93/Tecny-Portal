@@ -489,7 +489,7 @@ export default function Proveedores() {
       {/* Page head */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">Proveedores</h1>
+          <h1 className="page-title">Proveedores | Compras</h1>
           <div className="page-sub">Cuentas por pagar · registro tipo planilla</div>
         </div>
         <div className="page-actions">

@@ -90,12 +90,15 @@ export default function Inicio() {
     : 0;
 
   const tools = [
-    { id: 'cotizador',  name: 'Cotizador',    desc: 'Precios con cuotas y USD → ARS',    icon: 'Calculator', tint: 'amber',  meta: 'Client-side · sin persistencia' },
-    { id: 'financiera', name: 'Financiera',   desc: 'Comprobantes, pagos y OCR',         icon: 'Trend',      tint: 'blue',   meta: data ? `${comprobantesHoy} comprobantes hoy` : '—' },
-    { id: 'cajas',      name: 'Cajas',        desc: 'Deudas e inversiones por contacto', icon: 'Wallet',     tint: 'green',  meta: 'Deudas e inversiones' },
-    { id: 'envios',     name: 'Envíos',       desc: 'Despachos a domicilio · prioridad', icon: 'Truck',      tint: 'purple', meta: data ? `${activosCount} activos` : '—' },
-    { id: 'cuentas',    name: 'Cuentas CC',   desc: 'Clientes B2B · VIP · A+ · A-',      icon: 'Receipt',    tint: 'cyan',   meta: data ? `${cantClientes} clientes` : '—' },
-    { id: 'usados',     name: 'Usados',       desc: 'Catálogo de precios USD',           icon: 'Phone',      tint: 'pink',   meta: 'Catálogo de equipos' },
+    { id: 'egresos',     name: 'Egresos',              desc: 'Gastos por categoría · recurrentes', icon: 'ArrowDownRight', tint: 'amber',  meta: 'Salidas de dinero' },
+    { id: 'inventario',  name: 'Inventario',           desc: 'Stock · costos · valorizado',         icon: 'Box',         tint: 'green',  meta: 'Equipos y accesorios' },
+    { id: 'proveedores', name: 'Proveedores | Compras',desc: 'Compras y cuenta corriente',          icon: 'Building',    tint: 'cyan',   meta: 'Cta. cte. con proveedores' },
+    { id: 'financiera',  name: 'Financiera',           desc: 'Comprobantes, pagos y OCR',           icon: 'Trend',       tint: 'blue',   meta: 'Comprobantes y pagos' },
+    { id: 'cambios',     name: 'Cambios de Divisa',    desc: 'Conversión USD ↔ ARS ↔ USDT',         icon: 'Dollar',      tint: 'pink',   meta: 'Operaciones de cambio' },
+    { id: 'tarjetas',    name: 'Tarjetas de Crédito',  desc: 'Cobros y liquidaciones',              icon: 'CreditCard',  tint: 'purple', meta: 'Por método de pago' },
+    { id: 'cotizador',   name: 'Cotizador',            desc: 'Precios con cuotas y USD → ARS',      icon: 'Calculator',  tint: 'amber',  meta: 'Cotizar a clientes' },
+    { id: 'usados',      name: 'Usados | Cotizador',   desc: 'Catálogo de precios USD',             icon: 'Phone',       tint: 'pink',   meta: 'Equipos usados' },
+    { id: 'envios',      name: 'Envíos',               desc: 'Despachos a domicilio · prioridad',   icon: 'Truck',       tint: 'purple', meta: data ? `${activosCount} activos` : '—' },
   ];
 
   // Parse historial items
@@ -145,15 +148,6 @@ export default function Inicio() {
           </div>
         </div>
 
-        <div className="kpi-grid" style={{ opacity: 0.4 }}>
-          {['Comprobantes hoy', 'Cobrado neto', 'Saldo cuentas CC', 'Envíos activos'].map(label => (
-            <div key={label} className="kpi">
-              <div className="kpi-label">{label}</div>
-              <div className="kpi-value">—</div>
-              <div className="kpi-sparkbar" />
-            </div>
-          ))}
-        </div>
       </div>
     );
   }
@@ -195,49 +189,6 @@ export default function Inicio() {
             <span className="ico"><Icons.Upload size={15} /></span>
             Cargar comprobante
           </button>
-        </div>
-      </div>
-
-      {/* KPI grid */}
-      <div className="kpi-grid">
-        <div className="kpi">
-          <div className="kpi-label">Comprobantes hoy</div>
-          <div className="kpi-value">{fmtCount(comprobantesHoy)}</div>
-          <div className="kpi-trend up">
-            <span className="span">total del día</span>
-          </div>
-          <div className="kpi-sparkbar" />
-        </div>
-
-        <div className="kpi">
-          <div className="kpi-label">Cobrado neto</div>
-          <div className="kpi-value">
-            <span className="ccy">ARS</span>{fmt(montoNeto)}
-          </div>
-          <div className="kpi-trend up">
-            <span className="span">descontando {pctFin.toFixed(1)}% financiera</span>
-          </div>
-          <div className="kpi-sparkbar" />
-        </div>
-
-        <div className="kpi">
-          <div className="kpi-label">Saldo cuentas CC</div>
-          <div className="kpi-value">
-            <span className="ccy">ARS</span>{fmt(totalDeuda)}
-          </div>
-          <div className="kpi-trend up">
-            <span className="span">lo que nos deben</span>
-          </div>
-          <div className="kpi-sparkbar" />
-        </div>
-
-        <div className="kpi">
-          <div className="kpi-label">Envíos activos</div>
-          <div className="kpi-value">{fmtCount(activosCount)}</div>
-          <div className="kpi-trend up">
-            <span className="span">pendiente + en camino</span>
-          </div>
-          <div className="kpi-sparkbar" />
         </div>
       </div>
 

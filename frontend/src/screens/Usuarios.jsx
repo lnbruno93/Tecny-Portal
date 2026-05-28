@@ -16,7 +16,7 @@ const TOOL_LABELS = {
   usuarios:   'Usuarios',
   inventario: 'Inventario',
   ventas:     'Ventas',
-  proveedores: 'Proveedores',
+  proveedores: 'Proveedores | Compras',
   proyectos:  'Proyectos',
   contactos:  'Contactos',
   cambios:    'Cambios de Divisa',
