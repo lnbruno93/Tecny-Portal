@@ -151,8 +151,8 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
       origen: 'cambio', ref_tabla: 'cambio_movimientos', ref_id: rows[0].id,
       concepto: tipo === 'entrega_ars' ? 'Cambio: entrega ARS' : 'Cambio: recibo USD', user_id: req.user.id,
     });
+    await audit(client, 'cambio_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('cambio_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -171,8 +171,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     );
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     await reverseCajaMovimientos(client, 'cambio_movimientos', id);
+    await audit(client, 'cambio_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('cambio_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

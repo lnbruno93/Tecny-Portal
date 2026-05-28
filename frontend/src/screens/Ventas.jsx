@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -155,6 +156,7 @@ export default function Ventas() {
   const [hasta, setHasta] = useState(todayStr());
   const [estadoFilter, setEstadoFilter] = useState('');
   const [search, setSearch] = useState('');
+  const dSearch = useDebouncedValue(search, 350); // no fetch en cada keystroke
 
   // Catálogos
   const [vendedores, setVendedores] = useState([]);
@@ -184,11 +186,11 @@ export default function Ventas() {
     try {
       const params = { desde, hasta, limit: 200 };
       if (estadoFilter) params.estado = estadoFilter;
-      if (search.trim()) params.buscar = search.trim();
+      if (dSearch.trim()) params.buscar = dSearch.trim();
       const res = await ventas.list(params);
       setLista(res.data || []);
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
-  }, [desde, hasta, estadoFilter, search, toast]);
+  }, [desde, hasta, estadoFilter, dSearch, toast]);
 
   const loadRapidas = useCallback(async () => {
     try { setRapidas(await ventas.rapidas({ estado: 'pendiente' })); } catch (_) { setRapidas([]); }

@@ -74,8 +74,8 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
       );
     }
 
+    await audit(client, 'proveedores', 'INSERT', prov.id, { despues: { ...prov, saldo_inicial: ini }, user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('proveedores', 'INSERT', prov.id, { despues: { ...prov, saldo_inicial: ini }, user_id: req.user.id });
     // Agenda central (best-effort, fuera de la transacción)
     await syncContactoSafe(db, {
       origen: 'proveedores', ref_tabla: 'proveedores', ref_id: prov.id,
@@ -129,8 +129,8 @@ router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
       }
     }
 
+    await audit(client, 'proveedores', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('proveedores', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     // Agenda central (best-effort, fuera de la transacción)
     await syncContactoSafe(db, {
       origen: 'proveedores', ref_tabla: 'proveedores', ref_id: rows[0].id,
@@ -226,8 +226,8 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
       });
     }
 
+    await audit(client, 'proveedor_movimientos', 'INSERT', mov.id, { despues: { ...mov, items: insertedItems }, user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('proveedor_movimientos', 'INSERT', mov.id, { despues: { ...mov, items: insertedItems }, user_id: req.user.id });
     res.status(201).json({ ...mov, items: insertedItems });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -247,8 +247,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     // Revertir el egreso de caja asociado (si lo hubo)
     await reverseCajaMovimientos(client, 'proveedor_movimientos', id);
+    await audit(client, 'proveedor_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('proveedor_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

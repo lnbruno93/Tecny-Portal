@@ -22,12 +22,35 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 
 const VALID_ACCIONES = ['INSERT', 'UPDATE', 'DELETE', 'OCR', 'LOGIN'];
 
-// Whitelist de tablas auditadas — previene filtrado con valores arbitrarios
+// Whitelist de tablas auditadas — previene filtrado con valores arbitrarios.
+// Actualizada en mayo-2026 con los módulos nuevos (ventas, envios items, egresos,
+// proveedores, cambios, tarjetas, proyectos, etc.). La auditoría detectó que el
+// filtro `?tabla=ventas` se ignoraba silenciosamente porque no estaba en la lista.
 const VALID_TABLAS = [
-  'comprobantes', 'pagos', 'envios', 'contactos', 'vendedores',
-  'clientes_cc', 'movimientos_cc', 'catalogo_usados',
-  'movimientos_deudas', 'movimientos_inversiones', 'users', 'config',
+  // Catálogos / config
+  'config', 'users', 'metodos_pago', 'etiquetas', 'plantillas_garantia',
+  // Inventario
+  'productos', 'categorias', 'depositos',
+  // Ventas y Envíos
+  'ventas', 'venta_items', 'venta_pagos', 'venta_comprobantes', 'canjes',
+  'envios', 'envio_items',
+  // Caja / Cuentas / Cambios / Tarjetas / Egresos
+  'caja_movimientos', 'cambio_movimientos', 'cambio_entidades',
+  'tarjeta_movimientos', 'egresos', 'egreso_categorias', 'egresos_recurrentes',
+  // Cuenta corriente
+  'clientes_cc', 'movimientos_cc',
+  // Proveedores / Proyectos / Contactos
+  'proveedores', 'proveedor_movimientos', 'proyectos', 'proyecto_movimientos',
+  'contactos',
+  // Catálogos legacy
+  'comprobantes', 'pagos', 'vendedores', 'catalogo_usados',
+  'movimientos_deudas', 'movimientos_inversiones',
 ];
+
+// Rango máximo (en días) para queries de búsqueda libre. Si hay `q` y no se
+// pasa `desde`, lo forzamos a NOW() - este valor para evitar seq scan + cast
+// a text sobre toda la tabla `audit_logs` (que crece linealmente con uso real).
+const Q_RANGO_DIAS_MAX = 90;
 
 const HISTORIAL_SELECT = `
   SELECT
@@ -64,14 +87,18 @@ router.get('/', async (req, res, next) => {
     const { page, limit, offset } = parsePagination(rawQuery, { defaultLimit: 20, maxLimit: 200 });
 
     const { q, accion, tabla, desde, hasta } = req.query;
+    const hayBusqueda = !!(q && q.trim());
 
     // ── Construcción dinámica del WHERE ──────────────────────────────────────
     const conditions = [];
     const params     = [];
 
-    if (q && q.trim()) {
+    if (hayBusqueda) {
       params.push(`%${q.trim()}%`);
       const i = params.length;
+      // El cast JSONB::text + ILIKE es costoso (seq scan). El range floor abajo
+      // limita el universo; aún así, si la tabla audit_logs crece mucho, considerar
+      // GIN sobre `to_tsvector` o columna generada con campos whitelisted.
       conditions.push(
         `(u.nombre ILIKE $${i} OR a.datos_despues::text ILIKE $${i} OR a.datos_antes::text ILIKE $${i})`
       );
@@ -87,9 +114,14 @@ router.get('/', async (req, res, next) => {
       conditions.push(`a.tabla = $${params.length}`);
     }
 
-    if (desde && /^\d{4}-\d{2}-\d{2}$/.test(desde)) {
+    const desdeValido = desde && /^\d{4}-\d{2}-\d{2}$/.test(desde);
+    if (desdeValido) {
       params.push(desde);
       conditions.push(`a.created_at::date >= $${params.length}::date`);
+    } else if (hayBusqueda) {
+      // No hay `desde` pero sí búsqueda libre: forzamos un rango máximo para
+      // limitar el universo escaneado por el ILIKE sobre JSONB::text.
+      conditions.push(`a.created_at >= NOW() - INTERVAL '${Q_RANGO_DIAS_MAX} days'`);
     }
 
     if (hasta && /^\d{4}-\d{2}-\d{2}$/.test(hasta)) {

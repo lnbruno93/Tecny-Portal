@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { contactos as contactosApi } from '../lib/api';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -27,6 +28,7 @@ export default function Contactos() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const dSearch = useDebouncedValue(search, 350);
   const [origenFilter, setOrigenFilter] = useState('');
 
   // Modal alta/edición (editId === null → alta)
@@ -39,14 +41,14 @@ export default function Contactos() {
   function loadList() {
     setLoading(true);
     const params = {};
-    if (search) params.buscar = search;
+    if (dSearch) params.buscar = dSearch;
     if (origenFilter) params.origen = origenFilter;
     contactosApi.list(params)
       .then(r => setList(Array.isArray(r) ? r : (r.data || [])))
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
   }
-  useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [search, origenFilter]);
+  useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [dSearch, origenFilter]);
 
   function openCreate() { setEditId(null); setForm(EMPTY); setFormError(''); setShowForm(true); }
   function openEdit(c) {

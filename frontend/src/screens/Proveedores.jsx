@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { proveedores as provApi } from '../lib/api';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -295,6 +296,7 @@ export default function Proveedores() {
   const { setPrimaryAction } = usePageActions();
 
   const [search, setSearch]   = useState('');
+  const dSearch = useDebouncedValue(search, 350);
   const [list, setList]       = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [movs, setMovs]       = useState([]);
@@ -314,12 +316,12 @@ export default function Proveedores() {
   function loadList() {
     setLoadingList(true);
     const reqId = ++listReq.current;
-    provApi.list(search ? { buscar: search } : {})
+    provApi.list(dSearch ? { buscar: dSearch } : {})
       .then(r => { if (reqId === listReq.current) setList(r || []); })
       .catch(console.error)
       .finally(() => { if (reqId === listReq.current) setLoadingList(false); });
   }
-  useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [search]);
+  useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [dSearch]);
 
   useEffect(() => {
     if (list.length > 0 && !selectedId) setSelectedId(list[0].id);

@@ -44,15 +44,19 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
   }
   totalUsd = round2(totalUsd);
 
-  // Si hay producto_id linkeados, traemos costos para ganancia (también convertidos a USD).
+  // Si hay producto_id linkeados, traemos costos en UNA sola query (ANY int[]).
+  // El mapa `costoPorId` se reusa para (a) calcular costoUsd y (b) los inserts
+  // de venta_items abajo — antes hacíamos un SELECT por cada item dentro del
+  // loop, que con 10 items linkeados eran 11 round-trips a Railway DB.
   const linkedItems = productos.filter(p => p.producto_id);
+  let costoPorId = new Map();
   if (linkedItems.length > 0) {
     const ids = [...new Set(linkedItems.map(p => p.producto_id))];
     const { rows: prods } = await client.query(
       'SELECT id, costo, costo_moneda FROM productos WHERE id = ANY($1::int[]) AND deleted_at IS NULL',
       [ids]
     );
-    const costoPorId = new Map(prods.map(p => [p.id, p]));
+    costoPorId = new Map(prods.map(p => [p.id, p]));
     for (const it of linkedItems) {
       const p = costoPorId.get(it.producto_id);
       if (!p) continue;
@@ -77,14 +81,9 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
   for (const it of productos) {
     const precio = round2(Number(it.monto) || 0);
     const moneda = it.moneda || 'ARS';
-    let costoItem = 0;
-    if (it.producto_id) {
-      const { rows: pr } = await client.query(
-        'SELECT costo, costo_moneda FROM productos WHERE id = $1 AND deleted_at IS NULL',
-        [it.producto_id]
-      );
-      if (pr[0]) costoItem = round2(Number(pr[0].costo) || 0);
-    }
+    // Reusamos el mapa ya cargado en lugar de SELECT por item.
+    const prod = it.producto_id ? costoPorId.get(it.producto_id) : null;
+    const costoItem = prod ? round2(Number(prod.costo) || 0) : 0;
     const ganancia = round2(precio - costoItem);
     await client.query(
       `INSERT INTO venta_items (venta_id, producto_id, descripcion, cantidad, precio_vendido, costo, moneda, comision, ganancia)
@@ -168,15 +167,29 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
     }
   }
   totalUsd = round2(totalUsd);
+
+  // Preload de costos de los productos linkeados en una sola query.
+  // Antes hacíamos un SELECT por cada item dentro del loop → con 20 items
+  // linkeados eran 20 round-trips a Railway DB dentro de la tx del envío.
+  const linkedNew = productos.filter(p => p.producto_id);
+  let costoPorId = new Map();
+  if (linkedNew.length > 0) {
+    const ids = [...new Set(linkedNew.map(p => p.producto_id))];
+    const { rows: prods } = await client.query(
+      'SELECT id, costo, costo_moneda FROM productos WHERE id = ANY($1::int[]) AND deleted_at IS NULL',
+      [ids]
+    );
+    costoPorId = new Map(prods.map(p => [p.id, p]));
+  }
   for (const it of productos) {
     const precio = round2(Number(it.monto) || 0);
     const moneda = it.moneda || 'ARS';
     let costoItem = 0;
     if (it.producto_id) {
-      const { rows: pr } = await client.query('SELECT costo, costo_moneda FROM productos WHERE id = $1 AND deleted_at IS NULL', [it.producto_id]);
-      if (pr[0]) {
-        costoItem = round2(Number(pr[0].costo) || 0);
-        const costoMon = pr[0].costo_moneda || 'USD';
+      const pr = costoPorId.get(it.producto_id);
+      if (pr) {
+        costoItem = round2(Number(pr.costo) || 0);
+        const costoMon = pr.costo_moneda || 'USD';
         if (costoMon === 'ARS') { if (hasTc) costoUsd += toUsd(costoItem, 'ARS', envio.tc); }
         else costoUsd += costoItem;
       }
@@ -197,8 +210,7 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
   // Re-sincronizar venta_pagos desde los items 'pago' actuales del envío.
   if (venta) await sincronizarPagosDesdeEnvio(client, venta, items, envio, userId);
 
-  // Descontar stock de los nuevos linkeados.
-  const linkedNew = productos.filter(p => p.producto_id);
+  // Descontar stock de los nuevos linkeados (reusa linkedNew calculado arriba).
   if (linkedNew.length) {
     await descontarStock(client, linkedNew.map(it => ({ producto_id: it.producto_id, cantidad: 1 })));
   }
