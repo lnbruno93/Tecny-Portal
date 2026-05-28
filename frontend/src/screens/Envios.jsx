@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { envios, cajas as cajasApi } from '../lib/api';
+import { envios, cajas as cajasApi, inventario } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -12,8 +12,9 @@ const EMPTY_FORM = {
   cliente: '', telefono: '', direccion: '', barrio: '',
   horario: '', operador: '', notas: '',
   prioridad: '', estado: 'Pendiente', registrar_venta: false,
+  tc: '', // TC del envío (requerido cuando registrar_venta y hay items 'producto')
 };
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '' };
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '' };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -65,10 +66,16 @@ export default function Envios() {
   // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
   const [dateFilter, setDateFilter] = useState(null);
   const [cajasArs, setCajasArs] = useState([]); // cajas ARS para asignar el cobro
+  const [productosInv, setProductosInv] = useState([]); // productos disponibles para linkear desde un envío
 
   useEffect(() => {
     cajasApi.listCajas()
       .then(list => setCajasArs((list || []).filter(c => c.activo !== false && c.moneda === 'ARS')))
+      .catch(console.error);
+    // Solo productos disponibles (con stock o sin trackear) para no llenar el picker
+    // con vendidos/cancelados. Limit alto pero acotado.
+    inventario.productos({ solo_stock: 'true', limit: 200 })
+      .then(r => setProductosInv(Array.isArray(r?.data) ? r.data : []))
       .catch(console.error);
   }, []);
 
@@ -84,6 +91,16 @@ export default function Envios() {
   const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
+  // Al elegir un producto del inventario, auto-completa descripción y monto con el precio de venta.
+  const pickProducto = (idx, productoId) => {
+    const p = productosInv.find(x => String(x.id) === String(productoId));
+    setItems(i => i.map((it, j) => j !== idx ? it : ({
+      ...it,
+      producto_id: productoId,
+      descripcion: p ? [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · ') : it.descripcion,
+      monto: p ? String(p.precio_venta || '') : it.monto,
+    })));
+  };
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -112,15 +129,17 @@ export default function Envios() {
         estado: form.estado || 'Pendiente',
         costo_envio: 0,
         registrar_venta: !!form.registrar_venta,
+        tc: (form.registrar_venta && form.tc) ? Number(form.tc) : null,
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
-          .filter(i => i.descripcion.trim() || i.tipo === 'pago')
+          .filter(i => i.descripcion.trim() || i.tipo === 'pago' || i.producto_id)
           .map(i => ({
             tipo: i.tipo,
             descripcion: i.descripcion.trim() || null,
             monto: Number(i.monto) || 0,
             metodo_pago: i.metodo_pago.trim() || null,
             metodo_pago_id: (i.tipo === 'pago' && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
+            producto_id: (i.tipo === 'producto' && i.producto_id) ? Number(i.producto_id) : null,
           })),
       };
       const nuevo = await envios.create(payload);
@@ -788,6 +807,20 @@ export default function Envios() {
                               </select>
                             </div>
                           )}
+                          {it.tipo === 'producto' && productosInv.length > 0 && (
+                            <div className="field" style={{ marginBottom: 0, marginTop: 8 }}>
+                              <label className="field-label">Producto del inventario <span className="muted tiny">(opcional — descuenta stock al registrar la venta)</span></label>
+                              <select className="input" value={it.producto_id}
+                                onChange={e => pickProducto(idx, e.target.value)}>
+                                <option value="">Sin linkear (texto libre)…</option>
+                                {productosInv.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {[p.nombre, p.gb && p.gb + 'GB', p.color, p.imei && 'IMEI ' + p.imei].filter(Boolean).join(' · ')}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -797,6 +830,13 @@ export default function Envios() {
                     <input type="checkbox" checked={form.registrar_venta} onChange={e => setForm(f => ({ ...f, registrar_venta: e.target.checked }))} style={{ accentColor: 'var(--accent)' }} />
                     <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(crea la venta con los productos; la plata la maneja el envío)</span></span>
                   </label>
+                  {form.registrar_venta && (
+                    <div className="field" style={{ marginBottom: 0 }}>
+                      <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">para que la venta tenga total_usd correcto</span></label>
+                      <input type="number" className="input mono" placeholder="Ej: 1000"
+                             value={form.tc} onChange={e => setF('tc', e.target.value)} />
+                    </div>
+                  )}
 
                   {createError && (
                     <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>
