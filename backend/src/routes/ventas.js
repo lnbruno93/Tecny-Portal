@@ -11,6 +11,7 @@ const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedge
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const { syncTarjetaCobros } = require('../lib/tarjetas');
 const { revertirEfectosVenta } = require('../lib/cancelarVenta');
+const { syncVentaCaja, sincronizarCuentaCorriente } = require('../lib/ventaSync');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
 } = require('../schemas/ventas');
@@ -25,58 +26,13 @@ function genOrderId() {
 
 const { err400, retieneStock, descontarStock, reponerStock } = require('../lib/ventaCore');
 
-// Sincroniza los ingresos de caja de una venta con el ledger (Fase 2b).
-// Idempotente: revierte los movimientos previos y re-postea según el estado actual.
-// Los pagos en cuenta corriente NO impactan caja; los de la caja financiera tampoco
-// (esos generan el comprobante de Financiera al adjuntar el respaldo).
-async function syncVentaCaja(client, venta, userId) {
-  await reverseCajaMovimientos(client, 'ventas', venta.id);
-  if (!retieneStock(venta.estado)) return; // venta cancelada → sin ingresos de caja
-  const { rows: pagos } = await client.query(
-    `SELECT vp.metodo_pago_id, vp.monto, vp.moneda, vp.tc, mp.es_financiera, mp.es_tarjeta
-       FROM venta_pagos vp JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
-      WHERE vp.venta_id = $1 AND vp.es_cuenta_corriente = false AND vp.metodo_pago_id IS NOT NULL`, [venta.id]
-  );
-  for (const p of pagos) {
-    // Financiera → comprobante; Tarjeta → cobro pendiente. Ninguno entra a una caja acá.
-    if (p.es_financiera || p.es_tarjeta) continue;
-    await postCajaMovimiento(client, {
-      caja_id: p.metodo_pago_id, fecha: venta.fecha, tipo: 'ingreso',
-      monto: p.monto, moneda: p.moneda, tc: p.tc,
-      origen: 'venta', ref_tabla: 'ventas', ref_id: venta.id,
-      concepto: `Venta ${venta.order_id}`, user_id: userId,
-    });
-  }
-}
-
-// El ciclo de vida del comprobante de Financiera vive en lib/financiera.js
-// (`syncFinancieraComprobante`), única fuente de verdad compartida con el flujo
-// de adjuntar comprobante (ventas-extra.js).
+// (syncVentaCaja y sincronizarCuentaCorriente movidos a lib/ventaSync.js — reusados desde envíos)
 
 // Si hay un pago en cuenta corriente, exige un cliente de cuenta corriente.
 function validarCuentaCorriente(pagos, clienteCcId) {
   if ((pagos || []).some(p => p.es_cuenta_corriente) && !clienteCcId) {
     throw err400('Para un pago en cuenta corriente, elegí un cliente con cuenta corriente.');
   }
-}
-
-// Sincroniza la deuda de cuenta corriente que genera una venta (en USD, módulo `cuentas`).
-// Revierte (soft-delete) la deuda previa de esta venta y, si la venta retiene (no cancelada)
-// y tiene cliente CC y pagos en cuenta corriente, crea un movimiento 'compra' por el total USD.
-// Deriva el monto de venta_pagos (ya persistido), por eso se llama DESPUÉS de insertar el detalle.
-async function sincronizarCuentaCorriente(client, venta) {
-  await client.query('UPDATE movimientos_cc SET deleted_at = NOW() WHERE venta_id = $1 AND deleted_at IS NULL', [venta.id]);
-  if (!retieneStock(venta.estado) || !venta.cliente_cc_id) return;
-  const { rows } = await client.query(
-    'SELECT COALESCE(SUM(monto_usd), 0) AS total FROM venta_pagos WHERE venta_id = $1 AND es_cuenta_corriente = true', [venta.id]
-  );
-  const total = round2(Number(rows[0].total));
-  if (total <= 0) return;
-  await client.query(
-    `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, descripcion, monto_total, venta_id)
-     VALUES ($1, $2, 'compra', $3, $4, $5)`,
-    [venta.cliente_cc_id, venta.fecha, `Venta ${venta.order_id}`, total, venta.id]
-  );
 }
 
 // Exige TC > 0 cuando hay montos en ARS (evita que se contabilicen como USD 0 silenciosamente).

@@ -32,16 +32,40 @@ async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
   }
 }
 
-// Inserta los items del envío (incluye producto_id, moneda y tc si vinieron).
+// Inserta los items del envío (incluye producto_id, moneda, tc y es_cuenta_corriente).
 async function insertarItems(client, envioId, items) {
   for (const item of items || []) {
     await client.query(
-      `INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id, moneda, tc)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      `INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id, moneda, tc, es_cuenta_corriente)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [envioId, item.tipo, item.descripcion ?? null, item.monto,
        item.metodo_pago ?? null, item.metodo_pago_id ?? null, item.producto_id ?? null,
-       item.moneda || 'ARS', item.tc ?? null]
+       item.moneda || 'ARS', item.tc ?? null, !!item.es_cuenta_corriente]
     );
+  }
+}
+
+// Validación de pagos: CC y financiera/tarjeta requieren registrar_venta=true
+// (la venta es la única fuente de verdad para esos efectos secundarios).
+async function validarPagosAvanzados(client, items, registrarVenta, clienteCcId) {
+  const pagos = (items || []).filter(i => i.tipo === 'pago');
+  const usaCC = pagos.some(p => p.es_cuenta_corriente);
+  if (usaCC && !registrarVenta) {
+    const e = new Error('Para usar Cuenta Corriente como método de pago, marcá "Registrar como venta".'); e.status = 400; throw e;
+  }
+  if (usaCC && !clienteCcId) {
+    const e = new Error('Para un pago en cuenta corriente, elegí un cliente con cuenta corriente.'); e.status = 400; throw e;
+  }
+  const cajaIds = pagos.map(p => p.metodo_pago_id).filter(Boolean);
+  if (cajaIds.length) {
+    const { rows } = await client.query(
+      'SELECT id, es_financiera, es_tarjeta FROM metodos_pago WHERE id = ANY($1::int[])',
+      [cajaIds]
+    );
+    const usaFinTar = rows.some(c => c.es_financiera || c.es_tarjeta);
+    if (usaFinTar && !registrarVenta) {
+      const e = new Error('Para usar una caja Financiera o Tarjeta, marcá "Registrar como venta".'); e.status = 400; throw e;
+    }
   }
 }
 
@@ -94,25 +118,28 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
   try {
     const {
       fecha, cliente, telefono, direccion, barrio,
-      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, items, registrar_venta,
+      costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, cliente_cc_id, items, registrar_venta,
     } = req.body;
 
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      // Validar combinaciones avanzadas de pagos ANTES de tocar nada.
+      await validarPagosAvanzados(client, items, registrar_venta, cliente_cc_id);
+
       const { rows } = await client.query(
-        `INSERT INTO envios (fecha, cliente, telefono, direccion, barrio, costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        `INSERT INTO envios (fecha, cliente, telefono, direccion, barrio, costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, cliente_cc_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
         [fecha, cliente, telefono ?? null, direccion, barrio ?? null, costo_envio, total_cobrado,
-         horario ?? null, operador ?? null, notas ?? null, estado, prioridad ?? null, tc ?? null]
+         horario ?? null, operador ?? null, notas ?? null, estado, prioridad ?? null, tc ?? null, cliente_cc_id ?? null]
       );
       const envio = rows[0];
 
       await insertarItems(client, envio.id, items);
-      await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
 
-      // Registrar la venta asociada: si hay items 'producto', crea una venta real
-      // que linkea producto_id (cuando se proveyó) y descuenta stock.
+      // Si NO hay registrar_venta, el envío postea directo a caja (solo cajas regulares).
+      // Si SÍ hay registrar_venta, la venta auto-creada maneja TODA la sincronización
+      // financiera (caja, CC, financiera, tarjeta), así no duplicamos ingresos.
       let ventaCreada = null;
       if (registrar_venta) {
         ventaCreada = await crearVentaDesdeEnvio(client, envio, items, req.user.id);
@@ -120,6 +147,8 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
           await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [ventaCreada.id, envio.id]);
           envio.venta_id = ventaCreada.id;
         }
+      } else {
+        await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
       }
       await audit(client, 'envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
       if (ventaCreada) await audit(client, 'ventas', 'INSERT', ventaCreada.id, { despues: ventaCreada, _origen: 'envio', user_id: req.user.id });
@@ -142,7 +171,7 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
 
   const {
     fecha, cliente, telefono, direccion, barrio,
-    costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, items,
+    costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, cliente_cc_id, items,
   } = req.body;
 
   const client = await db.connect();
@@ -153,6 +182,14 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
+
+    // Validar pagos avanzados con el estado efectivo (registrar_venta lo derivamos
+    // del estado actual: si ya tiene venta_id O si se quiere crearla con CC/fin/tarj).
+    if (items !== undefined) {
+      const tieneVenta = !!before[0].venta_id;
+      const effClienteCc = cliente_cc_id !== undefined ? cliente_cc_id : before[0].cliente_cc_id;
+      await validarPagosAvanzados(client, items, tieneVenta, effClienteCc);
+    }
 
     const { rows } = await client.query(
         `UPDATE envios SET
@@ -168,10 +205,11 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
           notas         = COALESCE($10, notas),
           estado        = COALESCE($11, estado),
           prioridad     = COALESCE($12, prioridad),
-          tc            = COALESCE($13, tc)
-        WHERE id = $14 RETURNING *`,
+          tc            = COALESCE($13, tc),
+          cliente_cc_id = COALESCE($14, cliente_cc_id)
+        WHERE id = $15 RETURNING *`,
         [fecha, cliente, telefono, direccion, barrio, costo_envio, total_cobrado,
-         horario, operador, notas, estado, prioridad, tc, id]
+         horario, operador, notas, estado, prioridad, tc, cliente_cc_id, id]
       );
       const envio = rows[0];
 
@@ -179,13 +217,19 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       if (items !== undefined) {
         await client.query('DELETE FROM envio_items WHERE envio_id = $1', [id]);
         await insertarItems(client, id, items);
-        // Si hay venta asociada y no se canceló, sincronizar venta_items (re-crear) y stock.
+        // Si hay venta asociada y no se canceló, sincronizar venta_items, venta_pagos y stock.
         if (envio.venta_id && envio.estado !== 'Cancelado') {
           ventaSincronizada = await actualizarVentaDesdeEnvio(client, envio, items, req.user.id);
         }
       }
-      // Recalcular el impacto en caja (cambió la lista de pagos y/o el estado)
-      await syncEnvioCaja(client, id, envio.fecha, envio.estado, req.user.id);
+      // Si NO hay venta_id (envío standalone), el envío sigue posteando directo a caja.
+      // Si hay venta_id, la venta ya sincronizó (en actualizarVentaDesdeEnvio).
+      if (!envio.venta_id) {
+        await syncEnvioCaja(client, id, envio.fecha, envio.estado, req.user.id);
+      } else {
+        // Limpiar cualquier ingreso 'envios' que hubiera quedado de la era pre-venta
+        await reverseCajaMovimientos(client, 'envios', id);
+      }
 
       // Si el envío se cancela y tenía venta asociada, revertir efectos + marcar cancelada
       let ventaCancelada = null;

@@ -16,6 +16,9 @@ const envioItemSchema = z.object({
   // Producto linkeado (para items 'producto'): si se setea + registrar_venta=true,
   // la venta auto-creada descuenta stock real de ese producto.
   producto_id: z.coerce.number().int().positive().optional().nullable(),
+  // Cuenta corriente: cuando es true, este pago genera deuda en movimientos_cc
+  // (a través de la venta auto-creada). Requiere envío.cliente_cc_id y registrar_venta.
+  es_cuenta_corriente: z.boolean().optional().default(false),
 });
 
 const baseEnvio = z.object({
@@ -34,6 +37,9 @@ const baseEnvio = z.object({
   // Tipo de cambio del envío. Usado para calcular total_usd de la venta auto-creada
   // cuando los items son en ARS. Opcional: si no viene, la venta queda con total_usd=0.
   tc:            z.number().positive().optional().nullable(),
+  // Cliente de cuenta corriente B2B vinculado al envío. Requerido si algún item
+  // 'pago' es es_cuenta_corriente=true (para asociar la deuda con un cliente).
+  cliente_cc_id: z.coerce.number().int().positive().optional().nullable(),
   items:         z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').default([]),
   registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
 });

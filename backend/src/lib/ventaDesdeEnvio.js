@@ -1,20 +1,22 @@
-// Crea una venta REAL a partir de un envío, para evitar el doble trabajo de
-// cargar el envío y después la venta. Toma los items de tipo 'producto' del
-// envío como items de venta.
+// Crea una venta REAL a partir de un envío para evitar el doble trabajo. La venta
+// auto-creada hereda los items 'producto' Y los items 'pago' del envío.
 //
-// Comportamiento según los campos opcionales del envío:
-//   · si `envio.tc` está seteado y los items son ARS, se calcula total_usd
-//     correctamente; sino, queda en 0 (compat con frontend viejo).
-//   · si un item trae `producto_id`, la venta linkea ese producto y se descuenta
-//     stock (vía descontarStock); sino, la venta es solo registro contable.
+//   · items 'producto' → venta_items (descuenta stock si hay producto_id).
+//   · items 'pago'     → venta_pagos. La venta es la única fuente de verdad
+//                        de los efectos secundarios financieros: dispara
+//                        syncVentaCaja, sincronizarCuentaCorriente,
+//                        syncFinancieraComprobante, syncTarjetaCobros.
 //
-// La plata la sigue manejando el envío (origen 'envio' en el ledger), por eso
-// esta función NO postea a caja_movimientos.
+// Cuando registrar_venta=true, el envío NO postea directamente a caja
+// (lo hace la venta). Cuando es false, los items 'pago' los postea el envío.
 //
 // Debe ejecutarse dentro de la transacción del envío.
 const crypto = require('crypto');
 const { round2, toUsd } = require('./money');
 const { descontarStock } = require('./ventaCore');
+const { syncVentaCaja, sincronizarCuentaCorriente } = require('./ventaSync');
+const { syncFinancieraComprobante } = require('./financiera');
+const { syncTarjetaCobros } = require('./tarjetas');
 
 function genOrderId() {
   const yy = new Date().getFullYear().toString().slice(-2);
@@ -66,9 +68,9 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
   const gananciaUsd = round2(totalUsd - costoUsd);
 
   const { rows } = await client.query(
-    `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, notas, user_id)
-     VALUES ($1,$2,$3,'acreditado',$4,$5,$6,$7) RETURNING *`,
-    [genOrderId(), envio.fecha, envio.cliente, totalUsd, gananciaUsd, 'Generada automáticamente desde un envío', userId]
+    `INSERT INTO ventas (order_id, fecha, cliente_nombre, cliente_cc_id, estado, total_usd, ganancia_usd, tc_venta, notas, user_id)
+     VALUES ($1,$2,$3,$4,'acreditado',$5,$6,$7,$8,$9) RETURNING *`,
+    [genOrderId(), envio.fecha, envio.cliente, envio.cliente_cc_id ?? null, totalUsd, gananciaUsd, envio.tc ?? null, 'Generada automáticamente desde un envío', userId]
   );
   const venta = rows[0];
 
@@ -91,12 +93,50 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
     );
   }
 
+  // Crear venta_pagos desde los items 'pago' del envío y disparar los syncs.
+  await sincronizarPagosDesdeEnvio(client, venta, items, envio, userId);
+
   // Descontar stock para los items linkeados a productos.
   if (linkedItems.length > 0) {
     await descontarStock(client, linkedItems.map(it => ({ producto_id: it.producto_id, cantidad: 1 })));
   }
 
   return venta;
+}
+
+// Crea venta_pagos a partir de los items 'pago' del envío y dispara los efectos
+// secundarios (caja, CC, financiera, tarjeta). Idempotente: revierte previos y
+// recrea desde cero — útil tanto para crear como para actualizar.
+async function sincronizarPagosDesdeEnvio(client, venta, items, envio, userId) {
+  // Limpiar venta_pagos previos por si re-creamos en un update.
+  await client.query('DELETE FROM venta_pagos WHERE venta_id = $1', [venta.id]);
+
+  const pagos = (items || []).filter(i => i.tipo === 'pago');
+  for (const p of pagos) {
+    const monto = round2(Number(p.monto) || 0);
+    if (monto <= 0) continue;
+    const moneda = p.moneda || 'ARS';
+    const tc = p.tc ?? envio.tc ?? null;
+    const monto_usd = round2(toUsd(monto, moneda, tc));
+    // Resolvemos el nombre del método para el comprobante / dashboard
+    let metodo_nombre = p.metodo_pago || (p.es_cuenta_corriente ? 'Cuenta corriente' : null);
+    if (!metodo_nombre && p.metodo_pago_id) {
+      const { rows: mp } = await client.query('SELECT nombre FROM metodos_pago WHERE id = $1', [p.metodo_pago_id]);
+      metodo_nombre = mp[0]?.nombre || 'Pago';
+    }
+    await client.query(
+      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [venta.id, p.es_cuenta_corriente ? null : (p.metodo_pago_id ?? null), metodo_nombre || 'Pago',
+       monto, moneda, tc, monto_usd, !!p.es_cuenta_corriente]
+    );
+  }
+
+  // Efectos secundarios — la venta es la fuente de verdad ahora.
+  await syncVentaCaja(client, venta, userId);
+  await sincronizarCuentaCorriente(client, venta);
+  await syncFinancieraComprobante(client, venta.id, venta.estado);
+  await syncTarjetaCobros(client, venta.id, venta.estado);
 }
 
 // Sincroniza los venta_items con los items del envío cuando éste se edita.
@@ -149,9 +189,13 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
   }
   const gananciaUsd = round2(totalUsd - costoUsd);
   const { rows: vrows } = await client.query(
-    `UPDATE ventas SET total_usd = $1, ganancia_usd = $2 WHERE id = $3 RETURNING *`,
-    [totalUsd, gananciaUsd, envio.venta_id]
+    `UPDATE ventas SET total_usd = $1, ganancia_usd = $2, cliente_cc_id = COALESCE($3, cliente_cc_id), tc_venta = COALESCE($4, tc_venta) WHERE id = $5 RETURNING *`,
+    [totalUsd, gananciaUsd, envio.cliente_cc_id ?? null, envio.tc ?? null, envio.venta_id]
   );
+  const venta = vrows[0];
+
+  // Re-sincronizar venta_pagos desde los items 'pago' actuales del envío.
+  if (venta) await sincronizarPagosDesdeEnvio(client, venta, items, envio, userId);
 
   // Descontar stock de los nuevos linkeados.
   const linkedNew = productos.filter(p => p.producto_id);
@@ -159,7 +203,7 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
     await descontarStock(client, linkedNew.map(it => ({ producto_id: it.producto_id, cantidad: 1 })));
   }
 
-  return vrows[0] || null;
+  return venta || null;
 }
 
 module.exports = { crearVentaDesdeEnvio, actualizarVentaDesdeEnvio };

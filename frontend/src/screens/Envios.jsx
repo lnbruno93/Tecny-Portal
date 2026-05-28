@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { envios, cajas as cajasApi, inventario } from '../lib/api';
+import { envios, cajas as cajasApi, inventario, cuentas as cuentasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -13,8 +13,9 @@ const EMPTY_FORM = {
   horario: '', operador: '', notas: '',
   prioridad: '', estado: 'Pendiente', registrar_venta: false,
   tc: '', // TC del envío (requerido cuando registrar_venta y hay items 'producto')
+  cliente_cc_id: '', // requerido si algún pago es CC
 };
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'ARS', tc: '' };
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'ARS', tc: '', es_cuenta_corriente: false };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -65,10 +66,11 @@ export default function Envios() {
   const [deletingId, setDeletingId] = useState(null);
   // dateFilter: null = todos | 'YYYY-MM-DD' = día específico
   const [dateFilter, setDateFilter] = useState(null);
-  // Todas las cajas activas (cualquier moneda) salvo financieras y tarjetas:
-  // esas requieren flujos especiales (comprobante de Financiera, cobros pendientes
-  // de tarjeta con comisión) que viven en Ventas y no están portados a Envíos.
+  // TODAS las cajas activas (incluye financieras y tarjetas). Las cajas
+  // financiera/tarjeta y la opción CC requieren "Registrar como venta" — el
+  // frontend lo marca con un disabled/warning cuando aplica.
   const [cajasPago, setCajasPago] = useState([]);
+  const [clientesCc, setClientesCc] = useState([]); // para asignar CC al envío
   // Búsqueda de productos para linkear: igual que en Ventas — debounce + backend search.
   // Un solo "search activo a la vez" (itemIdx identifica qué item del form está buscando).
   const [prodSearch, setProdSearch] = useState({ itemIdx: null, q: '', results: [], loading: false });
@@ -77,8 +79,11 @@ export default function Envios() {
 
   useEffect(() => {
     cajasApi.listCajas()
-      .then(list => setCajasPago((list || []).filter(c => c.activo !== false && !c.es_financiera && !c.es_tarjeta)))
+      .then(list => setCajasPago((list || []).filter(c => c.activo !== false)))
       .catch(console.error);
+    cuentasApi.clientes({ limit: 200 })
+      .then(list => setClientesCc(Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : [])))
+      .catch(() => {});
   }, []);
 
   // ── Create modal ──
@@ -93,6 +98,28 @@ export default function Envios() {
   const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
+
+  // Resumen del envío en USD: convierte cada monto según su moneda y el TC del item / envío.
+  // USD/USDT → 1:1; ARS → divide por (item.tc || form.tc).
+  const summary = useMemo(() => {
+    const toUsd = (monto, moneda, itemTc) => {
+      const m = Number(monto) || 0;
+      if (!m) return 0;
+      if (moneda === 'ARS') {
+        const tc = Number(itemTc) || Number(form.tc) || 0;
+        return tc > 0 ? m / tc : 0;
+      }
+      return m; // USD o USDT
+    };
+    let totalUsd = 0, pagosUsd = 0;
+    for (const it of items) {
+      const usd = toUsd(it.monto, it.moneda || 'ARS', it.tc);
+      if (it.tipo === 'producto') totalUsd += usd;
+      else if (it.tipo === 'pago') pagosUsd += usd;
+    }
+    return { totalUsd, pagosUsd, diferenciaUsd: totalUsd - pagosUsd };
+  }, [items, form.tc]);
+  const cubierto = Math.abs(summary.diferenciaUsd) < 0.01;
 
   // Búsqueda asincrónica de productos: debounce 300ms, backend filtra por nombre/IMEI/color/gb.
   function searchProductos(itemIdx, q) {
@@ -121,15 +148,24 @@ export default function Envios() {
   function unpickProducto(idx) {
     setItems(i => i.map((it, j) => j !== idx ? it : ({ ...it, producto_id: '', descripcion: '', monto: '', _imei: '' })));
   }
-  // Setea la caja del pago e infiere la moneda directamente (debe coincidir con el grupo
-  // de la caja para que el ledger acepte el movimiento).
-  function pickCajaPago(idx, cajaId) {
-    const c = cajasPago.find(x => String(x.id) === String(cajaId));
+  // Setea el método del pago: caja del catálogo o "Cuenta corriente" (__CC__).
+  // La moneda se infiere de la caja (debe coincidir con el grupo de la caja).
+  // Para CC, default a USD (es la moneda de movimientos_cc).
+  function pickCajaPago(idx, value) {
+    if (value === '__CC__') {
+      setItems(i => i.map((it, j) => j !== idx ? it : ({
+        ...it,
+        metodo_pago_id: '', es_cuenta_corriente: true,
+        moneda: it.moneda && it.moneda !== 'ARS' ? it.moneda : 'USD',
+        tc: '',
+      })));
+      return;
+    }
+    const c = cajasPago.find(x => String(x.id) === String(value));
     setItems(i => i.map((it, j) => j !== idx ? it : ({
       ...it,
-      metodo_pago_id: cajaId,
+      metodo_pago_id: value, es_cuenta_corriente: false,
       moneda: c ? c.moneda : (it.moneda || 'ARS'),
-      // Si la caja no es ARS, limpiamos TC (no aporta nada para USD/USDT).
       tc: c && c.moneda !== 'ARS' ? '' : it.tc,
     })));
   }
@@ -162,6 +198,7 @@ export default function Envios() {
         costo_envio: 0,
         registrar_venta: !!form.registrar_venta,
         tc: (form.registrar_venta && form.tc) ? Number(form.tc) : null,
+        cliente_cc_id: form.cliente_cc_id ? Number(form.cliente_cc_id) : null,
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
           // tipo 'producto' SIEMPRE va linkeado (no se permite texto libre); 'pago' va siempre.
@@ -171,11 +208,11 @@ export default function Envios() {
             descripcion: i.descripcion.trim() || null,
             monto: Number(i.monto) || 0,
             metodo_pago: i.metodo_pago.trim() || null,
-            metodo_pago_id: (i.tipo === 'pago' && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
+            metodo_pago_id: (i.tipo === 'pago' && !i.es_cuenta_corriente && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
             producto_id: (i.tipo === 'producto' && i.producto_id) ? Number(i.producto_id) : null,
-            // moneda del item: en pago la setea pickCajaPago; en producto la heredada del inventario (precio_moneda).
             moneda: i.moneda || 'ARS',
             tc: i.tc ? Number(i.tc) : null,
+            es_cuenta_corriente: i.tipo === 'pago' ? !!i.es_cuenta_corriente : false,
           })),
       };
       const nuevo = await envios.create(payload);
@@ -871,14 +908,19 @@ export default function Envios() {
                           {it.tipo === 'pago' && cajasPago.length > 0 && (
                             <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
                               <div className="field" style={{ marginBottom: 0 }}>
-                                <label className="field-label">Caja donde ingresa el cobro</label>
-                                <select className="input" value={it.metodo_pago_id}
+                                <label className="field-label">Método de pago</label>
+                                <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
                                   onChange={e => pickCajaPago(idx, e.target.value)}>
-                                  <option value="">Sin caja (no impacta)…</option>
-                                  {cajasPago.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.moneda}</option>)}
+                                  <option value="">Sin método (no impacta)…</option>
+                                  {cajasPago.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.nombre} · {c.moneda}{c.es_financiera ? ' (Financiera)' : c.es_tarjeta ? ` (Tarjeta ${Number(c.comision_pct||0)}%)` : ''}
+                                    </option>
+                                  ))}
+                                  <option value="__CC__">Cuenta corriente (deuda) · USD</option>
                                 </select>
                               </div>
-                              {it.metodo_pago_id && it.moneda === 'ARS' && (
+                              {it.metodo_pago_id && it.moneda === 'ARS' && !it.es_cuenta_corriente && (
                                 <div className="field" style={{ marginBottom: 0 }}>
                                   <label className="field-label">TC <span className="muted tiny">(opcional)</span></label>
                                   <input type="number" className="input mono" placeholder="USD/ARS"
@@ -892,16 +934,47 @@ export default function Envios() {
                     </div>
                   </div>
 
+                  {/* Resumen tipo Ventas: Total venta · Pagos · Diferencia (Cubierto ✓) */}
+                  <div className="card card-tight" style={{ padding: '10px 12px', background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span className="muted">Total venta</span>
+                      <span className="mono">u$s {summary.totalUsd.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span className="muted">Pagos</span>
+                      <span className="mono">u$s {summary.pagosUsd.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span className="muted">Diferencia</span>
+                      <span className="mono" style={{ color: cubierto ? 'var(--pos)' : 'var(--neg)' }}>
+                        {cubierto ? 'Cubierto ✓' : `u$s ${summary.diferenciaUsd.toFixed(2)}`}
+                      </span>
+                    </div>
+                  </div>
+
                   <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
                     <input type="checkbox" checked={form.registrar_venta} onChange={e => setForm(f => ({ ...f, registrar_venta: e.target.checked }))} style={{ accentColor: 'var(--accent)' }} />
-                    <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(crea la venta con los productos; la plata la maneja el envío)</span></span>
+                    <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(requerido para Cuenta corriente / Financiera / Tarjeta)</span></span>
                   </label>
                   {form.registrar_venta && (
-                    <div className="field" style={{ marginBottom: 0 }}>
-                      <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">para que la venta tenga total_usd correcto</span></label>
-                      <input type="number" className="input mono" placeholder="Ej: 1000"
-                             value={form.tc} onChange={e => setF('tc', e.target.value)} />
-                    </div>
+                    <>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">para items ARS</span></label>
+                        <input type="number" className="input mono" placeholder="Ej: 1000"
+                               value={form.tc} onChange={e => setF('tc', e.target.value)} />
+                      </div>
+                      {items.some(i => i.tipo === 'pago' && i.es_cuenta_corriente) && (
+                        <div className="field" style={{ marginBottom: 0 }}>
+                          <label className="field-label">Cliente de cuenta corriente <span style={{ color: 'var(--neg)' }}>*</span></label>
+                          <select className="input" value={form.cliente_cc_id} onChange={e => setF('cliente_cc_id', e.target.value)}>
+                            <option value="">— Seleccionar —</option>
+                            {clientesCc.map(c => (
+                              <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}{c.categoria ? ` (${c.categoria})` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {createError && (
