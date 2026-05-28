@@ -95,10 +95,16 @@ const queryVentasSchema = z.object({
 });
 
 /* ── Comprobantes de venta ── */
+// archivo_tipo se restringe a un enum acotado para evitar XSS al renderizar
+// el comprobante en una ventana nueva (el visor inserta `data:<tipo>;base64,...`).
 const comprobanteVentaSchema = z.object({
-  archivo_data:   z.string().min(1, 'Archivo requerido').max(9_000_000, 'Archivo demasiado grande'),
+  archivo_data:   z.string().min(1, 'Archivo requerido').max(9_000_000, 'Archivo demasiado grande')
+                   // base64, con prefijo data-URL opcional (el frontend lo manda via FileReader.readAsDataURL).
+                   .regex(/^(data:[a-z0-9/+.\-]+;base64,)?[A-Za-z0-9+/=\s]+$/i, 'Archivo inválido (debe ser base64)'),
   archivo_nombre: z.string().trim().max(255).optional().nullable(),
-  archivo_tipo:   z.string().trim().max(100).optional().nullable(),
+  archivo_tipo:   z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], {
+                   error: 'Tipo de archivo no permitido (solo jpg/png/webp/pdf)'
+                 }).optional().nullable(),
 });
 
 /* ── Etiquetas ── */

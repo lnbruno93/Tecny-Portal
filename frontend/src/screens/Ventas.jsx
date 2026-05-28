@@ -471,9 +471,22 @@ export default function Ventas() {
       const c = await ventas.getComprobante(cid);
       const w = window.open('', '_blank');
       if (!w) { toast.error('Permití las ventanas emergentes.'); return; }
-      const tipo = c.archivo_tipo || 'image/png';
-      if (tipo.includes('pdf')) w.document.write(`<iframe src="data:application/pdf;base64,${c.archivo_data}" style="position:fixed;inset:0;width:100%;height:100%;border:none"></iframe>`);
-      else w.document.write(`<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${tipo};base64,${c.archivo_data}" style="max-width:100%;max-height:100vh"/></body>`);
+      // Allowlist estricta de mime y de base64 — el visor inserta `data:<tipo>;base64,...`
+      // y un tipo o data adulterado podría inyectar HTML en la ventana hija.
+      const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      const tipo = ALLOWED.includes(c.archivo_tipo) ? c.archivo_tipo : 'image/png';
+      const dataOk = typeof c.archivo_data === 'string' && /^[A-Za-z0-9+/=\s]+$/.test(c.archivo_data);
+      if (!dataOk) { toast.error('Archivo inválido.'); w.close(); return; }
+      const url = `data:${tipo};base64,${c.archivo_data.replace(/\s/g, '')}`;
+      // Construimos el DOM con la API de elementos (sin document.write de strings interpolados):
+      const body = w.document.body;
+      body.style.cssText = 'margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh';
+      const el = tipo === 'application/pdf' ? w.document.createElement('iframe') : w.document.createElement('img');
+      el.src = url;
+      el.style.cssText = tipo === 'application/pdf'
+        ? 'position:fixed;inset:0;width:100%;height:100%;border:none'
+        : 'max-width:100%;max-height:100vh';
+      body.appendChild(el);
     } catch (e) { toast.error('Error al abrir.'); }
   }
 

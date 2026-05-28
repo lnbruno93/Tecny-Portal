@@ -22,7 +22,7 @@ const baseEnvio = z.object({
   notas:         z.string().trim().max(1000).optional().nullable(),
   estado:        z.enum(['Pendiente','En camino','Entregado','Cancelado']).default('Pendiente'),
   prioridad:     z.enum(['Alta','Media','Baja']).optional().nullable(),
-  items:         z.array(envioItemSchema).default([]),
+  items:         z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').default([]),
   registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
 });
 
@@ -30,7 +30,7 @@ const createEnvioSchema = baseEnvio;
 
 // PUT — todo opcional. items sin default para que undefined signifique "no tocar"
 const updateEnvioSchema = baseEnvio.omit({ items: true }).partial().extend({
-  items: z.array(envioItemSchema).optional(),
+  items: z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').optional(),
 });
 
 const queryEnviosSchema = z.object({
