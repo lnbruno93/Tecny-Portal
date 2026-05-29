@@ -25,6 +25,7 @@ import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi } from '
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
+import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -196,23 +197,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
     }
   }
 
-  // ── Estilos ─────────────────────────────────────────────────────────
-  const cellInp = {
-    padding: '3px 6px', fontSize: 12, height: 26,
-    border: '1px solid var(--border)', background: 'var(--surface)',
-    color: 'var(--text)', borderRadius: 4, width: '100%',
-    outline: 'none', boxSizing: 'border-box',
-  };
-  const th = {
-    padding: '6px 6px', fontSize: 10, fontWeight: 700,
-    letterSpacing: '0.05em', textTransform: 'uppercase',
-    color: 'var(--text-muted)', textAlign: 'left',
-    borderBottom: '1px solid var(--border)',
-    borderRight: '1px solid var(--hairline)',
-    background: 'var(--surface-2)', whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis',
-  };
-
+  // Estilos compartidos vienen de lib/spreadsheetStyles
   return (
     <div className="modal-overlay" onClick={tryClose}>
       <div className="modal" style={{ maxWidth: 1700, width: '98vw' }} onClick={e => e.stopPropagation()}>
@@ -224,11 +209,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
           {/* #H-12: banner si catálogos fallaron */}
           {catalogosError && (
-            <div style={{
-              padding: '8px 12px', marginBottom: 12, borderRadius: 6,
-              background: 'rgba(217,119,6,0.10)', color: 'var(--warn, #d97706)',
-              border: '1px solid rgba(217,119,6,0.30)', fontSize: 12,
-            }}>
+            <div style={catalogosErrorBanner}>
               ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
               Cerrá/abrí el modal después de revisar tu conexión.
             </div>
