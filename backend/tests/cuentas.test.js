@@ -780,3 +780,106 @@ describe('Venta B2B con stock', () => {
     expect(res.body.items[0].producto_id).toBeNull();
   });
 });
+
+// ─── Cobranza masiva (#76) ───────────────────────────────────────────────
+// Registra N pagos en bloque, cada uno a su caja, con TX atómica.
+describe('Cobranza masiva', () => {
+  let cli1, cli2, cli3, cajaUSD, cajaARS;
+
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set('Authorization', `Bearer ${adminToken}`);
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+  async function saldoCliente(id) {
+    const r = await request(app).get(`/api/cuentas/clientes/${id}`).set('Authorization', `Bearer ${adminToken}`);
+    return Number(r.body.saldo || 0);
+  }
+
+  beforeAll(async () => {
+    // 3 clientes con deuda inicial
+    const mk = (nombre) => request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre, categoria: 'A+', saldo_inicial: 500 }).then(r => r.body);
+    cli1 = await mk('CobranzaMasiva A');
+    cli2 = await mk('CobranzaMasiva B');
+    cli3 = await mk('CobranzaMasiva C');
+    // Cajas (USD y ARS) — usamos las del seed
+    const r = await request(app).get('/api/ventas/metodos-pago').set('Authorization', `Bearer ${adminToken}`);
+    cajaUSD = (r.body || []).find(m => m.moneda === 'USD');
+    cajaARS = (r.body || []).find(m => m.moneda === 'ARS');
+  });
+
+  it('registra 3 cobranzas en TX atómica, distintos clientes y cajas', async () => {
+    const sUsdAntes = await saldoCaja(cajaUSD.id);
+    const sArsAntes = await saldoCaja(cajaARS.id);
+    const sCli1 = await saldoCliente(cli1.id);
+    const sCli2 = await saldoCliente(cli2.id);
+
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli1.id, fecha: '2026-05-29', monto: 200, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+          { cliente_cc_id: cli2.id, fecha: '2026-05-29', monto: 150000, moneda: 'ARS', tc: 1000, caja_id: cajaARS.id, tipo: 'parte_de_pago' },
+          { cliente_cc_id: cli3.id, fecha: '2026-05-29', monto: 100, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.creados).toBe(3);
+
+    // Cajas: USD subió 300 (200 + 100), ARS subió 150000
+    expect(await saldoCaja(cajaUSD.id) - sUsdAntes).toBeCloseTo(300, 2);
+    expect(await saldoCaja(cajaARS.id) - sArsAntes).toBeCloseTo(150000, 2);
+    // Clientes: bajaron en USD
+    expect(sCli1 - await saldoCliente(cli1.id)).toBeCloseTo(200, 2);
+    expect(sCli2 - await saldoCliente(cli2.id)).toBeCloseTo(150, 2); // 150000 / 1000
+  });
+
+  it('sobrepago se permite (cliente queda a favor)', async () => {
+    // cli1 tenía 500-200=300. Le cobramos 500 → queda -200 (a favor).
+    const sCli1 = await saldoCliente(cli1.id);
+    const sCaja = await saldoCaja(cajaUSD.id);
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli1.id, fecha: '2026-05-29', monto: 500, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(201);
+    // Saldo del cliente bajó 500 (puede quedar negativo)
+    expect(sCli1 - await saldoCliente(cli1.id)).toBeCloseTo(500, 2);
+    // Caja subió 500
+    expect(await saldoCaja(cajaUSD.id) - sCaja).toBeCloseTo(500, 2);
+  });
+
+  it('cliente inexistente en una fila → 400 con rollback total', async () => {
+    const sCli2 = await saldoCliente(cli2.id);
+    const sCaja = await saldoCaja(cajaUSD.id);
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli2.id,  fecha: '2026-05-29', monto: 50,  moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+          { cliente_cc_id: 999999,   fecha: '2026-05-29', monto: 100, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.detalles[0].error).toMatch(/no existe/i);
+    // Nada se aplicó: saldos intactos
+    expect(await saldoCliente(cli2.id)).toBeCloseTo(sCli2, 2);
+    expect(await saldoCaja(cajaUSD.id)).toBeCloseTo(sCaja, 2);
+  });
+
+  it('caja ARS sin TC → 400 (refine del schema)', async () => {
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli3.id, fecha: '2026-05-29', monto: 50000, moneda: 'ARS', caja_id: cajaARS.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('lote vacío → 400', async () => {
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cobranzas: [] });
+    expect(res.status).toBe(400);
+  });
+});

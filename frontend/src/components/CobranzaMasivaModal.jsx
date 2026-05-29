@@ -1,0 +1,461 @@
+/**
+ * Modal "Cobranza masiva" — registra N pagos de distintos clientes en bloque.
+ *
+ * Flujo típico: fin de mes, varios clientes mayoristas pagan parte o todo
+ * lo que deben. En lugar de abrir el modal de pago N veces, se carga TODO
+ * en una planilla y se guarda en una sola TX.
+ *
+ * Reglas:
+ *   - Cada fila tiene su cliente, monto, caja y TC (si la caja no es USD).
+ *   - Si el monto supera el saldo del cliente → alerta ámbar pero permite
+ *     guardar (sobrepago = cliente queda con saldo a favor).
+ *   - Si algo falla (cliente inválido, caja inválida) → rollback total.
+ *   - Cliente picker filtra por saldo > 0 por defecto, toggle "Mostrar
+ *     todos" para incluir saldo = 0 (parte_de_pago anticipado).
+ */
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Icons } from './Icons';
+import { cuentas as cuentasApi, cajas as cajasApi } from '../lib/api';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { useToast } from '../contexts/ToastContext';
+
+function todayISO() { return new Date().toLocaleDateString('sv'); }
+
+const INITIAL_ROWS = 8;
+const ADD_BATCH    = 5;
+
+const mkRow = (defaults = {}) => ({
+  _id: Math.random().toString(36).slice(2),
+  cliente_id: null,
+  cliente_nombre: '',
+  saldo_actual: null,    // del backend al elegir cliente
+  monto: '',
+  caja_id: defaults.caja_id || '',
+  tc:      defaults.tc      || '',
+  tipo:    'pago',
+});
+
+const isUsedRow = (r) => !!(r.cliente_id || r.cliente_nombre?.trim() || Number(r.monto) > 0);
+
+export default function CobranzaMasivaModal({ onClose, onSaved }) {
+  const { toast } = useToast();
+
+  // ── Cabecera (defaults aplicados a filas nuevas) ────────────────────
+  const [fecha, setFecha]       = useState(todayISO());
+  const [cajaDefault, setCD]    = useState('');
+  const [tcDefault,   setTCD]   = useState('');
+
+  // ── Planilla ─────────────────────────────────────────────────────────
+  const [rows, setRows] = useState(() =>
+    Array.from({ length: INITIAL_ROWS }, () => mkRow())
+  );
+
+  // ── Catálogos ────────────────────────────────────────────────────────
+  const [cajas,    setCajas]    = useState([]);
+  const [clientes, setClientes] = useState([]);     // todos los clientes vivos
+  const [showZero, setShowZero] = useState(false);  // mostrar también saldo = 0
+  const [saving, setSaving]     = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      cajasApi.listCajas().catch(() => []),
+      cuentasApi.clientes({ limit: 500 }).catch(() => ({ data: [] })),
+    ]).then(([cks, cls]) => {
+      setCajas((cks || []).filter(c => c.activo !== false));
+      setClientes(cls.data || []);
+    });
+  }, []);
+
+  const totalUsd = useMemo(() => {
+    return rows.reduce((acc, r) => {
+      if (!isUsedRow(r) || !Number(r.monto)) return acc;
+      const caja = cajas.find(c => String(c.id) === String(r.caja_id));
+      const moneda = caja?.moneda || 'USD';
+      if (moneda === 'USD') return acc + Number(r.monto);
+      const tcN = Number(r.tc);
+      if (!tcN) return acc;
+      return acc + Number(r.monto) / tcN;
+    }, 0);
+  }, [rows, cajas]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────
+  function updCell(idx, field, val) {
+    setRows(rs => rs.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  }
+  function pickCliente(idx, c) {
+    setRows(rs => rs.map((r, i) => i !== idx ? r : {
+      ...r,
+      cliente_id: c.id,
+      cliente_nombre: [c.nombre, c.apellido].filter(Boolean).join(' '),
+      saldo_actual: Number(c.saldo || 0),
+    }));
+  }
+  function clearCliente(idx) {
+    setRows(rs => rs.map((r, i) => i !== idx ? r : {
+      ...r, cliente_id: null, saldo_actual: null,
+    }));
+  }
+  function addRows(n = ADD_BATCH) {
+    setRows(rs => [...rs, ...Array.from({ length: n }, () => mkRow({ caja_id: cajaDefault, tc: tcDefault }))]);
+  }
+  function removeRow(idx) {
+    setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
+  }
+  function applyDefaultsToEmpty() {
+    setRows(rs => rs.map(r => {
+      const used = isUsedRow(r);
+      return used ? r : { ...r, caja_id: cajaDefault, tc: tcDefault };
+    }));
+  }
+
+  function validar() {
+    if (!fecha) return 'Falta la fecha';
+    const used = rows.filter(isUsedRow);
+    if (used.length === 0) return 'Cargá al menos una cobranza';
+    for (let i = 0; i < used.length; i++) {
+      const r = used[i];
+      if (!r.cliente_id) return `Fila ${i + 1}: elegí el cliente`;
+      if (!Number(r.monto) || Number(r.monto) <= 0) return `Fila ${i + 1}: cargá el monto`;
+      if (!r.caja_id) return `Fila ${i + 1}: elegí caja`;
+      const caja = cajas.find(c => String(c.id) === String(r.caja_id));
+      const moneda = caja?.moneda || 'USD';
+      if (moneda !== 'USD' && (!Number(r.tc) || Number(r.tc) <= 0))
+        return `Fila ${i + 1}: caja ${moneda}, cargá el TC`;
+    }
+    return null;
+  }
+
+  async function handleGuardar() {
+    const err = validar();
+    if (err) { toast.error(err); return; }
+    setSaving(true);
+    try {
+      const used = rows.filter(isUsedRow);
+      const payload = {
+        cobranzas: used.map(r => {
+          const caja = cajas.find(c => String(c.id) === String(r.caja_id));
+          const moneda = caja?.moneda || 'USD';
+          return {
+            cliente_cc_id: Number(r.cliente_id),
+            fecha,
+            monto: Number(r.monto),
+            moneda,
+            tc: moneda === 'USD' ? null : Number(r.tc),
+            caja_id: Number(r.caja_id),
+            tipo: r.tipo,
+            descripcion: null,
+          };
+        }),
+      };
+      const res = await cuentasApi.cobranzaMasiva(payload);
+      toast.success(`Cobranza masiva guardada · ${res.creados} pagos · USD ${totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`);
+      onSaved?.(res);
+      onClose();
+    } catch (e) {
+      // El backend manda detalles cuando hay refs inválidas
+      const msg = e.message || 'No se pudo guardar';
+      toast.error(msg.length > 200 ? msg.slice(0, 200) + '…' : msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Estilos ──────────────────────────────────────────────────────────
+  const cellInp = {
+    padding: '3px 6px', fontSize: 12, height: 26,
+    border: '1px solid var(--border)', background: 'var(--surface)',
+    color: 'var(--text)', borderRadius: 4, width: '100%',
+    outline: 'none', boxSizing: 'border-box',
+  };
+  const th = {
+    padding: '6px 6px', fontSize: 10, fontWeight: 700,
+    letterSpacing: '0.05em', textTransform: 'uppercase',
+    color: 'var(--text-muted)', textAlign: 'left',
+    borderBottom: '1px solid var(--border)',
+    borderRight: '1px solid var(--hairline)',
+    background: 'var(--surface-2)', whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis',
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 1400, width: '96vw' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-hd">
+          <h3>Cobranza masiva</h3>
+          <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
+        </div>
+
+        <div className="modal-body" style={{ maxHeight: '82vh', overflowY: 'auto' }}>
+          {/* ── Cabecera + defaults ── */}
+          <div className="row" style={{ marginBottom: 12 }}>
+            <div className="field" style={{ flex: '0 0 150px' }}>
+              <label className="field-label">Fecha</label>
+              <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label className="field-label">Caja por defecto</label>
+              <select className="input" value={cajaDefault} onChange={e => setCD(e.target.value)}>
+                <option value="">— Sin default —</option>
+                {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ flex: '0 0 140px' }}>
+              <label className="field-label">TC por defecto</label>
+              <input type="number" min="0" step="0.01" className="input mono"
+                value={tcDefault} onChange={e => setTCD(e.target.value)} placeholder="0" />
+            </div>
+            <div className="field" style={{ flex: '0 0 140px', alignSelf: 'flex-end' }}>
+              <button className="btn btn-sm btn-ghost" style={{ width: '100%' }} onClick={applyDefaultsToEmpty}
+                title="Aplica los defaults a las filas aún vacías">
+                Aplicar a vacías
+              </button>
+            </div>
+          </div>
+
+          {/* ── Acciones de la planilla ── */}
+          <div className="flex-between" style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>
+              Cobranzas · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
+            </div>
+            <div className="flex-row" style={{ gap: 6, alignItems: 'center' }}>
+              <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={showZero} onChange={e => setShowZero(e.target.checked)} />
+                Mostrar todos los clientes (incluso saldo 0)
+              </label>
+              <button className="btn btn-sm" onClick={() => addRows(ADD_BATCH)}>
+                + {ADD_BATCH} filas
+              </button>
+            </div>
+          </div>
+
+          {/* ── Planilla ── */}
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: 32 }} />   {/* # */}
+                <col style={{ width: 280 }} />  {/* Cliente */}
+                <col style={{ width: 100 }} />  {/* Saldo */}
+                <col style={{ width: 110 }} />  {/* Monto */}
+                <col style={{ width: 200 }} />  {/* Caja */}
+                <col style={{ width: 90 }} />   {/* TC */}
+                <col style={{ width: 110 }} />  {/* Subtotal USD */}
+                <col style={{ width: 110 }} />  {/* Tipo */}
+                <col style={{ width: 36 }} />   {/* X */}
+              </colgroup>
+              <thead>
+                <tr>
+                  {['#','Cliente *','Saldo','Monto *','Caja *','TC','Subtotal USD','Tipo',''].map((h, i) =>
+                    <th key={i} style={{ ...th, textAlign: i === 0 ? 'center' : 'left' }}>{h}</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, idx) => {
+                  const used = isUsedRow(r);
+                  const caja = cajas.find(c => String(c.id) === String(r.caja_id));
+                  const moneda = caja?.moneda || 'USD';
+                  const needsTc = r.caja_id && moneda !== 'USD';
+                  const subUsd  = Number(r.monto) > 0
+                    ? (moneda === 'USD' ? Number(r.monto) : (Number(r.tc) > 0 ? Number(r.monto) / Number(r.tc) : 0))
+                    : 0;
+                  const sobrepago = r.saldo_actual != null && subUsd > 0 && subUsd > r.saldo_actual;
+                  const diferencia = sobrepago ? (subUsd - r.saldo_actual).toFixed(2) : 0;
+                  return (
+                    <tr key={r._id} style={{
+                      background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
+                      borderTop: '1px solid var(--hairline)',
+                    }}>
+                      <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <ClientePicker
+                          value={r.cliente_nombre}
+                          locked={!!r.cliente_id}
+                          clientes={clientes}
+                          showZero={showZero}
+                          onPick={c => pickCliente(idx, c)}
+                          onClear={() => clearCliente(idx)}
+                          onChange={v => updCell(idx, 'cliente_nombre', v)}
+                          cellInp={cellInp}
+                        />
+                      </td>
+                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12 }}>
+                        {r.saldo_actual != null
+                          ? <span className={r.saldo_actual > 0 ? 'neg' : r.saldo_actual < 0 ? 'pos' : 'muted'} style={{ fontWeight: 600 }}>
+                              USD {r.saldo_actual.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                            </span>
+                          : <span className="dim">—</span>}
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input type="number" min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700,
+                          borderColor: sobrepago ? 'var(--warn, #d97706)' : 'var(--border)',
+                        }}
+                          value={r.monto} placeholder="0"
+                          onChange={e => updCell(idx, 'monto', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.caja_id}
+                          onChange={e => updCell(idx, 'caja_id', e.target.value)}>
+                          <option value="">—</option>
+                          {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        {needsTc ? (
+                          <input type="number" min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
+                            value={r.tc} placeholder={moneda}
+                            onChange={e => updCell(idx, 'tc', e.target.value)} />
+                        ) : <span className="dim" style={{ fontSize: 11, paddingLeft: 6 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, fontWeight: 600 }}>
+                        {subUsd > 0 ? (
+                          <div>
+                            <div>USD {subUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
+                            {sobrepago && <div style={{ fontSize: 10, color: 'var(--warn, #d97706)' }}>+a favor USD {diferencia}</div>}
+                          </div>
+                        ) : <span className="dim">—</span>}
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.tipo}
+                          onChange={e => updCell(idx, 'tipo', e.target.value)}>
+                          <option value="pago">Pago</option>
+                          <option value="parte_de_pago">Parte pago</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                        {rows.length > 1 && (
+                          <button className="icon-btn" style={{ color: 'var(--neg)', padding: 2 }}
+                            onClick={() => removeRow(idx)} title="Quitar fila">
+                            <Icons.Trash size={12} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── Total ── */}
+          <div className="flex-row" style={{ marginTop: 12, justifyContent: 'flex-end', alignItems: 'center', gap: 16 }}>
+            <div style={{ textAlign: 'right' }}>
+              <div className="muted tiny">Total cobrado</div>
+              <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
+                USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-ft">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={saving} onClick={handleGuardar}>
+            {saving ? 'Guardando…' : `Guardar cobranzas (${rows.filter(isUsedRow).length})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Cliente Picker ──────────────────────────────────────────────────────
+function ClientePicker({ value, locked, clientes, showZero, onPick, onClear, onChange, cellInp }) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const debounced = useDebouncedValue(value, 150);
+  const boxRef = useRef(null);
+
+  // Filtrado local: por defecto solo saldo > 0 (deudores).
+  // Si showZero está activo, incluye saldo = 0 y < 0 (a favor también).
+  const matches = useMemo(() => {
+    const q = (debounced || '').trim().toLowerCase();
+    return clientes
+      .filter(c => showZero ? true : Number(c.saldo || 0) > 0)
+      .filter(c => {
+        if (!q) return false;
+        const full = `${c.nombre || ''} ${c.apellido || ''}`.toLowerCase();
+        return full.includes(q);
+      })
+      .slice(0, 10);
+  }, [clientes, debounced, showZero]);
+
+  useEffect(() => {
+    if (!locked && matches.length > 0) { setOpen(true); setHighlight(0); }
+    else setOpen(false);
+  }, [matches, locked]);
+
+  useEffect(() => {
+    function onDoc(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
+    if (open) document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  function onKey(e) {
+    if (!open) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, matches.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (matches[highlight]) { onPick(matches[highlight]); setOpen(false); }
+    }
+    else if (e.key === 'Escape') setOpen(false);
+  }
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          style={{
+            ...cellInp,
+            background: locked ? 'rgba(99,102,241,0.10)' : 'var(--surface)',
+            fontWeight: locked ? 600 : 400,
+          }}
+          value={value} placeholder="Buscar cliente…"
+          readOnly={locked}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={onKey}
+        />
+        {locked && (
+          <button className="icon-btn" style={{ padding: 2, color: 'var(--text-muted)' }}
+            onClick={onClear} title="Cambiar cliente">
+            <Icons.X size={12} />
+          </button>
+        )}
+      </div>
+      {open && !locked && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+        }}>
+          {matches.length === 0 && (
+            <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              Sin coincidencias{!showZero ? ' con deuda' : ''}
+            </div>
+          )}
+          {matches.map((c, i) => {
+            const saldo = Number(c.saldo || 0);
+            const tono = saldo > 0 ? 'neg' : saldo < 0 ? 'pos' : 'muted';
+            return (
+              <div key={c.id}
+                onMouseEnter={() => setHighlight(i)}
+                onMouseDown={(e) => { e.preventDefault(); onPick(c); setOpen(false); }}
+                style={{
+                  padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                  background: i === highlight ? 'var(--surface-2)' : 'transparent',
+                  borderBottom: i < matches.length - 1 ? '1px solid var(--hairline)' : 'none',
+                }}>
+                <div style={{ fontWeight: 600 }}>
+                  {[c.nombre, c.apellido].filter(Boolean).join(' ')}
+                  {c.categoria && <span className="muted tiny" style={{ marginLeft: 6 }}>· {c.categoria}</span>}
+                </div>
+                <div className={`tiny ${tono}`}>Saldo USD {saldo.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 import VentaB2BModal from '../components/VentaB2BModal';
+import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -454,6 +455,7 @@ export default function CuentasCC() {
   const [showEdit, setShowEdit]             = useState(false);
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [showVentaModal,   setShowVentaModal]   = useState(false);
+  const [showCobranzaMasiva, setShowCobranzaMasiva] = useState(false);
   const [clienteForm, setClienteForm]       = useState(EMPTY_CLIENTE);
   const [clienteCreating, setClienteCreating] = useState(false);
   const [clienteError, setClienteError]     = useState('');
@@ -805,6 +807,9 @@ export default function CuentasCC() {
               </button>
             ))}
           </div>
+          <button className="btn" onClick={() => setShowCobranzaMasiva(true)}>
+            <Icons.Dollar size={14} /> Cobranza masiva
+          </button>
           <button className="btn btn-primary"
             onClick={() => { setClienteForm(EMPTY_CLIENTE); setClienteError(''); setShowClienteModal(true); }}>
             <Icons.Plus size={14} /> Nuevo cliente
@@ -1154,6 +1159,28 @@ export default function CuentasCC() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Modal Cobranza Masiva (N pagos en bloque) ── */}
+      {showCobranzaMasiva && (
+        <CobranzaMasivaModal
+          onClose={() => setShowCobranzaMasiva(false)}
+          onSaved={() => {
+            setShowCobranzaMasiva(false);
+            // Refrescar lista de clientes (saldos actualizados) y detalle del seleccionado
+            cuentas.clientes(catFilter !== 'todas' ? { categoria: catFilter } : {})
+              .then(r => setClientes(r.data || []))
+              .catch(() => {});
+            if (selectedId) {
+              Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId, { page: 1, limit: 100 })])
+                .then(([resumen, movsResp]) => {
+                  setClienteDetail({ resumen, movimientos: movsResp.data || [] });
+                  setMovsPag(movsResp.pagination || { page: 1, pages: 1, total: 0 });
+                })
+                .catch(() => {});
+            }
+          }}
+        />
       )}
 
       {/* ── Modal Cargar Venta B2B (spreadsheet con picker de stock) ── */}

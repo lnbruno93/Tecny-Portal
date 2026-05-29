@@ -27,6 +27,7 @@ const {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
+  cobranzaMasivaSchema,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
@@ -464,6 +465,81 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     await audit(client, 'movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── COBRANZA MASIVA ──────────────────────────────────────────────────────────
+// Registra N pagos de distintos clientes en una sola TX (todo o nada).
+//   - Cada fila es un movimiento_cc independiente (tipo=pago/parte_de_pago).
+//   - Cada fila postea un INGRESO a su caja correspondiente.
+//   - El sobrepago (monto > saldo) se permite: el cliente queda con saldo
+//     negativo (a favor), descontable de la próxima compra.
+//   - Si una fila falla por cualquier motivo (cliente no existe, caja
+//     inválida, etc.) → rollback total: ninguna cobranza se aplica.
+router.post('/cobranzas-masivas', validate(cobranzaMasivaSchema), async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    const { cobranzas } = req.body;
+    await client.query('BEGIN');
+
+    // Pre-validación: clientes vivos y cajas vivas. Salvo bloqueo total
+    // antes de empezar a INSERTAR para mensajes claros y rollback rápido.
+    const clienteIds = [...new Set(cobranzas.map(c => c.cliente_cc_id))];
+    const cajaIds    = [...new Set(cobranzas.map(c => c.caja_id))];
+    const [valC, valK] = await Promise.all([
+      client.query('SELECT id FROM clientes_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [clienteIds]),
+      client.query('SELECT id FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [cajaIds]),
+    ]);
+    const okC = new Set(valC.rows.map(r => r.id));
+    const okK = new Set(valK.rows.map(r => r.id));
+    const errores = [];
+    cobranzas.forEach((c, i) => {
+      if (!okC.has(c.cliente_cc_id)) errores.push({ fila: i + 1, error: `Cliente #${c.cliente_cc_id} no existe` });
+      if (!okK.has(c.caja_id))       errores.push({ fila: i + 1, error: `Caja #${c.caja_id} no existe` });
+    });
+    if (errores.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Referencias inválidas', detalles: errores });
+    }
+
+    const creados = [];
+    for (const c of cobranzas) {
+      // Normalizar monto a USD para auditar saldo en moneda dura.
+      // El monto_total del mov queda en USD (igual que el flujo individual);
+      // la caja se descuenta en la moneda de la caja con el tc provisto.
+      const tcN = c.moneda === 'USD' ? 1 : Number(c.tc);
+      const montoUsd = c.moneda === 'USD' ? c.monto : c.monto / tcN;
+
+      const { rows: movRows } = await client.query(
+        `INSERT INTO movimientos_cc
+           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id]
+      );
+      const mov = movRows[0];
+
+      await postCajaMovimiento(client, {
+        caja_id: c.caja_id, fecha: c.fecha, tipo: 'ingreso',
+        monto: c.monto, moneda: c.moneda, tc: c.tc ?? null,
+        origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
+        concepto: `Cobranza masiva cliente #${c.cliente_cc_id}`,
+        user_id: req.user.id,
+      });
+
+      await audit(client, 'movimientos_cc', 'INSERT', mov.id, {
+        despues: { ...mov, _origen: 'cobranza_masiva' },
+        user_id: req.user.id,
+      });
+      creados.push(mov);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ ok: true, creados: creados.length, movimientos: creados });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
