@@ -47,24 +47,11 @@ pero la disciplina es barata.
 
 ## Frontend
 
-### MEDIUM-F1 · `blockInvalidNumberKeys` solo aplicado a 3 modales (#M-11 follow-up)
-**Dónde:** `frontend/src/screens/` — `Ventas.jsx`, `Envios.jsx`,
-`Inventario.jsx`, `Usados.jsx`, `Proveedores.jsx`, `Tarjetas.jsx`. Hay ~25
-inputs `type="number"` sin el handler.
-**Por qué:** El usuario sigue pudiendo tipear 'e' o '+' y borrar silenciosamente
-una cifra de monto. En M-11 atacamos los 3 modales spreadsheet (mayor riesgo
-por velocidad de tipeo) y diferimos el resto.
-**Fix:** Para cada archivo, agregar
-```js
-import { blockInvalidNumberKeys } from '../lib/inputUtils';
-```
-y reemplazar `<input type="number"` por
-`<input type="number" onKeyDown={blockInvalidNumberKeys}`.
-Sed listo para usar:
-```bash
-sed -i '' 's/<input type="number"/<input type="number" onKeyDown={blockInvalidNumberKeys}/g' <archivo>
-```
-Verificar el import después.
+### ~~MEDIUM-F1 · `blockInvalidNumberKeys` solo aplicado a 3 modales~~ ✅ CERRADO
+**Cerrado en:** commit `2dbc063` (PR fix/followup-number-inputs).
+**Resumen:** Cobertura final 67/67 inputs `type="number"` en screens +
+components con `onKeyDown={blockInvalidNumberKeys}`. 14 archivos tocados,
+55 handlers nuevos. Sed + perl + inyección de import automatizada.
 
 ### LOW-F2 · Loading state de PDF solo en Ventas (#M-12 follow-up)
 **Dónde:** `frontend/src/components/CompraProveedorModal.jsx` y otros lugares
