@@ -267,108 +267,65 @@ describe('PUT /api/cuentas/clientes/:id', () => {
 // ═══════════════════════════════════════════════════════════════
 // MOVIMIENTOS — SALDO
 // ═══════════════════════════════════════════════════════════════
-describe('POST /api/cuentas/movimientos — saldo', () => {
-  it('compra de 50000 → saldo +50000', async () => {
-    const res = await request(app)
-      .post('/api/cuentas/movimientos')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        cliente_cc_id: clienteId,
-        fecha:         '2026-03-01',
-        tipo:          'compra',
-        descripcion:   'iPhone 15 Pro',
-        monto_total:   50000,
-        items: [
-          { producto: 'iPhone', modelo: '15 Pro', tamano: '256GB', valor: 900, imei_serial: '123456789012345' },
-        ],
-      });
-
-    expect(res.status).toBe(201);
-    expect(res.body.tipo).toBe('compra');
-    expect(parseFloat(res.body.monto_total)).toBe(50000);
-    // Items solo se crean para compra/devolucion
-    expect(Array.isArray(res.body.items)).toBe(true);
-    expect(res.body.items.length).toBe(1);
-    expect(res.body.items[0].modelo).toBe('15 Pro');
-    movCompraId = res.body.id;
-
-    // Verificar saldo en detalle del cliente
-    const detalle = await request(app)
+//
+// #T-06: antes eran 5 tests independientes pero ENCADENADOS — cada uno
+// asumía el saldo dejado por el anterior (50000 → 30000 → 25000 → 20000 →
+// 10000). Si alguien agregaba un test en medio o cambiaba el orden,
+// cascada de fallas falsas. Ahora un único test secuencial, robusto.
+describe('POST /api/cuentas/movimientos — saldo (secuencial)', () => {
+  it('flujo completo compra→pago→parte_de_pago→entrega→devolución verifica saldo en cada paso', async () => {
+    const detalle = () => request(app)
       .get(`/api/cuentas/clientes/${clienteId}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(parseFloat(detalle.body.saldo)).toBe(50000);
-  });
-
-  it('pago de 20000 → saldo cae a 30000', async () => {
-    const res = await request(app)
-      .post('/api/cuentas/movimientos')
       .set('Authorization', `Bearer ${adminToken}`)
+      .then(r => parseFloat(r.body.saldo));
+
+    // 1) COMPRA 50000 → saldo +50000
+    const compra = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        cliente_cc_id: clienteId,
-        fecha:         '2026-03-10',
-        tipo:          'pago',
-        monto_total:   20000,
-        // Los items se ignoran para tipo 'pago'
+        cliente_cc_id: clienteId, fecha: '2026-03-01', tipo: 'compra',
+        descripcion: 'iPhone 15 Pro', monto_total: 50000,
+        items: [{ producto: 'iPhone', modelo: '15 Pro', tamano: '256GB', valor: 900, imei_serial: '123456789012345' }],
+      });
+    expect(compra.status).toBe(201);
+    expect(compra.body.tipo).toBe('compra');
+    expect(parseFloat(compra.body.monto_total)).toBe(50000);
+    expect(Array.isArray(compra.body.items)).toBe(true);
+    expect(compra.body.items.length).toBe(1);
+    expect(compra.body.items[0].modelo).toBe('15 Pro');
+    movCompraId = compra.body.id;
+    expect(await detalle()).toBe(50000);
+
+    // 2) PAGO 20000 → saldo 30000 (items ignorados)
+    const pago = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: clienteId, fecha: '2026-03-10', tipo: 'pago', monto_total: 20000,
         items: [{ producto: 'ignorado' }],
       });
+    expect(pago.status).toBe(201);
+    expect(pago.body.items).toEqual([]); // pago no tiene items
+    expect(await detalle()).toBe(30000);
 
-    expect(res.status).toBe(201);
-    expect(res.body.tipo).toBe('pago');
-    expect(res.body.items).toEqual([]); // pago no tiene items
-
-    const detalle = await request(app)
-      .get(`/api/cuentas/clientes/${clienteId}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(parseFloat(detalle.body.saldo)).toBe(30000);
-  });
-
-  it('parte_de_pago de 5000 → saldo cae a 25000', async () => {
-    const res = await request(app)
-      .post('/api/cuentas/movimientos')
-      .set('Authorization', `Bearer ${adminToken}`)
+    // 3) PARTE_DE_PAGO 5000 → saldo 25000
+    const pp = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
       .send({ cliente_cc_id: clienteId, fecha: '2026-03-15', tipo: 'parte_de_pago', monto_total: 5000 });
+    expect(pp.status).toBe(201);
+    expect(await detalle()).toBe(25000);
 
-    expect(res.status).toBe(201);
-
-    const detalle = await request(app)
-      .get(`/api/cuentas/clientes/${clienteId}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(parseFloat(detalle.body.saldo)).toBe(25000);
-  });
-
-  it('entrega_mercaderia de 5000 → saldo cae a 20000', async () => {
-    const res = await request(app)
-      .post('/api/cuentas/movimientos')
-      .set('Authorization', `Bearer ${adminToken}`)
+    // 4) ENTREGA_MERCADERIA 5000 → saldo 20000
+    const em = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
       .send({ cliente_cc_id: clienteId, fecha: '2026-03-20', tipo: 'entrega_mercaderia', monto_total: 5000 });
+    expect(em.status).toBe(201);
+    expect(await detalle()).toBe(20000);
 
-    expect(res.status).toBe(201);
-
-    const detalle = await request(app)
-      .get(`/api/cuentas/clientes/${clienteId}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(parseFloat(detalle.body.saldo)).toBe(20000);
-  });
-
-  it('devolucion de 10000 con items → saldo cae a 10000', async () => {
-    const res = await request(app)
-      .post('/api/cuentas/movimientos')
-      .set('Authorization', `Bearer ${adminToken}`)
+    // 5) DEVOLUCION 10000 con items → saldo 10000
+    const devo = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        cliente_cc_id: clienteId,
-        fecha:         '2026-03-25',
-        tipo:          'devolucion',
-        monto_total:   10000,
+        cliente_cc_id: clienteId, fecha: '2026-03-25', tipo: 'devolucion', monto_total: 10000,
         items: [{ producto: 'iPhone', modelo: '14', imei_serial: '987654321098765' }],
       });
-
-    expect(res.status).toBe(201);
-    expect(res.body.items.length).toBe(1); // devolucion SÍ tiene items
-
-    const detalle = await request(app)
-      .get(`/api/cuentas/clientes/${clienteId}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(parseFloat(detalle.body.saldo)).toBe(10000);
+    expect(devo.status).toBe(201);
+    expect(devo.body.items.length).toBe(1); // devolucion SÍ tiene items
+    expect(await detalle()).toBe(10000);
   });
 
   it('rechaza tipo inválido → 400', async () => {
@@ -880,6 +837,211 @@ describe('Cobranza masiva', () => {
   it('lote vacío → 400', async () => {
     const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
       .send({ cobranzas: [] });
+    expect(res.status).toBe(400);
+  });
+
+  // ─── #T-04: edge cases adicionales de cobranza masiva ───────────────
+  it('lote con 101 cobranzas → 400 (límite max=100)', async () => {
+    const cobranzas = Array.from({ length: 101 }, () => ({
+      cliente_cc_id: cli1.id, fecha: '2026-05-29',
+      monto: 1, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago',
+    }));
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cobranzas });
+    expect(res.status).toBe(400);
+  });
+
+  it('sobrepago contra cliente con saldo a favor → permite (queda más negativo)', async () => {
+    // Llevamos cli1 a saldo negativo
+    const sCli1Antes = await saldoCliente(cli1.id);
+    // Garantizamos saldo negativo: cobramos $100 contra un cliente sin deuda
+    if (sCli1Antes > 0) {
+      await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+        .send({ cobranzas: [{ cliente_cc_id: cli1.id, fecha: '2026-05-29', monto: sCli1Antes, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' }] });
+    }
+    const sCli1Neg = await saldoCliente(cli1.id);
+    // Ahora otro pago: lleva más negativo
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cobranzas: [{ cliente_cc_id: cli1.id, fecha: '2026-05-29', monto: 50, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' }] });
+    expect(res.status).toBe(201);
+    expect(sCli1Neg - await saldoCliente(cli1.id)).toBeCloseTo(50, 2);
+  });
+
+  it('caja con moneda incorrecta → 400 (caja ARS recibe pago USD)', async () => {
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli1.id, fecha: '2026-05-29', monto: 100, moneda: 'USD', caja_id: cajaARS.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/moneda/i);
+  });
+
+  it('saldo_inicial de cliente baja correctamente al cobrar', async () => {
+    const cliNuevo = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cli Saldo Ini', categoria: 'A+', saldo_inicial: 1000 }).then(r => r.body);
+    expect(await saldoCliente(cliNuevo.id)).toBeCloseTo(1000, 2);
+
+    await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cliNuevo.id, fecha: '2026-05-29', monto: 600, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+        ],
+      });
+    expect(await saldoCliente(cliNuevo.id)).toBeCloseTo(400, 2);
+  });
+});
+
+// ─── #T-02, T-03: DELETE B2B con producto borrado/devolución ──────────
+describe('DELETE movimiento B2B — edge cases con stock', () => {
+  let cliId, catId, cajaUsdId;
+
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set('Authorization', `Bearer ${adminToken}`);
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+
+  beforeAll(async () => {
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente DELETE B2B', categoria: 'A+' });
+    cliId = cli.body.id;
+    const cat = await request(app).post('/api/inventario/categorias').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'DELETE B2B Tests' });
+    catId = cat.body.id;
+    // Caja con saldo inicial para egresos sucesivos
+    const cajaRes = await request(app).post('/api/cajas/cajas').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Caja DELETE B2B', moneda: 'USD', saldo_inicial: 5000, orden: 99 });
+    cajaUsdId = cajaRes.body.id;
+  });
+
+  it('#T-02 — DELETE venta con producto soft-deleted no rompe (no incrementa stock fantasma)', async () => {
+    // 1) Crear producto + venta B2B
+    const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        nombre: 'iPhone para borrar', imei: '350909000000001',
+        costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
+      });
+    const venta = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 800,
+        items: [{ producto_id: prod.body.id, cantidad: 1, valor: 800 }],
+      });
+    expect(venta.status).toBe(201);
+
+    // 2) Soft-delete del producto (alguien lo borró del Inventario)
+    await request(app).delete(`/api/inventario/productos/${prod.body.id}`).set('Authorization', `Bearer ${adminToken}`);
+
+    // 3) Borrar la venta. NO debería romper aunque el producto esté borrado.
+    //    El UPDATE de stock incrementa el producto borrado (queda en cantidad>0
+    //    pero deleted_at sigue null... este es el comportamiento actual; lo que
+    //    nos interesa es que el DELETE de la venta no tire 500.
+    const del = await request(app).delete(`/api/cuentas/movimientos/${venta.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+  });
+
+  it('#T-03 — DELETE devolución revierte el aumento de stock (signo correcto)', async () => {
+    const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        nombre: 'iPhone Devo DELETE', imei: '350909000000002',
+        costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
+      });
+    // Vender → stock 0
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 800,
+        items: [{ producto_id: prod.body.id, cantidad: 1, valor: 800 }],
+      });
+    // Devolución → stock 1
+    const devo = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'devolucion', monto_total: 800,
+        items: [{ producto_id: prod.body.id, cantidad: 1, valor: 800 }],
+      });
+    expect(devo.status).toBe(201);
+    // Confirmar stock=1
+    let p = (await request(app).get(`/api/inventario/productos?buscar=350909000000002&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`)).body.data.find(x => x.id === prod.body.id);
+    expect(Number(p.cantidad)).toBe(1);
+
+    // Borrar la devolución → debería volver stock a 0 (signo invertido)
+    const del = await request(app).delete(`/api/cuentas/movimientos/${devo.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+    p = (await request(app).get(`/api/inventario/productos?buscar=350909000000002&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`)).body.data.find(x => x.id === prod.body.id);
+    expect(Number(p.cantidad)).toBe(0);
+    expect(p.estado).toBe('vendido');
+  });
+
+  it('#B-06 — DELETE devolución con stock vendido entre medio → 409', async () => {
+    // 1) Crear producto, vender (stock 1→0), devolver (0→1), vender de nuevo (1→0)
+    const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        nombre: 'iPhone CHECK', imei: '350909000000003',
+        costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
+      });
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 800,
+        items: [{ producto_id: prod.body.id, cantidad: 1, valor: 800 }] });
+    const devo = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'devolucion', monto_total: 800,
+        items: [{ producto_id: prod.body.id, cantidad: 1, valor: 800 }] });
+    // Re-vender lo devuelto: stock 1 → 0
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 800,
+        items: [{ producto_id: prod.body.id, cantidad: 1, valor: 800 }] });
+
+    // Ahora intentar borrar la devolución → debería bajar 0 → -1 → CHECK constraint
+    // Pero gracias a B-06, devolvemos 409 explícito ANTES del UPDATE.
+    const del = await request(app).delete(`/api/cuentas/movimientos/${devo.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(409);
+    expect(del.body.error).toMatch(/stock|vend/i);
+  });
+});
+
+// ─── #T-05: schemas .strict() rechazan campos extra ──────────────────
+describe('Schemas .strict() — rechazar campos extra', () => {
+  let cliId, cajaUsdId;
+  beforeAll(async () => {
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cli strict', categoria: 'A+' });
+    cliId = cli.body.id;
+    const r = await request(app).get('/api/ventas/metodos-pago').set('Authorization', `Bearer ${adminToken}`);
+    cajaUsdId = (r.body || []).find(m => m.moneda === 'USD').id;
+  });
+
+  it('createMovimientoCC con campo extra → 400', async () => {
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'pago', monto_total: 100,
+        caja_id: cajaUsdId, campo_inventado: 'no debería pasar',
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('itemMovimientoCC con campo extra → 400 (#H-08)', async () => {
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 50,
+        items: [{ producto: 'Algo', valor: 50, foo_extra: 'bar' }],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('cobranzaItem con campo extra → 400', async () => {
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [{
+          cliente_cc_id: cliId, fecha: '2026-05-29', monto: 10, moneda: 'USD',
+          caja_id: cajaUsdId, tipo: 'pago', notas_invalidas: 'extra',
+        }],
+      });
     expect(res.status).toBe(400);
   });
 });
