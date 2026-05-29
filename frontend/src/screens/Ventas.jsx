@@ -423,8 +423,41 @@ export default function Ventas() {
       // Modal de éxito con opción de descargar comprobante PDF. Reemplaza
       // al toast minimalista — da feedback claro y permite imprimir el
       // comprobante para el cliente sin pasos extra.
+      //
+      // IMPORTANTE: el endpoint POST/PUT /api/ventas devuelve solo la fila
+      // de `ventas`, sin items ni pagos embebidos. Para el PDF reusamos el
+      // payload del frontend (con los datos que el usuario acaba de cargar)
+      // y los mergeamos sobre la respuesta. monto_usd se calcula con toUsd.
       if (!uploadFalló) {
-        setExitoModal({ open: true, venta });
+        const tcVenta = Number(vForm.tc_venta) || null;
+        const itemsPdf = items.map(it => ({
+          descripcion:    it.descripcion,
+          cantidad:       Number(it.cantidad) || 1,
+          precio_vendido: Number(it.precio_vendido) || 0,
+          costo:          Number(it.costo) || 0,
+          moneda:         it.moneda || 'USD',
+        }));
+        const pagosPdf = pagosPayload.map(p => ({
+          metodo_nombre: p.metodo_nombre,
+          monto:         Number(p.monto) || 0,
+          moneda:        p.moneda,
+          tc:            p.tc ? Number(p.tc) : null,
+          monto_usd:     toUsd(p.monto, p.moneda, p.tc || tcVenta),
+          es_cuenta_corriente: !!p.es_cuenta_corriente,
+        }));
+        const ventaCompleta = {
+          ...venta,
+          // venta.total_usd ya viene del backend; lo dejamos.
+          // Si fuera nuevo schema y total no viene, lo recalculamos:
+          total_usd: venta.total_usd != null ? venta.total_usd :
+            itemsPdf.reduce((s, it) => s + toUsd(it.precio_vendido * it.cantidad, it.moneda, tcVenta), 0),
+          cliente_nombre: venta.cliente_nombre || vForm.cliente_nombre || 'Consumidor final',
+          fecha:          venta.fecha   || vForm.fecha,
+          notas:          venta.notas   || vForm.notas,
+          items:          itemsPdf,
+          pagos:          pagosPdf,
+        };
+        setExitoModal({ open: true, venta: ventaCompleta });
       }
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
   }

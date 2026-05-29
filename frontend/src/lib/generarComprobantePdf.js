@@ -28,10 +28,19 @@ function fmtFecha(s) {
 }
 
 export async function generarComprobantePdf(venta) {
-  // Lazy import: solo cargar jspdf al usar
+  // Lazy import: solo cargar jspdf al usar (~130 kB gz, no afecta carga inicial).
+  // jspdf-autotable v5 exporta una función `autoTable(doc, options)` como default.
   const { jsPDF } = await import('jspdf');
-  const autoTableMod = await import('jspdf-autotable');
-  const autoTable = autoTableMod.default || autoTableMod.autoTable;
+  const autoTableImport = await import('jspdf-autotable');
+  // Defensa contra distintos esquemas de empaquetado (CJS/ESM, default vs named).
+  const autoTable =
+    typeof autoTableImport.default === 'function' ? autoTableImport.default :
+    typeof autoTableImport.autoTable === 'function' ? autoTableImport.autoTable :
+    typeof autoTableImport === 'function' ? autoTableImport :
+    null;
+  if (!autoTable) {
+    throw new Error('jspdf-autotable: no se pudo resolver el módulo (esquema de import desconocido)');
+  }
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -98,7 +107,8 @@ export async function generarComprobantePdf(venta) {
     },
     margin: { left: margin, right: margin },
   });
-  y = doc.lastAutoTable.finalY + 20;
+  // En autotable v5 el finalY queda en doc.lastAutoTable. Defensivo por las dudas.
+  y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 100) + 20;
 
   // ── 4. Resumen ──────────────────────────────────────────
   const totalVenta = Number(venta.total_usd || 0);
@@ -164,7 +174,8 @@ export async function generarComprobantePdf(venta) {
       },
       margin: { left: margin, right: margin },
     });
-    y = doc.lastAutoTable.finalY + 20;
+    // En autotable v5 el finalY queda en doc.lastAutoTable. Defensivo por las dudas.
+  y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 100) + 20;
   }
 
   // ── 6. Notas y pie ───────────────────────────────────────
