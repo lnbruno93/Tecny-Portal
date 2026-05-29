@@ -22,6 +22,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Icons } from './Icons';
 import { proveedores as provApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from './ConfirmModal';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -90,6 +91,7 @@ function parsePastedRows(text, defaults) {
 
 export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   // ── Cabecera ─────────────────────────────────────────────────────────
   const [fecha, setFecha]   = useState(todayISO());
@@ -111,6 +113,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const [depositos,  setDepositos]  = useState([]);
   const [cajas,      setCajas]      = useState([]);
   const [saving,     setSaving]     = useState(false);
+  // #B-10: IMEIs que el backend devolvió como conflictivos en el último save.
+  // Sus filas se marcan en rojo para que el user pueda identificar y corregir.
+  const [imeisConflicto, setImeisConflicto] = useState(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -290,10 +295,34 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
       onSaved?.(res);
       onClose();
     } catch (e) {
-      toast.error(e.message || 'No se pudo guardar la compra');
+      // #B-10: parsear imeis_existentes del error para marcar filas culpables.
+      // El backend devuelve { error, imeis_existentes: [...] } en 409.
+      const data = e.responseBody || e.data || {};
+      if (Array.isArray(data.imeis_existentes) && data.imeis_existentes.length > 0) {
+        setImeisConflicto(new Set(data.imeis_existentes.map(String)));
+        const lista = data.imeis_existentes.slice(0, 3).join(', ');
+        const more = data.imeis_existentes.length > 3 ? `…+${data.imeis_existentes.length - 3}` : '';
+        toast.error(`IMEI ya existe en stock: ${lista}${more}. Filas marcadas en rojo.`, { duration: 8000 });
+      } else {
+        toast.error(e.message || 'No se pudo guardar la compra');
+      }
     } finally {
       setSaving(false);
     }
+  }
+
+  // #B-09: confirm-on-close si hay data cargada para no perder 80 filas
+  // por un click accidental en el overlay.
+  async function tryClose() {
+    const usadas = rows.filter(isUsedRow).length;
+    if (usadas === 0) return onClose();
+    const ok = await confirm({
+      title: 'Cerrar sin guardar',
+      message: `Vas a perder ${usadas} fila${usadas > 1 ? 's' : ''} cargada${usadas > 1 ? 's' : ''}. ¿Seguro?`,
+      confirmLabel: 'Cerrar y perder cambios',
+      danger: true,
+    });
+    if (ok) onClose();
   }
 
   // ── Estilos compartidos ──────────────────────────────────────────────
@@ -314,11 +343,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={tryClose}>
       <div className="modal" style={{ maxWidth: 1800, width: '98vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3>Cargar compra · {proveedor.nombre}</h3>
-          <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
+          <button className="icon-btn" onClick={tryClose}><Icons.X size={16} /></button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
@@ -434,10 +463,15 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               <tbody>
                 {rows.map((r, idx) => {
                   const used = isUsedRow(r);
+                  // #B-10: marca visual si el IMEI de esta fila está en conflicto.
+                  const imeiBad = r.imei && imeisConflicto.has(r.imei.trim());
                   return (
                     <tr key={r._id} style={{
-                      background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
+                      background: imeiBad
+                        ? 'rgba(239,68,68,0.10)'
+                        : used ? 'rgba(99,102,241,0.04)' : 'transparent',
                       borderTop: '1px solid var(--hairline)',
+                      boxShadow: imeiBad ? 'inset 3px 0 0 0 var(--neg)' : undefined,
                     }}>
                       <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
                       <td style={{ padding: '3px 6px', textAlign: 'center' }}>
@@ -560,7 +594,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
         </div>
 
         <div className="modal-ft">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-ghost" onClick={tryClose}>Cancelar</button>
           <button className="btn btn-primary" disabled={saving} onClick={handleGuardar}>
             {saving ? 'Guardando…' : `Guardar compra (${rows.filter(isUsedRow).length})`}
           </button>
