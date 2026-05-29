@@ -311,7 +311,7 @@ router.get('/desglose', validate(queryDesgloseSchema, 'query'), async (req, res,
 router.get('/productos', validate(queryProductosSchema, 'query'), async (req, res, next) => {
   try {
     const { buscar, clase, estado, categoria_id, deposito_id, solo_stock,
-            nombre, proveedor, gb, color } = req.query;
+            nombre, proveedor, gb, color, vista, condicion } = req.query;
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
@@ -319,7 +319,29 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
     if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
     if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
     if (deposito_id)  { params.push(deposito_id);  conditions.push(`p.deposito_id = $${params.length}`); }
-    if (solo_stock)   { conditions.push(`p.estado = 'disponible' AND p.cantidad > 0`); }
+    if (condicion)    { params.push(condicion);    conditions.push(`p.condicion = $${params.length}`); }
+
+    // Resolución de "vista":
+    //   - Si vino `vista`, gana.
+    //   - Si NO vino `vista` pero sí `solo_stock=true` (clientes legacy), se mapea
+    //     a 'no_vendidos' para preservar el comportamiento previo.
+    //   - Si no vino ni vista ni solo_stock, NO se aplica filtro implícito: el
+    //     cliente verá lo que pase los demás filtros (compat con drill-down
+    //     existente desde Desglose 360, que NO quiere el filtro por defecto).
+    const vistaEfectiva = vista || (solo_stock ? 'no_vendidos' : null);
+    if (vistaEfectiva === 'no_vendidos') {
+      conditions.push(`p.estado <> 'vendido' AND p.cantidad > 0 AND p.oculto = false`);
+    } else if (vistaEfectiva === 'no_vendidos_ocultos') {
+      conditions.push(`p.estado <> 'vendido' AND p.cantidad > 0 AND p.oculto = true`);
+    } else if (vistaEfectiva === 'ocultos') {
+      conditions.push(`p.oculto = true`);
+    } else if (vistaEfectiva === 'vendidos') {
+      conditions.push(`p.estado = 'vendido' AND p.oculto = false`);
+    } else if (vistaEfectiva === 'todos_visibles') {
+      conditions.push(`p.oculto = false`);
+    }
+    // 'todos_ocultos' → sin filtro extra: ve todo.
+
     // Igualdades exactas — drill-down desde Desglose 360.
     if (nombre)    { params.push(nombre);    conditions.push(`p.nombre = $${params.length}`); }
     if (proveedor) { params.push(proveedor); conditions.push(`TRIM(COALESCE(p.proveedor, '')) = $${params.length}`); }
@@ -338,7 +360,7 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
       SELECT p.id, p.tipo_carga, p.clase, p.nombre, p.imei, p.gb, p.color, p.bateria,
              p.categoria_id, p.deposito_id, p.proveedor, p.costo, p.costo_moneda,
              p.precio_venta, p.precio_moneda, p.trackear_stock, p.cantidad, p.estado,
-             p.observaciones, p.created_at,
+             p.observaciones, p.condicion, p.oculto, p.created_at,
              (p.foto_data IS NOT NULL) AS tiene_foto, p.foto_nombre, p.foto_tipo,
              c.nombre AS categoria_nombre, d.nombre AS deposito_nombre
       FROM productos p
@@ -375,11 +397,20 @@ const PRODUCTO_COLS = [
   'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
   'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
   'foto_data', 'foto_nombre', 'foto_tipo', 'observaciones',
+  'condicion', 'oculto',
 ];
 
 router.post('/productos', validate(createProductoSchema), async (req, res, next) => {
   try {
-    const b = req.body;
+    // Defaults JS para columnas NOT NULL nuevas (la migración tiene DEFAULT,
+    // pero como el INSERT lista todas las columnas explícitamente pasaríamos
+    // NULL si el cliente no las manda → NOT NULL violation). Defaultear acá
+    // es más simple que ramificar el SQL.
+    const b = {
+      ...req.body,
+      condicion: req.body.condicion ?? 'nuevo',
+      oculto:    req.body.oculto    ?? false,
+    };
     const values = PRODUCTO_COLS.map(c => b[c] ?? null);
     const placeholders = PRODUCTO_COLS.map((_, i) => `$${i + 1}`).join(',');
     const { rows } = await db.query(
@@ -454,7 +485,9 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
     const creados = [];
     for (const p of productos) {
-      const values = cols.map(c => p[c] ?? null);
+      // Mismo default explícito que en el POST simple: columnas NOT NULL nuevas.
+      const pBuf = { ...p, condicion: p.condicion ?? 'nuevo', oculto: p.oculto ?? false };
+      const values = cols.map(c => pBuf[c] ?? null);
       const { rows } = await client.query(
         `INSERT INTO productos (${cols.join(',')}) VALUES (${placeholders}) RETURNING id`, values
       );

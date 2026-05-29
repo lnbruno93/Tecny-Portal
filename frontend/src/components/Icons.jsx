@@ -48,6 +48,7 @@ export const Icons = {
   Edit: (p) => <ICO {...p}><path d="M4 20h4l11-11-4-4L4 16Z" /><path d="m14 6 4 4" /></ICO>,
   Trash: (p) => <ICO {...p}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></ICO>,
   Eye: (p) => <ICO {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></ICO>,
+  EyeOff: (p) => <ICO {...p}><path d="M3 3l18 18" /><path d="M10.5 6.5A10 10 0 0 1 12 5c6.5 0 10 7 10 7a16 16 0 0 1-3.4 4.3" /><path d="M6.7 6.7C3.6 8.6 2 12 2 12s3.5 7 10 7a10 10 0 0 0 5.3-1.6" /><path d="M9.5 9.5a3 3 0 0 0 4 4" /></ICO>,
   Print: (p) => <ICO {...p}><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="9" rx="2" /><path d="M6 14h12v7H6z" /></ICO>,
   Camera: (p) => <ICO {...p}><path d="M3 7h4l2-3h6l2 3h4v12H3Z" /><circle cx="12" cy="13" r="4" /></ICO>,
   Logout: (p) => <ICO {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></ICO>,

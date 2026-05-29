@@ -26,7 +26,19 @@ const EMPTY_PRODUCTO = {
   bateria: '', categoria_id: '', deposito_id: '', proveedor: '',
   costo: '', costo_moneda: 'USD', precio_venta: '', precio_moneda: 'USD',
   cantidad: '1', estado: 'disponible', observaciones: '',
+  condicion: 'nuevo',
 };
+
+// Opciones del selector "Vista" — encapsulan combinaciones de estado + oculto.
+// Mismo enum que el backend (backend/src/schemas/inventario.js: VISTAS_INVENTARIO).
+const VISTAS = [
+  { value: 'no_vendidos',         label: 'No vendidos (en stock)' },
+  { value: 'no_vendidos_ocultos', label: 'No vendidos · ocultos' },
+  { value: 'ocultos',             label: 'Ocultos' },
+  { value: 'vendidos',            label: 'Vendidos' },
+  { value: 'todos_visibles',      label: 'Todos los visibles' },
+  { value: 'todos_ocultos',       label: 'Todos (con ocultos)' },
+];
 
 const ESTADO_DISPLAY = {
   disponible: { label: 'Disponible', tone: 'pos' },
@@ -99,8 +111,12 @@ export default function Inventario() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const [claseFilter, setClaseFilter] = useState('todos'); // todos | celular | accesorio | tecnico
-  const [soloStock, setSoloStock] = useState(false);
+  // El filtro de "pestañas" admite ahora valores compuestos:
+  //   'todos' | 'celular' | 'accesorio' | 'tecnico' | 'usados' | 'cat:<id>'
+  // Esto permite mezclar tabs fijos (claseFilter clásico), el atributo nuevo
+  // 'usados' (condicion=usado) y categorías administrables (categoria_id=N).
+  const [claseFilter, setClaseFilter] = useState('todos');
+  const [vistaFiltro, setVistaFiltro] = useState('no_vendidos');
   const [search, setSearch] = useState('');
   // Search debounceada: no dispara una request al backend (con ILIKE multi-columna +
   // COUNT(*)) en cada keystroke; espera 350ms tras la última tecla.
@@ -147,14 +163,26 @@ export default function Inventario() {
   const loadProductos = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, limit: 50 };
+      const params = { page, limit: 50, vista: vistaFiltro };
+      // Resolución del tab activo:
+      //   - celular / accesorio → params.clase
+      //   - tecnico            → params.estado = en_tecnico
+      //   - usados             → params.condicion = usado
+      //   - cat:<id>           → params.categoria_id
+      //   - todos              → sin filtro extra
       if (claseFilter === 'celular' || claseFilter === 'accesorio') params.clase = claseFilter;
-      if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
-      if (soloStock) params.solo_stock = 'true';
+      else if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
+      else if (claseFilter === 'usados') params.condicion = 'usado';
+      else if (claseFilter && claseFilter.startsWith('cat:')) params.categoria_id = claseFilter.slice(4);
       if (dSearch.trim()) params.buscar = dSearch.trim();
       // Drill-down: aplicamos los filtros que vinieron por URL al fetch.
       // El backend rechaza claves desconocidas (Zod), así que sólo pasamos lo válido.
-      Object.assign(params, drillFilters);
+      // Importante: el drill-down sobreescribe la vista a 'todos_ocultos' para que el
+      // usuario vea TODO lo que matchea el desglose, no sólo no-vendidos.
+      if (Object.keys(drillFilters).length) {
+        Object.assign(params, drillFilters);
+        params.vista = 'todos_ocultos';
+      }
       const res = await inventario.productos(params);
       setProductos(res.data || []);
       setTotal(res.pagination?.total || 0);
@@ -164,7 +192,7 @@ export default function Inventario() {
     } finally {
       setLoading(false);
     }
-  }, [page, claseFilter, soloStock, dSearch, toast, drillFilters]);
+  }, [page, claseFilter, vistaFiltro, dSearch, toast, drillFilters]);
 
   const loadMetricas = useCallback(async () => {
     try { setMetricas(await inventario.metricas()); } catch (_) {}
@@ -214,7 +242,7 @@ export default function Inventario() {
 
   // Cambiar filtros → volver a page 1. Usamos dSearch (no search) para que el
   // reset ocurra junto con el fetch debounceado.
-  useEffect(() => { setPage(1); }, [claseFilter, soloStock, dSearch]);
+  useEffect(() => { setPage(1); }, [claseFilter, vistaFiltro, dSearch]);
 
   // ── Modal alta/edición ──
   function openCreate() {
@@ -228,6 +256,7 @@ export default function Inventario() {
       categoria_id: p.categoria_id ?? '', deposito_id: p.deposito_id ?? '', proveedor: p.proveedor ?? '',
       costo: p.costo, costo_moneda: p.costo_moneda, precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
       cantidad: p.cantidad, estado: p.estado, observaciones: p.observaciones ?? '',
+      condicion: p.condicion || 'nuevo',
     });
     setFormError(''); setShowForm(true);
   }
@@ -254,6 +283,7 @@ export default function Inventario() {
       precio_venta: num(form.precio_venta) ?? 0, precio_moneda: form.precio_moneda,
       cantidad: num(form.cantidad) ?? 1, estado: form.estado,
       observaciones: form.observaciones.trim() || null,
+      condicion: form.condicion || 'nuevo',
     };
     try {
       if (editId) await inventario.updateProducto(editId, payload);
@@ -447,22 +477,40 @@ export default function Inventario() {
         </div>
       </div>
 
-      {/* ── Filtros ── */}
-      <div className="flex-between" style={{ marginBottom: 14 }}>
-        <Seg
-          value={claseFilter}
-          options={[
-            { value: 'todos', label: 'Todos' },
-            { value: 'celular', label: 'Celulares' },
-            { value: 'accesorio', label: 'Accesorios' },
-            { value: 'tecnico', label: 'En técnico' },
-          ]}
-          onChange={setClaseFilter}
-        />
-        <div className="flex-row" style={{ gap: 8 }}>
-          <label className="flex-row" style={{ gap: 6, fontSize: 13, color: 'var(--text-muted)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={soloStock} onChange={e => setSoloStock(e.target.checked)} /> Solo en stock
-          </label>
+      {/* ── Filtros ──
+            Fila 1: tabs (clase fija + 'Usados' + 1 tab por categoría administrable).
+                    Se hacen scroll horizontal si no entran en el ancho disponible.
+            Fila 2: selector de vista (estado + ocultos) + buscador.            */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ overflowX: 'auto', marginBottom: 10, paddingBottom: 2 }}>
+          <Seg
+            value={claseFilter}
+            options={[
+              { value: 'todos', label: 'Todos' },
+              { value: 'celular', label: 'Celulares' },
+              { value: 'accesorio', label: 'Accesorios' },
+              { value: 'tecnico', label: 'En técnico' },
+              { value: 'usados', label: 'Usados' },
+              // Categorías administrables → 1 tab por cada una (orden alfabético).
+              // El usuario las crea/edita desde "Gestionar categorías" sin tocar código.
+              ...[...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+                .map(c => ({ value: `cat:${c.id}`, label: c.nombre })),
+            ]}
+            onChange={setClaseFilter}
+          />
+        </div>
+        <div className="flex-between" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
+            <label className="field-label" style={{ marginBottom: 0, marginRight: 4 }}>Vista</label>
+            <select
+              className="input"
+              value={vistaFiltro}
+              onChange={e => setVistaFiltro(e.target.value)}
+              style={{ width: 240 }}
+            >
+              {VISTAS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
+            </select>
+          </div>
           <div className="input-group" style={{ width: 300 }}>
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input className="input" placeholder="Buscar nombre, IMEI, color, GB…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -514,8 +562,10 @@ export default function Inventario() {
                 const save = (field) => (val) => inlineUpdate(p.id, field, val);
                 const catOptions = categorias.map(c => ({ value: c.id, label: c.nombre }));
                 const provOptions = proveedoresList.map(s => ({ value: s, label: s }));
+                // Atenuamos la fila si el producto está oculto: pista visual rápida
+                // sin agregar una columna nueva en una tabla que ya es ancha.
                 return (
-                  <tr key={p.id}>
+                  <tr key={p.id} style={p.oculto ? { opacity: 0.55 } : undefined}>
                     <EditableCell
                       value={p.nombre}
                       type="text"
@@ -639,6 +689,13 @@ export default function Inventario() {
                       emptyToNull={false}
                     />
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button
+                        className="icon-btn"
+                        title={p.oculto ? 'Mostrar (sacar de ocultos)' : 'Ocultar de la vista por defecto'}
+                        onClick={() => inlineUpdate(p.id, 'oculto', !p.oculto).catch(() => {})}
+                      >
+                        {p.oculto ? <Icons.EyeOff size={14} /> : <Icons.Eye size={14} />}
+                      </button>
                       <button className="icon-btn" title="Editar (modal completo)" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
                       <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
                     </td>
@@ -737,6 +794,13 @@ export default function Inventario() {
                         <option value="en_tecnico">En técnico</option>
                         <option value="reservado">Reservado</option>
                         <option value="vendido">Vendido</option>
+                      </select>
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Condición</label>
+                      <select className="input" value={form.condicion} onChange={e => setF('condicion', e.target.value)}>
+                        <option value="nuevo">Nuevo</option>
+                        <option value="usado">Usado</option>
                       </select>
                     </div>
                   </div>
