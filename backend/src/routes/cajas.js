@@ -171,6 +171,25 @@ router.get('/cajas', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Reporte de cajas con saldo negativo — útil para regularizar datos viejos
+// antes de que el lock de "no negativo" empezara a aplicarse en POST.
+// Devuelve lista plana: { id, nombre, moneda, saldo_actual }.
+router.get('/cajas/negativas', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT mp.id, mp.nombre, mp.moneda,
+              mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo_actual
+         FROM metodos_pago mp
+         LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id AND cm.deleted_at IS NULL
+        WHERE mp.deleted_at IS NULL
+        GROUP BY mp.id
+       HAVING mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) < 0
+        ORDER BY (mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0)) ASC`
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -334,7 +353,7 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const caja = await db.query('SELECT id, moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
+    const caja = await db.query('SELECT id, moneda, saldo_inicial FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!caja.rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
 
     const { fecha, tipo, monto, tc, concepto } = req.body;
@@ -342,6 +361,28 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
     if (moneda === 'ARS' && !(tc && tc > 0)) {
       return res.status(400).json({ error: 'Para una caja en ARS se requiere el tipo de cambio (tc)' });
     }
+
+    // Validación de saldo no-negativo para egresos (misma política que postCajaMovimiento).
+    if (tipo === 'egreso') {
+      const { rows: balRows } = await db.query(
+        `SELECT
+           COALESCE($2::numeric, 0)
+           + COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END), 0)
+           - COALESCE(SUM(CASE WHEN tipo = 'egreso'  THEN monto ELSE 0 END), 0)
+           AS saldo
+           FROM caja_movimientos
+          WHERE caja_id = $1 AND deleted_at IS NULL`,
+        [id, caja.rows[0].saldo_inicial || 0]
+      );
+      const saldoActual = Number(balRows[0]?.saldo || 0);
+      if (saldoActual - Number(monto) < 0) {
+        return res.status(400).json({
+          error: `Saldo insuficiente en la caja (saldo actual: ${saldoActual.toFixed(2)} ${moneda}, ` +
+                 `egreso pedido: ${Number(monto).toFixed(2)}). Una caja no puede quedar en negativo.`,
+        });
+      }
+    }
+
     const monto_usd = round2(toUsd(monto, moneda, tc));
     const { rows } = await db.query(
       `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto, user_id)

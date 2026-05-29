@@ -170,6 +170,7 @@ export const cuentas = {
   calendario: (mes) => api(`/api/cuentas/calendario?mes=${mes}`),
   createMovimiento: (data) => api('/api/cuentas/movimientos', 'POST', data),
   deleteMovimiento: (id) => api(`/api/cuentas/movimientos/${id}`, 'DELETE'),
+  cobranzaMasiva:   (data) => api('/api/cuentas/cobranzas-masivas', 'POST', data),
 };
 
 export const proveedores = {

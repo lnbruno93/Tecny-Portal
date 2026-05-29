@@ -27,18 +27,25 @@ const {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
+  cobranzaMasivaSchema,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
 
 // Helper: SQL para calcular saldo de un cliente (subquery reutilizable — usada solo en GET /:id)
 // Para el listado usamos un JOIN en lugar de subquery correlacionada (ver abajo).
+//
+// Regla nueva (mayo-2026, paralelo a Proveedores): una 'compra' con caja_id
+// es contado (entró el dinero al instante) y NO suma deuda. Sin caja_id queda
+// como deuda del cliente (el caso clásico de venta a CC).
 const SALDO_SQL = `
   COALESCE((
     SELECT SUM(
-      CASE WHEN tipo IN ('compra', 'saldo_inicial')
-           THEN  monto_total
-           ELSE -monto_total
+      CASE
+        WHEN tipo = 'saldo_inicial'                       THEN  monto_total
+        WHEN tipo = 'compra' AND caja_id IS NOT NULL      THEN  0
+        WHEN tipo = 'compra'                              THEN  monto_total
+        ELSE -monto_total
       END
     )
     FROM movimientos_cc
@@ -76,7 +83,14 @@ router.get('/clientes', async (req, res, next) => {
          FROM clientes_cc c
          LEFT JOIN (
            SELECT cliente_cc_id,
-                  SUM(CASE WHEN tipo IN ('compra', 'saldo_inicial') THEN monto_total ELSE -monto_total END) AS saldo
+                  SUM(
+                    CASE
+                      WHEN tipo = 'saldo_inicial'                  THEN  monto_total
+                      WHEN tipo = 'compra' AND caja_id IS NOT NULL THEN  0
+                      WHEN tipo = 'compra'                         THEN  monto_total
+                      ELSE -monto_total
+                    END
+                  ) AS saldo
            FROM movimientos_cc
            WHERE deleted_at IS NULL
            GROUP BY cliente_cc_id
@@ -287,25 +301,62 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     );
     const mov = movRows[0];
 
-    // Un PAGO del cliente mayorista (pago / parte_de_pago) ingresa a una caja.
-    // monto_total ya está normalizado en USD por la UI.
-    if (['pago', 'parte_de_pago'].includes(tipo) && caja_id) {
+    // Flujo "sale stock, entra dinero" (analogía inversa a Proveedores):
+    //   - tipo 'compra' del cliente B2B (= venta nuestra a ese cliente):
+    //       · con caja_id → ingreso al instante en esa caja (contado, no suma deuda)
+    //       · sin caja_id → queda como deuda del cliente
+    //   - tipo 'pago' / 'parte_de_pago' → siempre ingreso a la caja indicada
+    //   - tipo 'devolucion' → reverso de venta, NO mueve caja en esta versión
+    //     (la devolución cae en CC del cliente como menos deuda)
+    if (caja_id && ['pago', 'parte_de_pago', 'compra'].includes(tipo)) {
       await postCajaMovimiento(client, {
         caja_id, fecha, tipo: 'ingreso', monto: monto_total, moneda: 'USD', tc: null,
         origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
-        concepto: `Pago B2B #${cliente_cc_id}`, user_id: req.user.id,
+        concepto: tipo === 'compra' ? `Venta B2B (contado) cliente #${cliente_cc_id}` : `Pago B2B #${cliente_cc_id}`,
+        user_id: req.user.id,
       });
     }
 
-    // Insertar items solo para compra/devolucion (ignorar el resto)
+    // Insertar items y, si tienen `producto_id`, validar stock y descontar.
+    //   - compra / entrega_mercaderia → salida de stock (descuenta cantidad).
+    //   - devolucion → entrada de stock (suma cantidad).
     let insertedItems = [];
-    const tiposConItems = ['compra', 'devolucion'];
+    const tiposConItems = ['compra', 'devolucion', 'entrega_mercaderia'];
     if (tiposConItems.includes(tipo) && items.length > 0) {
+      // Lock + validación de stock disponible para cada producto_id ANTES de
+      // empezar a tocar (evita race con ventas concurrentes y rollbacks
+      // parciales). Se usa SELECT ... FOR UPDATE en cada producto.
+      const esSalida = tipo === 'compra' || tipo === 'entrega_mercaderia';
       for (const item of items) {
+        if (!item.producto_id) continue;
+        const { rows: prodRows } = await client.query(
+          `SELECT id, nombre, cantidad, estado FROM productos
+             WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+          [item.producto_id]
+        );
+        if (!prodRows[0]) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: `Producto #${item.producto_id} no existe` });
+        }
+        if (esSalida) {
+          const cant = Number(item.cantidad || 1);
+          if (Number(prodRows[0].cantidad) < cant) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: `Stock insuficiente para "${prodRows[0].nombre}": disponible ${prodRows[0].cantidad}, pedido ${cant}`,
+              producto_id: item.producto_id,
+            });
+          }
+        }
+      }
+
+      for (const item of items) {
+        const cant = Number(item.cantidad || 1);
         const { rows: itemRows } = await client.query(
           `INSERT INTO items_movimiento_cc
-             (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas,
+              producto_id, cantidad)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
            RETURNING *`,
           [
             mov.id,
@@ -317,9 +368,37 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
             item.valor       ?? null,
             item.verificado  ?? false,
             item.notas       ?? null,
+            item.producto_id ?? null,
+            cant,
           ]
         );
         insertedItems.push(itemRows[0]);
+
+        // Stock movement: salida (compra/entrega) o entrada (devolucion)
+        if (item.producto_id) {
+          if (esSalida) {
+            // Descontar. Si la cantidad llega a 0, el estado pasa a 'vendido'
+            // (regla actual del Inventario para unitarios). El backend NO
+            // distingue ítem-unitario vs lote acá: simplemente descuenta y, si
+            // queda en 0, marca vendido. Si queda > 0, sigue disponible.
+            await client.query(
+              `UPDATE productos
+                 SET cantidad = cantidad - $1,
+                     estado   = CASE WHEN cantidad - $1 <= 0 THEN 'vendido' ELSE estado END
+               WHERE id = $2`,
+              [cant, item.producto_id]
+            );
+          } else {
+            // Devolución: re-ingresa stock y vuelve a 'disponible' si estaba vendido.
+            await client.query(
+              `UPDATE productos
+                 SET cantidad = cantidad + $1,
+                     estado   = CASE WHEN estado = 'vendido' THEN 'disponible' ELSE estado END
+               WHERE id = $2`,
+              [cant, item.producto_id]
+            );
+          }
+        }
       }
     }
 
@@ -352,9 +431,115 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     // Revertir el ingreso de caja asociado (si lo hubo)
     await reverseCajaMovimientos(client, 'movimientos_cc', id);
+
+    // Devolver el stock al Inventario para los items que lo descontaron.
+    //   - Si el mov era compra/entrega_mercaderia → reentra al stock.
+    //   - Si era devolucion → vuelve a salir (compensa el ingreso original).
+    // Soft-delete (items_movimiento_cc no se borra pero la PK del mov ya quedó
+    // marcada con deleted_at, así que esta query usa la lista de items vivos
+    // ANTES del soft-delete del padre via JOIN sobre el id del movimiento).
+    const tipo = rows[0].tipo;
+    if (['compra', 'entrega_mercaderia', 'devolucion'].includes(tipo)) {
+      const sign = tipo === 'devolucion' ? -1 : 1; // compra/entrega: + (reintegrar); devolución: − (sacar)
+      const { rows: items } = await client.query(
+        `SELECT producto_id, cantidad FROM items_movimiento_cc
+           WHERE movimiento_cc_id = $1 AND producto_id IS NOT NULL`,
+        [id]
+      );
+      for (const it of items) {
+        const delta = sign * Number(it.cantidad || 1);
+        await client.query(
+          `UPDATE productos
+             SET cantidad = cantidad + $1,
+                 estado   = CASE
+                   WHEN cantidad + $1 > 0 AND estado = 'vendido' THEN 'disponible'
+                   WHEN cantidad + $1 <= 0                       THEN 'vendido'
+                   ELSE estado
+                 END
+           WHERE id = $2`,
+          [delta, it.producto_id]
+        );
+      }
+    }
+
     await audit(client, 'movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── COBRANZA MASIVA ──────────────────────────────────────────────────────────
+// Registra N pagos de distintos clientes en una sola TX (todo o nada).
+//   - Cada fila es un movimiento_cc independiente (tipo=pago/parte_de_pago).
+//   - Cada fila postea un INGRESO a su caja correspondiente.
+//   - El sobrepago (monto > saldo) se permite: el cliente queda con saldo
+//     negativo (a favor), descontable de la próxima compra.
+//   - Si una fila falla por cualquier motivo (cliente no existe, caja
+//     inválida, etc.) → rollback total: ninguna cobranza se aplica.
+router.post('/cobranzas-masivas', validate(cobranzaMasivaSchema), async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    const { cobranzas } = req.body;
+    await client.query('BEGIN');
+
+    // Pre-validación: clientes vivos y cajas vivas. Salvo bloqueo total
+    // antes de empezar a INSERTAR para mensajes claros y rollback rápido.
+    const clienteIds = [...new Set(cobranzas.map(c => c.cliente_cc_id))];
+    const cajaIds    = [...new Set(cobranzas.map(c => c.caja_id))];
+    const [valC, valK] = await Promise.all([
+      client.query('SELECT id FROM clientes_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [clienteIds]),
+      client.query('SELECT id FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [cajaIds]),
+    ]);
+    const okC = new Set(valC.rows.map(r => r.id));
+    const okK = new Set(valK.rows.map(r => r.id));
+    const errores = [];
+    cobranzas.forEach((c, i) => {
+      if (!okC.has(c.cliente_cc_id)) errores.push({ fila: i + 1, error: `Cliente #${c.cliente_cc_id} no existe` });
+      if (!okK.has(c.caja_id))       errores.push({ fila: i + 1, error: `Caja #${c.caja_id} no existe` });
+    });
+    if (errores.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Referencias inválidas', detalles: errores });
+    }
+
+    const creados = [];
+    for (const c of cobranzas) {
+      // Normalizar monto a USD para auditar saldo en moneda dura.
+      // El monto_total del mov queda en USD (igual que el flujo individual);
+      // la caja se descuenta en la moneda de la caja con el tc provisto.
+      const tcN = c.moneda === 'USD' ? 1 : Number(c.tc);
+      const montoUsd = c.moneda === 'USD' ? c.monto : c.monto / tcN;
+
+      const { rows: movRows } = await client.query(
+        `INSERT INTO movimientos_cc
+           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id]
+      );
+      const mov = movRows[0];
+
+      await postCajaMovimiento(client, {
+        caja_id: c.caja_id, fecha: c.fecha, tipo: 'ingreso',
+        monto: c.monto, moneda: c.moneda, tc: c.tc ?? null,
+        origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
+        concepto: `Cobranza masiva cliente #${c.cliente_cc_id}`,
+        user_id: req.user.id,
+      });
+
+      await audit(client, 'movimientos_cc', 'INSERT', mov.id, {
+        despues: { ...mov, _origen: 'cobranza_masiva' },
+        user_id: req.user.id,
+      });
+      creados.push(mov);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ ok: true, creados: creados.length, movimientos: creados });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

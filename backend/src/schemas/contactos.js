@@ -4,13 +4,14 @@ const TIPOS_CONTACTO = ['amigo','familiar','cliente','inversor','ipro team'];
 const ORIGENES = ['ventas','b2b','proveedores','envios','manual','proyectos'];
 
 const createContactoSchema = z.object({
-  nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
-  apellido: z.string().trim().max(100).optional().nullable(),
-  telefono: z.string().trim().max(60).optional().nullable(),
-  dni:      z.string().trim().max(30).optional().nullable(),
-  email:    z.string().trim().max(120).email('Email inválido').optional().nullable().or(z.literal('')),
-  tipo:     z.enum(TIPOS_CONTACTO, { error: `Tipo debe ser: ${TIPOS_CONTACTO.join(', ')}` }).optional(),
-  origen:   z.enum(ORIGENES, { error: `Origen debe ser: ${ORIGENES.join(', ')}` }).optional(),
+  nombre:           z.string().trim().min(1, 'Nombre requerido').max(100),
+  apellido:         z.string().trim().max(100).optional().nullable(),
+  telefono:         z.string().trim().max(60).optional().nullable(),
+  dni:              z.string().trim().max(30).optional().nullable(),
+  email:            z.string().trim().max(120).email('Email inválido').optional().nullable().or(z.literal('')),
+  fecha_nacimiento: z.string().date('Fecha inválida — usar YYYY-MM-DD').optional().nullable().or(z.literal('')),
+  tipo:             z.enum(TIPOS_CONTACTO, { error: `Tipo debe ser: ${TIPOS_CONTACTO.join(', ')}` }).optional(),
+  origen:           z.enum(ORIGENES, { error: `Origen debe ser: ${ORIGENES.join(', ')}` }).optional(),
 }).strict();
 
 // PUT — todos opcionales, pero al menos uno presente

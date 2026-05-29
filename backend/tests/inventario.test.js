@@ -358,3 +358,123 @@ describe('POST /api/inventario/productos/bulk', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── Vista + oculto + condición ──────────────────────────────
+// Fixture aislado: armamos 4 productos con combinaciones distintas y validamos
+// que cada vista los segmente correctamente. Usamos buscar='__VistaSuite__' como
+// marcador único para no contaminarnos con datos de otros describes.
+describe('Filtros: vista (oculto/estado) y condicion', () => {
+  let visibleStock, vendido, oculto, usado;
+
+  beforeAll(async () => {
+    const TAG = '__VistaSuite__';
+    const mk = (extra) => ({
+      nombre: `${TAG} ${extra.label}`,
+      clase: 'accesorio',
+      categoria_id: catBase,
+      costo: 1,
+      precio_venta: 2,
+      cantidad: 1,
+      ...extra.body,
+    });
+    // 1) visible + disponible + nuevo  → aparece en 'no_vendidos' y 'todos_visibles'
+    let r = await request(app).post('/api/inventario/productos').set(auth())
+      .send(mk({ label: 'A-stock-nuevo', body: {} }));
+    visibleStock = r.body.id;
+    // 2) vendido + visible → 'vendidos' y 'todos_visibles'
+    r = await request(app).post('/api/inventario/productos').set(auth())
+      .send(mk({ label: 'B-vendido', body: { estado: 'vendido' } }));
+    vendido = r.body.id;
+    // 3) oculto + disponible → 'no_vendidos_ocultos', 'ocultos', 'todos_ocultos'
+    r = await request(app).post('/api/inventario/productos').set(auth())
+      .send(mk({ label: 'C-oculto', body: { oculto: true } }));
+    oculto = r.body.id;
+    // 4) usado + visible + disponible
+    r = await request(app).post('/api/inventario/productos').set(auth())
+      .send(mk({ label: 'D-usado', body: { condicion: 'usado' } }));
+    usado = r.body.id;
+  });
+
+  const getIds = async (qs) => {
+    const r = await request(app).get(`/api/inventario/productos?buscar=__VistaSuite__&${qs}`).set(auth());
+    expect(r.status).toBe(200);
+    return r.body.data.map(p => p.id);
+  };
+
+  it('oculto y condicion default OK al crear sin pasarlos', async () => {
+    const r = await request(app).get(`/api/inventario/productos?buscar=__VistaSuite__`).set(auth());
+    const a = r.body.data.find(p => p.id === visibleStock);
+    expect(a).toBeTruthy();
+    expect(a.oculto).toBe(false);
+    expect(a.condicion).toBe('nuevo');
+  });
+
+  it("vista=no_vendidos: solo visible+disponible+stock>0 (incluye 'usado' visible)", async () => {
+    const ids = await getIds('vista=no_vendidos');
+    expect(ids).toContain(visibleStock);
+    expect(ids).toContain(usado);
+    expect(ids).not.toContain(vendido);
+    expect(ids).not.toContain(oculto);
+  });
+
+  it('vista=vendidos: solo los vendidos visibles', async () => {
+    const ids = await getIds('vista=vendidos');
+    expect(ids).toContain(vendido);
+    expect(ids).not.toContain(visibleStock);
+    expect(ids).not.toContain(oculto);
+  });
+
+  it('vista=ocultos: cualquier estado pero oculto=true', async () => {
+    const ids = await getIds('vista=ocultos');
+    expect(ids).toContain(oculto);
+    expect(ids).not.toContain(visibleStock);
+    expect(ids).not.toContain(vendido);
+  });
+
+  it('vista=todos_visibles: no incluye ocultos', async () => {
+    const ids = await getIds('vista=todos_visibles');
+    expect(ids).toContain(visibleStock);
+    expect(ids).toContain(vendido);
+    expect(ids).toContain(usado);
+    expect(ids).not.toContain(oculto);
+  });
+
+  it('vista=todos_ocultos: incluye todo (vendidos + ocultos)', async () => {
+    const ids = await getIds('vista=todos_ocultos');
+    expect(ids).toEqual(expect.arrayContaining([visibleStock, vendido, oculto, usado]));
+  });
+
+  it('condicion=usado filtra el tab "Usados"', async () => {
+    const ids = await getIds('condicion=usado&vista=todos_ocultos');
+    expect(ids).toContain(usado);
+    expect(ids).not.toContain(visibleStock);
+  });
+
+  it('PUT con oculto=true oculta el producto sin tocar otros campos', async () => {
+    const r = await request(app).put(`/api/inventario/productos/${visibleStock}`).set(auth())
+      .send({ oculto: true });
+    expect(r.status).toBe(200);
+    expect(r.body.oculto).toBe(true);
+    expect(r.body.estado).toBe('disponible'); // no se pisó
+    // Y ya no aparece en no_vendidos:
+    const ids = await getIds('vista=no_vendidos');
+    expect(ids).not.toContain(visibleStock);
+  });
+
+  it('vista inválida → 400', async () => {
+    const r = await request(app).get('/api/inventario/productos?vista=marciana').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('condicion inválida → 400', async () => {
+    const r = await request(app).get('/api/inventario/productos?condicion=alquilado').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('compat: solo_stock=true sin vista → equivale a no_vendidos', async () => {
+    const ids = await getIds('solo_stock=true');
+    expect(ids).toContain(usado);
+    expect(ids).not.toContain(vendido);
+    expect(ids).not.toContain(oculto);
+  });
+});

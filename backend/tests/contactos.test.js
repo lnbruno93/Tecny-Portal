@@ -78,4 +78,22 @@ describe('Contactos — agenda', () => {
     const list = await request(app).get('/api/contactos?buscar=ana@mail').set(auth());
     expect(list.body.some(c => c.id === id)).toBe(false);
   });
+
+  // fecha_nacimiento: agregada para alimentar Data Science (cumpleaños, perfilado).
+  it('acepta fecha_nacimiento al crear y al actualizar', async () => {
+    const res = await request(app).post('/api/contactos').set(auth())
+      .send({ nombre: 'Beto', fecha_nacimiento: '1993-08-04' });
+    expect(res.status).toBe(201);
+    expect(String(res.body.fecha_nacimiento)).toMatch(/1993-08-04/);
+    const upd = await request(app).put(`/api/contactos/${res.body.id}`).set(auth())
+      .send({ fecha_nacimiento: '1995-12-20' });
+    expect(upd.status).toBe(200);
+    expect(String(upd.body.fecha_nacimiento)).toMatch(/1995-12-20/);
+  });
+
+  it('rechaza fecha_nacimiento con formato inválido → 400', async () => {
+    const res = await request(app).post('/api/contactos').set(auth())
+      .send({ nombre: 'Mal Fecha', fecha_nacimiento: '04-08-1993' });
+    expect(res.status).toBe(400);
+  });
 });

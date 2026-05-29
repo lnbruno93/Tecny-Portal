@@ -332,14 +332,23 @@ describe('Ledger de cajas', () => {
     expect(Number(row.saldo_actual)).toBe(0);
   });
 
-  it('una COMPRA B2B no toca la caja (solo el pago ingresa)', async () => {
+  it('una COMPRA B2B con caja_id ingresa al instante (contado) - nuevo comportamiento (#75)', async () => {
+    // Cambio mayo-2026 (paralelo a Proveedores): venta B2B con caja elegida
+    // se trata como contado → ingreso al instante en la caja. Sin caja_id
+    // sigue siendo CC (suma deuda del cliente, no toca caja).
     const caja = await crearCaja({ saldo_inicial: 0 });
     const cli = await request(app).post('/api/cuentas/clientes').set(auth())
       .send({ nombre: 'Mayorista Compra ' + Math.random(), categoria: 'A-' });
+    // Con caja_id: ingresa
     await request(app).post('/api/cuentas/movimientos').set(auth())
       .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 1000, caja_id: caja.id });
-    const row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
-    expect(Number(row.saldo_actual)).toBe(0);
+    let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(1000);
+    // Sin caja_id: no toca la caja
+    await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 500 });
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(1000); // sigue igual
   });
 
   it('un COBRO de envío ingresa a la caja ARS, se revierte al cancelar y al borrar', async () => {
@@ -446,5 +455,62 @@ describe('Ledger de cajas', () => {
       .send({ fecha: hoy, tipo: 'ingreso', monto: 142500, tc: 1425 });
     expect(conTc.status).toBe(201);
     expect(Number(conTc.body.monto_usd)).toBe(100); // 142500 / 1425
+  });
+});
+
+// Política: una caja real no puede tener saldo negativo (representa dinero
+// físico/digital — no podés "deber" plata desde una caja). Para préstamos
+// está movimientos_deudas. Para anticipos, cuenta corriente.
+describe('Cajas no aceptan saldo negativo', () => {
+  it('rechaza egreso que dejaría la caja en negativo (saldo 0)', async () => {
+    const caja = await crearCaja({ moneda: 'USD', saldo_inicial: 0 });
+    const r = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'egreso', monto: 100 });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/saldo insuficiente|negativo/i);
+  });
+
+  it('rechaza egreso que supera el saldo actual', async () => {
+    const caja = await crearCaja({ moneda: 'USD', saldo_inicial: 50 });
+    // Suma 30 → saldo 80
+    await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'ingreso', monto: 30 });
+    // Intenta sacar 81 → debe fallar
+    const r = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'egreso', monto: 81 });
+    expect(r.status).toBe(400);
+  });
+
+  it('permite egreso que deja la caja justo en 0', async () => {
+    const caja = await crearCaja({ moneda: 'USD', saldo_inicial: 100 });
+    const r = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'egreso', monto: 100 });
+    expect(r.status).toBe(201);
+    const list = await request(app).get('/api/cajas/cajas').set(auth());
+    const row = list.body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(0);
+  });
+
+  it('ingresos no se ven afectados por la regla', async () => {
+    const caja = await crearCaja({ moneda: 'USD', saldo_inicial: 0 });
+    const r = await request(app).post(`/api/cajas/cajas/${caja.id}/movimientos`).set(auth())
+      .send({ fecha: hoy, tipo: 'ingreso', monto: 50 });
+    expect(r.status).toBe(201);
+  });
+
+  it('GET /cajas/negativas devuelve solo las que están abajo de 0', async () => {
+    // Caja en negativo simulada con UPDATE directo (porque el endpoint nuevo
+    // lo bloquea). Esto refleja la realidad de las cajas legacy en prod.
+    const caja = await crearCaja({ moneda: 'ARS', saldo_inicial: 100 });
+    await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen)
+       VALUES ($1, $2, 'egreso', 500, 0.5, 'ajuste')`,
+      [caja.id, hoy]
+    );
+    const r = await request(app).get('/api/cajas/cajas/negativas').set(auth());
+    expect(r.status).toBe(200);
+    const inneg = r.body.find(c => c.id === caja.id);
+    expect(inneg).toBeDefined();
+    expect(Number(inneg.saldo_actual)).toBe(-400);
   });
 });

@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { proveedores as provApi } from '../lib/api';
+import { proveedores as provApi, cajas as cajasApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import CompraProveedorModal from '../components/CompraProveedorModal';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -78,211 +79,6 @@ const PROV_DATALISTS = (
   </>
 );
 
-// ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles) ───────────────────
-// Compra → columnas de producto completas + monto USD.
-// Pago   → solo monto USD.
-// Tab en último campo → guarda y pasa a la siguiente fila.
-// Enter en el campo de monto → guarda esa fila.
-
-const ROW_COUNT  = 5;
-
-const mkRow = (prev = null) => ({
-  _id:         Math.random().toString(36).slice(2),
-  fecha:       prev?.fecha || todayISO(),
-  tipo:        prev?.tipo  || 'compra',
-  producto: '', modelo: '', tamano: '', color: '', imei_serial: '',
-  verificado: false,
-  monto: '',
-});
-
-function InlineAddRows({ proveedorId, onSave, onSaveDone, onSaveError }) {
-  const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
-
-  const cr = useRef({});
-  const setRef    = (i, col) => el => { cr.current[`${i}_${col}`] = el; };
-  const focusCell = (i, col) => cr.current[`${i}_${col}`]?.focus();
-
-  function upd(i, field, val) {
-    setRows(rs => rs.map((r, idx) => {
-      if (idx !== i) return r;
-      const next = { ...r, [field]: val };
-      // Cambio de tipo → limpia campos de producto si pasa a pago
-      if (field === 'tipo' && val === 'pago') {
-        next.producto = ''; next.modelo = ''; next.tamano = '';
-        next.color = ''; next.imei_serial = ''; next.verificado = false;
-      }
-      return next;
-    }));
-  }
-
-  function saveRow(i) {
-    const row = rows[i];
-    if (!row.monto || Number(row.monto) <= 0) return;
-
-    const tempId   = `_tmp_${Date.now()}_${i}`;
-    const isCompra = row.tipo === 'compra';
-    const itemData = {
-      producto: row.producto || null, modelo: row.modelo || null,
-      tamano: row.tamano || null,     color: row.color || null,
-      imei_serial: row.imei_serial || null,
-      valor: Number(row.monto),       verificado: row.verificado,
-    };
-
-    // 1. Reset inmediato → usuario puede seguir sin esperar
-    setRows(rs => rs.map((r, idx) =>
-      idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
-    ));
-    setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 20);
-
-    // 2. Actualización optimista instantánea en la lista
-    onSave({
-      id: tempId, _pending: true,
-      fecha: row.fecha, tipo: row.tipo,
-      monto_usd: Number(row.monto), descripcion: null, notas: null,
-      items: isCompra ? [{ id: `${tempId}_item`, ...itemData }] : [],
-    });
-
-    // 3. API en segundo plano — no bloquea la UI
-    provApi.createMovimiento({
-      proveedor_id: proveedorId,
-      fecha: row.fecha, tipo: row.tipo, monto: Number(row.monto), moneda: 'USD',
-      items: isCompra ? [itemData] : [],
-    })
-    .then(real => onSaveDone(tempId, real))
-    .catch(err  => onSaveError(tempId, err.message || 'Error al guardar'));
-  }
-
-  function handleLastKey(e, i) {
-    if (e.key !== 'Tab' || e.shiftKey) return;
-    e.preventDefault();
-    const row = rows[i];
-    if (row.monto && Number(row.monto) > 0) saveRow(i);
-    else focusCell((i + 1) % ROW_COUNT, 'first');
-  }
-
-  const inp = {
-    padding: '4px 7px', fontSize: 13, height: 30,
-    border: '1px solid var(--border)', background: 'var(--surface)',
-    color: 'var(--text)', borderRadius: 5, width: '100%',
-    outline: 'none', boxSizing: 'border-box',
-  };
-
-  return (
-    <>
-      {rows.map((row, i) => {
-        const isPago = row.tipo === 'pago';
-        return (
-          <tr key={row._id} style={{
-            background: 'rgba(99,102,241,0.04)',
-            borderTop: i === 0 ? '2px solid var(--accent)' : '1px solid var(--hairline)',
-          }}>
-
-            {/* Fecha */}
-            <td style={{ padding: '4px 5px' }}>
-              <input type="date" style={inp}
-                value={row.fecha}
-                onChange={e => upd(i, 'fecha', e.target.value)} />
-            </td>
-
-            {/* Tipo */}
-            <td style={{ padding: '4px 5px' }}>
-              <select style={{ ...inp, cursor: 'pointer' }}
-                value={row.tipo}
-                onChange={e => upd(i, 'tipo', e.target.value)}>
-                <option value="compra">+ Compra</option>
-                <option value="pago">− Pago</option>
-              </select>
-            </td>
-
-            {isPago ? (
-              /* ── Pago: solo monto USD ─────────────────────────────────── */
-              <td colSpan={5} style={{ padding: '4px 12px' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
-                  <input
-                    ref={setRef(i, 'first')}
-                    type="number" min="0"
-                    style={{ ...inp, maxWidth: 200, textAlign: 'right', fontWeight: 700 }}
-                    placeholder="0"
-                    value={row.monto}
-                    onChange={e => upd(i, 'monto', e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
-                      else handleLastKey(e, i);
-                    }}
-                  />
-                  <span className="muted tiny" style={{ whiteSpace: 'nowrap' }}>pago al proveedor</span>
-                </div>
-              </td>
-            ) : (
-              /* ── Compra: columnas de producto ─────────────────────────── */
-              <>
-                <td style={{ padding: '4px 5px' }}>
-                  <input ref={setRef(i, 'first')} list="prov-dl-producto" style={inp} placeholder="iPhone"
-                    value={row.producto}
-                    onChange={e => upd(i, 'producto', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input list="prov-dl-modelo" style={inp} placeholder="16 Pro Max"
-                    value={row.modelo}
-                    onChange={e => upd(i, 'modelo', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input list="prov-dl-tamano" style={inp} placeholder="256GB"
-                    value={row.tamano}
-                    onChange={e => upd(i, 'tamano', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input list="prov-dl-color" style={inp} placeholder="Negro"
-                    value={row.color}
-                    onChange={e => upd(i, 'color', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}
-                    placeholder="358123…"
-                    value={row.imei_serial}
-                    onChange={e => upd(i, 'imei_serial', e.target.value)} />
-                </td>
-              </>
-            )}
-
-            {/* Monto USD */}
-            {!isPago && (
-              <td style={{ padding: '4px 5px' }}>
-                <input
-                  ref={setRef(i, 'monto')}
-                  type="number" min="0"
-                  style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
-                  placeholder="0"
-                  value={row.monto}
-                  onChange={e => upd(i, 'monto', e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
-                    else handleLastKey(e, i);
-                  }}
-                />
-              </td>
-            )}
-
-            {/* Verificado */}
-            <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-              {!isPago && (
-                <input type="checkbox"
-                  checked={row.verificado}
-                  onChange={e => upd(i, 'verificado', e.target.checked)}
-                  onKeyDown={e => handleLastKey(e, i)}
-                />
-              )}
-            </td>
-
-            {/* Acción */}
-            <td />
-          </tr>
-        );
-      })}
-    </>
-  );
-}
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 
@@ -311,6 +107,11 @@ export default function Proveedores() {
   const [provSaving, setProvSaving] = useState(false);
   const [provError, setProvError] = useState('');
 
+  // Cajas activas (metodos_pago) para alimentar el selector de cada fila del
+  // bloque inline. La caja se elige por fila (no global): permite cargar de
+  // varias cajas en una misma sesión y refleja correctamente la moneda.
+  const [cajas, setCajas] = useState([]);
+
   // ── Cargar lista ──
   const listReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
   function loadList() {
@@ -322,6 +123,13 @@ export default function Proveedores() {
       .finally(() => { if (reqId === listReq.current) setLoadingList(false); });
   }
   useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [dSearch]);
+
+  // Cargar cajas (metodos_pago) una vez para alimentar el selector inline.
+  useEffect(() => {
+    cajasApi.listCajas()
+      .then(r => setCajas((r || []).filter(c => c.activo !== false)))
+      .catch(() => setCajas([]));
+  }, []);
 
   useEffect(() => {
     if (list.length > 0 && !selectedId) setSelectedId(list[0].id);
@@ -436,34 +244,53 @@ export default function Proveedores() {
     provApi.list(search ? { buscar: search } : {}).then(r => setList(r || [])).catch(console.error);
   }
 
-  // ── Handlers optimistas para InlineAddRows ──────────────────────────────
-  function handleOptimisticSave(optMov) {
-    const signo = TIPO_DISPLAY[optMov.tipo]?.signo ?? 1;
-    const delta = signo * Number(optMov.monto_usd);
-    optMov._proveedorId = selectedId;
-    setMovs(prev => [...prev, optMov]);
-    setList(prev => prev.map(p =>
-      p.id === selectedId ? { ...p, saldo_usd: Number(p.saldo_usd || 0) + delta } : p
-    ));
+  // ── Modal de compra (reemplaza la planilla inline) ─────────────────────
+  const [showCompra, setShowCompra] = useState(false);
+  // ── Modal de pago simple (caja + monto + tc opcional + notas) ──────────
+  const [showPago, setShowPago] = useState(false);
+  const [pagoForm, setPagoForm] = useState({ fecha: todayISO(), caja_id: '', monto: '', tc: '', notas: '' });
+  const [pagoSaving, setPagoSaving] = useState(false);
+
+  function openPago() {
+    setPagoForm({ fecha: todayISO(), caja_id: '', monto: '', tc: '', notas: '' });
+    setShowPago(true);
+  }
+  async function savePago() {
+    if (!pagoForm.caja_id) { toast.error('Elegí una caja para registrar el pago'); return; }
+    if (!Number(pagoForm.monto) || Number(pagoForm.monto) <= 0) { toast.error('Cargá el monto'); return; }
+    const caja = cajas.find(c => String(c.id) === String(pagoForm.caja_id));
+    const moneda = caja?.moneda || 'USD';
+    if (moneda !== 'USD' && (!Number(pagoForm.tc) || Number(pagoForm.tc) <= 0)) {
+      toast.error(`Cargá el TC para convertir ${moneda} → USD`); return;
+    }
+    setPagoSaving(true);
+    try {
+      await provApi.createMovimiento({
+        proveedor_id: selectedId,
+        fecha: pagoForm.fecha,
+        tipo: 'pago',
+        monto: Number(pagoForm.monto),
+        moneda,
+        tc: moneda === 'USD' ? null : Number(pagoForm.tc),
+        caja_id: Number(pagoForm.caja_id),
+        notas: pagoForm.notas.trim() || null,
+      });
+      toast.success('Pago registrado');
+      setShowPago(false);
+      reloadMovs();
+      // refrescar la lista para actualizar saldo
+      provApi.list(dSearch ? { buscar: dSearch } : {}).then(r => setList(r || []));
+    } catch (e) {
+      toast.error(e.message || 'No se pudo guardar el pago');
+    } finally {
+      setPagoSaving(false);
+    }
   }
 
-  function handleSaveDone(tempId, real) {
-    setMovs(prev => prev.map(m => m.id === tempId ? real : m));
-  }
-
-  function handleSaveError(tempId, errorMsg) {
-    toast.error(errorMsg || 'Error al guardar');
-    setMovs(prev => {
-      const failed = prev.find(m => m.id === tempId);
-      if (failed) {
-        const signo = TIPO_DISPLAY[failed.tipo]?.signo ?? 1;
-        const delta = signo * Number(failed.monto_usd);
-        setList(ls => ls.map(p =>
-          p.id === selectedId ? { ...p, saldo_usd: Number(p.saldo_usd || 0) - delta } : p
-        ));
-      }
-      return prev.filter(m => m.id !== tempId);
-    });
+  // Callback del modal de compra: refresca movs y lista (saldo).
+  function handleCompraSaved() {
+    reloadMovs();
+    provApi.list(dSearch ? { buscar: dSearch } : {}).then(r => setList(r || []));
   }
 
   async function handleDeleteMov(m) {
@@ -604,6 +431,14 @@ export default function Proveedores() {
                   </button>
                 </div>
               </div>
+              <div className="flex-row" style={{ gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-sm" onClick={openPago}>
+                  <Icons.Dollar size={13} /> Registrar pago
+                </button>
+                <button className="btn btn-sm btn-primary" onClick={() => setShowCompra(true)}>
+                  <Icons.Plus size={13} /> Cargar compra
+                </button>
+              </div>
             </div>
 
             {/* ── Tabla spreadsheet ── */}
@@ -629,11 +464,11 @@ export default function Proveedores() {
 
                 <thead>
                   <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
-                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', ''].map((h, i) => (
+                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Caja', 'Monto USD', '✓', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
-                        color: 'var(--text-muted)', textAlign: i === 7 ? 'right' : 'left',
+                        color: 'var(--text-muted)', textAlign: i === 8 ? 'right' : 'left',
                         borderBottom: '1px solid var(--border)',
                       }}>{h}</th>
                     ))}
@@ -643,7 +478,7 @@ export default function Proveedores() {
                 <tbody>
                   {movimientos.length === 0 && !loadingMovs && (
                     <tr>
-                      <td colSpan={10} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+                      <td colSpan={11} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
                         Sin movimientos — completá la fila azul para agregar el primero
                       </td>
                     </tr>
@@ -675,6 +510,11 @@ export default function Proveedores() {
                         <td style={{ ...cell, fontFamily: 'monospace', fontSize: 12 }}>
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
+                        <td style={{ ...cell, fontSize: 12 }}>
+                          {m.caja_nombre
+                            ? <span title="Movimiento de contado: descontó esta caja">{m.caja_nombre}</span>
+                            : <span className="dim" title="A crédito (suma deuda)">CC</span>}
+                        </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
                           <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_usd)}
@@ -698,7 +538,7 @@ export default function Proveedores() {
 
                   {movsPag.page < movsPag.pages && (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '8px' }}>
+                      <td colSpan={11} style={{ textAlign: 'center', padding: '8px' }}>
                         <button className="btn btn-ghost btn-sm" onClick={loadMasMovs} disabled={loadingMasMovs}>
                           {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movs.length} de ${movsPag.total})`}
                         </button>
@@ -706,14 +546,16 @@ export default function Proveedores() {
                     </tr>
                   )}
 
-                  {/* ── Fila de entrada inline ── */}
-                  <InlineAddRows
-                    key={selectedId}
-                    proveedorId={selectedId}
-                    onSave={handleOptimisticSave}
-                    onSaveDone={handleSaveDone}
-                    onSaveError={handleSaveError}
-                  />
+                  {/* La planilla inline fue reemplazada por los modales
+                       "Cargar compra" y "Pagar". Mantenemos un placeholder
+                       discreto al pie para guiar al usuario.                */}
+                  <tr>
+                    <td colSpan={11} style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px dashed var(--border)' }}>
+                      <span className="muted tiny">
+                        Para sumar una compra (con stock) o registrar un pago, usá los botones de arriba.
+                      </span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -780,6 +622,78 @@ export default function Proveedores() {
               <button className="btn btn-ghost" onClick={() => setShowProv(false)} disabled={provSaving}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleSaveProv} disabled={provSaving}>
                 {provSaving ? 'Guardando…' : (editId ? 'Guardar cambios' : 'Crear proveedor')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Cargar Compra ── */}
+      {showCompra && selected && (
+        <CompraProveedorModal
+          proveedor={selected}
+          onClose={() => setShowCompra(false)}
+          onSaved={handleCompraSaved}
+        />
+      )}
+
+      {/* ── Modal Pago (simple) ── */}
+      {showPago && selected && (
+        <div className="modal-overlay" onClick={() => setShowPago(false)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Registrar pago · {selected.nombre}</h3>
+              <button className="icon-btn" onClick={() => setShowPago(false)}><Icons.X size={16} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="row">
+                <div className="field" style={{ flex: '0 0 150px' }}>
+                  <label className="field-label">Fecha</label>
+                  <input type="date" className="input" value={pagoForm.fecha}
+                    onChange={e => setPagoForm(f => ({ ...f, fecha: e.target.value }))} />
+                </div>
+                <div className="field" style={{ flex: 1 }}>
+                  <label className="field-label">Pagar con <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <select className="input" value={pagoForm.caja_id}
+                    onChange={e => setPagoForm(f => ({ ...f, caja_id: e.target.value }))}>
+                    <option value="">— Elegí caja —</option>
+                    {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                  </select>
+                </div>
+              </div>
+              {(() => {
+                const cajaSel = cajas.find(c => String(c.id) === String(pagoForm.caja_id));
+                const monedaSel = cajaSel?.moneda || 'USD';
+                return (
+                  <div className="row">
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input type="number" min="0" className="input mono"
+                        value={pagoForm.monto} placeholder="0"
+                        onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
+                    </div>
+                    {monedaSel !== 'USD' && (
+                      <div className="field" style={{ flex: '0 0 140px' }}>
+                        <label className="field-label">TC {monedaSel}→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                        <input type="number" min="0" step="0.01" className="input mono"
+                          value={pagoForm.tc}
+                          onChange={e => setPagoForm(f => ({ ...f, tc: e.target.value }))} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="field">
+                <label className="field-label">Notas (opcional)</label>
+                <input className="input" value={pagoForm.notas}
+                  onChange={e => setPagoForm(f => ({ ...f, notas: e.target.value }))}
+                  placeholder="Ej. Transferencia BBVA #5612" />
+              </div>
+            </div>
+            <div className="modal-ft">
+              <button className="btn btn-ghost" onClick={() => setShowPago(false)} disabled={pagoSaving}>Cancelar</button>
+              <button className="btn btn-primary" onClick={savePago} disabled={pagoSaving}>
+                {pagoSaving ? 'Guardando…' : 'Registrar pago'}
               </button>
             </div>
           </div>

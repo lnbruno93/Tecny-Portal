@@ -33,6 +33,19 @@ const baseProducto = z.object({
   // Mismo set que `comprobantes`/`venta_comprobantes`.
   foto_tipo:      z.enum(['image/jpeg', 'image/png', 'image/webp']).optional().nullable(),
   observaciones:  z.string().trim().max(1000).optional().nullable(),
+  // Nuevos ejes de organización del inventario (mayo-2026):
+  //   - `condicion`: ortogonal a la categoría. Permite distinguir Nuevo / Usado
+  //     sin duplicar el árbol de categorías y habilita el tab "Usados" en la UI.
+  //   - `oculto`: sacar de la vista por defecto sin borrar; útil para limpiar
+  //     la grilla manteniendo histórico de productos descontinuados.
+  //
+  // Importante: NO usamos `.default()` acá porque al hacer `.partial()` para
+  // el UPDATE, Zod popularía estos campos cuando el cliente no los manda y
+  // romperíamos el patrón `COALESCE($i, col)` (siempre sobrescribiría). Los
+  // defaults reales viven en la columna DB (DEFAULT 'nuevo' / DEFAULT false)
+  // y se inyectan en el POST a mano (req.body.condicion ?? 'nuevo', etc).
+  condicion:      z.enum(['nuevo', 'usado']).optional(),
+  oculto:         z.boolean().optional(),
 });
 
 // Regla de coherencia: celular unitario => cantidad = 1.
@@ -74,6 +87,19 @@ const bulkProductoSchema = z.object({
     }, { message: 'Hay IMEIs duplicados en el lote' }),
 });
 
+// Vistas predefinidas para la grilla del inventario. Encapsulan la combinación
+// de filtros (estado + oculto) que el PO quiere ver con un sólo selector.
+// El default se aplica en el router (no acá) para que la ausencia del query
+// param signifique "vista por defecto" y no rompa endpoints legacy.
+const VISTAS_INVENTARIO = [
+  'no_vendidos',           // estado != vendido  AND oculto = false  ← default
+  'no_vendidos_ocultos',   // estado != vendido  AND oculto = true
+  'ocultos',               //                       oculto = true   (cualquier estado)
+  'vendidos',              // estado = vendido   AND oculto = false
+  'todos_visibles',        //                       oculto = false  (cualquier estado)
+  'todos_ocultos',         //                       (sin filtro: vendidos + ocultos + lo demás)
+];
+
 const queryProductosSchema = z.object({
   buscar:       z.string().trim().max(200).optional(),
   clase:        z.enum(['celular', 'accesorio']).optional(),
@@ -86,6 +112,11 @@ const queryProductosSchema = z.object({
   proveedor:    z.string().trim().max(200).optional(),
   gb:           z.string().trim().max(20).optional(),
   color:        z.string().trim().max(60).optional(),
+  // Filtros nuevos:
+  vista:        z.enum(VISTAS_INVENTARIO).optional(),
+  condicion:    z.enum(['nuevo', 'usado']).optional(),
+  // Legacy (compat): `solo_stock=true` se mapea a vista='no_vendidos' si no se
+  // pasó `vista` explícita. El router resuelve la prioridad.
   solo_stock:   z.coerce.boolean().optional(),
   page:         z.coerce.number().int().positive().optional(),
   limit:        z.coerce.number().int().positive().max(200).optional(),
@@ -108,10 +139,12 @@ const queryDesgloseSchema = z.object({
 
 module.exports = {
   nombreSchema,
+  baseProducto,                // se reutiliza desde proveedores (compra crea stock)
   createProductoSchema,
   updateProductoSchema,
   bulkProductoSchema,
   queryProductosSchema,
   queryDesgloseSchema,
   DIMENSIONES_DESGLOSE,
+  VISTAS_INVENTARIO,
 };

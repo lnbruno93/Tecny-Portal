@@ -183,3 +183,212 @@ describe('Proveedores — cuenta corriente', () => {
     expect(Number(res.body.total_deuda_usd)).toBeGreaterThan(0);
   });
 });
+
+// ─── Compra con caja_id (contado) ────────────────────────────────────────
+// Verifica el flujo "sale dinero, entra stock": una compra con caja_id
+// descuenta la caja al instante y NO suma deuda. Sin caja_id queda a crédito
+// (comportamiento histórico).
+describe('Proveedores — compra contado (caja_id)', () => {
+  let cajaUsdId;
+
+  // Helper: saldo actual de la caja desde el listado de cajas (que incluye saldo_actual).
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set(auth());
+    const caja = (r.body || []).find(c => c.id === id);
+    return Number(caja?.saldo_actual ?? 0);
+  }
+
+  beforeAll(async () => {
+    // Creamos una caja USD dedicada con saldo inicial suficiente para los
+    // egresos de "compra contado" de este suite. La regla nueva (#cajas-neg
+    // del post-audit) prohíbe dejar una caja en negativo, así que usar la
+    // caja del seed (saldo 0) hacía fallar los tests de egreso.
+    const cajaRes = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Test Compra Contado', moneda: 'USD', saldo_inicial: 10000, orden: 99 });
+    expect(cajaRes.status).toBe(201);
+    cajaUsdId = cajaRes.body.id;
+  });
+
+  it('compra con caja_id: NO suma deuda y postea egreso en la caja', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor Contado' });
+    const saldoAntes = await saldoCaja(cajaUsdId);
+
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD', caja_id: cajaUsdId });
+    expect(res.status).toBe(201);
+    expect(res.body.caja_id).toBe(cajaUsdId);
+
+    // Saldo del proveedor: NO debe figurar en el resumen de deudas
+    const resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    expect(resumen.body.proveedores.find(p => p.id === prov.id)).toBeUndefined();
+
+    // Saldo de la caja: bajó 500
+    const saldoDesp = await saldoCaja(cajaUsdId);
+    expect(saldoAntes - saldoDesp).toBeCloseTo(500, 2);
+  });
+
+  it('compra sin caja_id: SUMA deuda y NO toca cajas', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor Crédito' });
+    const saldoAntes = await saldoCaja(cajaUsdId);
+
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 300, moneda: 'USD' });
+    expect(res.status).toBe(201);
+
+    const resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    const entry = resumen.body.proveedores.find(p => p.id === prov.id);
+    expect(entry).toBeTruthy();
+    expect(Number(entry.saldo_usd)).toBeCloseTo(300, 2);
+
+    // La caja no se tocó
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoAntes, 2);
+  });
+
+  it('borrar una compra contado revierte el egreso de la caja', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor Revert' });
+    const saldoAntes = await saldoCaja(cajaUsdId);
+
+    const create = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 120, moneda: 'USD', caja_id: cajaUsdId });
+    expect(create.status).toBe(201);
+    // Caja bajó 120
+    expect(saldoAntes - await saldoCaja(cajaUsdId)).toBeCloseTo(120, 2);
+
+    const del = await request(app).delete(`/api/proveedores/movimientos/${create.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+    // Vuelve al saldo inicial
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoAntes, 2);
+  });
+});
+
+// ─── Compra crea producto en Inventario ──────────────────────────────────
+// Verifica el flujo "registrar compra = entra al stock":
+//   - Si items[i].producto_stock viene → crea producto en Inventario.
+//   - Auto-fill: producto.proveedor = nombre del proveedor de la compra.
+//   - IMEI duplicado (contra stock vivo o dentro del mismo payload) → 409.
+//   - producto_stock sin categoria_id → 400.
+describe('Proveedores — compra crea producto en Inventario', () => {
+  let catBase;
+
+  beforeAll(async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone (Compra Tests)' });
+    catBase = cat.body.id;
+  });
+
+  it('compra con producto_stock crea el producto en Inventario', async () => {
+    const prov = await crearProveedor({ nombre: 'MayoCompra A' });
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 850, moneda: 'USD',
+        items: [{
+          producto: 'iPhone', modelo: '15 Pro', tamano: '256', color: 'Natural',
+          imei_serial: '350001000000001', valor: 850,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            nombre: 'iPhone 15 Pro', imei: '350001000000001',
+            gb: '256', color: 'Natural', bateria: 100,
+            costo: 850, costo_moneda: 'USD',
+            precio_venta: 1100, precio_moneda: 'USD',
+            cantidad: 1, condicion: 'nuevo',
+          },
+        }],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.productos_creados).toHaveLength(1);
+    const p = res.body.productos_creados[0];
+    expect(p.imei).toBe('350001000000001');
+    expect(p.proveedor).toBe('MayoCompra A'); // auto-fill
+    expect(p.condicion).toBe('nuevo');
+    expect(p.oculto).toBe(false);
+
+    // Aparece en el listado de Inventario
+    const list = await request(app).get('/api/inventario/productos?buscar=350001000000001').set(auth());
+    expect(list.body.data.some(x => x.id === p.id)).toBe(true);
+  });
+
+  it('IMEI duplicado contra stock existente → 409 (no crea nada)', async () => {
+    const prov = await crearProveedor({ nombre: 'MayoCompra B' });
+    // Primera compra crea
+    const first = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 800, moneda: 'USD',
+        items: [{ producto: 'iPhone', valor: 800,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            nombre: 'iPhone 14', imei: '350002000000002', cantidad: 1,
+            costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
+          },
+        }],
+      });
+    expect(first.status).toBe(201);
+
+    // Segunda compra con el MISMO IMEI debe ser rechazada
+    const dup = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 800, moneda: 'USD',
+        items: [{ producto: 'iPhone', valor: 800,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            nombre: 'iPhone 14 (dup)', imei: '350002000000002', cantidad: 1,
+            costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
+          },
+        }],
+      });
+    expect(dup.status).toBe(409);
+    expect(dup.body.imeis_existentes).toContain('350002000000002');
+    // Y el movimiento NO se creó (rollback)
+    const movs = await request(app).get(`/api/proveedores/${prov.id}/movimientos`).set(auth());
+    expect(movs.body.data).toHaveLength(1);
+  });
+
+  it('IMEI duplicado dentro del mismo payload → 409', async () => {
+    const prov = await crearProveedor({ nombre: 'MayoCompra C' });
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 1600, moneda: 'USD',
+        items: [
+          { valor: 800, producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            nombre: 'iPhone 14', imei: '350003000000003', cantidad: 1,
+            costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
+          }},
+          { valor: 800, producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            nombre: 'iPhone 14', imei: '350003000000003', cantidad: 1,
+            costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
+          }},
+        ],
+      });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/duplicado/i);
+  });
+
+  it('producto_stock sin categoria_id → 400 (refine)', async () => {
+    const prov = await crearProveedor({ nombre: 'MayoCompra D' });
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
+        items: [{ valor: 100,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular',
+            nombre: 'Sin categoría', cantidad: 1,
+            costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
+          },
+        }],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('items SIN producto_stock siguen funcionando (caso legacy / gastos)', async () => {
+    const prov = await crearProveedor({ nombre: 'MayoCompra E' });
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 50, moneda: 'USD',
+        items: [{ producto: 'Flete', valor: 50 }],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.productos_creados).toHaveLength(0);
+  });
+});
