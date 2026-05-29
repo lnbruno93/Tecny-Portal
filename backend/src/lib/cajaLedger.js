@@ -72,13 +72,64 @@ async function postCajaMovimiento(client, { caja_id, fecha, tipo, monto, moneda,
   return rows[0];
 }
 
-/** Soft-delete de los movimientos de caja generados por un registro de origen (al anular/borrar). */
+/**
+ * Soft-delete de los movimientos de caja generados por un registro de origen
+ * (al anular/borrar). Auditoría #H-03: además del soft-delete, valida que
+ * NINGUNA de las cajas afectadas quede en saldo negativo POST-reverse.
+ *
+ * Caso real que esto previene: cobranza B2B de USD 1000 ingresa caja vacía
+ * → otro user hace un egreso de USD 1000 (proveedor) → DELETE de la cobranza
+ * → la caja debería volver a -1000 (negativo virtual). Esto viola el
+ * invariante de "una caja no puede quedar en negativo" por la puerta de
+ * atrás. Ahora chequeamos saldo final y devolvemos 409 si rompe.
+ */
 async function reverseCajaMovimientos(client, ref_tabla, ref_id) {
+  // Lockear las cajas afectadas en orden de id para evitar deadlock con
+  // ventas / cobranzas concurrentes (mismo patrón que H-01/H-02).
+  const { rows: afectadas } = await client.query(
+    `SELECT DISTINCT caja_id FROM caja_movimientos
+       WHERE ref_tabla = $1 AND ref_id = $2 AND deleted_at IS NULL
+       ORDER BY caja_id`,
+    [ref_tabla, ref_id]
+  );
+  for (const { caja_id } of afectadas) {
+    await client.query('SELECT id FROM metodos_pago WHERE id = $1 FOR UPDATE', [caja_id]);
+  }
+
+  // Aplicar el soft-delete.
   await client.query(
     `UPDATE caja_movimientos SET deleted_at = NOW()
       WHERE ref_tabla = $1 AND ref_id = $2 AND deleted_at IS NULL`,
     [ref_tabla, ref_id]
   );
+
+  // Validar saldo final de cada caja afectada. saldo_inicial + ingresos - egresos
+  // calculado igual que en routes/cajas.js GET /cajas. Si alguna queda negativa,
+  // rollback el reverse: throwear para que el caller propague.
+  for (const { caja_id } of afectadas) {
+    const { rows } = await client.query(
+      `SELECT mp.nombre, mp.moneda,
+              mp.saldo_inicial + COALESCE(SUM(
+                CASE WHEN cm.tipo = 'ingreso' THEN cm.monto ELSE -cm.monto END
+              ), 0) AS saldo_final
+         FROM metodos_pago mp
+         LEFT JOIN caja_movimientos cm
+                ON cm.caja_id = mp.id AND cm.deleted_at IS NULL
+        WHERE mp.id = $1
+        GROUP BY mp.id, mp.nombre, mp.moneda, mp.saldo_inicial`,
+      [caja_id]
+    );
+    const saldoFinal = Number(rows[0]?.saldo_final || 0);
+    if (saldoFinal < 0) {
+      const e = new Error(
+        `No se puede deshacer: dejaría la caja "${rows[0].nombre}" en saldo negativo (${saldoFinal.toFixed(2)} ${rows[0].moneda}). ` +
+        `Primero deshacé otros movimientos que ingresaron a esa caja después.`
+      );
+      e.status = 409;
+      e.caja_id = caja_id;
+      throw e;
+    }
+  }
 }
 
 module.exports = { postCajaMovimiento, reverseCajaMovimientos };

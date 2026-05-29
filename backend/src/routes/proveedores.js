@@ -224,6 +224,15 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
           }
           seen.add(i);
         }
+        // #H-04 — Lock distribuido por IMEI: previene la race condition TOCTOU
+        // entre el SELECT (línea siguiente) y el INSERT (más abajo) cuando dos
+        // requests concurrentes piden el mismo IMEI. pg_advisory_xact_lock
+        // toma un lock por sesión que se libera con la transacción. Ordenamos
+        // los hashes para evitar deadlock entre lotes con IMEIs cruzados.
+        const hashes = [...new Set(imeisACrear.map(i => i))].sort();
+        for (const imei of hashes) {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [imei]);
+        }
         // Choque con stock existente
         const { rows: existing } = await client.query(
           `SELECT imei FROM productos WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,

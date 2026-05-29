@@ -341,8 +341,15 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       // Lock + validación de stock disponible para cada producto_id ANTES de
       // empezar a tocar (evita race con ventas concurrentes y rollbacks
       // parciales). Se usa SELECT ... FOR UPDATE en cada producto.
+      //
+      // #H-01 deadlock prevention: ORDENAR los items por producto_id ASC antes
+      // del lock loop. Dos requests concurrentes con [P1,P2] vs [P2,P1] hacían
+      // deadlock — ahora ambos lockean en el mismo orden (P1 antes que P2) y
+      // PostgreSQL los serializa sin abort.
       const esSalida = tipo === 'compra' || tipo === 'entrega_mercaderia';
-      for (const item of items) {
+      const itemsOrdenados = [...items].sort((a, b) =>
+        Number(a.producto_id || 0) - Number(b.producto_id || 0));
+      for (const item of itemsOrdenados) {
         if (!item.producto_id) continue;
         const { rows: prodRows } = await client.query(
           `SELECT id, nombre, cantidad, estado FROM productos
@@ -560,8 +567,14 @@ router.post('/cobranzas-masivas', validate(cobranzaMasivaSchema), async (req, re
       return res.status(400).json({ error: 'Referencias inválidas', detalles: errores });
     }
 
+    // #H-02 deadlock prevention: ordenar por caja_id ASC para que dos
+    // procesos concurrentes que tocan cajas [A,B] vs [B,A] lockeen en el
+    // mismo orden y eviten abort por deadlock detectado por PostgreSQL.
+    const cobranzasOrdenadas = [...cobranzas].sort((a, b) =>
+      Number(a.caja_id) - Number(b.caja_id));
+
     const creados = [];
-    for (const c of cobranzas) {
+    for (const c of cobranzasOrdenadas) {
       // Normalizar monto a USD usando el helper compartido (auditoría #B-05).
       // ANTES: `c.monto / tcN` dividía USDT por el TC ARS — guardaba 100 USDT
       // como 0.11 USD cuando tc=900. toUsd() trata USDT como USD (1:1).
