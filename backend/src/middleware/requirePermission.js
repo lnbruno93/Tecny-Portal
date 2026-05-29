@@ -31,4 +31,23 @@ function requirePermission(tool) {
   };
 }
 
+/**
+ * Helper runtime — chequea si un usuario tiene un permiso sin actuar como
+ * middleware. Útil para "permisos cruzados" dentro de un handler: el endpoint
+ * principal es del módulo A, pero su lógica también toca el módulo B y
+ * queremos exigir ambos permisos (auditoría #H-05).
+ *
+ * Devuelve true si: admin, o `user_permissions(user_id, tool).enabled = true`.
+ */
+async function hasPermission(user, tool) {
+  if (user?.role === 'admin') return true;
+  if (!user?.id) return false;
+  const { rows } = await db.query(
+    'SELECT enabled FROM user_permissions WHERE user_id = $1 AND tool = $2',
+    [user.id, tool]
+  );
+  return !!rows[0] && rows[0].enabled === true;
+}
+
 module.exports = requirePermission;
+module.exports.hasPermission = hasPermission;

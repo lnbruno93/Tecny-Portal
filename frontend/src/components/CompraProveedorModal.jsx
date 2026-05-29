@@ -116,16 +116,21 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   // #B-10: IMEIs que el backend devolvió como conflictivos en el último save.
   // Sus filas se marcan en rojo para que el user pueda identificar y corregir.
   const [imeisConflicto, setImeisConflicto] = useState(new Set());
+  // #H-12: si algún catálogo falla, mostramos banner ámbar (en vez de silenciar
+  // el error y que el user vea selects vacíos sin entender por qué).
+  const [catalogosError, setCatalogosError] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      invApi.categorias().catch(() => []),
-      invApi.depositos().catch(() => []),
-      cajasApi.listCajas().catch(() => []),
-    ]).then(([c, d, k]) => {
-      setCategorias(c || []);
-      setDepositos(d || []);
-      setCajas((k || []).filter(x => x.activo !== false));
+    Promise.allSettled([
+      invApi.categorias(),
+      invApi.depositos(),
+      cajasApi.listCajas(),
+    ]).then(([rc, rd, rk]) => {
+      const errores = [];
+      if (rc.status === 'fulfilled') setCategorias(rc.value || []); else errores.push('categorías');
+      if (rd.status === 'fulfilled') setDepositos(rd.value || []); else errores.push('depósitos');
+      if (rk.status === 'fulfilled') setCajas((rk.value || []).filter(x => x.activo !== false)); else errores.push('cajas');
+      if (errores.length > 0) setCatalogosError(errores);
     });
   }, []);
 
@@ -351,6 +356,17 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
         </div>
 
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+          {/* #H-12: banner si catálogos fallaron al cargar */}
+          {catalogosError && (
+            <div style={{
+              padding: '8px 12px', marginBottom: 12, borderRadius: 6,
+              background: 'rgba(217,119,6,0.10)', color: 'var(--warn, #d97706)',
+              border: '1px solid rgba(217,119,6,0.30)', fontSize: 12,
+            }}>
+              ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
+              Algunos selectores aparecerán vacíos. Revisá tu conexión y cerrá/abrí el modal.
+            </div>
+          )}
           {/* ── Cabecera: fecha + caja + tc ── */}
           <div className="row" style={{ marginBottom: 12 }}>
             <div className="field" style={{ flex: '0 0 150px' }}>

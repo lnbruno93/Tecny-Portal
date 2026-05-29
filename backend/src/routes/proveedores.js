@@ -1,6 +1,7 @@
 // Módulo Proveedores — cuentas por pagar. Alta de proveedores + cuenta corriente
 // (compras que les debemos y pagos que les hicimos). Montos normalizados a USD.
 // Montado en /api/proveedores con requireAuth + requirePermission('proveedores') (app.js).
+const rateLimit = require('express-rate-limit');
 const router = require('express').Router();
 const db = require('../config/database');
 const validate = require('../lib/validate');
@@ -13,6 +14,19 @@ const { syncContactoSafe } = require('../lib/contactosSync');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
 } = require('../schemas/proveedores');
+
+// Rate-limit dedicado para POST /movimientos (auditoría #H-07): cuando una
+// compra trae producto_stock, hace hasta 200 INSERTs productos + IMEI locks
+// + audit. Sin tope dedicado, un script puede agotar conexiones del pool en
+// minutos. 30 lotes / 15 min por user es generoso para uso humano.
+const compraMovimientoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `prov-mov:${req.user?.id || req.ip}`,
+  message: { error: 'Demasiadas compras a proveedor en poco tiempo. Probá en unos minutos.' },
+});
 
 // ─── PROVEEDORES ────────────────────────────────────────────
 
@@ -197,10 +211,25 @@ router.get('/:id/movimientos', async (req, res, next) => {
 
 // Registro de compra/pago — igual al flujo B2B: una COMPRA carga ítems (productos
 // comprados); un PAGO no. Transaccional (movimiento + ítems atómicos).
-router.post('/movimientos', validate(createMovimientoProveedorSchema), async (req, res, next) => {
+router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoProveedorSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;
+
+    // #H-05 cross-module: si la compra crea productos en Inventario, exigir
+    // también permiso `inventario` (no alcanza con solo `proveedores`).
+    // Evita que un user al que se le quitó `inventario` siga creando stock
+    // por la puerta de atrás.
+    const creaStock = tipo === 'compra' && items.some(it => it.producto_stock);
+    if (creaStock) {
+      const { hasPermission } = require('../middleware/requirePermission');
+      const ok = await hasPermission(req.user, 'inventario');
+      if (!ok) {
+        return res.status(403).json({
+          error: 'Para registrar una compra que crea productos necesitás también permiso de Inventario.',
+        });
+      }
+    }
 
     await client.query('BEGIN');
     const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
@@ -223,6 +252,15 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
             return res.status(409).json({ error: `IMEI duplicado dentro del mismo lote: ${i}` });
           }
           seen.add(i);
+        }
+        // #H-04 — Lock distribuido por IMEI: previene la race condition TOCTOU
+        // entre el SELECT (línea siguiente) y el INSERT (más abajo) cuando dos
+        // requests concurrentes piden el mismo IMEI. pg_advisory_xact_lock
+        // toma un lock por sesión que se libera con la transacción. Ordenamos
+        // los hashes para evitar deadlock entre lotes con IMEIs cruzados.
+        const hashes = [...new Set(imeisACrear.map(i => i))].sort();
+        for (const imei of hashes) {
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [imei]);
         }
         // Choque con stock existente
         const { rows: existing } = await client.query(
@@ -278,7 +316,11 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
         if (it.producto_stock) {
           const ps = {
             ...it.producto_stock,
-            proveedor:  it.producto_stock.proveedor || prov.rows[0].nombre,
+            // #H-06: forzar nombre del proveedor (no aceptar override del
+            // cliente). Antes `it.producto_stock.proveedor || prov.nombre`
+            // permitía impersonar otro proveedor en reportes y desglose por
+            // proveedor.
+            proveedor:  prov.rows[0].nombre,
             condicion:  it.producto_stock.condicion ?? 'nuevo',
             oculto:     it.producto_stock.oculto    ?? false,
             // Link al movimiento de compra para borrado en cascada (#B-02)

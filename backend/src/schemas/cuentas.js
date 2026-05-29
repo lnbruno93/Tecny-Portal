@@ -43,10 +43,7 @@ const itemMovimientoCCSchema = z.object({
   // cantidad gigante (auditoría #B-03). 10k unidades por línea es ya holgado
   // para el rubro (accesorios al por mayor).
   cantidad:    z.coerce.number().int().nonnegative().max(10_000).optional().default(1),
-});
-// NOTA: el .strict() de itemMovimientoCCSchema queda pendiente para TANDA 1
-// (auditoría Seguridad #8) porque tests legacy mandan campos extra (capacidad,
-// precio_usd) que requieren limpieza coordinada de fixtures.
+}).strict(); // #H-08 — rechaza campos extra para defense-in-depth
 
 // ─── Movimiento CC ────────────────────────────────────────────────────────────
 

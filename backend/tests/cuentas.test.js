@@ -279,7 +279,7 @@ describe('POST /api/cuentas/movimientos — saldo', () => {
         descripcion:   'iPhone 15 Pro',
         monto_total:   50000,
         items: [
-          { producto: 'iPhone', modelo: '15 Pro', capacidad: '256GB', precio_usd: 900, imei_serial: '123456789012345' },
+          { producto: 'iPhone', modelo: '15 Pro', tamano: '256GB', valor: 900, imei_serial: '123456789012345' },
         ],
       });
 
