@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { fechaNoFutura } = require('./_common');
 
 const CATEGORIAS_CC       = ['VIP', 'A+', 'A-'];
 const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia'];
@@ -39,10 +40,9 @@ const itemMovimientoCCSchema = z.object({
   // (tipo=compra/entrega_mercaderia) se valida disponibilidad y se descuenta
   // stock. Sin producto_id la línea sigue siendo texto libre (legacy/servicio).
   producto_id: z.coerce.number().int().positive().optional().nullable(),
-  // Hard cap en cantidad: previene infladura de stock vía 'devolucion' con
-  // cantidad gigante (auditoría #B-03). 10k unidades por línea es ya holgado
-  // para el rubro (accesorios al por mayor).
-  cantidad:    z.coerce.number().int().nonnegative().max(10_000).optional().default(1),
+  // Hard cap en cantidad + positive() (auditoría #M-03): líneas con
+  // cantidad=0 no tenían sentido (item fantasma sin efecto en stock).
+  cantidad:    z.coerce.number().int().positive().max(10_000).optional().default(1),
 }).strict(); // #H-08 — rechaza campos extra para defense-in-depth
 
 // ─── Movimiento CC ────────────────────────────────────────────────────────────
@@ -51,14 +51,8 @@ const createMovimientoCCSchema = z.object({
   cliente_cc_id: z.number().int().positive('ID de cliente requerido'),
   // Comparación date-only (lexical sobre strings ISO YYYY-MM-DD), siempre contra
   // el "hoy" en UTC — la misma base que usa el front (new Date().toISOString()).
-  // Evita el bug de zona horaria: parsear con new Date(d+'T00:00:00') usaba la TZ
-  // local del server y, pasada la medianoche UTC, rechazaba el día actual como "futuro".
-  fecha:         z.string()
-    .date('Fecha inválida (YYYY-MM-DD)')
-    .refine(d => {
-      const todayUTC = new Date().toISOString().split('T')[0];
-      return d >= '2000-01-01' && d <= todayUTC;
-    }, 'La fecha no puede ser futura ni anterior al año 2000'),
+  // Fecha con validación compartida (M-07): no futura, no antes del 2000.
+  fecha:         fechaNoFutura,
   tipo:          z.enum(TIPOS_MOVIMIENTO_CC, { error: `Tipo debe ser: ${TIPOS_MOVIMIENTO_CC.join(', ')}` }),
   descripcion:   z.string().trim().max(500).optional().nullable(),
   // Hard cap: 10M USD por movimiento. Previene overflow JS Number en sumas
@@ -76,10 +70,7 @@ const createMovimientoCCSchema = z.object({
 // Procesamiento atómico (todo o nada): si una fila falla, ninguna se aplica.
 const cobranzaItemSchema = z.object({
   cliente_cc_id: z.coerce.number().int().positive(),
-  fecha:         z.string().date('Fecha inválida (YYYY-MM-DD)').refine(d => {
-    const todayUTC = new Date().toISOString().split('T')[0];
-    return d >= '2000-01-01' && d <= todayUTC;
-  }, 'La fecha no puede ser futura ni anterior al 2000'),
+  fecha:         fechaNoFutura,
   monto:         z.coerce.number().positive('El monto debe ser > 0').max(10_000_000, 'Monto excede el máximo (10M)'),
   moneda:        z.enum(['USD', 'ARS', 'USDT']).default('USD'),
   tc:            z.coerce.number().positive().optional().nullable(),

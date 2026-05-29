@@ -41,7 +41,11 @@ async function postCajaMovimiento(client, { caja_id, fecha, tipo, monto, moneda,
   // representan dinero real (efectivo, banco, USDT en wallet, etc.) — no
   // pueden tener saldo negativo conceptualmente. Para usar el patrón "préstamo"
   // está movimientos_deudas; para "anticipo de cliente" la cuenta corriente.
-  if (tipo === 'egreso') {
+  //
+  // #M-04: incluimos 'ajuste_resta' además de 'egreso'. Ambos restan saldo
+  // y ambos deben respetar la regla (antes ajuste_resta podía dejar negativo
+  // por la puerta de atrás).
+  if (tipo === 'egreso' || tipo === 'ajuste_resta') {
     const { rows: balRows } = await client.query(
       `SELECT
          COALESCE($2::numeric, 0)

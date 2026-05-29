@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const { baseProducto } = require('./inventario');
+const { fechaNoFutura } = require('./_common');
 
 const createProveedorSchema = z.object({
   nombre:            z.string().trim().min(1, 'Nombre del proveedor requerido').max(120),
@@ -51,12 +52,8 @@ const itemProveedorSchema = z.object({
 
 const createMovimientoProveedorSchema = z.object({
   proveedor_id: z.coerce.number().int().positive('proveedor_id inválido'),
-  // Fecha: misma regla que cuentas — no futura, no anterior al 2000
-  // (auditoría #B-08 — antes proveedores aceptaba 2099).
-  fecha:        z.string().date('Fecha inválida — usar YYYY-MM-DD').refine(d => {
-    const todayUTC = new Date().toISOString().split('T')[0];
-    return d >= '2000-01-01' && d <= todayUTC;
-  }, 'La fecha no puede ser futura ni anterior al año 2000'),
+  // Fecha con validación compartida (M-07): no futura, no antes del 2000.
+  fecha:        fechaNoFutura,
   tipo:         z.enum(['compra', 'pago'], { error: 'tipo debe ser: compra, pago' }),
   descripcion:  z.string().trim().max(500).optional().nullable(),
   // Hard cap: 10M USD por movimiento (auditoría #B-04).
@@ -67,10 +64,23 @@ const createMovimientoProveedorSchema = z.object({
   notas:        z.string().trim().max(1000).optional().nullable(),
   // items solo aplica a 'compra' (productos comprados); la ruta los ignora en 'pago'
   items:        z.array(itemProveedorSchema).max(200, 'Máximo 200 ítems por compra').optional().default([]),
-}).strict().refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
-  message: 'Para montos en ARS se requiere el tipo de cambio (tc)',
-  path: ['tc'],
-});
+}).strict()
+  .refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
+    message: 'Para montos en ARS se requiere el tipo de cambio (tc)',
+    path: ['tc'],
+  })
+  // #M-02: si la compra crea productos, el monto debe ser > 0 (antes se
+  // podía mandar monto=0 con producto_stock → producto "gratis" sin
+  // auditoría de caja).
+  .refine(d => {
+    if (d.tipo !== 'compra') return true;
+    const tieneStock = (d.items || []).some(it => it.producto_stock);
+    if (!tieneStock) return true;
+    return Number(d.monto) > 0;
+  }, {
+    message: 'Una compra que crea productos en Inventario debe tener monto > 0',
+    path: ['monto'],
+  });
 
 module.exports = {
   createProveedorSchema,

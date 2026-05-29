@@ -638,12 +638,21 @@ router.post('/cobranzas-masivas', cobranzaLimiter, validate(cobranzaMasivaSchema
 
     // Pre-validación: clientes vivos y cajas vivas. Salvo bloqueo total
     // antes de empezar a INSERTAR para mensajes claros y rollback rápido.
-    const clienteIds = [...new Set(cobranzas.map(c => c.cliente_cc_id))];
-    const cajaIds    = [...new Set(cobranzas.map(c => c.caja_id))];
-    const [valC, valK] = await Promise.all([
-      client.query('SELECT id FROM clientes_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [clienteIds]),
-      client.query('SELECT id FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [cajaIds]),
-    ]);
+    //
+    // #M-01: SELECT FOR UPDATE ordenado por id en ambas tablas. Sin esto,
+    // entre el SELECT y el INSERT otro proceso podía soft-deletear un
+    // cliente o caja, dejando un movimientos_cc apuntando a deleted_at
+    // != NULL. Con el lock, el delete espera al COMMIT.
+    const clienteIds = [...new Set(cobranzas.map(c => c.cliente_cc_id))].sort((a, b) => a - b);
+    const cajaIds    = [...new Set(cobranzas.map(c => c.caja_id))].sort((a, b) => a - b);
+    // Las dos queries son secuenciales (no Promise.all) para mantener orden
+    // de locks consistente entre transacciones concurrentes.
+    const valC = await client.query(
+      'SELECT id FROM clientes_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [clienteIds]);
+    const valK = await client.query(
+      'SELECT id FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [cajaIds]);
     const okC = new Set(valC.rows.map(r => r.id));
     const okK = new Set(valK.rows.map(r => r.id));
     const errores = [];
