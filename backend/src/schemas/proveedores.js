@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { baseProducto } = require('./inventario');
 
 const createProveedorSchema = z.object({
   nombre:            z.string().trim().min(1, 'Nombre del proveedor requerido').max(120),
@@ -17,7 +18,22 @@ const updateProveedorSchema = createProveedorSchema.partial().refine(
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 
+// Sub-objeto opcional para crear producto en Inventario cuando se carga una
+// compra. Reutiliza el mismo schema de Inventario (sin foto, sin estado: la
+// carga arranca como 'disponible' por default de DB). Si no se incluye, el
+// item queda sólo como log de la compra (caso: gasto / flete / servicio).
+const productoEnCompraSchema = baseProducto
+  .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
+  .strict()
+  // Reglas de coherencia: las mismas que el create normal del Inventario.
+  .refine(p => !(p.clase === 'celular' && p.tipo_carga === 'unitario' && p.cantidad !== 1),
+    { message: 'Un celular unitario debe tener cantidad = 1', path: ['cantidad'] })
+  .refine(p => p.categoria_id != null && Number(p.categoria_id) > 0,
+    { message: 'La categoría es obligatoria para crear el producto en stock',
+      path: ['categoria_id'] });
+
 // Ítem de una compra (productos comprados) — espejo de items_movimiento_cc (B2B)
+// Si viene `producto_stock`, la ruta crea además el producto en Inventario.
 const itemProveedorSchema = z.object({
   producto:    z.string().trim().max(100).optional().nullable(),
   modelo:      z.string().trim().max(100).optional().nullable(),
@@ -27,6 +43,10 @@ const itemProveedorSchema = z.object({
   valor:       z.coerce.number().nonnegative('Valor no puede ser negativo').optional().nullable(),
   verificado:  z.boolean().optional().default(false),
   notas:       z.string().trim().max(500).optional().nullable(),
+  // Opcional. Si se envía, además de loguear el item, la ruta INSERT-a el
+  // producto en `productos`. El proveedor del producto se llena auto con
+  // el nombre del proveedor de la compra (no hace falta repetirlo).
+  producto_stock: productoEnCompraSchema.optional().nullable(),
 });
 
 const createMovimientoProveedorSchema = z.object({

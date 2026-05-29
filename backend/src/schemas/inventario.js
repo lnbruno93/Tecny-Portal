@@ -139,6 +139,7 @@ const queryDesgloseSchema = z.object({
 
 module.exports = {
   nombreSchema,
+  baseProducto,                // se reutiliza desde proveedores (compra crea stock)
   createProductoSchema,
   updateProductoSchema,
   bulkProductoSchema,

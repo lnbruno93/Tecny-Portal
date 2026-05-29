@@ -203,8 +203,41 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
     const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;
 
     await client.query('BEGIN');
-    const prov = await client.query('SELECT id FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
+    const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
     if (!prov.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
+
+    // Pre-validación IMEI duplicado: si algún item.producto_stock trae un IMEI
+    // que ya existe en `productos` (vivo), abortar ANTES de hacer cualquier
+    // INSERT. Regla del negocio: IMEI es único físicamente.
+    if (tipo === 'compra' && items.length > 0) {
+      const imeisACrear = items
+        .filter(it => it.producto_stock?.imei)
+        .map(it => String(it.producto_stock.imei).trim())
+        .filter(Boolean);
+      if (imeisACrear.length > 0) {
+        // Detectar duplicados internos en el mismo payload
+        const seen = new Set();
+        for (const i of imeisACrear) {
+          if (seen.has(i)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: `IMEI duplicado dentro del mismo lote: ${i}` });
+          }
+          seen.add(i);
+        }
+        // Choque con stock existente
+        const { rows: existing } = await client.query(
+          `SELECT imei FROM productos WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
+          [imeisACrear]
+        );
+        if (existing.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            error: `IMEI ya existe${existing.length > 1 ? 's' : ''} en Inventario: ${existing.map(r => r.imei).join(', ')}`,
+            imeis_existentes: existing.map(r => r.imei),
+          });
+        }
+      }
+    }
 
     const monto_usd = round2(toUsd(monto, moneda, tc));
     const { rows } = await client.query(
@@ -216,8 +249,18 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
 
     // Ítems solo en compras (los pagos no llevan productos)
     const insertedItems = [];
+    const productosCreados = [];
     if (tipo === 'compra' && items.length > 0) {
+      // Columnas del producto que persistimos al crear stock desde compra. Es
+      // el mismo set que /api/inventario/productos POST (sin foto).
+      const STOCK_COLS = [
+        'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
+        'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
+        'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
+        'observaciones', 'condicion', 'oculto',
+      ];
       for (const it of items) {
+        // 1) Log del item (siempre)
         const { rows: ir } = await client.query(
           `INSERT INTO proveedor_movimiento_items (proveedor_movimiento_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -225,6 +268,29 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
            it.imei_serial ?? null, it.valor ?? null, it.verificado ?? false, it.notas ?? null]
         );
         insertedItems.push(ir[0]);
+
+        // 2) Si vino producto_stock → crear el producto en Inventario.
+        //    Auto-fill: proveedor = nombre del proveedor de la compra
+        //    (se puede pisar si el cliente lo manda explícito).
+        if (it.producto_stock) {
+          const ps = {
+            ...it.producto_stock,
+            proveedor:  it.producto_stock.proveedor || prov.rows[0].nombre,
+            condicion:  it.producto_stock.condicion ?? 'nuevo',
+            oculto:     it.producto_stock.oculto    ?? false,
+          };
+          const values = STOCK_COLS.map(c => ps[c] ?? null);
+          const placeholders = STOCK_COLS.map((_, i) => `$${i + 1}`).join(',');
+          const { rows: pr } = await client.query(
+            `INSERT INTO productos (${STOCK_COLS.join(',')}) VALUES (${placeholders}) RETURNING *`,
+            values
+          );
+          productosCreados.push(pr[0]);
+          // Audit del producto para que aparezca en su propio historial.
+          await audit(client, 'productos', 'INSERT', pr[0].id,
+            { despues: { ...pr[0], _origen: 'compra_proveedor', proveedor_movimiento_id: mov.id },
+              user_id: req.user.id });
+        }
       }
     }
 
@@ -243,7 +309,7 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
 
     await audit(client, 'proveedor_movimientos', 'INSERT', mov.id, { despues: { ...mov, items: insertedItems }, user_id: req.user.id });
     await client.query('COMMIT');
-    res.status(201).json({ ...mov, items: insertedItems });
+    res.status(201).json({ ...mov, items: insertedItems, productos_creados: productosCreados });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
