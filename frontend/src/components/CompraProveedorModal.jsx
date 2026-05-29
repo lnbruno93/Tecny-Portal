@@ -1,17 +1,22 @@
 /**
- * Modal "Cargar Compra a Proveedor".
+ * Modal "Cargar Compra a Proveedor" — planilla spreadsheet.
  *
- * Reemplaza la planilla inline antigua. Permite registrar una compra completa:
- *   - 1+ items, cada uno con TODOS los campos del producto (categoría, depósito,
- *     costo, precio, condición, etc.) para que entre directamente al Inventario.
- *   - Caja (opcional → queda a crédito) + TC manual si la caja no es USD.
- *   - Auto-fill: el "proveedor" del producto se llena con el nombre del proveedor
- *     (lo hace el backend al INSERT).
+ * Pensado para data entry rápido de 50-100 items en una sola compra:
+ *   - Defaults arriba (categoría, depósito, condición, monedas, etc.) que se
+ *     aplican a cada fila nueva. Vos sólo editás lo que cambia fila por fila.
+ *   - Tabla con scroll horizontal y todas las columnas del producto.
+ *   - Tab / Shift+Tab para navegar como Excel. Enter en la última celda
+ *     guarda y avanza a la siguiente fila.
+ *   - "Pegar desde Excel" toma el clipboard y crea N filas de un saque
+ *     (orden esperado: Nombre · IMEI · GB · Color · Batería · Costo · Precio).
+ *   - "+ 10 filas" agrega 10 vacías con defaults.
+ *   - Total compra (USD) calculado al vuelo respetando monedas + TC.
  *
- * Reglas (validadas también en backend):
- *   - Categoría obligatoria por item (lo exige el schema de Inventario).
- *   - IMEI duplicado (contra stock o dentro del payload) → 409 visible.
- *   - Pago siempre necesita caja; compras pueden no tener (queda a crédito).
+ * Al guardar (1 sola TX en backend):
+ *   1. proveedor_movimiento (tipo=compra) + log de items.
+ *   2. Para cada fila con "Stock" tildado → INSERT producto en Inventario.
+ *   3. Si hay caja_id → egreso automático en caja_movimientos.
+ *   4. IMEI duplicado (interno o vs stock) → 409, rollback total.
  */
 import { useState, useMemo, useEffect } from 'react';
 import { Icons } from './Icons';
@@ -20,54 +25,92 @@ import { useToast } from '../contexts/ToastContext';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
-// Forma de un item dentro del modal. Mantenemos `producto/modelo/tamano/color/
-// imei_serial/valor` para el log clásico (espejo de proveedor_movimiento_items),
-// y en paralelo todos los campos del producto que se va a crear en stock.
-const mkItem = () => ({
-  _id: Math.random().toString(36).slice(2),
-  // Log
-  producto: '', modelo: '', tamano: '', color: '',
-  imei_serial: '',
-  valor: '',           // monto USD de este item (informativo, no impacta caja)
-  verificado: false,
-  // Stock (camelCase opcional para crear producto)
-  tipo_carga: 'unitario',
+const INITIAL_ROWS = 10;        // arranca con 10 vacías
+const ADD_BATCH    = 10;        // "+ 10 filas" suma de a 10
+
+// Estado de defaults editable por el usuario arriba de la planilla.
+const DEFAULTS_INICIALES = {
   clase: 'celular',
-  nombre: '',          // requerido por backend (≥ 1 char)
-  imei: '',
-  gb: '',
-  bateria: '',
+  tipo_carga: 'unitario',
   categoria_id: '',
   deposito_id: '',
-  costo: '',
-  costo_moneda: 'USD',
-  precio_venta: '',
-  precio_moneda: 'USD',
-  cantidad: '1',
   condicion: 'nuevo',
-  observaciones: '',
-  // Flag para decidir si crear stock o sólo loguear (p.ej. flete, servicio).
+  costo_moneda: 'USD',
+  precio_moneda: 'USD',
   crear_stock: true,
+};
+
+// Construye una fila vacía aplicando los defaults actuales.
+const mkRow = (defaults) => ({
+  _id: Math.random().toString(36).slice(2),
+  // Estado de creación de stock
+  crear_stock: defaults.crear_stock,
+  // Inputs del producto
+  clase: defaults.clase,
+  tipo_carga: defaults.tipo_carga,
+  categoria_id: defaults.categoria_id,
+  deposito_id: defaults.deposito_id,
+  condicion: defaults.condicion,
+  nombre: '',
+  imei: '',
+  gb: '',
+  color: '',
+  bateria: '',
+  cantidad: defaults.tipo_carga === 'unitario' ? '1' : '',
+  costo: '',
+  costo_moneda: defaults.costo_moneda,
+  precio_venta: '',
+  precio_moneda: defaults.precio_moneda,
 });
+
+// Detecta si una fila está realmente "usada" (tiene nombre o costo o IMEI).
+const isUsedRow = (r) => !!(r.nombre?.trim() || r.imei?.trim() || Number(r.costo) > 0);
+
+// Parser de bloque TSV/CSV pegado desde Excel.
+// Orden esperado (columnas que varían fila por fila):
+//   Nombre · IMEI · GB · Color · Batería · Costo · Precio venta
+// Tolerante: filas vacías se descartan, valores faltantes quedan vacíos.
+function parsePastedRows(text, defaults) {
+  const sep = text.includes('\t') ? '\t' : ',';
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  return lines.map(line => {
+    const cells = line.split(sep);
+    return {
+      ...mkRow(defaults),
+      nombre:      (cells[0] || '').trim(),
+      imei:        (cells[1] || '').trim(),
+      gb:          (cells[2] || '').trim(),
+      color:       (cells[3] || '').trim(),
+      bateria:     (cells[4] || '').trim(),
+      costo:       (cells[5] || '').trim(),
+      precio_venta:(cells[6] || '').trim(),
+    };
+  });
+}
 
 export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const { toast } = useToast();
 
-  // Cabecera de la compra
-  const [fecha, setFecha] = useState(todayISO());
+  // ── Cabecera ─────────────────────────────────────────────────────────
+  const [fecha, setFecha]   = useState(todayISO());
   const [cajaId, setCajaId] = useState('');
-  const [tc, setTc] = useState('');
-  const [notas, setNotas] = useState('');
+  const [tc, setTc]         = useState('');
+  const [notas, setNotas]   = useState('');
 
-  // Items
-  const [items, setItems] = useState(() => [mkItem()]);
+  // ── Defaults para nuevas filas ────────────────────────────────────────
+  const [defs, setDefs] = useState(DEFAULTS_INICIALES);
+  const setDef = (k, v) => setDefs(d => ({ ...d, [k]: v }));
 
-  // Catálogos
+  // ── Planilla ──────────────────────────────────────────────────────────
+  const [rows, setRows] = useState(() =>
+    Array.from({ length: INITIAL_ROWS }, () => mkRow(DEFAULTS_INICIALES))
+  );
+
+  // ── Catálogos ────────────────────────────────────────────────────────
   const [categorias, setCategorias] = useState([]);
-  const [depositos, setDepositos] = useState([]);
-  const [cajas, setCajas] = useState([]);
-
-  const [saving, setSaving] = useState(false);
+  const [depositos,  setDepositos]  = useState([]);
+  const [cajas,      setCajas]      = useState([]);
+  const [saving,     setSaving]     = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -81,60 +124,103 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
     });
   }, []);
 
-  // Helpers
+  // Moneda de la caja seleccionada → si no es USD pedimos TC.
   const monedaCaja = useMemo(() => {
     if (!cajaId) return 'USD';
     return cajas.find(c => String(c.id) === String(cajaId))?.moneda || 'USD';
   }, [cajaId, cajas]);
 
+  // Total compra (USD): sumamos cada fila usando su moneda + un único TC global.
   const totalUsd = useMemo(() => {
-    // Sumamos costos por item, todos convertidos a USD vía su propia moneda+tc-global.
-    // (El TC se aplica al monto total a nivel caja, pero también acepto que
-    // cada item tenga su moneda de costo distinta — se computa con el TC global
-    // cuando aplica.)
-    return items.reduce((acc, it) => {
-      const v = Number(it.costo) * Number(it.cantidad || 1);
-      if (!v) return acc;
-      if (it.costo_moneda === 'USD') return acc + v;
-      const tcN = Number(tc);
-      if (!tcN) return acc; // sin TC, descartamos lo no-USD del total provisorio
-      return acc + v / tcN;
+    const tcN = Number(tc) || 0;
+    return rows.reduce((acc, r) => {
+      if (!isUsedRow(r)) return acc;
+      const costoUnit = Number(r.costo) || 0;
+      const cant      = Number(r.cantidad) || 1;
+      const sub       = costoUnit * cant;
+      if (r.costo_moneda === 'USD') return acc + sub;
+      if (!tcN) return acc; // si la fila no es USD y no hay TC, no sumamos (la validación atrapa)
+      return acc + sub / tcN;
     }, 0);
-  }, [items, tc]);
+  }, [rows, tc]);
 
-  function updItem(idx, field, val) {
-    setItems(arr => arr.map((it, i) => {
-      if (i !== idx) return it;
-      const next = { ...it, [field]: val };
-      // Si pasa a "stock=false", limpia los campos extras irrelevantes
-      if (field === 'crear_stock' && val === false) {
-        // No tocamos por si vuelve a true
-      }
-      return next;
-    }));
+  // ── Handlers ──────────────────────────────────────────────────────────
+  function updCell(idx, field, val) {
+    setRows(rs => rs.map((r, i) => i === idx ? { ...r, [field]: val } : r));
   }
-  function addItem() { setItems(arr => [...arr, mkItem()]); }
-  function rmItem(idx) {
-    setItems(arr => arr.length <= 1 ? arr : arr.filter((_, i) => i !== idx));
+  function addRows(n = ADD_BATCH) {
+    setRows(rs => [...rs, ...Array.from({ length: n }, () => mkRow(defs))]);
+  }
+  function removeRow(idx) {
+    setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
+  }
+  // "Aplicar defaults a las filas vacías": útil cuando ajustás defaults
+  // después de haber agregado filas.
+  function applyDefaultsToEmpty() {
+    setRows(rs => rs.map(r => isUsedRow(r) ? r : mkRow(defs)));
+  }
+
+  // Pegar desde Excel: toma el clipboard, parsea TSV, reemplaza filas vacías
+  // del final por las parseadas y agrega las que falten.
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) { toast.error('Clipboard vacío'); return; }
+      const parsed = parsePastedRows(text, defs);
+      if (parsed.length === 0) { toast.error('No se detectaron filas válidas'); return; }
+      setRows(rs => {
+        // Conservamos las filas YA usadas; las que no están usadas se reemplazan.
+        const usedExisting = rs.filter(isUsedRow);
+        return [...usedExisting, ...parsed, ...Array.from({ length: 3 }, () => mkRow(defs))];
+      });
+      toast.success(`${parsed.length} fila${parsed.length > 1 ? 's' : ''} agregada${parsed.length > 1 ? 's' : ''} desde el portapapeles`);
+    } catch (e) {
+      toast.error('No se pudo leer el portapapeles · permitilo en el navegador');
+    }
+  }
+
+  // Pegado dentro de la planilla: si el user presiona Ctrl/Cmd+V sobre una
+  // celda y el contenido tiene saltos de línea o tabs, intercepto y proceso
+  // como bloque (rellena varias filas desde esta posición).
+  function handlePasteOnRow(e, startIdx) {
+    const text = e.clipboardData?.getData('text') || '';
+    if (!text.includes('\n') && !text.includes('\t')) return; // pega normal
+    e.preventDefault();
+    const parsed = parsePastedRows(text, defs);
+    if (parsed.length === 0) return;
+    setRows(rs => {
+      const out = [...rs];
+      // Sobrescribe desde startIdx hacia abajo
+      for (let i = 0; i < parsed.length; i++) {
+        if (out[startIdx + i]) out[startIdx + i] = parsed[i];
+        else out.push(parsed[i]);
+      }
+      return out;
+    });
+    toast.success(`${parsed.length} fila${parsed.length > 1 ? 's' : ''} pegada${parsed.length > 1 ? 's' : ''}`);
   }
 
   function validar() {
     if (!fecha) return 'Falta la fecha';
     if (cajaId && monedaCaja !== 'USD' && (!Number(tc) || Number(tc) <= 0))
       return `Cargá el TC para convertir ${monedaCaja} → USD`;
-    if (items.length === 0) return 'Agregá al menos un item';
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (!Number(it.costo) || Number(it.costo) <= 0) return `Item #${i + 1}: cargá el costo`;
-      if (it.crear_stock) {
-        if (!it.nombre.trim()) return `Item #${i + 1}: el nombre es obligatorio para el stock`;
-        if (!it.categoria_id) return `Item #${i + 1}: elegí categoría`;
-        if (it.clase === 'celular' && it.tipo_carga === 'unitario' && Number(it.cantidad) !== 1)
-          return `Item #${i + 1}: un celular unitario debe tener cantidad = 1`;
+    const used = rows.filter(isUsedRow);
+    if (used.length === 0) return 'Cargá al menos una fila con nombre/IMEI/costo';
+    // Validar cada fila usada
+    for (let i = 0; i < used.length; i++) {
+      const r = used[i];
+      if (!Number(r.costo) || Number(r.costo) <= 0) return `Fila ${i + 1}: cargá el costo`;
+      if (r.costo_moneda !== 'USD' && (!Number(tc) || Number(tc) <= 0))
+        return `Fila ${i + 1}: el costo está en ${r.costo_moneda}, cargá el TC`;
+      if (r.crear_stock) {
+        if (!r.nombre?.trim()) return `Fila ${i + 1}: el nombre es obligatorio para crear stock`;
+        if (!r.categoria_id) return `Fila ${i + 1}: elegí categoría`;
+        if (r.clase === 'celular' && r.tipo_carga === 'unitario' && Number(r.cantidad) !== 1)
+          return `Fila ${i + 1}: un celular unitario debe tener cantidad = 1`;
       }
     }
     // IMEI duplicados internos
-    const imeis = items.filter(it => it.crear_stock && it.imei).map(it => it.imei.trim());
+    const imeis = used.filter(r => r.crear_stock && r.imei).map(r => r.imei.trim());
     const seen = new Set();
     for (const i of imeis) {
       if (seen.has(i)) return `IMEI duplicado dentro del lote: ${i}`;
@@ -148,60 +234,59 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
     if (err) { toast.error(err); return; }
     setSaving(true);
     try {
-      // Construir el payload.
-      //   - `monto` va en la moneda de la caja (eso se descuenta literal).
-      //   - `tc` traduce esa moneda a USD para el saldo auditado del proveedor.
-      //   - Si no hay caja → `moneda` = USD, `tc` = null (queda como deuda en USD).
-      const tcN = monedaCaja === 'USD' ? null : Number(tc);
+      const used = rows.filter(isUsedRow);
+      const tcN = Number(tc) || null;
+      // Monto del movimiento: en la moneda de la caja.
+      //   USD → totalUsd; otra → totalUsd * tc
       const montoEnMonedaCaja = monedaCaja === 'USD' ? totalUsd : totalUsd * tcN;
+
       const payload = {
         proveedor_id: proveedor.id,
         fecha,
         tipo: 'compra',
         monto: Number(montoEnMonedaCaja.toFixed(2)),
         moneda: monedaCaja,
-        tc: tcN,
+        tc:     monedaCaja === 'USD' ? null : tcN,
         caja_id: cajaId ? Number(cajaId) : null,
         notas: notas.trim() || null,
-        items: items.map(it => {
+        items: used.map(r => {
+          // Log clásico (siempre)
           const baseLog = {
-            producto: it.producto.trim() || it.nombre.trim() || null,
-            modelo:   it.modelo.trim() || null,
-            tamano:   it.tamano.trim() || it.gb.trim() || null,
-            color:    it.color.trim() || null,
-            imei_serial: (it.imei_serial || it.imei).trim() || null,
-            valor:    Number(it.costo) || 0,
-            verificado: !!it.verificado,
+            producto:    r.nombre.trim() || null,
+            tamano:      r.gb.trim() || null,
+            color:       r.color.trim() || null,
+            imei_serial: r.imei.trim() || null,
+            valor:       Number(r.costo) || 0,
+            verificado:  false,
           };
-          if (!it.crear_stock) return baseLog;
-          // Sub-objeto producto_stock → backend crea producto.
+          if (!r.crear_stock) return baseLog;
+          // Producto que entra al stock
           const num = (v) => v === '' || v == null ? null : Number(v);
           return {
             ...baseLog,
             producto_stock: {
-              tipo_carga: it.tipo_carga,
-              clase: it.clase,
-              nombre: it.nombre.trim(),
-              imei: it.imei.trim() || null,
-              gb: it.gb.trim() || null,
-              color: it.color.trim() || null,
-              bateria: num(it.bateria),
-              categoria_id: Number(it.categoria_id),
-              deposito_id: it.deposito_id ? Number(it.deposito_id) : null,
-              costo: Number(it.costo),
-              costo_moneda: it.costo_moneda,
-              precio_venta: Number(it.precio_venta) || 0,
-              precio_moneda: it.precio_moneda,
-              cantidad: Number(it.cantidad) || 1,
-              condicion: it.condicion,
-              observaciones: it.observaciones.trim() || null,
+              tipo_carga:    r.tipo_carga,
+              clase:         r.clase,
+              nombre:        r.nombre.trim(),
+              imei:          r.imei.trim() || null,
+              gb:            r.gb.trim() || null,
+              color:         r.color.trim() || null,
+              bateria:       num(r.bateria),
+              categoria_id:  Number(r.categoria_id),
+              deposito_id:   r.deposito_id ? Number(r.deposito_id) : null,
+              costo:         Number(r.costo),
+              costo_moneda:  r.costo_moneda,
+              precio_venta:  Number(r.precio_venta) || 0,
+              precio_moneda: r.precio_moneda,
+              cantidad:      Number(r.cantidad) || 1,
+              condicion:     r.condicion,
             },
           };
         }),
       };
       const res = await provApi.createMovimiento(payload);
       const creados = res.productos_creados?.length || 0;
-      toast.success(`Compra registrada${creados ? ` · ${creados} producto${creados > 1 ? 's' : ''} al stock` : ''}`);
+      toast.success(`Compra registrada · ${used.length} ítem${used.length > 1 ? 's' : ''}${creados ? ` · ${creados} al stock` : ''}`);
       onSaved?.(res);
       onClose();
     } catch (e) {
@@ -211,18 +296,33 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
     }
   }
 
+  // ── Estilos compartidos ──────────────────────────────────────────────
+  const cellInp = {
+    padding: '3px 6px', fontSize: 12, height: 26,
+    border: '1px solid var(--border)', background: 'var(--surface)',
+    color: 'var(--text)', borderRadius: 4, width: '100%',
+    outline: 'none', boxSizing: 'border-box',
+  };
+  const th = {
+    padding: '6px 8px', fontSize: 10, fontWeight: 700,
+    letterSpacing: '0.05em', textTransform: 'uppercase',
+    color: 'var(--text-muted)', textAlign: 'left',
+    borderBottom: '1px solid var(--border)',
+    background: 'var(--surface-2)', whiteSpace: 'nowrap',
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 1100, width: '95vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 1400, width: '98vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3>Cargar compra · {proveedor.nombre}</h3>
           <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-          {/* ── Cabecera: fecha · caja · tc · notas ── */}
-          <div className="row" style={{ marginBottom: 14 }}>
-            <div className="field" style={{ flex: '0 0 140px' }}>
+        <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+          {/* ── Cabecera: fecha + caja + tc ── */}
+          <div className="row" style={{ marginBottom: 12 }}>
+            <div className="field" style={{ flex: '0 0 150px' }}>
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
             </div>
@@ -234,49 +334,223 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               </select>
             </div>
             {cajaId && monedaCaja !== 'USD' && (
-              <div className="field" style={{ flex: '0 0 130px' }}>
+              <div className="field" style={{ flex: '0 0 140px' }}>
                 <label className="field-label">TC {monedaCaja}→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
+                <input type="number" className="input mono" min="0" step="0.01"
+                  value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
+              </div>
+            )}
+            {/* TC también se pide si HAY filas en moneda no-USD aunque la caja sea CC */}
+            {(!cajaId || monedaCaja === 'USD') && rows.some(r => isUsedRow(r) && r.costo_moneda !== 'USD') && (
+              <div className="field" style={{ flex: '0 0 140px' }}>
+                <label className="field-label">TC ARS→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
                 <input type="number" className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
               </div>
             )}
           </div>
 
-          {/* ── Items ── */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>
-              Items de la compra · {items.length}
+          {/* ── Defaults para nuevas filas ── */}
+          <div className="card card-tight" style={{ padding: 10, marginBottom: 12, background: 'var(--surface-2)' }}>
+            <div className="flex-between" style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                Defaults para nuevas filas
+              </div>
+              <button className="btn btn-sm btn-ghost" onClick={applyDefaultsToEmpty}
+                title="Aplica estos defaults a las filas que aún están vacías">
+                Aplicar a vacías
+              </button>
             </div>
-            <button className="btn btn-sm" onClick={addItem}>
-              <Icons.Plus size={13} /> Agregar item
-            </button>
+            <div className="row" style={{ gap: 8 }}>
+              <Field label="Tipo"><select className="input" value={defs.clase} onChange={e => setDef('clase', e.target.value)}>
+                <option value="celular">Celular</option><option value="accesorio">Accesorio</option></select></Field>
+              <Field label="Categoría"><select className="input" value={defs.categoria_id} onChange={e => setDef('categoria_id', e.target.value)}>
+                <option value="">— Sin default —</option>
+                {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select></Field>
+              <Field label="Depósito"><select className="input" value={defs.deposito_id} onChange={e => setDef('deposito_id', e.target.value)}>
+                <option value="">— Sin default —</option>
+                {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+              </select></Field>
+              <Field label="Condición"><select className="input" value={defs.condicion} onChange={e => setDef('condicion', e.target.value)}>
+                <option value="nuevo">Nuevo</option><option value="usado">Usado</option></select></Field>
+              <Field label="Tipo carga"><select className="input" value={defs.tipo_carga} onChange={e => setDef('tipo_carga', e.target.value)}>
+                <option value="unitario">Unitario</option><option value="lote">Lote</option></select></Field>
+              <Field label="Moneda costo"><select className="input" value={defs.costo_moneda} onChange={e => setDef('costo_moneda', e.target.value)}>
+                <option>USD</option><option>ARS</option></select></Field>
+              <Field label="Moneda venta"><select className="input" value={defs.precio_moneda} onChange={e => setDef('precio_moneda', e.target.value)}>
+                <option>USD</option><option>ARS</option></select></Field>
+            </div>
           </div>
 
-          <div className="stack" style={{ gap: 12 }}>
-            {items.map((it, idx) => (
-              <ItemCard
-                key={it._id}
-                idx={idx}
-                item={it}
-                onChange={(field, val) => updItem(idx, field, val)}
-                onRemove={() => rmItem(idx)}
-                canRemove={items.length > 1}
-                categorias={categorias}
-                depositos={depositos}
-              />
-            ))}
+          {/* ── Acciones de la planilla ── */}
+          <div className="flex-between" style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>
+              Items · {rows.filter(isUsedRow).length} usadas / {rows.length} filas
+            </div>
+            <div className="flex-row" style={{ gap: 6 }}>
+              <button className="btn btn-sm" onClick={pasteFromClipboard}
+                title="Pegá un bloque desde Excel · orden: Nombre · IMEI · GB · Color · Batería · Costo · Precio">
+                <Icons.Plus size={13} /> Pegar desde Excel
+              </button>
+              <button className="btn btn-sm" onClick={() => addRows(ADD_BATCH)}>
+                + {ADD_BATCH} filas
+              </button>
+            </div>
           </div>
 
-          {/* ── Notas + total ── */}
-          <div className="row" style={{ marginTop: 14, alignItems: 'flex-end' }}>
+          {/* ── Planilla spreadsheet ── */}
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1700, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: 32 }} />   {/* # */}
+                <col style={{ width: 44 }} />   {/* Stock */}
+                <col style={{ width: 200 }} />  {/* Nombre */}
+                <col style={{ width: 140 }} />  {/* IMEI */}
+                <col style={{ width: 70 }} />   {/* GB */}
+                <col style={{ width: 100 }} />  {/* Color */}
+                <col style={{ width: 70 }} />   {/* Bat % */}
+                <col style={{ width: 100 }} />  {/* Tipo */}
+                <col style={{ width: 130 }} />  {/* Categoría */}
+                <col style={{ width: 130 }} />  {/* Depósito */}
+                <col style={{ width: 100 }} />  {/* Condición */}
+                <col style={{ width: 110 }} />  {/* Tipo carga */}
+                <col style={{ width: 70 }} />   {/* Cant */}
+                <col style={{ width: 90 }} />   {/* Costo */}
+                <col style={{ width: 70 }} />   {/* Moneda */}
+                <col style={{ width: 90 }} />   {/* Precio */}
+                <col style={{ width: 70 }} />   {/* Moneda */}
+                <col style={{ width: 36 }} />   {/* X */}
+              </colgroup>
+              <thead>
+                <tr>
+                  {['#','Stock','Nombre *','IMEI/Serial','GB','Color','Bat %','Tipo','Categoría *','Depósito','Cond.','Tipo carga','Cant.','Costo *','M.','Precio venta','M.',''].map((h, i) =>
+                    <th key={i} style={th}>{h}</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, idx) => {
+                  const used = isUsedRow(r);
+                  return (
+                    <tr key={r._id} style={{
+                      background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
+                      borderTop: '1px solid var(--hairline)',
+                    }}>
+                      <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td style={{ padding: '3px 6px', textAlign: 'center' }}>
+                        <input type="checkbox" checked={r.crear_stock}
+                          onChange={e => updCell(idx, 'crear_stock', e.target.checked)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input style={cellInp} value={r.nombre}
+                          placeholder="iPhone 15 Pro"
+                          onPaste={e => handlePasteOnRow(e, idx)}
+                          onChange={e => updCell(idx, 'nombre', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input style={{ ...cellInp, fontFamily: 'monospace' }} value={r.imei}
+                          placeholder="356938…"
+                          onChange={e => updCell(idx, 'imei', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input style={{ ...cellInp, textAlign: 'right' }} value={r.gb}
+                          placeholder="256" onChange={e => updCell(idx, 'gb', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input style={cellInp} value={r.color}
+                          placeholder="Negro" onChange={e => updCell(idx, 'color', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input type="number" style={{ ...cellInp, textAlign: 'right' }} value={r.bateria}
+                          placeholder="100" onChange={e => updCell(idx, 'bateria', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.clase}
+                          onChange={e => updCell(idx, 'clase', e.target.value)}>
+                          <option value="celular">Celular</option>
+                          <option value="accesorio">Accesorio</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.categoria_id}
+                          onChange={e => updCell(idx, 'categoria_id', e.target.value)}>
+                          <option value="">—</option>
+                          {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.deposito_id}
+                          onChange={e => updCell(idx, 'deposito_id', e.target.value)}>
+                          <option value="">—</option>
+                          {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.condicion}
+                          onChange={e => updCell(idx, 'condicion', e.target.value)}>
+                          <option value="nuevo">Nuevo</option>
+                          <option value="usado">Usado</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.tipo_carga}
+                          onChange={e => updCell(idx, 'tipo_carga', e.target.value)}>
+                          <option value="unitario">Unitario</option>
+                          <option value="lote">Lote</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input type="number" style={{ ...cellInp, textAlign: 'right' }} value={r.cantidad}
+                          placeholder="1" onChange={e => updCell(idx, 'cantidad', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input type="number" style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
+                          value={r.costo} placeholder="0"
+                          onChange={e => updCell(idx, 'costo', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.costo_moneda}
+                          onChange={e => updCell(idx, 'costo_moneda', e.target.value)}>
+                          <option>USD</option><option>ARS</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <input type="number" style={{ ...cellInp, textAlign: 'right' }}
+                          value={r.precio_venta} placeholder="0"
+                          onChange={e => updCell(idx, 'precio_venta', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}
+                          onChange={e => updCell(idx, 'precio_moneda', e.target.value)}>
+                          <option>USD</option><option>ARS</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                        {rows.length > 1 && (
+                          <button className="icon-btn" style={{ color: 'var(--neg)', padding: 2 }}
+                            onClick={() => removeRow(idx)} title="Quitar fila">
+                            <Icons.Trash size={12} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── Notas + Total ── */}
+          <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1 }}>
               <label className="field-label">Notas de la compra (opcional)</label>
               <input className="input" value={notas} onChange={e => setNotas(e.target.value)}
-                placeholder="Ej. Pago con transferencia 9876, recibo #5421" />
+                placeholder="Ej. Pago con transferencia, recibo #5421" />
             </div>
-            <div style={{ flex: '0 0 200px', textAlign: 'right' }}>
+            <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
               <div className="muted tiny">Total compra</div>
-              <div className="mono" style={{ fontSize: 20, fontWeight: 800 }}>
+              <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
                 USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
               </div>
             </div>
@@ -286,7 +560,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
         <div className="modal-ft">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" disabled={saving} onClick={handleGuardar}>
-            {saving ? 'Guardando…' : 'Guardar compra'}
+            {saving ? 'Guardando…' : `Guardar compra (${rows.filter(isUsedRow).length})`}
           </button>
         </div>
       </div>
@@ -294,117 +568,12 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   );
 }
 
-// ── Card de cada item ────────────────────────────────────────────────────
-function ItemCard({ idx, item, onChange, onRemove, canRemove, categorias, depositos }) {
-  const set = (f) => (e) => onChange(f, e.target.value);
-  const setN = (f) => (e) => onChange(f, e.target.value);
+// Helper: campo compacto para la zona de defaults.
+function Field({ label, children }) {
   return (
-    <div className="card card-tight" style={{ position: 'relative', padding: 12 }}>
-      <div className="flex-between" style={{ marginBottom: 10 }}>
-        <div style={{ fontWeight: 600, fontSize: 13 }}>Item #{idx + 1}</div>
-        <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: 'pointer' }}>
-          <input type="checkbox" checked={item.crear_stock}
-            onChange={e => onChange('crear_stock', e.target.checked)} />
-          Crear en Inventario al guardar
-        </label>
-        {canRemove && (
-          <button className="icon-btn" title="Quitar item"
-            style={{ color: 'var(--neg)' }} onClick={onRemove}>
-            <Icons.Trash size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Fila 1: clase + categoría + depósito + condición */}
-      <div className="row">
-        <div className="field" style={{ flex: '0 0 140px' }}>
-          <label className="field-label">Tipo</label>
-          <select className="input" value={item.clase} onChange={set('clase')} disabled={!item.crear_stock}>
-            <option value="celular">Celular</option>
-            <option value="accesorio">Accesorio</option>
-          </select>
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label className="field-label">Categoría {item.crear_stock && <span style={{ color: 'var(--neg)' }}>*</span>}</label>
-          <select className="input" value={item.categoria_id} onChange={set('categoria_id')} disabled={!item.crear_stock}>
-            <option value="">— Elegir —</option>
-            {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label className="field-label">Depósito</label>
-          <select className="input" value={item.deposito_id} onChange={set('deposito_id')} disabled={!item.crear_stock}>
-            <option value="">Sin depósito</option>
-            {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-          </select>
-        </div>
-        <div className="field" style={{ flex: '0 0 120px' }}>
-          <label className="field-label">Condición</label>
-          <select className="input" value={item.condicion} onChange={set('condicion')} disabled={!item.crear_stock}>
-            <option value="nuevo">Nuevo</option>
-            <option value="usado">Usado</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Fila 2: nombre + imei + gb + bateria + color */}
-      <div className="row">
-        <div className="field" style={{ flex: 2 }}>
-          <label className="field-label">Nombre {item.crear_stock && <span style={{ color: 'var(--neg)' }}>*</span>}</label>
-          <input className="input" placeholder="ej. iPhone 15 Pro" value={item.nombre} onChange={set('nombre')} />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label className="field-label">IMEI/Serial</label>
-          <input className="input mono" placeholder="356938…" value={item.imei} onChange={set('imei')} />
-        </div>
-        <div className="field" style={{ flex: '0 0 90px' }}>
-          <label className="field-label">GB</label>
-          <input className="input" placeholder="256" value={item.gb} onChange={set('gb')} />
-        </div>
-        <div className="field" style={{ flex: '0 0 80px' }}>
-          <label className="field-label">Batería %</label>
-          <input type="number" className="input mono" placeholder="100" value={item.bateria} onChange={set('bateria')} />
-        </div>
-        <div className="field" style={{ flex: '0 0 110px' }}>
-          <label className="field-label">Color</label>
-          <input className="input" placeholder="Negro" value={item.color} onChange={set('color')} />
-        </div>
-      </div>
-
-      {/* Fila 3: tipo_carga + cantidad + costo + precio venta */}
-      <div className="row">
-        <div className="field" style={{ flex: '0 0 130px' }}>
-          <label className="field-label">Tipo carga</label>
-          <select className="input" value={item.tipo_carga} onChange={set('tipo_carga')} disabled={!item.crear_stock}>
-            <option value="unitario">Unitario</option>
-            <option value="lote">Lote</option>
-          </select>
-        </div>
-        <div className="field" style={{ flex: '0 0 100px' }}>
-          <label className="field-label">Cantidad</label>
-          <input type="number" min="1" className="input mono" value={item.cantidad} onChange={setN('cantidad')} />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label className="field-label">Costo unit. <span style={{ color: 'var(--neg)' }}>*</span></label>
-          <div className="flex-row" style={{ gap: 6 }}>
-            <input type="number" min="0" className="input mono" placeholder="0"
-              value={item.costo} onChange={set('costo')} style={{ flex: 1 }} />
-            <select className="input" style={{ width: 80 }} value={item.costo_moneda} onChange={set('costo_moneda')}>
-              <option>USD</option><option>ARS</option>
-            </select>
-          </div>
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label className="field-label">Precio venta</label>
-          <div className="flex-row" style={{ gap: 6 }}>
-            <input type="number" min="0" className="input mono" placeholder="0"
-              value={item.precio_venta} onChange={set('precio_venta')} style={{ flex: 1 }} disabled={!item.crear_stock} />
-            <select className="input" style={{ width: 80 }} value={item.precio_moneda} onChange={set('precio_moneda')} disabled={!item.crear_stock}>
-              <option>USD</option><option>ARS</option>
-            </select>
-          </div>
-        </div>
-      </div>
+    <div className="field" style={{ flex: 1, minWidth: 110 }}>
+      <label className="field-label" style={{ fontSize: 10 }}>{label}</label>
+      {children}
     </div>
   );
 }
