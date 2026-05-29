@@ -241,9 +241,9 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
 
     const monto_usd = round2(toUsd(monto, moneda, tc));
     const { rows } = await client.query(
-      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd, caja_id, notas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [proveedor_id, fecha, tipo, descripcion ?? null, monto, moneda, tc ?? null, monto_usd, caja_id ?? null, notas ?? null]
+      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd, caja_id, notas, created_by_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [proveedor_id, fecha, tipo, descripcion ?? null, monto, moneda, tc ?? null, monto_usd, caja_id ?? null, notas ?? null, req.user.id]
     );
     const mov = rows[0];
 
@@ -322,6 +322,16 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // Ownership check (auditoría #B-07)
+    const { rows: pre } = await client.query(
+      'SELECT id, created_by_user_id FROM proveedor_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (!pre[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    if (pre[0].created_by_user_id !== req.user.id && req.user.role !== 'admin') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'No tenés permiso para borrar este movimiento (lo creó otro usuario).' });
+    }
     const { rows } = await client.query(
       'UPDATE proveedor_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );

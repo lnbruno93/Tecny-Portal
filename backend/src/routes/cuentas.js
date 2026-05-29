@@ -22,6 +22,7 @@ const db      = require('../config/database');
 const validate  = require('../lib/validate');
 const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
+const { toUsd, round2 } = require('../lib/money');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {
   createClienteCCSchema,
@@ -305,13 +306,13 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    // Insertar movimiento
+    // Insertar movimiento (con auditoría de creador para #B-07)
     const { rows: movRows } = await client.query(
       `INSERT INTO movimientos_cc
-         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
-      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null]
+      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null, req.user.id]
     );
     const mov = movRows[0];
 
@@ -438,6 +439,21 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // Ownership check (auditoría #B-07): un user con permiso `cuentas` solo
+    // puede borrar movimientos que él mismo creó. Los admins pueden borrar
+    // cualquiera. Movimientos legacy (created_by_user_id IS NULL, anteriores
+    // al deploy de la migración 013) solo los borra admin.
+    const { rows: pre } = await client.query(
+      'SELECT id, created_by_user_id FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (!pre[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    const isOwner = pre[0].created_by_user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'No tenés permiso para borrar este movimiento (lo creó otro usuario).' });
+    }
     const { rows } = await client.query(
       'UPDATE movimientos_cc SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
@@ -460,6 +476,29 @@ router.delete('/movimientos/:id', async (req, res, next) => {
            WHERE movimiento_cc_id = $1 AND producto_id IS NOT NULL`,
         [id]
       );
+      // Pre-validar que ningún UPDATE deje cantidad negativa (auditoría #B-06).
+      // Caso típico que rompía: devolución sube stock 0→2, luego otra venta
+      // intermedia baja 2→1, y al borrar la devolución intentamos 1→-1 que
+      // viola CHECK (cantidad >= 0). En vez de un 500 críptico, devolvemos 409
+      // con producto y cantidad disponible. Usamos FOR UPDATE para evitar
+      // race con otras ventas en curso.
+      if (sign < 0) {
+        for (const it of items) {
+          const delta = sign * Number(it.cantidad || 1);
+          const { rows: pr } = await client.query(
+            `SELECT id, nombre, cantidad FROM productos WHERE id = $1 FOR UPDATE`,
+            [it.producto_id]
+          );
+          if (!pr[0]) continue; // producto borrado, ignoramos
+          if (Number(pr[0].cantidad) + delta < 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: `No se puede borrar la devolución: el stock de "${pr[0].nombre}" ya fue vendido (disponible ${pr[0].cantidad}, necesario ${-delta}).`,
+              producto_id: it.producto_id,
+            });
+          }
+        }
+      }
       for (const it of items) {
         const delta = sign * Number(it.cantidad || 1);
         await client.query(
@@ -523,17 +562,16 @@ router.post('/cobranzas-masivas', validate(cobranzaMasivaSchema), async (req, re
 
     const creados = [];
     for (const c of cobranzas) {
-      // Normalizar monto a USD para auditar saldo en moneda dura.
-      // El monto_total del mov queda en USD (igual que el flujo individual);
-      // la caja se descuenta en la moneda de la caja con el tc provisto.
-      const tcN = c.moneda === 'USD' ? 1 : Number(c.tc);
-      const montoUsd = c.moneda === 'USD' ? c.monto : c.monto / tcN;
+      // Normalizar monto a USD usando el helper compartido (auditoría #B-05).
+      // ANTES: `c.monto / tcN` dividía USDT por el TC ARS — guardaba 100 USDT
+      // como 0.11 USD cuando tc=900. toUsd() trata USDT como USD (1:1).
+      const montoUsd = round2(toUsd(c.monto, c.moneda, c.tc));
 
       const { rows: movRows } = await client.query(
         `INSERT INTO movimientos_cc
-           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id]
+           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id, req.user.id]
       );
       const mov = movRows[0];
 
