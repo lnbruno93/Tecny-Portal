@@ -25,60 +25,6 @@ function Status({ tone = 'default', children }) {
 
 // ─── Datalists para desplegables de producto ─────────────────────────────────
 
-const PROV_DATALISTS = (
-  <>
-    <datalist id="prov-dl-producto">
-      <option value="iPhone" />
-      <option value="MacBook Air" />
-      <option value="MacBook Pro" />
-      <option value="Neo" />
-      <option value="AirPods" />
-      <option value="Apple Watch" />
-      <option value="iPad" />
-      <option value="AirTag" />
-      <option value="RayBan Meta" />
-      <option value="Cargador" />
-      <option value="SuperHub" />
-      <option value="Accesorios" />
-      <option value="PS 5" />
-      <option value="Nintendo" />
-      <option value="XBox" />
-      <option value="Pencil" />
-      <option value="Samsung" />
-    </datalist>
-    <datalist id="prov-dl-modelo">
-      <option value="16 Pro Max" /><option value="16 Pro" /><option value="16 Plus" /><option value="16" />
-      <option value="15 Pro Max" /><option value="15 Pro" /><option value="15 Plus" /><option value="15" />
-      <option value="14 Pro Max" /><option value="14 Pro" /><option value="14 Plus" /><option value="14" />
-      <option value="13 Pro Max" /><option value="13 Pro" /><option value="13" />
-      <option value="SE (3ra gen)" />
-      <option value="S25 Ultra" /><option value="S25+" /><option value="S25" />
-      <option value="S24 Ultra" /><option value="S24+" /><option value="S24" />
-      <option value="A55" /><option value="A35" /><option value="A15" />
-      <option value="Pro 11 M4" /><option value="Pro 13 M4" /><option value="Air M2" />
-      <option value="Air 13 M3" /><option value="Mini 7" />
-    </datalist>
-    <datalist id="prov-dl-tamano">
-      <option value="64GB" />
-      <option value="128GB" />
-      <option value="256GB" />
-      <option value="512GB" />
-      <option value="1TB" />
-      <option value="2TB" />
-      <option value="825GB" />
-      <option value="S/D" />
-    </datalist>
-    <datalist id="prov-dl-color">
-      <option value="Negro" /><option value="Blanco" /><option value="Azul" />
-      <option value="Rosa" /><option value="Verde" /><option value="Rojo" />
-      <option value="Dorado" /><option value="Plateado" /><option value="Violeta" />
-      <option value="Natural Titanium" /><option value="Desert Titanium" />
-      <option value="Black Titanium" /><option value="White Titanium" />
-      <option value="Grafito" /><option value="Medianoche" /><option value="Blanco Estelar" />
-    </datalist>
-  </>
-);
-
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
 
@@ -443,7 +389,6 @@ export default function Proveedores() {
 
             {/* ── Tabla spreadsheet ── */}
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-              {PROV_DATALISTS}
               <table style={{
                 width: '100%', borderCollapse: 'collapse',
                 tableLayout: 'fixed', minWidth: 860,

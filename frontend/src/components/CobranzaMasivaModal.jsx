@@ -13,12 +13,13 @@
  *   - Cliente picker filtra por saldo > 0 por defecto, toggle "Mostrar
  *     todos" para incluir saldo = 0 (parte_de_pago anticipado).
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Icons } from './Icons';
 import { cuentas as cuentasApi, cajas as cajasApi } from '../lib/api';
-import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
+import AutocompletePicker from './AutocompletePicker';
+import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -173,23 +174,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
     }
   }
 
-  // ── Estilos ──────────────────────────────────────────────────────────
-  const cellInp = {
-    padding: '3px 6px', fontSize: 12, height: 26,
-    border: '1px solid var(--border)', background: 'var(--surface)',
-    color: 'var(--text)', borderRadius: 4, width: '100%',
-    outline: 'none', boxSizing: 'border-box',
-  };
-  const th = {
-    padding: '6px 6px', fontSize: 10, fontWeight: 700,
-    letterSpacing: '0.05em', textTransform: 'uppercase',
-    color: 'var(--text-muted)', textAlign: 'left',
-    borderBottom: '1px solid var(--border)',
-    borderRight: '1px solid var(--hairline)',
-    background: 'var(--surface-2)', whiteSpace: 'nowrap',
-    overflow: 'hidden', textOverflow: 'ellipsis',
-  };
-
+  // Estilos compartidos vienen de lib/spreadsheetStyles
   return (
     <div className="modal-overlay" onClick={tryClose}>
       <div className="modal" style={{ maxWidth: 1400, width: '96vw' }} onClick={e => e.stopPropagation()}>
@@ -201,11 +186,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
         <div className="modal-body" style={{ maxHeight: '82vh', overflowY: 'auto' }}>
           {/* #H-12: banner si catálogos fallaron */}
           {catalogosError && (
-            <div style={{
-              padding: '8px 12px', marginBottom: 12, borderRadius: 6,
-              background: 'rgba(217,119,6,0.10)', color: 'var(--warn, #d97706)',
-              border: '1px solid rgba(217,119,6,0.30)', fontSize: 12,
-            }}>
+            <div style={catalogosErrorBanner}>
               ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
               Cerrá/abrí el modal después de revisar tu conexión.
             </div>
@@ -382,124 +363,36 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
 }
 
 // ── Cliente Picker ──────────────────────────────────────────────────────
-// #P-05: cambió de filtrado client-side sobre 500 clientes a fetch-on-type
-// contra /api/cuentas/clientes/search. Escalable a miles de clientes.
+// #P-05 + #R-03: usa el endpoint /api/cuentas/clientes/search y se monta
+// sobre AutocompletePicker genérico. Antes era ~120 líneas casi idénticas
+// al ProductoPicker.
+const CLIENTE_SEARCH_LIMIT = 15;
 function ClientePicker({ value, locked, showZero, onPick, onClear, onChange, cellInp }) {
-  const [open, setOpen] = useState(false);
-  const [matches, setMatches] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [highlight, setHighlight] = useState(0);
-  const debounced = useDebouncedValue(value, 200);
-  const boxRef = useRef(null);
-  // #H-10: "última request gana" para no pisar resultados nuevos con viejos
-  const reqIdRef = useRef(0);
-
-  // #H-13: el endpoint devuelve hasta 15 — si llegan 15 mostramos "refiná".
-  const SEARCH_LIMIT = 15;
-
-  useEffect(() => {
-    if (locked) { setOpen(false); return; }
-    const q = (debounced || '').trim();
-    if (q.length < 2) { setMatches([]); return; }
-    setLoading(true);
-    const myReq = ++reqIdRef.current;
-    cuentasApi.clientesSearch(q, !showZero)
-      .then(res => {
-        if (myReq !== reqIdRef.current) return;
-        setMatches(res.data || []);
-        setOpen(true);
-        setHighlight(0);
-      })
-      .catch(() => { if (myReq === reqIdRef.current) setMatches([]); })
-      .finally(() => { if (myReq === reqIdRef.current) setLoading(false); });
-  }, [debounced, locked, showZero]);
-  const hasMore = matches.length >= SEARCH_LIMIT;
-
-  useEffect(() => {
-    function onDoc(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
-    if (open) document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  function onKey(e) {
-    if (!open) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, matches.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)); }
-    else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (matches[highlight]) { onPick(matches[highlight]); setOpen(false); }
-    }
-    else if (e.key === 'Escape') setOpen(false);
-  }
-
+  const fetchOptions = (q) =>
+    cuentasApi.clientesSearch(q, !showZero).then(res => res.data || []);
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <input
-          style={{
-            ...cellInp,
-            background: locked ? 'rgba(99,102,241,0.10)' : 'var(--surface)',
-            fontWeight: locked ? 600 : 400,
-          }}
-          value={value} placeholder="Buscar cliente…"
-          readOnly={locked}
-          onChange={e => onChange(e.target.value)}
-          // #H-11: reabrir el dropdown al volver a focus (consistente con
-          // ProductoPicker). Si hay matches previos los muestra.
-          onFocus={() => { if (!locked && matches.length > 0) setOpen(true); }}
-          onKeyDown={onKey}
-        />
-        {locked && (
-          <button className="icon-btn" style={{ padding: 2, color: 'var(--text-muted)' }}
-            onClick={onClear} title="Cambiar cliente">
-            <Icons.X size={12} />
-          </button>
-        )}
-      </div>
-      {open && !locked && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 4, zIndex: 50, maxHeight: 260, overflowY: 'auto',
-          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-        }}>
-          {matches.length === 0 && (
-            <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-              Sin coincidencias{!showZero ? ' con deuda' : ''}
+    <AutocompletePicker
+      value={value} onChange={onChange}
+      locked={locked} onClear={onClear} onPick={onPick}
+      fetchOptions={fetchOptions}
+      getOptionKey={(c) => c.id}
+      placeholder="Buscar cliente…"
+      emptyText={showZero ? 'Sin coincidencias' : 'Sin coincidencias con deuda'}
+      limit={CLIENTE_SEARCH_LIMIT}
+      cellInp={cellInp}
+      renderOption={(c) => {
+        const saldo = Number(c.saldo || 0);
+        const tono = saldo > 0 ? 'neg' : saldo < 0 ? 'pos' : 'muted';
+        return (
+          <>
+            <div style={{ fontWeight: 600 }}>
+              {[c.nombre, c.apellido].filter(Boolean).join(' ')}
+              {c.categoria && <span className="muted tiny" style={{ marginLeft: 6 }}>· {c.categoria}</span>}
             </div>
-          )}
-          {matches.map((c, i) => {
-            const saldo = Number(c.saldo || 0);
-            const tono = saldo > 0 ? 'neg' : saldo < 0 ? 'pos' : 'muted';
-            return (
-              <div key={c.id}
-                onMouseEnter={() => setHighlight(i)}
-                onMouseDown={(e) => { e.preventDefault(); onPick(c); setOpen(false); }}
-                style={{
-                  padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                  background: i === highlight ? 'var(--surface-2)' : 'transparent',
-                  borderBottom: i < matches.length - 1 ? '1px solid var(--hairline)' : 'none',
-                }}>
-                <div style={{ fontWeight: 600 }}>
-                  {[c.nombre, c.apellido].filter(Boolean).join(' ')}
-                  {c.categoria && <span className="muted tiny" style={{ marginLeft: 6 }}>· {c.categoria}</span>}
-                </div>
-                <div className={`tiny ${tono}`}>Saldo USD {saldo.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
-              </div>
-            );
-          })}
-          {/* #H-13: indicador de "hay más resultados" */}
-          {hasMore && (
-            <div style={{
-              padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)',
-              background: 'var(--surface-2)', borderTop: '1px solid var(--hairline)',
-              textAlign: 'center',
-            }}>
-              Mostrando los primeros {SEARCH_LIMIT} — refiná la búsqueda para ver más
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+            <div className={`tiny ${tono}`}>Saldo USD {saldo.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</div>
+          </>
+        );
+      }}
+    />
   );
 }
