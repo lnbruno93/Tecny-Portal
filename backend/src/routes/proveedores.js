@@ -1,6 +1,7 @@
 // Módulo Proveedores — cuentas por pagar. Alta de proveedores + cuenta corriente
 // (compras que les debemos y pagos que les hicimos). Montos normalizados a USD.
 // Montado en /api/proveedores con requireAuth + requirePermission('proveedores') (app.js).
+const rateLimit = require('express-rate-limit');
 const router = require('express').Router();
 const db = require('../config/database');
 const validate = require('../lib/validate');
@@ -13,6 +14,19 @@ const { syncContactoSafe } = require('../lib/contactosSync');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
 } = require('../schemas/proveedores');
+
+// Rate-limit dedicado para POST /movimientos (auditoría #H-07): cuando una
+// compra trae producto_stock, hace hasta 200 INSERTs productos + IMEI locks
+// + audit. Sin tope dedicado, un script puede agotar conexiones del pool en
+// minutos. 30 lotes / 15 min por user es generoso para uso humano.
+const compraMovimientoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `prov-mov:${req.user?.id || req.ip}`,
+  message: { error: 'Demasiadas compras a proveedor en poco tiempo. Probá en unos minutos.' },
+});
 
 // ─── PROVEEDORES ────────────────────────────────────────────
 
@@ -197,7 +211,7 @@ router.get('/:id/movimientos', async (req, res, next) => {
 
 // Registro de compra/pago — igual al flujo B2B: una COMPRA carga ítems (productos
 // comprados); un PAGO no. Transaccional (movimiento + ítems atómicos).
-router.post('/movimientos', validate(createMovimientoProveedorSchema), async (req, res, next) => {
+router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoProveedorSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;

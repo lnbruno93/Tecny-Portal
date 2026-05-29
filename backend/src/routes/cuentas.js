@@ -17,12 +17,25 @@
  * Saldo positivo → el cliente nos debe dinero.
  */
 
+const rateLimit = require('express-rate-limit');
 const router  = require('express').Router();
 const db      = require('../config/database');
 const validate  = require('../lib/validate');
 const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
 const { toUsd, round2 } = require('../lib/money');
+
+// Rate-limit específico para cobranza masiva: 10 req / 15 min por user.
+// Cada lote puede ser de hasta 100 cobranzas → write-heavy y mantiene
+// locks de cajas un tiempo. Bloquea DoS interno (auditoría #H-07).
+const cobranzaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `cobranza-masiva:${req.user?.id || req.ip}`,
+  message: { error: 'Demasiadas cobranzas masivas. Probá de nuevo en unos minutos.' },
+});
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {
   createClienteCCSchema,
@@ -181,17 +194,22 @@ router.post('/clientes', validate(createClienteCCSchema), async (req, res, next)
 });
 
 router.put('/clientes/:id', validate(updateClienteCCSchema), async (req, res, next) => {
+  // #H-09: envolver UPDATE + audit en una TX para que si el audit falla el
+  // UPDATE haga rollback (antes el audit corría fuera con db, dejando
+  // updates sin rastro auditable).
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
 
-    const { rows: before } = await db.query(
-      'SELECT * FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL', [id]
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
-    if (!before[0]) return res.status(404).json({ error: 'Cliente no encontrado' });
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Cliente no encontrado' }); }
 
     const { nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas } = req.body;
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `UPDATE clientes_cc SET
          nombre      = COALESCE($1,  nombre),
          apellido    = COALESCE($2,  apellido),
@@ -205,32 +223,43 @@ router.put('/clientes/:id', validate(updateClienteCCSchema), async (req, res, ne
        WHERE id = $10 RETURNING *`,
       [nombre, apellido, contacto, marca_redes, provincia, localidad, direccion, categoria, notas, id]
     );
-    await audit('clientes_cc', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
-    // Agenda central (best-effort)
+    await audit(client, 'clientes_cc', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
+    // Agenda central (best-effort, fuera de la TX)
     await syncContactoSafe(db, {
       origen: 'b2b', ref_tabla: 'clientes_cc', ref_id: rows[0].id,
       nombre: rows[0].nombre, apellido: rows[0].apellido, telefono: rows[0].contacto,
     });
     res.json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 });
 
 router.delete('/clientes/:id', async (req, res, next) => {
+  // #H-09: TX para que audit y delete sean atómicos
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
 
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       'UPDATE clientes_cc SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Cliente no encontrado' });
-    await audit('clientes_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Cliente no encontrado' }); }
+    await audit(client, 'clientes_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -555,7 +584,7 @@ router.delete('/movimientos/:id', async (req, res, next) => {
 //     negativo (a favor), descontable de la próxima compra.
 //   - Si una fila falla por cualquier motivo (cliente no existe, caja
 //     inválida, etc.) → rollback total: ninguna cobranza se aplica.
-router.post('/cobranzas-masivas', validate(cobranzaMasivaSchema), async (req, res, next) => {
+router.post('/cobranzas-masivas', cobranzaLimiter, validate(cobranzaMasivaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const { cobranzas } = req.body;
