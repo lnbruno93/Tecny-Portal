@@ -24,9 +24,20 @@ router.get('/', async (req, res, next) => {
     let where = 'WHERE p.deleted_at IS NULL';
     if (buscar) { params.push(`%${buscar}%`); where += ` AND p.nombre ILIKE $${params.length}`; }
 
+    // Cálculo de saldo (lo que les debemos):
+    //   - 'pago'    : resta (les pagamos)
+    //   - 'compra' con caja_id → contado, no genera deuda (se descuenta al instante)
+    //   - 'compra' sin caja_id → a crédito, suma como deuda
+    //   - 'saldo_inicial'      → suma (deuda heredada)
     const { rows } = await db.query(
       `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
-              COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) AS saldo_usd,
+              COALESCE(SUM(
+                CASE
+                  WHEN m.tipo='pago'                                  THEN -m.monto_usd
+                  WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
+                  ELSE m.monto_usd
+                END
+              ), 0) AS saldo_usd,
               COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
               COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
          FROM proveedores p
@@ -217,12 +228,16 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
       }
     }
 
-    // Un PAGO a proveedor sale de una caja → egreso en el ledger (si se indicó caja)
-    if (tipo === 'pago' && caja_id) {
+    // Flujo "sale dinero, entra inventario": una COMPRA con caja_id elegida
+    // se trata como contado (sale el efectivo al instante). Sin caja_id queda
+    // como deuda con el proveedor (flujo histórico, se paga después con tipo=pago).
+    // Un PAGO siempre sale de la caja indicada.
+    if (caja_id && (tipo === 'pago' || tipo === 'compra')) {
       await postCajaMovimiento(client, {
         caja_id, fecha, tipo: 'egreso', monto, moneda, tc,
         origen: 'proveedor', ref_tabla: 'proveedor_movimientos', ref_id: mov.id,
-        concepto: 'Pago a proveedor', user_id: req.user.id,
+        concepto: tipo === 'pago' ? 'Pago a proveedor' : 'Compra a proveedor (contado)',
+        user_id: req.user.id,
       });
     }
 
@@ -260,14 +275,22 @@ router.delete('/movimientos/:id', async (req, res, next) => {
 
 router.get('/resumen/saldos', async (_req, res, next) => {
   try {
+    // Misma regla que el listado: compras con caja_id son contado, no deuda.
+    const SALDO_EXPR = `
+      CASE
+        WHEN m.tipo='pago'                              THEN -m.monto_usd
+        WHEN m.tipo='compra' AND m.caja_id IS NOT NULL  THEN 0
+        ELSE m.monto_usd
+      END
+    `;
     const { rows } = await db.query(
       `SELECT p.id, p.nombre,
-              COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) AS saldo_usd
+              COALESCE(SUM(${SALDO_EXPR}), 0) AS saldo_usd
          FROM proveedores p
          LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
         WHERE p.deleted_at IS NULL
         GROUP BY p.id
-       HAVING COALESCE(SUM(CASE WHEN m.tipo='pago' THEN -m.monto_usd ELSE m.monto_usd END), 0) <> 0
+       HAVING COALESCE(SUM(${SALDO_EXPR}), 0) <> 0
         ORDER BY saldo_usd DESC`
     );
     const total_deuda_usd = round2(rows.reduce((s, r) => s + Number(r.saldo_usd), 0));

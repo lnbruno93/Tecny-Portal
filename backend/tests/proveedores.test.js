@@ -183,3 +183,76 @@ describe('Proveedores — cuenta corriente', () => {
     expect(Number(res.body.total_deuda_usd)).toBeGreaterThan(0);
   });
 });
+
+// ─── Compra con caja_id (contado) ────────────────────────────────────────
+// Verifica el flujo "sale dinero, entra stock": una compra con caja_id
+// descuenta la caja al instante y NO suma deuda. Sin caja_id queda a crédito
+// (comportamiento histórico).
+describe('Proveedores — compra contado (caja_id)', () => {
+  let cajaUsdId;
+
+  // Helper: saldo actual de la caja desde el listado de cajas (que incluye saldo_actual).
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set(auth());
+    const caja = (r.body || []).find(c => c.id === id);
+    return Number(caja?.saldo_actual ?? 0);
+  }
+
+  beforeAll(async () => {
+    const r = await request(app).get('/api/ventas/metodos-pago').set(auth());
+    const usd = (r.body || []).find(m => m.moneda === 'USD');
+    expect(usd).toBeTruthy();
+    cajaUsdId = usd.id;
+  });
+
+  it('compra con caja_id: NO suma deuda y postea egreso en la caja', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor Contado' });
+    const saldoAntes = await saldoCaja(cajaUsdId);
+
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD', caja_id: cajaUsdId });
+    expect(res.status).toBe(201);
+    expect(res.body.caja_id).toBe(cajaUsdId);
+
+    // Saldo del proveedor: NO debe figurar en el resumen de deudas
+    const resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    expect(resumen.body.proveedores.find(p => p.id === prov.id)).toBeUndefined();
+
+    // Saldo de la caja: bajó 500
+    const saldoDesp = await saldoCaja(cajaUsdId);
+    expect(saldoAntes - saldoDesp).toBeCloseTo(500, 2);
+  });
+
+  it('compra sin caja_id: SUMA deuda y NO toca cajas', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor Crédito' });
+    const saldoAntes = await saldoCaja(cajaUsdId);
+
+    const res = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 300, moneda: 'USD' });
+    expect(res.status).toBe(201);
+
+    const resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    const entry = resumen.body.proveedores.find(p => p.id === prov.id);
+    expect(entry).toBeTruthy();
+    expect(Number(entry.saldo_usd)).toBeCloseTo(300, 2);
+
+    // La caja no se tocó
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoAntes, 2);
+  });
+
+  it('borrar una compra contado revierte el egreso de la caja', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor Revert' });
+    const saldoAntes = await saldoCaja(cajaUsdId);
+
+    const create = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 120, moneda: 'USD', caja_id: cajaUsdId });
+    expect(create.status).toBe(201);
+    // Caja bajó 120
+    expect(saldoAntes - await saldoCaja(cajaUsdId)).toBeCloseTo(120, 2);
+
+    const del = await request(app).delete(`/api/proveedores/movimientos/${create.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+    // Vuelve al saldo inicial
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoAntes, 2);
+  });
+});

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { proveedores as provApi } from '../lib/api';
+import { proveedores as provApi, cajas as cajasApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -95,7 +95,10 @@ const mkRow = (prev = null) => ({
   monto: '',
 });
 
-function InlineAddRows({ proveedorId, onSave, onSaveDone, onSaveError }) {
+// cajaId: id de la caja desde donde sale el dinero al guardar la fila.
+// Si está vacío, la compra queda "a crédito" (suma deuda con el proveedor);
+// los pagos sin caja se rechazan en backend (necesitan saber de qué caja salen).
+function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError }) {
   const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
 
   const cr = useRef({});
@@ -134,11 +137,16 @@ function InlineAddRows({ proveedorId, onSave, onSaveDone, onSaveError }) {
     ));
     setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 20);
 
+    // Caja: si se eligió, el movimiento se descuenta al instante. Si no, queda
+    // como deuda con el proveedor (se paga después con una fila tipo 'pago').
+    const cajaIdNum = cajaId ? Number(cajaId) : null;
+
     // 2. Actualización optimista instantánea en la lista
     onSave({
       id: tempId, _pending: true,
       fecha: row.fecha, tipo: row.tipo,
       monto_usd: Number(row.monto), descripcion: null, notas: null,
+      caja_id: cajaIdNum,
       items: isCompra ? [{ id: `${tempId}_item`, ...itemData }] : [],
     });
 
@@ -146,6 +154,7 @@ function InlineAddRows({ proveedorId, onSave, onSaveDone, onSaveError }) {
     provApi.createMovimiento({
       proveedor_id: proveedorId,
       fecha: row.fecha, tipo: row.tipo, monto: Number(row.monto), moneda: 'USD',
+      caja_id: cajaIdNum,
       items: isCompra ? [itemData] : [],
     })
     .then(real => onSaveDone(tempId, real))
@@ -311,6 +320,11 @@ export default function Proveedores() {
   const [provSaving, setProvSaving] = useState(false);
   const [provError, setProvError] = useState('');
 
+  // Caja desde la que sale el dinero al cargar movimientos inline.
+  // '' = a crédito (no descuenta de caja, suma deuda al proveedor).
+  const [cajas, setCajas] = useState([]);
+  const [cajaInline, setCajaInline] = useState('');
+
   // ── Cargar lista ──
   const listReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
   function loadList() {
@@ -322,6 +336,13 @@ export default function Proveedores() {
       .finally(() => { if (reqId === listReq.current) setLoadingList(false); });
   }
   useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [dSearch]);
+
+  // Cargar cajas (metodos_pago) una vez para alimentar el selector inline.
+  useEffect(() => {
+    cajasApi.listCajas()
+      .then(r => setCajas((r || []).filter(c => c.activo !== false)))
+      .catch(() => setCajas([]));
+  }, []);
 
   useEffect(() => {
     if (list.length > 0 && !selectedId) setSelectedId(list[0].id);
@@ -706,10 +727,47 @@ export default function Proveedores() {
                     </tr>
                   )}
 
+                  {/* ── Selector de caja para las próximas filas inline ──
+                        Comportamiento:
+                          - Caja elegida: la compra/pago descuenta esa caja al instante
+                            (entra stock al inventario / sale dinero del efectivo).
+                          - "Cuenta corriente": no descuenta nada; queda como deuda con
+                            el proveedor (saldo) y se paga después con un movimiento 'pago'.
+                        Permanece sticky para todas las filas que sigan, así no hay que
+                        re-elegirlo en cada renglón.                                    */}
+                  <tr style={{ background: 'rgba(99,102,241,0.06)' }}>
+                    <td colSpan={10} style={{ padding: '8px 10px', borderTop: '2px solid var(--accent)' }}>
+                      <label className="flex-row" style={{ gap: 8, alignItems: 'center', fontSize: 13 }}>
+                        <Icons.Dollar size={14} />
+                        <span style={{ fontWeight: 600 }}>Pagar con:</span>
+                        <select
+                          value={cajaInline}
+                          onChange={e => setCajaInline(e.target.value)}
+                          style={{
+                            padding: '4px 8px', fontSize: 13, height: 30,
+                            border: '1px solid var(--border)', background: 'var(--surface)',
+                            color: 'var(--text)', borderRadius: 5, minWidth: 240,
+                          }}
+                        >
+                          <option value="">— Cuenta corriente (queda como deuda) —</option>
+                          {cajas.map(c => (
+                            <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+                          ))}
+                        </select>
+                        {cajaInline && (
+                          <span className="muted tiny">
+                            La caja se descuenta al instante al guardar cada fila.
+                          </span>
+                        )}
+                      </label>
+                    </td>
+                  </tr>
+
                   {/* ── Fila de entrada inline ── */}
                   <InlineAddRows
                     key={selectedId}
                     proveedorId={selectedId}
+                    cajaId={cajaInline}
                     onSave={handleOptimisticSave}
                     onSaveDone={handleSaveDone}
                     onSaveError={handleSaveError}
