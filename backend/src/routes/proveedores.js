@@ -258,6 +258,9 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
         'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
         'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
         'observaciones', 'condicion', 'oculto',
+        // Link al movimiento de origen (auditoría #B-02): permite borrar
+        // productos en cascada cuando se borra la compra que los creó.
+        'proveedor_movimiento_id',
       ];
       for (const it of items) {
         // 1) Log del item (siempre)
@@ -278,6 +281,8 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
             proveedor:  it.producto_stock.proveedor || prov.rows[0].nombre,
             condicion:  it.producto_stock.condicion ?? 'nuevo',
             oculto:     it.producto_stock.oculto    ?? false,
+            // Link al movimiento de compra para borrado en cascada (#B-02)
+            proveedor_movimiento_id: mov.id,
           };
           const values = STOCK_COLS.map(c => ps[c] ?? null);
           const placeholders = STOCK_COLS.map((_, i) => `$${i + 1}`).join(',');
@@ -336,9 +341,38 @@ router.delete('/movimientos/:id', async (req, res, next) => {
       'UPDATE proveedor_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+
+    // Soft-delete en cascada de los productos creados por esta compra
+    // (auditoría #B-02). Sólo si NINGUNO de esos productos se vendió ya:
+    //   - cantidad cambió desde el insert original (alguien lo vendió) → 409.
+    //   - estado pasó a 'vendido' → 409.
+    // Esto evita el doble beneficio "recupero caja + mantengo stock".
+    const { rows: prods } = await client.query(
+      `SELECT id, nombre, estado FROM productos
+         WHERE proveedor_movimiento_id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [id]
+    );
+    const vendidos = prods.filter(p => p.estado === 'vendido');
+    if (vendidos.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `No se puede borrar la compra: ${vendidos.length} producto(s) ya se vendieron: ${vendidos.map(p => p.nombre).slice(0, 3).join(', ')}${vendidos.length > 3 ? '…' : ''}`,
+        productos_vendidos: vendidos.map(p => p.id),
+      });
+    }
+    if (prods.length > 0) {
+      await client.query(
+        `UPDATE productos SET deleted_at = NOW()
+           WHERE proveedor_movimiento_id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+    }
+
     // Revertir el egreso de caja asociado (si lo hubo)
     await reverseCajaMovimientos(client, 'proveedor_movimientos', id);
-    await audit(client, 'proveedor_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    await audit(client, 'proveedor_movimientos', 'DELETE', id, {
+      antes: rows[0], productos_borrados: prods.map(p => p.id), user_id: req.user.id,
+    });
     await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
