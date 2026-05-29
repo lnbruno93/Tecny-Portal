@@ -5,6 +5,8 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
 import { fmt } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 function relDate(iso) {
   if (!iso) return '—';
@@ -266,7 +268,7 @@ export default function Usados() {
                     <div className="input-group" style={{ width: 130, marginLeft: 'auto' }}>
                       <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
                       <input
-                        type="number"
+                        type="number" onKeyDown={blockInvalidNumberKeys}
                         className="input mono"
                         style={{
                           textAlign: 'right',
@@ -334,7 +336,7 @@ export default function Usados() {
                       <div className="input-group">
                         <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
                         <input
-                          type="number"
+                          type="number" onKeyDown={blockInvalidNumberKeys}
                           className="input mono"
                           placeholder="0"
                           value={form.precio_usd}

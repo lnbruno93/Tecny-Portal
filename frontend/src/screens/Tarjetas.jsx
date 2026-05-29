@@ -5,6 +5,8 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 const todayISO = () => new Date().toLocaleDateString('sv');
 const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
@@ -238,7 +240,7 @@ export default function Tarjetas() {
                 <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Registrar liquidación (te pagaron)</div></div>
                 <form onSubmit={handleLiquidar} className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div className="field" style={{ width: 150 }}><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
-                  <div className="field" style={{ width: 150 }}><label className="field-label tiny">Monto recibido</label><input type="number" min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
+                  <div className="field" style={{ width: 150 }}><label className="field-label tiny">Monto recibido</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
                   <div className="field" style={{ flex: 1, minWidth: 160 }}><label className="field-label tiny">Entra a la caja</label>
                     <select className="input" value={liq.caja_id} onChange={e => setLiq(f => ({ ...f, caja_id: e.target.value }))}>
                       <option value="">Elegí la caja…</option>

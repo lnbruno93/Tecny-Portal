@@ -5,6 +5,8 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 const todayISO = () => new Date().toLocaleDateString('sv');
 const esArs = (c) => c.moneda === 'ARS';
@@ -202,10 +204,10 @@ export default function Cambios() {
                           <option value="entrega_ars">Entrega $</option><option value="recibo_usd">Recibo USD</option>
                         </select>
                       </td>
-                      <td><input type="number" min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={mov.tipo !== 'entrega_ars'} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
-                      <td><input type="number" min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={mov.tipo !== 'entrega_ars'} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} /></td>
+                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={mov.tipo !== 'entrega_ars'} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
+                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={mov.tipo !== 'entrega_ars'} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} /></td>
                       <td>
-                        <input type="number" min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: mov.tipo === 'entrega_ars' ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: mov.tipo === 'entrega_ars' ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
                           placeholder="USD" readOnly={mov.tipo === 'entrega_ars'}
                           value={mov.tipo === 'entrega_ars' ? (usdPreview || '') : mov.monto_usd}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />

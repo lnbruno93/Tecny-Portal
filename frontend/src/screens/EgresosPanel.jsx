@@ -4,6 +4,8 @@ import { egresos as egresosApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 const thisMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
 const lastDay = (periodo) => { const [y, m] = periodo.split('-').map(Number); return new Date(y, m, 0).getDate(); };
@@ -204,11 +206,11 @@ export default function EgresosPanel() {
                     </div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Monto</label>
                       <div className="flex-row" style={{ gap: 6 }}>
-                        <input type="number" min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} />
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} />
                         <select className="input" style={{ width: 80 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select>
                       </div>
                     </div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC (si es ARS)</label><input type="number" min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC (si es ARS)</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /></div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Caja {form.estado === 'pagado' && <span style={{ color: 'var(--neg)' }}>*</span>}</label>
@@ -303,11 +305,11 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
         <div className="modal-body">
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 2 }}><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
-            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select></div></div>
+            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select></div></div>
             {form.moneda === 'ARS' && (
-              <div className="field" style={{ width: 80 }}><label className="field-label tiny">TC</label><input type="number" min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /></div>
+              <div className="field" style={{ width: 80 }}><label className="field-label tiny">TC</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /></div>
             )}
-            <div className="field" style={{ width: 70 }}><label className="field-label tiny">Día</label><input type="number" min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
+            <div className="field" style={{ width: 70 }}><label className="field-label tiny">Día</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
           </div>
           <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Categoría</label><select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}><option value="">—</option>{categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>

@@ -11,6 +11,8 @@ import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
@@ -520,7 +522,7 @@ export default function Financiera() {
                   <div className="input-group">
                     <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
                     <input
-                      type="number"
+                      type="number" onKeyDown={blockInvalidNumberKeys}
                       className="input mono"
                       placeholder="0,00"
                       value={cMonto}
@@ -832,7 +834,7 @@ export default function Financiera() {
                     <div className="input-group">
                       <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
                       <input
-                        type="number"
+                        type="number" onKeyDown={blockInvalidNumberKeys}
                         className="input mono"
                         placeholder="0,00"
                         value={pMonto}

@@ -7,6 +7,8 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmt(n) { return Math.round(Number(n) || 0).toLocaleString('es-AR'); }
@@ -817,8 +819,8 @@ export default function Ventas() {
                       {cart.map((it, i) => (
                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
                           <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(i, 'descripcion', e.target.value)} />
-                          <input type="number" className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)} />
-                          <input type="number" className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(i, 'precio_vendido', e.target.value)} />
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)} />
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(i, 'precio_vendido', e.target.value)} />
                           <select className="input" value={it.moneda} onChange={e => setItem(i, 'moneda', e.target.value)}><option>USD</option><option>ARS</option></select>
                           <button type="button" className="icon-btn" onClick={() => rmItem(i)}><Icons.X size={14} /></button>
                         </div>
@@ -830,7 +832,7 @@ export default function Ventas() {
                   {/* Vendedor / cliente */}
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Vendedor</label><select className="input" value={vForm.vendedor_id} onChange={e => setVF('vendedor_id', e.target.value)}><option value="">—</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Comisión (USD)</label><input type="number" className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">Comisión (USD)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1, position: 'relative' }}>
@@ -948,7 +950,7 @@ export default function Ventas() {
                     })()}
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
                   </div>
                   <div className="field">
@@ -967,7 +969,7 @@ export default function Ventas() {
                     {vForm.canjeOn && (
                       <div className="row" style={{ marginTop: 8 }}>
                         <div className="field" style={{ flex: 2 }}><label className="field-label">Equipo tomado</label><input className="input" placeholder="iPhone 12 usado" value={vForm.canjeDesc} onChange={e => setVF('canjeDesc', e.target.value)} /></div>
-                        <div className="field" style={{ flex: 1 }}><label className="field-label">Valor toma (USD)</label><input type="number" className="input mono" placeholder="0" value={vForm.canjeValor} onChange={e => setVF('canjeValor', e.target.value)} /></div>
+                        <div className="field" style={{ flex: 1 }}><label className="field-label">Valor toma (USD)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.canjeValor} onChange={e => setVF('canjeValor', e.target.value)} /></div>
                         <div className="field" style={{ flex: 1, alignSelf: 'end' }}><label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: 'pointer' }}><input type="checkbox" checked={vForm.canjeStock} onChange={e => setVF('canjeStock', e.target.checked)} /> A inventario</label></div>
                       </div>
                     )}
@@ -980,9 +982,9 @@ export default function Ventas() {
                       {pagos.map((p, i) => (
                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
                           <select className="input" value={p.es_cuenta_corriente ? '__CC__' : p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
-                          <input type="number" className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
                           <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}><option>ARS</option><option>USD</option><option>USDT</option></select>
-                          <input type="number" className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />
                           <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
                         </div>
                       ))}
