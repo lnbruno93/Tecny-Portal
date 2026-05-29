@@ -64,7 +64,7 @@ export default function Proveedores() {
     setLoadingList(true);
     const reqId = ++listReq.current;
     provApi.list(dSearch ? { buscar: dSearch } : {})
-      .then(r => { if (reqId === listReq.current) setList(r || []); })
+      .then(r => { if (reqId === listReq.current) setList(r?.data || []); })
       .catch(console.error)
       .finally(() => { if (reqId === listReq.current) setLoadingList(false); });
   }
@@ -187,7 +187,7 @@ export default function Proveedores() {
     provApi.movimientos(selectedId, { page: 1, limit: 100 })
       .then(r => { setMovs(r.data || []); setMovsPag(r.pagination || { page: 1, pages: 1, total: 0 }); })
       .catch(console.error);
-    provApi.list(search ? { buscar: search } : {}).then(r => setList(r || [])).catch(console.error);
+    provApi.list(search ? { buscar: search } : {}).then(r => setList(r?.data || [])).catch(console.error);
   }
 
   // ── Modal de compra (reemplaza la planilla inline) ─────────────────────
@@ -225,7 +225,7 @@ export default function Proveedores() {
       setShowPago(false);
       reloadMovs();
       // refrescar la lista para actualizar saldo
-      provApi.list(dSearch ? { buscar: dSearch } : {}).then(r => setList(r || []));
+      provApi.list(dSearch ? { buscar: dSearch } : {}).then(r => setList(r?.data || []));
     } catch (e) {
       toast.error(e.message || 'No se pudo guardar el pago');
     } finally {
@@ -236,7 +236,7 @@ export default function Proveedores() {
   // Callback del modal de compra: refresca movs y lista (saldo).
   function handleCompraSaved() {
     reloadMovs();
-    provApi.list(dSearch ? { buscar: dSearch } : {}).then(r => setList(r || []));
+    provApi.list(dSearch ? { buscar: dSearch } : {}).then(r => setList(r?.data || []));
   }
 
   async function handleDeleteMov(m) {

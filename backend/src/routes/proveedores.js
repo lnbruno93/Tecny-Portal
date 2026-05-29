@@ -44,7 +44,10 @@ const compraMovimientoLimiter = rateLimit({
 
 // ─── PROVEEDORES ────────────────────────────────────────────
 
-// Lista con saldo (lo que les debemos) en USD
+// Lista con saldo (lo que les debemos) en USD. Paginado (#M-06): antes
+// devolvía TODOS los proveedores sin LIMIT, con LEFT JOIN agregado sobre
+// todos sus movimientos. A 500 proveedores con 200 movs c/u ya escanea
+// 100k filas. Default 100/página, max 200.
 router.get('/', async (req, res, next) => {
   try {
     const { buscar } = req.query;
@@ -52,30 +55,36 @@ router.get('/', async (req, res, next) => {
     let where = 'WHERE p.deleted_at IS NULL';
     if (buscar) { params.push(`%${buscar}%`); where += ` AND p.nombre ILIKE $${params.length}`; }
 
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 200 });
+
     // Cálculo de saldo (lo que les debemos):
     //   - 'pago'    : resta (les pagamos)
     //   - 'compra' con caja_id → contado, no genera deuda (se descuenta al instante)
     //   - 'compra' sin caja_id → a crédito, suma como deuda
     //   - 'saldo_inicial'      → suma (deuda heredada)
-    const { rows } = await db.query(
-      `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
-              COALESCE(SUM(
-                CASE
-                  WHEN m.tipo='pago'                                  THEN -m.monto_usd
-                  WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
-                  ELSE m.monto_usd
-                END
-              ), 0) AS saldo_usd,
-              COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
-              COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
-         FROM proveedores p
-         LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
-         ${where}
-        GROUP BY p.id
-        ORDER BY p.nombre`,
-      params
-    );
-    res.json(rows);
+    const [countRes, dataRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) FROM proveedores p ${where}`, params),
+      db.query(
+        `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
+                COALESCE(SUM(
+                  CASE
+                    WHEN m.tipo='pago'                                  THEN -m.monto_usd
+                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
+                    ELSE m.monto_usd
+                  END
+                ), 0) AS saldo_usd,
+                COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
+                COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
+           FROM proveedores p
+           LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
+           ${where}
+          GROUP BY p.id
+          ORDER BY p.nombre
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
 
