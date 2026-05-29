@@ -19,12 +19,12 @@
  *   3. Si caja_id → ingreso en caja_movimientos (origen='b2b').
  *   4. Stock insuficiente / producto inexistente → rollback total (409/404).
  */
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Icons } from './Icons';
 import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
-import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
+import AutocompletePicker from './AutocompletePicker';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -392,123 +392,39 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
 // Busca en /api/inventario/productos con vista=no_vendidos (productos vivos
 // con stock > 0 y no ocultos). Muestra los 8 primeros matches al tipear ≥ 2
 // chars. Click o Enter elige; X desbloquea para volver a buscar.
+// Reemplazado por AutocompletePicker genérico (#R-03). La lógica de
+// fetch/dropdown/teclado vive en components/AutocompletePicker.jsx. Acá
+// solo configuramos el fetcher y el render de cada opción.
+const PRODUCTO_LIMIT = 8;
 function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
-  const [open, setOpen]   = useState(false);
-  const [items, setItems] = useState([]);
-  const [hasMore, setHasMore] = useState(false);  // #H-13: hay más matches que el limit
-  const [loading, setLoading] = useState(false);
-  const [highlight, setHighlight] = useState(0);
-  const debounced = useDebouncedValue(value, 200);
-  const boxRef = useRef(null);
-  // #H-10: token de "última request gana". Se incrementa antes de cada fetch
-  // y se compara al volver — si llegó después uno más nuevo, descartamos.
-  const reqIdRef = useRef(0);
-
-  useEffect(() => {
-    if (locked) { setOpen(false); return; }
-    if (!debounced || debounced.trim().length < 2) { setItems([]); setHasMore(false); return; }
-    setLoading(true);
-    const myReq = ++reqIdRef.current;
-    const LIMIT = 8;
-    // Pedimos uno más para detectar "hay más".
-    invApi.productos({ buscar: debounced.trim(), vista: 'no_vendidos', limit: LIMIT + 1 })
-      .then(res => {
-        if (myReq !== reqIdRef.current) return; // llegó una respuesta más nueva, descartar
-        const all = res.data || [];
-        setItems(all.slice(0, LIMIT));
-        setHasMore(all.length > LIMIT);
-        setOpen(true);
-        setHighlight(0);
-      })
-      .catch(() => { if (myReq === reqIdRef.current) { setItems([]); setHasMore(false); } })
-      .finally(() => { if (myReq === reqIdRef.current) setLoading(false); });
-  }, [debounced, locked]);
-
-  // Cerrar al clickear afuera
-  useEffect(() => {
-    function onDoc(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
-    if (open) document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  function onKey(e) {
-    if (!open) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, items.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)); }
-    else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (items[highlight]) { onPick(items[highlight]); setOpen(false); }
-    }
-    else if (e.key === 'Escape') setOpen(false);
-  }
-
+  const fetchOptions = (q) =>
+    invApi.productos({ buscar: q, vista: 'no_vendidos', limit: PRODUCTO_LIMIT + 1 })
+      .then(res => (res.data || []).slice(0, PRODUCTO_LIMIT));
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <input
-          style={{
-            ...cellInp,
-            background: locked ? 'rgba(99,102,241,0.10)' : 'var(--surface)',
-            fontWeight: locked ? 600 : 400,
-          }}
-          value={value} placeholder="Buscar nombre o IMEI…"
-          readOnly={locked}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => { if (!locked && items.length) setOpen(true); }}
-          onKeyDown={onKey}
-        />
-        {locked && (
-          <button className="icon-btn" style={{ padding: 2, color: 'var(--text-muted)' }}
-            onClick={onClear} title="Cambiar producto">
-            <Icons.X size={12} />
-          </button>
-        )}
-      </div>
-      {open && !locked && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 4, zIndex: 50, maxHeight: 240, overflowY: 'auto',
-          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-        }}>
-          {loading && <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)' }}>Buscando…</div>}
-          {!loading && items.length === 0 && (
-            <div style={{ padding: 8, fontSize: 12, color: 'var(--text-muted)' }}>Sin coincidencias en stock</div>
-          )}
-          {items.map((p, i) => (
-            <div key={p.id}
-              onMouseEnter={() => setHighlight(i)}
-              onMouseDown={(e) => { e.preventDefault(); onPick(p); setOpen(false); }}
-              style={{
-                padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                background: i === highlight ? 'var(--surface-2)' : 'transparent',
-                borderBottom: i < items.length - 1 ? '1px solid var(--hairline)' : 'none',
-              }}>
-              <div style={{ fontWeight: 600 }}>
-                {p.nombre}
-                <span className="muted tiny" style={{ marginLeft: 6 }}>
-                  {p.gb && `${p.gb}GB`}{p.gb && p.color && ' · '}{p.color}
-                </span>
-              </div>
-              <div className="muted tiny" style={{ display: 'flex', gap: 10 }}>
-                {p.imei && <span style={{ fontFamily: 'monospace' }}>IMEI {p.imei}</span>}
-                <span>Stock: {p.cantidad}</span>
-                {p.precio_venta != null && <span>Precio sugerido: USD {p.precio_venta}</span>}
-              </div>
-            </div>
-          ))}
-          {/* #H-13: indicador de "hay más resultados" */}
-          {hasMore && (
-            <div style={{
-              padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)',
-              background: 'var(--surface-2)', borderTop: '1px solid var(--hairline)',
-              textAlign: 'center',
-            }}>
-              Mostrando los primeros 8 — refiná la búsqueda para ver más
-            </div>
-          )}
-        </div>
+    <AutocompletePicker
+      value={value} onChange={onChange}
+      locked={locked} onClear={onClear} onPick={onPick}
+      fetchOptions={fetchOptions}
+      getOptionKey={(p) => p.id}
+      placeholder="Buscar nombre o IMEI…"
+      emptyText="Sin coincidencias en stock"
+      limit={PRODUCTO_LIMIT}
+      cellInp={cellInp}
+      renderOption={(p) => (
+        <>
+          <div style={{ fontWeight: 600 }}>
+            {p.nombre}
+            <span className="muted tiny" style={{ marginLeft: 6 }}>
+              {p.gb && `${p.gb}GB`}{p.gb && p.color && ' · '}{p.color}
+            </span>
+          </div>
+          <div className="muted tiny" style={{ display: 'flex', gap: 10 }}>
+            {p.imei && <span style={{ fontFamily: 'monospace' }}>IMEI {p.imei}</span>}
+            <span>Stock: {p.cantidad}</span>
+            {p.precio_venta != null && <span>Precio sugerido: USD {p.precio_venta}</span>}
+          </div>
+        </>
       )}
-    </div>
+    />
   );
 }
