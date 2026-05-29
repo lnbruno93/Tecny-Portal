@@ -5,6 +5,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtSigned, fmtFecha } from '../lib/format';
+import VentaB2BModal from '../components/VentaB2BModal';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -491,6 +492,7 @@ export default function CuentasCC() {
 
   const [showEdit, setShowEdit]             = useState(false);
   const [showClienteModal, setShowClienteModal] = useState(false);
+  const [showVentaModal,   setShowVentaModal]   = useState(false);
   const [clienteForm, setClienteForm]       = useState(EMPTY_CLIENTE);
   const [clienteCreating, setClienteCreating] = useState(false);
   const [clienteError, setClienteError]     = useState('');
@@ -937,6 +939,9 @@ export default function CuentasCC() {
                       {resumen.cant_movimientos || 0}
                     </div>
                   </div>
+                  <button className="btn btn-sm btn-primary" onClick={() => setShowVentaModal(true)}>
+                    <Icons.Plus size={13} /> Cargar venta
+                  </button>
                   <button className="icon-btn" title="Editar cliente" onClick={() => setShowEdit(true)}>
                     <Icons.Edit size={15} />
                   </button>
@@ -1158,6 +1163,27 @@ export default function CuentasCC() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Modal Cargar Venta B2B (spreadsheet con picker de stock) ── */}
+      {showVentaModal && cliente && (
+        <VentaB2BModal
+          cliente={cliente}
+          onClose={() => setShowVentaModal(false)}
+          onSaved={() => {
+            setShowVentaModal(false);
+            // Refrescar detalle + saldo en la lista
+            if (selectedId) {
+              Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId, { page: 1, limit: 100 })])
+                .then(([resumen, movsResp]) => {
+                  setClienteDetail({ resumen, movimientos: movsResp.data || [] });
+                  setMovsPag(movsResp.pagination || { page: 1, pages: 1, total: 0 });
+                  setClientes(prev => prev.map(c => c.id === selectedId ? { ...c, saldo: resumen.saldo } : c));
+                })
+                .catch(() => {});
+            }
+          }}
+        />
       )}
     </div>
   );

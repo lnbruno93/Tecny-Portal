@@ -35,6 +35,11 @@ const itemMovimientoCCSchema = z.object({
   valor:       z.number().nonnegative('Valor no puede ser negativo').optional().nullable(),
   verificado:  z.boolean().optional().default(false),
   notas:       z.string().trim().max(500).optional().nullable(),
+  // Si se referencia un producto del Inventario, al guardar el movimiento
+  // (tipo=compra/entrega_mercaderia) se valida disponibilidad y se descuenta
+  // stock. Sin producto_id la línea sigue siendo texto libre (legacy/servicio).
+  producto_id: z.coerce.number().int().positive().optional().nullable(),
+  cantidad:    z.coerce.number().int().nonnegative().optional().default(1),
 });
 
 // ─── Movimiento CC ────────────────────────────────────────────────────────────

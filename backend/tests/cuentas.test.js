@@ -609,3 +609,174 @@ describe('DELETE /api/cuentas/clientes/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── Venta B2B con descuento de stock (#75) ──────────────────────────────
+// Verifica el flujo "sale stock, entra dinero":
+//   - Items con producto_id descuentan stock en una TX.
+//   - Compra con caja_id → ingreso a caja + NO suma deuda.
+//   - Compra sin caja_id → suma deuda al cliente.
+//   - Stock insuficiente → 409 con rollback total.
+//   - Producto inexistente → 404 con rollback.
+//   - Borrar el movimiento devuelve el stock y revierte la caja.
+//   - Devolución re-suma stock.
+describe('Venta B2B con stock', () => {
+  let cliId, catId, cajaUsdId;
+
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set('Authorization', `Bearer ${adminToken}`);
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+  async function saldoCliente(id) {
+    const r = await request(app).get(`/api/cuentas/clientes/${id}`).set('Authorization', `Bearer ${adminToken}`);
+    return Number(r.body.saldo || 0);
+  }
+  async function crearProducto({ nombre = 'iPhone Test B2B', cantidad = 1, imei = null } = {}) {
+    const r = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: cantidad > 1 ? 'lote' : 'unitario',
+        clase: cantidad > 1 ? 'accesorio' : 'celular',
+        categoria_id: catId, nombre, imei,
+        costo: 500, costo_moneda: 'USD',
+        precio_venta: 800, precio_moneda: 'USD',
+        cantidad,
+      });
+    return r.body;
+  }
+
+  beforeAll(async () => {
+    // Cliente B2B
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente B2B Stock', categoria: 'A+' });
+    cliId = cli.body.id;
+    // Categoría
+    const cat = await request(app).post('/api/inventario/categorias').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'B2B Stock Tests' });
+    catId = cat.body.id;
+    // Caja USD
+    const r = await request(app).get('/api/ventas/metodos-pago').set('Authorization', `Bearer ${adminToken}`);
+    cajaUsdId = (r.body || []).find(m => m.moneda === 'USD').id;
+  });
+
+  it('compra con caja → ingresa caja, descuenta stock, NO suma deuda', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone V1', imei: '350200000000001' });
+    const saldoCajaAntes = await saldoCaja(cajaUsdId);
+    const saldoCliAntes  = await saldoCliente(cliId);
+
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra',
+        monto_total: 800, caja_id: cajaUsdId,
+        items: [{ producto_id: prod.id, cantidad: 1, valor: 800 }],
+      });
+    expect(res.status).toBe(201);
+
+    // Stock: bajó a 0 y quedó vendido
+    const p = await request(app).get(`/api/inventario/productos?buscar=350200000000001&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAct = p.body.data.find(x => x.id === prod.id);
+    expect(Number(pAct.cantidad)).toBe(0);
+    expect(pAct.estado).toBe('vendido');
+
+    // Caja: subió 800. Cliente: NO sumó deuda.
+    expect(await saldoCaja(cajaUsdId) - saldoCajaAntes).toBeCloseTo(800, 2);
+    expect(await saldoCliente(cliId)).toBeCloseTo(saldoCliAntes, 2);
+  });
+
+  it('compra sin caja → suma deuda, descuenta stock, NO mueve caja', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone V2', imei: '350200000000002' });
+    const saldoCajaAntes = await saldoCaja(cajaUsdId);
+    const saldoCliAntes  = await saldoCliente(cliId);
+
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 800,
+        items: [{ producto_id: prod.id, cantidad: 1, valor: 800 }],
+      });
+    expect(res.status).toBe(201);
+
+    expect(await saldoCliente(cliId) - saldoCliAntes).toBeCloseTo(800, 2);
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoCajaAntes, 2);
+  });
+
+  it('stock insuficiente → 409 con rollback total', async () => {
+    const prod = await crearProducto({ nombre: 'Accesorio Limitado', cantidad: 3 });
+    const saldoCliAntes = await saldoCliente(cliId);
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 1000,
+        items: [{ producto_id: prod.id, cantidad: 10, valor: 1000 }],
+      });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/insuficiente/i);
+    const p = await request(app).get(`/api/inventario/productos?buscar=Limitado&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAct = p.body.data.find(x => x.id === prod.id);
+    expect(Number(pAct.cantidad)).toBe(3);
+    expect(await saldoCliente(cliId)).toBeCloseTo(saldoCliAntes, 2);
+  });
+
+  it('producto inexistente → 404 con rollback', async () => {
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 100,
+        items: [{ producto_id: 999999, cantidad: 1, valor: 100 }],
+      });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/no existe/i);
+  });
+
+  it('borrar movimiento devuelve stock + revierte caja', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone V3', imei: '350200000000003' });
+    const saldoCajaAntes = await saldoCaja(cajaUsdId);
+
+    const create = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra',
+        monto_total: 800, caja_id: cajaUsdId,
+        items: [{ producto_id: prod.id, cantidad: 1, valor: 800 }],
+      });
+    expect(create.status).toBe(201);
+
+    const del = await request(app).delete(`/api/cuentas/movimientos/${create.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+
+    const p = await request(app).get(`/api/inventario/productos?buscar=350200000000003&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAct = p.body.data.find(x => x.id === prod.id);
+    expect(Number(pAct.cantidad)).toBe(1);
+    expect(pAct.estado).toBe('disponible');
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoCajaAntes, 2);
+  });
+
+  it('devolución re-suma stock', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone Devo', imei: '350200000000004' });
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 800,
+        items: [{ producto_id: prod.id, cantidad: 1, valor: 800 }],
+      });
+    const dev = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'devolucion', monto_total: 800,
+        items: [{ producto_id: prod.id, cantidad: 1, valor: 800 }],
+      });
+    expect(dev.status).toBe(201);
+    const p = await request(app).get(`/api/inventario/productos?buscar=350200000000004&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAct = p.body.data.find(x => x.id === prod.id);
+    expect(Number(pAct.cantidad)).toBe(1);
+    expect(pAct.estado).toBe('disponible');
+  });
+
+  it('legacy: items SIN producto_id siguen funcionando (texto libre)', async () => {
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 50,
+        items: [{ producto: 'Accesorio varios', valor: 50 }],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.items[0].producto).toBe('Accesorio varios');
+    expect(res.body.items[0].producto_id).toBeNull();
+  });
+});

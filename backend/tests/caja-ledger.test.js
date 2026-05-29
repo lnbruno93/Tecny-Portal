@@ -332,14 +332,23 @@ describe('Ledger de cajas', () => {
     expect(Number(row.saldo_actual)).toBe(0);
   });
 
-  it('una COMPRA B2B no toca la caja (solo el pago ingresa)', async () => {
+  it('una COMPRA B2B con caja_id ingresa al instante (contado) - nuevo comportamiento (#75)', async () => {
+    // Cambio mayo-2026 (paralelo a Proveedores): venta B2B con caja elegida
+    // se trata como contado → ingreso al instante en la caja. Sin caja_id
+    // sigue siendo CC (suma deuda del cliente, no toca caja).
     const caja = await crearCaja({ saldo_inicial: 0 });
     const cli = await request(app).post('/api/cuentas/clientes').set(auth())
       .send({ nombre: 'Mayorista Compra ' + Math.random(), categoria: 'A-' });
+    // Con caja_id: ingresa
     await request(app).post('/api/cuentas/movimientos').set(auth())
       .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 1000, caja_id: caja.id });
-    const row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
-    expect(Number(row.saldo_actual)).toBe(0);
+    let row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(1000);
+    // Sin caja_id: no toca la caja
+    await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 500 });
+    row = (await request(app).get('/api/cajas/cajas').set(auth())).body.find(c => c.id === caja.id);
+    expect(Number(row.saldo_actual)).toBe(1000); // sigue igual
   });
 
   it('un COBRO de envío ingresa a la caja ARS, se revierte al cancelar y al borrar', async () => {
