@@ -90,20 +90,32 @@ const mkRow = (prev = null) => ({
   _id:         Math.random().toString(36).slice(2),
   fecha:       prev?.fecha || todayISO(),
   tipo:        prev?.tipo  || 'compra',
+  // Caja desde la que sale el dinero. '' = a crédito (sólo válido en compras).
+  // Mantenemos la última caja usada en la siguiente fila para no re-elegir.
+  caja_id:     prev?.caja_id || '',
+  // Tipo de cambio manual cuando la caja no es USD (ARS, USDT, etc).
+  // El backend convierte a USD para auditar saldo en moneda dura.
+  tc:          prev?.tc || '',
   producto: '', modelo: '', tamano: '', color: '', imei_serial: '',
   verificado: false,
   monto: '',
 });
 
-// cajaId: id de la caja desde donde sale el dinero al guardar la fila.
-// Si está vacío, la compra queda "a crédito" (suma deuda con el proveedor);
-// los pagos sin caja se rechazan en backend (necesitan saber de qué caja salen).
-function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError }) {
+// cajas: array de cajas activas (metodos_pago). Cada fila elige su propia caja;
+// la moneda se infiere de ahí. Si la moneda no es USD, se pide el TC manual.
+function InlineAddRows({ proveedorId, cajas, onSave, onSaveDone, onSaveError }) {
   const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => mkRow()));
 
   const cr = useRef({});
   const setRef    = (i, col) => el => { cr.current[`${i}_${col}`] = el; };
   const focusCell = (i, col) => cr.current[`${i}_${col}`]?.focus();
+
+  // Moneda de la caja seleccionada en una fila (default USD si no eligió ninguna).
+  const monedaDeCaja = (cajaId) => {
+    if (!cajaId) return 'USD';
+    const c = cajas.find(x => String(x.id) === String(cajaId));
+    return c?.moneda || 'USD';
+  };
 
   function upd(i, field, val) {
     setRows(rs => rs.map((r, idx) => {
@@ -114,6 +126,10 @@ function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError })
         next.producto = ''; next.modelo = ''; next.tamano = '';
         next.color = ''; next.imei_serial = ''; next.verificado = false;
       }
+      // Cambio de caja → si la nueva es USD, limpia el TC (no aplica)
+      if (field === 'caja_id') {
+        if (monedaDeCaja(val) === 'USD') next.tc = '';
+      }
       return next;
     }));
   }
@@ -122,30 +138,43 @@ function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError })
     const row = rows[i];
     if (!row.monto || Number(row.monto) <= 0) return;
 
+    // Pago siempre necesita caja (un pago sin caja no descuenta nada → inútil).
+    if (row.tipo === 'pago' && !row.caja_id) {
+      onSaveError(null, 'Elegí una caja para registrar el pago');
+      return;
+    }
+
+    const moneda = monedaDeCaja(row.caja_id);
+    const tcNum  = moneda === 'USD' ? null : Number(row.tc);
+    if (moneda !== 'USD' && (!tcNum || tcNum <= 0)) {
+      onSaveError(null, `Cargá el TC para convertir ${moneda} a USD`);
+      return;
+    }
+
     const tempId   = `_tmp_${Date.now()}_${i}`;
     const isCompra = row.tipo === 'compra';
+    const cajaIdNum = row.caja_id ? Number(row.caja_id) : null;
+    // monto_usd: si la moneda es USD, igual al monto; si no, monto/tc.
+    const montoUsd = moneda === 'USD' ? Number(row.monto) : Number(row.monto) / tcNum;
     const itemData = {
       producto: row.producto || null, modelo: row.modelo || null,
       tamano: row.tamano || null,     color: row.color || null,
       imei_serial: row.imei_serial || null,
-      valor: Number(row.monto),       verificado: row.verificado,
+      valor: montoUsd,                verificado: row.verificado,
     };
 
-    // 1. Reset inmediato → usuario puede seguir sin esperar
+    // 1. Reset inmediato → usuario puede seguir sin esperar.
+    //    Mantenemos caja/tc/tipo/fecha en la siguiente fila para no re-elegir.
     setRows(rs => rs.map((r, idx) =>
-      idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
+      idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo, caja_id: r.caja_id, tc: r.tc }) : r
     ));
     setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 20);
-
-    // Caja: si se eligió, el movimiento se descuenta al instante. Si no, queda
-    // como deuda con el proveedor (se paga después con una fila tipo 'pago').
-    const cajaIdNum = cajaId ? Number(cajaId) : null;
 
     // 2. Actualización optimista instantánea en la lista
     onSave({
       id: tempId, _pending: true,
       fecha: row.fecha, tipo: row.tipo,
-      monto_usd: Number(row.monto), descripcion: null, notas: null,
+      monto_usd: montoUsd, descripcion: null, notas: null,
       caja_id: cajaIdNum,
       items: isCompra ? [{ id: `${tempId}_item`, ...itemData }] : [],
     });
@@ -153,7 +182,8 @@ function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError })
     // 3. API en segundo plano — no bloquea la UI
     provApi.createMovimiento({
       proveedor_id: proveedorId,
-      fecha: row.fecha, tipo: row.tipo, monto: Number(row.monto), moneda: 'USD',
+      fecha: row.fecha, tipo: row.tipo,
+      monto: Number(row.monto), moneda, tc: tcNum,
       caja_id: cajaIdNum,
       items: isCompra ? [itemData] : [],
     })
@@ -176,10 +206,45 @@ function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError })
     outline: 'none', boxSizing: 'border-box',
   };
 
+  // Renderiza el selector de Caja + (opcional) TC. Compartido entre compra y pago
+  // para que la UI sea consistente.
+  function renderCajaCell(row, i) {
+    const moneda = monedaDeCaja(row.caja_id);
+    const needsTc = row.caja_id && moneda !== 'USD';
+    return (
+      <td style={{ padding: '4px 5px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <select
+            style={{ ...inp, cursor: 'pointer', fontSize: 12 }}
+            value={row.caja_id}
+            onChange={e => upd(i, 'caja_id', e.target.value)}
+            title="De qué caja sale el dinero"
+          >
+            <option value="">{row.tipo === 'pago' ? '— elegí caja —' : '— Cuenta corriente —'}</option>
+            {cajas.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+            ))}
+          </select>
+          {needsTc && (
+            <input
+              type="number" min="0" step="0.01"
+              style={{ ...inp, fontSize: 11, height: 26, textAlign: 'right' }}
+              placeholder={`TC ${moneda}→USD`}
+              value={row.tc}
+              onChange={e => upd(i, 'tc', e.target.value)}
+              title={`Tipo de cambio para convertir ${moneda} a USD`}
+            />
+          )}
+        </div>
+      </td>
+    );
+  }
+
   return (
     <>
       {rows.map((row, i) => {
         const isPago = row.tipo === 'pago';
+        const moneda = monedaDeCaja(row.caja_id);
         return (
           <tr key={row._id} style={{
             background: 'rgba(99,102,241,0.04)',
@@ -204,10 +269,15 @@ function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError })
             </td>
 
             {isPago ? (
-              /* ── Pago: solo monto USD ─────────────────────────────────── */
+              /* ── Pago: monto en moneda de la caja + label "pago al proveedor"
+                    El selector de Caja ocupa su propia columna (a la derecha).  */
               <td colSpan={5} style={{ padding: '4px 12px' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700,
+                    color: moneda === 'USD' ? 'var(--pos)' : 'var(--accent)',
+                    whiteSpace: 'nowrap', minWidth: 32,
+                  }}>{moneda}</span>
                   <input
                     ref={setRef(i, 'first')}
                     type="number" min="0"
@@ -255,21 +325,31 @@ function InlineAddRows({ proveedorId, cajaId, onSave, onSaveDone, onSaveError })
               </>
             )}
 
-            {/* Monto USD */}
+            {/* Caja + TC condicional */}
+            {renderCajaCell(row, i)}
+
+            {/* Monto (en la moneda de la caja). En compras va en celda propia;
+                en pagos ya está dentro del colspan, esta celda queda implícita. */}
             {!isPago && (
               <td style={{ padding: '4px 5px' }}>
-                <input
-                  ref={setRef(i, 'monto')}
-                  type="number" min="0"
-                  style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
-                  placeholder="0"
-                  value={row.monto}
-                  onChange={e => upd(i, 'monto', e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
-                    else handleLastKey(e, i);
-                  }}
-                />
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: moneda === 'USD' ? 'var(--pos)' : 'var(--accent)',
+                  }}>{moneda}</span>
+                  <input
+                    ref={setRef(i, 'monto')}
+                    type="number" min="0"
+                    style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
+                    placeholder="0"
+                    value={row.monto}
+                    onChange={e => upd(i, 'monto', e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
+                      else handleLastKey(e, i);
+                    }}
+                  />
+                </div>
               </td>
             )}
 
@@ -320,10 +400,10 @@ export default function Proveedores() {
   const [provSaving, setProvSaving] = useState(false);
   const [provError, setProvError] = useState('');
 
-  // Caja desde la que sale el dinero al cargar movimientos inline.
-  // '' = a crédito (no descuenta de caja, suma deuda al proveedor).
+  // Cajas activas (metodos_pago) para alimentar el selector de cada fila del
+  // bloque inline. La caja se elige por fila (no global): permite cargar de
+  // varias cajas en una misma sesión y refleja correctamente la moneda.
   const [cajas, setCajas] = useState([]);
-  const [cajaInline, setCajaInline] = useState('');
 
   // ── Cargar lista ──
   const listReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
@@ -650,11 +730,11 @@ export default function Proveedores() {
 
                 <thead>
                   <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
-                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', ''].map((h, i) => (
+                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Caja', 'Monto USD', '✓', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
-                        color: 'var(--text-muted)', textAlign: i === 7 ? 'right' : 'left',
+                        color: 'var(--text-muted)', textAlign: i === 8 ? 'right' : 'left',
                         borderBottom: '1px solid var(--border)',
                       }}>{h}</th>
                     ))}
@@ -664,7 +744,7 @@ export default function Proveedores() {
                 <tbody>
                   {movimientos.length === 0 && !loadingMovs && (
                     <tr>
-                      <td colSpan={10} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+                      <td colSpan={11} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
                         Sin movimientos — completá la fila azul para agregar el primero
                       </td>
                     </tr>
@@ -696,6 +776,11 @@ export default function Proveedores() {
                         <td style={{ ...cell, fontFamily: 'monospace', fontSize: 12 }}>
                           {item?.imei_serial || <span className="dim">—</span>}
                         </td>
+                        <td style={{ ...cell, fontSize: 12 }}>
+                          {m.caja_nombre
+                            ? <span title="Movimiento de contado: descontó esta caja">{m.caja_nombre}</span>
+                            : <span className="dim" title="A crédito (suma deuda)">CC</span>}
+                        </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
                           <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
                             {t.signo > 0 ? '+' : '−'}USD {fmt(m.monto_usd)}
@@ -719,7 +804,7 @@ export default function Proveedores() {
 
                   {movsPag.page < movsPag.pages && (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '8px' }}>
+                      <td colSpan={11} style={{ textAlign: 'center', padding: '8px' }}>
                         <button className="btn btn-ghost btn-sm" onClick={loadMasMovs} disabled={loadingMasMovs}>
                           {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movs.length} de ${movsPag.total})`}
                         </button>
@@ -727,47 +812,14 @@ export default function Proveedores() {
                     </tr>
                   )}
 
-                  {/* ── Selector de caja para las próximas filas inline ──
-                        Comportamiento:
-                          - Caja elegida: la compra/pago descuenta esa caja al instante
-                            (entra stock al inventario / sale dinero del efectivo).
-                          - "Cuenta corriente": no descuenta nada; queda como deuda con
-                            el proveedor (saldo) y se paga después con un movimiento 'pago'.
-                        Permanece sticky para todas las filas que sigan, así no hay que
-                        re-elegirlo en cada renglón.                                    */}
-                  <tr style={{ background: 'rgba(99,102,241,0.06)' }}>
-                    <td colSpan={10} style={{ padding: '8px 10px', borderTop: '2px solid var(--accent)' }}>
-                      <label className="flex-row" style={{ gap: 8, alignItems: 'center', fontSize: 13 }}>
-                        <Icons.Dollar size={14} />
-                        <span style={{ fontWeight: 600 }}>Pagar con:</span>
-                        <select
-                          value={cajaInline}
-                          onChange={e => setCajaInline(e.target.value)}
-                          style={{
-                            padding: '4px 8px', fontSize: 13, height: 30,
-                            border: '1px solid var(--border)', background: 'var(--surface)',
-                            color: 'var(--text)', borderRadius: 5, minWidth: 240,
-                          }}
-                        >
-                          <option value="">— Cuenta corriente (queda como deuda) —</option>
-                          {cajas.map(c => (
-                            <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
-                          ))}
-                        </select>
-                        {cajaInline && (
-                          <span className="muted tiny">
-                            La caja se descuenta al instante al guardar cada fila.
-                          </span>
-                        )}
-                      </label>
-                    </td>
-                  </tr>
-
-                  {/* ── Fila de entrada inline ── */}
+                  {/* ── Fila de entrada inline ──
+                        Cada fila tiene su propia caja (con su moneda) + TC manual
+                        si la caja no es USD. Para compras, dejar la caja vacía
+                        equivale a "Cuenta corriente" (suma deuda al proveedor).  */}
                   <InlineAddRows
                     key={selectedId}
                     proveedorId={selectedId}
-                    cajaId={cajaInline}
+                    cajas={cajas}
                     onSave={handleOptimisticSave}
                     onSaveDone={handleSaveDone}
                     onSaveError={handleSaveError}
