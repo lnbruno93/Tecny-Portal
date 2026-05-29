@@ -199,10 +199,14 @@ describe('Proveedores — compra contado (caja_id)', () => {
   }
 
   beforeAll(async () => {
-    const r = await request(app).get('/api/ventas/metodos-pago').set(auth());
-    const usd = (r.body || []).find(m => m.moneda === 'USD');
-    expect(usd).toBeTruthy();
-    cajaUsdId = usd.id;
+    // Creamos una caja USD dedicada con saldo inicial suficiente para los
+    // egresos de "compra contado" de este suite. La regla nueva (#cajas-neg
+    // del post-audit) prohíbe dejar una caja en negativo, así que usar la
+    // caja del seed (saldo 0) hacía fallar los tests de egreso.
+    const cajaRes = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Test Compra Contado', moneda: 'USD', saldo_inicial: 10000, orden: 99 });
+    expect(cajaRes.status).toBe(201);
+    cajaUsdId = cajaRes.body.id;
   });
 
   it('compra con caja_id: NO suma deuda y postea egreso en la caja', async () => {
