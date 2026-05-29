@@ -83,6 +83,41 @@ const SALDO_SQL = `
 
 // ─── CLIENTES ────────────────────────────────────────────────────────────────
 
+// #P-05 endpoint dedicado para autocomplete del picker — devuelve pocos
+// clientes que matchean el query string (nombre/apellido), opcionalmente
+// solo deudores. Mucho más rápido que cargar 500 clientes al abrir el modal
+// y filtrar client-side (no escala a 2k+ clientes).
+router.get('/clientes/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const conSaldo = req.query.con_saldo === 'true';
+    if (q.length < 2) return res.json({ data: [] });
+    const params = [`%${q}%`];
+    let extraSaldo = '';
+    if (conSaldo) {
+      // Subquery del saldo aplicada como having: solo con deuda > 0.
+      extraSaldo = ` AND COALESCE(s.saldo, 0) > 0`;
+    }
+    const { rows } = await db.query(
+      `SELECT c.id, c.nombre, c.apellido, c.categoria, COALESCE(s.saldo, 0) AS saldo
+         FROM clientes_cc c
+         LEFT JOIN (
+           SELECT cliente_cc_id, SUM(${SALDO_CASE_M.replace(/m\./g, '')}) AS saldo
+             FROM movimientos_cc m
+            WHERE deleted_at IS NULL
+            GROUP BY cliente_cc_id
+         ) s ON s.cliente_cc_id = c.id
+        WHERE c.deleted_at IS NULL
+          AND (c.nombre ILIKE $1 OR c.apellido ILIKE $1)
+          ${extraSaldo}
+        ORDER BY c.nombre, c.apellido
+        LIMIT 15`,
+      params
+    );
+    res.json({ data: rows });
+  } catch (err) { next(err); }
+});
+
 router.get('/clientes', async (req, res, next) => {
   try {
     const { buscar, categoria } = req.query;
