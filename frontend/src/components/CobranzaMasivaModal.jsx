@@ -66,23 +66,17 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   );
 
   // ── Catálogos ────────────────────────────────────────────────────────
+  // #P-05: solo cajas se carga al abrir. Los clientes se buscan por demanda
+  // vía endpoint /clientes/search en el ClientePicker.
   const [cajas,    setCajas]    = useState([]);
-  const [clientes, setClientes] = useState([]);     // todos los clientes vivos
-  const [showZero, setShowZero] = useState(false);  // mostrar también saldo = 0
+  const [showZero, setShowZero] = useState(false);
   const [saving, setSaving]     = useState(false);
-  // #H-12: banner si fallan
   const [catalogosError, setCatalogosError] = useState(null);
 
   useEffect(() => {
-    Promise.allSettled([
-      cajasApi.listCajas(),
-      cuentasApi.clientes({ limit: 500 }),
-    ]).then(([rk, rc]) => {
-      const errores = [];
-      if (rk.status === 'fulfilled') setCajas((rk.value || []).filter(c => c.activo !== false)); else errores.push('cajas');
-      if (rc.status === 'fulfilled') setClientes(rc.value.data || []); else errores.push('clientes');
-      if (errores.length > 0) setCatalogosError(errores);
-    });
+    cajasApi.listCajas()
+      .then(r => setCajas((r || []).filter(c => c.activo !== false)))
+      .catch(() => { setCajas([]); setCatalogosError(['cajas']); });
   }, []);
 
   const totalUsd = useMemo(() => {
@@ -300,7 +294,6 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                         <ClientePicker
                           value={r.cliente_nombre}
                           locked={!!r.cliente_id}
-                          clientes={clientes}
                           showZero={showZero}
                           onPick={c => pickCliente(idx, c)}
                           onClear={() => clearCliente(idx)}
@@ -389,33 +382,38 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
 }
 
 // ── Cliente Picker ──────────────────────────────────────────────────────
-function ClientePicker({ value, locked, clientes, showZero, onPick, onClear, onChange, cellInp }) {
+// #P-05: cambió de filtrado client-side sobre 500 clientes a fetch-on-type
+// contra /api/cuentas/clientes/search. Escalable a miles de clientes.
+function ClientePicker({ value, locked, showZero, onPick, onClear, onChange, cellInp }) {
   const [open, setOpen] = useState(false);
+  const [matches, setMatches] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
-  const debounced = useDebouncedValue(value, 150);
+  const debounced = useDebouncedValue(value, 200);
   const boxRef = useRef(null);
+  // #H-10: "última request gana" para no pisar resultados nuevos con viejos
+  const reqIdRef = useRef(0);
 
-  // Filtrado local: por defecto solo saldo > 0 (deudores).
-  // Si showZero está activo, incluye saldo = 0 y < 0 (a favor también).
-  // #H-13: limit es 10 visibles + flag de "hay más" para mostrar indicador.
-  const PICKER_LIMIT = 10;
-  const { matches, totalMatches } = useMemo(() => {
-    const q = (debounced || '').trim().toLowerCase();
-    if (!q) return { matches: [], totalMatches: 0 };
-    const all = clientes
-      .filter(c => showZero ? true : Number(c.saldo || 0) > 0)
-      .filter(c => {
-        const full = `${c.nombre || ''} ${c.apellido || ''}`.toLowerCase();
-        return full.includes(q);
-      });
-    return { matches: all.slice(0, PICKER_LIMIT), totalMatches: all.length };
-  }, [clientes, debounced, showZero]);
-  const hasMore = totalMatches > PICKER_LIMIT;
+  // #H-13: el endpoint devuelve hasta 15 — si llegan 15 mostramos "refiná".
+  const SEARCH_LIMIT = 15;
 
   useEffect(() => {
-    if (!locked && matches.length > 0) { setOpen(true); setHighlight(0); }
-    else setOpen(false);
-  }, [matches, locked]);
+    if (locked) { setOpen(false); return; }
+    const q = (debounced || '').trim();
+    if (q.length < 2) { setMatches([]); return; }
+    setLoading(true);
+    const myReq = ++reqIdRef.current;
+    cuentasApi.clientesSearch(q, !showZero)
+      .then(res => {
+        if (myReq !== reqIdRef.current) return;
+        setMatches(res.data || []);
+        setOpen(true);
+        setHighlight(0);
+      })
+      .catch(() => { if (myReq === reqIdRef.current) setMatches([]); })
+      .finally(() => { if (myReq === reqIdRef.current) setLoading(false); });
+  }, [debounced, locked, showZero]);
+  const hasMore = matches.length >= SEARCH_LIMIT;
 
   useEffect(() => {
     function onDoc(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
@@ -497,7 +495,7 @@ function ClientePicker({ value, locked, clientes, showZero, onPick, onClear, onC
               background: 'var(--surface-2)', borderTop: '1px solid var(--hairline)',
               textAlign: 'center',
             }}>
-              Mostrando {matches.length} de {totalMatches} — refiná la búsqueda para ver más
+              Mostrando los primeros {SEARCH_LIMIT} — refiná la búsqueda para ver más
             </div>
           )}
         </div>

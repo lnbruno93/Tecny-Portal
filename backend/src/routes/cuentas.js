@@ -83,6 +83,41 @@ const SALDO_SQL = `
 
 // ─── CLIENTES ────────────────────────────────────────────────────────────────
 
+// #P-05 endpoint dedicado para autocomplete del picker — devuelve pocos
+// clientes que matchean el query string (nombre/apellido), opcionalmente
+// solo deudores. Mucho más rápido que cargar 500 clientes al abrir el modal
+// y filtrar client-side (no escala a 2k+ clientes).
+router.get('/clientes/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const conSaldo = req.query.con_saldo === 'true';
+    if (q.length < 2) return res.json({ data: [] });
+    const params = [`%${q}%`];
+    let extraSaldo = '';
+    if (conSaldo) {
+      // Subquery del saldo aplicada como having: solo con deuda > 0.
+      extraSaldo = ` AND COALESCE(s.saldo, 0) > 0`;
+    }
+    const { rows } = await db.query(
+      `SELECT c.id, c.nombre, c.apellido, c.categoria, COALESCE(s.saldo, 0) AS saldo
+         FROM clientes_cc c
+         LEFT JOIN (
+           SELECT cliente_cc_id, SUM(${SALDO_CASE_M.replace(/m\./g, '')}) AS saldo
+             FROM movimientos_cc m
+            WHERE deleted_at IS NULL
+            GROUP BY cliente_cc_id
+         ) s ON s.cliente_cc_id = c.id
+        WHERE c.deleted_at IS NULL
+          AND (c.nombre ILIKE $1 OR c.apellido ILIKE $1)
+          ${extraSaldo}
+        ORDER BY c.nombre, c.apellido
+        LIMIT 15`,
+      params
+    );
+    res.json({ data: rows });
+  } catch (err) { next(err); }
+});
+
 router.get('/clientes', async (req, res, next) => {
   try {
     const { buscar, categoria } = req.query;
@@ -378,91 +413,102 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // Insertar items y, si tienen `producto_id`, validar stock y descontar.
     //   - compra / entrega_mercaderia → salida de stock (descuenta cantidad).
     //   - devolucion → entrada de stock (suma cantidad).
+    //
+    // #P-02 bulkificado: antes era loop con N SELECT FOR UPDATE + N INSERT
+    // items + N UPDATE productos = ~3N round-trips. Ahora: 1 SELECT batch
+    // ordenado + 1 INSERT bulk + 1 UPDATE bulk = 3 RTT total.
     let insertedItems = [];
     const tiposConItems = ['compra', 'devolucion', 'entrega_mercaderia'];
     if (tiposConItems.includes(tipo) && items.length > 0) {
-      // Lock + validación de stock disponible para cada producto_id ANTES de
-      // empezar a tocar (evita race con ventas concurrentes y rollbacks
-      // parciales). Se usa SELECT ... FOR UPDATE en cada producto.
-      //
-      // #H-01 deadlock prevention: ORDENAR los items por producto_id ASC antes
-      // del lock loop. Dos requests concurrentes con [P1,P2] vs [P2,P1] hacían
-      // deadlock — ahora ambos lockean en el mismo orden (P1 antes que P2) y
-      // PostgreSQL los serializa sin abort.
       const esSalida = tipo === 'compra' || tipo === 'entrega_mercaderia';
-      const itemsOrdenados = [...items].sort((a, b) =>
-        Number(a.producto_id || 0) - Number(b.producto_id || 0));
-      for (const item of itemsOrdenados) {
-        if (!item.producto_id) continue;
+
+      // Items con producto_id (ordenados por id ASC para evitar deadlock,
+      // #H-01) vs items sin (texto libre, no tocan stock).
+      const itemsConProd = items
+        .filter(it => it.producto_id)
+        .sort((a, b) => Number(a.producto_id) - Number(b.producto_id));
+      const prodIds = itemsConProd.map(it => Number(it.producto_id));
+
+      // 1) Batch SELECT FOR UPDATE de todos los productos relevantes en una
+      //    sola query, ordenados por id para evitar deadlock.
+      let prodMap = new Map();
+      if (prodIds.length > 0) {
         const { rows: prodRows } = await client.query(
           `SELECT id, nombre, cantidad, estado FROM productos
-             WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
-          [item.producto_id]
+             WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+             ORDER BY id
+             FOR UPDATE`,
+          [prodIds]
         );
-        if (!prodRows[0]) {
-          await client.query('ROLLBACK');
-          return res.status(404).json({ error: `Producto #${item.producto_id} no existe` });
-        }
-        if (esSalida) {
-          const cant = Number(item.cantidad || 1);
-          if (Number(prodRows[0].cantidad) < cant) {
+        prodMap = new Map(prodRows.map(p => [Number(p.id), p]));
+
+        // Validación: existencia + stock suficiente.
+        for (const item of itemsConProd) {
+          const p = prodMap.get(Number(item.producto_id));
+          if (!p) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: `Producto #${item.producto_id} no existe` });
+          }
+          if (esSalida && Number(p.cantidad) < Number(item.cantidad || 1)) {
             await client.query('ROLLBACK');
             return res.status(409).json({
-              error: `Stock insuficiente para "${prodRows[0].nombre}": disponible ${prodRows[0].cantidad}, pedido ${cant}`,
+              error: `Stock insuficiente para "${p.nombre}": disponible ${p.cantidad}, pedido ${item.cantidad}`,
               producto_id: item.producto_id,
             });
           }
         }
       }
 
-      for (const item of items) {
-        const cant = Number(item.cantidad || 1);
-        const { rows: itemRows } = await client.query(
-          `INSERT INTO items_movimiento_cc
-             (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas,
-              producto_id, cantidad)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-           RETURNING *`,
+      // 2) Bulk INSERT de los items en una sola query con UNNEST.
+      const itemRes = await client.query(
+        `INSERT INTO items_movimiento_cc
+           (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas, producto_id, cantidad)
+         SELECT $1, p, m, t, c, i, v, vf, n, pid, cant
+           FROM UNNEST(
+             $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+             $7::numeric[], $8::boolean[], $9::text[], $10::int[], $11::int[]
+           ) AS u(p, m, t, c, i, v, vf, n, pid, cant)
+         RETURNING *`,
+        [
+          mov.id,
+          items.map(it => it.producto ?? null),
+          items.map(it => it.modelo ?? null),
+          items.map(it => it.tamano ?? null),
+          items.map(it => it.color ?? null),
+          items.map(it => it.imei_serial ?? null),
+          items.map(it => it.valor ?? null),
+          items.map(it => it.verificado ?? false),
+          items.map(it => it.notas ?? null),
+          items.map(it => it.producto_id ?? null),
+          items.map(it => Number(it.cantidad || 1)),
+        ]
+      );
+      insertedItems = itemRes.rows;
+
+      // 3) Bulk UPDATE del stock con un solo round-trip. Usa FROM (VALUES ...)
+      //    + JOIN. PostgreSQL aplica el CASE por producto.
+      if (itemsConProd.length > 0) {
+        const sign = esSalida ? '-' : '+';
+        // arrays paralelos para FROM UNNEST
+        const updateRes = await client.query(
+          `UPDATE productos p SET
+             cantidad = p.cantidad ${sign} u.cant,
+             estado = CASE
+               WHEN p.cantidad ${sign} u.cant <= 0 THEN 'vendido'
+               WHEN p.cantidad ${sign} u.cant > 0 AND p.estado = 'vendido' THEN 'disponible'
+               ELSE p.estado
+             END
+           FROM UNNEST($1::int[], $2::int[]) AS u(pid, cant)
+           WHERE p.id = u.pid`,
           [
-            mov.id,
-            item.producto    ?? null,
-            item.modelo      ?? null,
-            item.tamano      ?? null,
-            item.color       ?? null,
-            item.imei_serial ?? null,
-            item.valor       ?? null,
-            item.verificado  ?? false,
-            item.notas       ?? null,
-            item.producto_id ?? null,
-            cant,
+            itemsConProd.map(it => Number(it.producto_id)),
+            itemsConProd.map(it => Number(it.cantidad || 1)),
           ]
         );
-        insertedItems.push(itemRows[0]);
-
-        // Stock movement: salida (compra/entrega) o entrada (devolucion)
-        if (item.producto_id) {
-          if (esSalida) {
-            // Descontar. Si la cantidad llega a 0, el estado pasa a 'vendido'
-            // (regla actual del Inventario para unitarios). El backend NO
-            // distingue ítem-unitario vs lote acá: simplemente descuenta y, si
-            // queda en 0, marca vendido. Si queda > 0, sigue disponible.
-            await client.query(
-              `UPDATE productos
-                 SET cantidad = cantidad - $1,
-                     estado   = CASE WHEN cantidad - $1 <= 0 THEN 'vendido' ELSE estado END
-               WHERE id = $2`,
-              [cant, item.producto_id]
-            );
-          } else {
-            // Devolución: re-ingresa stock y vuelve a 'disponible' si estaba vendido.
-            await client.query(
-              `UPDATE productos
-                 SET cantidad = cantidad + $1,
-                     estado   = CASE WHEN estado = 'vendido' THEN 'disponible' ELSE estado END
-               WHERE id = $2`,
-              [cant, item.producto_id]
-            );
-          }
+        // Asegura que afectamos N filas (sanity check)
+        if (updateRes.rowCount !== itemsConProd.length) {
+          await client.query('ROLLBACK');
+          return res.status(500).json({ error: 'Inconsistencia al actualizar stock' });
         }
       }
     }
@@ -613,38 +659,90 @@ router.post('/cobranzas-masivas', cobranzaLimiter, validate(cobranzaMasivaSchema
     // #H-02 deadlock prevention: ordenar por caja_id ASC para que dos
     // procesos concurrentes que tocan cajas [A,B] vs [B,A] lockeen en el
     // mismo orden y eviten abort por deadlock detectado por PostgreSQL.
+    //
+    // #P-03 bulkificado: ANTES era loop con 1 INSERT mov + postCajaMovimiento
+    // (que hace SELECT caja FOR UPDATE + INSERT) + 1 audit por cobranza.
+    // Para 100 cobranzas: ~500 round-trips. AHORA: 1 lock batch + 1 INSERT
+    // movs + 1 INSERT caja_movs + 1 audit-lote = 4 RTT total.
     const cobranzasOrdenadas = [...cobranzas].sort((a, b) =>
       Number(a.caja_id) - Number(b.caja_id));
 
-    const creados = [];
-    for (const c of cobranzasOrdenadas) {
-      // Normalizar monto a USD usando el helper compartido (auditoría #B-05).
-      // ANTES: `c.monto / tcN` dividía USDT por el TC ARS — guardaba 100 USDT
-      // como 0.11 USD cuando tc=900. toUsd() trata USDT como USD (1:1).
-      const montoUsd = round2(toUsd(c.monto, c.moneda, c.tc));
+    // Lock batch de las cajas únicas, ordenadas.
+    const cajasUnicasOrdenadas = [...new Set(cobranzasOrdenadas.map(c => c.caja_id))].sort((a, b) => a - b);
+    const { rows: cajaRows } = await client.query(
+      `SELECT id, moneda FROM metodos_pago
+         WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+         ORDER BY id FOR UPDATE`,
+      [cajasUnicasOrdenadas]
+    );
+    const cajaMoneda = new Map(cajaRows.map(r => [r.id, r.moneda]));
 
-      const { rows: movRows } = await client.query(
-        `INSERT INTO movimientos_cc
-           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id, req.user.id]
-      );
-      const mov = movRows[0];
-
-      await postCajaMovimiento(client, {
-        caja_id: c.caja_id, fecha: c.fecha, tipo: 'ingreso',
-        monto: c.monto, moneda: c.moneda, tc: c.tc ?? null,
-        origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
-        concepto: `Cobranza masiva cliente #${c.cliente_cc_id}`,
-        user_id: req.user.id,
-      });
-
-      await audit(client, 'movimientos_cc', 'INSERT', mov.id, {
-        despues: { ...mov, _origen: 'cobranza_masiva' },
-        user_id: req.user.id,
-      });
-      creados.push(mov);
+    // Validar que la moneda del pago coincida con el grupo de la caja
+    // (USD/USDT son intercambiables, ARS aparte) — mismo check que hace
+    // postCajaMovimiento pero hecho upfront para todas las filas.
+    const grupoMoneda = (m) => m === 'ARS' ? 'ARS' : 'USD';
+    for (let i = 0; i < cobranzasOrdenadas.length; i++) {
+      const c = cobranzasOrdenadas[i];
+      const monedaCaja = cajaMoneda.get(c.caja_id);
+      if (grupoMoneda(monedaCaja) !== grupoMoneda(c.moneda)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Fila ${i + 1}: la moneda del pago (${c.moneda}) no coincide con la de la caja (${monedaCaja}).`,
+        });
+      }
     }
+
+    // 1) Bulk INSERT de movimientos_cc, devuelve los IDs en el orden de UNNEST.
+    const montosUsd = cobranzasOrdenadas.map(c => round2(toUsd(c.monto, c.moneda, c.tc)));
+    const movRes = await client.query(
+      `INSERT INTO movimientos_cc
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id)
+       SELECT cli, f, t, d, m, k, $1
+         FROM UNNEST(
+           $2::int[], $3::date[], $4::text[], $5::text[],
+           $6::numeric[], $7::int[]
+         ) WITH ORDINALITY AS u(cli, f, t, d, m, k, ord)
+         ORDER BY ord
+       RETURNING *`,
+      [
+        req.user.id,
+        cobranzasOrdenadas.map(c => c.cliente_cc_id),
+        cobranzasOrdenadas.map(c => c.fecha),
+        cobranzasOrdenadas.map(c => c.tipo),
+        cobranzasOrdenadas.map(c => c.descripcion ?? 'Cobranza masiva'),
+        montosUsd,
+        cobranzasOrdenadas.map(c => c.caja_id),
+      ]
+    );
+    const creados = movRes.rows;
+
+    // 2) Bulk INSERT de caja_movimientos con los ref_id de los movs creados.
+    await client.query(
+      `INSERT INTO caja_movimientos
+         (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
+       SELECT k, f, 'ingreso', m, mu, 'b2b', 'movimientos_cc', ref, con, $1
+         FROM UNNEST(
+           $2::int[], $3::date[], $4::numeric[], $5::numeric[],
+           $6::int[], $7::text[]
+         ) AS u(k, f, m, mu, ref, con)`,
+      [
+        req.user.id,
+        cobranzasOrdenadas.map(c => c.caja_id),
+        cobranzasOrdenadas.map(c => c.fecha),
+        cobranzasOrdenadas.map(c => c.monto),
+        montosUsd,
+        creados.map(m => m.id),
+        cobranzasOrdenadas.map(c => `Cobranza masiva cliente #${c.cliente_cc_id}`),
+      ]
+    );
+
+    // 3) 1 audit-lote en vez de 1 por cobranza.
+    // 1 audit-lote (accion='INSERT', con flag _bulk para distinguir del
+    // INSERT individual al inspeccionar logs).
+    await audit(client, 'movimientos_cc', 'INSERT', creados[0].id, {
+      despues: { _bulk: true, _origen: 'cobranza_masiva', ids: creados.map(m => m.id), count: creados.length },
+      user_id: req.user.id,
+    });
 
     await client.query('COMMIT');
     res.status(201).json({ ok: true, creados: creados.length, movimientos: creados });

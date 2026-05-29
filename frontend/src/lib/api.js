@@ -170,6 +170,12 @@ export const envios = {
 
 export const cuentas = {
   clientes: (params = {}) => api('/api/cuentas/clientes?' + new URLSearchParams(params)),
+  // #P-05: endpoint dedicado a autocomplete del picker, devuelve hasta 15
+  // clientes filtrados por q + con_saldo. Sustituye la carga eager de 500
+  // clientes al abrir el modal de cobranza masiva.
+  clientesSearch: (q, conSaldo = false) => api(
+    `/api/cuentas/clientes/search?q=${encodeURIComponent(q)}&con_saldo=${conSaldo}`
+  ),
   cliente: (id) => api(`/api/cuentas/clientes/${id}`),
   createCliente: (data) => api('/api/cuentas/clientes', 'POST', data),
   updateCliente: (id, data) => api(`/api/cuentas/clientes/${id}`, 'PUT', data),
