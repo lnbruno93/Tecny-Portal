@@ -1036,14 +1036,14 @@ export default function Ventas() {
       {/* ── Modal Garantías ── */}
       {showGarantias && (
         <div className="modal-overlay" onClick={() => setShowGarantias(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Plantillas de garantía</h3><button className="icon-btn" onClick={() => setShowGarantias(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
               <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (
                   <div key={g.id} className="flex-between" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--hairline)', alignItems: 'flex-start' }}>
-                    <div style={{ fontSize: 13, maxWidth: '74%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 34, overflow: 'hidden' }}>{g.texto}</div></div>
+                    <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{g.texto}</div></div>
                     <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
                       <button className="icon-btn" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
                       <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
@@ -1054,7 +1054,16 @@ export default function Ventas() {
               <form onSubmit={handleSaveGarantia}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{gForm.id ? 'Editar plantilla' : 'Nueva plantilla'}</div>
                 <div className="field"><label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
-                <div className="field"><label className="field-label">Texto <span style={{ color: 'var(--neg)' }}>*</span></label><textarea className="input" rows={5} value={gForm.texto} onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))} /></div>
+                <div className="field">
+                  <label className="field-label">Texto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <textarea
+                    className="input"
+                    rows={10}
+                    value={gForm.texto}
+                    onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))}
+                    style={{ height: 'auto', minHeight: 220, padding: '12px 14px', lineHeight: 1.55, fontSize: 14, resize: 'vertical', whiteSpace: 'pre-wrap' }}
+                  />
+                </div>
                 <label className="flex-row" style={{ gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
                 <div className="flex-row" style={{ gap: 8 }}>
                   <button type="button" className="btn btn-ghost" onClick={() => setGForm({ id: null, nombre: '', texto: '', es_default: false })}>Limpiar</button>
