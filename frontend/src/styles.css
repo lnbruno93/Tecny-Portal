@@ -1379,3 +1379,30 @@ body.modal-open { overflow: hidden; }
   text-decoration: none;
 }
 .skip-link:focus { top: 8px; }
+
+/* ── Scroll-fade utility (#M-08) ──────────────────────────────────
+   Wrapper para containers con overflowX que indican visualmente al
+   usuario que hay más contenido a la derecha. Se aplica al WRAPPER,
+   no al elemento scrollable: necesitamos position:relative en el
+   padre para anclar el ::after, y el ::after debe quedar fuera del
+   scroll para no moverse con él. Uso:
+     <div className="scroll-fade-x">
+       <div style={{ overflowX: 'auto' }}>...</div>
+     </div>
+   El gradient se mantiene aunque el usuario haya scrolleado: es un
+   hint persistente, no un detector reactivo (más simple, sin JS). */
+.scroll-fade-x {
+  position: relative;
+}
+.scroll-fade-x::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 6px;  /* dejar espacio para el scrollbar */
+  width: 28px;
+  pointer-events: none;
+  background: linear-gradient(to right,
+    color-mix(in oklab, var(--bg) 0%, transparent),
+    color-mix(in oklab, var(--bg) 92%, transparent));
+}

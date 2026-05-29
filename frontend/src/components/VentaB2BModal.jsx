@@ -26,6 +26,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -230,7 +231,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
             {((cajaId && monedaCaja !== 'USD') || rows.some(r => isUsedRow(r) && r.precio_moneda !== 'USD')) && (
               <div className="field" style={{ flex: '0 0 140px' }}>
                 <label className="field-label">TC →USD <span style={{ color: 'var(--neg)' }}>*</span></label>
-                <input type="number" className="input mono" min="0" step="0.01"
+                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
               </div>
             )}
@@ -307,14 +308,14 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                         {r.stock_disp != null ? r.stock_disp : '—'}
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" min="1" style={{
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="1" style={{
                           ...cellInp, textAlign: 'right',
                           borderColor: exceeds ? 'var(--neg)' : 'var(--border)',
                         }} value={r.cantidad}
                           onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
                           value={r.precio_unit} placeholder="0"
                           onChange={e => updCell(idx, 'precio_unit', e.target.value)} />
                       </td>
@@ -352,7 +353,10 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
             <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
               <div className="muted tiny">Total venta</div>
               <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
-                USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                {/* #M-13: guion en vez de "USD 0" cuando no hay filas usadas. */}
+                {rows.filter(isUsedRow).length === 0
+                  ? <span className="muted">—</span>
+                  : <>USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</>}
               </div>
             </div>
           </div>

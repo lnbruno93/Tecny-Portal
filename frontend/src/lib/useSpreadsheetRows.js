@@ -38,9 +38,24 @@ export function useSpreadsheetRows({ mkRow, isUsedRow, initialCount = 10, addBat
     setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
   }, []);
 
+  // #M-10: NO pisar campos tocados aunque la fila no esté "usada" según el
+  // predicado. Antes: `mkRow(newDefaults)` arrasaba con TODA la fila no-usada,
+  // incluyendo campos que el usuario había editado pero no alcanzaban a
+  // disparar isUsedRow (típico: alguien tipea un `tc` custom en una fila sin
+  // cliente todavía; al clickear "Aplicar defaults" se perdía el tc).
+  // Ahora: merge que solo escribe en campos vacíos/falsy de la fila actual.
   const applyDefaultsToEmpty = useCallback((newDefaults) => {
-    setRows(rs => rs.map(r => isUsedRow(r) ? r : mkRow(newDefaults)));
-  }, [mkRow, isUsedRow]);
+    setRows(rs => rs.map(r => {
+      if (isUsedRow(r)) return r;
+      const merged = { ...r };
+      for (const k of Object.keys(newDefaults || {})) {
+        const cur = merged[k];
+        const isEmpty = cur === '' || cur == null;
+        if (isEmpty) merged[k] = newDefaults[k];
+      }
+      return merged;
+    }));
+  }, [isUsedRow]);
 
   const usedCount = useMemo(() => rows.filter(isUsedRow).length, [rows, isUsedRow]);
 

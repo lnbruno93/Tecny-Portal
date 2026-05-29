@@ -564,49 +564,59 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     // Soft-delete (items_movimiento_cc no se borra pero la PK del mov ya quedó
     // marcada con deleted_at, así que esta query usa la lista de items vivos
     // ANTES del soft-delete del padre via JOIN sobre el id del movimiento).
+    // #M-05 bulkificado: ANTES era loop con N+1 queries (1 SELECT items +
+    // N SELECT FOR UPDATE en devoluciones + N UPDATE). AHORA: 1 SELECT
+    // items + 1 SELECT batch FOR UPDATE + 1 UPDATE bulk = 3 RTT.
     const tipo = rows[0].tipo;
     if (['compra', 'entrega_mercaderia', 'devolucion'].includes(tipo)) {
       const sign = tipo === 'devolucion' ? -1 : 1; // compra/entrega: + (reintegrar); devolución: − (sacar)
       const { rows: items } = await client.query(
         `SELECT producto_id, cantidad FROM items_movimiento_cc
-           WHERE movimiento_cc_id = $1 AND producto_id IS NOT NULL`,
+           WHERE movimiento_cc_id = $1 AND producto_id IS NOT NULL
+           ORDER BY producto_id`,
         [id]
       );
-      // Pre-validar que ningún UPDATE deje cantidad negativa (auditoría #B-06).
-      // Caso típico que rompía: devolución sube stock 0→2, luego otra venta
-      // intermedia baja 2→1, y al borrar la devolución intentamos 1→-1 que
-      // viola CHECK (cantidad >= 0). En vez de un 500 críptico, devolvemos 409
-      // con producto y cantidad disponible. Usamos FOR UPDATE para evitar
-      // race con otras ventas en curso.
-      if (sign < 0) {
-        for (const it of items) {
-          const delta = sign * Number(it.cantidad || 1);
-          const { rows: pr } = await client.query(
-            `SELECT id, nombre, cantidad FROM productos WHERE id = $1 FOR UPDATE`,
-            [it.producto_id]
+
+      if (items.length > 0) {
+        const prodIds = items.map(it => Number(it.producto_id));
+        const cants   = items.map(it => sign * Number(it.cantidad || 1));
+
+        // Pre-validar SOLO si vamos a restar (auditoría #B-06): el CHECK
+        // (cantidad >= 0) puede romperse si entre la venta original y este
+        // delete alguien revendió el stock. Lockeo batch ordenado.
+        if (sign < 0) {
+          const { rows: prods } = await client.query(
+            `SELECT id, nombre, cantidad FROM productos
+               WHERE id = ANY($1::int[])
+               ORDER BY id FOR UPDATE`,
+            [prodIds]
           );
-          if (!pr[0]) continue; // producto borrado, ignoramos
-          if (Number(pr[0].cantidad) + delta < 0) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-              error: `No se puede borrar la devolución: el stock de "${pr[0].nombre}" ya fue vendido (disponible ${pr[0].cantidad}, necesario ${-delta}).`,
-              producto_id: it.producto_id,
-            });
+          const prodMap = new Map(prods.map(p => [Number(p.id), p]));
+          for (let i = 0; i < items.length; i++) {
+            const p = prodMap.get(Number(items[i].producto_id));
+            if (!p) continue;
+            if (Number(p.cantidad) + cants[i] < 0) {
+              await client.query('ROLLBACK');
+              return res.status(409).json({
+                error: `No se puede borrar la devolución: el stock de "${p.nombre}" ya fue vendido (disponible ${p.cantidad}, necesario ${-cants[i]}).`,
+                producto_id: Number(items[i].producto_id),
+              });
+            }
           }
         }
-      }
-      for (const it of items) {
-        const delta = sign * Number(it.cantidad || 1);
+
+        // Bulk UPDATE: FROM UNNEST + JOIN aplica el delta en una query.
         await client.query(
-          `UPDATE productos
-             SET cantidad = cantidad + $1,
-                 estado   = CASE
-                   WHEN cantidad + $1 > 0 AND estado = 'vendido' THEN 'disponible'
-                   WHEN cantidad + $1 <= 0                       THEN 'vendido'
-                   ELSE estado
-                 END
-           WHERE id = $2`,
-          [delta, it.producto_id]
+          `UPDATE productos p SET
+             cantidad = p.cantidad + u.delta,
+             estado = CASE
+               WHEN p.cantidad + u.delta <= 0                              THEN 'vendido'
+               WHEN p.cantidad + u.delta > 0 AND p.estado = 'vendido'      THEN 'disponible'
+               ELSE p.estado
+             END
+           FROM UNNEST($1::int[], $2::int[]) AS u(pid, delta)
+           WHERE p.id = u.pid`,
+          [prodIds, cants]
         );
       }
     }
@@ -638,12 +648,21 @@ router.post('/cobranzas-masivas', cobranzaLimiter, validate(cobranzaMasivaSchema
 
     // Pre-validación: clientes vivos y cajas vivas. Salvo bloqueo total
     // antes de empezar a INSERTAR para mensajes claros y rollback rápido.
-    const clienteIds = [...new Set(cobranzas.map(c => c.cliente_cc_id))];
-    const cajaIds    = [...new Set(cobranzas.map(c => c.caja_id))];
-    const [valC, valK] = await Promise.all([
-      client.query('SELECT id FROM clientes_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [clienteIds]),
-      client.query('SELECT id FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [cajaIds]),
-    ]);
+    //
+    // #M-01: SELECT FOR UPDATE ordenado por id en ambas tablas. Sin esto,
+    // entre el SELECT y el INSERT otro proceso podía soft-deletear un
+    // cliente o caja, dejando un movimientos_cc apuntando a deleted_at
+    // != NULL. Con el lock, el delete espera al COMMIT.
+    const clienteIds = [...new Set(cobranzas.map(c => c.cliente_cc_id))].sort((a, b) => a - b);
+    const cajaIds    = [...new Set(cobranzas.map(c => c.caja_id))].sort((a, b) => a - b);
+    // Las dos queries son secuenciales (no Promise.all) para mantener orden
+    // de locks consistente entre transacciones concurrentes.
+    const valC = await client.query(
+      'SELECT id FROM clientes_cc WHERE id = ANY($1::int[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [clienteIds]);
+    const valK = await client.query(
+      'SELECT id FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',
+      [cajaIds]);
     const okC = new Set(valC.rows.map(r => r.id));
     const okK = new Set(valK.rows.map(r => r.id));
     const errores = [];

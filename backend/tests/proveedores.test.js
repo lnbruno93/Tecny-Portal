@@ -33,7 +33,7 @@ describe('Proveedores — CRUD', () => {
 
     const list = await request(app).get('/api/proveedores').set(auth());
     expect(list.status).toBe(200);
-    const row = list.body.find(p => p.id === created.id);
+    const row = list.body.data.find(p => p.id === created.id);
     expect(Number(row.saldo_usd)).toBe(0);
 
     const one = await request(app).get(`/api/proveedores/${created.id}`).set(auth());
@@ -70,7 +70,7 @@ describe('Proveedores — CRUD', () => {
 
     // El saldo del listado lo refleja, pero NO cuenta como "compra"
     const list = await request(app).get('/api/proveedores').set(auth());
-    const row = list.body.find(p => p.id === created.body.id);
+    const row = list.body.data.find(p => p.id === created.body.id);
     expect(Number(row.saldo_usd)).toBe(1500);
   });
 
@@ -82,13 +82,13 @@ describe('Proveedores — CRUD', () => {
     const upd = await request(app).put(`/api/proveedores/${created.body.id}`).set(auth())
       .send({ saldo_inicial: 1500 });
     expect(upd.status).toBe(200);
-    let row = (await request(app).get('/api/proveedores').set(auth())).body.find(p => p.id === created.body.id);
+    let row = (await request(app).get('/api/proveedores').set(auth())).body.data.find(p => p.id === created.body.id);
     expect(Number(row.saldo_usd)).toBe(1500);
     expect(Number(row.saldo_inicial)).toBe(1500);
 
     // Bajar a 0 → quita el movimiento de apertura
     await request(app).put(`/api/proveedores/${created.body.id}`).set(auth()).send({ saldo_inicial: 0 });
-    row = (await request(app).get('/api/proveedores').set(auth())).body.find(p => p.id === created.body.id);
+    row = (await request(app).get('/api/proveedores').set(auth())).body.data.find(p => p.id === created.body.id);
     expect(Number(row.saldo_inicial)).toBe(0);
     expect(Number(row.saldo_usd)).toBe(0);
   });
@@ -110,7 +110,7 @@ describe('Proveedores — cuenta corriente', () => {
     expect(pago.status).toBe(201);
 
     const list = await request(app).get('/api/proveedores').set(auth());
-    const row = list.body.find(p => p.id === prov.id);
+    const row = list.body.data.find(p => p.id === prov.id);
     expect(Number(row.saldo_usd)).toBe(400);
     expect(Number(row.movimientos)).toBe(2);
   });
