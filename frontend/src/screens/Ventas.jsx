@@ -1182,8 +1182,12 @@ export default function Ventas() {
                           const mod = await import('../lib/generarComprobantePdf');
                           await mod.generarComprobantePdf(exitoModal.venta);
                         } catch (e) {
+                          // Mostramos el error real para que el usuario lo pueda reportar
+                          // sin tener que abrir la consola. El stack queda en console.error
+                          // como antes para debugging.
                           console.error('PDF error:', e);
-                          toast.error('No se pudo generar el comprobante PDF.');
+                          const detalle = e?.message || String(e);
+                          toast.error(`No se pudo generar el comprobante PDF: ${detalle}`, { duration: 12000 });
                         }
                       }}>
                 Descargar comprobante

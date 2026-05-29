@@ -85,13 +85,16 @@ export async function generarComprobantePdf(venta) {
   y += 24;
 
   // ── 3. Tabla de items ────────────────────────────────────
-  const items = venta.items || [];
-  const itemRows = items.map(it => [
-    it.descripcion || '',
-    String(it.cantidad || 1),
-    fmtMoney(it.precio_vendido, it.moneda || 'USD'),
-    fmtMoney(Number(it.precio_vendido || 0) * Number(it.cantidad || 1), it.moneda || 'USD'),
-  ]);
+  const items = Array.isArray(venta.items) ? venta.items : [];
+  // autotable rompe con celdas undefined/null — convertimos todo a string.
+  const itemRows = items.length === 0
+    ? [['(Sin items)', '', '', '']]
+    : items.map(it => [
+        String(it.descripcion || '—'),
+        String(it.cantidad || 1),
+        String(fmtMoney(it.precio_vendido, it.moneda || 'USD')),
+        String(fmtMoney(Number(it.precio_vendido || 0) * Number(it.cantidad || 1), it.moneda || 'USD')),
+      ]);
 
   autoTable(doc, {
     startY: y,
@@ -139,7 +142,9 @@ export async function generarComprobantePdf(venta) {
     doc.setTextColor(60);
     doc.text(dif > 0 ? 'Diferencia (a favor):' : 'Diferencia (en contra):', resumenX, y);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(dif > 0 ? [76, 175, 80] : [220, 53, 69]);
+    // setTextColor en jspdf v4 acepta (r, g, b) como args separados — NO como array.
+    if (dif > 0) doc.setTextColor(76, 175, 80);
+    else         doc.setTextColor(220, 53, 69);
     doc.text(fmtMoney(dif, 'USD'), pageWidth - margin, y, { align: 'right' });
     y += 16;
   }
@@ -153,11 +158,12 @@ export async function generarComprobantePdf(venta) {
     doc.text('Medios de pago', margin, y);
     y += 10;
 
+    // String() en cada celda — autotable rompe con undefined/null.
     const pagoRows = pagos.map(p => [
-      p.metodo_nombre || (p.es_cuenta_corriente ? 'Cuenta corriente' : 'Pago'),
-      fmtMoney(p.monto, p.moneda || 'USD'),
-      p.moneda === 'ARS' && p.tc ? `(TC ${Number(p.tc).toLocaleString('es-AR')})` : '',
-      fmtMoney(p.monto_usd, 'USD'),
+      String(p.metodo_nombre || (p.es_cuenta_corriente ? 'Cuenta corriente' : 'Pago')),
+      String(fmtMoney(p.monto, p.moneda || 'USD')),
+      String(p.moneda === 'ARS' && p.tc ? `(TC ${Number(p.tc).toLocaleString('es-AR')})` : ''),
+      String(fmtMoney(p.monto_usd, 'USD')),
     ]);
 
     autoTable(doc, {
