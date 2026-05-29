@@ -360,10 +360,13 @@ export default function Ventas() {
     const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
 
     // Aviso de diferencia: si el total cobrado != total de items (con canje),
-    // pedir confirmación explícita antes de guardar. Pasa seguido cuando el
-    // operador usa un TC distinto al de su sistema (cambia ARS a tasa X pero
-    // cobra a tasa Y) y queda un margen — a favor o en contra. Sin esto la
-    // diferencia se "perdía" en la venta sin que nadie la notara.
+    // pedir confirmación explícita y, si el operador acepta, agregar un item
+    // "Diferencia" para que el profit refleje la realidad:
+    //   · A favor (cobrado de más):  precio_vendido = +dif, costo = 0
+    //     → sube total_usd y ganancia_usd.
+    //   · En contra (cobrado de menos): precio_vendido = 0, costo = |dif|
+    //     → no toca total_usd pero baja ganancia_usd.
+    // (No usamos precio negativo: la DB tiene CHECK precio_vendido >= 0.)
     // Tolerancia 0.005 USD para no marcar errores de redondeo por floats.
     if (Math.abs(totales.dif) > 0.005) {
       const aFavor = totales.dif > 0;
@@ -374,12 +377,27 @@ export default function Ventas() {
           `Total productos: u$s ${totales.items.toFixed(2)}\n` +
           `Total cobrado:   u$s ${totales.cubierto.toFixed(2)}\n` +
           `Diferencia:      u$s ${monto} ${aFavor ? 'a favor (cobrado de más)' : 'en contra (falta cobrar)'}\n\n` +
-          `¿Querés guardar la venta igual?`,
+          `Si aceptás, se sumará como un ítem "Diferencia" para que el profit lo refleje. ¿Guardar igual?`,
         confirmLabel: 'Guardar igual',
         cancelLabel:  'Volver a editar',
         danger: !aFavor,
       });
       if (!ok) return;
+      // Inyectamos el item de diferencia al payload (no al state del cart,
+      // para no enredar el render). Se etiqueta claro para que se vea
+      // en la grilla de Ventas y en el detalle del comprobante.
+      const dif = Math.abs(totales.dif);
+      items.push({
+        producto_id:   null,
+        vendedor_id:   vForm.vendedor_id || null,
+        descripcion:   aFavor ? 'Diferencia de cambio (a favor)' : 'Diferencia de cambio (en contra)',
+        imei:          null,
+        cantidad:      1,
+        precio_vendido: aFavor ? dif : 0,
+        costo:         aFavor ? 0 : dif,
+        moneda:        'USD',
+        comision:      0,
+      });
     }
 
     const payload = {
@@ -749,8 +767,18 @@ export default function Ventas() {
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1, position: 'relative' }}>
-                      <label className="field-label">Cliente</label>
-                      <input className="input" placeholder="Nombre del cliente" autoComplete="off"
+                      <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Cliente</span>
+                        {/* Botón siempre visible para abrir el mini-form de cliente nuevo
+                            sin tener que tipear primero en el buscador. Si el operador
+                            quiere cargar un cliente con datos completos directo, hace
+                            click acá. (También se sigue ofreciendo desde el dropdown
+                            como "Crear cliente «X»" si tipea algo nuevo.) */}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirQuickClient(vForm.cliente_nombre)}>
+                          <Icons.Plus size={11} /> Nuevo cliente
+                        </button>
+                      </label>
+                      <input className="input" placeholder="Buscar cliente..." autoComplete="off"
                         value={vForm.cliente_nombre}
                         onChange={e => { setVForm(f => ({ ...f, cliente_nombre: e.target.value, cliente_id: '' })); setClienteDrop(true); }}
                         onFocus={() => setClienteDrop(true)}
