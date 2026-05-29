@@ -15,6 +15,20 @@ const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
 } = require('../schemas/proveedores');
 
+// Mapeo de columnas de productos a su tipo PostgreSQL para UNNEST batched
+// inserts (#P-01). Se actualiza si STOCK_COLS cambia.
+const PRODUCT_COL_TYPES = {
+  tipo_carga: 'text', clase: 'text', nombre: 'text', imei: 'text',
+  gb: 'text', color: 'text', bateria: 'int',
+  categoria_id: 'int', deposito_id: 'int', proveedor: 'text',
+  costo: 'numeric', costo_moneda: 'text',
+  precio_venta: 'numeric', precio_moneda: 'text',
+  trackear_stock: 'boolean', cantidad: 'int', estado: 'text',
+  observaciones: 'text', condicion: 'text', oculto: 'boolean',
+  proveedor_movimiento_id: 'int',
+};
+const pgArrayType = (col) => PRODUCT_COL_TYPES[col] || 'text';
+
 // Rate-limit dedicado para POST /movimientos (auditoría #H-07): cuando una
 // compra trae producto_stock, hace hasta 200 INSERTs productos + IMEI locks
 // + audit. Sin tope dedicado, un script puede agotar conexiones del pool en
@@ -286,58 +300,80 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     const mov = rows[0];
 
     // Ítems solo en compras (los pagos no llevan productos)
-    const insertedItems = [];
-    const productosCreados = [];
+    //
+    // #P-01 bulkificado con UNNEST: antes era un loop con 1 INSERT por item +
+    // 1 INSERT por producto + 1 audit por producto. Para 50 items con stock:
+    // ~150 round-trips secuenciales bloqueando el FOR UPDATE del proveedor.
+    // Ahora: 1 INSERT items + 1 INSERT productos + 1 audit del lote = 3 RTT.
+    let insertedItems = [];
+    let productosCreados = [];
     if (tipo === 'compra' && items.length > 0) {
-      // Columnas del producto que persistimos al crear stock desde compra. Es
-      // el mismo set que /api/inventario/productos POST (sin foto).
-      const STOCK_COLS = [
-        'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
-        'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
-        'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
-        'observaciones', 'condicion', 'oculto',
-        // Link al movimiento de origen (auditoría #B-02): permite borrar
-        // productos en cascada cuando se borra la compra que los creó.
-        'proveedor_movimiento_id',
-      ];
-      for (const it of items) {
-        // 1) Log del item (siempre)
-        const { rows: ir } = await client.query(
-          `INSERT INTO proveedor_movimiento_items (proveedor_movimiento_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-          [mov.id, it.producto ?? null, it.modelo ?? null, it.tamano ?? null, it.color ?? null,
-           it.imei_serial ?? null, it.valor ?? null, it.verificado ?? false, it.notas ?? null]
-        );
-        insertedItems.push(ir[0]);
+      // 1) Bulk INSERT de los items (siempre).
+      const itemRes = await client.query(
+        `INSERT INTO proveedor_movimiento_items
+           (proveedor_movimiento_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas)
+         SELECT $1, p, m, t, c, i, v, vf, n
+           FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                      $7::numeric[], $8::boolean[], $9::text[])
+                AS u(p, m, t, c, i, v, vf, n)
+         RETURNING *`,
+        [
+          mov.id,
+          items.map(it => it.producto ?? null),
+          items.map(it => it.modelo ?? null),
+          items.map(it => it.tamano ?? null),
+          items.map(it => it.color ?? null),
+          items.map(it => it.imei_serial ?? null),
+          items.map(it => it.valor ?? null),
+          items.map(it => it.verificado ?? false),
+          items.map(it => it.notas ?? null),
+        ]
+      );
+      insertedItems = itemRes.rows;
 
-        // 2) Si vino producto_stock → crear el producto en Inventario.
-        //    Auto-fill: proveedor = nombre del proveedor de la compra
-        //    (se puede pisar si el cliente lo manda explícito).
-        if (it.producto_stock) {
-          const ps = {
-            ...it.producto_stock,
-            // #H-06: forzar nombre del proveedor (no aceptar override del
-            // cliente). Antes `it.producto_stock.proveedor || prov.nombre`
-            // permitía impersonar otro proveedor en reportes y desglose por
-            // proveedor.
-            proveedor:  prov.rows[0].nombre,
-            condicion:  it.producto_stock.condicion ?? 'nuevo',
-            oculto:     it.producto_stock.oculto    ?? false,
-            // Link al movimiento de compra para borrado en cascada (#B-02)
+      // 2) Bulk INSERT de productos para los items con producto_stock.
+      //    Auto-fill: proveedor forzado al nombre del proveedor (#H-06).
+      const stockItems = items.filter(it => it.producto_stock);
+      if (stockItems.length > 0) {
+        const STOCK_COLS = [
+          'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
+          'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
+          'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
+          'observaciones', 'condicion', 'oculto', 'proveedor_movimiento_id',
+        ];
+        const params = STOCK_COLS.map((col, i) => `$${i + 1}::${pgArrayType(col)}[]`).join(', ');
+        const colsAlias = STOCK_COLS.map((_, i) => `c${i + 1}`).join(', ');
+        const insertCols = STOCK_COLS.join(', ');
+        const arrays = STOCK_COLS.map(col => stockItems.map(it => {
+          const ps = it.producto_stock;
+          if (col === 'proveedor')               return prov.rows[0].nombre;
+          if (col === 'condicion')               return ps.condicion ?? 'nuevo';
+          if (col === 'oculto')                  return ps.oculto    ?? false;
+          if (col === 'proveedor_movimiento_id') return mov.id;
+          return ps[col] ?? null;
+        }));
+        const prodRes = await client.query(
+          `INSERT INTO productos (${insertCols})
+             SELECT ${colsAlias} FROM UNNEST(${params}) AS u(${colsAlias})
+             RETURNING *`,
+          arrays
+        );
+        productosCreados = prodRes.rows;
+
+        // 1 sólo audit-lote en vez de 1 por producto. La trazabilidad queda
+        // en el JSON 'despues.ids' + ref al movimiento de compra.
+        // 1 audit-lote con flag _bulk: true (constraint solo acepta
+        // INSERT/UPDATE/DELETE).
+        await audit(client, 'productos', 'INSERT', productosCreados[0]?.id || mov.id, {
+          despues: {
+            _bulk: true,
+            _origen: 'compra_proveedor',
             proveedor_movimiento_id: mov.id,
-          };
-          const values = STOCK_COLS.map(c => ps[c] ?? null);
-          const placeholders = STOCK_COLS.map((_, i) => `$${i + 1}`).join(',');
-          const { rows: pr } = await client.query(
-            `INSERT INTO productos (${STOCK_COLS.join(',')}) VALUES (${placeholders}) RETURNING *`,
-            values
-          );
-          productosCreados.push(pr[0]);
-          // Audit del producto para que aparezca en su propio historial.
-          await audit(client, 'productos', 'INSERT', pr[0].id,
-            { despues: { ...pr[0], _origen: 'compra_proveedor', proveedor_movimiento_id: mov.id },
-              user_id: req.user.id });
-        }
+            ids: productosCreados.map(p => p.id),
+            count: productosCreados.length,
+          },
+          user_id: req.user.id,
+        });
       }
     }
 
