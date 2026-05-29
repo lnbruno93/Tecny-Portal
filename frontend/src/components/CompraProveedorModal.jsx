@@ -304,16 +304,18 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
     outline: 'none', boxSizing: 'border-box',
   };
   const th = {
-    padding: '6px 8px', fontSize: 10, fontWeight: 700,
+    padding: '6px 6px', fontSize: 10, fontWeight: 700,
     letterSpacing: '0.05em', textTransform: 'uppercase',
     color: 'var(--text-muted)', textAlign: 'left',
     borderBottom: '1px solid var(--border)',
+    borderRight: '1px solid var(--hairline)',
     background: 'var(--surface-2)', whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis',
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 1400, width: '98vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 1800, width: '98vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3>Cargar compra · {proveedor.nombre}</h3>
           <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
@@ -401,31 +403,31 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
 
           {/* ── Planilla spreadsheet ── */}
           <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1700, tableLayout: 'fixed' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1500, tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: 32 }} />   {/* # */}
-                <col style={{ width: 44 }} />   {/* Stock */}
-                <col style={{ width: 200 }} />  {/* Nombre */}
-                <col style={{ width: 140 }} />  {/* IMEI */}
-                <col style={{ width: 70 }} />   {/* GB */}
-                <col style={{ width: 100 }} />  {/* Color */}
-                <col style={{ width: 70 }} />   {/* Bat % */}
-                <col style={{ width: 100 }} />  {/* Tipo */}
-                <col style={{ width: 130 }} />  {/* Categoría */}
-                <col style={{ width: 130 }} />  {/* Depósito */}
-                <col style={{ width: 100 }} />  {/* Condición */}
-                <col style={{ width: 110 }} />  {/* Tipo carga */}
-                <col style={{ width: 70 }} />   {/* Cant */}
-                <col style={{ width: 90 }} />   {/* Costo */}
-                <col style={{ width: 70 }} />   {/* Moneda */}
-                <col style={{ width: 90 }} />   {/* Precio */}
-                <col style={{ width: 70 }} />   {/* Moneda */}
-                <col style={{ width: 36 }} />   {/* X */}
+                <col style={{ width: 28 }} />   {/* # */}
+                <col style={{ width: 38 }} />   {/* Stock */}
+                <col style={{ width: 180 }} />  {/* Nombre */}
+                <col style={{ width: 130 }} />  {/* IMEI */}
+                <col style={{ width: 60 }} />   {/* GB */}
+                <col style={{ width: 90 }} />   {/* Color */}
+                <col style={{ width: 60 }} />   {/* Bat % */}
+                <col style={{ width: 88 }} />   {/* Tipo */}
+                <col style={{ width: 120 }} />  {/* Categoría */}
+                <col style={{ width: 120 }} />  {/* Depósito */}
+                <col style={{ width: 88 }} />   {/* Condición */}
+                <col style={{ width: 96 }} />   {/* Tipo carga */}
+                <col style={{ width: 60 }} />   {/* Cant */}
+                <col style={{ width: 80 }} />   {/* Costo */}
+                <col style={{ width: 64 }} />   {/* Moneda */}
+                <col style={{ width: 80 }} />   {/* Precio */}
+                <col style={{ width: 64 }} />   {/* Moneda */}
+                <col style={{ width: 32 }} />   {/* X */}
               </colgroup>
               <thead>
                 <tr>
-                  {['#','Stock','Nombre *','IMEI/Serial','GB','Color','Bat %','Tipo','Categoría *','Depósito','Cond.','Tipo carga','Cant.','Costo *','M.','Precio venta','M.',''].map((h, i) =>
-                    <th key={i} style={th}>{h}</th>
+                  {['#','✓','Nombre *','IMEI/Serial','GB','Color','Bat %','Tipo','Categoría *','Depósito','Cond.','Tipo carga','Cant.','Costo *','M.','Precio venta','M.',''].map((h, i) =>
+                    <th key={i} style={{ ...th, textAlign: (i === 0 || i === 1) ? 'center' : 'left' }}>{h}</th>
                   )}
                 </tr>
               </thead>
