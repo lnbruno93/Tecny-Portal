@@ -202,29 +202,36 @@ const CC_DATALISTS = (
   </>
 );
 
-// ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles) ───────────────────
-// Compra / Devolución → columnas de producto completas.
-// Pago / Parte pago / Entrega → $ ARS ÷ TC → USD (auto-calculado).
-//   · ARS + TC rellenos: USD = ARS / TC (campo USD de solo lectura, fondo verde).
-//   · ARS vacío + USD directo: registra ese monto sin conversión.
+// ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles, SOLO pagos) ──────
+// Decisión (mayo-2026): las ventas (compra/devolución/entrega) se cargan por
+// el modal grande "Cargar venta" con picker de stock — descuenta inventario,
+// suma deuda o ingresa caja según el caso. La planilla inline queda
+// dedicada SOLO a pagos rápidos del cliente:
+//   - Pago / Parte pago → $ ARS ÷ TC → USD (auto-calculado).
+//   - ARS + TC rellenos: USD = ARS / TC (campo USD de solo lectura, fondo verde).
+//   - ARS vacío + USD directo: registra ese monto sin conversión.
+//   - Caja obligatoria si querés que el ingreso impacte una caja real.
 // Tab en último campo → guarda y pasa a la siguiente fila.
 // Enter en el campo de monto/USD → guarda esa fila.
 
 const ROW_COUNT  = 5;
-const ITEM_TIPOS = ['compra', 'devolucion'];
+// Tipos que siguen llevando items (productos). Estos NO van por la planilla
+// — se cargan vía VentaB2BModal. Se mantiene la constante porque se sigue
+// consultando en filtros del histórico.
+const ITEM_TIPOS = ['compra', 'devolucion', 'entrega_mercaderia'];
 
 const mkRow = (prev = null) => ({
   _id:         Math.random().toString(36).slice(2),
   fecha:       prev?.fecha || todayISO(),
-  tipo:        prev?.tipo  || 'compra',
-  // Producto (solo ITEM_TIPOS)
+  tipo:        prev?.tipo  || 'pago',
+  // Producto: se mantienen los campos para no romper la forma pero no se usan.
   producto: '', modelo: '', tamano: '', color: '', imei_serial: '',
   verificado: false,
-  // Monto final en USD (todos los tipos)
+  // Monto final en USD
   monto: '',
-  // Solo pagos: ARS + TC → monto se auto-calcula
+  // ARS + TC → monto se auto-calcula
   ars: '', tc: '',
-  // Solo pagos: caja USD donde ingresa el dinero
+  // Caja donde ingresa el dinero
   caja_id: prev?.caja_id || '',
 });
 
@@ -334,22 +341,21 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                 onChange={e => upd(i, 'fecha', e.target.value)} />
             </td>
 
-            {/* Tipo */}
+            {/* Tipo — la planilla inline ya sólo carga pagos.
+                  Ventas (compras/devoluciones/entregas) se hacen vía
+                  "Cargar venta" arriba. */}
             <td style={{ padding: '4px 5px' }}>
               <select style={{ ...inp, cursor: 'pointer' }}
                 value={row.tipo}
                 onChange={e => upd(i, 'tipo', e.target.value)}>
-                <option value="compra">+ Compra</option>
                 <option value="pago">− Pago</option>
-                <option value="devolucion">− Devolución</option>
                 <option value="parte_de_pago">− Parte pago</option>
-                <option value="entrega_mercaderia">− Entrega</option>
               </select>
             </td>
 
-            {isPago ? (
-              /* ── Pago: $ ARS ÷ TC → USD ──────────────────────────────── */
-              <td colSpan={6} style={{ padding: '4px 12px' }}>
+            {/* Pago: $ ARS ÷ TC → USD (solo modo). Columnas Producto/Modelo/
+                Cap/Color/IMEI quedan absorbidas por el colSpan. */}
+            <td colSpan={6} style={{ padding: '4px 12px' }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>$ ARS</span>
                   <input
@@ -399,51 +405,6 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   </select>
                 </div>
               </td>
-            ) : (
-              /* ── Compra / Devolución: columnas de producto ───────────── */
-              <>
-                <td style={{ padding: '4px 5px' }}>
-                  <input ref={setRef(i, 'first')} list="cc-dl-producto" style={inp} placeholder="iPhone"
-                    value={row.producto}
-                    onChange={e => upd(i, 'producto', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input list="cc-dl-modelo" style={inp} placeholder="16 Pro Max"
-                    value={row.modelo}
-                    onChange={e => upd(i, 'modelo', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input list="cc-dl-tamano" style={inp} placeholder="256GB"
-                    value={row.tamano}
-                    onChange={e => upd(i, 'tamano', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input list="cc-dl-color" style={inp} placeholder="Negro"
-                    value={row.color}
-                    onChange={e => upd(i, 'color', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input style={{ ...inp, fontFamily: 'monospace', fontSize: 12 }}
-                    placeholder="358123…"
-                    value={row.imei_serial}
-                    onChange={e => upd(i, 'imei_serial', e.target.value)} />
-                </td>
-                <td style={{ padding: '4px 5px' }}>
-                  <input
-                    ref={setRef(i, 'monto')}
-                    type="number" min="0"
-                    style={{ ...inp, textAlign: 'right', fontWeight: 700 }}
-                    placeholder="0"
-                    value={row.monto}
-                    onChange={e => upd(i, 'monto', e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
-                      else handleLastKey(e, i);
-                    }}
-                  />
-                </td>
-              </>
-            )}
 
             {/* Verificado */}
             <td style={{ padding: '4px 8px', textAlign: 'center' }}>
@@ -710,6 +671,32 @@ export default function CuentasCC() {
     } catch (e) { toast.error(e.message); }
   }
 
+  // Soft-delete del cliente B2B. El backend mantiene movimientos pero deja
+  // de listarlos en GET /clientes. Si el cliente tiene saldo != 0, avisamos
+  // pero igual permitimos borrar (auditoría queda en audit_logs).
+  async function handleDeleteCliente() {
+    const cli = clienteDetail?.resumen?.cliente;
+    if (!cli) return;
+    const saldo = Number(clienteDetail?.resumen?.saldo || 0);
+    const warn = saldo !== 0
+      ? `\n\n⚠ El cliente tiene saldo USD ${fmtSigned(saldo)}. Al borrarlo dejará de aparecer en los listados pero su histórico queda guardado.`
+      : '';
+    const ok = await confirm({
+      title: `Eliminar cliente "${[cli.nombre, cli.apellido].filter(Boolean).join(' ')}"`,
+      message: `Esta acción no se puede deshacer.${warn}`,
+      confirmLabel: 'Eliminar cliente',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await cuentas.deleteCliente(cli.id);
+      toast.success('Cliente eliminado.');
+      setClientes(prev => prev.filter(c => c.id !== cli.id));
+      setSelectedId(null);
+      setClienteDetail(null);
+    } catch (e) { toast.error(e.message); }
+  }
+
   function catBadge(cat) {
     return <Badge tone={CAT_TONE[cat] || 'default'}>{cat}</Badge>;
   }
@@ -944,6 +931,10 @@ export default function CuentasCC() {
                   </button>
                   <button className="icon-btn" title="Editar cliente" onClick={() => setShowEdit(true)}>
                     <Icons.Edit size={15} />
+                  </button>
+                  <button className="icon-btn" title="Eliminar cliente" onClick={handleDeleteCliente}
+                    style={{ color: 'var(--neg)' }}>
+                    <Icons.Trash size={15} />
                   </button>
                 </div>
               </div>
