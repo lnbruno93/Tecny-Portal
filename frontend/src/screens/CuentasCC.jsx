@@ -146,62 +146,6 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
   );
 }
 
-// ─── Datalists para desplegables de producto ─────────────────────────────────
-// Se renderizan una vez fuera de la tabla y los inputs los referencian por id.
-
-const CC_DATALISTS = (
-  <>
-    <datalist id="cc-dl-producto">
-      <option value="iPhone" />
-      <option value="MacBook Air" />
-      <option value="MacBook Pro" />
-      <option value="Neo" />
-      <option value="AirPods" />
-      <option value="Apple Watch" />
-      <option value="iPad" />
-      <option value="AirTag" />
-      <option value="RayBan Meta" />
-      <option value="Cargador" />
-      <option value="SuperHub" />
-      <option value="Accesorios" />
-      <option value="PS 5" />
-      <option value="Nintendo" />
-      <option value="XBox" />
-      <option value="Pencil" />
-      <option value="Samsung" />
-    </datalist>
-    <datalist id="cc-dl-modelo">
-      <option value="16 Pro Max" /><option value="16 Pro" /><option value="16 Plus" /><option value="16" />
-      <option value="15 Pro Max" /><option value="15 Pro" /><option value="15 Plus" /><option value="15" />
-      <option value="14 Pro Max" /><option value="14 Pro" /><option value="14 Plus" /><option value="14" />
-      <option value="13 Pro Max" /><option value="13 Pro" /><option value="13" />
-      <option value="SE (3ra gen)" />
-      <option value="S25 Ultra" /><option value="S25+" /><option value="S25" />
-      <option value="S24 Ultra" /><option value="S24+" /><option value="S24" />
-      <option value="A55" /><option value="A35" /><option value="A15" />
-      <option value="Pro 11 M4" /><option value="Pro 13 M4" /><option value="Air M2" />
-      <option value="Air 13 M3" /><option value="Mini 7" />
-    </datalist>
-    <datalist id="cc-dl-tamano">
-      <option value="64GB" />
-      <option value="128GB" />
-      <option value="256GB" />
-      <option value="512GB" />
-      <option value="1TB" />
-      <option value="2TB" />
-      <option value="825GB" />
-      <option value="S/D" />
-    </datalist>
-    <datalist id="cc-dl-color">
-      <option value="Negro" /><option value="Blanco" /><option value="Azul" />
-      <option value="Rosa" /><option value="Verde" /><option value="Rojo" />
-      <option value="Dorado" /><option value="Plateado" /><option value="Violeta" />
-      <option value="Natural Titanium" /><option value="Desert Titanium" />
-      <option value="Black Titanium" /><option value="White Titanium" />
-      <option value="Grafito" /><option value="Medianoche" /><option value="Blanco Estelar" />
-    </datalist>
-  </>
-);
 
 // ─── INLINE ADD ROWS (planilla — 5 filas siempre visibles, SOLO pagos) ──────
 // Decisión (mayo-2026): las ventas (compra/devolución/entrega) se cargan por
@@ -216,21 +160,16 @@ const CC_DATALISTS = (
 // Enter en el campo de monto/USD → guarda esa fila.
 
 const ROW_COUNT  = 5;
-// Tipos que siguen llevando items (productos). Estos NO van por la planilla
-// — se cargan vía VentaB2BModal. Se mantiene la constante porque se sigue
-// consultando en filtros del histórico.
-const ITEM_TIPOS = ['compra', 'devolucion', 'entrega_mercaderia'];
+// La planilla inline acepta SOLO pagos. Las ventas/devoluciones/entregas
+// se cargan por VentaB2BModal. Por eso `producto/modelo/...` quedaron
+// dead-code y se limpiaron en TANDA 4 #R-04.
 
 const mkRow = (prev = null) => ({
   _id:         Math.random().toString(36).slice(2),
   fecha:       prev?.fecha || todayISO(),
   tipo:        prev?.tipo  || 'pago',
-  // Producto: se mantienen los campos para no romper la forma pero no se usan.
-  producto: '', modelo: '', tamano: '', color: '', imei_serial: '',
-  verificado: false,
-  // Monto final en USD
+  // Monto final en USD (auto-calculado desde ARS ÷ TC si se llenan)
   monto: '',
-  // ARS + TC → monto se auto-calcula
   ars: '', tc: '',
   // Caja donde ingresa el dinero
   caja_id: prev?.caja_id || '',
@@ -248,12 +187,6 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     setRows(rs => rs.map((r, idx) => {
       if (idx !== i) return r;
       const next = { ...r, [field]: val };
-      // Cambio de tipo → limpia campos del modo anterior
-      if (field === 'tipo') {
-        if (ITEM_TIPOS.includes(val)) { next.ars = ''; next.tc = ''; }
-        else { next.producto = ''; next.modelo = ''; next.tamano = '';
-               next.color = ''; next.imei_serial = ''; next.monto = ''; }
-      }
       // Auto-calcula USD cuando cambian ARS o TC
       if (field === 'ars' || field === 'tc') {
         const ars = parseFloat(next.ars);
@@ -267,25 +200,17 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
   }
 
   function saveRow(i) {
-    const row    = rows[i];
-    const isPago = !ITEM_TIPOS.includes(row.tipo);
-    if (isPago && parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
+    const row = rows[i];
+    if (parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
       setErrs(e => ({ ...e, [i]: 'Ingresá el tipo de cambio' })); return;
     }
     if (!row.monto || Number(row.monto) <= 0) return;
 
     const tempId  = `_tmp_${Date.now()}_${i}`;
-    const isItem  = ITEM_TIPOS.includes(row.tipo);
-    const itemData = {
-      producto: row.producto || null, modelo: row.modelo || null,
-      tamano: row.tamano || null,     color: row.color || null,
-      imei_serial: row.imei_serial || null,
-      valor: Number(row.monto),       verificado: row.verificado,
-    };
 
     // 1. Reset inmediato → usuario puede seguir sin esperar
     setRows(rs => rs.map((r, idx) =>
-      idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo }) : r
+      idx === i ? mkRow({ fecha: r.fecha, tipo: r.tipo, caja_id: r.caja_id }) : r
     ));
     setErrs(e => { const n = { ...e }; delete n[i]; return n; });
     setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 20);
@@ -295,15 +220,15 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
       id: tempId, _pending: true,
       fecha: row.fecha, tipo: row.tipo,
       monto_total: Number(row.monto), descripcion: null, notas: null,
-      items: isItem ? [{ id: `${tempId}_item`, ...itemData }] : [],
+      items: [], // pagos no tienen items
     });
 
     // 3. API en segundo plano — no bloquea la UI
     cuentas.createMovimiento({
       cliente_cc_id: clienteId,
       fecha: row.fecha, tipo: row.tipo, monto_total: Number(row.monto),
-      caja_id: (!isItem && row.caja_id) ? Number(row.caja_id) : null,
-      items: isItem ? [itemData] : [],
+      caja_id: row.caja_id ? Number(row.caja_id) : null,
+      items: [], // pagos no tienen items
     })
     .then(real => onSaveDone(tempId, real))
     .catch(err  => onSaveError(tempId, err.message || 'Error al guardar'));
@@ -327,8 +252,8 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
   return (
     <>
       {rows.map((row, i) => {
-        const isPago  = !ITEM_TIPOS.includes(row.tipo);
-        const autoUSD = isPago && parseFloat(row.ars) > 0 && parseFloat(row.tc) > 0;
+        // Siempre pago en esta planilla (ventas van por VentaB2BModal)
+        const autoUSD = parseFloat(row.ars) > 0 && parseFloat(row.tc) > 0;
         return (
           <tr key={row._id} style={{
             background: 'rgba(99,102,241,0.04)',
@@ -957,7 +882,6 @@ export default function CuentasCC() {
 
             {/* ── Tabla spreadsheet ── */}
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-              {CC_DATALISTS}
               <table style={{
                 width: '100%', borderCollapse: 'collapse',
                 tableLayout: 'fixed', minWidth: 860,
