@@ -31,13 +31,16 @@ const EMPTY_PRODUCTO = {
 
 // Opciones del selector "Vista" — encapsulan combinaciones de estado + oculto.
 // Mismo enum que el backend (backend/src/schemas/inventario.js: VISTAS_INVENTARIO).
+// Labels reformulados (#M-08): la doble negación "no vendidos" confundía. Ahora
+// describen QUÉ se muestra, no qué se excluye. Ojo: NO renombrar los `value` —
+// son contrato con el backend.
 const VISTAS = [
-  { value: 'no_vendidos',         label: 'No vendidos (en stock)' },
-  { value: 'no_vendidos_ocultos', label: 'No vendidos · ocultos' },
-  { value: 'ocultos',             label: 'Ocultos' },
+  { value: 'no_vendidos',         label: 'En stock (visible)' },
+  { value: 'no_vendidos_ocultos', label: 'En stock pero ocultos' },
+  { value: 'ocultos',             label: 'Todo lo oculto (stock + vendido)' },
   { value: 'vendidos',            label: 'Vendidos' },
-  { value: 'todos_visibles',      label: 'Todos los visibles' },
-  { value: 'todos_ocultos',       label: 'Todos (con ocultos)' },
+  { value: 'todos_visibles',      label: 'Todo lo visible (stock + vendido)' },
+  { value: 'todos_ocultos',       label: 'Todo (visible + oculto)' },
 ];
 
 const ESTADO_DISPLAY = {
@@ -482,22 +485,26 @@ export default function Inventario() {
                     Se hacen scroll horizontal si no entran en el ancho disponible.
             Fila 2: selector de vista (estado + ocultos) + buscador.            */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ overflowX: 'auto', marginBottom: 10, paddingBottom: 2 }}>
-          <Seg
-            value={claseFilter}
-            options={[
-              { value: 'todos', label: 'Todos' },
-              { value: 'celular', label: 'Celulares' },
-              { value: 'accesorio', label: 'Accesorios' },
-              { value: 'tecnico', label: 'En técnico' },
-              { value: 'usados', label: 'Usados' },
-              // Categorías administrables → 1 tab por cada una (orden alfabético).
-              // El usuario las crea/edita desde "Gestionar categorías" sin tocar código.
-              ...[...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-                .map(c => ({ value: `cat:${c.id}`, label: c.nombre })),
-            ]}
-            onChange={setClaseFilter}
-          />
+        {/* #M-09: scroll-fade-x indica que hay más tabs a la derecha cuando
+            no entran. Es hint visual permanente — no usamos JS de scroll. */}
+        <div className="scroll-fade-x" style={{ marginBottom: 10 }}>
+          <div style={{ overflowX: 'auto', paddingBottom: 2 }}>
+            <Seg
+              value={claseFilter}
+              options={[
+                { value: 'todos', label: 'Todos' },
+                { value: 'celular', label: 'Celulares' },
+                { value: 'accesorio', label: 'Accesorios' },
+                { value: 'tecnico', label: 'En técnico' },
+                { value: 'usados', label: 'Usados' },
+                // Categorías administrables → 1 tab por cada una (orden alfabético).
+                // El usuario las crea/edita desde "Gestionar categorías" sin tocar código.
+                ...[...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+                  .map(c => ({ value: `cat:${c.id}`, label: c.nombre })),
+              ]}
+              onChange={setClaseFilter}
+            />
+          </div>
         </div>
         <div className="flex-between" style={{ gap: 8, flexWrap: 'wrap' }}>
           <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>

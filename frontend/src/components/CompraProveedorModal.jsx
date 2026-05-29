@@ -24,6 +24,7 @@ import { proveedores as provApi, inventario as invApi, cajas as cajasApi } from 
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -167,8 +168,23 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   }
   // "Aplicar defaults a las filas vacías": útil cuando ajustás defaults
   // después de haber agregado filas.
+  //
+  // #M-10: NO pisar filas tocadas-pero-no-cargadas. Antes `mkRow(defs)`
+  // reemplazaba la fila completa, perdiendo edits parciales del usuario
+  // (ej. tipeó `costo=100` o cambió la `clase` en esa fila puntualmente
+  // pero aún no puso nombre/imei → la fila no era "used" por isUsedRow).
+  // Ahora compara contra el template inicial: si la fila tiene cualquier
+  // valor distinto al default original, se respeta.
   function applyDefaultsToEmpty() {
-    setRows(rs => rs.map(r => isUsedRow(r) ? r : mkRow(defs)));
+    const blank = mkRow(DEFAULTS_INICIALES);
+    // Campos en mkRow (todos los que podrían estar "tocados").
+    const camposComparar = Object.keys(blank).filter(k => k !== '_id');
+    setRows(rs => rs.map(r => {
+      if (isUsedRow(r)) return r;
+      // ¿Algún campo difiere del template? Entonces fue tocada.
+      const fueTocada = camposComparar.some(k => r[k] !== blank[k]);
+      return fueTocada ? r : mkRow(defs);
+    }));
   }
 
   // Pegar desde Excel: toma el clipboard, parsea TSV, reemplaza filas vacías
@@ -364,7 +380,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             {cajaId && monedaCaja !== 'USD' && (
               <div className="field" style={{ flex: '0 0 140px' }}>
                 <label className="field-label">TC {monedaCaja}→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
-                <input type="number" className="input mono" min="0" step="0.01"
+                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
               </div>
             )}
@@ -372,7 +388,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             {(!cajaId || monedaCaja === 'USD') && rows.some(r => isUsedRow(r) && r.costo_moneda !== 'USD') && (
               <div className="field" style={{ flex: '0 0 140px' }}>
                 <label className="field-label">TC ARS→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
-                <input type="number" className="input mono" min="0" step="0.01"
+                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
               </div>
             )}
@@ -495,7 +511,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                           placeholder="Negro" onChange={e => updCell(idx, 'color', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" style={{ ...cellInp, textAlign: 'right' }} value={r.bateria}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right' }} value={r.bateria}
                           placeholder="100" onChange={e => updCell(idx, 'bateria', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
@@ -534,11 +550,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" style={{ ...cellInp, textAlign: 'right' }} value={r.cantidad}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right' }} value={r.cantidad}
                           placeholder="1" onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
                           value={r.costo} placeholder="0"
                           onChange={e => updCell(idx, 'costo', e.target.value)} />
                       </td>
@@ -549,7 +565,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" style={{ ...cellInp, textAlign: 'right' }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} style={{ ...cellInp, textAlign: 'right' }}
                           value={r.precio_venta} placeholder="0"
                           onChange={e => updCell(idx, 'precio_venta', e.target.value)} />
                       </td>
@@ -584,7 +600,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             <div style={{ flex: '0 0 220px', textAlign: 'right' }}>
               <div className="muted tiny">Total compra</div>
               <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
-                USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                {/* #M-13: si no hay filas usadas, mostrar guion en vez de
+                    "USD 0" para no parecer que se está cargando algo. */}
+                {rows.filter(isUsedRow).length === 0
+                  ? <span className="muted">—</span>
+                  : <>USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</>}
               </div>
             </div>
           </div>

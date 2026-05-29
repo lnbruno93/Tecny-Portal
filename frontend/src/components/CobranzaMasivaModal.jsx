@@ -20,6 +20,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -115,10 +116,16 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   function removeRow(idx) {
     setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
   }
+  // #M-10: solo pisar campos vacíos/falsy de filas no-usadas. Antes el
+  // spread escribía caja_id/tc aunque el usuario los hubiera tipeado
+  // en una fila sin cliente todavía, perdiendo trabajo silenciosamente.
   function applyDefaultsToEmpty() {
     setRows(rs => rs.map(r => {
-      const used = isUsedRow(r);
-      return used ? r : { ...r, caja_id: cajaDefault, tc: tcDefault };
+      if (isUsedRow(r)) return r;
+      const merged = { ...r };
+      if (merged.caja_id === '' || merged.caja_id == null) merged.caja_id = cajaDefault;
+      if (merged.tc      === '' || merged.tc      == null) merged.tc      = tcDefault;
+      return merged;
     }));
   }
 
@@ -206,7 +213,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
             </div>
             <div className="field" style={{ flex: '0 0 140px' }}>
               <label className="field-label">TC por defecto</label>
-              <input type="number" min="0" step="0.01" className="input mono"
+              <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                 value={tcDefault} onChange={e => setTCD(e.target.value)} placeholder="0" />
             </div>
             <div className="field" style={{ flex: '0 0 140px', alignSelf: 'flex-end' }}>
@@ -290,7 +297,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           : <span className="dim">—</span>}
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700,
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700,
                           borderColor: sobrepago ? 'var(--warn, #d97706)' : 'var(--border)',
                         }}
                           value={r.monto} placeholder="0"
@@ -305,7 +312,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       </td>
                       <td style={{ padding: '3px 4px' }}>
                         {needsTc ? (
-                          <input type="number" min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
                             value={r.tc} placeholder={moneda}
                             onChange={e => updCell(idx, 'tc', e.target.value)} />
                         ) : <span className="dim" style={{ fontSize: 11, paddingLeft: 6 }}>—</span>}
@@ -345,7 +352,10 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
             <div style={{ textAlign: 'right' }}>
               <div className="muted tiny">Total cobrado</div>
               <div className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
-                USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                {/* #M-13: guion en vez de "USD 0" cuando no hay filas usadas. */}
+                {rows.filter(isUsedRow).length === 0
+                  ? <span className="muted">—</span>
+                  : <>USD {totalUsd.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</>}
               </div>
             </div>
           </div>
