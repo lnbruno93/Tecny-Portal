@@ -202,6 +202,21 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
   try {
     const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;
 
+    // #H-05 cross-module: si la compra crea productos en Inventario, exigir
+    // también permiso `inventario` (no alcanza con solo `proveedores`).
+    // Evita que un user al que se le quitó `inventario` siga creando stock
+    // por la puerta de atrás.
+    const creaStock = tipo === 'compra' && items.some(it => it.producto_stock);
+    if (creaStock) {
+      const { hasPermission } = require('../middleware/requirePermission');
+      const ok = await hasPermission(req.user, 'inventario');
+      if (!ok) {
+        return res.status(403).json({
+          error: 'Para registrar una compra que crea productos necesitás también permiso de Inventario.',
+        });
+      }
+    }
+
     await client.query('BEGIN');
     const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
     if (!prov.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
@@ -287,7 +302,11 @@ router.post('/movimientos', validate(createMovimientoProveedorSchema), async (re
         if (it.producto_stock) {
           const ps = {
             ...it.producto_stock,
-            proveedor:  it.producto_stock.proveedor || prov.rows[0].nombre,
+            // #H-06: forzar nombre del proveedor (no aceptar override del
+            // cliente). Antes `it.producto_stock.proveedor || prov.nombre`
+            // permitía impersonar otro proveedor en reportes y desglose por
+            // proveedor.
+            proveedor:  prov.rows[0].nombre,
             condicion:  it.producto_stock.condicion ?? 'nuevo',
             oculto:     it.producto_stock.oculto    ?? false,
             // Link al movimiento de compra para borrado en cascada (#B-02)

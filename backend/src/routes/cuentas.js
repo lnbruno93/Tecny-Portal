@@ -295,6 +295,20 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       caja_id, items = [],
     } = req.body;
 
+    // #H-05 cross-module: si la venta/devolución toca stock de inventario
+    // (producto_id en algún item), exigir también permiso `inventario`.
+    const tocaStock = ['compra', 'devolucion', 'entrega_mercaderia'].includes(tipo)
+      && items.some(it => it.producto_id);
+    if (tocaStock) {
+      const { hasPermission } = require('../middleware/requirePermission');
+      const ok = await hasPermission(req.user, 'inventario');
+      if (!ok) {
+        return res.status(403).json({
+          error: 'Para registrar un movimiento que descuenta stock necesitás también permiso de Inventario.',
+        });
+      }
+    }
+
     await client.query('BEGIN');
 
     // Verificar que el cliente existe (dentro de la tx, con FOR UPDATE para evitar race condition)

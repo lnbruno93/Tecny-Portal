@@ -45,9 +45,9 @@ const itemProveedorSchema = z.object({
   notas:       z.string().trim().max(500).optional().nullable(),
   // Opcional. Si se envía, además de loguear el item, la ruta INSERT-a el
   // producto en `productos`. El proveedor del producto se llena auto con
-  // el nombre del proveedor de la compra (no hace falta repetirlo).
+  // el nombre del proveedor de la compra (#H-06, no se acepta override).
   producto_stock: productoEnCompraSchema.optional().nullable(),
-});
+}).strict(); // #H-08 — rechaza campos extra para defense-in-depth
 
 const createMovimientoProveedorSchema = z.object({
   proveedor_id: z.coerce.number().int().positive('proveedor_id inválido'),
