@@ -79,11 +79,12 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   // ── Catálogos ───────────────────────────────────────────────────────
   const [cajas, setCajas]   = useState([]);
   const [saving, setSaving] = useState(false);
+  const [catalogosError, setCatalogosError] = useState(null); // #H-12
 
   useEffect(() => {
     cajasApi.listCajas()
       .then(r => setCajas((r || []).filter(c => c.activo !== false)))
-      .catch(() => setCajas([]));
+      .catch(() => { setCajas([]); setCatalogosError(['cajas']); });
   }, []);
 
   const monedaCaja = useMemo(() => {
@@ -221,6 +222,17 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
         </div>
 
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+          {/* #H-12: banner si catálogos fallaron */}
+          {catalogosError && (
+            <div style={{
+              padding: '8px 12px', marginBottom: 12, borderRadius: 6,
+              background: 'rgba(217,119,6,0.10)', color: 'var(--warn, #d97706)',
+              border: '1px solid rgba(217,119,6,0.30)', fontSize: 12,
+            }}>
+              ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
+              Cerrá/abrí el modal después de revisar tu conexión.
+            </div>
+          )}
           {/* ── Cabecera ── */}
           <div className="row" style={{ marginBottom: 12 }}>
             <div className="field" style={{ flex: '0 0 150px' }}>
@@ -383,19 +395,33 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
 function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
   const [open, setOpen]   = useState(false);
   const [items, setItems] = useState([]);
+  const [hasMore, setHasMore] = useState(false);  // #H-13: hay más matches que el limit
   const [loading, setLoading] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const debounced = useDebouncedValue(value, 200);
   const boxRef = useRef(null);
+  // #H-10: token de "última request gana". Se incrementa antes de cada fetch
+  // y se compara al volver — si llegó después uno más nuevo, descartamos.
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
     if (locked) { setOpen(false); return; }
-    if (!debounced || debounced.trim().length < 2) { setItems([]); return; }
+    if (!debounced || debounced.trim().length < 2) { setItems([]); setHasMore(false); return; }
     setLoading(true);
-    invApi.productos({ buscar: debounced.trim(), vista: 'no_vendidos', limit: 8 })
-      .then(res => { setItems(res.data || []); setOpen(true); setHighlight(0); })
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    const myReq = ++reqIdRef.current;
+    const LIMIT = 8;
+    // Pedimos uno más para detectar "hay más".
+    invApi.productos({ buscar: debounced.trim(), vista: 'no_vendidos', limit: LIMIT + 1 })
+      .then(res => {
+        if (myReq !== reqIdRef.current) return; // llegó una respuesta más nueva, descartar
+        const all = res.data || [];
+        setItems(all.slice(0, LIMIT));
+        setHasMore(all.length > LIMIT);
+        setOpen(true);
+        setHighlight(0);
+      })
+      .catch(() => { if (myReq === reqIdRef.current) { setItems([]); setHasMore(false); } })
+      .finally(() => { if (myReq === reqIdRef.current) setLoading(false); });
   }, [debounced, locked]);
 
   // Cerrar al clickear afuera
@@ -471,6 +497,16 @@ function ProductoPicker({ value, locked, onPick, onClear, onChange, cellInp }) {
               </div>
             </div>
           ))}
+          {/* #H-13: indicador de "hay más resultados" */}
+          {hasMore && (
+            <div style={{
+              padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)',
+              background: 'var(--surface-2)', borderTop: '1px solid var(--hairline)',
+              textAlign: 'center',
+            }}>
+              Mostrando los primeros 8 — refiná la búsqueda para ver más
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -70,14 +70,18 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   const [clientes, setClientes] = useState([]);     // todos los clientes vivos
   const [showZero, setShowZero] = useState(false);  // mostrar también saldo = 0
   const [saving, setSaving]     = useState(false);
+  // #H-12: banner si fallan
+  const [catalogosError, setCatalogosError] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      cajasApi.listCajas().catch(() => []),
-      cuentasApi.clientes({ limit: 500 }).catch(() => ({ data: [] })),
-    ]).then(([cks, cls]) => {
-      setCajas((cks || []).filter(c => c.activo !== false));
-      setClientes(cls.data || []);
+    Promise.allSettled([
+      cajasApi.listCajas(),
+      cuentasApi.clientes({ limit: 500 }),
+    ]).then(([rk, rc]) => {
+      const errores = [];
+      if (rk.status === 'fulfilled') setCajas((rk.value || []).filter(c => c.activo !== false)); else errores.push('cajas');
+      if (rc.status === 'fulfilled') setClientes(rc.value.data || []); else errores.push('clientes');
+      if (errores.length > 0) setCatalogosError(errores);
     });
   }, []);
 
@@ -201,6 +205,17 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
         </div>
 
         <div className="modal-body" style={{ maxHeight: '82vh', overflowY: 'auto' }}>
+          {/* #H-12: banner si catálogos fallaron */}
+          {catalogosError && (
+            <div style={{
+              padding: '8px 12px', marginBottom: 12, borderRadius: 6,
+              background: 'rgba(217,119,6,0.10)', color: 'var(--warn, #d97706)',
+              border: '1px solid rgba(217,119,6,0.30)', fontSize: 12,
+            }}>
+              ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>.
+              Cerrá/abrí el modal después de revisar tu conexión.
+            </div>
+          )}
           {/* ── Cabecera + defaults ── */}
           <div className="row" style={{ marginBottom: 12 }}>
             <div className="field" style={{ flex: '0 0 150px' }}>
@@ -382,17 +397,20 @@ function ClientePicker({ value, locked, clientes, showZero, onPick, onClear, onC
 
   // Filtrado local: por defecto solo saldo > 0 (deudores).
   // Si showZero está activo, incluye saldo = 0 y < 0 (a favor también).
-  const matches = useMemo(() => {
+  // #H-13: limit es 10 visibles + flag de "hay más" para mostrar indicador.
+  const PICKER_LIMIT = 10;
+  const { matches, totalMatches } = useMemo(() => {
     const q = (debounced || '').trim().toLowerCase();
-    return clientes
+    if (!q) return { matches: [], totalMatches: 0 };
+    const all = clientes
       .filter(c => showZero ? true : Number(c.saldo || 0) > 0)
       .filter(c => {
-        if (!q) return false;
         const full = `${c.nombre || ''} ${c.apellido || ''}`.toLowerCase();
         return full.includes(q);
-      })
-      .slice(0, 10);
+      });
+    return { matches: all.slice(0, PICKER_LIMIT), totalMatches: all.length };
   }, [clientes, debounced, showZero]);
+  const hasMore = totalMatches > PICKER_LIMIT;
 
   useEffect(() => {
     if (!locked && matches.length > 0) { setOpen(true); setHighlight(0); }
@@ -428,6 +446,9 @@ function ClientePicker({ value, locked, clientes, showZero, onPick, onClear, onC
           value={value} placeholder="Buscar cliente…"
           readOnly={locked}
           onChange={e => onChange(e.target.value)}
+          // #H-11: reabrir el dropdown al volver a focus (consistente con
+          // ProductoPicker). Si hay matches previos los muestra.
+          onFocus={() => { if (!locked && matches.length > 0) setOpen(true); }}
           onKeyDown={onKey}
         />
         {locked && (
@@ -469,6 +490,16 @@ function ClientePicker({ value, locked, clientes, showZero, onPick, onClear, onC
               </div>
             );
           })}
+          {/* #H-13: indicador de "hay más resultados" */}
+          {hasMore && (
+            <div style={{
+              padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)',
+              background: 'var(--surface-2)', borderTop: '1px solid var(--hairline)',
+              textAlign: 'center',
+            }}>
+              Mostrando {matches.length} de {totalMatches} — refiná la búsqueda para ver más
+            </div>
+          )}
         </div>
       )}
     </div>
