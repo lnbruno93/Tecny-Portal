@@ -48,8 +48,18 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
 
   if (!res.ok) {
     let msg = 'Error del servidor';
-    try { const d = await res.json(); msg = d.error || d.message || msg; } catch (_) {}
-    throw new Error(msg);
+    let body = null;
+    try {
+      body = await res.json();
+      msg = body.error || body.message || msg;
+    } catch (_) {}
+    // Adjuntamos el body completo al error para que los handlers puedan
+    // leer campos extras (ej. `imeis_existentes`, `productos_vendidos`,
+    // `detalles` de cobranza masiva). Auditoría #B-10.
+    const err = new Error(msg);
+    err.responseBody = body;
+    err.status = res.status;
+    throw err;
   }
 
   return res.json();

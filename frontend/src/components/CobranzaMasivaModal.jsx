@@ -18,6 +18,7 @@ import { Icons } from './Icons';
 import { cuentas as cuentasApi, cajas as cajasApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from './ConfirmModal';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -39,6 +40,20 @@ const isUsedRow = (r) => !!(r.cliente_id || r.cliente_nombre?.trim() || Number(r
 
 export default function CobranzaMasivaModal({ onClose, onSaved }) {
   const { toast } = useToast();
+  const confirm = useConfirm();
+
+  // #B-09: confirm-on-close si hay data cargada
+  async function tryClose() {
+    const usadas = rows.filter(isUsedRow).length;
+    if (usadas === 0) return onClose();
+    const ok = await confirm({
+      title: 'Cerrar sin guardar',
+      message: `Vas a perder ${usadas} cobranza${usadas > 1 ? 's' : ''} cargada${usadas > 1 ? 's' : ''}. ¿Seguro?`,
+      confirmLabel: 'Cerrar y perder cambios',
+      danger: true,
+    });
+    if (ok) onClose();
+  }
 
   // ── Cabecera (defaults aplicados a filas nuevas) ────────────────────
   const [fecha, setFecha]       = useState(todayISO());
@@ -178,11 +193,11 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={tryClose}>
       <div className="modal" style={{ maxWidth: 1400, width: '96vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3>Cobranza masiva</h3>
-          <button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button>
+          <button className="icon-btn" onClick={tryClose}><Icons.X size={16} /></button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '82vh', overflowY: 'auto' }}>
@@ -348,7 +363,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
         </div>
 
         <div className="modal-ft">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-ghost" onClick={tryClose}>Cancelar</button>
           <button className="btn btn-primary" disabled={saving} onClick={handleGuardar}>
             {saving ? 'Guardando…' : `Guardar cobranzas (${rows.filter(isUsedRow).length})`}
           </button>

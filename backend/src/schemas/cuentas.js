@@ -39,8 +39,14 @@ const itemMovimientoCCSchema = z.object({
   // (tipo=compra/entrega_mercaderia) se valida disponibilidad y se descuenta
   // stock. Sin producto_id la línea sigue siendo texto libre (legacy/servicio).
   producto_id: z.coerce.number().int().positive().optional().nullable(),
-  cantidad:    z.coerce.number().int().nonnegative().optional().default(1),
+  // Hard cap en cantidad: previene infladura de stock vía 'devolucion' con
+  // cantidad gigante (auditoría #B-03). 10k unidades por línea es ya holgado
+  // para el rubro (accesorios al por mayor).
+  cantidad:    z.coerce.number().int().nonnegative().max(10_000).optional().default(1),
 });
+// NOTA: el .strict() de itemMovimientoCCSchema queda pendiente para TANDA 1
+// (auditoría Seguridad #8) porque tests legacy mandan campos extra (capacidad,
+// precio_usd) que requieren limpieza coordinada de fixtures.
 
 // ─── Movimiento CC ────────────────────────────────────────────────────────────
 
@@ -58,7 +64,9 @@ const createMovimientoCCSchema = z.object({
     }, 'La fecha no puede ser futura ni anterior al año 2000'),
   tipo:          z.enum(TIPOS_MOVIMIENTO_CC, { error: `Tipo debe ser: ${TIPOS_MOVIMIENTO_CC.join(', ')}` }),
   descripcion:   z.string().trim().max(500).optional().nullable(),
-  monto_total:   z.number().positive('El monto debe ser mayor a 0'),
+  // Hard cap: 10M USD por movimiento. Previene overflow JS Number en sumas
+  // de saldos cuando alguien envía 1e18 por error o malicia (auditoría #B-04).
+  monto_total:   z.number().positive('El monto debe ser mayor a 0').max(10_000_000, 'El monto excede el máximo permitido (10M USD)'),
   // Caja donde ingresa el pago (solo aplica a tipos 'pago'/'parte_de_pago')
   caja_id:       z.coerce.number().int().positive().optional().nullable(),
   notas:         z.string().trim().max(1000).optional().nullable(),
@@ -75,7 +83,7 @@ const cobranzaItemSchema = z.object({
     const todayUTC = new Date().toISOString().split('T')[0];
     return d >= '2000-01-01' && d <= todayUTC;
   }, 'La fecha no puede ser futura ni anterior al 2000'),
-  monto:         z.coerce.number().positive('El monto debe ser > 0'),
+  monto:         z.coerce.number().positive('El monto debe ser > 0').max(10_000_000, 'Monto excede el máximo (10M)'),
   moneda:        z.enum(['USD', 'ARS', 'USDT']).default('USD'),
   tc:            z.coerce.number().positive().optional().nullable(),
   caja_id:       z.coerce.number().int().positive('Caja requerida'),

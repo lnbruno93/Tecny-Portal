@@ -22,6 +22,7 @@ const db      = require('../config/database');
 const validate  = require('../lib/validate');
 const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
+const { toUsd, round2 } = require('../lib/money');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {
   createClienteCCSchema,
@@ -32,22 +33,36 @@ const {
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
 
+// Expresión CASE compartida para calcular el aporte de cada movimiento al saldo.
+//
+// Regla (mayo-2026, paralelo a Proveedores): una 'compra' con caja_id es
+// contado (entró el dinero al instante) y NO suma deuda. Sin caja_id queda
+// como deuda del cliente (el caso clásico de venta a CC).
+//
+// Usar `m.` o sin prefijo según el contexto: `SALDO_CASE` para queries sin
+// alias, `SALDO_CASE_M` para queries con `movimientos_cc m`.
+const SALDO_CASE = `
+  CASE
+    WHEN tipo = 'saldo_inicial'                       THEN  monto_total
+    WHEN tipo = 'compra' AND caja_id IS NOT NULL      THEN  0
+    WHEN tipo = 'compra'                              THEN  monto_total
+    ELSE -monto_total
+  END
+`;
+const SALDO_CASE_M = `
+  CASE
+    WHEN m.tipo = 'saldo_inicial'                     THEN  m.monto_total
+    WHEN m.tipo = 'compra' AND m.caja_id IS NOT NULL  THEN  0
+    WHEN m.tipo = 'compra'                            THEN  m.monto_total
+    ELSE -m.monto_total
+  END
+`;
+
 // Helper: SQL para calcular saldo de un cliente (subquery reutilizable — usada solo en GET /:id)
 // Para el listado usamos un JOIN en lugar de subquery correlacionada (ver abajo).
-//
-// Regla nueva (mayo-2026, paralelo a Proveedores): una 'compra' con caja_id
-// es contado (entró el dinero al instante) y NO suma deuda. Sin caja_id queda
-// como deuda del cliente (el caso clásico de venta a CC).
 const SALDO_SQL = `
   COALESCE((
-    SELECT SUM(
-      CASE
-        WHEN tipo = 'saldo_inicial'                       THEN  monto_total
-        WHEN tipo = 'compra' AND caja_id IS NOT NULL      THEN  0
-        WHEN tipo = 'compra'                              THEN  monto_total
-        ELSE -monto_total
-      END
-    )
+    SELECT SUM(${SALDO_CASE})
     FROM movimientos_cc
     WHERE cliente_cc_id = c.id AND deleted_at IS NULL
   ), 0)
@@ -291,13 +306,13 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    // Insertar movimiento
+    // Insertar movimiento (con auditoría de creador para #B-07)
     const { rows: movRows } = await client.query(
       `INSERT INTO movimientos_cc
-         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
-      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null]
+      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null, req.user.id]
     );
     const mov = movRows[0];
 
@@ -424,6 +439,21 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // Ownership check (auditoría #B-07): un user con permiso `cuentas` solo
+    // puede borrar movimientos que él mismo creó. Los admins pueden borrar
+    // cualquiera. Movimientos legacy (created_by_user_id IS NULL, anteriores
+    // al deploy de la migración 013) solo los borra admin.
+    const { rows: pre } = await client.query(
+      'SELECT id, created_by_user_id FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (!pre[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    const isOwner = pre[0].created_by_user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'No tenés permiso para borrar este movimiento (lo creó otro usuario).' });
+    }
     const { rows } = await client.query(
       'UPDATE movimientos_cc SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
@@ -446,6 +476,29 @@ router.delete('/movimientos/:id', async (req, res, next) => {
            WHERE movimiento_cc_id = $1 AND producto_id IS NOT NULL`,
         [id]
       );
+      // Pre-validar que ningún UPDATE deje cantidad negativa (auditoría #B-06).
+      // Caso típico que rompía: devolución sube stock 0→2, luego otra venta
+      // intermedia baja 2→1, y al borrar la devolución intentamos 1→-1 que
+      // viola CHECK (cantidad >= 0). En vez de un 500 críptico, devolvemos 409
+      // con producto y cantidad disponible. Usamos FOR UPDATE para evitar
+      // race con otras ventas en curso.
+      if (sign < 0) {
+        for (const it of items) {
+          const delta = sign * Number(it.cantidad || 1);
+          const { rows: pr } = await client.query(
+            `SELECT id, nombre, cantidad FROM productos WHERE id = $1 FOR UPDATE`,
+            [it.producto_id]
+          );
+          if (!pr[0]) continue; // producto borrado, ignoramos
+          if (Number(pr[0].cantidad) + delta < 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: `No se puede borrar la devolución: el stock de "${pr[0].nombre}" ya fue vendido (disponible ${pr[0].cantidad}, necesario ${-delta}).`,
+              producto_id: it.producto_id,
+            });
+          }
+        }
+      }
       for (const it of items) {
         const delta = sign * Number(it.cantidad || 1);
         await client.query(
@@ -509,17 +562,16 @@ router.post('/cobranzas-masivas', validate(cobranzaMasivaSchema), async (req, re
 
     const creados = [];
     for (const c of cobranzas) {
-      // Normalizar monto a USD para auditar saldo en moneda dura.
-      // El monto_total del mov queda en USD (igual que el flujo individual);
-      // la caja se descuenta en la moneda de la caja con el tc provisto.
-      const tcN = c.moneda === 'USD' ? 1 : Number(c.tc);
-      const montoUsd = c.moneda === 'USD' ? c.monto : c.monto / tcN;
+      // Normalizar monto a USD usando el helper compartido (auditoría #B-05).
+      // ANTES: `c.monto / tcN` dividía USDT por el TC ARS — guardaba 100 USDT
+      // como 0.11 USD cuando tc=900. toUsd() trata USDT como USD (1:1).
+      const montoUsd = round2(toUsd(c.monto, c.moneda, c.tc));
 
       const { rows: movRows } = await client.query(
         `INSERT INTO movimientos_cc
-           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id]
+           (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [c.cliente_cc_id, c.fecha, c.tipo, c.descripcion ?? 'Cobranza masiva', montoUsd, c.caja_id, req.user.id]
       );
       const mov = movRows[0];
 
@@ -569,7 +621,9 @@ router.get('/clientes/:id/resumen', async (req, res, next) => {
          COALESCE(SUM(CASE WHEN tipo = 'parte_de_pago'      THEN monto_total ELSE 0 END), 0) AS total_parte_de_pago,
          COALESCE(SUM(CASE WHEN tipo = 'entrega_mercaderia' THEN monto_total ELSE 0 END), 0) AS total_entrega_mercaderia,
          COALESCE(SUM(CASE WHEN tipo = 'saldo_inicial'      THEN monto_total ELSE 0 END), 0) AS total_saldo_inicial,
-         COALESCE(SUM(CASE WHEN tipo IN ('compra', 'saldo_inicial') THEN monto_total ELSE -monto_total END), 0)  AS saldo,
+         -- Saldo aplica la misma regla que el listado (SALDO_CASE):
+         -- compra con caja_id = contado, no suma deuda.
+         COALESCE(SUM(${SALDO_CASE}), 0) AS saldo,
          COUNT(*) FILTER (WHERE tipo = 'compra') AS cant_compras,
          COUNT(*)                                AS cant_movimientos
        FROM movimientos_cc
@@ -586,14 +640,14 @@ router.get('/clientes/:id/resumen', async (req, res, next) => {
 // GET /resumen-general — métricas globales de todas las CC
 router.get('/resumen-general', async (req, res, next) => {
   try {
-    // CTE compartida: calcula saldos una sola vez para totales y top-10
+    // CTE compartida: calcula saldos una sola vez para totales y top-10.
+    // Usa la misma regla que el listado de clientes y el detalle (SALDO_CASE_M):
+    // una 'compra' con caja_id no suma deuda (contado).
     const BASE_CTE = `
       WITH saldos AS (
         SELECT
           c.id, c.nombre, c.apellido, c.categoria,
-          COALESCE(SUM(
-            CASE WHEN m.tipo IN ('compra', 'saldo_inicial') THEN m.monto_total ELSE -m.monto_total END
-          ), 0) AS saldo
+          COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo
         FROM clientes_cc c
         LEFT JOIN movimientos_cc m
                ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL

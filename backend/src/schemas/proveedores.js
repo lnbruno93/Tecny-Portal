@@ -51,10 +51,16 @@ const itemProveedorSchema = z.object({
 
 const createMovimientoProveedorSchema = z.object({
   proveedor_id: z.coerce.number().int().positive('proveedor_id inválido'),
-  fecha:        z.string().date('Fecha inválida — usar YYYY-MM-DD'),
+  // Fecha: misma regla que cuentas — no futura, no anterior al 2000
+  // (auditoría #B-08 — antes proveedores aceptaba 2099).
+  fecha:        z.string().date('Fecha inválida — usar YYYY-MM-DD').refine(d => {
+    const todayUTC = new Date().toISOString().split('T')[0];
+    return d >= '2000-01-01' && d <= todayUTC;
+  }, 'La fecha no puede ser futura ni anterior al año 2000'),
   tipo:         z.enum(['compra', 'pago'], { error: 'tipo debe ser: compra, pago' }),
   descripcion:  z.string().trim().max(500).optional().nullable(),
-  monto:        z.coerce.number().min(0).default(0),
+  // Hard cap: 10M USD por movimiento (auditoría #B-04).
+  monto:        z.coerce.number().min(0).max(10_000_000, 'Monto excede el máximo (10M)').default(0),
   moneda:       z.enum(['USD', 'ARS', 'USDT']).default('USD'),
   tc:           z.coerce.number().positive().optional().nullable(),
   caja_id:      z.coerce.number().int().positive().optional().nullable(),
