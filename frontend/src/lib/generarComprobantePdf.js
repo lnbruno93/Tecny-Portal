@@ -1,18 +1,31 @@
 /**
  * generarComprobantePdf — recibe una venta y descarga un PDF estilo recibo.
  *
- * Lazy import de jspdf para no inflar el bundle inicial: el módulo solo se
- * carga cuando el operador clickea "Descargar comprobante". A primera carga,
- * la app no paga el costo (~80kb gz).
+ * Lazy import: jspdf + jspdf-autotable + qrcode solo se cargan al usar el
+ * botón "Descargar comprobante". A primera carga, la app no paga el costo.
  *
  * Layout (A4 portrait):
- *   1. Cabecera con marca + order_id + fecha
- *   2. Bloque Cliente
- *   3. Tabla de items (descripción / cant / precio / subtotal)
- *   4. Resumen: total venta, total cobrado, diferencia (si la hay)
- *   5. Detalle de pagos
- *   6. Pie con notas
+ *   1. Cabecera con marca + número de comprobante + fecha y hora
+ *   2. Bloque "Cliente" con nombre + DNI + WhatsApp + email
+ *   3. Bloque "Vendedor" (si aplica)
+ *   4. Tabla de items con IMEI/serial integrado
+ *   5. Resumen: total venta, total cobrado, diferencia (si la hay)
+ *   6. Detalle de pagos
+ *   7. Notas internas (si las hay)
+ *   8. Garantía (texto completo de la plantilla)
+ *   9. Pie: agradecimiento + QR con el order_id + timestamp
  */
+
+const COLOR = {
+  brand:      [34, 51, 84],   // azul oscuro corporativo
+  brandSoft:  [99, 110, 140], // gris azulado para subtítulos
+  pos:        [76, 175, 80],
+  neg:        [220, 53, 69],
+  text:       [60, 60, 60],
+  textSoft:   [120, 120, 120],
+  hairline:   [220, 220, 220],
+  pageBg:     [248, 250, 252],
+};
 
 function fmtMoney(n, moneda = 'USD') {
   const sym = moneda === 'ARS' ? '$' : 'u$s';
@@ -22,143 +35,195 @@ function fmtMoney(n, moneda = 'USD') {
 
 function fmtFecha(s) {
   if (!s) return '';
-  // s puede ser '2026-05-29' o ISO; tomamos la fecha cruda en AR
   const [y, m, d] = String(s).slice(0, 10).split('-');
   return d && m && y ? `${d}/${m}/${y}` : s;
 }
 
+function fmtHora(s) {
+  if (!s) return '';
+  // s puede ser 'HH:MM' o 'HH:MM:SS'
+  return String(s).slice(0, 5);
+}
+
+// Setter helpers — siempre usamos args separados (jsPDF v4 NO acepta arrays)
+function tc(doc, [r, g, b]) { doc.setTextColor(r, g, b); }
+function fc(doc, [r, g, b]) { doc.setFillColor(r, g, b); }
+function dc(doc, [r, g, b]) { doc.setDrawColor(r, g, b); }
+
 export async function generarComprobantePdf(venta) {
-  // Lazy import: solo cargar jspdf al usar (~130 kB gz, no afecta carga inicial).
-  // jspdf-autotable v5 exporta una función `autoTable(doc, options)` como default.
   const { jsPDF } = await import('jspdf');
   const autoTableImport = await import('jspdf-autotable');
-  // Defensa contra distintos esquemas de empaquetado (CJS/ESM, default vs named).
   const autoTable =
     typeof autoTableImport.default === 'function' ? autoTableImport.default :
     typeof autoTableImport.autoTable === 'function' ? autoTableImport.autoTable :
     typeof autoTableImport === 'function' ? autoTableImport :
     null;
-  if (!autoTable) {
-    throw new Error('jspdf-autotable: no se pudo resolver el módulo (esquema de import desconocido)');
-  }
+  if (!autoTable) throw new Error('jspdf-autotable no disponible');
+
+  const QRCode = await import('qrcode');
 
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageWidth  = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 40;
-  let y = 50;
+  let y = 0;
 
-  // ── 1. Cabecera ──────────────────────────────────────────
+  // ── 1. Cabecera con banda de color ───────────────────────
+  // Banda fina con el azul de la marca arriba del todo
+  fc(doc, COLOR.brand);
+  doc.rect(0, 0, pageWidth, 6, 'F');
+
+  y = 50;
+  // Logo de texto "iPro" con tracking grande
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(34, 51, 84);
+  doc.setFontSize(28);
+  tc(doc, COLOR.brand);
   doc.text('iPro', margin, y);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(120);
-  doc.text('Comprobante de venta', margin, y + 14);
+  doc.setFontSize(9);
+  tc(doc, COLOR.brandSoft);
+  doc.text('COMPROBANTE DE VENTA', margin, y + 16);
 
-  // Order ID + Fecha (alineados a la derecha)
+  // Order ID + Fecha alineados a la derecha
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.setTextColor(34, 51, 84);
-  doc.text(venta.order_id || `#${venta.id}`, pageWidth - margin, y, { align: 'right' });
+  tc(doc, COLOR.brand);
+  doc.text(venta.order_id || `#${venta.id || ''}`, pageWidth - margin, y, { align: 'right' });
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.setTextColor(120);
-  doc.text(fmtFecha(venta.fecha), pageWidth - margin, y + 14, { align: 'right' });
+  tc(doc, COLOR.textSoft);
+  const fechaHora = `${fmtFecha(venta.fecha)}${venta.hora ? ' · ' + fmtHora(venta.hora) : ''}`;
+  doc.text(fechaHora, pageWidth - margin, y + 16, { align: 'right' });
 
-  y += 36;
-  doc.setDrawColor(220);
+  y += 40;
+  dc(doc, COLOR.hairline);
   doc.line(margin, y, pageWidth - margin, y);
-  y += 20;
+  y += 24;
 
   // ── 2. Cliente ───────────────────────────────────────────
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(60);
-  doc.text('Cliente', margin, y);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  doc.setTextColor(34, 51, 84);
-  doc.text(venta.cliente_nombre || 'Consumidor final', margin + 60, y);
-  y += 24;
+  doc.setFontSize(9);
+  tc(doc, COLOR.brandSoft);
+  doc.text('CLIENTE', margin, y);
 
-  // ── 3. Tabla de items ────────────────────────────────────
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  tc(doc, COLOR.brand);
+  const clienteNombre = [venta.cliente_nombre, venta.cliente_apellido].filter(Boolean).join(' ') || 'Consumidor final';
+  doc.text(clienteNombre, margin, y + 16);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  tc(doc, COLOR.textSoft);
+  const datosCliente = [];
+  if (venta.cliente_dni)      datosCliente.push(`DNI: ${venta.cliente_dni}`);
+  if (venta.cliente_telefono) datosCliente.push(`WhatsApp: ${venta.cliente_telefono}`);
+  if (venta.cliente_email)    datosCliente.push(`Email: ${venta.cliente_email}`);
+  if (datosCliente.length) {
+    doc.text(datosCliente.join('   ·   '), margin, y + 32);
+    y += 50;
+  } else {
+    y += 36;
+  }
+
+  // ── 3. Vendedor (si aplica) ──────────────────────────────
+  if (venta.vendedor_nombre) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    tc(doc, COLOR.brandSoft);
+    doc.text('ATENDIDO POR', margin, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    tc(doc, COLOR.text);
+    doc.text(venta.vendedor_nombre, margin, y + 14);
+    y += 32;
+  }
+
+  // ── 4. Tabla de items (con IMEI integrado a la descripción) ──
   const items = Array.isArray(venta.items) ? venta.items : [];
-  // autotable rompe con celdas undefined/null — convertimos todo a string.
   const itemRows = items.length === 0
     ? [['(Sin items)', '', '', '']]
-    : items.map(it => [
-        String(it.descripcion || '—'),
-        String(it.cantidad || 1),
-        String(fmtMoney(it.precio_vendido, it.moneda || 'USD')),
-        String(fmtMoney(Number(it.precio_vendido || 0) * Number(it.cantidad || 1), it.moneda || 'USD')),
-      ]);
+    : items.map(it => {
+        // Si tiene IMEI, lo agregamos como segunda línea en gris.
+        const desc = it.imei
+          ? `${it.descripcion || '—'}\nIMEI/Serial: ${it.imei}`
+          : (it.descripcion || '—');
+        return [
+          String(desc),
+          String(it.cantidad || 1),
+          String(fmtMoney(it.precio_vendido, it.moneda || 'USD')),
+          String(fmtMoney(Number(it.precio_vendido || 0) * Number(it.cantidad || 1), it.moneda || 'USD')),
+        ];
+      });
 
   autoTable(doc, {
     startY: y,
     head: [['Descripción', 'Cant.', 'Precio', 'Subtotal']],
     body: itemRows,
     theme: 'striped',
-    headStyles: { fillColor: [34, 51, 84], textColor: 255, fontSize: 10 },
-    bodyStyles: { fontSize: 10, textColor: 60 },
+    headStyles: {
+      fillColor: COLOR.brand, textColor: 255, fontSize: 10,
+      cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
+    },
+    bodyStyles: {
+      fontSize: 10, textColor: COLOR.text,
+      cellPadding: { top: 8, right: 10, bottom: 8, left: 10 },
+    },
+    alternateRowStyles: { fillColor: COLOR.pageBg },
     columnStyles: {
       1: { halign: 'right', cellWidth: 50 },
-      2: { halign: 'right', cellWidth: 80 },
-      3: { halign: 'right', cellWidth: 80 },
+      2: { halign: 'right', cellWidth: 90 },
+      3: { halign: 'right', cellWidth: 90 },
     },
     margin: { left: margin, right: margin },
   });
-  // En autotable v5 el finalY queda en doc.lastAutoTable. Defensivo por las dudas.
   y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 100) + 20;
 
-  // ── 4. Resumen ──────────────────────────────────────────
-  const totalVenta = Number(venta.total_usd || 0);
-  const pagos = venta.pagos || [];
+  // ── 5. Resumen ──────────────────────────────────────────
+  const totalVenta   = Number(venta.total_usd || 0);
+  const pagos        = Array.isArray(venta.pagos) ? venta.pagos : [];
   const totalCobrado = pagos.reduce((s, p) => s + Number(p.monto_usd || 0), 0);
-  const dif = totalCobrado - totalVenta;
+  const dif          = totalCobrado - totalVenta;
 
   const resumenX = pageWidth - margin - 220;
   doc.setFontSize(10);
 
-  doc.setTextColor(60);
+  tc(doc, COLOR.text);
   doc.text('Total venta:', resumenX, y);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(34, 51, 84);
+  tc(doc, COLOR.brand);
   doc.text(fmtMoney(totalVenta, 'USD'), pageWidth - margin, y, { align: 'right' });
   y += 16;
 
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(60);
+  tc(doc, COLOR.text);
   doc.text('Total cobrado:', resumenX, y);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(76, 175, 80);
+  tc(doc, COLOR.pos);
   doc.text(fmtMoney(totalCobrado, 'USD'), pageWidth - margin, y, { align: 'right' });
   y += 16;
 
   if (Math.abs(dif) > 0.005) {
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(60);
+    tc(doc, COLOR.text);
     doc.text(dif > 0 ? 'Diferencia (a favor):' : 'Diferencia (en contra):', resumenX, y);
     doc.setFont('helvetica', 'bold');
-    // setTextColor en jspdf v4 acepta (r, g, b) como args separados — NO como array.
-    if (dif > 0) doc.setTextColor(76, 175, 80);
-    else         doc.setTextColor(220, 53, 69);
+    if (dif > 0) tc(doc, COLOR.pos); else tc(doc, COLOR.neg);
     doc.text(fmtMoney(dif, 'USD'), pageWidth - margin, y, { align: 'right' });
     y += 16;
   }
-  y += 12;
+  y += 14;
 
-  // ── 5. Pagos ─────────────────────────────────────────────
+  // ── 6. Pagos ─────────────────────────────────────────────
   if (pagos.length) {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(60);
-    doc.text('Medios de pago', margin, y);
-    y += 10;
+    doc.setFontSize(9);
+    tc(doc, COLOR.brandSoft);
+    doc.text('MEDIOS DE PAGO', margin, y);
+    y += 6;
 
-    // String() en cada celda — autotable rompe con undefined/null.
     const pagoRows = pagos.map(p => [
       String(p.metodo_nombre || (p.es_cuenta_corriente ? 'Cuenta corriente' : 'Pago')),
       String(fmtMoney(p.monto, p.moneda || 'USD')),
@@ -168,42 +233,120 @@ export async function generarComprobantePdf(venta) {
 
     autoTable(doc, {
       startY: y,
-      head: [['Método', 'Monto', '', 'USD']],
+      head: [['Método', 'Monto', '', 'Equivalente USD']],
       body: pagoRows,
       theme: 'plain',
-      headStyles: { fontSize: 9, textColor: 120, fontStyle: 'normal' },
-      bodyStyles: { fontSize: 10, textColor: 60 },
+      headStyles: { fontSize: 9, textColor: COLOR.textSoft, fontStyle: 'normal' },
+      bodyStyles: { fontSize: 10, textColor: COLOR.text, cellPadding: { top: 6, right: 10, bottom: 6, left: 10 } },
       columnStyles: {
         1: { halign: 'right' },
-        2: { halign: 'right', textColor: 150, fontSize: 9 },
+        2: { halign: 'right', textColor: COLOR.textSoft, fontSize: 9 },
         3: { halign: 'right', fontStyle: 'bold' },
       },
       margin: { left: margin, right: margin },
     });
-    // En autotable v5 el finalY queda en doc.lastAutoTable. Defensivo por las dudas.
-  y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 100) + 20;
+    y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 60) + 18;
   }
 
-  // ── 6. Notas y pie ───────────────────────────────────────
+  // ── 7. Notas internas ────────────────────────────────────
   if (venta.notas) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    tc(doc, COLOR.brandSoft);
+    doc.text('NOTAS', margin, y);
+    y += 12;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(120);
-    const notasLines = doc.splitTextToSize(`Notas: ${venta.notas}`, pageWidth - margin * 2);
+    tc(doc, COLOR.text);
+    const notasLines = doc.splitTextToSize(String(venta.notas), pageWidth - margin * 2);
     doc.text(notasLines, margin, y);
-    y += notasLines.length * 12 + 10;
+    y += notasLines.length * 12 + 14;
   }
 
-  // Pie con marca de tiempo
+  // ── 8. Garantía ─────────────────────────────────────────
+  if (venta.garantia_texto || venta.garantia_nombre) {
+    // Si llegamos cerca del final, paginamos
+    if (y > pageHeight - 180) {
+      doc.addPage();
+      y = 50;
+    }
+    dc(doc, COLOR.hairline);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    tc(doc, COLOR.brand);
+    doc.text(venta.garantia_nombre ? `Garantía — ${venta.garantia_nombre}` : 'Garantía', margin, y);
+    y += 14;
+
+    if (venta.garantia_texto) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      tc(doc, COLOR.text);
+      const garLines = doc.splitTextToSize(String(venta.garantia_texto), pageWidth - margin * 2);
+      // Si el texto no entra, paginamos
+      if (y + garLines.length * 11 > pageHeight - 100) {
+        doc.addPage();
+        y = 50;
+        // Re-imprimir título en la página nueva para contexto
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        tc(doc, COLOR.brand);
+        doc.text(venta.garantia_nombre ? `Garantía — ${venta.garantia_nombre} (cont.)` : 'Garantía (cont.)', margin, y);
+        y += 14;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        tc(doc, COLOR.text);
+      }
+      doc.text(garLines, margin, y);
+      y += garLines.length * 11 + 18;
+    }
+  }
+
+  // ── 9. Pie: agradecimiento + QR + timestamp ──────────────
+  // QR con el order_id (escaneable para validar el comprobante)
+  let qrDataUrl = null;
+  try {
+    qrDataUrl = await QRCode.toDataURL(String(venta.order_id || venta.id || ''), {
+      width: 200, margin: 0, errorCorrectionLevel: 'M',
+      color: { dark: '#223354', light: '#ffffff' },
+    });
+  } catch { /* si falla el QR, seguimos sin él */ }
+
+  const footerY = pageHeight - 80;
+  if (qrDataUrl) {
+    doc.addImage(qrDataUrl, 'PNG', margin, footerY - 12, 60, 60);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    tc(doc, COLOR.textSoft);
+    doc.text(`Código de verificación`, margin + 70, footerY + 4);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    tc(doc, COLOR.text);
+    doc.text(venta.order_id || `#${venta.id || ''}`, margin + 70, footerY + 18);
+  }
+
+  // Agradecimiento alineado a la derecha
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  tc(doc, COLOR.brand);
+  doc.text('¡Gracias por tu compra!', pageWidth - margin, footerY + 8, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(160);
+  tc(doc, COLOR.textSoft);
   doc.text(
     `Generado el ${new Date().toLocaleString('es-AR')} · iPro Portal`,
-    margin,
-    doc.internal.pageSize.getHeight() - 30
+    pageWidth - margin,
+    footerY + 24,
+    { align: 'right' }
   );
 
-  // Descarga
+  // Línea decorativa al pie
+  fc(doc, COLOR.brand);
+  doc.rect(0, pageHeight - 6, pageWidth, 6, 'F');
+
   const filename = `comprobante-${venta.order_id || venta.id || 'venta'}.pdf`;
   doc.save(filename);
 }

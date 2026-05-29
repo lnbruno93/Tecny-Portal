@@ -430,12 +430,15 @@ export default function Ventas() {
       // y los mergeamos sobre la respuesta. monto_usd se calcula con toUsd.
       if (!uploadFalló) {
         const tcVenta = Number(vForm.tc_venta) || null;
-        const itemsPdf = items.map(it => ({
+        // items: agregamos imei tomado del cart original (cart[i] tiene imei,
+        // items no lo lleva al payload). Para mantener orden, indexamos por idx.
+        const itemsPdf = items.map((it, idx) => ({
           descripcion:    it.descripcion,
           cantidad:       Number(it.cantidad) || 1,
           precio_vendido: Number(it.precio_vendido) || 0,
           costo:          Number(it.costo) || 0,
           moneda:         it.moneda || 'USD',
+          imei:           cart[idx]?.imei || null,
         }));
         const pagosPdf = pagosPayload.map(p => ({
           metodo_nombre: p.metodo_nombre,
@@ -445,17 +448,34 @@ export default function Ventas() {
           monto_usd:     toUsd(p.monto, p.moneda, p.tc || tcVenta),
           es_cuenta_corriente: !!p.es_cuenta_corriente,
         }));
+        // Cliente completo: si está vinculado por id, traemos del state de
+        // contactos; sino solo el nombre que tipeó el operador.
+        const contactoVinculado = vForm.cliente_id
+          ? contactos.find(c => String(c.id) === String(vForm.cliente_id))
+          : null;
+        const vendedorNombre = vForm.vendedor_id
+          ? (vendedores.find(v => String(v.id) === String(vForm.vendedor_id))?.nombre || null)
+          : null;
+        const garantiaSel = vForm.garantia_id
+          ? garantias.find(g => String(g.id) === String(vForm.garantia_id))
+          : null;
         const ventaCompleta = {
           ...venta,
-          // venta.total_usd ya viene del backend; lo dejamos.
-          // Si fuera nuevo schema y total no viene, lo recalculamos:
           total_usd: venta.total_usd != null ? venta.total_usd :
             itemsPdf.reduce((s, it) => s + toUsd(it.precio_vendido * it.cantidad, it.moneda, tcVenta), 0),
           cliente_nombre: venta.cliente_nombre || vForm.cliente_nombre || 'Consumidor final',
-          fecha:          venta.fecha   || vForm.fecha,
-          notas:          venta.notas   || vForm.notas,
-          items:          itemsPdf,
-          pagos:          pagosPdf,
+          cliente_apellido: contactoVinculado?.apellido || null,
+          cliente_dni:      contactoVinculado?.dni      || null,
+          cliente_telefono: contactoVinculado?.telefono || null,
+          cliente_email:    contactoVinculado?.email    || null,
+          vendedor_nombre:  vendedorNombre,
+          hora:             venta.hora    || vForm.hora || null,
+          fecha:            venta.fecha   || vForm.fecha,
+          notas:            venta.notas   || vForm.notas,
+          garantia_nombre:  garantiaSel?.nombre || null,
+          garantia_texto:   garantiaSel?.texto  || null,
+          items:            itemsPdf,
+          pagos:            pagosPdf,
         };
         setExitoModal({ open: true, venta: ventaCompleta });
       }
