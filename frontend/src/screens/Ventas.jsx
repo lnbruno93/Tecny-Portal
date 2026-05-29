@@ -358,6 +358,30 @@ export default function Ventas() {
       return;
     }
     const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
+
+    // Aviso de diferencia: si el total cobrado != total de items (con canje),
+    // pedir confirmación explícita antes de guardar. Pasa seguido cuando el
+    // operador usa un TC distinto al de su sistema (cambia ARS a tasa X pero
+    // cobra a tasa Y) y queda un margen — a favor o en contra. Sin esto la
+    // diferencia se "perdía" en la venta sin que nadie la notara.
+    // Tolerancia 0.005 USD para no marcar errores de redondeo por floats.
+    if (Math.abs(totales.dif) > 0.005) {
+      const aFavor = totales.dif > 0;
+      const monto = Math.abs(totales.dif).toFixed(2);
+      const ok = await confirm({
+        title: 'Hay una diferencia en esta venta',
+        message:
+          `Total productos: u$s ${totales.items.toFixed(2)}\n` +
+          `Total cobrado:   u$s ${totales.cubierto.toFixed(2)}\n` +
+          `Diferencia:      u$s ${monto} ${aFavor ? 'a favor (cobrado de más)' : 'en contra (falta cobrar)'}\n\n` +
+          `¿Querés guardar la venta igual?`,
+        confirmLabel: 'Guardar igual',
+        cancelLabel:  'Volver a editar',
+        danger: !aFavor,
+      });
+      if (!ok) return;
+    }
+
     const payload = {
       fecha: vForm.fecha, hora: vForm.hora || null, cliente_nombre: vForm.cliente_nombre.trim() || null,
       cliente_id: vForm.cliente_id || null, cliente_cc_id: vForm.cliente_cc_id || null,
@@ -401,16 +425,49 @@ export default function Ventas() {
     try { await ventas.deleteRapida(id); await loadRapidas(); } catch (e) { toast.error(e.message); }
   }
 
-  async function crearContactoRapido(nombre) {
-    const n = nombre.trim();
-    if (!n) return;
+  // ── Quick-add de cliente embebido (form mini) ─────────────────────────
+  // Antes creábamos el contacto con solo `nombre`. Ahora pedimos también DNI,
+  // WhatsApp, email y fecha de nacimiento — todos opcionales menos nombre.
+  // Estos datos son insumo para Data Science (cumpleaños, perfilado) y para
+  // contacto post-venta. El form se monta en línea dentro del dropdown.
+  const [quickClient, setQuickClient] = useState({ open: false, nombre: '', dni: '', telefono: '', email: '', fecha_nacimiento: '' });
+  const [quickClientSaving, setQuickClientSaving] = useState(false);
+  const [quickClientError, setQuickClientError] = useState('');
+
+  function abrirQuickClient(nombre) {
+    setQuickClient({ open: true, nombre: nombre.trim(), dni: '', telefono: '', email: '', fecha_nacimiento: '' });
+    setQuickClientError('');
+  }
+  function cerrarQuickClient() {
+    setQuickClient(q => ({ ...q, open: false }));
+    setQuickClientError('');
+  }
+  async function guardarQuickClient(e) {
+    e?.preventDefault?.();
+    const n = quickClient.nombre.trim();
+    if (!n) { setQuickClientError('El nombre es obligatorio.'); return; }
+    setQuickClientSaving(true);
+    setQuickClientError('');
     try {
-      const c = await contactosApi.create({ nombre: n, tipo: 'cliente' });
+      const payload = {
+        nombre: n,
+        tipo: 'cliente',
+        dni:              quickClient.dni.trim()      || null,
+        telefono:         quickClient.telefono.trim() || null,
+        email:            quickClient.email.trim()    || null,
+        fecha_nacimiento: quickClient.fecha_nacimiento || null,
+      };
+      const c = await contactosApi.create(payload);
       setContactos(prev => [...prev, c]);
       setVForm(f => ({ ...f, cliente_nombre: c.nombre, cliente_id: c.id }));
       setClienteDrop(false);
-      toast.success('Contacto creado y vinculado.');
-    } catch (e) { toast.error(e.message); }
+      setQuickClient({ open: false, nombre: '', dni: '', telefono: '', email: '', fecha_nacimiento: '' });
+      toast.success('Cliente creado y vinculado.');
+    } catch (e) {
+      setQuickClientError(e.message || 'No se pudo crear el cliente.');
+    } finally {
+      setQuickClientSaving(false);
+    }
   }
 
   // ── Venta rápida ──
@@ -714,14 +771,71 @@ export default function Ventas() {
                               </div>
                             ))}
                             {showCreate && (
-                              <div className="nav-item" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }} onMouseDown={() => crearContactoRapido(q)}>
-                                <Icons.Plus size={12} /> Crear contacto «{q}»
+                              <div className="nav-item" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }} onMouseDown={() => abrirQuickClient(q)}>
+                                <Icons.Plus size={12} /> Crear cliente «{q}»
                               </div>
                             )}
                           </div>
                         );
                       })()}
                       {vForm.cliente_id && <div className="tiny pos" style={{ marginTop: 2 }}>✓ vinculado a la base de clientes</div>}
+
+                      {/* Mini-form embebido — Nuevo cliente con datos completos
+                          (DNI, WhatsApp, email, fecha de nacimiento). Se abre al
+                          clickear "Crear cliente «X»" en el dropdown. */}
+                      {quickClient.open && (
+                        <div className="card card-tight" style={{ marginTop: 10, padding: 14, background: 'var(--surface-2)' }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Nuevo cliente</div>
+                          <div className="muted tiny" style={{ marginBottom: 12 }}>
+                            Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
+                          </div>
+                          <div className="stack" style={{ gap: 10 }}>
+                            <div className="field">
+                              <label className="field-label" htmlFor="qc-nombre">Nombre completo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                              <input id="qc-nombre" className="input" autoFocus
+                                value={quickClient.nombre}
+                                onChange={e => setQuickClient(q => ({ ...q, nombre: e.target.value }))} />
+                            </div>
+                            <div className="row" style={{ gap: 10 }}>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-dni">DNI</label>
+                                <input id="qc-dni" className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Ej: 12345678"
+                                  value={quickClient.dni}
+                                  onChange={e => setQuickClient(q => ({ ...q, dni: e.target.value }))} />
+                              </div>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-tel">WhatsApp</label>
+                                <input id="qc-tel" className="input" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ej: 1123456789"
+                                  value={quickClient.telefono}
+                                  onChange={e => setQuickClient(q => ({ ...q, telefono: e.target.value }))} />
+                              </div>
+                            </div>
+                            <div className="row" style={{ gap: 10 }}>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-email">Correo electrónico</label>
+                                <input id="qc-email" className="input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" placeholder="email@ejemplo.com"
+                                  value={quickClient.email}
+                                  onChange={e => setQuickClient(q => ({ ...q, email: e.target.value }))} />
+                              </div>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-fnac">Fecha de nacimiento</label>
+                                <input id="qc-fnac" className="input" type="date"
+                                  value={quickClient.fecha_nacimiento}
+                                  onChange={e => setQuickClient(q => ({ ...q, fecha_nacimiento: e.target.value }))} />
+                              </div>
+                            </div>
+                            {quickClientError && (
+                              <div style={{ color: 'var(--neg)', fontSize: 13 }} role="alert">{quickClientError}</div>
+                            )}
+                            <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={cerrarQuickClient} disabled={quickClientSaving}>Cancelar</button>
+                              <button type="button" className="btn btn-primary btn-sm" onClick={guardarQuickClient} disabled={quickClientSaving}>
+                                {quickClientSaving ? 'Guardando…' : 'Guardar y vincular'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
