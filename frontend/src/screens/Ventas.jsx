@@ -456,9 +456,12 @@ export default function Ventas() {
         const vendedorNombre = vForm.vendedor_id
           ? (vendedores.find(v => String(v.id) === String(vForm.vendedor_id))?.nombre || null)
           : null;
+        // Mismo criterio que el botón de imprimir en la grilla: garantía
+        // elegida, o la default del catálogo si no se eligió. Si tampoco hay
+        // default, queda el fallback hardcoded (GARANTIA_FALLBACK).
         const garantiaSel = vForm.garantia_id
           ? garantias.find(g => String(g.id) === String(vForm.garantia_id))
-          : null;
+          : garantias.find(g => g.es_default);
         const ventaCompleta = {
           ...venta,
           total_usd: venta.total_usd != null ? venta.total_usd :
@@ -472,8 +475,8 @@ export default function Ventas() {
           hora:             venta.hora    || vForm.hora || null,
           fecha:            venta.fecha   || vForm.fecha,
           notas:            venta.notas   || vForm.notas,
-          garantia_nombre:  garantiaSel?.nombre || null,
-          garantia_texto:   garantiaSel?.texto  || null,
+          garantia_nombre:  garantiaSel?.nombre || (vForm.garantia_id ? null : 'Predeterminada'),
+          garantia_texto:   garantiaSel?.texto  || GARANTIA_FALLBACK,
           items:            itemsPdf,
           pagos:            pagosPdf,
         };
@@ -622,42 +625,42 @@ export default function Ventas() {
     } catch (e) { toast.error('Error al abrir.'); }
   }
 
-  // ── Comprobante imprimible / PDF ──
-  function comprobantePDF(v) {
-    const garFuente = v.garantia_id ? garantias.find(g => g.id === v.garantia_id) : garantias.find(g => g.es_default);
-    const garTexto = (garFuente ? garFuente.texto : GARANTIA_FALLBACK).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
-    const vend = vendedores.find(x => x.id === (v.items.find(i => i.vendedor_id) || {}).vendedor_id);
-    const fechaHora = (v.fecha || '').substring(0, 10).split('-').reverse().join('/') + (v.hora ? ' ' + v.hora.substring(0, 5) : '');
-    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const filas = (v.items || []).map(it => `<tr><td style="font-weight:700">${esc(it.descripcion)}</td><td style="color:#555">${it.imei ? 'IMEI: ' + esc(it.imei) : '—'}</td><td style="text-align:center">${it.cantidad}</td><td>${sym(it.moneda)}${fmt2(it.precio_vendido)}</td><td>${sym(it.moneda)}${fmt2(it.precio_vendido * it.cantidad)}</td></tr>`).join('');
-    const pgs = (v.pagos || []).map(p => `<li>${esc(p.metodo_nombre)}: ${sym(p.moneda)}${fmt2(p.monto)}</li>`).join('') || '<li>—</li>';
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Comprobante #${esc(v.order_id)}</title><style>
-      *{box-sizing:border-box;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}body{margin:0;background:#f5f6f8;color:#1a1a2e;padding:24px}
-      .sheet{max-width:760px;margin:0 auto;background:#fff;padding:32px 36px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.08)}
-      .logo{width:84px;height:84px;background:#0d2a4d;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22px;margin:0 auto}
-      h1{text-align:center;color:#1f6fe5;font-size:26px;margin:18px 0 2px}.orden{text-align:center;color:#555;margin:0 0 14px}
-      .rule{border:none;border-top:3px solid #1f6fe5;margin:14px 0 22px}.card{border:1px solid #e3e6ea;border-radius:8px;padding:14px 16px;margin-bottom:16px}
-      .card h2{color:#1f6fe5;font-size:15px;margin:0 0 8px}.card p{margin:3px 0;font-size:14px}table{width:100%;border-collapse:collapse;margin-bottom:4px}
-      th{background:#f0f2f5;text-align:left;padding:9px 10px;font-size:12px;border:1px solid #e3e6ea}td{padding:9px 10px;font-size:13px;border:1px solid #e3e6ea}
-      .totbox{border:1px solid #e3e6ea;border-radius:8px;padding:12px 16px;margin-bottom:16px}.totrow{display:flex;justify-content:space-between;font-size:14px;padding:3px 0}
-      .total{display:flex;justify-content:space-between;border-top:3px solid #1f6fe5;margin-top:8px;padding-top:10px;font-size:20px;font-weight:800;color:#1f6fe5}
-      .pagos{background:#eef4ff;border-radius:8px;padding:12px 16px;margin-bottom:16px}.pagos h2{color:#1f6fe5;font-size:15px;margin:0 0 6px}.pagos ul{margin:0;padding-left:18px;font-size:14px}
-      .garantia{border:2px dashed #34a853;border-radius:8px;padding:14px 16px;background:#f4fbf6;font-size:13px;line-height:1.5}.garantia h2{color:#2e7d46;font-size:15px;margin:0 0 8px}
-      .foot{text-align:center;color:#888;font-size:12px;margin-top:20px}.toolbar{max-width:760px;margin:0 auto 14px;text-align:right}
-      .btn{background:#1f6fe5;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer}
-      @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;max-width:100%}.toolbar{display:none}}</style></head><body>
-      <div class="toolbar"><button class="btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
-      <div class="sheet"><div class="logo">iPro</div><h1>COMPROBANTE DE VENTA</h1><p class="orden">Orden #${esc(v.order_id)}</p><hr class="rule">
-      <div class="card"><h2>🧾 Información de la Venta</h2><p><strong>Fecha:</strong> ${esc(fechaHora)}</p><p><strong>Estado:</strong> ${ESTADO_LABEL[v.estado] || esc(v.estado)}</p><p><strong>Vendedor:</strong> ${vend ? esc(vend.nombre) : '—'}</p></div>
-      <div class="card"><h2>👤 Información del Cliente</h2><p><strong>Nombre:</strong> ${esc(v.cliente_nombre) || 'Consumidor final'}</p></div>
-      <h2 style="color:#1f6fe5;font-size:15px">📦 Productos</h2><table><thead><tr><th>Producto</th><th>Detalles</th><th style="text-align:center">Cant.</th><th>Precio Unit.</th><th>Subtotal</th></tr></thead><tbody>${filas}</tbody></table>
-      <div class="totbox"><div class="totrow"><span>Subtotal:</span><span>u$s${fmt2(v.total_usd)}</span></div><div class="total"><span>TOTAL:</span><span>u$s${fmt2(v.total_usd)}</span></div></div>
-      <div class="pagos"><h2>💳 Métodos de Pago</h2><ul>${pgs}</ul></div>
-      <div class="garantia"><h2>🛡️ GARANTÍA</h2>${garTexto}</div>
-      <div class="foot">Comprobante generado electrónicamente el ${esc(new Date().toLocaleString('es-AR'))}<br>iPro — Tech Reseller</div></div></body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) { toast.error('Permití las ventanas emergentes.'); return; }
-    w.document.write(html); w.document.close();
+  // ── Comprobante PDF (mismo flujo que el modal de éxito) ──
+  // Antes había dos comprobantes: el PDF del modal y un HTML imprimible
+  // que abría una ventana nueva. Unificamos en uno solo: ambos puntos de
+  // entrada (botón "Descargar comprobante" del modal y icono impresora en
+  // la grilla) generan el mismo PDF con el mismo layout sobrio.
+  async function comprobantePDF(v) {
+    try {
+      const contactoVinculado = v.cliente_id
+        ? contactos.find(c => String(c.id) === String(v.cliente_id))
+        : null;
+      // Cuando la venta viene del backend (lista), los items tienen vendedor_id;
+      // usamos el primer item con vendedor para resolver el nombre.
+      const vendedorId = (v.items || []).find(i => i.vendedor_id)?.vendedor_id;
+      const vendedorNombre = vendedorId
+        ? (vendedores.find(x => String(x.id) === String(vendedorId))?.nombre || null)
+        : null;
+      // Garantía: la elegida en la venta, o la default del catálogo, o el fallback.
+      const garFuente = v.garantia_id
+        ? garantias.find(g => String(g.id) === String(v.garantia_id))
+        : garantias.find(g => g.es_default);
+      const ventaEnriquecida = {
+        ...v,
+        cliente_apellido: contactoVinculado?.apellido || null,
+        cliente_dni:      contactoVinculado?.dni      || null,
+        cliente_telefono: contactoVinculado?.telefono || null,
+        cliente_email:    contactoVinculado?.email    || null,
+        vendedor_nombre:  vendedorNombre,
+        garantia_nombre:  garFuente?.nombre || (v.garantia_id ? null : 'Predeterminada'),
+        garantia_texto:   garFuente?.texto  || GARANTIA_FALLBACK,
+      };
+      const mod = await import('../lib/generarComprobantePdf');
+      await mod.generarComprobantePdf(ventaEnriquecida);
+    } catch (e) {
+      console.error('PDF error:', e);
+      toast.error(`No se pudo generar el comprobante PDF: ${e?.message || e}`, { duration: 12000 });
+    }
   }
 
   function exportarExcel() {
