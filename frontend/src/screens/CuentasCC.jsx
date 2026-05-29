@@ -7,6 +7,8 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 import VentaB2BModal from '../components/VentaB2BModal';
 import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -286,7 +288,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>$ ARS</span>
                   <input
                     ref={setRef(i, 'first')}
-                    type="number" min="0"
+                    type="number" onKeyDown={blockInvalidNumberKeys} min="0"
                     style={{ ...inp, flex: '1.6 1 0', textAlign: 'right' }}
                     placeholder="0"
                     value={row.ars}
@@ -295,7 +297,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>÷</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>TC</span>
                   <input
-                    type="number" min="0"
+                    type="number" onKeyDown={blockInvalidNumberKeys} min="0"
                     style={{ ...inp, flex: '1 1 0', textAlign: 'right' }}
                     placeholder="1200"
                     value={row.tc}
@@ -305,7 +307,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
                   <input
                     ref={setRef(i, 'monto')}
-                    type="number" min="0"
+                    type="number" onKeyDown={blockInvalidNumberKeys} min="0"
                     style={{
                       ...inp, flex: '1.6 1 0', textAlign: 'right', fontWeight: 700,
                       color:      autoUSD ? 'var(--pos)' : 'inherit',
@@ -1068,7 +1070,7 @@ export default function CuentasCC() {
                 </div>
                 <div className="field">
                   <label className="field-label">Saldo inicial · USD <span className="muted">(opcional)</span></label>
-                  <input type="number" min="0" step="0.01" className="input mono" placeholder="0"
+                  <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono" placeholder="0"
                     value={clienteForm.saldo_inicial} onChange={e => setClienteForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
                   <div className="muted tiny" style={{ marginTop: 3 }}>Si el cliente ya nos debe algo, arrancá su cuenta con ese saldo.</div>
                 </div>

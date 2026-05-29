@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { config as configApi } from '../lib/api';
 import { fmt } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 const SYSTEM_LIMITS = [
   { t: 'OCR rate-limit',   d: '10 solicitudes/hora por usuario' },
@@ -108,7 +110,7 @@ export default function Config() {
               <div className="field-label">Porcentaje de retención</div>
               <div className="input-group" style={{ maxWidth: 200 }}>
                 <input
-                  type="number"
+                  type="number" onKeyDown={blockInvalidNumberKeys}
                   step="0.1"
                   min="0"
                   max="100"

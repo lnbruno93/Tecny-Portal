@@ -5,6 +5,8 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 const nombreContacto = (c) => `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`;
@@ -358,10 +360,10 @@ export default function Proyectos() {
                       <td><input type="date" className="input" style={{ height: 30, fontSize: 12 }} value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
                       <td><input className="input" style={{ height: 30, fontSize: 12 }} placeholder="Detalle…" value={mov.detalle} onChange={e => setMov(m => ({ ...m, detalle: e.target.value }))} /></td>
                       <td><input className="input" list="proy-cats" style={{ height: 30, fontSize: 12 }} placeholder="Categoría" value={mov.categoria} onChange={e => setMov(m => ({ ...m, categoria: e.target.value }))} /></td>
-                      <td><input type="number" min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" value={mov.monto} onChange={e => setMov(m => ({ ...m, monto: e.target.value }))} /></td>
-                      <td><input type="number" min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} /></td>
+                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" value={mov.monto} onChange={e => setMov(m => ({ ...m, monto: e.target.value }))} /></td>
+                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} /></td>
                       <td>
-                        <input type="number" min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: movUsdPreview > 0 && (parseFloat(mov.monto) > 0) ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: movUsdPreview > 0 && (parseFloat(mov.monto) > 0) ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
                           placeholder="USD" value={(parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0) ? movUsdPreview : mov.monto_usd}
                           readOnly={parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />

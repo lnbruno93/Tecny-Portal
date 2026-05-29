@@ -5,6 +5,8 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
 const EMPTY_FORM = {
@@ -890,7 +892,7 @@ export default function Envios() {
                             )}
                             <div className="field" style={{ marginBottom: 0 }}>
                               <label className="field-label">Monto</label>
-                              <input type="number" className="input mono" placeholder="0"
+                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                             </div>
                             <div className="field" style={{ marginBottom: 0 }}>
@@ -927,12 +929,12 @@ export default function Envios() {
                             ))}
                             <option value="__CC__">Cuenta corriente (deuda)</option>
                           </select>
-                          <input type="number" className="input mono" placeholder="Monto"
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto"
                                  value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                           <select className="input" value={it.moneda || 'ARS'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
                             <option>ARS</option><option>USD</option><option>USDT</option>
                           </select>
-                          <input type="number" className="input mono" placeholder="TC"
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC"
                                  value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
                           <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
                             <Icons.X size={14} />
@@ -971,7 +973,7 @@ export default function Envios() {
                     <>
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">para items ARS</span></label>
-                        <input type="number" className="input mono" placeholder="Ej: 1000"
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
                                value={form.tc} onChange={e => setF('tc', e.target.value)} />
                       </div>
                       {items.some(i => i.tipo === 'pago' && i.es_cuenta_corriente) && (

@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Icons } from '../components/Icons';
+import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -97,7 +99,7 @@ function TabTarjetas() {
             <div className="input-group" style={{ maxWidth: 240 }}>
               <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
               <input
-                type="number"
+                type="number" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
                 value={tc}
                 onChange={e => setTc(parseFloat(e.target.value) || 0)}
@@ -142,7 +144,7 @@ function TabTarjetas() {
                 <div className="field">
                   <div className="field-label">Precio USD</div>
                   <input
-                    type="number"
+                    type="number" onKeyDown={blockInvalidNumberKeys}
                     className="input mono"
                     placeholder="0"
                     value={p.usd}
@@ -317,7 +319,7 @@ function TabUsd() {
               <div className="input-group">
                 <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
                 <input
-                  type="number"
+                  type="number" onKeyDown={blockInvalidNumberKeys}
                   className="input mono"
                   value={tc}
                   onChange={e => setTc(parseFloat(e.target.value) || 0)}
@@ -329,7 +331,7 @@ function TabUsd() {
               <div className="input-group">
                 <span className="addon addon-l" style={{ color: 'var(--accent)' }}>USD</span>
                 <input
-                  type="number"
+                  type="number" onKeyDown={blockInvalidNumberKeys}
                   className="input mono"
                   placeholder="0"
                   value={usdIn}
