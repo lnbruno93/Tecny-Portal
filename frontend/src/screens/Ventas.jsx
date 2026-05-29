@@ -167,6 +167,11 @@ export default function Ventas() {
   const [contactos, setContactos] = useState([]);
   const [clienteDrop, setClienteDrop] = useState(false);
 
+  // Modal de diferencia en pagos (visual rico, custom — no usa ConfirmModal)
+  // y modal de éxito post-venta con descargar comprobante en PDF.
+  const [diffModal, setDiffModal] = useState({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null });
+  const [exitoModal, setExitoModal] = useState({ open: false, venta: null });
+
   // Modales
   const [showVenta, setShowVenta] = useState(false);
   const [showRapida, setShowRapida] = useState(false);
@@ -358,6 +363,40 @@ export default function Ventas() {
       return;
     }
     const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
+
+    // Aviso de diferencia: si el total cobrado != total de items (con canje),
+    // mostramos un modal visual rico (no el ConfirmModal genérico) con desglose
+    // total/cobrado/restante, y dos opciones: "Corregir" (volver al form) o
+    // "Aceptar igual" (proceder + inyectar item "Diferencia").
+    //
+    // El item de diferencia se calcula:
+    //   · A favor (cobrado de más):  precio_vendido = +dif, costo = 0
+    //     → sube total_usd y ganancia_usd.
+    //   · En contra (cobrado de menos): precio_vendido = 0, costo = |dif|
+    //     → no toca total_usd pero baja ganancia_usd.
+    // (No usamos precio negativo: la DB tiene CHECK precio_vendido >= 0.)
+    // Tolerancia 0.005 USD para no marcar errores de redondeo por floats.
+    if (Math.abs(totales.dif) > 0.005) {
+      // Promesa que el modal resuelve con true (aceptar) o false (corregir).
+      const aceptado = await new Promise(resolve => {
+        setDiffModal({ open: true, items: totales.items, cubierto: totales.cubierto, dif: totales.dif, resolve });
+      });
+      if (!aceptado) return;
+      const aFavor = totales.dif > 0;
+      const dif = Math.abs(totales.dif);
+      items.push({
+        producto_id:   null,
+        vendedor_id:   vForm.vendedor_id || null,
+        descripcion:   aFavor ? 'Diferencia de cambio (a favor)' : 'Diferencia de cambio (en contra)',
+        imei:          null,
+        cantidad:      1,
+        precio_vendido: aFavor ? dif : 0,
+        costo:         aFavor ? 0 : dif,
+        moneda:        'USD',
+        comision:      0,
+      });
+    }
+
     const payload = {
       fecha: vForm.fecha, hora: vForm.hora || null, cliente_nombre: vForm.cliente_nombre.trim() || null,
       cliente_id: vForm.cliente_id || null, cliente_cc_id: vForm.cliente_cc_id || null,
@@ -377,11 +416,72 @@ export default function Ventas() {
       // Si el adjunto falló no podemos cantar éxito (y en el flujo financiera el
       // comprobante de Financiera NO se habría auto-generado): avisamos.
       if (uploadFalló) toast.error('La venta se guardó, pero el comprobante no se pudo adjuntar. Subilo de nuevo desde la venta.');
-      else toast.success(editId ? 'Venta actualizada.' : 'Venta registrada.');
       setShowVenta(false);
       // Cobro por Financiera con comprobante OK: ya se auto-generó el de Financiera → ir a verificarlo.
       if (!editId && usaFinanciera && !uploadFalló) { navigate('/financiera'); return; }
       await Promise.all([loadDash(), loadLista(), loadRapidas()]);
+      // Modal de éxito con opción de descargar comprobante PDF. Reemplaza
+      // al toast minimalista — da feedback claro y permite imprimir el
+      // comprobante para el cliente sin pasos extra.
+      //
+      // IMPORTANTE: el endpoint POST/PUT /api/ventas devuelve solo la fila
+      // de `ventas`, sin items ni pagos embebidos. Para el PDF reusamos el
+      // payload del frontend (con los datos que el usuario acaba de cargar)
+      // y los mergeamos sobre la respuesta. monto_usd se calcula con toUsd.
+      if (!uploadFalló) {
+        const tcVenta = Number(vForm.tc_venta) || null;
+        // items: agregamos imei tomado del cart original (cart[i] tiene imei,
+        // items no lo lleva al payload). Para mantener orden, indexamos por idx.
+        const itemsPdf = items.map((it, idx) => ({
+          descripcion:    it.descripcion,
+          cantidad:       Number(it.cantidad) || 1,
+          precio_vendido: Number(it.precio_vendido) || 0,
+          costo:          Number(it.costo) || 0,
+          moneda:         it.moneda || 'USD',
+          imei:           cart[idx]?.imei || null,
+        }));
+        const pagosPdf = pagosPayload.map(p => ({
+          metodo_nombre: p.metodo_nombre,
+          monto:         Number(p.monto) || 0,
+          moneda:        p.moneda,
+          tc:            p.tc ? Number(p.tc) : null,
+          monto_usd:     toUsd(p.monto, p.moneda, p.tc || tcVenta),
+          es_cuenta_corriente: !!p.es_cuenta_corriente,
+        }));
+        // Cliente completo: si está vinculado por id, traemos del state de
+        // contactos; sino solo el nombre que tipeó el operador.
+        const contactoVinculado = vForm.cliente_id
+          ? contactos.find(c => String(c.id) === String(vForm.cliente_id))
+          : null;
+        const vendedorNombre = vForm.vendedor_id
+          ? (vendedores.find(v => String(v.id) === String(vForm.vendedor_id))?.nombre || null)
+          : null;
+        // Mismo criterio que el botón de imprimir en la grilla: garantía
+        // elegida, o la default del catálogo si no se eligió. Si tampoco hay
+        // default, queda el fallback hardcoded (GARANTIA_FALLBACK).
+        const garantiaSel = vForm.garantia_id
+          ? garantias.find(g => String(g.id) === String(vForm.garantia_id))
+          : garantias.find(g => g.es_default);
+        const ventaCompleta = {
+          ...venta,
+          total_usd: venta.total_usd != null ? venta.total_usd :
+            itemsPdf.reduce((s, it) => s + toUsd(it.precio_vendido * it.cantidad, it.moneda, tcVenta), 0),
+          cliente_nombre: venta.cliente_nombre || vForm.cliente_nombre || 'Consumidor final',
+          cliente_apellido: contactoVinculado?.apellido || null,
+          cliente_dni:      contactoVinculado?.dni      || null,
+          cliente_telefono: contactoVinculado?.telefono || null,
+          cliente_email:    contactoVinculado?.email    || null,
+          vendedor_nombre:  vendedorNombre,
+          hora:             venta.hora    || vForm.hora || null,
+          fecha:            venta.fecha   || vForm.fecha,
+          notas:            venta.notas   || vForm.notas,
+          garantia_nombre:  garantiaSel?.nombre || (vForm.garantia_id ? null : 'Predeterminada'),
+          garantia_texto:   garantiaSel?.texto  || GARANTIA_FALLBACK,
+          items:            itemsPdf,
+          pagos:            pagosPdf,
+        };
+        setExitoModal({ open: true, venta: ventaCompleta });
+      }
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
   }
 
@@ -401,16 +501,49 @@ export default function Ventas() {
     try { await ventas.deleteRapida(id); await loadRapidas(); } catch (e) { toast.error(e.message); }
   }
 
-  async function crearContactoRapido(nombre) {
-    const n = nombre.trim();
-    if (!n) return;
+  // ── Quick-add de cliente embebido (form mini) ─────────────────────────
+  // Antes creábamos el contacto con solo `nombre`. Ahora pedimos también DNI,
+  // WhatsApp, email y fecha de nacimiento — todos opcionales menos nombre.
+  // Estos datos son insumo para Data Science (cumpleaños, perfilado) y para
+  // contacto post-venta. El form se monta en línea dentro del dropdown.
+  const [quickClient, setQuickClient] = useState({ open: false, nombre: '', dni: '', telefono: '', email: '', fecha_nacimiento: '' });
+  const [quickClientSaving, setQuickClientSaving] = useState(false);
+  const [quickClientError, setQuickClientError] = useState('');
+
+  function abrirQuickClient(nombre) {
+    setQuickClient({ open: true, nombre: nombre.trim(), dni: '', telefono: '', email: '', fecha_nacimiento: '' });
+    setQuickClientError('');
+  }
+  function cerrarQuickClient() {
+    setQuickClient(q => ({ ...q, open: false }));
+    setQuickClientError('');
+  }
+  async function guardarQuickClient(e) {
+    e?.preventDefault?.();
+    const n = quickClient.nombre.trim();
+    if (!n) { setQuickClientError('El nombre es obligatorio.'); return; }
+    setQuickClientSaving(true);
+    setQuickClientError('');
     try {
-      const c = await contactosApi.create({ nombre: n, tipo: 'cliente' });
+      const payload = {
+        nombre: n,
+        tipo: 'cliente',
+        dni:              quickClient.dni.trim()      || null,
+        telefono:         quickClient.telefono.trim() || null,
+        email:            quickClient.email.trim()    || null,
+        fecha_nacimiento: quickClient.fecha_nacimiento || null,
+      };
+      const c = await contactosApi.create(payload);
       setContactos(prev => [...prev, c]);
       setVForm(f => ({ ...f, cliente_nombre: c.nombre, cliente_id: c.id }));
       setClienteDrop(false);
-      toast.success('Contacto creado y vinculado.');
-    } catch (e) { toast.error(e.message); }
+      setQuickClient({ open: false, nombre: '', dni: '', telefono: '', email: '', fecha_nacimiento: '' });
+      toast.success('Cliente creado y vinculado.');
+    } catch (e) {
+      setQuickClientError(e.message || 'No se pudo crear el cliente.');
+    } finally {
+      setQuickClientSaving(false);
+    }
   }
 
   // ── Venta rápida ──
@@ -492,42 +625,42 @@ export default function Ventas() {
     } catch (e) { toast.error('Error al abrir.'); }
   }
 
-  // ── Comprobante imprimible / PDF ──
-  function comprobantePDF(v) {
-    const garFuente = v.garantia_id ? garantias.find(g => g.id === v.garantia_id) : garantias.find(g => g.es_default);
-    const garTexto = (garFuente ? garFuente.texto : GARANTIA_FALLBACK).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
-    const vend = vendedores.find(x => x.id === (v.items.find(i => i.vendedor_id) || {}).vendedor_id);
-    const fechaHora = (v.fecha || '').substring(0, 10).split('-').reverse().join('/') + (v.hora ? ' ' + v.hora.substring(0, 5) : '');
-    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const filas = (v.items || []).map(it => `<tr><td style="font-weight:700">${esc(it.descripcion)}</td><td style="color:#555">${it.imei ? 'IMEI: ' + esc(it.imei) : '—'}</td><td style="text-align:center">${it.cantidad}</td><td>${sym(it.moneda)}${fmt2(it.precio_vendido)}</td><td>${sym(it.moneda)}${fmt2(it.precio_vendido * it.cantidad)}</td></tr>`).join('');
-    const pgs = (v.pagos || []).map(p => `<li>${esc(p.metodo_nombre)}: ${sym(p.moneda)}${fmt2(p.monto)}</li>`).join('') || '<li>—</li>';
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Comprobante #${esc(v.order_id)}</title><style>
-      *{box-sizing:border-box;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}body{margin:0;background:#f5f6f8;color:#1a1a2e;padding:24px}
-      .sheet{max-width:760px;margin:0 auto;background:#fff;padding:32px 36px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.08)}
-      .logo{width:84px;height:84px;background:#0d2a4d;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:22px;margin:0 auto}
-      h1{text-align:center;color:#1f6fe5;font-size:26px;margin:18px 0 2px}.orden{text-align:center;color:#555;margin:0 0 14px}
-      .rule{border:none;border-top:3px solid #1f6fe5;margin:14px 0 22px}.card{border:1px solid #e3e6ea;border-radius:8px;padding:14px 16px;margin-bottom:16px}
-      .card h2{color:#1f6fe5;font-size:15px;margin:0 0 8px}.card p{margin:3px 0;font-size:14px}table{width:100%;border-collapse:collapse;margin-bottom:4px}
-      th{background:#f0f2f5;text-align:left;padding:9px 10px;font-size:12px;border:1px solid #e3e6ea}td{padding:9px 10px;font-size:13px;border:1px solid #e3e6ea}
-      .totbox{border:1px solid #e3e6ea;border-radius:8px;padding:12px 16px;margin-bottom:16px}.totrow{display:flex;justify-content:space-between;font-size:14px;padding:3px 0}
-      .total{display:flex;justify-content:space-between;border-top:3px solid #1f6fe5;margin-top:8px;padding-top:10px;font-size:20px;font-weight:800;color:#1f6fe5}
-      .pagos{background:#eef4ff;border-radius:8px;padding:12px 16px;margin-bottom:16px}.pagos h2{color:#1f6fe5;font-size:15px;margin:0 0 6px}.pagos ul{margin:0;padding-left:18px;font-size:14px}
-      .garantia{border:2px dashed #34a853;border-radius:8px;padding:14px 16px;background:#f4fbf6;font-size:13px;line-height:1.5}.garantia h2{color:#2e7d46;font-size:15px;margin:0 0 8px}
-      .foot{text-align:center;color:#888;font-size:12px;margin-top:20px}.toolbar{max-width:760px;margin:0 auto 14px;text-align:right}
-      .btn{background:#1f6fe5;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer}
-      @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;max-width:100%}.toolbar{display:none}}</style></head><body>
-      <div class="toolbar"><button class="btn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
-      <div class="sheet"><div class="logo">iPro</div><h1>COMPROBANTE DE VENTA</h1><p class="orden">Orden #${esc(v.order_id)}</p><hr class="rule">
-      <div class="card"><h2>🧾 Información de la Venta</h2><p><strong>Fecha:</strong> ${esc(fechaHora)}</p><p><strong>Estado:</strong> ${ESTADO_LABEL[v.estado] || esc(v.estado)}</p><p><strong>Vendedor:</strong> ${vend ? esc(vend.nombre) : '—'}</p></div>
-      <div class="card"><h2>👤 Información del Cliente</h2><p><strong>Nombre:</strong> ${esc(v.cliente_nombre) || 'Consumidor final'}</p></div>
-      <h2 style="color:#1f6fe5;font-size:15px">📦 Productos</h2><table><thead><tr><th>Producto</th><th>Detalles</th><th style="text-align:center">Cant.</th><th>Precio Unit.</th><th>Subtotal</th></tr></thead><tbody>${filas}</tbody></table>
-      <div class="totbox"><div class="totrow"><span>Subtotal:</span><span>u$s${fmt2(v.total_usd)}</span></div><div class="total"><span>TOTAL:</span><span>u$s${fmt2(v.total_usd)}</span></div></div>
-      <div class="pagos"><h2>💳 Métodos de Pago</h2><ul>${pgs}</ul></div>
-      <div class="garantia"><h2>🛡️ GARANTÍA</h2>${garTexto}</div>
-      <div class="foot">Comprobante generado electrónicamente el ${esc(new Date().toLocaleString('es-AR'))}<br>iPro — Tech Reseller</div></div></body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) { toast.error('Permití las ventanas emergentes.'); return; }
-    w.document.write(html); w.document.close();
+  // ── Comprobante PDF (mismo flujo que el modal de éxito) ──
+  // Antes había dos comprobantes: el PDF del modal y un HTML imprimible
+  // que abría una ventana nueva. Unificamos en uno solo: ambos puntos de
+  // entrada (botón "Descargar comprobante" del modal y icono impresora en
+  // la grilla) generan el mismo PDF con el mismo layout sobrio.
+  async function comprobantePDF(v) {
+    try {
+      const contactoVinculado = v.cliente_id
+        ? contactos.find(c => String(c.id) === String(v.cliente_id))
+        : null;
+      // Cuando la venta viene del backend (lista), los items tienen vendedor_id;
+      // usamos el primer item con vendedor para resolver el nombre.
+      const vendedorId = (v.items || []).find(i => i.vendedor_id)?.vendedor_id;
+      const vendedorNombre = vendedorId
+        ? (vendedores.find(x => String(x.id) === String(vendedorId))?.nombre || null)
+        : null;
+      // Garantía: la elegida en la venta, o la default del catálogo, o el fallback.
+      const garFuente = v.garantia_id
+        ? garantias.find(g => String(g.id) === String(v.garantia_id))
+        : garantias.find(g => g.es_default);
+      const ventaEnriquecida = {
+        ...v,
+        cliente_apellido: contactoVinculado?.apellido || null,
+        cliente_dni:      contactoVinculado?.dni      || null,
+        cliente_telefono: contactoVinculado?.telefono || null,
+        cliente_email:    contactoVinculado?.email    || null,
+        vendedor_nombre:  vendedorNombre,
+        garantia_nombre:  garFuente?.nombre || (v.garantia_id ? null : 'Predeterminada'),
+        garantia_texto:   garFuente?.texto  || GARANTIA_FALLBACK,
+      };
+      const mod = await import('../lib/generarComprobantePdf');
+      await mod.generarComprobantePdf(ventaEnriquecida);
+    } catch (e) {
+      console.error('PDF error:', e);
+      toast.error(`No se pudo generar el comprobante PDF: ${e?.message || e}`, { duration: 12000 });
+    }
   }
 
   function exportarExcel() {
@@ -555,6 +688,8 @@ export default function Ventas() {
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
+          <button className="btn" onClick={() => setShowGarantias(true)}><Icons.Shield size={14} /> Plantillas</button>
+          <button className="btn" onClick={() => setShowEtiquetas(true)}><Icons.Tag size={14} /> Etiquetas</button>
           <button className="btn" onClick={() => setShowRapida(true)}><Icons.Bolt size={14} /> Venta rápida</button>
           <button className="btn" onClick={exportarExcel}><Icons.Download size={14} /> Exportar</button>
           <button className="btn btn-primary" onClick={() => openVenta(null)}><Icons.Plus size={14} /> Nueva venta</button>
@@ -692,8 +827,18 @@ export default function Ventas() {
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1, position: 'relative' }}>
-                      <label className="field-label">Cliente</label>
-                      <input className="input" placeholder="Nombre del cliente" autoComplete="off"
+                      <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Cliente</span>
+                        {/* Botón siempre visible para abrir el mini-form de cliente nuevo
+                            sin tener que tipear primero en el buscador. Si el operador
+                            quiere cargar un cliente con datos completos directo, hace
+                            click acá. (También se sigue ofreciendo desde el dropdown
+                            como "Crear cliente «X»" si tipea algo nuevo.) */}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirQuickClient(vForm.cliente_nombre)}>
+                          <Icons.Plus size={11} /> Nuevo cliente
+                        </button>
+                      </label>
+                      <input className="input" placeholder="Buscar cliente..." autoComplete="off"
                         value={vForm.cliente_nombre}
                         onChange={e => { setVForm(f => ({ ...f, cliente_nombre: e.target.value, cliente_id: '' })); setClienteDrop(true); }}
                         onFocus={() => setClienteDrop(true)}
@@ -714,14 +859,71 @@ export default function Ventas() {
                               </div>
                             ))}
                             {showCreate && (
-                              <div className="nav-item" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }} onMouseDown={() => crearContactoRapido(q)}>
-                                <Icons.Plus size={12} /> Crear contacto «{q}»
+                              <div className="nav-item" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--accent)' }} onMouseDown={() => abrirQuickClient(q)}>
+                                <Icons.Plus size={12} /> Crear cliente «{q}»
                               </div>
                             )}
                           </div>
                         );
                       })()}
                       {vForm.cliente_id && <div className="tiny pos" style={{ marginTop: 2 }}>✓ vinculado a la base de clientes</div>}
+
+                      {/* Mini-form embebido — Nuevo cliente con datos completos
+                          (DNI, WhatsApp, email, fecha de nacimiento). Se abre al
+                          clickear "Crear cliente «X»" en el dropdown. */}
+                      {quickClient.open && (
+                        <div className="card card-tight" style={{ marginTop: 10, padding: 14, background: 'var(--surface-2)' }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Nuevo cliente</div>
+                          <div className="muted tiny" style={{ marginBottom: 12 }}>
+                            Solo el nombre es obligatorio. El resto es opcional pero ayuda al seguimiento post-venta.
+                          </div>
+                          <div className="stack" style={{ gap: 10 }}>
+                            <div className="field">
+                              <label className="field-label" htmlFor="qc-nombre">Nombre completo <span style={{ color: 'var(--neg)' }}>*</span></label>
+                              <input id="qc-nombre" className="input" autoFocus
+                                value={quickClient.nombre}
+                                onChange={e => setQuickClient(q => ({ ...q, nombre: e.target.value }))} />
+                            </div>
+                            <div className="row" style={{ gap: 10 }}>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-dni">DNI</label>
+                                <input id="qc-dni" className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Ej: 12345678"
+                                  value={quickClient.dni}
+                                  onChange={e => setQuickClient(q => ({ ...q, dni: e.target.value }))} />
+                              </div>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-tel">WhatsApp</label>
+                                <input id="qc-tel" className="input" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ej: 1123456789"
+                                  value={quickClient.telefono}
+                                  onChange={e => setQuickClient(q => ({ ...q, telefono: e.target.value }))} />
+                              </div>
+                            </div>
+                            <div className="row" style={{ gap: 10 }}>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-email">Correo electrónico</label>
+                                <input id="qc-email" className="input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" placeholder="email@ejemplo.com"
+                                  value={quickClient.email}
+                                  onChange={e => setQuickClient(q => ({ ...q, email: e.target.value }))} />
+                              </div>
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label" htmlFor="qc-fnac">Fecha de nacimiento</label>
+                                <input id="qc-fnac" className="input" type="date"
+                                  value={quickClient.fecha_nacimiento}
+                                  onChange={e => setQuickClient(q => ({ ...q, fecha_nacimiento: e.target.value }))} />
+                              </div>
+                            </div>
+                            {quickClientError && (
+                              <div style={{ color: 'var(--neg)', fontSize: 13 }} role="alert">{quickClientError}</div>
+                            )}
+                            <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={cerrarQuickClient} disabled={quickClientSaving}>Cancelar</button>
+                              <button type="button" className="btn btn-primary btn-sm" onClick={guardarQuickClient} disabled={quickClientSaving}>
+                                {quickClientSaving ? 'Guardando…' : 'Guardar y vincular'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
@@ -834,14 +1036,14 @@ export default function Ventas() {
       {/* ── Modal Garantías ── */}
       {showGarantias && (
         <div className="modal-overlay" onClick={() => setShowGarantias(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Plantillas de garantía</h3><button className="icon-btn" onClick={() => setShowGarantias(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
               <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (
                   <div key={g.id} className="flex-between" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--hairline)', alignItems: 'flex-start' }}>
-                    <div style={{ fontSize: 13, maxWidth: '74%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 34, overflow: 'hidden' }}>{g.texto}</div></div>
+                    <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{g.texto}</div></div>
                     <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
                       <button className="icon-btn" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
                       <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
@@ -852,7 +1054,16 @@ export default function Ventas() {
               <form onSubmit={handleSaveGarantia}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{gForm.id ? 'Editar plantilla' : 'Nueva plantilla'}</div>
                 <div className="field"><label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="General, Apple discontinuado…" value={gForm.nombre} onChange={e => setGForm(f => ({ ...f, nombre: e.target.value }))} /></div>
-                <div className="field"><label className="field-label">Texto <span style={{ color: 'var(--neg)' }}>*</span></label><textarea className="input" rows={5} value={gForm.texto} onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))} /></div>
+                <div className="field">
+                  <label className="field-label">Texto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <textarea
+                    className="input"
+                    rows={10}
+                    value={gForm.texto}
+                    onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))}
+                    style={{ height: 'auto', minHeight: 220, padding: '12px 14px', lineHeight: 1.55, fontSize: 14, resize: 'vertical', whiteSpace: 'pre-wrap' }}
+                  />
+                </div>
                 <label className="flex-row" style={{ gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
                 <div className="flex-row" style={{ gap: 8 }}>
                   <button type="button" className="btn btn-ghost" onClick={() => setGForm({ id: null, nombre: '', texto: '', es_default: false })}>Limpiar</button>
@@ -903,6 +1114,118 @@ export default function Ventas() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: diferencia en métodos de pago ── */}
+      {/* Custom (no ConfirmModal) para tener desglose visual con colores y dos
+          acciones claras: "Corregir" (volver al form) y "Aceptar igual" (proceder). */}
+      {diffModal.open && (() => {
+        const dif = diffModal.dif;
+        const aFavor = dif > 0;
+        const close = (aceptado) => {
+          const r = diffModal.resolve;
+          setDiffModal({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null });
+          if (r) r(aceptado);
+        };
+        return (
+          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" style={{ zIndex: 600 }}>
+            <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-body" style={{ padding: '32px 28px 18px', textAlign: 'left' }}>
+                {/* Icono de warning grande, centrado */}
+                <div style={{ textAlign: 'center', marginBottom: 18 }}>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 76, height: 76, borderRadius: '50%',
+                    border: '3px solid var(--warn, #d97706)', color: 'var(--warn, #d97706)',
+                    fontSize: 38, fontWeight: 700, lineHeight: 1,
+                  }}>!</div>
+                </div>
+                <h2 id="diff-modal-title" style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px', color: 'var(--text)' }}>
+                  ⚠️ Diferencia en métodos de pago
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.5, margin: '0 0 18px' }}>
+                  Los métodos de pago no suman exactamente el monto requerido.
+                </p>
+                <div style={{ borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)', padding: '14px 0' }}>
+                  <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
+                    <strong>Total de la venta:</strong>
+                    <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>u$s {diffModal.items.toFixed(2)}</span>
+                  </div>
+                  <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
+                    <strong>Total pagado:</strong>
+                    <span className="mono pos" style={{ fontWeight: 700 }}>u$s {diffModal.cubierto.toFixed(2)}</span>
+                  </div>
+                  <div className="flex-between" style={{ fontSize: 14 }}>
+                    <strong>{aFavor ? 'Sobrante:' : 'Restante:'}</strong>
+                    <span className="mono" style={{ fontWeight: 700, color: aFavor ? 'var(--pos)' : 'var(--neg)' }}>
+                      u$s {aFavor ? '+' : '-'}{Math.abs(dif).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+                <div style={{
+                  marginTop: 16, padding: '12px 14px', background: 'rgba(122, 162, 247, 0.08)',
+                  border: '1px solid rgba(122, 162, 247, 0.25)', borderRadius: 8, fontSize: 13, lineHeight: 1.6,
+                }}>
+                  <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>¿Qué quieres hacer?</div>
+                  <div style={{ color: 'var(--text)' }}>· <strong>Corregir:</strong> ajustar los métodos de pago</div>
+                  <div style={{ color: 'var(--text)' }}>· <strong>Aceptar igual:</strong> guardar y sumar la diferencia al profit</div>
+                </div>
+              </div>
+              <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
+                <button className="btn btn-ghost" onClick={() => close(false)} style={{ minWidth: 130 }}>Corregir</button>
+                <button className="btn btn-primary" onClick={() => close(true)} autoFocus style={{ minWidth: 130, background: 'var(--pos)' }}>Aceptar igual</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Modal: venta guardada (éxito + descargar comprobante PDF) ── */}
+      {exitoModal.open && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
+             onClick={() => setExitoModal({ open: false, venta: null })}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-body" style={{ padding: '36px 28px 18px', textAlign: 'center' }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 88, height: 88, borderRadius: '50%',
+                border: '3px solid var(--pos)', color: 'var(--pos)',
+                marginBottom: 24,
+              }}>
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <h2 id="exito-modal-title" style={{ fontSize: 28, fontWeight: 700, margin: '0 0 10px', color: 'var(--text)' }}>
+                ¡Éxito!
+              </h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: 0 }}>
+                Venta guardada exitosamente.
+              </p>
+            </div>
+            <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
+              <button className="btn btn-primary" onClick={() => setExitoModal({ open: false, venta: null })}
+                      autoFocus style={{ minWidth: 110, background: 'var(--accent)' }}>OK</button>
+              <button className="btn"
+                      style={{ minWidth: 200, background: 'var(--neg)', color: '#fff', border: 0 }}
+                      onClick={async () => {
+                        try {
+                          const mod = await import('../lib/generarComprobantePdf');
+                          await mod.generarComprobantePdf(exitoModal.venta);
+                        } catch (e) {
+                          // Mostramos el error real para que el usuario lo pueda reportar
+                          // sin tener que abrir la consola. El stack queda en console.error
+                          // como antes para debugging.
+                          console.error('PDF error:', e);
+                          const detalle = e?.message || String(e);
+                          toast.error(`No se pudo generar el comprobante PDF: ${detalle}`, { duration: 12000 });
+                        }
+                      }}>
+                Descargar comprobante
+              </button>
             </div>
           </div>
         </div>

@@ -481,3 +481,36 @@ describe('Ventas — stock de lote sin trackear (A2)', () => {
     expect(venta.status).toBe(201);
   });
 });
+
+// Item "Diferencia de cambio" inyectado por el frontend al aceptar el modal
+// de diferencia. Validamos que el cálculo de total_usd y ganancia_usd los toma
+// como cualquier otro item — sin lógica especial en backend.
+describe('Ventas — item "Diferencia de cambio"', () => {
+  it('diferencia A FAVOR: precio + sin costo → suma al total y al profit', async () => {
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Diff A Favor', estado: 'acreditado',
+      items: [
+        { descripcion: 'Producto', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' },
+        { descripcion: 'Diferencia de cambio (a favor)', cantidad: 1, precio_vendido: 2, costo: 0, moneda: 'USD' },
+      ],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 1002, moneda: 'USD' }],
+    });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.total_usd)).toBe(1002);
+    expect(Number(res.body.ganancia_usd)).toBe(202); // 1000-800 + 2-0
+  });
+
+  it('diferencia EN CONTRA: precio 0 + costo → no toca total pero baja el profit', async () => {
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Diff En Contra', estado: 'acreditado',
+      items: [
+        { descripcion: 'Producto', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' },
+        { descripcion: 'Diferencia de cambio (en contra)', cantidad: 1, precio_vendido: 0, costo: 3, moneda: 'USD' },
+      ],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 1000, moneda: 'USD' }],
+    });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.total_usd)).toBe(1000);
+    expect(Number(res.body.ganancia_usd)).toBe(197); // 1000-800 + 0-3
+  });
+});

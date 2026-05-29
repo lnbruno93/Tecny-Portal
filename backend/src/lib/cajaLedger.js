@@ -22,8 +22,12 @@ function grupoMoneda(m) { return m === 'ARS' ? 'ARS' : 'USD'; }
 async function postCajaMovimiento(client, { caja_id, fecha, tipo, monto, moneda, tc, origen, ref_tabla, ref_id, concepto, user_id }) {
   if (!caja_id || !(Number(monto) > 0)) return null;
 
+  // FOR UPDATE: lock de la fila para evitar race conditions sobre el saldo. Dos
+  // egresos concurrentes podían dejarla en negativo si el saldo justo alcanzaba
+  // para uno. Con el lock se serializan automáticamente.
   const { rows: cajaRows } = await client.query(
-    'SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]
+    'SELECT id, moneda, saldo_inicial FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+    [caja_id]
   );
   if (!cajaRows[0]) {
     const e = new Error('La caja seleccionada no existe.'); e.status = 400; throw e;
@@ -31,6 +35,32 @@ async function postCajaMovimiento(client, { caja_id, fecha, tipo, monto, moneda,
   if (grupoMoneda(cajaRows[0].moneda) !== grupoMoneda(moneda)) {
     const e = new Error(`La moneda del pago (${moneda}) no coincide con la de la caja (${cajaRows[0].moneda}).`);
     e.status = 400; throw e;
+  }
+
+  // No permitir que un egreso deje la caja en negativo. Política: las cajas
+  // representan dinero real (efectivo, banco, USDT en wallet, etc.) — no
+  // pueden tener saldo negativo conceptualmente. Para usar el patrón "préstamo"
+  // está movimientos_deudas; para "anticipo de cliente" la cuenta corriente.
+  if (tipo === 'egreso') {
+    const { rows: balRows } = await client.query(
+      `SELECT
+         COALESCE($2::numeric, 0)
+         + COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END), 0)
+         - COALESCE(SUM(CASE WHEN tipo = 'egreso'  THEN monto ELSE 0 END), 0)
+         AS saldo
+         FROM caja_movimientos
+        WHERE caja_id = $1 AND deleted_at IS NULL`,
+      [caja_id, cajaRows[0].saldo_inicial || 0]
+    );
+    const saldoActual = Number(balRows[0]?.saldo || 0);
+    const saldoFinal  = saldoActual - Number(monto);
+    if (saldoFinal < 0) {
+      const e = new Error(
+        `Saldo insuficiente en la caja (saldo actual: ${saldoActual.toFixed(2)} ${cajaRows[0].moneda}, ` +
+        `egreso pedido: ${Number(monto).toFixed(2)}). Una caja no puede quedar en negativo.`
+      );
+      e.status = 400; throw e;
+    }
   }
 
   const monto_usd = round2(toUsd(monto, moneda, tc));

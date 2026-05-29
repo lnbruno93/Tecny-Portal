@@ -97,7 +97,9 @@ export function ConfirmModal({
         </div>
         {message && (
           <div className="modal-body">
-            <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0, lineHeight: 1.6 }}>
+            {/* whiteSpace: pre-line respeta `\n` en el message — útil cuando el
+                caller pasa varias líneas (ej. desglose de diferencia en venta). */}
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
               {message}
             </p>
           </div>

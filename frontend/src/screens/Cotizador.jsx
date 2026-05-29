@@ -21,7 +21,7 @@ const COEFS = {
 // ─── Tab: Tarjetas de crédito ────────────────────────────────────────────────
 
 function TabTarjetas() {
-  const [tc, setTc]         = useState(1200);
+  const [tc, setTc]         = useState(1400);
   const [prods, setProds]   = useState([
     { id: 1, nom: 'iPhone 16 Pro 256GB Natural Titanium', vari: '', usd: 1185 },
   ]);
@@ -253,7 +253,7 @@ function TabTarjetas() {
 // ─── Tab: USD → ARS ─────────────────────────────────────────────────────────
 
 function TabUsd() {
-  const [tc, setTc]         = useState(1200);
+  const [tc, setTc]         = useState(1400);
   const [usdIn, setUsdIn]   = useState('');
   const [optEf, setOptEf]   = useState(true);
   const [optTars, setOptTars] = useState(false);
