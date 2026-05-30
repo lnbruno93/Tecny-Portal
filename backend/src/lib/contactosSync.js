@@ -33,11 +33,29 @@ async function syncContactoDesde(exec, { origen, ref_tabla, ref_id, nombre, apel
 }
 
 // Variante segura: nunca lanza. Loggea y sigue.
+//
+// #B-1: el caso MUY común es 23505 (unique_violation) — el contacto YA existe
+// con (nombre, apellido, tipo) pero con un origen_ref distinto (típico: alguien
+// creó "Juan Pérez" como cliente antes, ahora lo damos de alta como proveedor).
+// El ON CONFLICT que tenemos arriba es (origen_ref_tabla, origen_ref_id), no
+// captura el constraint contactos_nombre_apellido_tipo_unique_active. No es
+// un error real — el contacto ya está, y forzar el sync sería sobreescribir.
+// Lo degradamos a `info` para no llenar el log con stacks "warn" inocuos
+// (también afecta a la salida de tests, sin gusto a sangre).
 async function syncContactoSafe(exec, data) {
   try {
     return await syncContactoDesde(exec, data);
   } catch (err) {
-    logger.warn({ err, origen: data?.origen, ref_id: data?.ref_id }, 'sync de contacto a la agenda falló (best-effort)');
+    const isDup = err?.code === '23505';
+    const level = isDup ? 'info' : 'warn';
+    const msg   = isDup
+      ? 'sync de contacto: ya existe con (nombre, apellido, tipo) — se ignora'
+      : 'sync de contacto a la agenda falló (best-effort)';
+    // En logs `info` no incluimos el stack completo del err — solo code + detail.
+    const payload = isDup
+      ? { code: err.code, detail: err.detail, origen: data?.origen, ref_id: data?.ref_id }
+      : { err, origen: data?.origen, ref_id: data?.ref_id };
+    logger[level](payload, msg);
     return null;
   }
 }

@@ -18,22 +18,17 @@ incrementales sin urgencia.
 
 ## Backend
 
-### LOW-B1 · Logs de sync de contactos ruidosos en tests
-**Dónde:** `backend/src/lib/contactosSync.js`
-**Por qué:** Cada vez que un test crea un proveedor con nombre+apellido que ya
-existe en `contactos`, el best-effort sync escupe un error 23505 al logger. No
-rompe nada (es catch-and-log) pero ensucia la salida de tests.
-**Fix:** Detectar el código `23505` en el catch y degradar a `level: 30` (info)
-o suprimirlo si `process.env.NODE_ENV === 'test'`.
+### ~~LOW-B1 · Logs de sync de contactos ruidosos en tests~~ ✅ CERRADO
+**Cerrado en:** commit `4b7567a`. El catch en `syncContactoSafe` detecta el
+código `23505` y lo degrada a `info` con payload mínimo (sin stack). Sigue
+escapando como `warn` para errores reales.
 
-### LOW-B2 · Soft-delete sin compactación periódica
-**Dónde:** Tablas con `deleted_at`: caja_movimientos, items_movimiento_cc,
-proveedor_movimientos, productos, etc.
-**Por qué:** Soft-deletes nunca se purgan. Al año vamos a tener decenas de
-miles de filas "fantasma" que solo cuentan para los índices.
-**Fix:** Migración + job periódico que hard-delete rows con
-`deleted_at < NOW() - INTERVAL '6 months'` y ref_id ya no referenciada.
-Hacerlo después de definir política de retención formal.
+### ~~LOW-B2 · Soft-delete sin compactación periódica~~ ✅ CERRADO
+**Cerrado en:** este PR. Script `backend/scripts/compactar-soft-deletes.js`
+(manual, no automático) con DRY-RUN por default. Whitelist explícita:
+`caja_movimientos`, `movimientos_deudas`, `movimientos_inversiones`.
+Ventana de retención configurable (default 12 meses). Documentado en
+`docs/OPERATIONS.md` sección 5.
 
 ### ~~NIT-B3 · `SELECT FOR UPDATE` sin `ORDER BY id` en algunos paths~~ ✅ CERRADO
 **Cerrado en:** commit `d7cd462`. Auditoría completa de todos los `FOR UPDATE`
@@ -52,29 +47,28 @@ ANY+ORDER BY en SQL, o single-row).
 components con `onKeyDown={blockInvalidNumberKeys}`. 14 archivos tocados,
 55 handlers nuevos. Sed + perl + inyección de import automatizada.
 
-### LOW-F2 · Loading state de PDF solo en Ventas (#M-12 follow-up)
-**Dónde:** `frontend/src/components/CompraProveedorModal.jsx` y otros lugares
-que generan PDF / Excel.
-**Por qué:** En Ventas se atacó porque el modal "éxito" es el más recurrente.
-Otros generadores (export Excel, futuros comprobantes B2B) podrían heredar
-el patrón.
-**Fix:** Cuando se agregue PDF a B2B o Cobranzas, reusar el patrón
-`pdfLoading` state + `disabled` + "Generando…".
+### ~~LOW-F2 · Loading state de PDF solo en Ventas~~ ✅ CERRADO
+**Cerrado en:** commit `31a0a48`. Extraído el patrón al hook reutilizable
+`useLoadingAction` (lib/useLoadingAction.js). Ventas.jsx migrado como demo.
+Cuando se agregue PDF a B2B / Cobranzas / etc., el código es:
+```js
+const { loading, run } = useLoadingAction();
+<button disabled={loading} onClick={() => run(generarPDF)}>...
+```
 
-### LOW-F3 · `<input type="number">` no acepta coma como decimal
-**Dónde:** Todos los inputs numéricos.
-**Por qué:** Usuarios LATAM a veces tipean "1,50" en vez de "1.50". El input
-HTML lo trata como inválido y queda vacío.
-**Fix:** Considerar un componente `<NumberInput>` que en `onChange` reemplace
-coma por punto antes de pasar al state. O dejar como está y entrenar a los
-usuarios (tradeoff).
+### ~~LOW-F3 · `<input type="number">` no acepta coma como decimal~~ ✅ CERRADO
+**Cerrado en:** commit `4438bb6`. `blockInvalidNumberKeys` ahora permite coma
+por DEFAULT (allowComma: true). Helper `normalizeDecimal(str)` exportado para
+parsing LATAM: `"1,50" → "1.50"`, `"1.234,56" → "1234.56"`. NO migramos los
+67 callers de Number(x) a Number(normalizeDecimal(x)) — eso queda para
+próximas oleadas en los puntos calientes (modales spreadsheet, ventas).
 
-### NIT-F4 · `scroll-fade-x` no detecta si hay realmente overflow
-**Dónde:** `frontend/src/styles.css` — utility introducida en #M-09.
-**Por qué:** El gradient se muestra siempre, incluso cuando los tabs entran
-en pantalla (lo que es visualmente innecesario aunque inofensivo).
-**Fix:** Wrapper componentizado con ref + `ResizeObserver` que toggle una
-clase `.has-overflow`. Solo si visualmente molesta — por ahora es sutil.
+### ~~NIT-F4 · `scroll-fade-x` no detecta si hay realmente overflow~~ ✅ CERRADO
+**Cerrado en:** commit `8396c3f`. Nuevo componente `<ScrollFadeX>` con
+ResizeObserver + scroll listener: muestra fade SOLO si hay overflow real
+y agrega fade izquierdo cuando el user ya scrolleó. Inventario.jsx migrado.
+La utility `.scroll-fade-x` original (versión permanente) queda intacta
+para usos legacy.
 
 ### ~~NIT-F5 · `applyDefaultsToEmpty` del hook compartido sigue sin ser usado~~ ✅ CERRADO
 **Cerrado en:** commit `1b816ad`. Los 3 modales spreadsheet (CompraProveedor,
@@ -93,13 +87,12 @@ intermedia (rollback total), caja soft-deleted entre setup y cobranza (vía
 SQL directo), cliente soft-deleted (paralelo). Como side-effect agregamos
 `skip: () => process.env.NODE_ENV === 'test'` al `cobranzaLimiter`.
 
-### NIT-T2 · Tests de modales spreadsheet (frontend)
-**Dónde:** `frontend/src/components/` — no hay tests para
-CompraProveedorModal/CobranzaMasivaModal/VentaB2BModal.
-**Por qué:** Son los componentes más complejos (planilla + defaults +
-parser de clipboard + cálculo total). Los movemos sin tests E2E.
-**Fix:** Setup de @testing-library/react + Vitest + tests de smoke (render,
-addRow, isUsedRow, totalUsd). Es trabajo de medio día.
+### ~~NIT-T2 · Tests de modales spreadsheet (frontend)~~ ✅ CERRADO
+**Cerrado en:** commit `1ad25fb`. 12 smoke tests nuevos (4 por modal) con
+mocks de api + ToastProvider + ConfirmProvider. Verifican: render del
+header, cantidad inicial de filas, total "—" con rows vacías (#M-13),
+"+ N filas" agrega exactamente N. Lo que NO cubrimos (E2E): AutocompletePicker,
+save real al backend, navegación teclado, paste-from-excel.
 
 ---
 
