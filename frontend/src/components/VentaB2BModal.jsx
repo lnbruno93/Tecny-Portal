@@ -28,6 +28,7 @@ import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
+import TcWarning from './TcWarning';
 import CajaSelectHint from './CajaSelectHint';
 
 
@@ -235,6 +236,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                 <label className="field-label">TC →USD <span style={{ color: 'var(--neg)' }}>*</span></label>
                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" min="0" step="0.01"
                   value={tc} onChange={e => setTc(e.target.value)} placeholder="0" />
+                <TcWarning tc={tc} />
               </div>
             )}
           </div>

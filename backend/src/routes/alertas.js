@@ -12,8 +12,13 @@ const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { createCachedFetcher } = require('../lib/cacheTtl');
-const { evaluarTodas, EVALUADORES } = require('../lib/alertas');
+const { evaluarTodas, EVALUADORES, TIPOS_SETTING } = require('../lib/alertas');
 const { updateAlertaConfigSchema } = require('../schemas/alertas');
+
+// Tipos válidos = evaluables + settings.
+function tipoValido(tipo) {
+  return EVALUADORES[tipo] !== undefined || TIPOS_SETTING.has(tipo);
+}
 
 // Caché del evaluador completo. Cada PUT a /config invalida el caché
 // implícitamente (siguiente GET dentro de 60s puede devolver stale, pero
@@ -42,7 +47,7 @@ router.get('/config', async (_req, res, next) => {
 
 router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res, next) => {
   const tipo = String(req.params.tipo);
-  if (!EVALUADORES[tipo]) return res.status(400).json({ error: `Tipo de alerta desconocido: ${tipo}` });
+  if (!tipoValido(tipo)) return res.status(400).json({ error: `Tipo de alerta desconocido: ${tipo}` });
 
   const client = await db.connect();
   try {

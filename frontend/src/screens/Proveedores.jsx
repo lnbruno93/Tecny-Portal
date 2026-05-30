@@ -9,6 +9,7 @@ import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
+import TcWarning from '../components/TcWarning';
 
 
 
@@ -628,6 +629,7 @@ export default function Proveedores() {
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                           value={pagoForm.tc}
                           onChange={e => setPagoForm(f => ({ ...f, tc: e.target.value }))} />
+                        <TcWarning tc={pagoForm.tc} />
                       </div>
                     )}
                   </div>

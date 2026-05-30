@@ -173,17 +173,22 @@ const SEVERIDAD = {
 
 /**
  * Evalúa todas las alertas activas en paralelo. Devuelve un array de
- * "grupos" — uno por tipo activo, con items + metadata.
+ * "grupos" — uno por tipo activo evaluable, con items + metadata.
  * Si un evaluador falla, esa alerta queda en error pero las demás siguen.
+ *
+ * Importante: solo procesa tipos que tienen evaluador en EVALUADORES.
+ * Tipos "settings" (ej. tc_referencia, que es solo un valor de referencia
+ * consumido por el frontend) NO entran en el array de grupos — no son
+ * alertas activas, son configuración global.
  */
 async function evaluarTodas() {
   const { rows: configs } = await db.query(
     'SELECT tipo, activa, parametros FROM alertas_config ORDER BY tipo'
   );
-  const activos = configs.filter(c => c.activa);
-  const resultados = await Promise.all(activos.map(async (cfg) => {
+  // Filtrar: activos Y evaluables (con función registrada).
+  const evaluables = configs.filter(c => c.activa && EVALUADORES[c.tipo]);
+  const resultados = await Promise.all(evaluables.map(async (cfg) => {
     const fn = EVALUADORES[cfg.tipo];
-    if (!fn) return { tipo: cfg.tipo, error: `Tipo desconocido: ${cfg.tipo}`, items: [] };
     try {
       const items = await fn(cfg.parametros || {});
       return {
@@ -201,4 +206,10 @@ async function evaluarTodas() {
   return resultados;
 }
 
-module.exports = { evaluarTodas, EVALUADORES, TITULOS, SEVERIDAD };
+// Set de tipos que son "configuraciones globales" (no listas de items
+// que se muestren en /alertas → Activas). Front los renderiza como
+// settings cards aparte. La lista vive acá para que el route las pueda
+// filtrar/diferenciar al validar el PUT /config/:tipo.
+const TIPOS_SETTING = new Set(['tc_referencia']);
+
+module.exports = { evaluarTodas, EVALUADORES, TITULOS, SEVERIDAD, TIPOS_SETTING };

@@ -14,19 +14,27 @@ import { Icons } from '../components/Icons';
 import { alertas as alertasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { blockInvalidNumberKeys } from '../lib/inputUtils';
+import { useTcReferencia } from '../contexts/TcReferenciaContext';
 
 const TITULOS = {
   caja_negativa:      'Caja en negativo',
   stock_bajo:         'Stock bajo',
   cc_mora:            'Clientes en mora',
   proveedor_atrasado: 'Proveedores con deuda atrasada',
+  tc_referencia:      'TC de referencia (warning inline)',
 };
+
+// Tipos que NO son "alertas activas" sino settings globales. El front los
+// renderiza aparte en la pestaña Configurar (no aparecen en Activas).
+const TIPOS_SETTING = new Set(['tc_referencia']);
 
 // Etiqueta amigable + tipo de input para cada parámetro conocido.
 const PARAMETROS_META = {
   umbral_unidades:      { label: 'Unidades mínimas antes de alertar', tipo: 'number', min: 1, max: 1000 },
   dias_sin_pago:        { label: 'Días sin pago para considerar moroso', tipo: 'number', min: 1, max: 365 },
   dias_sin_movimiento:  { label: 'Días sin movimiento para alertar', tipo: 'number', min: 1, max: 365 },
+  valor:                { label: 'TC de referencia (ARS por USD)', tipo: 'number', min: 1, max: 100000 },
+  tolerancia_pct:       { label: '% de tolerancia por debajo', tipo: 'number', min: 0, max: 50 },
 };
 
 const COLOR_SEVERIDAD = {
@@ -148,13 +156,33 @@ function GrupoAlerta({ grupo }) {
 }
 
 export function TabConfig({ config, onSaved }) {
+  const settings   = config.filter(c => TIPOS_SETTING.has(c.tipo));
+  const evaluables = config.filter(c => !TIPOS_SETTING.has(c.tipo));
   return (
     <>
-      <div className="muted tiny" style={{ marginBottom: 12 }}>
-        Activá/desactivá cada tipo de alerta y ajustá los umbrales. Los cambios pueden tardar
-        hasta 60s en reflejarse en la pestaña "Activas" (cache).
+      {settings.length > 0 && (
+        <>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--text-muted)' }}>
+            Settings globales
+          </div>
+          <div className="muted tiny" style={{ marginBottom: 8 }}>
+            Valores de referencia que el frontend usa para advertir sobre posibles errores al cargar datos.
+            No generan alertas en la pestaña "Activas".
+          </div>
+          {settings.map(c => (
+            <ConfigRow key={c.tipo} cfg={c} onSaved={onSaved} />
+          ))}
+          <div style={{ height: 16 }} />
+        </>
+      )}
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: 'var(--text-muted)' }}>
+        Alertas evaluadas
       </div>
-      {config.map(c => (
+      <div className="muted tiny" style={{ marginBottom: 8 }}>
+        Activá/desactivá cada tipo y ajustá los umbrales. Los cambios pueden tardar hasta 60s en
+        reflejarse en la pestaña "Activas" (cache).
+      </div>
+      {evaluables.map(c => (
         <ConfigRow key={c.tipo} cfg={c} onSaved={onSaved} />
       ))}
     </>
@@ -163,17 +191,27 @@ export function TabConfig({ config, onSaved }) {
 
 function ConfigRow({ cfg, onSaved }) {
   const { toast } = useToast();
+  const { reload: reloadTcRef } = useTcReferencia();
   const [activa, setActiva] = useState(cfg.activa);
   const [params, setParams] = useState({ ...(cfg.parametros || {}) });
   const [saving, setSaving] = useState(false);
-  const parametrosKeys = Object.keys(cfg.parametros || {});
+  // Render solo las keys conocidas — evita mostrar internals como
+  // `alerta_por_debajo` (boolean) que el user no necesita ver.
+  const parametrosKeys = Object.keys(cfg.parametros || {}).filter(k => PARAMETROS_META[k]);
+
+  function notifyChange() {
+    onSaved?.();
+    // Si lo que cambió es el TC de referencia, recargá el context para que
+    // los warnings inline reflejen el cambio sin recargar la página.
+    if (cfg.tipo === 'tc_referencia') reloadTcRef();
+  }
 
   async function toggleActiva() {
     setSaving(true);
     try {
       await alertasApi.updateConfig(cfg.tipo, { activa: !activa });
       setActiva(!activa);
-      onSaved?.();
+      notifyChange();
       toast.success(`${TITULOS[cfg.tipo] || cfg.tipo} ${!activa ? 'activada' : 'desactivada'}`);
     } catch (e) { toast.error(e.message); } finally { setSaving(false); }
   }
@@ -192,7 +230,7 @@ function ConfigRow({ cfg, onSaved }) {
         }
       }
       await alertasApi.updateConfig(cfg.tipo, { parametros: parsed });
-      onSaved?.();
+      notifyChange();
       toast.success('Parámetros actualizados');
     } catch (e) { toast.error(e.message); } finally { setSaving(false); }
   }

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './components/ConfirmModal';
+import { TcReferenciaProvider } from './contexts/TcReferenciaContext';
 import Shell from './components/Shell';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './screens/Login';
@@ -94,6 +95,7 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
       <ConfirmProvider>
+      <TcReferenciaProvider>
       <PageActionsProvider>
         <BrowserRouter>
           <RequireAuth>
@@ -230,6 +232,7 @@ export default function App() {
           </RequireAuth>
         </BrowserRouter>
       </PageActionsProvider>
+      </TcReferenciaProvider>
       </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
