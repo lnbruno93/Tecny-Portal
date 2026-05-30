@@ -287,3 +287,9 @@ export const ocr = {
   // El backend espera { imageData, mediaType } y devuelve { monto }
   extract: (imageData, mediaType) => api('/api/ocr', 'POST', { imageData, mediaType }),
 };
+
+export const dashboard = {
+  // Resumen mensual con comparativo. params: { periodo, comparar_con } (YYYY-MM).
+  // Devuelve { actual, comparado, generado_en } — el delta % lo calcula el front.
+  resumenMensual: (params = {}) => api('/api/dashboard/resumen-mensual?' + new URLSearchParams(params)),
+};

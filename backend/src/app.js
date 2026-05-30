@@ -28,6 +28,7 @@ const ventasRoutes       = require('./routes/ventas');
 const ventasExtraRoutes  = require('./routes/ventas-extra');
 const proveedoresRoutes  = require('./routes/proveedores');
 const proyectosRoutes    = require('./routes/proyectos');
+const dashboardRoutes    = require('./routes/dashboard');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -246,6 +247,12 @@ app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasRo
 // Proveedores — requiere permiso "proveedores" (cuentas por pagar)
 app.use('/api/proveedores',   requireAuth, requirePermission('proveedores'), proveedoresRoutes);
 app.use('/api/proyectos',     requireAuth, requirePermission('proyectos'),   proyectosRoutes);
+
+// Dashboard mensual: vista de gerencia, agrega datos de varios módulos
+// (ventas, cajas, deudas, egresos). Reusa el permiso 'financiera' que ya
+// engloba reportes consolidados. Si se quiere granularidad, separar a
+// permiso 'dashboard' propio.
+app.use('/api/dashboard',     requireAuth, requirePermission('financiera'),  dashboardRoutes);
 
 // Usuarios — solo admin (requireAuth aquí + adminOnly dentro del router)
 app.use('/api/usuarios',      requireAuth, usuariosRoutes);

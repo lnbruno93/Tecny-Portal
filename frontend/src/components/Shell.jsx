@@ -75,6 +75,7 @@ function UpdateBanner() {
 // `group` agrupa visualmente el menú (separador entre grupos distintos).
 const NAV_MAIN = [
   { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null,          group: 1 },
+  { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  perm: 'financiera',  group: 1 },
   { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas',      group: 1 },
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
@@ -100,6 +101,7 @@ const NAV_SYS = [
 // Map path segment → display label for breadcrumb
 const SCREEN_LABELS = {
   inicio:     'Inicio',
+  resumen:    'Resumen del mes',
   cotizador:  'Cotizador',
   financiera: 'Financiera',
   cambios:    'Cambios de Divisa',
