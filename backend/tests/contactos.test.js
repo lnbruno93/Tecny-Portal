@@ -52,15 +52,15 @@ describe('Contactos — agenda', () => {
 
   it('busca por email/teléfono/dni', async () => {
     const byMail = await request(app).get('/api/contactos?buscar=ana@mail').set(auth());
-    expect(byMail.body.some(c => c.id === id)).toBe(true);
+    expect(byMail.body.data.some(c => c.id === id)).toBe(true);
     const byDni = await request(app).get('/api/contactos?buscar=30111').set(auth());
-    expect(byDni.body.some(c => c.id === id)).toBe(true);
+    expect(byDni.body.data.some(c => c.id === id)).toBe(true);
   });
 
   it('filtra por origen', async () => {
     const res = await request(app).get('/api/contactos?origen=proveedores').set(auth());
     expect(res.status).toBe(200);
-    expect(res.body.every(c => c.origen === 'proveedores')).toBe(true);
+    expect(res.body.data.every(c => c.origen === 'proveedores')).toBe(true);
   });
 
   it('edita la ficha del contacto', async () => {
@@ -76,7 +76,7 @@ describe('Contactos — agenda', () => {
     const del = await request(app).delete(`/api/contactos/${id}`).set(auth());
     expect(del.status).toBe(200);
     const list = await request(app).get('/api/contactos?buscar=ana@mail').set(auth());
-    expect(list.body.some(c => c.id === id)).toBe(false);
+    expect(list.body.data.some(c => c.id === id)).toBe(false);
   });
 
   // fecha_nacimiento: agregada para alimentar Data Science (cumpleaños, perfilado).

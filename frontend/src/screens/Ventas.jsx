@@ -213,9 +213,13 @@ export default function Ventas() {
     const [v, e, m, g, cc, ct] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
     ]);
-    // El endpoint de clientes B2B está paginado → { data, pagination }. Tomamos el array.
-    const ccArr = Array.isArray(cc) ? cc : (cc?.data ?? []);
-    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ct);
+    // Los endpoints paginados devuelven { data, pagination }. Usamos un
+    // unwrap defensivo: si vino array (endpoint no-paginado o vacío), tomar
+    // tal cual; si vino objeto con .data, extraerlo.
+    const unwrap = (r) => Array.isArray(r) ? r : (r?.data ?? []);
+    const ccArr = unwrap(cc);
+    const ctArr = unwrap(ct); // post-audit: contactos ahora paginado
+    setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ctArr);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);

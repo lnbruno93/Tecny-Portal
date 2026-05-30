@@ -3,12 +3,18 @@ const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
+const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createContactoSchema, updateContactoSchema, queryContactosSchema } = require('../schemas/contactos');
 
 
 router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) => {
   try {
-    const { buscar, tipo, origen, limit = 500, offset = 0 } = req.query;
+    const { buscar, tipo, origen } = req.query;
+    // Post-audit quick-win: paginar contactos (puede crecer a miles si el
+    // negocio acumula histórico de clientes). Default 500 conservador para
+    // preservar comportamiento de callers que cargan el listado completo
+    // (Ventas, Cajas); página 1 + limit 500 reproduce el shape viejo.
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 500, maxLimit: 500 });
     const conditions = ['deleted_at IS NULL'];
     const params = [];
 
@@ -27,11 +33,14 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
     }
 
     const where = conditions.join(' AND ');
-    const { rows } = await db.query(
-      `SELECT * FROM contactos WHERE ${where} ORDER BY nombre, apellido LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, Number(limit), Number(offset)]
-    );
-    res.json(rows);
+    const [countRes, dataRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) FROM contactos WHERE ${where}`, params),
+      db.query(
+        `SELECT * FROM contactos WHERE ${where} ORDER BY nombre, apellido LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+    ]);
+    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) {
     next(err);
   }

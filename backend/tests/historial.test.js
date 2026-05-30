@@ -304,9 +304,9 @@ describe('GET /api/contactos?buscar', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
     // Debería encontrar "Ana Garcia"
-    const nombres = res.body.map(c => c.nombre.toLowerCase());
+    const nombres = res.body.data.map(c => c.nombre.toLowerCase());
     expect(nombres.some(n => n.includes('ana'))).toBe(true);
   });
 
@@ -317,16 +317,17 @@ describe('GET /api/contactos?buscar', () => {
 
     expect(res.status).toBe(200);
     // "Carlos Lopez" debería aparecer — buscamos por nombre para evitar dependencia de collation
-    const nombres = res.body.map(c => c.nombre.toLowerCase());
+    const nombres = res.body.data.map(c => c.nombre.toLowerCase());
     expect(nombres.some(n => n.includes('carlos'))).toBe(true);
   });
 
-  it('sin buscar devuelve todos los contactos activos', async () => {
+  it('sin buscar devuelve todos los contactos activos paginados', async () => {
     const res = await request(app)
       .get('/api/contactos')
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.pagination).toBeTruthy();
   });
 });

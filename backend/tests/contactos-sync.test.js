@@ -24,7 +24,7 @@ describe('Recolección automática en la agenda', () => {
       .send({ nombre: 'Importadora Sur', contacto_nombre: 'Carlos', contacto_apellido: 'Méndez', whatsapp: '11-7777' });
     expect(prov.status).toBe(201);
 
-    const list = (await buscar('Carlos')).body;
+    const list = (await buscar('Carlos')).body.data;
     const c = list.find(x => x.origen === 'proveedores' && x.origen_ref_id === prov.body.id);
     expect(c).toBeTruthy();
     expect(c.nombre).toBe('Carlos');
@@ -37,7 +37,7 @@ describe('Recolección automática en la agenda', () => {
       .send({ nombre: 'Mayorista', apellido: 'Norte', contacto: '11-8888', categoria: 'A+' });
     expect(cli.status).toBe(201);
 
-    const c = (await buscar('Mayorista')).body.find(x => x.origen === 'b2b' && x.origen_ref_id === cli.body.id);
+    const c = (await buscar('Mayorista')).body.data.find(x => x.origen === 'b2b' && x.origen_ref_id === cli.body.id);
     expect(c).toBeTruthy();
     expect(c.telefono).toBe('11-8888');
   });
@@ -48,7 +48,7 @@ describe('Recolección automática en la agenda', () => {
     await request(app).put(`/api/proveedores/${prov.body.id}`).set(auth())
       .send({ contacto_nombre: 'Lucía', whatsapp: '11-2000' });
 
-    const matches = (await buscar('Lucía')).body.filter(x => x.origen_ref_tabla === 'proveedores' && x.origen_ref_id === prov.body.id);
+    const matches = (await buscar('Lucía')).body.data.filter(x => x.origen_ref_tabla === 'proveedores' && x.origen_ref_id === prov.body.id);
     expect(matches).toHaveLength(1);              // no se duplicó
     expect(matches[0].telefono).toBe('11-2000');  // se actualizó
   });
@@ -58,7 +58,7 @@ describe('Recolección automática en la agenda', () => {
     const prov = await request(app).post('/api/proveedores').set(auth())
       .send({ nombre: 'Proveedor Sin Persona' });
     expect(prov.status).toBe(201);
-    const c = (await buscar('Proveedor Sin Persona')).body.find(x => x.origen_ref_id === prov.body.id);
+    const c = (await buscar('Proveedor Sin Persona')).body.data.find(x => x.origen_ref_id === prov.body.id);
     expect(c).toBeTruthy();
     expect(c.nombre).toBe('Proveedor Sin Persona');
   });

@@ -1,10 +1,10 @@
 // ScrollFadeX — wrapper reactivo para containers con overflow horizontal.
 //
-// #F-4: el utility `.scroll-fade-x` original (#M-09) mostraba un fade-right
-// permanente, sin detectar si había overflow real ni si el usuario ya scrolleó
-// hasta el final. Este componente lo mejora con ResizeObserver + scroll
-// listener para mostrar el fade SOLO cuando hay contenido oculto en esa
-// dirección. Resultado:
+// #F-4: reemplazó al utility `.scroll-fade-x` original (#M-09, removido en
+// post-audit) que mostraba un fade-right permanente, sin detectar overflow
+// real ni posición de scroll. Este componente lo mejora con ResizeObserver
+// + scroll listener para mostrar el fade SOLO cuando hay contenido oculto
+// en esa dirección. Resultado:
 //   - Sin overflow → ningún fade.
 //   - Overflow + scrollLeft=0 → fade derecho.
 //   - Overflow + scrolleado al medio → fade izquierdo + derecho.

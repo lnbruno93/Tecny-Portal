@@ -24,8 +24,12 @@ const queryContactosSchema = z.object({
   buscar: z.string().max(200).optional(),
   tipo:   z.enum(TIPOS_CONTACTO).optional(),
   origen: z.enum(ORIGENES).optional(),
+  // Paginación con page/limit (estándar parsePagination). El backend ignora
+  // offset histórico — los pocos consumers que lo pasaban (sin page) caían en
+  // page=1 igual. limit conservador (500) para no romper consumers que cargan
+  // todo el listado.
+  page:   z.coerce.number().int().positive().optional(),
   limit:  z.coerce.number().int().positive().max(500).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
 });
 
 module.exports = { createContactoSchema, updateContactoSchema, queryContactosSchema, TIPOS_CONTACTO, ORIGENES };
