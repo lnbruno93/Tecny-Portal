@@ -121,16 +121,27 @@ const clientErrorLimiter = rateLimit({
   message: { error: 'rate-limit' },
 });
 app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' }), (req, res) => {
-  const { message, stack, url, userAgent, source, timestamp } = req.body || {};
+  const { message, stack, url, userAgent, source, timestamp,
+          build_commit: buildCommit, build_version: buildVersion } = req.body || {};
   // Logueamos como warning (no error) para no llenar el dashboard si la app
   // tiene un loop temporal. Sentry sí lo trata como error si está configurado.
-  logger.warn({ msg_client: message, stack, url, source, timestamp, ua: userAgent, ip: req.ip }, 'client error');
+  logger.warn({
+    msg_client: message, stack, url, source, timestamp,
+    ua: userAgent, ip: req.ip,
+    build_commit: buildCommit, build_version: buildVersion,
+  }, 'client error');
   try {
     const Sentry = require('@sentry/node');
     if (process.env.SENTRY_DSN) {
       Sentry.captureMessage(message || 'client error', {
         level: 'error',
-        tags:  { source: source || 'frontend' },
+        // Tags = filtros en el dashboard Sentry. source + build_commit permiten
+        // pivotar por "errores de este release" o "errores del frontend en X version".
+        tags: {
+          source:        source || 'frontend',
+          build_commit:  buildCommit  || 'unknown',
+          build_version: buildVersion || 'unknown',
+        },
         extra: { stack, url, userAgent, timestamp },
       });
     }
@@ -142,12 +153,38 @@ app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' 
 app.use(pinoHttp({
   logger,
   customProps: (req) => ({ userId: req.user?.id }),
-  autoLogging: { ignore: (req) => req.url === '/health' },
+  autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' },
   serializers: {
     req: (req) => ({ method: req.method, url: req.url }),
     res: (res) => ({ statusCode: res.statusCode }),
   },
 }));
+
+// Cache del commit SHA y el migration count — no cambian durante el runtime
+// del proceso, no tiene sentido recalcularlos en cada /health (UptimeRobot
+// pings cada 5 min × N años). Se invalidan solo en restart.
+let CACHED_COMMIT_SHA = null;
+let CACHED_MIGRATION_COUNT = null;
+function getCommitSha() {
+  if (CACHED_COMMIT_SHA !== null) return CACHED_COMMIT_SHA;
+  // Railway expone RAILWAY_GIT_COMMIT_SHA automáticamente.
+  // Fallback a GIT_COMMIT_SHA por si lo seteamos manualmente, o 'unknown'.
+  CACHED_COMMIT_SHA =
+    process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ||
+    process.env.GIT_COMMIT_SHA?.slice(0, 7) ||
+    'unknown';
+  return CACHED_COMMIT_SHA;
+}
+async function getMigrationCount() {
+  if (CACHED_MIGRATION_COUNT !== null) return CACHED_MIGRATION_COUNT;
+  try {
+    const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM pgmigrations');
+    CACHED_MIGRATION_COUNT = rows[0]?.n ?? null;
+  } catch {
+    CACHED_MIGRATION_COUNT = null; // no rompe el endpoint si la tabla no existe
+  }
+  return CACHED_MIGRATION_COUNT;
+}
 
 app.get('/health', async (_req, res) => {
   const start = Date.now();
@@ -169,12 +206,20 @@ app.get('/health', async (_req, res) => {
 
   const mem = process.memoryUsage();
   const status = dbStatus === 'ok' ? 'ok' : 'degraded';
+  const migrationCount = await getMigrationCount();
 
   res.status(status === 'ok' ? 200 : 503).json({
     status,
     ts:      new Date().toISOString(),
     uptime:  Math.floor(process.uptime()),
     version: process.env.npm_package_version || '1.0.0',
+    // commit SHA del deploy actual — útil para correlacionar errores Sentry
+    // con commits específicos. Si UptimeRobot devuelve esto en alerta, podés
+    // saber al toque qué cambió. Railway lo expone automáticamente.
+    commit:  getCommitSha(),
+    // Cantidad de migraciones aplicadas en la DB. Si después de un deploy este
+    // número no incrementó como esperabas, hay una migración trabada.
+    migrations: migrationCount,
     db: {
       status:     dbStatus,
       latency_ms: dbLatency,
@@ -193,6 +238,26 @@ app.get('/health', async (_req, res) => {
       heap_total_mb: Math.round(mem.heapTotal  / 1024 / 1024),
     },
   });
+});
+
+// /ready — readiness probe separado del /health.
+// Diferencia conceptual:
+//   /health = "el proceso está vivo" (memory, DB conectable). Si responde 503,
+//             Railway reinicia. Pings frecuentes de UptimeRobot.
+//   /ready  = "el proceso está listo para tomar tráfico" (DB conectable + DB
+//             schema al día). Útil para gates de deploy / blue-green.
+// Hoy ambos hacen check similar; el split permite políticas distintas más adelante
+// (ej. /ready falla si hay migraciones pendientes en STAGED_MIGRATIONS).
+app.get('/ready', async (_req, res) => {
+  try {
+    await Promise.race([
+      db.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('ready DB timeout')), 3_000)),
+    ]);
+    res.status(200).json({ ready: true, commit: getCommitSha() });
+  } catch (err) {
+    res.status(503).json({ ready: false, reason: err.message });
+  }
 });
 
 // Strict login rate limit: 10 failed attempts / 15 min per IP.

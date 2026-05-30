@@ -1,8 +1,39 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+// Build metadata inyectada al bundle como constantes globales — accesibles
+// desde el código frontend vía __BUILD_COMMIT__ y __BUILD_VERSION__.
+// Razón: cuando un error llega a Sentry, los stacktraces minificados solo
+// son legibles si sabemos qué build los generó. Sin esto, "main-abc123.js:1:34521"
+// es inútil. Con el commit SHA del build, podemos hacer source-maps o
+// re-build localmente para reproducir.
+function buildCommit() {
+  // En Railway/Netlify, el commit viene por env. En local, lo sacamos de git.
+  if (process.env.RAILWAY_GIT_COMMIT_SHA) return process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7);
+  if (process.env.COMMIT_REF)             return process.env.COMMIT_REF.slice(0, 7); // Netlify
+  if (process.env.GIT_COMMIT_SHA)         return process.env.GIT_COMMIT_SHA.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
+function buildVersion() {
+  try {
+    return JSON.parse(readFileSync('./package.json', 'utf8')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 export default defineConfig({
+  define: {
+    __BUILD_COMMIT__:  JSON.stringify(buildCommit()),
+    __BUILD_VERSION__: JSON.stringify(buildVersion()),
+  },
   plugins: [
     react(),
     VitePWA({
