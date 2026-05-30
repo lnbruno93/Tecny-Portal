@@ -8,6 +8,8 @@ import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 import VentaB2BModal from '../components/VentaB2BModal';
 import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import CajaSelectHint from '../components/CajaSelectHint';
+
 
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -330,6 +332,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                     onChange={e => upd(i, 'caja_id', e.target.value)}>
                     <option value="">Caja (opcional)…</option>
                     {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    <CajaSelectHint />
                   </select>
                 </div>
               </td>

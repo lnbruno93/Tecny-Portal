@@ -6,6 +6,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import CajaSelectHint from '../components/CajaSelectHint';
+
 
 
 const todayISO = () => new Date().toLocaleDateString('sv');
@@ -245,6 +247,7 @@ export default function Tarjetas() {
                     <select className="input" value={liq.caja_id} onChange={e => setLiq(f => ({ ...f, caja_id: e.target.value }))}>
                       <option value="">Elegí la caja…</option>
                       {cajas.filter(c => !c.es_tarjeta).map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}
+                      <CajaSelectHint />
                     </select>
                   </div>
                   <button className="btn btn-primary btn-sm" disabled={savingLiq} type="submit">{savingLiq ? '…' : 'Registrar'}</button>

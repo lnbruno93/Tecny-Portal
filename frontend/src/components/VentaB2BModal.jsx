@@ -28,6 +28,8 @@ import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
+import CajaSelectHint from './CajaSelectHint';
+
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -225,6 +227,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               <select className="input" value={cajaId} onChange={e => setCajaId(e.target.value)}>
                 <option value="">— Cuenta corriente (suma deuda) —</option>
                 {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                <CajaSelectHint />
               </select>
             </div>
             {((cajaId && monedaCaja !== 'USD') || rows.some(r => isUsedRow(r) && r.precio_moneda !== 'USD')) && (

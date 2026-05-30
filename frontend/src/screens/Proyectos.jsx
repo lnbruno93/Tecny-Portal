@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { proyectos as proyApi, contactos as contactosApi, cajas as cajasApi } from '../lib/api';
+import CajaSelectHint from '../components/CajaSelectHint';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -408,6 +409,7 @@ export default function Proyectos() {
                                   onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
                             <option value="">— Sin caja —</option>
                             {cajasList.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                            <CajaSelectHint />
                           </select>
                           {mov.caja_id && (
                             <select className="input mono"

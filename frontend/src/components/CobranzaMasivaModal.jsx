@@ -22,6 +22,8 @@ import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
+import CajaSelectHint from './CajaSelectHint';
+
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -212,6 +214,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               <select className="input" value={cajaDefault} onChange={e => setCD(e.target.value)}>
                 <option value="">— Sin default —</option>
                 {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                <CajaSelectHint />
               </select>
             </div>
             <div className="field" style={{ flex: '0 0 140px' }}>
@@ -311,6 +314,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                           onChange={e => updCell(idx, 'caja_id', e.target.value)}>
                           <option value="">—</option>
                           {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                          <CajaSelectHint />
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px' }}>

@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import CajaSelectHint from '../components/CajaSelectHint';
 
 
 const thisMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -217,6 +218,7 @@ export default function EgresosPanel() {
                       <select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}>
                         <option value="">— Elegir caja —</option>
                         {cajas.map(c => <option key={c.id} value={c.id}>{cajaNombre(c)}</option>)}
+                        <CajaSelectHint />
                       </select>
                     </div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Estado</label>
@@ -313,7 +315,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
           </div>
           <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Categoría</label><select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}><option value="">—</option>{categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
-            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Caja</label><select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}><option value="">—</option>{cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}</select></div>
+            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Caja</label><select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}><option value="">—</option>{cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}<CajaSelectHint /></select></div>
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!form.concepto.trim()}>+ Agregar</button>
           </div>
           <div className="stack" style={{ gap: 4 }}>
