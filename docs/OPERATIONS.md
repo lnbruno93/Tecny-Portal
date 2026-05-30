@@ -62,3 +62,33 @@ Las migraciones corren al arrancar el contenedor (`npm run migrate` en el startC
 2. **Migraciones como job único:** sacar `npm run migrate` del startCommand por-réplica y correrlo como release-phase/job aparte (node-pg-migrate toma advisory lock no-bloqueante: con varias réplicas arrancando juntas, las que no obtienen el lock fallan y reintentan → flapping).
 
 Hasta entonces, mantener `numReplicas: 1` en Railway.
+
+---
+
+## 5. Compactación de soft-deletes
+
+Las tablas con `deleted_at` no se purgan automáticamente — los borrados quedan como "fantasmas" para preservar auditoría e historial. Con el tiempo esto pesa en índices, backups y consultas con `WHERE deleted_at IS NULL`.
+
+**Script:** `backend/scripts/compactar-soft-deletes.js`
+
+```bash
+# Reporte (no destructivo): cuántas filas se podrían compactar.
+DATABASE_URL="<production-url>" node backend/scripts/compactar-soft-deletes.js
+
+# Ejecutar con confirmación interactiva ("BORRAR" para proceder):
+DATABASE_URL="<production-url>" node backend/scripts/compactar-soft-deletes.js --execute
+
+# Cambiar ventana de retención (default 12 meses):
+DATABASE_URL="<production-url>" node backend/scripts/compactar-soft-deletes.js --months=24
+
+# Una sola tabla:
+DATABASE_URL="<production-url>" node backend/scripts/compactar-soft-deletes.js --table=caja_movimientos
+```
+
+**Whitelist (tablas que compacta):** `caja_movimientos`, `movimientos_deudas`, `movimientos_inversiones`. Otras tablas hijo (items_movimiento_cc, envio_items, canjes, proveedor_movimiento_items) usan CASCADE en lugar de soft-delete y por lo tanto no acumulan fantasmas — el script las skipea automáticamente si las encuentra en la whitelist sin la columna. Para agregar tablas, editar el script deliberadamente.
+
+**Tablas excluidas a propósito:** `productos`, `ventas`, `movimientos_cc`, `envios`, `proveedor_movimientos`, `tarjeta_movimientos`, `cambio_movimientos`, `audit_logs`, `historial`, `comprobantes`, `pagos`. Razón: trazabilidad regulatoria, saldos históricos, o auditoría.
+
+**Cadencia sugerida:** correr el reporte (sin `--execute`) trimestralmente. Compactar solo si los conteos justifican la operación (>10k filas en alguna tabla). Hacer **backup completo antes** de ejecutar.
+
+**Después del DELETE:** considerar `VACUUM ANALYZE <tabla>;` en psql para recuperar espacio físico y refrescar estadísticas.
