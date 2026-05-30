@@ -77,7 +77,6 @@ function UpdateBanner() {
 const NAV_MAIN = [
   { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null,          group: 1 },
   { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  perm: 'financiera',  group: 1 },
-  { id: 'alertas',    path: '/alertas',    label: 'Alertas',         icon: 'Bell',   perm: 'financiera',  group: 1 },
   { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas',      group: 1 },
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
@@ -105,7 +104,6 @@ const NAV_SYS = [
 const SCREEN_LABELS = {
   inicio:     'Inicio',
   resumen:    'Resumen del mes',
-  alertas:    'Alertas',
   cotizador:  'Cotizador',
   financiera: 'Financiera',
   cambios:    'Cambios de Divisa',
@@ -206,6 +204,9 @@ function Sidebar({ badges = {}, open, onClose }) {
                 >
                   <span className="ico">{I && <I size={16} />}</span>
                   <span>{n.label}</span>
+                  {badges[n.id] != null && (
+                    <span className="badge" style={{ background: 'var(--neg)', color: '#fff' }}>{badges[n.id]}</span>
+                  )}
                 </NavLink>
               );
             })}
@@ -324,7 +325,12 @@ export default function Shell() {
     let cancelled = false;
     function refresh() {
       alertasApi.list()
-        .then(r => { if (!cancelled) setBadges(b => ({ ...b, alertas: r.total_alertas || null })); })
+        .then(r => {
+          // El badge cuelga del item "config" del menú Sistema — Alertas
+          // ahora vive como tab dentro de Config, así el contador aparece
+          // donde el usuario va a actuar sobre ellas.
+          if (!cancelled) setBadges(b => ({ ...b, config: r.total_alertas || null }));
+        })
         .catch(() => {});
     }
     refresh();

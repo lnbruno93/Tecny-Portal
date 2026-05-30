@@ -3,6 +3,7 @@ import { Icons } from '../components/Icons';
 import { config as configApi } from '../lib/api';
 import { fmt } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import AlertasModule from './Alertas';
 
 
 const SYSTEM_LIMITS = [
@@ -15,6 +16,7 @@ const SYSTEM_LIMITS = [
 ];
 
 export default function Config() {
+  const [tab, setTab]           = useState('general'); // 'general' | 'alertas'
   const [pct, setPct]           = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [saving, setSaving]     = useState(false);
@@ -88,6 +90,23 @@ export default function Config() {
           <div className="page-sub">Ajustes globales del portal · sólo administradores</div>
         </div>
       </div>
+
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div className="flex-row" style={{ gap: 4, marginBottom: 16 }}>
+        <button className={'btn ' + (tab === 'general' ? 'btn-primary' : '')}
+                onClick={() => setTab('general')}>
+          General
+        </button>
+        <button className={'btn ' + (tab === 'alertas' ? 'btn-primary' : '')}
+                onClick={() => setTab('alertas')}>
+          <Icons.Bell size={14} /> Alertas
+        </button>
+      </div>
+
+      {tab === 'alertas' && <AlertasModule />}
+
+      {tab === 'general' && (
+      <>
 
       {/* ── Split layout ──────────────────────────────────────────────────── */}
       <div style={{
@@ -245,6 +264,8 @@ export default function Config() {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

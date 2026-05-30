@@ -1,11 +1,12 @@
-// Pantalla "Alertas" — dos tabs: Activas (vista de gerencia) y Config.
+// Módulo "Alertas" — exporta `AlertasModule` para embebido dentro de Config
+// (como un tab) sin asumir un page-head propio. El consumidor (Config.jsx)
+// renderiza el header y wrappea el módulo.
+//
+// Dos sub-vistas internas: Activas (lista de alertas que disparan ahora) y
+// Configuración (toggle on/off + edit de umbrales).
 //
 // Activas: agrupa por tipo (caja_negativa, stock_bajo, cc_mora, proveedor_atrasado)
-// con count + lista expandible con detalle de cada item + link al lugar de
-// acción (módulo correspondiente).
-//
-// Config: toggle on/off por tipo + form para editar parámetros (umbral en
-// productos para stock_bajo, días sin pago para cc_mora, etc.).
+// con count + lista expandible + link al lugar de acción.
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
@@ -35,9 +36,9 @@ const COLOR_SEVERIDAD = {
   baja:    'var(--text-muted)',
 };
 
-export default function Alertas() {
+export default function AlertasModule() {
   const { toast } = useToast();
-  const [tab, setTab] = useState('activas');
+  const [subtab, setSubtab] = useState('activas');
   const [activas, setActivas] = useState(null);   // { grupos, total_alertas, generado_en }
   const [config, setConfig] = useState([]);       // [{tipo, activa, parametros, ...}]
   const [loading, setLoading] = useState(true);
@@ -53,25 +54,18 @@ export default function Alertas() {
 
   return (
     <div>
-      <div className="page-head">
-        <h1>Alertas</h1>
-        <div className="muted tiny">
-          Resumen de situaciones que necesitan tu atención. Configurá umbrales en la pestaña "Config".
-        </div>
-      </div>
-
       <div className="flex-row" style={{ gap: 4, marginBottom: 12 }}>
-        <button className={'btn ' + (tab === 'activas' ? 'btn-primary' : '')}
-                onClick={() => setTab('activas')}>
+        <button className={'btn ' + (subtab === 'activas' ? 'btn-primary' : '')}
+                onClick={() => setSubtab('activas')}>
           Activas {activas?.total_alertas > 0 && (
             <span className="badge" style={{ background: 'var(--neg)', color: '#fff', marginLeft: 6 }}>
               {activas.total_alertas}
             </span>
           )}
         </button>
-        <button className={'btn ' + (tab === 'config' ? 'btn-primary' : '')}
-                onClick={() => setTab('config')}>
-          Configuración
+        <button className={'btn ' + (subtab === 'config' ? 'btn-primary' : '')}
+                onClick={() => setSubtab('config')}>
+          Configurar alertas
         </button>
         <button className="btn btn-ghost btn-sm" onClick={loadAll} title="Recargar">
           <Icons.Refresh size={14} />
@@ -79,7 +73,7 @@ export default function Alertas() {
       </div>
 
       {loading ? <div className="empty">Cargando…</div> : (
-        tab === 'activas'
+        subtab === 'activas'
           ? <TabActivas data={activas} />
           : <TabConfig config={config} onSaved={loadAll} />
       )}
@@ -87,7 +81,7 @@ export default function Alertas() {
   );
 }
 
-function TabActivas({ data }) {
+export function TabActivas({ data }) {
   if (!data) return <div className="empty">Sin datos.</div>;
   if (data.total_alertas === 0) {
     return (
@@ -153,7 +147,7 @@ function GrupoAlerta({ grupo }) {
   );
 }
 
-function TabConfig({ config, onSaved }) {
+export function TabConfig({ config, onSaved }) {
   return (
     <>
       <div className="muted tiny" style={{ marginBottom: 12 }}>
