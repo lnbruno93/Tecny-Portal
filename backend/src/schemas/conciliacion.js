@@ -28,13 +28,23 @@ const createConciliacionSchema = z.object({
   });
 
 // Actualizar una línea: match con caja_mov, unmatch, ignorar, nota.
-// Solo se permite UNA acción por request (los 3 son mutuamente excluyentes).
+// Una línea no puede estar `ignorada=true` y matcheada a la vez — semánticamente
+// contradictorio (si la ignorás, no la imputás al ledger). El refine de abajo
+// asegura ese invariante a nivel API.
 const updateLineaSchema = z.object({
   matched_caja_mov_id: z.coerce.number().int().positive().nullable().optional(),
   ignorada:            z.boolean().optional(),
   nota:                z.string().trim().max(500).nullable().optional(),
-}).strict().refine(d => Object.keys(d).length > 0, {
-  message: 'Indicá qué actualizar',
-});
+}).strict()
+  .refine(d => Object.keys(d).length > 0, {
+    message: 'Indicá qué actualizar',
+  })
+  .refine(
+    d => !(d.ignorada === true && d.matched_caja_mov_id != null),
+    {
+      message: 'Una línea ignorada no puede estar matcheada a un movimiento',
+      path: ['ignorada'],
+    }
+  );
 
 module.exports = { createConciliacionSchema, updateLineaSchema };

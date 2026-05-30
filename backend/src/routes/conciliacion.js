@@ -16,12 +16,28 @@
 //      (conciliado_en → NULL).
 
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createConciliacionSchema, updateLineaSchema } = require('../schemas/conciliacion');
+
+// Rate-limit POST /conciliacion (creación + auto-match). La query escanea
+// caja_movimientos en el período + tolerancia y hace una pasada O(L*M) para
+// auto-match. Un cliente podría disparar muchas creaciones simultáneas y
+// saturar la DB. 10 por 15 min por usuario es suficiente para flujo humano.
+const conciliacionPostLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `conciliacion:create:${req.user?.id || req.ip}`,
+  message: { error: 'Demasiadas conciliaciones creadas. Esperá unos minutos.' },
+  // En tests skipeamos para no entorpecer el flujo de error-paths.
+  skip: () => process.env.NODE_ENV === 'test',
+});
 
 // ──────────────────────────────────────────────────────────────────────
 // Auto-match: para cada línea del extracto, busca el primer movimiento
@@ -80,7 +96,7 @@ async function autoMatchLineas(client, conciliacionId, cajaId, lineas, toleranci
 // ──────────────────────────────────────────────────────────────────────
 // POST /api/conciliacion — crear + auto-match
 // ──────────────────────────────────────────────────────────────────────
-router.post('/', validate(createConciliacionSchema), async (req, res, next) => {
+router.post('/', conciliacionPostLimiter, validate(createConciliacionSchema), async (req, res, next) => {
   const { caja_id, fecha_desde, fecha_hasta, archivo_nombre, archivo_hash,
           tolerancia_dias, lineas } = req.body;
 
@@ -105,10 +121,30 @@ router.post('/', validate(createConciliacionSchema), async (req, res, next) => {
       [caja_id, fecha_desde, fecha_hasta, archivo_nombre ?? null, archivo_hash ?? null, req.user.id]
     );
 
-    // Insertar líneas en batch (UNNEST).
+    // Insertar líneas en batch (UNNEST). Construimos los 3 arrays paralelos
+    // y validamos que sean del mismo tamaño y que no tengan valores inválidos
+    // antes de mandarlos a postgres: UNNEST tolera arrays de distinto tamaño
+    // pero produce filas con NULLs implícitos, lo cual rompería NOT NULL del
+    // schema y bloquearía toda la TX con un error confuso.
     const fechasArr = lineas.map(l => l.fecha);
     const montosArr = lineas.map(l => Number(l.monto));
     const descsArr  = lineas.map(l => l.descripcion ?? null);
+    if (fechasArr.length !== montosArr.length || montosArr.length !== descsArr.length) {
+      await client.query('ROLLBACK');
+      return res.status(500).json({ error: 'Internal: arrays paralelos desincronizados' });
+    }
+    // Re-validación defensiva: el schema ya lo hace (z.coerce.number con refine),
+    // pero si llegara una línea con monto NaN/0, abortamos antes del INSERT.
+    for (let i = 0; i < lineas.length; i++) {
+      if (!Number.isFinite(montosArr[i]) || Math.abs(montosArr[i]) < 0.005) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Línea ${i + 1}: monto inválido` });
+      }
+      if (!fechasArr[i] || !/^\d{4}-\d{2}-\d{2}$/.test(fechasArr[i])) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Línea ${i + 1}: fecha inválida` });
+      }
+    }
     const { rows: lineasIns } = await client.query(
       `INSERT INTO conciliacion_lineas (conciliacion_id, fecha, monto, descripcion)
        SELECT $1, u.f, u.m, u.d
@@ -154,15 +190,21 @@ router.get('/', async (req, res, next) => {
       conditions.push(`c.caja_id = $${params.length}`);
     }
     const where = conditions.join(' AND ');
+    // LEFT JOIN a metodos_pago + COALESCE: si la caja fue soft-deleted después
+    // de crear la conciliación, no queremos que la conciliación desaparezca
+    // del listado (sería confuso para auditoría). Mostramos "(caja eliminada)"
+    // en su lugar.
     const [countRes, dataRes] = await Promise.all([
       db.query(`SELECT COUNT(*) FROM conciliaciones c WHERE ${where}`, params),
       db.query(
-        `SELECT c.*, mp.nombre AS caja_nombre, mp.moneda AS caja_moneda,
+        `SELECT c.*,
+                COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
+                mp.moneda AS caja_moneda,
                 COUNT(cl.id)::int AS lineas_total,
                 COUNT(cl.id) FILTER (WHERE cl.matched_caja_mov_id IS NOT NULL)::int AS lineas_matched,
                 COUNT(cl.id) FILTER (WHERE cl.ignorada)::int AS lineas_ignoradas
            FROM conciliaciones c
-           JOIN metodos_pago mp ON mp.id = c.caja_id
+           LEFT JOIN metodos_pago mp ON mp.id = c.caja_id
            LEFT JOIN conciliacion_lineas cl ON cl.conciliacion_id = c.id
           WHERE ${where}
           GROUP BY c.id, mp.nombre, mp.moneda
@@ -183,10 +225,16 @@ router.get('/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
+    // LEFT JOIN: si la caja fue soft-deleted, queremos seguir mostrando la
+    // conciliación (con "(caja eliminada)" en nombre). Antes era INNER JOIN
+    // y un delete de la caja hacía desaparecer todas las conciliaciones
+    // ligadas — pérdida de visibilidad de auditoría.
     const { rows: c } = await db.query(
-      `SELECT c.*, mp.nombre AS caja_nombre, mp.moneda AS caja_moneda
+      `SELECT c.*,
+              COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
+              mp.moneda AS caja_moneda
          FROM conciliaciones c
-         JOIN metodos_pago mp ON mp.id = c.caja_id
+         LEFT JOIN metodos_pago mp ON mp.id = c.caja_id
         WHERE c.id = $1 AND c.deleted_at IS NULL`,
       [id]
     );
@@ -247,12 +295,29 @@ router.put('/:id/lineas/:lineaId', validate(updateLineaSchema), async (req, res,
       return res.status(409).json({ error: 'La conciliación ya está cerrada. No se puede editar.' });
     }
 
-    // La línea debe pertenecer a esta conciliación.
+    // La línea debe pertenecer a esta conciliación. Leemos estado actual para
+    // validar cross-request: el schema rechaza payloads `ignorada=true + match`
+    // en la misma request, pero falta el caso "línea ya ignorada y ahora se
+    // intenta matchear sin desmarcar ignorada" (o viceversa).
     const { rows: l } = await client.query(
-      'SELECT id FROM conciliacion_lineas WHERE id = $1 AND conciliacion_id = $2',
+      'SELECT id, ignorada, matched_caja_mov_id FROM conciliacion_lineas WHERE id = $1 AND conciliacion_id = $2',
       [lineaId, concId]
     );
     if (!l[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Línea no encontrada' }); }
+
+    // Validar estado resultante: línea no puede quedar simultáneamente
+    // `ignorada=true` AND `matched_caja_mov_id != null`. Si el request setea
+    // uno pero no el otro, se mantiene el valor previo — controlamos ese cruce.
+    const ignoradaFinal = req.body.ignorada !== undefined ? req.body.ignorada : l[0].ignorada;
+    const matchFinal = req.body.matched_caja_mov_id !== undefined
+      ? req.body.matched_caja_mov_id
+      : l[0].matched_caja_mov_id;
+    if (ignoradaFinal === true && matchFinal != null) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'No podés ignorar una línea matcheada. Primero desmatcheala (matched_caja_mov_id: null) o no la ignores.',
+      });
+    }
 
     // Si nos pasaron matched_caja_mov_id, validar que el mov pertenezca a la
     // caja correcta, no esté borrado, y no esté ya matched en otra línea de
@@ -329,18 +394,38 @@ router.post('/:id/cerrar', async (req, res, next) => {
       return res.status(409).json({ error: 'La conciliación ya está cerrada.' });
     }
 
-    // Marcar conciliado_en + conciliacion_id en cada caja_mov matched
-    // (que no estuviese ya conciliado por otra sesión).
-    const { rowCount: cerrados } = await client.query(
-      `UPDATE caja_movimientos
-          SET conciliado_en = NOW(), conciliacion_id = $1
-        WHERE id IN (
+    // Race condition fix: dos conciliaciones distintas podrían intentar cerrar
+    // simultáneamente, ambas matcheando el mismo caja_movimiento. Sin lock,
+    // ambas UPDATEs ven `conciliado_en IS NULL` y la última pisaría el match
+    // de la primera (silenciosamente, porque WHERE conciliado_en IS NULL en
+    // un UPDATE no es snapshot-isolated en READ COMMITTED).
+    //
+    // Fix: SELECT ... FOR UPDATE primero — adquiere row-locks. Si otra TX
+    // tenía la fila, esperamos (o detectamos que ya quedó conciliada y la
+    // excluimos del UPDATE).
+    const { rows: movsLockeados } = await client.query(
+      `SELECT cm.id FROM caja_movimientos cm
+        WHERE cm.id IN (
           SELECT matched_caja_mov_id FROM conciliacion_lineas
            WHERE conciliacion_id = $1 AND matched_caja_mov_id IS NOT NULL
         )
-        AND conciliado_en IS NULL`,
+        AND cm.conciliado_en IS NULL
+        AND cm.deleted_at IS NULL
+        FOR UPDATE`,
       [id]
     );
+    const idsACerrar = movsLockeados.map(m => m.id);
+
+    let cerrados = 0;
+    if (idsACerrar.length > 0) {
+      const r = await client.query(
+        `UPDATE caja_movimientos
+            SET conciliado_en = NOW(), conciliacion_id = $1
+          WHERE id = ANY($2::int[])`,
+        [id, idsACerrar]
+      );
+      cerrados = r.rowCount;
+    }
 
     // Cerrar la conciliación.
     const { rows: cerrada } = await client.query(
