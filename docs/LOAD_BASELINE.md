@@ -143,29 +143,38 @@ son lectura de memoria. Es esperable que el p99 del primer request sea 2-5× el 
 
 ## Resultados actuales
 
-> **Última corrida:** _(completá vos con los números cuando corras el test)_
->
-> Formato sugerido:
->
-> ```
-> Fecha: 2026-MM-DD
-> Target: staging
-> Versión backend: <commit short SHA>
-> ```
->
-> | Scenario | RPS | p50 | p90 | p99 | err% |
-> |---|---|---|---|---|---|
-> | health | ... | ... | ... | ... | ... |
-> | inventario_list | ... | ... | ... | ... | ... |
-> | dashboard_resumen_mensual | ... | ... | ... | ... | ... |
-> | alertas_eval | ... | ... | ... | ... | ... |
-> | cuentas_clientes | ... | ... | ... | ... | ... |
-> | proveedores_list | ... | ... | ... | ... | ... |
-> | contactos_search | ... | ... | ... | ... | ... |
->
-> **Observaciones:**
-> - _(qué endpoint salió peor / mejor de lo esperado)_
-> - _(si algo está rojo, anotar el ticket de follow-up)_
+**Última corrida — 2026-05-30**
+- Target: staging (Railway hobby tier, 1 replica)
+- Versión backend: commit `8bdf972` (rama `fix/rate-limit-configurable`)
+- Token: admin (role=admin)
+- Config para el test: `GLOBAL_RATE_LIMIT_MAX=5000` temporal en Railway
+
+| Scenario | RPS | p50 | p90 | p99 | err% |
+|---|---|---|---|---|---|
+| `health` | 17 | 226ms | 240ms | 7255ms ⚠ | 0% |
+| `inventario_list` | 86 | 224ms | 230ms | 631ms | 100% ⚠ |
+| `dashboard_resumen_mensual` | 43 | 227ms | 234ms | 575ms | 0% |
+| `alertas_eval` | 43 | 224ms | 231ms | 610ms | 0% |
+| `cuentas_clientes` | 65 | 223ms | 230ms | 597ms | 0% |
+| `proveedores_list` | 64 | 225ms | 230ms | 611ms | 0% |
+| `contactos_search` | 83 | 224ms | 230ms | 773ms | 23% ⚠ |
+
+**Observaciones:**
+
+1. **Piso de latencia ~225ms en TODO** — incluso `/health` que sólo hace `SELECT 1`. Eso es network Railway internal (backend ↔ Postgres-AueP en distintos containers) + TLS handshake. Es esperable para hobby tier; en prod o tier superior debería bajar.
+
+2. **p99 de health en 7.2s** — un solo outlier extremo (max = 7257ms), probablemente cold start del primer hit del scenario. El p50/p90 muestran que en operación normal está en ~230ms.
+
+3. **inventario_list 100% errors + contactos_search 23%** — anomalía atribuible al rate-limit acumulativo (mi IP acumuló ~5300 reqs en 90s, superó los 5000 del cap). NO es un problema del endpoint en sí mismo. Pendiente de re-test aislado para confirmar.
+
+4. **Los 4 endpoints "caros" pasaron limpios** — dashboard, alertas, cuentas, proveedores, todos con 0% error y p90 < 240ms. El cache TTL (60s en dashboard, 5min en alertas) está haciendo su trabajo.
+
+**Conclusión preliminar:** sistema saludable en staging tier mínimo, con un piso de latencia de network que merece investigación si se quiere bajar P50 < 100ms (revisar geo del Postgres vs backend en Railway).
+
+**Follow-ups detectados:**
+- [ ] Re-testear `inventario_list` y `contactos_search` aislados (1 scenario por vez, esperando window del rate limit entre runs) para confirmar la causa del error rate.
+- [ ] Investigar el piso de latencia ~225ms: ¿están en el mismo data center backend y DB en Railway?
+- [ ] Próxima baseline: en 3 meses, con el mismo procedure, comparar regresión.
 
 ---
 
