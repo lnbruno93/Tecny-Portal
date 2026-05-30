@@ -195,3 +195,104 @@ describe('Conciliación: casos de borde', () => {
     await pool.query('DELETE FROM caja_movimientos WHERE id = $1', [movId]);
   });
 });
+
+// Tests de los fixes de TANDA 0 (auditoría post-features).
+describe('Conciliación: fixes TANDA 0', () => {
+  it('schema refine: ignorada=true + matched_caja_mov_id en misma request → 400', async () => {
+    // Crear conciliación rápida con 1 línea matcheada
+    const { rows } = await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto)
+       VALUES ($1, '2026-07-01', 'ingreso', 333, 333, 'venta', 'TestT0') RETURNING id`,
+      [cajaId]
+    );
+    const movT = rows[0].id;
+    const cr = await request(app).post('/api/conciliacion').set(auth()).send({
+      caja_id: cajaId,
+      fecha_desde: '2026-07-01', fecha_hasta: '2026-07-31',
+      lineas: [{ fecha: '2026-07-01', monto: 333, descripcion: 'T0' }],
+    });
+    expect(cr.status).toBe(201);
+    const concIdT = cr.body.id;
+    const det = await request(app).get(`/api/conciliacion/${concIdT}`).set(auth());
+    const lid = det.body.lineas[0].id;
+
+    // Payload contradictorio en la misma request
+    const bad = await request(app)
+      .put(`/api/conciliacion/${concIdT}/lineas/${lid}`).set(auth())
+      .send({ ignorada: true, matched_caja_mov_id: movT });
+    expect(bad.status).toBe(400);
+
+    // Cleanup
+    await request(app).delete(`/api/conciliacion/${concIdT}`).set(auth());
+    await pool.query('DELETE FROM caja_movimientos WHERE id = $1', [movT]);
+  });
+
+  it('cross-request invariant: línea ya matched + intento de ignorar sin desmatch → 409', async () => {
+    const { rows } = await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto)
+       VALUES ($1, '2026-07-15', 'ingreso', 444, 444, 'venta', 'TestX') RETURNING id`,
+      [cajaId]
+    );
+    const movX = rows[0].id;
+    const cr = await request(app).post('/api/conciliacion').set(auth()).send({
+      caja_id: cajaId,
+      fecha_desde: '2026-07-01', fecha_hasta: '2026-07-31',
+      lineas: [{ fecha: '2026-07-15', monto: 444, descripcion: 'X' }],
+    });
+    const concIdX = cr.body.id;
+    const det = await request(app).get(`/api/conciliacion/${concIdX}`).set(auth());
+    const lid = det.body.lineas[0].id;
+    expect(det.body.lineas[0].matched_caja_mov_id).toBe(movX);
+
+    // Ahora intento poner ignorada=true sin tocar matched → debe fallar 409
+    const r = await request(app)
+      .put(`/api/conciliacion/${concIdX}/lineas/${lid}`).set(auth())
+      .send({ ignorada: true });
+    expect(r.status).toBe(409);
+
+    // Cleanup
+    await request(app).delete(`/api/conciliacion/${concIdX}`).set(auth());
+    await pool.query('DELETE FROM caja_movimientos WHERE id = $1', [movX]);
+  });
+
+  it('GET sigue mostrando conciliaciones con caja soft-deleted (LEFT JOIN)', async () => {
+    // Crear caja efímera + conciliación + soft-delete de la caja.
+    const k = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Efimera', moneda: 'USD', saldo_inicial: 0 });
+    const cajaEfimera = k.body.id;
+    const { rows } = await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto)
+       VALUES ($1, '2026-08-01', 'ingreso', 100, 100, 'venta', 'TestE') RETURNING id`,
+      [cajaEfimera]
+    );
+    const movE = rows[0].id;
+    const cr = await request(app).post('/api/conciliacion').set(auth()).send({
+      caja_id: cajaEfimera,
+      fecha_desde: '2026-08-01', fecha_hasta: '2026-08-31',
+      lineas: [{ fecha: '2026-08-01', monto: 100, descripcion: 'E' }],
+    });
+    expect(cr.status).toBe(201);
+    const concIdE = cr.body.id;
+    // Soft-delete la caja directo en DB (no via API, que valida balance).
+    await pool.query('UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1', [cajaEfimera]);
+
+    // GET listado debe seguir mostrando la conciliación
+    const list = await request(app).get('/api/conciliacion?limit=100').set(auth());
+    const found = list.body.data.find(c => c.id === concIdE);
+    expect(found).toBeTruthy();
+    expect(found.caja_nombre).toBe('(caja eliminada)');
+
+    // GET detalle también debe funcionar
+    const det = await request(app).get(`/api/conciliacion/${concIdE}`).set(auth());
+    expect(det.status).toBe(200);
+    expect(det.body.caja_nombre).toBe('(caja eliminada)');
+
+    // Cleanup. La caja Efimera queda soft-deleted (no se puede hard-delete
+    // por FK RESTRICT desde conciliaciones; afterAll del file barre todo).
+    await request(app).delete(`/api/conciliacion/${concIdE}`).set(auth());
+    await pool.query('DELETE FROM conciliacion_lineas WHERE conciliacion_id = $1', [concIdE]);
+    await pool.query('DELETE FROM conciliaciones WHERE id = $1', [concIdE]);
+    await pool.query('DELETE FROM caja_movimientos WHERE id = $1', [movE]);
+    await pool.query('DELETE FROM metodos_pago WHERE id = $1', [cajaEfimera]);
+  });
+});

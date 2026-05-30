@@ -204,7 +204,7 @@ router.get('/', async (req, res, next) => {
                 COUNT(cl.id) FILTER (WHERE cl.matched_caja_mov_id IS NOT NULL)::int AS lineas_matched,
                 COUNT(cl.id) FILTER (WHERE cl.ignorada)::int AS lineas_ignoradas
            FROM conciliaciones c
-           LEFT JOIN metodos_pago mp ON mp.id = c.caja_id
+           LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
            LEFT JOIN conciliacion_lineas cl ON cl.conciliacion_id = c.id
           WHERE ${where}
           GROUP BY c.id, mp.nombre, mp.moneda
@@ -234,7 +234,7 @@ router.get('/:id', async (req, res, next) => {
               COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
               mp.moneda AS caja_moneda
          FROM conciliaciones c
-         LEFT JOIN metodos_pago mp ON mp.id = c.caja_id
+         LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
         WHERE c.id = $1 AND c.deleted_at IS NULL`,
       [id]
     );

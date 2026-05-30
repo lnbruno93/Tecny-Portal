@@ -11,65 +11,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { readXlsxRows } from '../lib/xlsx';
 import { blockInvalidNumberKeys } from '../lib/inputUtils';
-
-// ─── Parser CSV mínimo (igual al de Inventario) ────────────────────────
-function parseCsv(text) {
-  const rows = [];
-  let row = [], field = '', inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
-      else field += c;
-    } else if (c === '"') inQuotes = true;
-    else if (c === ',' || c === ';') { row.push(field); field = ''; }
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++;
-      row.push(field); field = '';
-      if (row.some(v => v.trim() !== '')) rows.push(row);
-      row = [];
-    } else field += c;
-  }
-  if (field || row.length) { row.push(field); if (row.some(v => v.trim() !== '')) rows.push(row); }
-  return rows;
-}
-
-// ─── Parser de monto: convierte "1.234,56" o "-200.00" a Number ────────
-function parseMonto(s) {
-  if (s == null) return 0;
-  const str = String(s).trim();
-  if (!str) return 0;
-  // Detección heurística: si hay coma Y punto, es es-AR (1.234,56 → 1234.56).
-  // Si hay solo coma, es decimal LATAM (1,50 → 1.50).
-  // Si hay solo punto o nada, ya es parseable.
-  let normalizado = str;
-  if (str.includes(',') && str.includes('.')) {
-    normalizado = str.replace(/\./g, '').replace(',', '.');
-  } else if (str.includes(',')) {
-    normalizado = str.replace(',', '.');
-  }
-  // Quitar caracteres no numéricos excepto - y .
-  normalizado = normalizado.replace(/[^\d.\-]/g, '');
-  const n = Number(normalizado);
-  return Number.isFinite(n) ? n : 0;
-}
-
-// ─── Parser de fecha: tolerante a varios formatos comunes ──────────────
-function parseFecha(s) {
-  if (s == null) return null;
-  const str = String(s).trim();
-  if (!str) return null;
-  // YYYY-MM-DD: ya está bien.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  // DD/MM/YYYY o DD-MM-YYYY
-  const m = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-  if (m) {
-    let [, d, mo, y] = m;
-    if (y.length === 2) y = `20${y}`;
-    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
-  }
-  return null;
-}
+import { parseCsv, parseMonto, parseFecha } from '../lib/parsers';
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
