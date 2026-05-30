@@ -27,6 +27,7 @@ import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
+import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -74,9 +75,15 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   const [descripcion, setDescripcion] = useState('');
 
   // ── Planilla ────────────────────────────────────────────────────────
-  const [rows, setRows] = useState(() =>
-    Array.from({ length: INITIAL_ROWS }, () => mkRow())
-  );
+  // #F-5: state + handlers comunes vienen del hook (R-01). Antes este
+  // archivo replicaba rows/updCell/addRows/removeRow inline duplicando
+  // ~25 líneas con CompraProveedorModal y CobranzaMasivaModal.
+  const { rows, setRows, updCell, addRows, removeRow } = useSpreadsheetRows({
+    mkRow,
+    isUsedRow,
+    initialCount: INITIAL_ROWS,
+    addBatch: ADD_BATCH,
+  });
 
   // ── Catálogos ───────────────────────────────────────────────────────
   const [cajas, setCajas]   = useState([]);
@@ -109,9 +116,8 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   }, [rows, tc]);
 
   // ── Handlers ────────────────────────────────────────────────────────
-  function updCell(idx, field, val) {
-    setRows(rs => rs.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-  }
+  // updCell / addRows / removeRow vienen del hook. Solo dejamos los
+  // handlers específicos de este modal (pick/clear producto).
   function pickProducto(idx, p) {
     setRows(rs => rs.map((r, i) => i !== idx ? r : {
       ...r,
@@ -130,13 +136,6 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
       ...r, producto_id: null, stock_disp: null, imei: '', gb: '', color: '',
     }));
   }
-  function addRows(n = ADD_BATCH) {
-    setRows(rs => [...rs, ...Array.from({ length: n }, () => mkRow())]);
-  }
-  function removeRow(idx) {
-    setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
-  }
-
   function validar() {
     if (!fecha) return 'Falta la fecha';
     if (cajaId && monedaCaja !== 'USD' && (!Number(tc) || Number(tc) <= 0))

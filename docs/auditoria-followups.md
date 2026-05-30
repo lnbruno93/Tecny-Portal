@@ -35,13 +35,12 @@ miles de filas "fantasma" que solo cuentan para los índices.
 `deleted_at < NOW() - INTERVAL '6 months'` y ref_id ya no referenciada.
 Hacerlo después de definir política de retención formal.
 
-### NIT-B3 · `SELECT FOR UPDATE` sin `ORDER BY id` en algunos paths
-**Dónde:** Buscar `FOR UPDATE` en routes/, identificar los que iteran sobre
-arrays sin ordenar primero.
-**Por qué:** Riesgo teórico de deadlock entre 2 sesiones que lockean los mismos
-ids en orden inverso. En la práctica es muy improbable con el volumen actual
-pero la disciplina es barata.
-**Fix:** Auditar y agregar `ORDER BY id` antes de cada `FOR UPDATE` masivo.
+### ~~NIT-B3 · `SELECT FOR UPDATE` sin `ORDER BY id` en algunos paths~~ ✅ CERRADO
+**Cerrado en:** commit `d7cd462`. Auditoría completa de todos los `FOR UPDATE`
+en `src/routes/` y `src/lib/`. Único hallazgo real: `proveedores.js` en el
+DELETE de compra (multi-row sobre `proveedor_movimiento_id = $1`), agregamos
+`ORDER BY id` antes de `FOR UPDATE`. Resto ya tenía orden estable (sort en JS,
+ANY+ORDER BY en SQL, o single-row).
 
 ---
 
@@ -77,25 +76,22 @@ en pantalla (lo que es visualmente innecesario aunque inofensivo).
 **Fix:** Wrapper componentizado con ref + `ResizeObserver` que toggle una
 clase `.has-overflow`. Solo si visualmente molesta — por ahora es sutil.
 
-### NIT-F5 · `applyDefaultsToEmpty` del hook compartido sigue sin ser usado
-**Dónde:** `frontend/src/lib/useSpreadsheetRows.js`.
-**Por qué:** El hook ofrece `applyDefaultsToEmpty` pero los 3 modales
-(Compra, Cobranza, VentaB2B) siguen con su propia versión inline. En M-10
-fixeé las 3 implementaciones pero no migré al hook compartido para no
-mezclar fixes con refactor.
-**Fix:** Migrar los 3 modales a usar `useSpreadsheetRows.applyDefaultsToEmpty`
-(R-01 follow-up). Requiere también consolidar `mkRow`/`isUsedRow`.
+### ~~NIT-F5 · `applyDefaultsToEmpty` del hook compartido sigue sin ser usado~~ ✅ CERRADO
+**Cerrado en:** commit `1b816ad`. Los 3 modales spreadsheet (CompraProveedor,
+CobranzaMasiva, VentaB2B) ahora toman `rows/setRows/updCell/removeRow` del
+hook `useSpreadsheetRows`. `addRows` se mantiene custom (recibe defaults
+runtime), `applyDefaultsToEmpty` también porque cada modal tiene su propia
+semántica de "fila tocada" (M-10 con compare-against-template en Compra).
 
 ---
 
 ## Tests
 
-### LOW-T1 · Cobertura de `cobranzaMasiva` solo cubre happy path
-**Dónde:** `backend/tests/cuentas.test.js`.
-**Por qué:** Tenemos tests del flujo OK pero no del rollback por cliente
-inválido en posición N>0, ni de race con cobranzas concurrentes sobre el
-mismo cliente.
-**Fix:** Agregar 2-3 tests adicionales que ejerciten los caminos de error.
+### ~~LOW-T1 · Cobertura de `cobranzaMasiva` solo cubre happy path~~ ✅ CERRADO
+**Cerrado en:** commit `b2b9331`. 3 tests nuevos: caja inexistente en posición
+intermedia (rollback total), caja soft-deleted entre setup y cobranza (vía
+SQL directo), cliente soft-deleted (paralelo). Como side-effect agregamos
+`skip: () => process.env.NODE_ENV === 'test'` al `cobranzaLimiter`.
 
 ### NIT-T2 · Tests de modales spreadsheet (frontend)
 **Dónde:** `frontend/src/components/` — no hay tests para
@@ -109,12 +105,12 @@ addRow, isUsedRow, totalUsd). Es trabajo de medio día.
 
 ## Docs
 
-### NIT-D1 · `docs/API_REFERENCE.md` desactualizado
-**Dónde:** `docs/API_REFERENCE.md`.
-**Por qué:** No tiene los endpoints nuevos de proveedores paginados (#M-06),
-ni cobranza masiva, ni egresos de caja.
-**Fix:** Pasada de generación auto desde los router de Express + Zod schemas
-(quizá con un script `npm run docs:api`).
+### ~~NIT-D1 · `docs/API_REFERENCE.md` desactualizado~~ ✅ CERRADO
+**Cerrado en:** este mismo PR. Se agregaron 9 secciones nuevas: Inventario,
+Ventas, Cuentas CC (incluyendo cobranza masiva), Proveedores (paginado #M-06),
+Tarjetas, Egresos, Cambios de divisa, Proyectos, y Cajas: CRUD/movimientos
+(`/api/cajas/cajas`). +181 líneas, mismo nivel de detalle que las secciones
+existentes (lista de endpoints + sample por método principal).
 
 ---
 

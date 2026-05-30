@@ -35,6 +35,11 @@ const cobranzaLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => `cobranza-masiva:${req.user?.id || req.ip}`,
   message: { error: 'Demasiadas cobranzas masivas. Probá de nuevo en unos minutos.' },
+  // #T-1: en tests skipeamos el rate-limit. La suite hace >10 requests al
+  // endpoint para cubrir todos los error paths (cliente inválido, caja
+  // inválida, schema, rollbacks). Mismo patrón que el helmet+rateLimit
+  // global en app.js:205.
+  skip: () => process.env.NODE_ENV === 'test',
 });
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const {

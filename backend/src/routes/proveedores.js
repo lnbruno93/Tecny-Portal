@@ -434,9 +434,18 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     //   - cantidad cambió desde el insert original (alguien lo vendió) → 409.
     //   - estado pasó a 'vendido' → 409.
     // Esto evita el doble beneficio "recupero caja + mantengo stock".
+    // #B-3: ORDER BY id antes de FOR UPDATE. Esta query lockea N productos
+    // creados por la compra que se está borrando. Sin orden estable, dos
+    // sesiones que borran compras distintas pero comparten productos
+    // (cross-referenciados por el mismo proveedor) podrían deadlockearse:
+    // PG por sí solo NO garantiza el orden de lock entre tuplas si el plan
+    // usa bitmap heap scan o índice no-primario. Forzando ORDER BY id, el
+    // optimizador entrega filas en orden ascendente y todas las sesiones
+    // siguen la misma cadena de locks.
     const { rows: prods } = await client.query(
       `SELECT id, nombre, estado FROM productos
-         WHERE proveedor_movimiento_id = $1 AND deleted_at IS NULL FOR UPDATE`,
+         WHERE proveedor_movimiento_id = $1 AND deleted_at IS NULL
+         ORDER BY id FOR UPDATE`,
       [id]
     );
     const vendidos = prods.filter(p => p.estado === 'vendido');
