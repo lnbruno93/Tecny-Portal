@@ -38,6 +38,7 @@ const app    = require('./src/app');
 const logger = require('./src/lib/logger');
 const db     = require('./src/config/database');
 const { startPurgaJob } = require('./src/lib/audit');
+const { startInvariantsJob } = require('./src/jobs/invariantsJob');
 
 const PORT = process.env.PORT || 3001;
 
@@ -49,6 +50,13 @@ const server = app.listen(PORT, () => {
   // — cuando escalemos a múltiples workers hay que migrar a pg_cron o Railway Scheduler.
   const diasRetencion = Number(process.env.AUDIT_RETENCION_DIAS) || 365;
   startPurgaJob({ diasRetencion, intervalHours: 24 });
+
+  // Job interno: cada 24h valida invariantes de integridad financiera.
+  // Si encuentra drift (saldos negativos, FKs lógicas rotas, conciliación
+  // inconsistente), reporta a Sentry. Detecta corrupción silenciosa temprano.
+  // runOnStartup deshabilitado en prod — el primer check corre 24h después
+  // del deploy, lo cual es preferible (evita ruido en cada redeploy).
+  startInvariantsJob({ intervalHours: 24 });
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────

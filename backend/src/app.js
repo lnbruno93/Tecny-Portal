@@ -31,6 +31,7 @@ const proyectosRoutes    = require('./routes/proyectos');
 const dashboardRoutes    = require('./routes/dashboard');
 const conciliacionRoutes = require('./routes/conciliacion');
 const alertasRoutes      = require('./routes/alertas');
+const adminRoutes        = require('./routes/admin');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -326,6 +327,10 @@ app.use('/api/dashboard',     requireAuth, requirePermission('financiera'),  das
 
 // Usuarios — solo admin (requireAuth aquí + adminOnly dentro del router)
 app.use('/api/usuarios',      requireAuth, usuariosRoutes);
+
+// Admin — herramientas de operación (invariantes, etc.). adminOnly enforced
+// dentro del router. Acceso solo via JWT con role='admin'.
+app.use('/api/admin',         requireAuth, adminRoutes);
 
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');
