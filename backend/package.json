@@ -16,6 +16,9 @@
   "engines": {
     "node": "20.x"
   },
+  "overrides": {
+    "uuid": "^11.0.0"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",
     "@sentry/node": "^10.53.1",
