@@ -15,6 +15,9 @@
 - [Contactos](#contactos-apicontactos) · [Cajas](#cajas-apicajas)
 - [Envíos](#envíos-apienvios)
 - [Usuarios](#usuarios-apiusuarios)
+- **Módulos transaccionales:** [Inventario](#inventario-apiinventario) · [Ventas](#ventas-apiventas) · [Cuentas CC](#cuentas-cc-apicuentas) · [Proveedores](#proveedores-apiproveedores)
+- **Módulos financieros:** [Tarjetas](#tarjetas-apitarjetas) · [Egresos](#egresos-apiegresos) · [Cambios de divisa](#cambios-apicambios) · [Proyectos](#proyectos-apiproyectos)
+- [Cajas: CRUD y movimientos](#cajas-crud-y-movimientos-apicajascajas)
 - [Health Check](#health-check)
 - [Errores](#errores)
 - [Paginación](#paginación)
@@ -725,6 +728,184 @@ Si se incluye `perms`, hace UPSERT de todos los tools incluidos.
 Soft-delete. No se puede eliminar el propio usuario.
 
 **Respuesta 200:** `{ "ok": true }` · **400** si intenta auto-eliminarse · **404** si no existe
+
+---
+
+## Inventario (`/api/inventario`)
+
+Gestión de productos, categorías, depósitos, métricas y desglose 360.
+
+### Catálogos auxiliares
+
+- `GET /api/inventario/categorias` — lista categorías administrables (orden alfabético).
+- `POST /api/inventario/categorias` — body: `{ nombre }`. Requiere `permisos.inventario`.
+- `DELETE /api/inventario/categorias/:id` — soft-delete. **409** si hay productos asociados.
+- `GET /api/inventario/depositos` · `POST` · `DELETE /:id` — mismo patrón que categorías.
+
+### Productos
+
+- `GET /api/inventario/productos` — listado con filtros + paginación.
+  - Query: `vista` (`no_vendidos` | `no_vendidos_ocultos` | `ocultos` | `vendidos` | `todos_visibles` | `todos_ocultos`), `clase`, `categoria_id`, `deposito_id`, `condicion`, `nombre`, `proveedor`, `gb`, `color`, `search`, `page`, `limit`.
+  - Compat legacy: `solo_stock=true` → equivale a `vista=no_vendidos`.
+  - **Respuesta 200:** `{ data: [...], pagination: {...} }`.
+- `GET /api/inventario/productos/metricas` — KPIs del Dashboard (count, USD por categoría).
+- `GET /api/inventario/productos/proveedores` — lista distinct de proveedores en stock.
+- `GET /api/inventario/desglose` — vista 360 agregada por dimensión (nombre, proveedor, categoría, depósito).
+- `GET /api/inventario/productos/:id/foto` — devuelve la imagen del producto (lazy load).
+- `POST /api/inventario/productos` — crear producto. Validación cruzada: unitario debe tener cantidad=1.
+- `PUT /api/inventario/productos/:id` — edición parcial. Tx con FOR UPDATE.
+- `DELETE /api/inventario/productos/:id` — soft-delete. **409** si está vendido en una venta activa.
+- `POST /api/inventario/productos/bulk` — import masivo (CSV/XLSX). Rate-limited.
+
+---
+
+## Ventas (`/api/ventas`)
+
+Ventas + cobros + dashboard de KPIs.
+
+- `GET /api/ventas/dashboard` — query: `desde`, `hasta` (ISO date). Devuelve totales, ticket promedio, top productos, top vendedores. Caché TTL 60s.
+- `GET /api/ventas` — listado paginado con filtros (`cliente`, `etiqueta`, `estado`, `desde`, `hasta`, `search`). **Respuesta 200:** `{ data, pagination }`.
+- `POST /api/ventas` — crear venta. Body: `{ items[], pagos[], tc_venta, ... }`. Cobra a `metodos_pago` (caja) + descuenta stock dentro de tx + audit.
+- `PUT /api/ventas/:id` — edición parcial o full (con items). Recalcula stock + saldo CC.
+- `DELETE /api/ventas/:id` — soft-delete + reposición de stock + reverso de movimientos de caja + reverso CC.
+
+**Permisos:** todas las rutas requieren `permisos.ventas`. El dashboard puede requerir `permisos.dashboard`.
+
+---
+
+## Cuentas CC (`/api/cuentas`)
+
+Clientes con cuenta corriente, movimientos (compra/pago/devolución/parte de pago/entrega), cobranza masiva y reportes.
+
+### Clientes
+
+- `GET /api/cuentas/clientes/search?q=texto` — autocomplete (top 10, por nombre/apellido).
+- `GET /api/cuentas/clientes` — listado paginado con saldo calculado. Query: `categoria`, `search`, `page`, `limit`.
+- `GET /api/cuentas/clientes/:id` — incluye `saldo` y `saldo_usd`.
+- `POST /api/cuentas/clientes` — body: `{ nombre, apellido?, categoria (VIP|A+|A-), saldo_inicial?, ... }`.
+- `PUT /api/cuentas/clientes/:id` — edición parcial.
+- `DELETE /api/cuentas/clientes/:id` — soft-delete. **409** si tiene saldo distinto de 0.
+
+### Movimientos
+
+- `GET /api/cuentas/clientes/:id/movimientos` — paginado, orden `fecha DESC`.
+- `POST /api/cuentas/movimientos` — body: `{ cliente_cc_id, fecha, tipo, monto_total, items?, caja_id?, ... }`. `tipo` en `compra|pago|devolucion|parte_de_pago|entrega_mercaderia`. Si trae `caja_id`, también postea ingreso/egreso en caja (cobranza inline).
+- `DELETE /api/cuentas/movimientos/:id` — soft-delete con reverso de stock + caja + audit.
+
+### Cobranza masiva
+
+- `POST /api/cuentas/cobranzas-masivas` — N pagos en bloque (max 100/lote, rate-limit 10/15min). Body:
+  ```json
+  { "cobranzas": [{ "cliente_cc_id", "fecha", "monto", "moneda", "tc?", "caja_id", "tipo": "pago|parte_de_pago" }, ...] }
+  ```
+  Transaccional: si una fila falla, **ninguna** se aplica. Pre-validación con `FOR UPDATE ORDER BY id` sobre clientes y cajas (anti-deadlock #M-01).
+
+### Reportes
+
+- `GET /api/cuentas/clientes/:id/resumen` — saldo + breakdown por moneda + últimos N movs.
+- `GET /api/cuentas/resumen-general` — totales globales por categoría.
+- `GET /api/cuentas/calendario` — vencimientos / próximos pagos.
+
+---
+
+## Proveedores (`/api/proveedores`)
+
+Compras + pagos a proveedores, paralelo al módulo Cuentas CC pero con orientación inversa (les debemos).
+
+- `GET /api/proveedores` — listado **paginado** (#M-06, default 100, max 200). Query: `buscar`, `page`, `limit`. **Respuesta 200:** `{ data, pagination }`.
+- `GET /api/proveedores/:id` — detalle con saldo.
+- `POST /api/proveedores` — body: `{ nombre, contacto_nombre?, whatsapp?, ubicacion?, notas?, saldo_inicial? }`.
+- `PUT /api/proveedores/:id` — edición parcial. Sincroniza contacto en agenda (best-effort).
+- `DELETE /api/proveedores/:id` — soft-delete. **409** si hay movimientos.
+- `GET /api/proveedores/:id/movimientos` — paginado.
+- `POST /api/proveedores/movimientos` — body: `{ proveedor_id, fecha, tipo (compra|pago), monto, moneda, tc?, caja_id?, items? }`. Si `items[].producto_stock` viene, crea producto en Inventario (proveedor heredado, #M-02 requiere monto > 0). Rate-limited.
+- `DELETE /api/proveedores/movimientos/:id` — soft-delete con reverso completo. Bulk `UNNEST` sobre productos para devolución (#M-05). ORDER BY id antes de FOR UPDATE (#B-3).
+- `GET /api/proveedores/resumen/saldos` — total a pagar por proveedor (USD).
+
+---
+
+## Tarjetas (`/api/tarjetas`)
+
+Tarjetas de crédito propias + movimientos (cobros pendientes de liquidación + liquidaciones).
+
+- `GET /api/tarjetas` — lista de tarjetas activas con saldo a liquidar.
+- `GET /api/tarjetas/movimientos` — listado global paginado de movimientos.
+- `GET /api/tarjetas/:id` · `GET /:id/movimientos`.
+- `POST /api/tarjetas/liquidaciones` — body: `{ tarjeta_id, fecha, monto, caja_id, notas? }`. Resta del saldo de la tarjeta y suma a caja.
+- `DELETE /api/tarjetas/movimientos/:id` — soft-delete con reverso (no permitido si fue auto-creado por una venta — debe borrarse desde la venta).
+
+---
+
+## Egresos (`/api/egresos`)
+
+Gastos: categorías + recurrentes (generación periódica) + movimientos.
+
+### Catálogos
+
+- `GET /api/egresos/categorias` · `POST` · `PUT /:id` · `DELETE /:id`.
+- `GET /api/egresos/recurrentes` · `POST` · `PUT /:id` · `DELETE /:id` — definición de gastos recurrentes (alquiler, sueldos, servicios).
+- `POST /api/egresos/generar` — body: `{ mes (YYYY-MM) }`. Genera egresos del mes para todos los recurrentes activos.
+
+### Movimientos
+
+- `GET /api/egresos` — listado paginado con filtros (`categoria_id`, `desde`, `hasta`, `search`).
+- `POST /api/egresos` — body: `{ fecha, categoria_id, monto, moneda, tc?, caja_id, descripcion? }`. Egreso de caja inline.
+- `PUT /api/egresos/:id` — edición parcial con reverso/repost de caja si cambia monto/caja.
+- `DELETE /api/egresos/:id` — soft-delete con reverso.
+
+---
+
+## Cambios (`/api/cambios`)
+
+Cambios de divisa: cuevas, brokers, contactos cripto.
+
+### Entidades (catálogos de partidas)
+
+- `GET /api/cambios/entidades` · `GET /:id` · `POST` · `PUT /:id` · `DELETE /:id`.
+- Body POST: `{ nombre, tipo (cueva|broker|cripto|otro), notas? }`.
+
+### Movimientos (operaciones)
+
+- `GET /api/cambios/entidades/:id/movimientos` — paginado.
+- `POST /api/cambios/movimientos` — body: `{ entidad_id, fecha, caja_origen_id, caja_destino_id, monto_origen, monto_destino, tc, notas? }`. Egreso de la caja origen + ingreso en la destino (TX atómica).
+- `DELETE /api/cambios/movimientos/:id` — soft-delete con reverso de ambas cajas.
+
+---
+
+## Proyectos (`/api/proyectos`)
+
+Tracking de proyectos con ingresos/egresos asignables.
+
+- `GET /api/proyectos` — listado paginado con saldo neto + estado.
+- `GET /api/proyectos/:id` · `POST` · `PUT /:id` · `DELETE /:id`.
+- `GET /api/proyectos/:id/movimientos`.
+- `POST /api/proyectos/movimientos` — body: `{ proyecto_id, fecha, tipo (ingreso|egreso), monto, caja_id, descripcion? }`.
+- `DELETE /api/proyectos/movimientos/:id`.
+
+---
+
+## Cajas: CRUD y movimientos (`/api/cajas/cajas`)
+
+> **No confundir con** `/api/cajas` (subruta legacy "deudas/inversiones" documentada arriba). Esta subruta `/cajas/cajas` es el CRUD nuevo de **métodos de pago** (efectivo, banco, USDT wallet, etc.).
+
+### CRUD
+
+- `GET /api/cajas/cajas` — lista todas las cajas activas + saldo actual (calculado on-the-fly).
+- `GET /api/cajas/cajas/negativas` — cajas con saldo < 0 (alerta).
+- `POST /api/cajas/cajas` — body: `{ nombre, moneda (USD|ARS|USDT), saldo_inicial? }`.
+- `PUT /api/cajas/cajas/:id` — edición. No permite cambiar `moneda` si hay movimientos.
+- `DELETE /api/cajas/cajas/:id` — soft-delete. **409** si saldo ≠ 0.
+
+### Movimientos (ledger)
+
+- `GET /api/cajas/movimientos` — ledger global paginado con filtros (`caja_id`, `tipo`, `origen`, `desde`, `hasta`).
+- `GET /api/cajas/cajas/:id/movimientos` — ledger de UNA caja.
+- `POST /api/cajas/cajas/:id/movimientos` — ajuste manual (`ajuste_suma` o `ajuste_resta`). Body: `{ fecha, tipo, monto, moneda, tc?, concepto? }`. Valida saldo no-negativo en `ajuste_resta` (#M-04).
+- `DELETE /api/cajas/movimientos/:id` — soft-delete. Solo se permite si origen=`ajuste`. Otros (venta/b2b/proveedor/etc.) deben borrarse desde su tabla de origen.
+
+### Resumen
+
+- `GET /api/cajas/resumen` — totales por moneda + USD agregado.
 
 ---
 
