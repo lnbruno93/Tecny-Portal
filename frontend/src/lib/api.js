@@ -293,3 +293,13 @@ export const dashboard = {
   // Devuelve { actual, comparado, generado_en } — el delta % lo calcula el front.
   resumenMensual: (params = {}) => api('/api/dashboard/resumen-mensual?' + new URLSearchParams(params)),
 };
+
+export const conciliacion = {
+  list:   (params = {}) => api('/api/conciliacion?' + new URLSearchParams(params)),
+  get:    (id)          => api(`/api/conciliacion/${id}`),
+  // data: { caja_id, fecha_desde, fecha_hasta, archivo_nombre?, tolerancia_dias?, lineas }
+  create: (data)        => api('/api/conciliacion', 'POST', data),
+  updateLinea: (id, lineaId, data) => api(`/api/conciliacion/${id}/lineas/${lineaId}`, 'PUT', data),
+  cerrar: (id)          => api(`/api/conciliacion/${id}/cerrar`, 'POST'),
+  delete: (id)          => api(`/api/conciliacion/${id}`, 'DELETE'),
+};
