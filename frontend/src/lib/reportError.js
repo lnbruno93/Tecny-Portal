@@ -17,6 +17,13 @@
  */
 const BASE = import.meta.env.VITE_API_URL || 'https://ipro-backend-production.up.railway.app';
 
+// Build metadata inyectada por vite.config.js (via define). Permite correlacionar
+// errores client con el commit/release exacto que estaba activo cuando ocurrió.
+// Sin esto, los stacktraces minificados de Sentry son ilegibles porque no sabés
+// QUÉ release los generó.
+const BUILD_COMMIT  = typeof __BUILD_COMMIT__  !== 'undefined' ? __BUILD_COMMIT__  : 'unknown';
+const BUILD_VERSION = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'unknown';
+
 let reportsSent = 0;
 const MAX_REPORTS_PER_SESSION = 5;
 let lastReportAt = 0;
@@ -39,6 +46,9 @@ export function reportError(error, context = {}) {
     url: window.location?.href,
     userAgent: navigator?.userAgent,
     timestamp: new Date().toISOString(),
+    // Build info — el backend lo manda a Sentry como tags/release.
+    build_commit:  BUILD_COMMIT,
+    build_version: BUILD_VERSION,
     ...context,
   };
 
