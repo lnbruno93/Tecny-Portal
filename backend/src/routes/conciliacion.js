@@ -44,14 +44,25 @@ const conciliacionPostLimiter = rateLimit({
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// Auto-match: para cada línea del extracto, busca el primer movimiento
-// de caja sin conciliar con monto idéntico (con signo) y fecha dentro
-// de tolerancia. Marca matched_caja_mov_id en la línea. Cada movimiento
-// solo se usa una vez (set de "ya usados" en memoria por sesión).
+// Auto-match — pairing líneas del extracto con caja_movimientos.
+//
+// Reglas: monto exacto con signo (ingreso = +, egreso = -), fecha dentro
+// de tolerancia ±N días, cada mov se usa max 1 vez.
+//
+// Complejidad: O(M + L * K) donde:
+//   M = movimientos del rango
+//   L = líneas del extracto
+//   K = movs por bucket de monto (típicamente 1-3)
+//
+// Antes era O(L * M) por hacer Array.find en lineas.length iteraciones.
+// Con N=1000 líneas y M=1000 movs → 10⁶ comparaciones. El nuevo plan
+// indexa los movs por monto-con-signo (clave entera × 100 para evitar
+// problemas de coma flotante) → lookup O(K).
+//
+// La tolerancia de fecha se chequea dentro del bucket (no se puede usar
+// el monto como key sin perder precisión: redondeamos a centavos × 100).
 // ──────────────────────────────────────────────────────────────────────
 async function autoMatchLineas(client, conciliacionId, cajaId, lineas, toleranciaDias) {
-  // Movimientos disponibles de la caja: en el rango ampliado por tolerancia
-  // y sin conciliar previamente.
   const fechaMin = lineas.reduce((min, l) => l.fecha < min ? l.fecha : min, lineas[0].fecha);
   const fechaMax = lineas.reduce((max, l) => l.fecha > max ? l.fecha : max, lineas[0].fecha);
 
@@ -67,26 +78,36 @@ async function autoMatchLineas(client, conciliacionId, cajaId, lineas, toleranci
     [cajaId, fechaMin, fechaMax, toleranciaDias]
   );
 
-  // Para cada movimiento del ledger, su "monto con signo": ingreso=+, egreso=-.
-  const movsConSigno = movs.map(m => ({
-    id:    m.id,
-    fecha: m.fecha,
-    montoSigned: m.tipo === 'ingreso' ? Number(m.monto) : -Number(m.monto),
-  }));
+  // Index: monto-con-signo (en centavos × 100, redondeado) → array de movs
+  // disponibles con ese monto. Mantenemos el orden por fecha (vino del ORDER BY)
+  // así el primer match es el cronológico — coherente con el comportamiento
+  // anterior basado en Array.find.
+  //
+  // Por qué centavos × 100: comparar floats con tolerancia (0.001) en cada
+  // línea es caro; preferimos Math.round(monto * 100) para clave entera exacta.
+  const indexByMonto = new Map();
+  for (const m of movs) {
+    const signed = m.tipo === 'ingreso' ? Number(m.monto) : -Number(m.monto);
+    const key = Math.round(signed * 100);
+    if (!indexByMonto.has(key)) indexByMonto.set(key, []);
+    indexByMonto.get(key).push({ id: m.id, fecha: m.fecha });
+  }
 
-  // Map para tracking de matches ya hechos (cada mov se usa max 1 vez).
   const usados = new Set();
-  const matches = []; // { lineaIdx, movId }
+  const matches = [];
 
   for (let i = 0; i < lineas.length; i++) {
     const l = lineas[i];
-    const montoLinea = Number(l.monto);
-    // Buscar el primer mov del ledger que: 1) no esté usado, 2) tenga monto
-    // exacto con signo, 3) fecha dentro de tolerancia.
-    const candidato = movsConSigno.find(m => {
+    const keyLinea = Math.round(Number(l.monto) * 100);
+    const candidatos = indexByMonto.get(keyLinea);
+    if (!candidatos || candidatos.length === 0) continue;
+
+    // Dentro del bucket: primer mov no usado con fecha dentro de tolerancia.
+    // Iterar el bucket es O(K) donde K es típicamente 1-3 movs con el mismo monto.
+    const fechaLinea = new Date(l.fecha).getTime();
+    const candidato = candidatos.find(m => {
       if (usados.has(m.id)) return false;
-      if (Math.abs(m.montoSigned - montoLinea) > 0.001) return false;
-      const diffDias = Math.abs((new Date(m.fecha) - new Date(l.fecha)) / 86400000);
+      const diffDias = Math.abs((new Date(m.fecha).getTime() - fechaLinea) / 86400000);
       return diffDias <= toleranciaDias;
     });
     if (candidato) {

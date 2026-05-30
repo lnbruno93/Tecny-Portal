@@ -21,10 +21,13 @@ function tipoValido(tipo) {
   return EVALUADORES[tipo] !== undefined || TIPOS_SETTING.has(tipo);
 }
 
-// Caché del evaluador completo. Cada PUT a /config invalida el caché
-// implícitamente (siguiente GET dentro de 60s puede devolver stale, pero
-// es aceptable: el usuario refresca a mano si quiere ver el cambio).
-const fetchAlertas = createCachedFetcher('alertas:eval', 60_000, async () => {
+// Caché del evaluador completo. TTL 5 min — los datos del negocio (stock,
+// saldos, CC) no cambian en ese plazo a un ritmo que el usuario perciba.
+// Antes era 60s, pero las queries son pesadas (joins sobre productos +
+// movimientos_cc + proveedor_movimientos) y el badge se refresca cada 2min
+// desde el frontend, así que la mayoría de los hits caen en el caché.
+// El usuario refresca a mano si quiere forzar un re-eval.
+const fetchAlertas = createCachedFetcher('alertas:eval', 5 * 60_000, async () => {
   const grupos = await evaluarTodas();
   const total_alertas = grupos.reduce((acc, g) => acc + (g.count || 0), 0);
   return { grupos, total_alertas, generado_en: new Date().toISOString() };

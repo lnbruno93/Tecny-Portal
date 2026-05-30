@@ -39,10 +39,15 @@ function delta(actual, comparado) {
 }
 
 // KPI Card componente: muestra label + valor + delta vs comparado.
-function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invertirSigno = false }) {
-  const d = delta(valor, comparado);
+function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invertirSigno = false, hint = null }) {
+  // valor null marca "indefinido" (ej: capital_usd_equivalente sin TC ref).
+  // Lo mostramos como "—" y omitimos el delta (no es 0, es desconocido).
+  const valorIndefinido = valor === null || valor === undefined;
+  const d = valorIndefinido ? null : delta(valor, comparado);
   let badge = null;
-  if (d === null) {
+  if (valorIndefinido) {
+    badge = hint ? <span className="muted tiny">{hint}</span> : null;
+  } else if (d === null) {
     // Sin base de comparación: si el actual > 0, mostrar 'Nuevo'.
     if (Number(valor) > 0) badge = <span className="badge badge-info" style={{ fontSize: 11 }}>Nuevo</span>;
   } else if (Math.abs(d) < 0.5) {
@@ -59,11 +64,11 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
     );
   }
   return (
-    <div className="card card-tight" style={{ minWidth: 0 }}>
+    <div className="card card-tight" style={{ minWidth: 0 }} role="figure" aria-label={`KPI: ${label}`}>
       <div className="muted tiny" style={{ marginBottom: 4 }}>{label}</div>
       <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
-        {unidad && <span style={{ fontSize: 14, color: 'var(--text-muted)', marginRight: 4 }}>{unidad}</span>}
-        {formatter(valor)}
+        {unidad && !valorIndefinido && <span style={{ fontSize: 14, color: 'var(--text-muted)', marginRight: 4 }}>{unidad}</span>}
+        {valorIndefinido ? '—' : formatter(valor)}
       </div>
       <div style={{ marginTop: 4, minHeight: 16 }}>{badge}</div>
     </div>
@@ -186,7 +191,13 @@ export default function Resumen() {
           <h3 style={{ marginTop: 18, marginBottom: 8 }}>Capital en cajas <span className="muted tiny">(al fin del período)</span></h3>
           <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 220px' }}>
-              <KpiCard label="Capital total" unidad="USD eq." valor={capitalA} comparado={capitalC} />
+              <KpiCard
+                label="Capital total"
+                unidad="USD eq."
+                valor={capitalA}
+                comparado={capitalC}
+                hint={actual?.cajas?.tc_referencia ? null : 'Configurá un TC en Config → Alertas para ver capital agregado.'}
+              />
             </div>
             <div style={{ flex: '1 1 200px' }}>
               <KpiCard label="ARS" unidad="$" valor={arsA} comparado={arsC} />

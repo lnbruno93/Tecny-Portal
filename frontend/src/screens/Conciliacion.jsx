@@ -320,26 +320,44 @@ function Detalle({ id, onVolver }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Set de lineaIds en saving: muestra un spinner por línea sin pisar el resto.
+  // Antes cada click llamaba setLoading(true)+reload → la pantalla parpadeaba
+  // "Cargando…" y el usuario perdía contexto. Ahora solo la línea editada
+  // se opaca/spin mientras la API responde.
+  const [savingLineas, setSavingLineas] = useState(() => new Set());
 
-  function load() {
-    setLoading(true);
-    concApi.get(id).then(r => setData(r))
+  // initial=true sólo en el primer load. Refrescos posteriores no muestran
+  // el spinner global — sólo actualizan data en background.
+  function load({ initial = false } = {}) {
+    if (initial) setLoading(true);
+    return concApi.get(id).then(r => setData(r))
       .catch(e => toast.error(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => { if (initial) setLoading(false); });
   }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { load({ initial: true }); /* eslint-disable-next-line */ }, [id]);
+
+  // Marca lineaId como "en saving", ejecuta la API call, y reload sin spinner global.
+  async function withLineaSaving(lineaId, fn) {
+    setSavingLineas(prev => { const next = new Set(prev); next.add(lineaId); return next; });
+    try {
+      await fn();
+      await load();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingLineas(prev => { const next = new Set(prev); next.delete(lineaId); return next; });
+    }
+  }
 
   async function setMatch(lineaId, matchedId) {
-    try {
-      await concApi.updateLinea(id, lineaId, { matched_caja_mov_id: matchedId || null, ignorada: false });
-      load();
-    } catch (e) { toast.error(e.message); }
+    await withLineaSaving(lineaId, () =>
+      concApi.updateLinea(id, lineaId, { matched_caja_mov_id: matchedId || null, ignorada: false })
+    );
   }
   async function toggleIgnorada(lineaId, current) {
-    try {
-      await concApi.updateLinea(id, lineaId, { ignorada: !current, matched_caja_mov_id: null });
-      load();
-    } catch (e) { toast.error(e.message); }
+    await withLineaSaving(lineaId, () =>
+      concApi.updateLinea(id, lineaId, { ignorada: !current, matched_caja_mov_id: null })
+    );
   }
   async function cerrar() {
     const ok = await confirm({
@@ -352,7 +370,7 @@ function Detalle({ id, onVolver }) {
     try {
       const res = await concApi.cerrar(id);
       toast.success(`Conciliación cerrada · ${res.movimientos_cerrados} movimientos confirmados`);
-      load();
+      await load();
     } catch (e) { toast.error(e.message); } finally { setSaving(false); }
   }
   async function eliminar() {
@@ -435,12 +453,16 @@ function Detalle({ id, onVolver }) {
               </tr>
             </thead>
             <tbody>
-              {data.lineas.map(l => (
+              {data.lineas.map(l => {
+                const isSaving = savingLineas.has(l.id);
+                return (
                 <tr key={l.id} style={{
                   background: l.matched_caja_mov_id ? 'rgba(34,197,94,0.05)'
                             : l.ignorada            ? 'rgba(0,0,0,0.03)'
                             : 'rgba(234,179,8,0.05)',
-                }}>
+                  opacity: isSaving ? 0.55 : 1,
+                  transition: 'opacity 120ms',
+                }} aria-busy={isSaving}>
                   <td className="mono tiny">{fmtFecha(l.fecha)}</td>
                   <td className="tiny">{l.descripcion || '—'}</td>
                   <td className="mono" style={{
@@ -457,9 +479,10 @@ function Detalle({ id, onVolver }) {
                       <select
                         className="input"
                         style={{ height: 28, fontSize: 12, minWidth: 280 }}
-                        disabled={cerrada}
+                        disabled={cerrada || isSaving}
                         value={l.matched_caja_mov_id || ''}
                         onChange={e => setMatch(l.id, e.target.value ? Number(e.target.value) : null)}
+                        aria-label={`Match para línea del ${fmtFecha(l.fecha)} por ${l.monto}`}
                       >
                         <option value="">— Sin match —</option>
                         {data.movimientos_disponibles
@@ -479,13 +502,18 @@ function Detalle({ id, onVolver }) {
                   </td>
                   <td>
                     {!cerrada && (
-                      <button className="btn btn-sm btn-ghost" onClick={() => toggleIgnorada(l.id, l.ignorada)}>
-                        {l.ignorada ? 'Restaurar' : 'Ignorar'}
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        disabled={isSaving}
+                        onClick={() => toggleIgnorada(l.id, l.ignorada)}
+                      >
+                        {isSaving ? '…' : (l.ignorada ? 'Restaurar' : 'Ignorar')}
                       </button>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

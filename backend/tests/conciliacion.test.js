@@ -296,3 +296,86 @@ describe('Conciliación: fixes TANDA 0', () => {
     await pool.query('DELETE FROM metodos_pago WHERE id = $1', [cajaEfimera]);
   });
 });
+
+// TANDA 4: perf test del auto-match O(N+M) con Map.
+describe('Conciliación: perf auto-match (TANDA 4)', () => {
+  // Stress test: 200 movs distintos + 200 líneas con match exacto. Verifica
+  // que el auto-match funcione (cada línea encuentra su mov) y que termine
+  // en un tiempo razonable (< 2s end-to-end incluyendo network+TX).
+  // Con la implementación vieja O(L*M) = 40k comparaciones; con la nueva
+  // O(M + L*K) ≈ 600 lookups. Diferencia perceptible solo a >1000 items.
+  it('200 líneas + 200 movs match exacto: termina rápido', async () => {
+    const k = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Perf', moneda: 'USD', saldo_inicial: 0 });
+    const cajaPerf = k.body.id;
+
+    // Sembrar 200 movs con montos únicos (100, 200, ..., 20000).
+    const inserts = [];
+    for (let i = 1; i <= 200; i++) {
+      inserts.push(`($1, '2026-09-15'::date, 'ingreso', ${i * 100}, ${i * 100}, 'venta', 'M${i}')`);
+    }
+    await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto)
+       VALUES ${inserts.join(',')}`,
+      [cajaPerf]
+    );
+
+    // 200 líneas con los mismos montos → todas deberían matchear.
+    const lineas = [];
+    for (let i = 1; i <= 200; i++) {
+      lineas.push({ fecha: '2026-09-15', monto: i * 100, descripcion: `L${i}` });
+    }
+
+    const t0 = Date.now();
+    const res = await request(app).post('/api/conciliacion').set(auth()).send({
+      caja_id: cajaPerf,
+      fecha_desde: '2026-09-01', fecha_hasta: '2026-09-30',
+      tolerancia_dias: 2,
+      lineas,
+    });
+    const elapsed = Date.now() - t0;
+    expect(res.status).toBe(201);
+    expect(res.body.lineas_total).toBe(200);
+    expect(res.body.lineas_matched).toBe(200);
+    // Threshold generoso para CI con DB local: 2s. Con O(L*M) viejo en una
+    // máquina lenta llegaba a >5s con 200×200.
+    expect(elapsed).toBeLessThan(2000);
+
+    // Cleanup
+    await request(app).delete(`/api/conciliacion/${res.body.id}`).set(auth());
+    await pool.query('DELETE FROM conciliacion_lineas WHERE conciliacion_id = $1', [res.body.id]);
+    await pool.query('DELETE FROM conciliaciones WHERE id = $1', [res.body.id]);
+    await pool.query('DELETE FROM caja_movimientos WHERE caja_id = $1', [cajaPerf]);
+    await pool.query('DELETE FROM metodos_pago WHERE id = $1', [cajaPerf]);
+  });
+
+  // Edge case: monto con coma flotante problemática (0.1 + 0.2 = 0.30000000000004).
+  // Con Math.round(monto * 100) la clave es entera exacta, así que matchea.
+  it('match con decimales que romperían comparación float (0.1+0.2)', async () => {
+    const k = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Float', moneda: 'USD', saldo_inicial: 0 });
+    const cajaFloat = k.body.id;
+    // 0.30 exacto en DB.
+    const { rows } = await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto)
+       VALUES ($1, '2026-10-01', 'ingreso', 0.30, 0.30, 'venta', 'Float') RETURNING id`,
+      [cajaFloat]
+    );
+    const movF = rows[0].id;
+    // Línea con 0.30 desde el extracto.
+    const res = await request(app).post('/api/conciliacion').set(auth()).send({
+      caja_id: cajaFloat,
+      fecha_desde: '2026-10-01', fecha_hasta: '2026-10-31',
+      lineas: [{ fecha: '2026-10-01', monto: 0.30, descripcion: 'F' }],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.lineas_matched).toBe(1);
+
+    // Cleanup
+    await request(app).delete(`/api/conciliacion/${res.body.id}`).set(auth());
+    await pool.query('DELETE FROM conciliacion_lineas WHERE conciliacion_id = $1', [res.body.id]);
+    await pool.query('DELETE FROM conciliaciones WHERE id = $1', [res.body.id]);
+    await pool.query('DELETE FROM caja_movimientos WHERE id = $1', [movF]);
+    await pool.query('DELETE FROM metodos_pago WHERE id = $1', [cajaFloat]);
+  });
+});

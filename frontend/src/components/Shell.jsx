@@ -195,12 +195,18 @@ function Sidebar({ badges = {}, open, onClose }) {
             <div className="nav-section">Sistema</div>
             {visibleSys.map((n) => {
               const I = Icons[n.icon];
+              // Si hay badge en "config" (alertas activas), el click navega
+              // directo a la tab Alertas via hash (#alertas) — Config.jsx lo
+              // lee al montar. Sin badge, va al destino normal.
+              const isConfigConBadge = n.id === 'config' && badges[n.id] != null;
+              const target = isConfigConBadge ? `${n.path}#alertas` : n.path;
               return (
                 <NavLink
                   key={n.id}
-                  to={n.path}
+                  to={target}
                   className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
                   onClick={onClose}
+                  aria-label={isConfigConBadge ? `${n.label} — ${badges[n.id]} alertas pendientes` : n.label}
                 >
                   <span className="ico">{I && <I size={16} />}</span>
                   <span>{n.label}</span>
