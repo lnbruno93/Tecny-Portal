@@ -10,10 +10,14 @@
     "lint": "eslint src/",
     "migrate": "node-pg-migrate -m migrations up",
     "migrate:down": "node-pg-migrate -m migrations down",
-    "migrate:create": "node-pg-migrate -m migrations create"
+    "migrate:create": "node-pg-migrate -m migrations create",
+    "load-test": "node loadtest/run.js"
   },
   "engines": {
     "node": "20.x"
+  },
+  "overrides": {
+    "uuid": "^11.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",
@@ -35,6 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/compression": "^1.8.1",
+    "autocannon": "^8.0.0",
     "eslint": "^10.4.0",
     "globals": "^17.6.0",
     "jest": "^30.4.2",

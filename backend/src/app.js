@@ -81,13 +81,17 @@ app.use(cors({
   credentials: true,
 }));
 
-// General rate limit: 300 req / 15 min per IP
+// General rate limit: 300 req / 15 min per IP.
+// Skip /health y /ready: son probes externos (UptimeRobot c/5min, Railway internal)
+// y bloquearlos genera falsos negativos de monitoring. Tampoco son endpoints que
+// expongan datos sensibles ni que tengan costo computacional alto.
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, intentá de nuevo en 15 minutos' },
+  skip: (req) => req.path === '/health' || req.path === '/ready',
 }));
 
 app.use(express.json({ limit: '10mb' }));
