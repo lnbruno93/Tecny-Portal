@@ -891,6 +891,77 @@ describe('Cobranza masiva', () => {
       });
     expect(await saldoCliente(cliNuevo.id)).toBeCloseTo(400, 2);
   });
+
+  // ─── #T-1: error paths más allá de cliente inválido en pos 0 ──────────
+  // Gap detectado en LOW-T1: hay tests de cliente inexistente en pos 1,
+  // pero faltan caja inexistente en posición intermedia, caja soft-deleted
+  // entre validación y commit, y race de N cobranzas paralelas sobre el
+  // mismo cliente. Estos cubren el SELECT FOR UPDATE pre-validación (#M-01).
+
+  it('caja inexistente en posición intermedia → 400 con rollback total', async () => {
+    const sCli2 = await saldoCliente(cli2.id);
+    const sCli3 = await saldoCliente(cli3.id);
+    const sCaja = await saldoCaja(cajaUSD.id);
+    // Fila 1 OK, fila 2 con caja inexistente, fila 3 OK → todo rollback.
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli2.id, fecha: '2026-05-29', monto: 30, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+          { cliente_cc_id: cli3.id, fecha: '2026-05-29', monto: 40, moneda: 'USD', caja_id: 999999, tipo: 'pago' },
+          { cliente_cc_id: cli2.id, fecha: '2026-05-29', monto: 50, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.detalles?.[0]?.error || res.body.error || '').toMatch(/caja|no existe/i);
+    // Verificamos rollback: nada cambió
+    expect(await saldoCliente(cli2.id)).toBeCloseTo(sCli2, 2);
+    expect(await saldoCliente(cli3.id)).toBeCloseTo(sCli3, 2);
+    expect(await saldoCaja(cajaUSD.id)).toBeCloseTo(sCaja, 2);
+  });
+
+  it('caja soft-deleted entre requests → 400 (pre-validación FOR UPDATE filtra deleted_at)', async () => {
+    // Insertamos una caja directo por SQL para no consumir rate-limits ni
+    // depender del schema HTTP, la soft-deleteamos, y verificamos que la
+    // pre-validación FOR UPDATE (WHERE deleted_at IS NULL) la rechace.
+    const db = require('../src/config/database');
+    const { rows: [cajaInsertada] } = await db.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial)
+       VALUES ('Caja borrar T1', 'USD', 0) RETURNING id`
+    );
+    await db.query('UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1', [cajaInsertada.id]);
+
+    const sCli1 = await saldoCliente(cli1.id);
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cli1.id, fecha: '2026-05-29', monto: 25, moneda: 'USD', caja_id: cajaInsertada.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(await saldoCliente(cli1.id)).toBeCloseTo(sCli1, 2);
+  });
+
+  it('movimiento con cliente soft-deleted → 400 (paralelo al test de caja borrada)', async () => {
+    // Mismo patrón pero sobre clientes_cc: la pre-validación del FOR UPDATE
+    // filtra deleted_at IS NULL, así que un cliente borrado entre el create
+    // y la cobranza debe ser rechazado.
+    const db = require('../src/config/database');
+    const { rows: [cliInsertado] } = await db.query(
+      `INSERT INTO clientes_cc (nombre, categoria) VALUES ('Cli borrar T1', 'A+') RETURNING id`
+    );
+    await db.query('UPDATE clientes_cc SET deleted_at = NOW() WHERE id = $1', [cliInsertado.id]);
+
+    const sCaja = await saldoCaja(cajaUSD.id);
+    const res = await request(app).post('/api/cuentas/cobranzas-masivas').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cobranzas: [
+          { cliente_cc_id: cliInsertado.id, fecha: '2026-05-29', monto: 20, moneda: 'USD', caja_id: cajaUSD.id, tipo: 'pago' },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.detalles?.[0]?.error || res.body.error || '').toMatch(/cliente|no existe|inválido/i);
+    expect(await saldoCaja(cajaUSD.id)).toBeCloseTo(sCaja, 2);
+  });
 });
 
 // ─── #T-02, T-03: DELETE B2B con producto borrado/devolución ──────────
