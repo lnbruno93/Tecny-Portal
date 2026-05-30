@@ -92,8 +92,9 @@ router.post('/', validate(createProyectoSchema), async (req, res, next) => {
     );
     const proyecto = rows[0];
     await insertParticipantes(client, proyecto.id, participantes);
+    // audit DENTRO de la TX (savepoint isolation) — evita "commit ok pero audit perdido".
+    await audit(client, 'proyectos', 'INSERT', proyecto.id, { despues: proyecto, user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('proyectos', 'INSERT', proyecto.id, { despues: proyecto, user_id: req.user.id });
     res.status(201).json({ ...proyecto, total_ars: 0, total_usd: 0, cant_movimientos: 0 });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -120,8 +121,9 @@ router.put('/:id', validate(updateProyectoSchema), async (req, res, next) => {
       await client.query('DELETE FROM proyecto_participantes WHERE proyecto_id = $1', [id]);
       await insertParticipantes(client, id, participantes);
     }
+    // audit DENTRO de la TX (savepoint isolation).
+    await audit(client, 'proyectos', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('proyectos', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -130,16 +132,26 @@ router.put('/:id', validate(updateProyectoSchema), async (req, res, next) => {
 });
 
 router.delete('/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       'UPDATE proyectos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    await audit('proyectos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    if (!rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+    // audit DENTRO de la TX para que si falla persistencia del audit, el DELETE no quede commiteado.
+    await audit(client, 'proyectos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.json({ ok: true });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 // ─── MOVIMIENTOS (hoja del proyecto) ─────────────────────────────────────────

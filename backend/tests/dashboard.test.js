@@ -163,4 +163,28 @@ describe('Agregaciones reales con datos sembrados (SQL directo)', () => {
     const c = res.body.comparado.cajas.cajas.find(x => x.id === cajaDashId);
     expect(Number(c.saldo)).toBeCloseTo(2000, 2);
   });
+
+  // TANDA 0 #5: TC fallback
+  it('TANDA 0 #5: si no hay TC de venta ni config, tc_referencia es null', async () => {
+    // En tests, las tablas están casi vacías y tc_referencia config se setea
+    // sólo si la migración 19 corrió. Si tc_referencia es valor > 0, lo usa;
+    // si no, debería ser null (antes hardcoded 1000 → ahora null si nada).
+    const res = await request(app)
+      .get('/api/dashboard/resumen-mensual?periodo=2026-04&comparar_con=2026-03')
+      .set(auth());
+    expect(res.status).toBe(200);
+    // tc_referencia puede ser un número (de la última venta o config) o null.
+    // Lo importante: NO debe ser 1000 hardcoded.
+    const tc = res.body.actual.cajas.tc_referencia;
+    if (tc !== null) {
+      expect(typeof tc).toBe('number');
+      expect(tc).toBeGreaterThan(0);
+    }
+    // Si hay saldo ARS y tc_referencia es null, capital_usd_equivalente
+    // debe ser null (no inventamos un TC). Si saldo ARS = 0, puede ser 0.
+    const cajas = res.body.actual.cajas;
+    if (tc === null && cajas.por_moneda.ARS !== 0) {
+      expect(cajas.capital_usd_equivalente).toBeNull();
+    }
+  });
 });

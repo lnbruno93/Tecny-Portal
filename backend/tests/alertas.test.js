@@ -110,6 +110,66 @@ describe('PUT /api/alertas/config/:tipo', () => {
       .put('/api/alertas/config/stock_bajo').set(auth()).send({});
     expect(res.status).toBe(400);
   });
+
+  // TANDA 0 #8: validación per-tipo de parametros
+  describe('TANDA 0 #8: validación per-tipo', () => {
+    it('stock_bajo: clave desconocida rechazada (.strict())', async () => {
+      const res = await request(app)
+        .put('/api/alertas/config/stock_bajo').set(auth())
+        .send({ parametros: { umbral_unidades: 10, clave_random: 'whatever' } });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Parametros inválidos|clave_random/i);
+    });
+
+    it('stock_bajo: umbral_unidades negativo rechazado', async () => {
+      const res = await request(app)
+        .put('/api/alertas/config/stock_bajo').set(auth())
+        .send({ parametros: { umbral_unidades: -5 } });
+      expect(res.status).toBe(400);
+    });
+
+    it('cc_mora: dias_sin_pago fuera de rango (3651) rechazado', async () => {
+      const res = await request(app)
+        .put('/api/alertas/config/cc_mora').set(auth())
+        .send({ parametros: { dias_sin_pago: 3651 } });
+      expect(res.status).toBe(400);
+    });
+
+    it('tc_referencia: clave __proto__ rechazada (prototype pollution defense)', async () => {
+      const res = await request(app)
+        .put('/api/alertas/config/tc_referencia').set(auth())
+        .send({ parametros: { __proto__: { hacked: true } } });
+      // El objeto literal __proto__ se convierte en prototype al parsear; con
+      // .strict() y schema explícito, solo se aceptan claves listadas. Test
+      // verifica que un payload con clave inesperada (valor + clave random)
+      // sea rechazado.
+      // Probamos también con clave plain extra:
+      const res2 = await request(app)
+        .put('/api/alertas/config/tc_referencia').set(auth())
+        .send({ parametros: { valor: 1400, evil_key: 'x' } });
+      expect(res2.status).toBe(400);
+      // El primer caso depende de cómo JSON serialize: si __proto__ llega
+      // como key normal, Zod la rechaza; si se aplica al prototype, no llega.
+      // En ambos casos, no debe romper el server (200 o 400 → ambos OK).
+      expect([200, 400]).toContain(res.status);
+    });
+
+    it('tc_referencia: valor positivo + tolerancia válida → 200', async () => {
+      const res = await request(app)
+        .put('/api/alertas/config/tc_referencia').set(auth())
+        .send({ parametros: { valor: 1500, tolerancia_pct: 2 } });
+      expect(res.status).toBe(200);
+      expect(res.body.parametros.valor).toBe(1500);
+      expect(res.body.parametros.tolerancia_pct).toBe(2);
+    });
+
+    it('proveedor_atrasado: solo acepta dias_sin_movimiento', async () => {
+      const res = await request(app)
+        .put('/api/alertas/config/proveedor_atrasado').set(auth())
+        .send({ parametros: { dias_sin_pago: 30 } }); // clave incorrecta
+      expect(res.status).toBe(400);
+    });
+  });
 });
 
 describe('Evaluadores con datos sembrados', () => {

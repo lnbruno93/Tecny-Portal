@@ -13,7 +13,8 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { createCachedFetcher } = require('../lib/cacheTtl');
 const { evaluarTodas, EVALUADORES, TIPOS_SETTING } = require('../lib/alertas');
-const { updateAlertaConfigSchema } = require('../schemas/alertas');
+const { updateAlertaConfigSchema, validarParametros } = require('../schemas/alertas');
+const { ZodError } = require('zod');
 
 // Tipos válidos = evaluables + settings.
 function tipoValido(tipo) {
@@ -67,8 +68,22 @@ router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res,
       sets.push(`activa = $${params.length}`);
     }
     if (req.body.parametros !== undefined) {
-      // Merge con los parametros existentes para no perder claves no enviadas.
-      const merged = { ...(before[0].parametros || {}), ...req.body.parametros };
+      // Validación per-tipo: rechaza claves desconocidas (prototype pollution
+      // defense: __proto__, constructor) y valores fuera de rango. El schema
+      // libre del validate() global solo verifica que los valores sean number
+      // /string/boolean — pero no que las CLAVES correspondan al tipo.
+      let parametrosValidados;
+      try {
+        parametrosValidados = validarParametros(tipo, req.body.parametros);
+      } catch (zerr) {
+        await client.query('ROLLBACK');
+        const msg = (zerr instanceof ZodError)
+          ? zerr.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
+          : (zerr.message || 'Parametros inválidos');
+        return res.status(400).json({ error: `Parametros inválidos para "${tipo}": ${msg}` });
+      }
+      // Merge con los parametros existentes (validados) para no perder claves no enviadas.
+      const merged = { ...(before[0].parametros || {}), ...parametrosValidados };
       params.push(merged);
       sets.push(`parametros = $${params.length}::jsonb`);
     }

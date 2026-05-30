@@ -16,6 +16,29 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { alertas as alertasApi } from '../lib/api';
 import { useAuth } from './AuthContext';
 
+// Pure helper expuesto aparte para testeo en aislamiento (sin React/context).
+// Devuelve null si el TC tipeado está dentro de tolerancia o si el config
+// no está configurado/activado. Si retorna objeto, el componente lo muestra.
+//
+//   verificarTcContraRef({ valor:1400, tolerancia_pct:1, alerta_por_debajo:true }, 1380)
+//   → { msg, tcRef, diferencia_pct: 1.43 }
+//
+//   verificarTcContraRef({ valor:1400, ... }, 1390) → null  (dentro de tolerancia)
+//   verificarTcContraRef(null, 1000)                → null  (no config)
+export function verificarTcContraRef(tcRef, tcTipeado) {
+  if (!tcRef || !tcRef.alerta_por_debajo || !tcRef.valor) return null;
+  const n = Number(tcTipeado);
+  if (!n || n <= 0) return null;
+  const minPermitido = tcRef.valor * (1 - tcRef.tolerancia_pct / 100);
+  if (n >= minPermitido) return null;
+  const diferenciaPct = ((tcRef.valor - n) / tcRef.valor) * 100;
+  return {
+    msg: `Chequear Tipo de Cambio. Posible error (TC ref: ${tcRef.valor}, diferencia ${diferenciaPct.toFixed(1)}%)`,
+    tcRef,
+    diferencia_pct: diferenciaPct,
+  };
+}
+
 const TcReferenciaContext = createContext({
   tcRef: null,
   verificarTc: () => null,
@@ -51,19 +74,10 @@ export function TcReferenciaProvider({ children }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const verificarTc = useCallback((tcTipeado) => {
-    if (!tcRef || !tcRef.alerta_por_debajo || !tcRef.valor) return null;
-    const n = Number(tcTipeado);
-    if (!n || n <= 0) return null;
-    const minPermitido = tcRef.valor * (1 - tcRef.tolerancia_pct / 100);
-    if (n >= minPermitido) return null;
-    const diferenciaPct = ((tcRef.valor - n) / tcRef.valor) * 100;
-    return {
-      msg: `Chequear Tipo de Cambio. Posible error (TC ref: ${tcRef.valor}, diferencia ${diferenciaPct.toFixed(1)}%)`,
-      tcRef,
-      diferencia_pct: diferenciaPct,
-    };
-  }, [tcRef]);
+  const verificarTc = useCallback(
+    (tcTipeado) => verificarTcContraRef(tcRef, tcTipeado),
+    [tcRef]
+  );
 
   return (
     <TcReferenciaContext.Provider value={{ tcRef, verificarTc, reload: load }}>

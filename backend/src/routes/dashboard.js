@@ -17,25 +17,43 @@ const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensu
 // Caché de funciones por par (periodo, comparado). Cada llamada al endpoint
 // reusa la misma function-instance si las keys coinciden — el dedup interno
 // del cacheTtl evita rerunear queries si llegan N requests concurrentes.
+//
+// LRU cap: si un cliente (o atacante) envía muchos pares distintos, el Map
+// crecería sin límite (cada entry retiene una closure con cache state).
+// Acotamos a MAX_FETCHERS — al exceder, evictamos la entry más vieja (MRU
+// detrás por reinserción en cada acceso). 100 cubre ~8 años de pares mes
+// (12 × 8), suficiente para cualquier uso humano.
+const MAX_FETCHERS = 100;
 const fetchers = new Map();
 function getFetcher(periodoActual, periodoComparado) {
   const key = `${periodoActual}|${periodoComparado}`;
-  if (!fetchers.has(key)) {
-    fetchers.set(key, createCachedFetcher(
-      `dashboard:resumen:${key}`,
-      60_000,
-      async () => {
-        const { desde: dA, hasta: hA } = rangoMes(periodoActual);
-        const { desde: dC, hasta: hC } = rangoMes(periodoComparado);
-        const [actual, comparado] = await Promise.all([
-          kpisDelPeriodo(dA, hA),
-          kpisDelPeriodo(dC, hC),
-        ]);
-        return { actual, comparado, generado_en: new Date().toISOString() };
-      }
-    ));
+  let fn = fetchers.get(key);
+  if (fn) {
+    // touch: re-insertar para mover al final (MRU) — Map preserva orden de inserción.
+    fetchers.delete(key);
+    fetchers.set(key, fn);
+    return fn;
   }
-  return fetchers.get(key);
+  fn = createCachedFetcher(
+    `dashboard:resumen:${key}`,
+    60_000,
+    async () => {
+      const { desde: dA, hasta: hA } = rangoMes(periodoActual);
+      const { desde: dC, hasta: hC } = rangoMes(periodoComparado);
+      const [actual, comparado] = await Promise.all([
+        kpisDelPeriodo(dA, hA),
+        kpisDelPeriodo(dC, hC),
+      ]);
+      return { actual, comparado, generado_en: new Date().toISOString() };
+    }
+  );
+  fetchers.set(key, fn);
+  // Evict LRU si superamos el cap.
+  if (fetchers.size > MAX_FETCHERS) {
+    const oldestKey = fetchers.keys().next().value;
+    fetchers.delete(oldestKey);
+  }
+  return fn;
 }
 
 // Mes actual en YYYY-MM (UTC para consistencia con el resto del backend).

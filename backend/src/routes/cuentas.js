@@ -17,7 +17,7 @@
  * Saldo positivo → el cliente nos debe dinero.
  */
 
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const router  = require('express').Router();
 const db      = require('../config/database');
 const validate  = require('../lib/validate');
@@ -33,7 +33,9 @@ const cobranzaLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `cobranza-masiva:${req.user?.id || req.ip}`,
+  keyGenerator: (req) => req.user?.id != null
+    ? `cobranza-masiva:${req.user.id}`
+    : `cobranza-masiva:ip:${ipKeyGenerator(req)}`,
   message: { error: 'Demasiadas cobranzas masivas. Probá de nuevo en unos minutos.' },
   // #T-1: en tests skipeamos el rate-limit. La suite hace >10 requests al
   // endpoint para cubrir todos los error paths (cliente inválido, caja

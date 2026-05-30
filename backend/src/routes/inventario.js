@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
@@ -17,7 +17,9 @@ const bulkLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `bulk:${req.user?.id || req.ip}`,
+  keyGenerator: (req) => req.user?.id != null
+    ? `bulk:${req.user.id}`
+    : `bulk:ip:${ipKeyGenerator(req)}`,
   message: { error: 'Demasiadas cargas masivas. Probá de nuevo en unos minutos.' },
 });
 const {

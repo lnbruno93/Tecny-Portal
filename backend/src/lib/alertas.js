@@ -26,7 +26,8 @@ async function evalCajaNegativa() {
       HAVING mp.saldo_inicial + COALESCE(SUM(
                CASE WHEN cm.tipo = 'ingreso' THEN cm.monto ELSE -cm.monto END
              ), 0) < 0
-      ORDER BY saldo ASC`
+      ORDER BY saldo ASC
+      LIMIT 50`
   );
   return rows.map(r => ({
     id: r.id,
