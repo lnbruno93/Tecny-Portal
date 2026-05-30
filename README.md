@@ -53,11 +53,18 @@ cd frontend && npm test               # Vitest watch
 
 ## Documentación
 
-- [`ONBOARDING.md`](./ONBOARDING.md) — guía técnica completa (stack, arquitectura, decisiones).
+Índice completo en [`docs/README.md`](./docs/README.md). Atajos:
+
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — **empezá acá** si llegás cold al proyecto. Módulos, tablas, patrones, decisiones durables.
+- [`docs/RUNBOOK.md`](./docs/RUNBOOK.md) — "tengo X síntoma, qué hago".
+- [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) — deploys, rollbacks, backups.
+- [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) — escenarios de pérdida de datos + recovery.
+- [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) — Sentry, /health, UptimeRobot, cron invariantes.
+- [`docs/LOAD_BASELINE.md`](./docs/LOAD_BASELINE.md) — autocannon scenarios + cómo medir regresión.
 - [`docs/API_REFERENCE.md`](./docs/API_REFERENCE.md) — endpoints.
-- [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) — runbook operativo (deploys, rollbacks, troubleshooting).
 - [`docs/STAGING.md`](./docs/STAGING.md) — flujo de staging.
 - [`docs/STORAGE.md`](./docs/STORAGE.md) — política de archivos / blobs.
+- [`ONBOARDING.md`](./ONBOARDING.md) — guía técnica histórica (parcial; ARCHITECTURE es el nuevo punto de entrada).
 
 ## Módulos en producción
 
