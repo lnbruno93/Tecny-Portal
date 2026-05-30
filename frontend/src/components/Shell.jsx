@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
+import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
@@ -76,6 +77,7 @@ function UpdateBanner() {
 const NAV_MAIN = [
   { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null,          group: 1 },
   { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  perm: 'financiera',  group: 1 },
+  { id: 'alertas',    path: '/alertas',    label: 'Alertas',         icon: 'Bell',   perm: 'financiera',  group: 1 },
   { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas',      group: 1 },
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
@@ -103,6 +105,7 @@ const NAV_SYS = [
 const SCREEN_LABELS = {
   inicio:     'Inicio',
   resumen:    'Resumen del mes',
+  alertas:    'Alertas',
   cotizador:  'Cotizador',
   financiera: 'Financiera',
   cambios:    'Cambios de Divisa',
@@ -296,6 +299,8 @@ function Topbar({ onMenuClick, onSearchClick }) {
 export default function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [badges, setBadges] = useState({});
+  const { user } = useAuth();
 
   // Global ⌘K / Ctrl+K shortcut to open the command palette
   useEffect(() => {
@@ -309,9 +314,27 @@ export default function Shell() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, []);
 
+  // Refresca el contador de alertas cada 2 min. Best-effort: si falla
+  // (sin permiso financiera, sin sesión, etc.), se ignora silenciosamente.
+  // El badge solo se muestra si total_alertas > 0.
+  useEffect(() => {
+    if (!user) return;
+    const hasFinanciera = user.role === 'admin' || user.perms?.financiera === true;
+    if (!hasFinanciera) return;
+    let cancelled = false;
+    function refresh() {
+      alertasApi.list()
+        .then(r => { if (!cancelled) setBadges(b => ({ ...b, alertas: r.total_alertas || null })); })
+        .catch(() => {});
+    }
+    refresh();
+    const id = setInterval(refresh, 2 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
   return (
     <div className="app" data-theme="vault">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar badges={badges} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main">
         <Topbar
           onMenuClick={() => setSidebarOpen(s => !s)}

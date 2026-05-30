@@ -303,3 +303,11 @@ export const conciliacion = {
   cerrar: (id)          => api(`/api/conciliacion/${id}/cerrar`, 'POST'),
   delete: (id)          => api(`/api/conciliacion/${id}`, 'DELETE'),
 };
+
+export const alertas = {
+  // Devuelve { grupos: [{tipo, titulo, severidad, items, count}], total_alertas, generado_en }
+  list:        () => api('/api/alertas'),
+  config:      () => api('/api/alertas/config'),
+  // data: { activa?, parametros? }
+  updateConfig: (tipo, data) => api(`/api/alertas/config/${tipo}`, 'PUT', data),
+};
