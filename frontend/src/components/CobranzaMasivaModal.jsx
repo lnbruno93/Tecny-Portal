@@ -21,6 +21,7 @@ import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
+import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -63,9 +64,14 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   const [tcDefault,   setTCD]   = useState('');
 
   // ── Planilla ─────────────────────────────────────────────────────────
-  const [rows, setRows] = useState(() =>
-    Array.from({ length: INITIAL_ROWS }, () => mkRow())
-  );
+  // #F-5: state + handlers comunes vienen del hook (R-01). applyDefaultsToEmpty
+  // se mantiene custom porque acá solo afecta caja_id/tc, no la fila completa.
+  const { rows, setRows, updCell, removeRow } = useSpreadsheetRows({
+    mkRow,
+    isUsedRow,
+    initialCount: INITIAL_ROWS,
+    addBatch: ADD_BATCH,
+  });
 
   // ── Catálogos ────────────────────────────────────────────────────────
   // #P-05: solo cajas se carga al abrir. Los clientes se buscan por demanda
@@ -94,9 +100,9 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   }, [rows, cajas]);
 
   // ── Handlers ─────────────────────────────────────────────────────────
-  function updCell(idx, field, val) {
-    setRows(rs => rs.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-  }
+  // updCell / removeRow vienen del hook. addRows va custom porque siempre
+  // mete defaults runtime (caja + tc). applyDefaultsToEmpty también custom
+  // (merge semantics propio).
   function pickCliente(idx, c) {
     setRows(rs => rs.map((r, i) => i !== idx ? r : {
       ...r,
@@ -112,9 +118,6 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
   }
   function addRows(n = ADD_BATCH) {
     setRows(rs => [...rs, ...Array.from({ length: n }, () => mkRow({ caja_id: cajaDefault, tc: tcDefault }))]);
-  }
-  function removeRow(idx) {
-    setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
   }
   // #M-10: solo pisar campos vacíos/falsy de filas no-usadas. Antes el
   // spread escribía caja_id/tc aunque el usuario los hubiera tipeado

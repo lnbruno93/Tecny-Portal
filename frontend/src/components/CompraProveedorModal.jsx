@@ -25,6 +25,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
+import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
@@ -106,9 +107,16 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const setDef = (k, v) => setDefs(d => ({ ...d, [k]: v }));
 
   // ── Planilla ──────────────────────────────────────────────────────────
-  const [rows, setRows] = useState(() =>
-    Array.from({ length: INITIAL_ROWS }, () => mkRow(DEFAULTS_INICIALES))
-  );
+  // #F-5: state + handlers comunes desde el hook (R-01). addRows va custom
+  // (toma defaults runtime `defs` que cambian). applyDefaultsToEmpty también
+  // queda custom: tiene la semántica "fueTocada" propia (compara contra
+  // template inicial para no pisar filas con edits parciales — #M-10).
+  const { rows, setRows, updCell, removeRow } = useSpreadsheetRows({
+    mkRow: () => mkRow(DEFAULTS_INICIALES),
+    isUsedRow,
+    initialCount: INITIAL_ROWS,
+    addBatch: ADD_BATCH,
+  });
 
   // ── Catálogos ────────────────────────────────────────────────────────
   const [categorias, setCategorias] = useState([]);
@@ -157,14 +165,10 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   }, [rows, tc]);
 
   // ── Handlers ──────────────────────────────────────────────────────────
-  function updCell(idx, field, val) {
-    setRows(rs => rs.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-  }
+  // updCell / removeRow vienen del hook. addRows custom porque pasa los
+  // defaults runtime `defs` que el user edita en la cabecera.
   function addRows(n = ADD_BATCH) {
     setRows(rs => [...rs, ...Array.from({ length: n }, () => mkRow(defs))]);
-  }
-  function removeRow(idx) {
-    setRows(rs => rs.length <= 1 ? rs : rs.filter((_, i) => i !== idx));
   }
   // "Aplicar defaults a las filas vacías": útil cuando ajustás defaults
   // después de haber agregado filas.
