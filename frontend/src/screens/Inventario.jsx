@@ -10,6 +10,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import EditableCell from '../components/EditableCell';
+import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 
 
@@ -487,27 +488,26 @@ export default function Inventario() {
                     Se hacen scroll horizontal si no entran en el ancho disponible.
             Fila 2: selector de vista (estado + ocultos) + buscador.            */}
       <div style={{ marginBottom: 14 }}>
-        {/* #M-09: scroll-fade-x indica que hay más tabs a la derecha cuando
-            no entran. Es hint visual permanente — no usamos JS de scroll. */}
-        <div className="scroll-fade-x" style={{ marginBottom: 10 }}>
-          <div style={{ overflowX: 'auto', paddingBottom: 2 }}>
-            <Seg
-              value={claseFilter}
-              options={[
-                { value: 'todos', label: 'Todos' },
-                { value: 'celular', label: 'Celulares' },
-                { value: 'accesorio', label: 'Accesorios' },
-                { value: 'tecnico', label: 'En técnico' },
-                { value: 'usados', label: 'Usados' },
-                // Categorías administrables → 1 tab por cada una (orden alfabético).
-                // El usuario las crea/edita desde "Gestionar categorías" sin tocar código.
-                ...[...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-                  .map(c => ({ value: `cat:${c.id}`, label: c.nombre })),
-              ]}
-              onChange={setClaseFilter}
-            />
-          </div>
-        </div>
+        {/* #F-4: ScrollFadeX reactivo — muestra el fade SOLO si hay overflow
+            real, y a la izquierda solo si el user ya scrolleó. Reemplaza al
+            scroll-fade-x permanente original (#M-09). */}
+        <ScrollFadeX style={{ marginBottom: 10 }}>
+          <Seg
+            value={claseFilter}
+            options={[
+              { value: 'todos', label: 'Todos' },
+              { value: 'celular', label: 'Celulares' },
+              { value: 'accesorio', label: 'Accesorios' },
+              { value: 'tecnico', label: 'En técnico' },
+              { value: 'usados', label: 'Usados' },
+              // Categorías administrables → 1 tab por cada una (orden alfabético).
+              // El usuario las crea/edita desde "Gestionar categorías" sin tocar código.
+              ...[...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+                .map(c => ({ value: `cat:${c.id}`, label: c.nombre })),
+            ]}
+            onChange={setClaseFilter}
+          />
+        </ScrollFadeX>
         <div className="flex-between" style={{ gap: 8, flexWrap: 'wrap' }}>
           <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
             <label className="field-label" style={{ marginBottom: 0, marginRight: 4 }}>Vista</label>

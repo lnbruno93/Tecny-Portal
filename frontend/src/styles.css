@@ -1406,3 +1406,42 @@ body.modal-open { overflow: hidden; }
     color-mix(in oklab, var(--bg) 0%, transparent),
     color-mix(in oklab, var(--bg) 92%, transparent));
 }
+
+/* ── Scroll-fade reactivo (#F-4) ──────────────────────────────────
+   Versión reactiva con detección de overflow vía componente
+   ScrollFadeX.jsx. A diferencia de .scroll-fade-x (siempre visible),
+   este solo muestra el fade cuando hay contenido oculto en esa
+   dirección. Las clases .has-overflow-left / .has-overflow-right las
+   togglea el componente con ResizeObserver + scroll listener. */
+.scroll-fade-rx {
+  position: relative;
+}
+.scroll-fade-rx__inner {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.scroll-fade-rx::before,
+.scroll-fade-rx::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 6px;  /* espacio para scrollbar */
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.scroll-fade-rx::before {
+  left: 0;
+  background: linear-gradient(to left,
+    color-mix(in oklab, var(--bg) 0%, transparent),
+    color-mix(in oklab, var(--bg) 92%, transparent));
+}
+.scroll-fade-rx::after {
+  right: 0;
+  background: linear-gradient(to right,
+    color-mix(in oklab, var(--bg) 0%, transparent),
+    color-mix(in oklab, var(--bg) 92%, transparent));
+}
+.scroll-fade-rx.has-overflow-left::before  { opacity: 1; }
+.scroll-fade-rx.has-overflow-right::after  { opacity: 1; }
