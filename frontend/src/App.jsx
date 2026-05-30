@@ -30,6 +30,7 @@ const Contactos  = lazy(() => import('./screens/Contactos'));
 const Egresos    = lazy(() => import('./screens/Egresos'));
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
+const Conciliacion = lazy(() => import('./screens/Conciliacion'));
 const Cambios    = lazy(() => import('./screens/Cambios'));
 const Tarjetas   = lazy(() => import('./screens/Tarjetas'));
 
@@ -134,6 +135,11 @@ export default function App() {
                   <Route path="resumen" element={
                     <RequirePermission perm="financiera">
                       <ErrorBoundary><Resumen /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="conciliacion" element={
+                    <RequirePermission perm="cajas">
+                      <ErrorBoundary><Conciliacion /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="envios" element={
