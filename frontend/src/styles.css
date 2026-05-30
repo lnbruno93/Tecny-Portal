@@ -1380,39 +1380,12 @@ body.modal-open { overflow: hidden; }
 }
 .skip-link:focus { top: 8px; }
 
-/* ── Scroll-fade utility (#M-08) ──────────────────────────────────
-   Wrapper para containers con overflowX que indican visualmente al
-   usuario que hay más contenido a la derecha. Se aplica al WRAPPER,
-   no al elemento scrollable: necesitamos position:relative en el
-   padre para anclar el ::after, y el ::after debe quedar fuera del
-   scroll para no moverse con él. Uso:
-     <div className="scroll-fade-x">
-       <div style={{ overflowX: 'auto' }}>...</div>
-     </div>
-   El gradient se mantiene aunque el usuario haya scrolleado: es un
-   hint persistente, no un detector reactivo (más simple, sin JS). */
-.scroll-fade-x {
-  position: relative;
-}
-.scroll-fade-x::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 6px;  /* dejar espacio para el scrollbar */
-  width: 28px;
-  pointer-events: none;
-  background: linear-gradient(to right,
-    color-mix(in oklab, var(--bg) 0%, transparent),
-    color-mix(in oklab, var(--bg) 92%, transparent));
-}
-
 /* ── Scroll-fade reactivo (#F-4) ──────────────────────────────────
-   Versión reactiva con detección de overflow vía componente
-   ScrollFadeX.jsx. A diferencia de .scroll-fade-x (siempre visible),
-   este solo muestra el fade cuando hay contenido oculto en esa
-   dirección. Las clases .has-overflow-left / .has-overflow-right las
-   togglea el componente con ResizeObserver + scroll listener. */
+   Reemplazó al utility .scroll-fade-x permanente (#M-08, removido en
+   post-audit) — todos los callers ahora usan ScrollFadeX.jsx para
+   detección reactiva de overflow vía ResizeObserver + scroll listener.
+   Las clases .has-overflow-left / .has-overflow-right las togglea el
+   componente. */
 .scroll-fade-rx {
   position: relative;
 }
