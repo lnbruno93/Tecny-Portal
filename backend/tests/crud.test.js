@@ -300,13 +300,14 @@ describe('POST /api/contactos', () => {
 });
 
 describe('GET /api/contactos', () => {
-  it('devuelve lista de contactos', async () => {
+  it('devuelve lista de contactos paginada', async () => {
     const res = await request(app)
       .get('/api/contactos')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    const ids = res.body.map(c => c.id);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.pagination).toBeTruthy();
+    const ids = res.body.data.map(c => c.id);
     expect(ids).toContain(contactoId);
   });
 });
@@ -352,7 +353,7 @@ describe('DELETE /api/contactos/:id', () => {
     const res = await request(app)
       .get('/api/contactos')
       .set('Authorization', `Bearer ${adminToken}`);
-    const ids = res.body.map(c => c.id);
+    const ids = res.body.data.map(c => c.id);
     expect(ids).not.toContain(contactoId);
   });
 

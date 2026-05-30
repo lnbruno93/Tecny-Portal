@@ -75,9 +75,10 @@ export default function Cajas() {
   // All contacts for dropdowns (loaded once)
   const [allContacts, setAllContacts] = useState([]);
   useEffect(() => {
-    // contactos API returns a plain array (not paginated)
+    // Contactos ahora paginado (post-audit). Unwrap defensivo para soportar
+    // ambos shapes — el endpoint devuelve { data, pagination }.
     contactosApi.list({ limit: 500 })
-      .then(rows => setAllContacts(Array.isArray(rows) ? rows : []))
+      .then(r => setAllContacts(Array.isArray(r) ? r : (r?.data ?? [])))
       .catch(console.error);
   }, []);
 
