@@ -84,7 +84,13 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
 
 ### Síntoma: "Mi caja muestra saldo que no cuadra"
 
-1. Cross-check con SQL directo (Railway → Postgres-AueP → Query):
+1. **Forzar check de invariantes** (más rápido que SQL manual):
+   ```bash
+   curl -s -X GET "https://ipro-backend-production.up.railway.app/api/admin/invariants" \
+        -H "Authorization: Bearer <admin-token>" | jq
+   ```
+   El campo `caja_saldo_negativo.violaciones` lista las cajas con saldo < 0.
+2. Cross-check con SQL directo (Railway → Postgres-AueP → Query):
    ```sql
    SELECT mp.saldo_inicial + COALESCE(SUM(
             CASE WHEN cm.tipo = 'ingreso' THEN cm.monto ELSE -cm.monto END
@@ -94,8 +100,8 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
     WHERE mp.id = <caja_id>
     GROUP BY mp.id, mp.saldo_inicial;
    ```
-2. Si difiere del saldo que muestra la UI: bug. Reportar a Sentry + buscar últimos movimientos.
-3. El cron de invariantes (ver `backend/src/jobs/checkInvariants.js` — TANDA B) detectaría esto temprano.
+3. Si difiere del saldo que muestra la UI: bug. Reportar a Sentry + buscar últimos movimientos.
+4. El cron de invariantes corre cada 24h automático y reporta a Sentry si encuentra drift — ver `backend/src/lib/checkInvariants.js`.
 
 ### Síntoma: Movimiento de conciliación "fantasma"
 

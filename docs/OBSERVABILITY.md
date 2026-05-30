@@ -103,7 +103,42 @@ Cuando un error llega a Sentry, viene con estos tags para correlacionar con el r
 
 ---
 
-## 7. Roadmap (no urgente)
+## 7. Cron de invariantes (data integrity)
+
+Job nocturno (`backend/src/jobs/invariantsJob.js`) que corre cada 24h y valida
+~10 invariantes de integridad financiera. Si encuentra drift, reporta a Sentry.
+
+**Invariantes vigiladas hoy:**
+
+| ID | Severity | Descripción |
+|---|---|---|
+| `caja_saldo_negativo` | crítica | Cajas con saldo < 0 |
+| `caja_eliminada_con_movs_activos` | alta | Caja soft-deleted con movs activos |
+| `conciliacion_pareja_inconsistente` | alta | `conciliado_en` y `conciliacion_id` deben coexistir |
+| `conciliacion_match_caja_distinta` | alta | Línea matched a mov de otra caja |
+| `conciliacion_match_a_mov_deleted` | media | Match a un mov soft-deleted |
+| `egreso_pagado_sin_caja_mov` | crítica | Egreso pagado sin mov en ledger |
+| `caja_mov_egreso_huerfano` | alta | caja_mov.origen=egreso sin egreso activo |
+| `proyecto_mov_sin_caja_mov` | crítica | Mov de proyecto con caja_id sin mov en ledger |
+| `venta_pagos_sin_venta_activa` | media | venta_pago apuntando a venta deleted |
+| `conciliacion_cerrada_con_lineas_pending` | alta | Conciliación cerrada con líneas pending |
+
+**Política de alerta:**
+- Violación de `crítica` → Sentry `captureException` (level error). Atiende ya.
+- Violación de `alta` → Sentry `captureMessage` (level warning).
+- Violación de `media` → solo log estructurado en stdout.
+
+**Endpoints admin (requieren JWT con role=admin):**
+- `GET /api/admin/invariants` — corre todas las invariantes y devuelve el reporte,
+  SIN reportar a Sentry. Para inspección manual.
+- `POST /api/admin/invariants/run` — corre el mismo path que el cron (reporta
+  a Sentry si hay violaciones). Útil para gatillar el alerta sin esperar 24h.
+
+**Cómo agregar una nueva invariante:** ver comentarios en `backend/src/lib/checkInvariants.js`.
+
+---
+
+## 8. Roadmap (no urgente)
 
 - [ ] Source maps de Sentry — subir maps en CI para que stacktraces minificados sean legibles.
 - [ ] Sentry releases automáticas — vincular commit SHA con cada release en el dashboard.
