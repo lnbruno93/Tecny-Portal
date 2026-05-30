@@ -54,9 +54,11 @@ Cómo manejar esto:
 2. **Para los demás endpoints**: el test SÍ va a hacer ~300 requests antes del 429.
    La latencia medida en esos 300 requests es representativa. El error_rate
    te avisa cuántos chocaron con el limit.
-3. **Si querés correr el test completo sin rate limit**: temporalmente subí el
-   límite en Railway staging env vars (ej. `GLOBAL_RATE_LIMIT_MAX=10000`) y
-   restaura después. NO hagas esto en producción.
+3. **Si querés correr el test completo sin rate limit**: setear
+   `GLOBAL_RATE_LIMIT_MAX=5000` (o más) en Railway env vars del servicio backend.
+   Railway redeploya automático en ~30s. Cuando termines el test, restaurar:
+   borrá la env var o seteala a 300. NO subas el limit en producción salvo
+   que sea estrictamente necesario (campaña, demo, etc).
 4. **Alternativa**: correr el test desde dentro de Railway (shell del propio
    servicio backend), que comparte IP con la app y se considera localhost por
    `trust proxy: 1`. Sigue contando contra el limit, pero menos relevante.

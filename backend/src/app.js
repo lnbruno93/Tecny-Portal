@@ -81,18 +81,26 @@ app.use(cors({
   credentials: true,
 }));
 
-// General rate limit: 300 req / 15 min per IP.
+// General rate limit: 300 req / 15 min per IP (default).
+// Configurable via GLOBAL_RATE_LIMIT_MAX env var — útil para:
+//   - Load testing en staging (set 5000+ para no chocar con el limit)
+//   - Demos/campañas que generan pico legítimo (set 1000+ temporal)
+//   - Restaurar al default después (unset o set 300)
+// Default explícito = 300 si la env no existe o es inválida.
+//
 // Skip /health y /ready: son probes externos (UptimeRobot c/5min, Railway internal)
 // y bloquearlos genera falsos negativos de monitoring. Tampoco son endpoints que
 // expongan datos sensibles ni que tengan costo computacional alto.
+const GLOBAL_RATE_LIMIT_MAX = Number(process.env.GLOBAL_RATE_LIMIT_MAX) || 300;
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: GLOBAL_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, intentá de nuevo en 15 minutos' },
   skip: (req) => req.path === '/health' || req.path === '/ready',
 }));
+logger.info({ globalRateLimit: GLOBAL_RATE_LIMIT_MAX }, 'rate-limit global configurado');
 
 app.use(express.json({ limit: '10mb' }));
 
