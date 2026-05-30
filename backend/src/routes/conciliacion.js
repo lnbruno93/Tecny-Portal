@@ -16,7 +16,7 @@
 //      (conciliado_en → NULL).
 
 const router = require('express').Router();
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
@@ -33,7 +33,11 @@ const conciliacionPostLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `conciliacion:create:${req.user?.id || req.ip}`,
+  // ipKeyGenerator: helper oficial para fallback IP-safe a IPv6. Sin él,
+  // express-rate-limit warnea ERR_ERL_KEY_GEN_IPV6 (bypass IPv6 posible).
+  keyGenerator: (req) => req.user?.id != null
+    ? `conciliacion:create:${req.user.id}`
+    : `conciliacion:create:ip:${ipKeyGenerator(req)}`,
   message: { error: 'Demasiadas conciliaciones creadas. Esperá unos minutos.' },
   // En tests skipeamos para no entorpecer el flujo de error-paths.
   skip: () => process.env.NODE_ENV === 'test',

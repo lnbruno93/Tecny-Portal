@@ -1,7 +1,7 @@
 // Módulo Proveedores — cuentas por pagar. Alta de proveedores + cuenta corriente
 // (compras que les debemos y pagos que les hicimos). Montos normalizados a USD.
 // Montado en /api/proveedores con requireAuth + requirePermission('proveedores') (app.js).
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const router = require('express').Router();
 const db = require('../config/database');
 const validate = require('../lib/validate');
@@ -38,7 +38,9 @@ const compraMovimientoLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `prov-mov:${req.user?.id || req.ip}`,
+  keyGenerator: (req) => req.user?.id != null
+    ? `prov-mov:${req.user.id}`
+    : `prov-mov:ip:${ipKeyGenerator(req)}`,
   message: { error: 'Demasiadas compras a proveedor en poco tiempo. Probá en unos minutos.' },
 });
 
