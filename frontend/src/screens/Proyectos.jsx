@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { proyectos as proyApi, contactos as contactosApi, cajas as cajasApi } from '../lib/api';
 import CajaSelectHint from '../components/CajaSelectHint';
+import TcWarning from '../components/TcWarning';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -392,7 +393,10 @@ export default function Proyectos() {
                       <td><input className="input" style={{ height: 30, fontSize: 12 }} placeholder="Detalle…" value={mov.detalle} onChange={e => setMov(m => ({ ...m, detalle: e.target.value }))} /></td>
                       <td><input className="input" list="proy-cats" style={{ height: 30, fontSize: 12 }} placeholder="Categoría" value={mov.categoria} onChange={e => setMov(m => ({ ...m, categoria: e.target.value }))} /></td>
                       <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" value={mov.monto} onChange={e => setMov(m => ({ ...m, monto: e.target.value }))} /></td>
-                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} /></td>
+                      <td>
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
+                        <TcWarning tc={mov.tc} />
+                      </td>
                       <td>
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: movUsdPreview > 0 && (parseFloat(mov.monto) > 0) ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
                           placeholder="USD" value={(parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0) ? movUsdPreview : mov.monto_usd}

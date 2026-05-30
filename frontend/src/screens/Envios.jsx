@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import TcWarning from '../components/TcWarning';
 
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
@@ -920,25 +921,28 @@ export default function Envios() {
                     </div>
                     <div className="stack" style={{ gap: 6 }}>
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'pago').map(({ it, idx }) => (
-                        <div key={`pg-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 90px 100px auto', gap: 6, alignItems: 'center' }}>
-                          <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
-                                  onChange={e => pickCajaPago(idx, e.target.value)}>
-                            <option value="">Método…</option>
-                            {cajasPago.map(c => (
-                              <option key={c.id} value={c.id}>{c.nombre}</option>
-                            ))}
-                            <option value="__CC__">Cuenta corriente (deuda)</option>
-                          </select>
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto"
-                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
-                          <select className="input" value={it.moneda || 'ARS'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
-                            <option>ARS</option><option>USD</option><option>USDT</option>
-                          </select>
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC"
-                                 value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
-                          <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
-                            <Icons.X size={14} />
-                          </button>
+                        <div key={`pg-${idx}`}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 90px 100px auto', gap: 6, alignItems: 'center' }}>
+                            <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
+                                    onChange={e => pickCajaPago(idx, e.target.value)}>
+                              <option value="">Método…</option>
+                              {cajasPago.map(c => (
+                                <option key={c.id} value={c.id}>{c.nombre}</option>
+                              ))}
+                              <option value="__CC__">Cuenta corriente (deuda)</option>
+                            </select>
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto"
+                                   value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                            <select className="input" value={it.moneda || 'ARS'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                              <option>ARS</option><option>USD</option><option>USDT</option>
+                            </select>
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC"
+                                   value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
+                            <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
+                              <Icons.X size={14} />
+                            </button>
+                          </div>
+                          <TcWarning tc={it.tc} />
                         </div>
                       ))}
                       {items.filter(i => i.tipo === 'pago').length === 0 && (

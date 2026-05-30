@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './components/ConfirmModal';
+import { TcReferenciaProvider } from './contexts/TcReferenciaContext';
 import Shell from './components/Shell';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './screens/Login';
@@ -30,6 +31,7 @@ const Contactos  = lazy(() => import('./screens/Contactos'));
 const Egresos    = lazy(() => import('./screens/Egresos'));
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
+// (Nota: Alertas ahora vive como tab dentro de Config.jsx, no como ruta propia)
 const Conciliacion = lazy(() => import('./screens/Conciliacion'));
 const Cambios    = lazy(() => import('./screens/Cambios'));
 const Tarjetas   = lazy(() => import('./screens/Tarjetas'));
@@ -93,6 +95,7 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
       <ConfirmProvider>
+      <TcReferenciaProvider>
       <PageActionsProvider>
         <BrowserRouter>
           <RequireAuth>
@@ -229,6 +232,7 @@ export default function App() {
           </RequireAuth>
         </BrowserRouter>
       </PageActionsProvider>
+      </TcReferenciaProvider>
       </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>

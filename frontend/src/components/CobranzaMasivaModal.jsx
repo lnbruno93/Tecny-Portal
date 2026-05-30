@@ -22,6 +22,7 @@ import AutocompletePicker from './AutocompletePicker';
 import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadsheetStyles';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
+import TcWarning from './TcWarning';
 import CajaSelectHint from './CajaSelectHint';
 
 
@@ -221,6 +222,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               <label className="field-label">TC por defecto</label>
               <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                 value={tcDefault} onChange={e => setTCD(e.target.value)} placeholder="0" />
+              <TcWarning tc={tcDefault} />
             </div>
             <div className="field" style={{ flex: '0 0 140px', alignSelf: 'flex-end' }}>
               <button className="btn btn-sm btn-ghost" style={{ width: '100%' }} onClick={applyDefaultsToEmpty}
@@ -319,9 +321,12 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                       </td>
                       <td style={{ padding: '3px 4px' }}>
                         {needsTc ? (
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
-                            value={r.tc} placeholder={moneda}
-                            onChange={e => updCell(idx, 'tc', e.target.value)} />
+                          <>
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" style={{ ...cellInp, textAlign: 'right' }}
+                              value={r.tc} placeholder={moneda}
+                              onChange={e => updCell(idx, 'tc', e.target.value)} />
+                            <TcWarning tc={r.tc} />
+                          </>
                         ) : <span className="dim" style={{ fontSize: 11, paddingLeft: 6 }}>—</span>}
                       </td>
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, fontWeight: 600 }}>

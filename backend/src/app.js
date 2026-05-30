@@ -30,6 +30,7 @@ const proveedoresRoutes  = require('./routes/proveedores');
 const proyectosRoutes    = require('./routes/proyectos');
 const dashboardRoutes    = require('./routes/dashboard');
 const conciliacionRoutes = require('./routes/conciliacion');
+const alertasRoutes      = require('./routes/alertas');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -249,6 +250,8 @@ app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasRo
 app.use('/api/proveedores',   requireAuth, requirePermission('proveedores'), proveedoresRoutes);
 app.use('/api/proyectos',     requireAuth, requirePermission('proyectos'),   proyectosRoutes);
 app.use('/api/conciliacion',  requireAuth, requirePermission('cajas'),       conciliacionRoutes);
+// Alertas: vista cross-módulo (cajas, stock, CC, proveedores). Reusa 'financiera'.
+app.use('/api/alertas',       requireAuth, requirePermission('financiera'),  alertasRoutes);
 
 // Dashboard mensual: vista de gerencia, agrega datos de varios módulos
 // (ventas, cajas, deudas, egresos). Reusa el permiso 'financiera' que ya

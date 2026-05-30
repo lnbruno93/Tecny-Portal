@@ -9,6 +9,7 @@ import VentaB2BModal from '../components/VentaB2BModal';
 import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
+import TcWarning from '../components/TcWarning';
 
 
 
@@ -335,6 +336,9 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                     <CajaSelectHint />
                   </select>
                 </div>
+                {/* TC warning debajo del row: solo se muestra si el TC ARS tipeado
+                    está por debajo del umbral configurado en Alertas. */}
+                {parseFloat(row.ars) > 0 && <TcWarning tc={row.tc} />}
               </td>
 
             {/* Verificado */}

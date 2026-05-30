@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
+import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
@@ -203,6 +204,9 @@ function Sidebar({ badges = {}, open, onClose }) {
                 >
                   <span className="ico">{I && <I size={16} />}</span>
                   <span>{n.label}</span>
+                  {badges[n.id] != null && (
+                    <span className="badge" style={{ background: 'var(--neg)', color: '#fff' }}>{badges[n.id]}</span>
+                  )}
                 </NavLink>
               );
             })}
@@ -296,6 +300,8 @@ function Topbar({ onMenuClick, onSearchClick }) {
 export default function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [badges, setBadges] = useState({});
+  const { user } = useAuth();
 
   // Global ⌘K / Ctrl+K shortcut to open the command palette
   useEffect(() => {
@@ -309,9 +315,32 @@ export default function Shell() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, []);
 
+  // Refresca el contador de alertas cada 2 min. Best-effort: si falla
+  // (sin permiso financiera, sin sesión, etc.), se ignora silenciosamente.
+  // El badge solo se muestra si total_alertas > 0.
+  useEffect(() => {
+    if (!user) return;
+    const hasFinanciera = user.role === 'admin' || user.perms?.financiera === true;
+    if (!hasFinanciera) return;
+    let cancelled = false;
+    function refresh() {
+      alertasApi.list()
+        .then(r => {
+          // El badge cuelga del item "config" del menú Sistema — Alertas
+          // ahora vive como tab dentro de Config, así el contador aparece
+          // donde el usuario va a actuar sobre ellas.
+          if (!cancelled) setBadges(b => ({ ...b, config: r.total_alertas || null }));
+        })
+        .catch(() => {});
+    }
+    refresh();
+    const id = setInterval(refresh, 2 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
   return (
     <div className="app" data-theme="vault">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar badges={badges} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main">
         <Topbar
           onMenuClick={() => setSidebarOpen(s => !s)}
