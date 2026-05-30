@@ -8,6 +8,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import useLoadingAction from '../lib/useLoadingAction'; // #F-2
 
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -173,9 +174,10 @@ export default function Ventas() {
   // y modal de éxito post-venta con descargar comprobante en PDF.
   const [diffModal, setDiffModal] = useState({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null });
   const [exitoModal, setExitoModal] = useState({ open: false, venta: null });
-  // #M-12: loading state del PDF (modal éxito y grilla comparten la misma flag,
-  // disabled rebota click-spam y feedback "Generando…" al usuario)
-  const [pdfLoading, setPdfLoading] = useState(false);
+  // #M-12 / #F-2: loading state del PDF compartido entre modal éxito y grilla.
+  // Extraído al hook useLoadingAction — el patrón se reutiliza para cualquier
+  // acción async con anti-click-spam.
+  const { loading: pdfLoading, run: withPdfLoading } = useLoadingAction();
 
   // Modales
   const [showVenta, setShowVenta] = useState(false);
@@ -636,9 +638,7 @@ export default function Ventas() {
   // entrada (botón "Descargar comprobante" del modal y icono impresora en
   // la grilla) generan el mismo PDF con el mismo layout sobrio.
   async function comprobantePDF(v) {
-    if (pdfLoading) return; // anti-click-spam (M-12)
-    setPdfLoading(true);
-    try {
+    await withPdfLoading(async () => {
       const contactoVinculado = v.cliente_id
         ? contactos.find(c => String(c.id) === String(v.cliente_id))
         : null;
@@ -662,14 +662,14 @@ export default function Ventas() {
         garantia_nombre:  garFuente?.nombre || (v.garantia_id ? null : 'Predeterminada'),
         garantia_texto:   garFuente?.texto  || GARANTIA_FALLBACK,
       };
-      const mod = await import('../lib/generarComprobantePdf');
-      await mod.generarComprobantePdf(ventaEnriquecida);
-    } catch (e) {
-      console.error('PDF error:', e);
-      toast.error(`No se pudo generar el comprobante PDF: ${e?.message || e}`, { duration: 12000 });
-    } finally {
-      setPdfLoading(false);
-    }
+      try {
+        const mod = await import('../lib/generarComprobantePdf');
+        await mod.generarComprobantePdf(ventaEnriquecida);
+      } catch (e) {
+        console.error('PDF error:', e);
+        toast.error(`No se pudo generar el comprobante PDF: ${e?.message || e}`, { duration: 12000 });
+      }
+    });
   }
 
   function exportarExcel() {
@@ -1221,9 +1221,7 @@ export default function Ventas() {
               <button className="btn"
                       style={{ minWidth: 200, background: 'var(--neg)', color: '#fff', border: 0, opacity: pdfLoading ? 0.7 : 1 }}
                       disabled={pdfLoading}
-                      onClick={async () => {
-                        if (pdfLoading) return;
-                        setPdfLoading(true);
+                      onClick={() => withPdfLoading(async () => {
                         try {
                           const mod = await import('../lib/generarComprobantePdf');
                           await mod.generarComprobantePdf(exitoModal.venta);
@@ -1234,10 +1232,8 @@ export default function Ventas() {
                           console.error('PDF error:', e);
                           const detalle = e?.message || String(e);
                           toast.error(`No se pudo generar el comprobante PDF: ${detalle}`, { duration: 12000 });
-                        } finally {
-                          setPdfLoading(false);
                         }
-                      }}>
+                      })}>
                 {pdfLoading ? 'Generando…' : 'Descargar comprobante'}
               </button>
             </div>
