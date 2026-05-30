@@ -7,6 +7,7 @@ const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const { toUsd, round2 } = require('../lib/money');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { createProyectoSchema, updateProyectoSchema, createMovimientoProyectoSchema } = require('../schemas/proyectos');
 
 // Calcula el monto en USD de un movimiento: si hay $ + tc → $/tc; si no, el USD directo.
@@ -151,9 +152,13 @@ router.get('/:id/movimientos', async (req, res, next) => {
     const [countRes, dataRes] = await Promise.all([
       db.query('SELECT COUNT(*) FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL', [id]),
       db.query(
-        `SELECT m.*, (c.nombre || COALESCE(' ' || c.apellido, '')) AS inversor_nombre
+        `SELECT m.*,
+                (c.nombre || COALESCE(' ' || c.apellido, '')) AS inversor_nombre,
+                mp.nombre AS caja_nombre,
+                mp.moneda AS caja_moneda
            FROM proyecto_movimientos m
-           LEFT JOIN contactos c ON c.id = m.inversor_contacto_id
+           LEFT JOIN contactos c       ON c.id  = m.inversor_contacto_id
+           LEFT JOIN metodos_pago mp   ON mp.id = m.caja_id
           WHERE m.proyecto_id = $1 AND m.deleted_at IS NULL
           ORDER BY m.fecha DESC, m.id DESC
           LIMIT $2 OFFSET $3`,
@@ -165,33 +170,121 @@ router.get('/:id/movimientos', async (req, res, next) => {
 });
 
 router.post('/movimientos', validate(createMovimientoProyectoSchema), async (req, res, next) => {
+  const { proyecto_id, fecha, detalle, categoria, monto, tc, monto_usd,
+          inversor_contacto_id, comentarios, caja_id, tipo } = req.body;
+  // Validación previa fuera de TX: proyecto existe.
+  const { rows: p } = await db.query('SELECT id FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [proyecto_id]);
+  if (!p[0]) return res.status(404).json({ error: 'Proyecto no encontrado' });
+  const usd = calcUsd({ monto, tc, monto_usd });
+
+  const client = await db.connect();
   try {
-    const { proyecto_id, fecha, detalle, categoria, monto, tc, monto_usd, inversor_contacto_id, comentarios } = req.body;
-    const { rows: p } = await db.query('SELECT id FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [proyecto_id]);
-    if (!p[0]) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    const usd = calcUsd({ monto, tc, monto_usd });
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+
+    // Si vino caja_id, leer la moneda de la caja para validar coherencia y
+    // decidir qué monto postear al ledger. La moneda del ledger se debe
+    // matchear con la moneda de la caja (cajaLedger.js valida por grupo
+    // ARS vs USD/USDT; si no coincide tira 400).
+    let cajaMoneda = null;
+    if (caja_id) {
+      const { rows: cj } = await client.query(
+        'SELECT id, moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL',
+        [caja_id]
+      );
+      if (!cj[0]) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'La caja seleccionada no existe.' });
+      }
+      cajaMoneda = cj[0].moneda;
+    }
+
+    // INSERT del movimiento (incluyendo caja_id + tipo si vinieron).
+    const { rows } = await client.query(
       `INSERT INTO proyecto_movimientos
-         (proyecto_id, fecha, detalle, categoria, monto, tc, monto_usd, inversor_contacto_id, comentarios)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [proyecto_id, fecha, detalle ?? null, categoria ?? null, Number(monto) || 0, tc ?? null, usd, inversor_contacto_id ?? null, comentarios ?? null]
+         (proyecto_id, fecha, detalle, categoria, monto, tc, monto_usd,
+          inversor_contacto_id, comentarios, caja_id, tipo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [proyecto_id, fecha, detalle ?? null, categoria ?? null,
+       Number(monto) || 0, tc ?? null, usd,
+       inversor_contacto_id ?? null, comentarios ?? null,
+       caja_id ?? null, tipo ?? null]
     );
-    await audit('proyecto_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+
+    // Si vino caja_id, postear al ledger. La elección del monto/moneda
+    // depende de la moneda de la caja:
+    //   - Caja ARS: usar `monto` (ARS). Si no hay monto ARS, no se postea.
+    //   - Caja USD/USDT: usar `monto_usd` (preferido si vino); si vino monto
+    //     en ARS + tc, postear el monto_usd calculado (`usd`).
+    if (caja_id) {
+      let montoLedger, monedaLedger, tcLedger;
+      if (cajaMoneda === 'ARS') {
+        montoLedger = Number(monto) || 0;
+        monedaLedger = 'ARS';
+        tcLedger = tc ? Number(tc) : null;
+      } else { // USD o USDT
+        // monto_usd directo si vino; si no, el calculado a partir de monto+tc.
+        montoLedger = Number(monto_usd) > 0 ? Number(monto_usd) : usd;
+        monedaLedger = cajaMoneda; // USD o USDT, da igual al grupo
+        tcLedger = null;
+      }
+      if (montoLedger > 0) {
+        await postCajaMovimiento(client, {
+          caja_id,
+          fecha,
+          tipo, // ingreso | egreso
+          monto: montoLedger,
+          moneda: monedaLedger,
+          tc: tcLedger,
+          origen: 'proyecto',
+          ref_tabla: 'proyecto_movimientos',
+          ref_id: rows[0].id,
+          concepto: detalle || categoria || `Proyecto #${proyecto_id}`,
+          user_id: req.user.id,
+        });
+      }
+    }
+
+    await audit(client, 'proyecto_movimientos', 'INSERT', rows[0].id,
+                { despues: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    // err400 de cajaLedger (saldo insuficiente, moneda no coincide) viene con
+    // status. Pasarlo al front directo.
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally { client.release(); }
 });
 
 router.delete('/movimientos/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE proyecto_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM proyecto_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
-    await audit('proyecto_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    if (!before[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Movimiento no encontrado' });
+    }
+
+    // Revertir el ledger ANTES del soft-delete del movimiento. Si dejaría la
+    // caja en negativo, reverseCajaMovimientos tira 409 y abortamos la TX.
+    await reverseCajaMovimientos(client, 'proyecto_movimientos', id);
+
+    await client.query('UPDATE proyecto_movimientos SET deleted_at = NOW() WHERE id = $1', [id]);
+    await audit(client, 'proyecto_movimientos', 'DELETE', id,
+                { antes: before[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.json({ ok: true });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally { client.release(); }
 });
 
 module.exports = router;
