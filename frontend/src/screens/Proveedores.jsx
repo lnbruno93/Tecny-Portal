@@ -8,6 +8,8 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import CajaSelectHint from '../components/CajaSelectHint';
+
 
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -605,6 +607,7 @@ export default function Proveedores() {
                     onChange={e => setPagoForm(f => ({ ...f, caja_id: e.target.value }))}>
                     <option value="">— Elegí caja —</option>
                     {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                    <CajaSelectHint />
                   </select>
                 </div>
               </div>

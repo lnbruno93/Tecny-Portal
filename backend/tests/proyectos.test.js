@@ -83,3 +83,140 @@ describe('Proyectos', () => {
     expect(Number(det.body.resumen.total_usd)).toBe(100);
   });
 });
+
+// ─── Integración con cajas ──────────────────────────────────────────────────
+describe('Proyectos — impacto en cajas (caja_id + tipo)', () => {
+  let proyId, cajaUsdId, cajaArsId;
+
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set(auth());
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+
+  beforeAll(async () => {
+    const p = await request(app).post('/api/proyectos').set(auth())
+      .send({ nombre: 'Proyecto Caja', fecha_creacion: '2026-04-01' });
+    proyId = p.body.id;
+    const ku = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Proy', moneda: 'USD', saldo_inicial: 1000 });
+    expect(ku.status).toBe(201);
+    cajaUsdId = ku.body.id;
+    const ka = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja ARS Proy', moneda: 'ARS', saldo_inicial: 100000 });
+    expect(ka.status).toBe(201);
+    cajaArsId = ka.body.id;
+  });
+
+  it('movimiento egreso USD postea al ledger y baja saldo de la caja', async () => {
+    const antes = await saldoCaja(cajaUsdId);
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-05',
+        detalle: 'Inversión en infra',
+        monto_usd: 250,
+        caja_id: cajaUsdId, tipo: 'egreso',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.caja_id).toBe(cajaUsdId);
+    expect(res.body.tipo).toBe('egreso');
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(antes - 250, 2);
+  });
+
+  it('movimiento ingreso ARS postea al ledger y sube saldo', async () => {
+    const antes = await saldoCaja(cajaArsId);
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-06',
+        detalle: 'Aporte de inversor',
+        monto: 50000, tc: 1000,
+        caja_id: cajaArsId, tipo: 'ingreso',
+      });
+    expect(res.status).toBe(201);
+    expect(await saldoCaja(cajaArsId)).toBeCloseTo(antes + 50000, 2);
+  });
+
+  it('caja_id sin tipo → 400 (refine del schema)', async () => {
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-07',
+        monto_usd: 100,
+        caja_id: cajaUsdId,
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('caja_id con monto = 0 → 400 (refine: necesita monto > 0)', async () => {
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-07',
+        detalle: 'Solo detalle',
+        caja_id: cajaUsdId, tipo: 'egreso',
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('caja inexistente → 400 con rollback (no inserta el movimiento)', async () => {
+    const movsAntes = (await request(app).get(`/api/proyectos/${proyId}/movimientos`).set(auth())).body.pagination.total;
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-08',
+        monto_usd: 100,
+        caja_id: 999999, tipo: 'egreso',
+      });
+    expect(res.status).toBe(400);
+    const movsDespues = (await request(app).get(`/api/proyectos/${proyId}/movimientos`).set(auth())).body.pagination.total;
+    expect(movsDespues).toBe(movsAntes);
+  });
+
+  it('egreso que dejaría caja en negativo → 400 (regla del ledger)', async () => {
+    const saldo = await saldoCaja(cajaUsdId);
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-09',
+        monto_usd: saldo + 100,
+        caja_id: cajaUsdId, tipo: 'egreso',
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/saldo|insuficiente/i);
+  });
+
+  it('DELETE revierte el ledger y restituye saldo de la caja', async () => {
+    const antes = await saldoCaja(cajaUsdId);
+    const mov = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-10',
+        detalle: 'A revertir',
+        monto_usd: 80,
+        caja_id: cajaUsdId, tipo: 'egreso',
+      });
+    expect(mov.status).toBe(201);
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(antes - 80, 2);
+
+    const del = await request(app).delete(`/api/proyectos/movimientos/${mov.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(antes, 2);
+  });
+
+  it('movimiento sin caja_id NO impacta en ledger (modo legacy)', async () => {
+    const saldoU = await saldoCaja(cajaUsdId);
+    const saldoA = await saldoCaja(cajaArsId);
+    const res = await request(app).post('/api/proyectos/movimientos').set(auth())
+      .send({
+        proyecto_id: proyId, fecha: '2026-04-11',
+        detalle: 'Solo log, sin caja',
+        monto_usd: 500,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.caja_id).toBeNull();
+    expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoU, 2);
+    expect(await saldoCaja(cajaArsId)).toBeCloseTo(saldoA, 2);
+  });
+
+  it('GET /movimientos incluye caja_nombre y caja_moneda en JOIN', async () => {
+    const res = await request(app).get(`/api/proyectos/${proyId}/movimientos`).set(auth());
+    const conCaja = res.body.data.find(m => m.caja_id);
+    expect(conCaja).toBeTruthy();
+    expect(conCaja.caja_nombre).toBeTruthy();
+    expect(conCaja.caja_moneda).toMatch(/^(USD|ARS|USDT)$/);
+  });
+});

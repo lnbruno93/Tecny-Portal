@@ -7,6 +7,8 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useLoadingAction from '../lib/useLoadingAction';
+import CajaSelectHint from '../components/CajaSelectHint';
+
 
 
 const todayISO = () => new Date().toLocaleDateString('sv');
@@ -219,6 +221,7 @@ export default function Cambios() {
                         <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.caja_id} onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
                           <option value="">{mov.tipo === 'entrega_ars' ? 'Caja $…' : 'Caja USD…'}</option>
                           {cajasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          <CajaSelectHint />
                         </select>
                       </td>
                       <td><input className="input" style={{ height: 30, fontSize: 12 }} placeholder="Comentarios" value={mov.comentarios} onChange={e => setMov(m => ({ ...m, comentarios: e.target.value }))} /></td>

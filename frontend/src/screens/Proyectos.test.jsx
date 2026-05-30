@@ -16,6 +16,7 @@ vi.mock('../lib/api', () => ({
     createMovimiento: vi.fn(), deleteMovimiento: vi.fn(),
   },
   contactos: { list: vi.fn().mockResolvedValue([{ id: 9, nombre: 'Inversor', apellido: 'Uno' }]) },
+  cajas: { listCajas: vi.fn().mockResolvedValue([{ id: 1, nombre: 'Caja USD', moneda: 'USD', activo: true }]) },
 }));
 
 import { proyectos as proyApi } from '../lib/api';

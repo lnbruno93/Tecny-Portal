@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { proyectos as proyApi, contactos as contactosApi } from '../lib/api';
+import { proyectos as proyApi, contactos as contactosApi, cajas as cajasApi } from '../lib/api';
+import CajaSelectHint from '../components/CajaSelectHint';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -12,7 +13,7 @@ function todayISO() { return new Date().toLocaleDateString('sv'); }
 const nombreContacto = (c) => `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`;
 
 const EMPTY_PROY = { nombre: '', objetivo: '', fecha_creacion: todayISO(), participantes: [] };
-const EMPTY_MOV  = { fecha: todayISO(), detalle: '', categoria: '', monto: '', tc: '', monto_usd: '', inversor_contacto_id: '', comentarios: '' };
+const EMPTY_MOV  = { fecha: todayISO(), detalle: '', categoria: '', monto: '', tc: '', monto_usd: '', inversor_contacto_id: '', comentarios: '', caja_id: '', tipo: 'egreso' };
 
 export default function Proyectos() {
   const { toast } = useToast();
@@ -29,6 +30,8 @@ export default function Proyectos() {
   const [movsPag, setMovsPag] = useState({ page: 1, pages: 1, total: 0 });
   const [loadingMasMovs, setLoadingMasMovs] = useState(false);
   const [contactos, setContactos] = useState([]);
+  // Cajas para selector en la fila de carga (impacto en ledger).
+  const [cajasList, setCajasList] = useState([]);
 
   // Modal alta proyecto
   const [showCreate, setShowCreate] = useState(false);
@@ -44,6 +47,7 @@ export default function Proyectos() {
   const [savingMov, setSavingMov] = useState(false);
 
   useEffect(() => { contactosApi.list().then(r => setContactos(Array.isArray(r) ? r : (r.data || []))).catch(() => {}); }, []);
+  useEffect(() => { cajasApi.listCajas().then(r => setCajasList((Array.isArray(r) ? r : []).filter(c => c.activo !== false))).catch(() => setCajasList([])); }, []);
 
   function loadList() {
     setLoadingList(true);
@@ -127,6 +131,21 @@ export default function Proyectos() {
     if (!(parseFloat(mov.monto) > 0) && !(parseFloat(mov.monto_usd) > 0) && !mov.detalle.trim()) {
       toast.error('Cargá al menos un monto ($ o USD) o un detalle.'); return;
     }
+    // Si elegiste caja, validamos coherencia antes de mandar.
+    if (mov.caja_id) {
+      if (!(parseFloat(mov.monto) > 0) && !(parseFloat(mov.monto_usd) > 0)) {
+        toast.error('Si elegís una caja, el monto debe ser > 0.'); return;
+      }
+      const caja = cajasList.find(c => String(c.id) === String(mov.caja_id));
+      const monedaCaja = caja?.moneda || 'USD';
+      // Si caja ARS pero solo cargué monto_usd, advertir.
+      if (monedaCaja === 'ARS' && !(parseFloat(mov.monto) > 0)) {
+        toast.error(`La caja "${caja?.nombre}" es ARS — cargá monto en pesos (con TC si querés log en USD).`); return;
+      }
+      if (monedaCaja !== 'ARS' && !(parseFloat(mov.monto_usd) > 0) && !(parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0)) {
+        toast.error(`La caja "${caja?.nombre}" es ${monedaCaja} — cargá un monto USD (o ARS + TC).`); return;
+      }
+    }
     setSavingMov(true);
     try {
       await proyApi.createMovimiento({
@@ -139,6 +158,8 @@ export default function Proyectos() {
         monto_usd: parseFloat(mov.monto_usd) || null,
         inversor_contacto_id: mov.inversor_contacto_id ? Number(mov.inversor_contacto_id) : null,
         comentarios: mov.comentarios.trim() || null,
+        caja_id: mov.caja_id ? Number(mov.caja_id) : null,
+        tipo: mov.caja_id ? mov.tipo : null,
       });
       // recargar movimientos (página 1) + totales
       const m = await proyApi.movimientos(selectedId, { page: 1, limit: 100 });
@@ -337,6 +358,7 @@ export default function Proyectos() {
                     <tr>
                       <th>Fecha</th><th>Detalle</th><th>Categoría</th>
                       <th style={{ textAlign: 'right' }}>$ ARS</th><th style={{ textAlign: 'right' }}>TC</th><th style={{ textAlign: 'right' }}>USD</th>
+                      <th title="Caja afectada y tipo (ingreso/egreso)">Caja</th>
                       <th>Inversor</th><th>Comentarios</th><th></th>
                     </tr>
                   </thead>
@@ -349,6 +371,15 @@ export default function Proyectos() {
                         <td className="mono" style={{ textAlign: 'right' }}>{Number(m.monto) > 0 ? '$ ' + fmt(m.monto) : '—'}</td>
                         <td className="mono tiny" style={{ textAlign: 'right' }}>{m.tc ? fmt(m.tc) : '—'}</td>
                         <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{Number(m.monto_usd) > 0 ? 'u$s ' + fmt(m.monto_usd) : '—'}</td>
+                        <td className="tiny">
+                          {m.caja_nombre ? (
+                            <span title={`${m.tipo} en ${m.caja_nombre} (${m.caja_moneda})`}>
+                              <span style={{ color: m.tipo === 'ingreso' ? 'var(--pos)' : 'var(--neg)' }}>
+                                {m.tipo === 'ingreso' ? '↑' : '↓'}
+                              </span>{' '}{m.caja_nombre}
+                            </span>
+                          ) : <span className="muted">—</span>}
+                        </td>
                         <td className="tiny">{m.inversor_nombre || '—'}</td>
                         <td className="muted tiny">{m.comentarios || '—'}</td>
                         <td><button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
@@ -367,6 +398,31 @@ export default function Proyectos() {
                           placeholder="USD" value={(parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0) ? movUsdPreview : mov.monto_usd}
                           readOnly={parseFloat(mov.monto) > 0 && parseFloat(mov.tc) > 0}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />
+                      </td>
+                      <td>
+                        {/* Caja: selector + tipo (ingreso/egreso). Opcional. Si elegís
+                            caja, el movimiento postea al ledger; si no, queda solo
+                            como log en la hoja del proyecto. */}
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <select className="input" style={{ height: 30, fontSize: 12, flex: 1 }}
+                                  value={mov.caja_id}
+                                  onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
+                            <option value="">— Sin caja —</option>
+                            {cajasList.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>)}
+                            <CajaSelectHint />
+                          </select>
+                          {mov.caja_id && (
+                            <select className="input mono"
+                                    style={{ height: 30, fontSize: 11, width: 65,
+                                             color: mov.tipo === 'ingreso' ? 'var(--pos)' : 'var(--neg)',
+                                             fontWeight: 600 }}
+                                    value={mov.tipo}
+                                    onChange={e => setMov(m => ({ ...m, tipo: e.target.value }))}>
+                              <option value="egreso">↓ Egr</option>
+                              <option value="ingreso">↑ Ing</option>
+                            </select>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.inversor_contacto_id} onChange={e => setMov(m => ({ ...m, inversor_contacto_id: e.target.value }))}>
