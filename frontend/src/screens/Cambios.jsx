@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import useLoadingAction from '../lib/useLoadingAction';
 
 
 const todayISO = () => new Date().toLocaleDateString('sv');
@@ -30,7 +31,8 @@ export default function Cambios() {
   const [createError, setCreateError] = useState('');
 
   const [mov, setMov] = useState(EMPTY_MOV);
-  const [savingMov, setSavingMov] = useState(false);
+  // Post-audit: migración a useLoadingAction (DRY + anti-click-spam free).
+  const { loading: savingMov, run: withSavingMov } = useLoadingAction();
 
   function loadList() {
     setLoadingList(true);
@@ -78,19 +80,20 @@ export default function Cambios() {
   async function handleAddMov(e) {
     e.preventDefault();
     if (!mov.caja_id) { toast.error('Elegí la caja.'); return; }
-    setSavingMov(true);
-    try {
-      await cambiosApi.createMovimiento({
-        entidad_id: selectedId, fecha: mov.fecha, tipo: mov.tipo,
-        monto_ars: mov.tipo === 'entrega_ars' ? Number(mov.monto_ars) || 0 : 0,
-        tc: mov.tipo === 'entrega_ars' ? Number(mov.tc) || null : null,
-        monto_usd: mov.tipo === 'recibo_usd' ? Number(mov.monto_usd) || 0 : 0,
-        caja_id: Number(mov.caja_id), comentarios: mov.comentarios.trim() || null,
-      });
-      setMov({ ...EMPTY_MOV, tipo: mov.tipo, fecha: mov.fecha });
-      loadList(); loadDetalle();
-      toast.success('Movimiento registrado.');
-    } catch (err) { toast.error(err.message); } finally { setSavingMov(false); }
+    await withSavingMov(async () => {
+      try {
+        await cambiosApi.createMovimiento({
+          entidad_id: selectedId, fecha: mov.fecha, tipo: mov.tipo,
+          monto_ars: mov.tipo === 'entrega_ars' ? Number(mov.monto_ars) || 0 : 0,
+          tc: mov.tipo === 'entrega_ars' ? Number(mov.tc) || null : null,
+          monto_usd: mov.tipo === 'recibo_usd' ? Number(mov.monto_usd) || 0 : 0,
+          caja_id: Number(mov.caja_id), comentarios: mov.comentarios.trim() || null,
+        });
+        setMov({ ...EMPTY_MOV, tipo: mov.tipo, fecha: mov.fecha });
+        loadList(); loadDetalle();
+        toast.success('Movimiento registrado.');
+      } catch (err) { toast.error(err.message); }
+    });
   }
 
   async function handleDeleteMov(id) {
