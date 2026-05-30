@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { config as configApi } from '../lib/api';
 import { fmt } from '../lib/format';
@@ -16,13 +17,24 @@ const SYSTEM_LIMITS = [
 ];
 
 export default function Config() {
-  const [tab, setTab]           = useState('general'); // 'general' | 'alertas'
+  const location = useLocation();
+  // Tab inicial: si el hash es #alertas (deep-link desde el badge de alertas
+  // en el sidebar), arrancamos en esa tab. Si no, default general.
+  const initialTab = location.hash === '#alertas' ? 'alertas' : 'general';
+  const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas'
   const [pct, setPct]           = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(true);
+
+  // Si el hash cambia mientras estamos en Config (ej: click al badge de
+  // alertas estando ya en Config), sincronizar la tab.
+  useEffect(() => {
+    if (location.hash === '#alertas') setTab('alertas');
+    else if (location.hash === '#general') setTab('general');
+  }, [location.hash]);
 
   useEffect(() => {
     configApi.get()

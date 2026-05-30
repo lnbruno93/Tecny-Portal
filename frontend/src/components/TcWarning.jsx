@@ -5,18 +5,29 @@
 // No bloquea el guardado (solo es un hint visual). Si la config está
 // desactivada, el componente no muestra nada.
 //
+// Debounce: el warning no aparece instantáneamente al tipear cada dígito.
+// Esperamos 400ms sin cambios para evitar el flicker mientras el usuario
+// está escribiendo "1400" (pasa por 1, 14, 140, 1400 y solo el último
+// es el valor real). El feedback inmediato a cada tecleo era irritante.
+//
 // Uso:
 //   <input type="number" value={tc} onChange={...} />
 //   <TcWarning tc={tc} />
 
 import { useTcReferencia } from '../contexts/TcReferenciaContext';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 
 export default function TcWarning({ tc, style }) {
   const { verificarTc } = useTcReferencia();
-  const warning = verificarTc(tc);
+  // Debounce el valor: ignoramos cambios <400ms entre tecleos. Para inputs
+  // type=number, el browser pasa el value crudo (string) o '' al limpiar.
+  const debounced = useDebouncedValue(tc, 400);
+  const warning = verificarTc(debounced);
   if (!warning) return null;
   return (
     <div
+      role="alert"
+      aria-live="polite"
       style={{
         fontSize: 11,
         color: 'var(--warn, #d97706)',
