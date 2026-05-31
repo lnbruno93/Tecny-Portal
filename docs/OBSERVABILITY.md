@@ -138,9 +138,83 @@ Job nocturno (`backend/src/jobs/invariantsJob.js`) que corre cada 24h y valida
 
 ---
 
-## 8. Roadmap (no urgente)
+## 8. Source maps de Sentry (frontend)
 
-- [ ] Source maps de Sentry — subir maps en CI para que stacktraces minificados sean legibles.
+El frontend se sirve minificado en producción. Sin source maps, un error
+captado por Sentry viene con un stacktrace tipo `vendor-Dd7XaLiz.js:1:34521`
+— inútil para debuggear.
+
+**Setup** (`@sentry/vite-plugin` configurado en `frontend/vite.config.js`):
+
+- En cada build con `SENTRY_AUTH_TOKEN` presente, el plugin:
+  1. Genera los `.map` para todos los chunks.
+  2. Sube los maps al proyecto Sentry como una "release" identificada con
+     el commit short SHA del build (`__BUILD_COMMIT__`).
+  3. **Borra los .map del `dist/`** antes de publicar — no quedan accesibles
+     al cliente (anti pattern: filtraría tu código original).
+
+- El backend reenvía cada error de `/api/client-errors` a Sentry con
+  `release: <build_commit>`. Sentry matchea ese release con los maps
+  subidos y resuelve los stacktraces automáticamente.
+
+**Sin `SENTRY_AUTH_TOKEN`**, el plugin es no-op — los builds locales y los
+deploys de previa NO suben maps. El comportamiento es el mismo que antes.
+
+### Configuración inicial (one-time, ~10 min)
+
+1. **Crear un Auth Token en Sentry:**
+   - Sentry → Settings → Account → API → Auth Tokens → "Create New Token".
+   - Scopes mínimos: `project:releases`, `project:read`.
+   - Copiar el token (solo se muestra una vez).
+
+2. **Confirmar/crear el proyecto Sentry para el frontend** — recomendado
+   separar del backend para que los issues no se mezclen:
+   - Si ya existe `ipro-portal-frontend` en el org `lnbruno`: nada que hacer.
+   - Si no, crear un proyecto Browser/JavaScript con ese slug.
+
+3. **Setear env vars en Netlify** (Settings → Build & deploy → Environment):
+   - `SENTRY_AUTH_TOKEN` = el token del paso 1
+   - `SENTRY_ORG` = `lnbruno` (o tu org slug)
+   - `SENTRY_PROJECT` = `ipro-portal-frontend` (o el slug del proyecto)
+
+4. **Backend Sentry DSN** apunta al proyecto del *backend* (Node). Para
+   que los errores del frontend se registren correctamente, hay dos opciones:
+   - **Opción simple (recomendada):** mismo DSN — los errores del frontend
+     reciclan el proyecto del backend con `source: 'frontend'` tag. Los maps
+     del frontend se suben al proyecto separado pero el resolve sigue
+     funcionando si configurás `SENTRY_PROJECT` apuntando al frontend project.
+   - **Opción dos proyectos separados:** crear `SENTRY_DSN_FRONTEND` distinto
+     y postear directo desde el browser. Requiere agregar `@sentry/browser`
+     al bundle (~15kb gz). No recomendado todavía dado el setup minimalista.
+
+5. **Triggear un deploy** en Netlify (push a `main` o "Trigger deploy" manual).
+   En los logs del build vas a ver:
+   ```
+   [sentry-vite-plugin] Creating release with name "abc1234"
+   [sentry-vite-plugin] Uploading sourcemaps for release "abc1234"
+   [sentry-vite-plugin] Successfully uploaded 12 source maps
+   ```
+
+6. **Verificar:** disparar un error de prueba en el frontend de producción
+   y revisar el issue en Sentry — debería mostrar el stacktrace con nombres
+   de funciones reales en lugar de chunk minificado.
+
+### Cómo verificar que funciona después de un deploy
+
+```bash
+# Desde el browser de prod, en la consola JS:
+throw new Error('test source maps');
+```
+
+En Sentry → Issues → el error nuevo → verificar:
+- `release` field tiene el commit SHA del último deploy.
+- "Stack Trace" muestra archivos `src/screens/X.jsx` con line numbers reales
+  (no `chunk-abc.js:1:1234`).
+
+---
+
+## 9. Roadmap (no urgente)
+
 - [ ] Sentry releases automáticas — vincular commit SHA con cada release en el dashboard.
 - [ ] Custom dashboard de métricas de negocio (cajas, ventas/día). Hoy se mira a ojo desde el resumen mensual.
 - [ ] Alertas Slack/Discord — Sentry hooks integrations cuando haya equipo de más de 1.

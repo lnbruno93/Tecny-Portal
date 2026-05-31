@@ -156,6 +156,11 @@ app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' 
           build_version: buildVersion || 'unknown',
         },
         extra: { stack, url, userAgent, timestamp },
+        // `release` matchea con la release que @sentry/vite-plugin crea al
+        // subir source maps (release.name = build short SHA). Sin esto, Sentry
+        // no resuelve el stacktrace minificado contra los maps subidos.
+        // Solo enviamos release si el cliente reportó build_commit conocido.
+        ...(buildCommit && buildCommit !== 'unknown' && { release: buildCommit }),
       });
     }
   } catch { /* Sentry no disponible */ }

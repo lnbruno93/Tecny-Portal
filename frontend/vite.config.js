@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -29,9 +30,23 @@ function buildVersion() {
   }
 }
 
+// Activación condicional del plugin de Sentry: solo cuando el token está presente.
+// Sin token, el plugin es no-op (no rompe build local ni preview). Con token,
+// sube los source maps al proyecto Sentry y crea una "release" identificada
+// con el commit short SHA — mismo identifier que usa el backend al taggear
+// errors (build_commit en /api/client-errors), así Sentry puede matchear el
+// stacktrace minificado con el código original.
+//
+// Requiere SENTRY_AUTH_TOKEN como env var en Netlify (build env). Para local
+// no se setea — los maps no se suben.
+const SENTRY_TOKEN = process.env.SENTRY_AUTH_TOKEN;
+const SENTRY_ORG   = process.env.SENTRY_ORG   || 'lnbruno';
+const SENTRY_PROJECT = process.env.SENTRY_PROJECT || 'ipro-portal-frontend';
+const BUILD_SHA = buildCommit();
+
 export default defineConfig({
   define: {
-    __BUILD_COMMIT__:  JSON.stringify(buildCommit()),
+    __BUILD_COMMIT__:  JSON.stringify(BUILD_SHA),
     __BUILD_VERSION__: JSON.stringify(buildVersion()),
   },
   plugins: [
@@ -97,7 +112,23 @@ export default defineConfig({
         ],
       },
     }),
-  ],
+    // sentryVitePlugin DEBE ir DESPUÉS de los demás plugins de build para que
+    // procese los source maps ya generados. Es no-op sin SENTRY_AUTH_TOKEN.
+    SENTRY_TOKEN && sentryVitePlugin({
+      org:           SENTRY_ORG,
+      project:       SENTRY_PROJECT,
+      authToken:     SENTRY_TOKEN,
+      release:       { name: BUILD_SHA }, // matchea con `release` en Sentry capture
+      // Subir source maps y eliminarlos del bundle público (Sentry los lee).
+      // Sin esto, los .map quedarían accesibles al cliente.
+      sourcemaps:    {
+        filesToDeleteAfterUpload: ['./dist/**/*.map'],
+      },
+      // Silencia logs verbose en local; deja warnings/errors visibles.
+      silent:        false,
+      telemetry:     false,
+    }),
+  ].filter(Boolean),
   base: '/',
   test: {
     environment: 'jsdom',
@@ -107,6 +138,13 @@ export default defineConfig({
     include: ['src/**/*.test.{js,jsx}'],
   },
   build: {
+    // Genera source maps para que el plugin de Sentry los suba. Los maps NO
+    // quedan en el bundle público (filesToDeleteAfterUpload los borra
+    // después del upload). Sin SENTRY_AUTH_TOKEN, los .map se generan pero
+    // tampoco se publican — Netlify solo sirve lo que está en dist/ después
+    // del build, y en ese caso no se borran. Para evitar exposición en local
+    // builds, configurar netlify.toml o el .gitignore para no publicar .map.
+    sourcemap: SENTRY_TOKEN ? true : false,
     rollupOptions: {
       output: {
         // Vite 8 (rolldown) requiere manualChunks como función
