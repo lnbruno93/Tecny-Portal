@@ -326,6 +326,7 @@ across tables, etc.
 | **money.js round2 en JS** | Evita float drift comparando contra `NUMERIC(14,2)`. Si la DB redondea distinto que JS, perdés centavos por venta. |
 | **CSP estricto** | Mitigación XSS. Reporta violaciones via `csp-report-uri`. |
 | **Trust proxy: 1** | Railway hace SSL termination + LB. Sin esto, rate limit usaría IPs internas. |
+| **Backend + DB en US West (California)** | Las regions sudamericanas no están disponibles en Railway. Mover a US East ahorraría 30-50ms vs ~190ms desde AR — beneficio marginal vs riesgo de migración. Ver investigación completa en [LOAD_BASELINE.md](LOAD_BASELINE.md). |
 
 ---
 

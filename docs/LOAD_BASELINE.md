@@ -173,8 +173,103 @@ son lectura de memoria. Es esperable que el p99 del primer request sea 2-5× el 
 
 **Follow-ups detectados:**
 - [ ] Re-testear `inventario_list` y `contactos_search` aislados (1 scenario por vez, esperando window del rate limit entre runs) para confirmar la causa del error rate.
-- [ ] Investigar el piso de latencia ~225ms: ¿están en el mismo data center backend y DB en Railway?
+- [x] ~~Investigar el piso de latencia ~225ms~~ → ver §"Investigación piso de latencia" abajo.
 - [ ] Próxima baseline: en 3 meses, con el mismo procedure, comparar regresión.
+
+---
+
+## Investigación piso de latencia (2026-06-01)
+
+Follow-up del finding "p50 ~225ms en todos los endpoints, incluido `/health`".
+
+### Hipótesis inicial
+
+Posibles causas (en orden de probabilidad):
+1. Backend y DB en regions distintas de Railway → latencia interna.
+2. Backend region lejos de los usuarios (AR) → latencia de red.
+3. Algún middleware/JSON parse pesado por request.
+4. Pool de DB saturado.
+
+### Datos recolectados
+
+**Desde `/health` de prod** (snapshot 2026-06-01):
+```json
+"db": {
+  "latency_ms": 2,           ← DB súper rápida desde backend
+  "pool": { "total": 4, "idle": 4, "waiting": 0 }
+}
+```
+
+**Curl timings desde Argentina** (5 requests, promedios):
+- TCP connect: ~190ms
+- TLS handshake: ~190ms (acumulado ~380ms)
+- TTFB: ~700ms total
+- App processing: ~315ms (entre SSL completo y TTFB)
+
+**De los ~315ms de "app processing", solo 2ms son DB.** Los otros ~313ms son
+1 RTT extra (response a un GET sin query — viaja de vuelta al cliente AR).
+
+**Regiones verificadas en Railway production:**
+- `ipro-backend`: **US West (California, USA)**.
+- `Postgres-AueP`: **US West (California, USA)** — misma región que el backend.
+
+### Conclusión
+
+**No hay bug ni N+1 ni problema de código.** El piso de 225ms es **latencia
+de red pura** entre los usuarios en Argentina y el data center de Railway
+en California.
+
+| Componente del piso | Tiempo |
+|---|---|
+| TCP RTT AR ↔ California | ~190ms |
+| TLS handshake (~1 extra RTT) | ~190ms |
+| App + 1 RTT respuesta | ~315ms |
+| DB query (`SELECT 1`) | ~2ms |
+| **Total TTFB típico** | **~700ms primer hit, ~225ms con keep-alive** |
+
+### Decisión: no migrar región (por ahora)
+
+Regions disponibles en el plan actual de Railway:
+- US West (California) — actual
+- US East (Virginia) — ~140-160ms desde AR (mejora 30-50ms)
+- EU West (Amsterdam) — peor que actual
+- Southeast Asia (Singapore) — mucho peor
+
+**South America East (São Paulo) NO está disponible**, que sería la opción ideal
+(~50ms desde AR).
+
+**Trade-off analizado:**
+- Mover a US East ahorra **30-50ms por request**.
+- Costo: downtime de migración DB de prod (~5-15 min) + ~1-2hs de planificación
+  + riesgo no-cero de problemas.
+- Para usuario activo (~50 req/día): ahorra ~2 segundos/día. Imperceptible.
+
+**Decisión durable:** no migrar. El costo/riesgo no justifica el beneficio
+marginal con las regions disponibles.
+
+### Trigger para re-evaluar
+
+Re-considerar la migración si:
+
+- [ ] Railway agrega **South America East (São Paulo)** → la mejora pasaría
+      de 30-50ms a 150-180ms. Allí sí valdría el downtime.
+- [ ] La latencia se vuelve **crítica para el negocio** (queja explícita de
+      usuarios, abandono medible, etc.) — no es el caso hoy.
+- [ ] Cambio de provider justificado por otra razón (costo, features) → al
+      mudar, elegir provider con presencia en sudamérica (Fly.io, Render).
+
+### Mitigaciones disponibles SIN cambiar región (ideas futuras)
+
+Si el piso molesta sin que valga migrar:
+1. **HTTP/2 keep-alive** — browsers modernos ya lo usan; verificar que el
+   backend lo respete. Reduce el peso del SSL handshake en requests subsecuentes.
+2. **Service Worker cache más agresivo** — para responses idempotentes que
+   no cambian (catálogos, vendedores), cachear en SW = 0ms de latencia.
+3. **Prefetch en navegación** — react-router permite `prefetch` para anticipar
+   requests del próximo destino mientras el usuario aún está en otra pantalla.
+
+Ninguno requiere cambiar infra. Si en algún momento el piso es perceptiblemente
+molesto, atacar estos antes que migrar región.
 
 ---
 
