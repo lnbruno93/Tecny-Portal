@@ -5,6 +5,7 @@ import { config as configApi } from '../lib/api';
 import { fmt } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import AlertasModule from './Alertas';
+import TwoFaSection from '../components/TwoFaSection';
 
 
 const SYSTEM_LIMITS = [
@@ -20,8 +21,10 @@ export default function Config() {
   const location = useLocation();
   // Tab inicial: si el hash es #alertas (deep-link desde el badge de alertas
   // en el sidebar), arrancamos en esa tab. Si no, default general.
-  const initialTab = location.hash === '#alertas' ? 'alertas' : 'general';
-  const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas'
+  const initialTab = location.hash === '#alertas' ? 'alertas'
+                    : location.hash === '#seguridad' ? 'seguridad'
+                    : 'general';
+  const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad'
   const [pct, setPct]           = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [saving, setSaving]     = useState(false);
@@ -33,6 +36,7 @@ export default function Config() {
   // alertas estando ya en Config), sincronizar la tab.
   useEffect(() => {
     if (location.hash === '#alertas') setTab('alertas');
+    else if (location.hash === '#seguridad') setTab('seguridad');
     else if (location.hash === '#general') setTab('general');
   }, [location.hash]);
 
@@ -113,9 +117,14 @@ export default function Config() {
                 onClick={() => setTab('alertas')}>
           <Icons.Bell size={14} /> Alertas
         </button>
+        <button className={'btn ' + (tab === 'seguridad' ? 'btn-primary' : '')}
+                onClick={() => setTab('seguridad')}>
+          <Icons.Shield size={14} /> Seguridad
+        </button>
       </div>
 
       {tab === 'alertas' && <AlertasModule />}
+      {tab === 'seguridad' && <TwoFaSection />}
 
       {tab === 'general' && (
       <>

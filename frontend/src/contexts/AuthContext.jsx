@@ -23,11 +23,19 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('session-expired', onExpired);
   }, []);
 
-  const login = useCallback(async (username, password) => {
-    const data = await authApi.login(username, password);
+  // Login flow soporta 2FA opcional:
+  //   1. Sin code (primer intento): si el user tiene 2FA enabled, devuelve
+  //      { twofa_required: true }. El form muestra input de código.
+  //   2. Con code (segundo intento): completa el login.
+  //
+  // Devuelve { user } si OK, { twofa_required: true } si falta el código.
+  // Lanza error en otros casos (password mala, lockout, etc.).
+  const login = useCallback(async (username, password, code = undefined) => {
+    const data = await authApi.login(username, password, code);
+    if (data.twofa_required) return { twofa_required: true };
     saveToken(data.token);
     setUser(data.user);
-    return data.user;
+    return { user: data.user };
   }, []);
 
   const logout = useCallback(() => {
