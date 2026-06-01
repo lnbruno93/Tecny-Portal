@@ -326,6 +326,7 @@ across tables, etc.
 | **money.js round2 en JS** | Evita float drift comparando contra `NUMERIC(14,2)`. Si la DB redondea distinto que JS, perdés centavos por venta. |
 | **CSP estricto** | Mitigación XSS. Reporta violaciones via `csp-report-uri`. |
 | **Trust proxy: 1** | Railway hace SSL termination + LB. Sin esto, rate limit usaría IPs internas. |
+| **2FA TOTP opcional, no obligatorio inicial** | Permitimos que cada user decida activar 2FA. Forzarlo desde día 1 lockea a usuarios actuales fuera del portal. Política durable: opcional para todos, banner sugiriendo a admins activarlo, en PR futuro forzar para admins cuando todos lo tengan setup. Mecanismo: TOTP (RFC 6238) con `speakeasy`, secret cifrado con AES-256-GCM via `TWOFA_ENCRYPTION_KEY`, 8 recovery codes one-time-use hasheados con bcrypt. |
 | **Backend + DB en US West (California)** | Las regions sudamericanas no están disponibles en Railway. Mover a US East ahorraría 30-50ms vs ~190ms desde AR — beneficio marginal vs riesgo de migración. Ver investigación completa en [LOAD_BASELINE.md](LOAD_BASELINE.md). |
 
 ---

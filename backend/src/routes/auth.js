@@ -101,6 +101,34 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
 
+    // ─── 2FA gate ───
+    // Si el user tiene 2FA enabled, exigir un segundo factor antes de emitir
+    // el JWT. Si vino el código en el body, lo verificamos. Si no, devolvemos
+    // 401 con un flag para que el frontend muestre el input del código.
+    //
+    // Política: 2FA es OPCIONAL al inicio (decisión durable, ver ARCHITECTURE).
+    // Usuarios sin row en user_2fa o con enabled_at NULL hacen login normal.
+    const { load2fa, verifyAny, touchLastUsed } = require('./twoFa');
+    const twoFa = await load2fa(user.id);
+    if (twoFa && twoFa.enabled_at) {
+      const code = req.body.code; // opcional en el body del login
+      if (!code) {
+        return res.status(401).json({
+          error: 'Se requiere código 2FA.',
+          twofa_required: true, // flag para que el front muestre el input
+        });
+      }
+      const { ok, kind } = await verifyAny(twoFa, String(code));
+      if (!ok) {
+        logger.warn({ user_id: user.id, ip: req.ip }, 'login 2FA fallido');
+        return res.status(401).json({ error: 'Código 2FA incorrecto.' });
+      }
+      if (kind === 'totp') {
+        // recovery codes ya actualizan last_used_at en verifyAny.
+        await touchLastUsed(user.id);
+      }
+    }
+
     const { rows: perms } = await db.query(
       'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
       [user.id]
