@@ -7,6 +7,12 @@ export function fmt(n) {
   return Math.round(Math.abs(Number(n)) || 0).toLocaleString('es-AR');
 }
 
+// Igual que `fmt` pero con 2 decimales — útil para montos donde los centavos
+// importan (USD, USDT, recargos). Ej: 1234.5 → "1.234,50". Sin signo.
+export function fmt2(n) {
+  return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // Monto CON signo explícito (+/−): para valores sueltos donde el signo importa
 // y no hay otro indicador (ej. un "Neto"). Ej: -500 → "−500", 500 → "+500".
 export function fmtSigned(n) {
