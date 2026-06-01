@@ -123,6 +123,28 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
 3. ¿Tiene `locked_until` en el futuro? Lockout por intentos fallidos. Reset: `UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = X;`.
 4. Si pide reset de password: el flow está en `/auth/reset-password` (admin only).
 
+### Síntoma: Un usuario activó 2FA y perdió el cel / no tiene recovery codes
+
+El user debería usar uno de sus 8 recovery codes (los generó al activar 2FA).
+Si NO los guardó y perdió el cel, hay que desactivar 2FA manualmente:
+
+```sql
+-- Verificar que tenga 2FA enabled
+SELECT user_id, enabled_at FROM user_2fa WHERE user_id = X;
+
+-- Desactivar (elimina la fila completa, libera el lock del login)
+DELETE FROM user_2fa WHERE user_id = X;
+```
+
+Después contactar al user para que vuelva a hacer setup (ahora SÍ guardando
+los recovery codes). El audit log queda con el evento DELETE.
+
+> **Por qué requiere intervención manual:** el flow del frontend exige código
+> TOTP o recovery para disable. Sin ninguno, el user no puede hacerlo solo.
+> Documentado como decisión durable: confiamos en que un admin (vos) puede
+> rescatar manualmente, no agregamos un "magic email link" porque ese mismo
+> link sería un bypass de 2FA si el email se compromete.
+
 ### Síntoma: Login rate-limited masivo
 
 - Está pasando algo: o un ataque de credential stuffing, o un script propio mal hecho.

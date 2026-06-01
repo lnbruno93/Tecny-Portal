@@ -8,6 +8,7 @@ const logger      = require('./lib/logger');
 const db = require('./config/database');
 
 const authRoutes         = require('./routes/auth');
+const twoFaRoutes        = require('./routes/twoFa');
 const vendedoresRoutes   = require('./routes/vendedores');
 const comprobantesRoutes = require('./routes/comprobantes');
 const pagosRoutes        = require('./routes/pagos');
@@ -294,6 +295,11 @@ app.use('/api/auth/login', loginLimiter);
 
 // Auth (sin restricción de permisos)
 app.use('/api/auth',          authRoutes);
+
+// 2FA — endpoints de setup/enable/disable. Requieren JWT válido (requireAuth)
+// porque son del flow "user gestiona su propia 2FA". La verificación durante
+// LOGIN ocurre dentro de authRoutes (no acá).
+app.use('/api/auth/2fa',      requireAuth, twoFaRoutes);
 
 // Financiera — requiere permiso "financiera"
 app.use('/api/vendedores',    requireAuth, requirePermission('financiera'), vendedoresRoutes);

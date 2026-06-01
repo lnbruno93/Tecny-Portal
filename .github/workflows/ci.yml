@@ -60,6 +60,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://ipro:testpass@localhost:5432/ipro_test
           JWT_SECRET: ci-test-jwt-secret-not-for-production
+          # Test-only key: 64 chars hex (32 bytes). NO usar en prod — la real
+          # va por env var en Railway. Si falta, los tests de 2FA fallan en startup.
+          TWOFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           NODE_ENV: test
         run: npm test
 
