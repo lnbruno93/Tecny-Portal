@@ -66,11 +66,47 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
 }
 
 // Typed helpers — one per endpoint group
+//
+// Nota especial para login: usa fetch directo (no el wrapper api()) porque el
+// flow de 2FA devuelve 401 con `twofa_required: true` durante un login válido.
+// El api() wrapper hace clearToken+session-expired event ante CUALQUIER 401, lo
+// cual rompería ese flow. Acá manejamos 401 nosotros sin disparar logout.
+async function loginDirect({ username, password, code }) {
+  const body = { username, password };
+  if (code) body.code = code;
+  const res = await fetch(BASE + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) return data; // { token, user }
+  // 401 con twofa_required → caso esperado del flow, NO es error de auth.
+  if (res.status === 401 && data.twofa_required) {
+    return { twofa_required: true };
+  }
+  // Otros errores: 401 normal (password mala), 423 (lockout), 429 (rate limit), etc.
+  const err = new Error(data.error || data.message || 'Usuario o contraseña incorrectos');
+  err.status = res.status;
+  err.responseBody = data;
+  throw err;
+}
+
 export const auth = {
-  login: (username, password) => api('/api/auth/login', 'POST', { username, password }),
+  login: (username, password, code) => loginDirect({ username, password, code }),
   me: () => api('/api/auth/me'),
   logout: () => api('/api/auth/logout', 'POST'),
   changePassword: (currentPassword, newPassword) => api('/api/auth/change-password', 'POST', { currentPassword, newPassword }),
+};
+
+// 2FA endpoints. Todos requieren JWT válido (requireAuth) — usan el wrapper api()
+// estándar que ya maneja auth headers.
+export const twoFa = {
+  status:             () => api('/api/auth/2fa/status'),
+  setup:              () => api('/api/auth/2fa/setup', 'POST'),
+  enable:             (code) => api('/api/auth/2fa/enable', 'POST', { code }),
+  disable:            (code) => api('/api/auth/2fa/disable', 'POST', { code }),
+  regenerateRecovery: (code) => api('/api/auth/2fa/regenerate-recovery', 'POST', { code }),
 };
 
 export const comprobantes = {
