@@ -15,6 +15,7 @@
 
 const logger = require('../lib/logger');
 const { evaluarTodos, resumir } = require('../lib/checkInvariants');
+const { withAdvisoryLock } = require('../lib/withAdvisoryLock');
 
 async function runInvariantsCheck() {
   const t0 = Date.now();
@@ -80,8 +81,19 @@ function reportToSentry(errOrMsg, { resumen, detalle, level, fatal } = {}) {
   } catch { /* Sentry no disponible — log es suficiente */ }
 }
 
+// Wrapper que envuelve runInvariantsCheck con un advisory lock. Si esta
+// instancia no logra adquirirlo, otra instancia ya lo está corriendo y
+// hacemos no-op (logueado). Multi-instance safe.
+async function runWithLock() {
+  return withAdvisoryLock('ipro-job-invariants', () => runInvariantsCheck());
+}
+
 // Programador: corre una vez al startup (si runOnStartup=true, útil en dev) y
 // luego cada `intervalHours`. Devuelve el handle del setInterval para tests/shutdown.
+//
+// Multi-instance safe: con N replicas, el setInterval dispara en todas a la
+// misma hora aprox, pero el advisory lock garantiza que SOLO UNA ejecuta el
+// check real. Las demás logean "skipped".
 function startInvariantsJob({ intervalHours = 24, runOnStartup = false } = {}) {
   // No correr en tests para no contaminar / ralentizar la suite.
   if (process.env.NODE_ENV === 'test') return null;
@@ -89,13 +101,13 @@ function startInvariantsJob({ intervalHours = 24, runOnStartup = false } = {}) {
   const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
 
   if (runOnStartup) {
-    runInvariantsCheck().catch(err =>
+    runWithLock().catch(err =>
       logger.error({ err }, 'invariants check inicial falló')
     );
   }
 
   const handle = setInterval(() => {
-    runInvariantsCheck().catch(err =>
+    runWithLock().catch(err =>
       logger.error({ err }, 'invariants check periódico falló')
     );
   }, intervalMs);

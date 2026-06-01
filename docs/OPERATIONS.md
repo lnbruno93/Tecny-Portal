@@ -51,17 +51,52 @@ Las migraciones corren al arrancar el contenedor (`npm run migrate` en el startC
 
 ---
 
-## 4. Escala — réplica única (decisión 2026-05-25)
+## 4. Escala — multi-instance (actualizado 2026-06-01)
 
-**iPro corre con 1 réplica.** Es la configuración soportada hoy y todo está afinado para eso:
-- El rate-limiter (`express-rate-limit`) usa store en memoria → correcto con 1 réplica.
-- Las migraciones corren al arranque del único proceso → sin race conditions.
+**iPro está preparado para correr con 2+ replicas backend.** Hardening
+aplicado en 2026-06-01 para soportar HA básica (rolling deploys, container
+failover).
 
-**Cuando el tráfico justifique escalar a múltiples réplicas, ANTES hay que:**
-1. **Rate-limiter compartido:** mover a `rate-limit-redis` con un Redis en Railway (si no, el límite anti-fuerza-bruta se multiplica por la cantidad de réplicas).
-2. **Migraciones como job único:** sacar `npm run migrate` del startCommand por-réplica y correrlo como release-phase/job aparte (node-pg-migrate toma advisory lock no-bloqueante: con varias réplicas arrancando juntas, las que no obtienen el lock fallan y reintentan → flapping).
+### Lo que YA es multi-instance safe
 
-Hasta entonces, mantener `numReplicas: 1` en Railway.
+- **Crons internos** (`startPurgaJob` audit + `startInvariantsJob` invariantes)
+  protegidos con `pg_advisory_lock` via `lib/withAdvisoryLock.js`. Con N
+  replicas, el setInterval dispara en todas, pero SOLO UNA toma el lock y
+  ejecuta. Las demás logean "skipped".
+- **Migraciones** (`node-pg-migrate`) usan advisory lock built-in — si dos
+  replicas arrancan a la vez, la segunda espera y skipea las ya aplicadas.
+- **Sentry init** + graceful shutdown — cada replica tiene su instancia,
+  sin race conditions.
+
+### Lo que sigue single-instance (trade-off aceptado)
+
+- **Cache TTL in-memory** (`lib/cacheTtl.js`): cada replica tiene su cache.
+  Correctness OK. TTL no compartido entre instancias significa que el primer
+  hit de cada replica paga la query; en operación normal eso es ~2x queries
+  cacheables pero con TTL chico (60s/5min) la diferencia es despreciable.
+- **Rate limit in-memory** (`express-rate-limit`): cada replica cuenta
+  separado. Con 2 replicas, el límite efectivo se duplica (ej. 300/15min
+  pasa a ser ~600/15min entre las dos). Aceptable para protección anti-abuse
+  básica; si en algún momento se vuelve crítico, migrar a `rate-limit-redis`.
+
+### Cómo escalar a 2 replicas
+
+1. Railway → ipro-backend → Settings → **Regions & Replicas**.
+2. Subir `Replica` de 1 a 2.
+3. Railway redeploya gradualmente — durante ~30s podés tener replica vieja
+   + replica nueva conviviendo (rolling deploy).
+4. **Validación**:
+   - `/health` debe seguir respondiendo 200.
+   - En los logs deberías ver "advisory lock skipped" cuando un cron dispara
+     en la replica que NO obtuvo el lock (1 vez por día por cron).
+
+### Si necesitás 3+ replicas
+
+Antes de pasar de 2 a 3+, considerá:
+- **Redis para cache + rate limit compartido** — con muchas replicas el
+  trade-off del 4.b deja de ser aceptable.
+- **Postgres connection pool** — cada replica abre su propio pool. Si tu plan
+  de Railway tiene tope de conexiones, dividir el pool size entre replicas.
 
 ---
 

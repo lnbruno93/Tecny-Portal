@@ -143,15 +143,26 @@ async function purgarAuditLogsViejos(diasRetencion = 365) {
 //     porque cada worker dispararía el DELETE simultáneamente.
 //
 // Devuelve el handle del intervalo (para test/shutdown).
+//
+// Multi-instance safe: con N replicas, todas disparan el setInterval, pero el
+// advisory lock garantiza que SOLO UNA ejecuta la purga real. Las demás
+// logean "skipped".
 function startPurgaJob({ diasRetencion = 365, intervalHours = 24, runOnStartup = false } = {}) {
   // No se programa en tests para no contaminar la DB de test ni dejar timers vivos
   // entre suites (Jest --runInBand detecta open handles).
   if (process.env.NODE_ENV === 'test') return null;
 
+  // Require lazy para evitar circular dep (withAdvisoryLock importa logger desde
+  // este mismo módulo en cadena vía database config).
+  const { withAdvisoryLock } = require('./withAdvisoryLock');
+
   const intervalMs = intervalHours * 60 * 60 * 1000;
   const runOnce = async () => {
-    try { await purgarAuditLogsViejos(diasRetencion); }
-    catch (err) { logger.error({ err }, 'audit_logs purga falló — reintenta mañana'); }
+    try {
+      await withAdvisoryLock('ipro-job-audit-purga', () => purgarAuditLogsViejos(diasRetencion));
+    } catch (err) {
+      logger.error({ err }, 'audit_logs purga falló — reintenta mañana');
+    }
   };
 
   if (runOnStartup) runOnce(); // útil en dev / al deployar después de mucho tiempo

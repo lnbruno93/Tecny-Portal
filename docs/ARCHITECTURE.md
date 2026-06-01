@@ -327,6 +327,7 @@ across tables, etc.
 | **CSP estricto** | Mitigación XSS. Reporta violaciones via `csp-report-uri`. |
 | **Trust proxy: 1** | Railway hace SSL termination + LB. Sin esto, rate limit usaría IPs internas. |
 | **Backend + DB en US West (California)** | Las regions sudamericanas no están disponibles en Railway. Mover a US East ahorraría 30-50ms vs ~190ms desde AR — beneficio marginal vs riesgo de migración. Ver investigación completa en [LOAD_BASELINE.md](LOAD_BASELINE.md). |
+| **High-availability: 2 replicas backend + advisory locks** | Single instance backend significa downtime en cada deploy + restart automático tras crash. 2 replicas en Railway Pro mitigan eso (rolling deploys, container failover). Crons internos protegidos con `pg_advisory_lock` para no duplicar ejecución entre replicas. Postgres queda single-instance — Railway no provee HA managed para Postgres en hobby/pro. Para failover real de DB sería migrar a Supabase/Neon. |
 
 ---
 

@@ -14,22 +14,72 @@ Para procedimientos cotidianos (backups, deploys) ver [OPERATIONS.md](OPERATIONS
 
 **Postgres-AueP en Railway** (NO el servicio `Postgres` vacío).
 
-| Tipo | Frecuencia | Retención | Quién |
-|---|---|---|---|
-| Snapshot automático | Diario | 7 días (free) | Railway |
-| Backup manual pre-migración | A demanda | Indefinida | Tú |
-| Backup mensual exportado | Mensual | 1 año | Tú (recordatorio el día 1) |
+| Tipo | Frecuencia | Retención | Quién | Costo |
+|---|---|---|---|---|
+| Snapshot diario | Cada 24h | 6 días | Railway (auto) | Gratis |
+| Snapshot semanal | Cada 7 días | 1 mes | Railway (auto) | Gratis |
+| Snapshot mensual | Cada 30 días | 3 meses | Railway (auto) | Gratis |
+| **Offsite dump a Backblaze B2** | Mensual | 1 año | Tú (script) | ~$5/mes (50GB) |
 
-**Acción ahora:** verificar en Railway que los snapshots diarios están **activos**:
-1. Railway dashboard → Postgres-AueP → tab **Backups**.
-2. Si dice "Disabled" → habilitar. Es gratis hasta 100GB.
-3. Confirmar que aparece "Latest snapshot: <fecha hoy o ayer>".
+### Configurar offsite backup en Backblaze B2 (one-time, ~15 min)
 
-**Backup mensual exportado** — recomendado para tener una copia fuera de Railway:
+Por qué offsite: los 3 niveles de snapshot de Railway viven **dentro de
+Railway**. Si tu account de Railway se hackea o cancela por error, todos
+esos snapshots desaparecen. Backblaze B2 es un bucket S3-compatible, barato
+($0.005/GB/mes), y es el seguro de última instancia.
+
+**Setup:**
+
+1. **Crear cuenta en Backblaze** (gratis hasta 10GB): https://www.backblaze.com/sign-up/cloud-storage
+2. **Crear bucket** privado:
+   - Bucket name: `ipro-backups-prod` (slug-safe)
+   - Files: **Private** (no público).
+   - Default encryption: SSE-B2 (la encriptación que Backblaze provee gratis).
+3. **Crear Application Key** (NO el master key):
+   - Settings → Application Keys → Add a New Application Key.
+   - Name: `ipro-backup-uploader`.
+   - Allow access to: solo el bucket `ipro-backups-prod`.
+   - Type of Access: **Read and Write**.
+   - **Guardar el keyID + applicationKey** que muestra (no se vuelve a mostrar).
+
+4. **Lifecycle rule** (para auto-eliminar viejos):
+   - Bucket → Lifecycle Rules → Add → "Keep prior versions for X days" → 365.
+   - Eso elimina dumps de > 1 año automáticamente.
+
+5. **Script de upload** — guardarlo en `~/bin/ipro-backup.sh` localmente:
+   ```bash
+   #!/bin/bash
+   set -e
+   DATE=$(date +%Y-%m)
+   FILE="ipro_${DATE}.dump"
+
+   # 1. Dump
+   pg_dump "$DATABASE_PUBLIC_URL" -Fc -f "/tmp/$FILE"
+
+   # 2. Upload a B2 via Backblaze CLI (instalar con: brew install b2-tools)
+   b2 authorize-account "$B2_KEY_ID" "$B2_APP_KEY"
+   b2 upload-file ipro-backups-prod "/tmp/$FILE" "$FILE"
+
+   # 3. Cleanup local
+   rm "/tmp/$FILE"
+   echo "✓ Backup $FILE subido a Backblaze"
+   ```
+6. **Calendarizarlo**: agregar al calendario un recordatorio mensual día 1,
+   o configurar un cronjob local (`crontab -e`: `0 9 1 * * ~/bin/ipro-backup.sh`).
+
+### Verificación
+
 ```bash
-# El día 1 de cada mes, correr esto desde tu laptop (con DATABASE_PUBLIC_URL en tu env):
-pg_dump "$DATABASE_PUBLIC_URL" -Fc -f ~/backups/ipro_$(date +%Y-%m).dump
-# Comprimir y subir a iCloud / Drive / Backblaze.
+# Listar lo que hay en el bucket
+b2 ls ipro-backups-prod
+# Debería mostrar: ipro_2026-06.dump, ipro_2026-05.dump, etc.
+```
+
+### Restore desde Backblaze (escenario peor caso)
+
+```bash
+b2 download-file-by-name ipro-backups-prod ipro_2026-06.dump ~/backups/
+pg_restore --no-owner -d "$NUEVA_DB_URL" ~/backups/ipro_2026-06.dump
 ```
 
 ---
