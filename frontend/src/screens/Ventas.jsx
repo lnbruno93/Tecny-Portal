@@ -17,6 +17,8 @@ import { fmt, fmt2 } from '../lib/format';
 // dedicados para mantener este screen enfocado en orchestration.
 import Seg from './ventas/Seg';
 import Dashboard from './ventas/Dashboard';
+import DiffModal from './ventas/DiffModal';
+import ExitoModal from './ventas/ExitoModal';
 import { sym, toUsd, todayStr, shiftDate, monthStart, weekStart } from './ventas/utils';
 
 const ESTADO_DISPLAY = {
@@ -1026,118 +1028,34 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* ── Modal: diferencia en métodos de pago ── */}
-      {/* Custom (no ConfirmModal) para tener desglose visual con colores y dos
-          acciones claras: "Corregir" (volver al form) y "Aceptar igual" (proceder). */}
-      {diffModal.open && (() => {
-        const dif = diffModal.dif;
-        const aFavor = dif > 0;
-        const close = (aceptado) => {
-          const r = diffModal.resolve;
-          setDiffModal({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null });
-          if (r) r(aceptado);
-        };
-        return (
-          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" style={{ zIndex: 600 }}>
-            <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-              <div className="modal-body" style={{ padding: '32px 28px 18px', textAlign: 'left' }}>
-                {/* Icono de warning grande, centrado */}
-                <div style={{ textAlign: 'center', marginBottom: 18 }}>
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 76, height: 76, borderRadius: '50%',
-                    border: '3px solid var(--warn, #d97706)', color: 'var(--warn, #d97706)',
-                    fontSize: 38, fontWeight: 700, lineHeight: 1,
-                  }}>!</div>
-                </div>
-                <h2 id="diff-modal-title" style={{ fontSize: 20, fontWeight: 700, margin: '0 0 6px', color: 'var(--text)' }}>
-                  ⚠️ Diferencia en métodos de pago
-                </h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.5, margin: '0 0 18px' }}>
-                  Los métodos de pago no suman exactamente el monto requerido.
-                </p>
-                <div style={{ borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)', padding: '14px 0' }}>
-                  <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
-                    <strong>Total de la venta:</strong>
-                    <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>u$s {diffModal.items.toFixed(2)}</span>
-                  </div>
-                  <div className="flex-between" style={{ fontSize: 14, marginBottom: 8 }}>
-                    <strong>Total pagado:</strong>
-                    <span className="mono pos" style={{ fontWeight: 700 }}>u$s {diffModal.cubierto.toFixed(2)}</span>
-                  </div>
-                  <div className="flex-between" style={{ fontSize: 14 }}>
-                    <strong>{aFavor ? 'Sobrante:' : 'Restante:'}</strong>
-                    <span className="mono" style={{ fontWeight: 700, color: aFavor ? 'var(--pos)' : 'var(--neg)' }}>
-                      u$s {aFavor ? '+' : '-'}{Math.abs(dif).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-                <div style={{
-                  marginTop: 16, padding: '12px 14px', background: 'rgba(122, 162, 247, 0.08)',
-                  border: '1px solid rgba(122, 162, 247, 0.25)', borderRadius: 8, fontSize: 13, lineHeight: 1.6,
-                }}>
-                  <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>¿Qué quieres hacer?</div>
-                  <div style={{ color: 'var(--text)' }}>· <strong>Corregir:</strong> ajustar los métodos de pago</div>
-                  <div style={{ color: 'var(--text)' }}>· <strong>Aceptar igual:</strong> guardar y sumar la diferencia al profit</div>
-                </div>
-              </div>
-              <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
-                <button className="btn btn-ghost" onClick={() => close(false)} style={{ minWidth: 130 }}>Corregir</button>
-                <button className="btn btn-primary" onClick={() => close(true)} autoFocus style={{ minWidth: 130, background: 'var(--pos)' }}>Aceptar igual</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Modal: diferencia en métodos de pago. Custom (no ConfirmModal) para
+          tener desglose visual con colores y dos acciones: corregir / aceptar igual. */}
+      <DiffModal
+        state={diffModal}
+        onClose={() => setDiffModal({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null })}
+      />
 
-      {/* ── Modal: venta guardada (éxito + descargar comprobante PDF) ── */}
-      {exitoModal.open && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
-             onClick={() => setExitoModal({ open: false, venta: null })}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-body" style={{ padding: '36px 28px 18px', textAlign: 'center' }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 88, height: 88, borderRadius: '50%',
-                border: '3px solid var(--pos)', color: 'var(--pos)',
-                marginBottom: 24,
-              }}>
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </div>
-              <h2 id="exito-modal-title" style={{ fontSize: 28, fontWeight: 700, margin: '0 0 10px', color: 'var(--text)' }}>
-                ¡Éxito!
-              </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: 0 }}>
-                Venta guardada exitosamente.
-              </p>
-            </div>
-            <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
-              <button className="btn btn-primary" onClick={() => setExitoModal({ open: false, venta: null })}
-                      autoFocus style={{ minWidth: 110, background: 'var(--accent)' }}>OK</button>
-              <button className="btn"
-                      style={{ minWidth: 200, background: 'var(--neg)', color: '#fff', border: 0, opacity: pdfLoading ? 0.7 : 1 }}
-                      disabled={pdfLoading}
-                      onClick={() => withPdfLoading(async () => {
-                        try {
-                          const mod = await import('../lib/generarComprobantePdf');
-                          await mod.generarComprobantePdf(exitoModal.venta);
-                        } catch (e) {
-                          // Mostramos el error real para que el usuario lo pueda reportar
-                          // sin tener que abrir la consola. El stack queda en console.error
-                          // como antes para debugging.
-                          console.error('PDF error:', e);
-                          const detalle = e?.message || String(e);
-                          toast.error(`No se pudo generar el comprobante PDF: ${detalle}`, { duration: 12000 });
-                        }
-                      })}>
-                {pdfLoading ? 'Generando…' : 'Descargar comprobante'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal: venta guardada con opción de descargar PDF (lazy import del
+          módulo para no inflar el bundle principal — solo se carga cuando el
+          usuario hace click). */}
+      <ExitoModal
+        state={exitoModal}
+        onClose={() => setExitoModal({ open: false, venta: null })}
+        pdfLoading={pdfLoading}
+        onDescargar={(venta) => withPdfLoading(async () => {
+          try {
+            const mod = await import('../lib/generarComprobantePdf');
+            await mod.generarComprobantePdf(venta);
+          } catch (e) {
+            // Mostramos el error real para que el usuario lo pueda reportar
+            // sin tener que abrir la consola. El stack queda en console.error
+            // como antes para debugging.
+            console.error('PDF error:', e);
+            const detalle = e?.message || String(e);
+            toast.error(`No se pudo generar el comprobante PDF: ${detalle}`, { duration: 12000 });
+          }
+        })}
+      />
     </div>
   );
 }
