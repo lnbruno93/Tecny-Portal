@@ -5,7 +5,14 @@ require('dotenv').config({ override: process.env.NODE_ENV !== 'production' });
 
 // ─── Validación de variables de entorno críticas ──────────────────────────────
 // Fallar rápido antes de cargar nada — mejor un error claro que un servidor roto
-const REQUIRED_ENV = { JWT_SECRET: 32, DATABASE_URL: 1 };
+const REQUIRED_ENV = {
+  JWT_SECRET:           32,
+  DATABASE_URL:         1,
+  // 2FA: secret de 32 bytes en hex (64 chars) para cifrar los TOTP secrets at-rest.
+  // Generar con: openssl rand -hex 32. Si cambia, los secrets cifrados quedan
+  // ilegibles — rotación requiere migración. NO commitear al repo.
+  TWOFA_ENCRYPTION_KEY: 64,
+};
 const envErrors = [];
 for (const [key, minLen] of Object.entries(REQUIRED_ENV)) {
   const val = process.env[key];
