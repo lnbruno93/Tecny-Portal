@@ -51,8 +51,19 @@ function groupDeudas(movs) {
   return Object.values(map).sort((a, b) => b.saldo_ars - a.saldo_ars);
 }
 
-const EMPTY_DEUDA = () => ({ fecha: todayISO(), contacto_id: '', tipo: 'debe', monto_ars: '', monto_usd: '', concepto: '' });
-const EMPTY_INV   = () => ({ fecha: todayISO(), contacto_id: '', monto: '', tasa: '' });
+// `contactoMode` permite alternar entre "elegir contacto existente" (default)
+// y "crear uno nuevo en el mismo form" (mega-form). Si mode='nuevo', los campos
+// `nuevoNombre/Apellido/Tipo` se usan al guardar para crear el contacto antes
+// del movimiento. Esto evita el patrón "modal sobre modal" para users que
+// prefieren todo en un solo step.
+const EMPTY_DEUDA = () => ({
+  fecha: todayISO(), contacto_id: '', tipo: 'debe', monto_ars: '', monto_usd: '', concepto: '',
+  contactoMode: 'existente', nuevoNombre: '', nuevoApellido: '', nuevoTipo: 'amigo',
+});
+const EMPTY_INV = () => ({
+  fecha: todayISO(), contacto_id: '', monto: '', tasa: '',
+  contactoMode: 'existente', nuevoNombre: '', nuevoApellido: '', nuevoTipo: 'inversor',
+});
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Cajas() {
@@ -83,18 +94,13 @@ export default function Cajas() {
   }, []);
 
   // ── Crear contacto ────────────────────────────────────────────────────────
+  // El modal de "Nuevo contacto" se invoca solo desde el botón "+ Nuevo contacto"
+  // de la barra principal — para crear contactos standalone sin un movimiento
+  // asociado. Inversión/Deuda ya tienen su propio mega-form con creación inline.
   const [showContacto, setShowContacto] = useState(false);
   const [cForm, setCForm] = useState({ nombre: '', apellido: '', tipo: 'amigo' });
   const [cCreating, setCCreating] = useState(false);
   const [cError, setCError] = useState('');
-  // Callback opcional para "quick-add" — si está seteado, después de crear el
-  // contacto se invoca con el nuevo contacto en lugar del flow legacy (saltar
-  // a tab deudas + agregar fila placeholder a la grilla). Pensado para
-  // que los modales de Inversión/Deuda puedan abrir el modal de contacto y
-  // recibir el id para auto-seleccionarlo en su propio select.
-  // Estado como objeto wrapper para evitar el "functional updater" pattern
-  // de useState cuando se setean funciones directamente.
-  const [contactoSaved, setContactoSaved] = useState({ fn: null });
 
   // ── Crear movimiento de deuda ─────────────────────────────────────────────
   const [showDeuda, setShowDeuda] = useState(false);
@@ -162,65 +168,78 @@ export default function Cajas() {
         apellido: cForm.apellido.trim() || null,
         tipo: cForm.tipo,
       });
-      // Siempre agregamos a la lista maestra de contactos para que aparezca
-      // en los selects de otros modales (Inversión, Deuda).
+      // Agregamos a la lista maestra para que aparezca en selects de movimientos.
       setAllContacts(prev => [...prev, nuevo]);
-
-      if (contactoSaved.fn) {
-        // Flow quick-add: vino desde el botón "+ Nuevo" de otro modal.
-        // Devolvemos el contacto al callback (que se encarga de
-        // auto-seleccionarlo en el form de origen) y cerramos.
-        contactoSaved.fn(nuevo);
-        setContactoSaved({ fn: null });
-        setShowContacto(false);
-        toast.success(`${nuevo.nombre} creado y vinculado.`);
-      } else {
-        // Flow legacy: el botón "+ Nuevo contacto" de la barra principal
-        // — agrega un row placeholder a la grilla de deudas y salta a esa tab
-        // para que el user vea inmediatamente que el contacto fue creado.
-        setDeudaMovs(prev => [...prev, {
-          contacto_id: nuevo.id, nombre: nuevo.nombre, apellido: nuevo.apellido,
-          contacto_tipo: nuevo.tipo, mov_tipo: 'debe', monto_ars: 0, monto_usd: 0, fecha: null,
-          id: -nuevo.id, concepto: null, created_at: null,
-        }]);
-        setSelectedContactoId(nuevo.id);
-        setShowContacto(false);
-        if (tab !== 'deudas') setTab('deudas');
-        toast.success('Contacto creado.');
-      }
+      // Agregamos placeholder en la grilla de deudas para feedback visual
+      // inmediato y saltamos a esa tab si no estamos ya ahí.
+      setDeudaMovs(prev => [...prev, {
+        contacto_id: nuevo.id, nombre: nuevo.nombre, apellido: nuevo.apellido,
+        contacto_tipo: nuevo.tipo, mov_tipo: 'debe', monto_ars: 0, monto_usd: 0, fecha: null,
+        id: -nuevo.id, concepto: null, created_at: null,
+      }]);
+      setSelectedContactoId(nuevo.id);
+      setShowContacto(false);
+      if (tab !== 'deudas') setTab('deudas');
+      toast.success('Contacto creado.');
     } catch (err) { setCError(err.message); }
     finally { setCCreating(false); }
   }
 
-  // Helper para abrir el modal de contacto desde un quick-add. Setea defaults
-  // sensatos del tipo según el contexto (un inversor casi siempre es "inversor",
-  // una deuda puede ser cualquier tipo de relación).
-  function openQuickAddContacto({ defaultTipo = 'amigo', onSaved }) {
-    setCForm({ nombre: '', apellido: '', tipo: defaultTipo });
-    setCError('');
-    setContactoSaved({ fn: onSaved });
-    setShowContacto(true);
+  // Helper compartido: resuelve el contacto_id que va a recibir un movimiento.
+  // Si form.contactoMode === 'nuevo', crea el contacto en el momento y devuelve
+  // su id. Si es 'existente', devuelve el id ya seleccionado en el select.
+  //
+  // Tira error con mensaje legible si los datos son inválidos — el caller lo
+  // captura y muestra en el error del modal.
+  //
+  // Side effect: si crea contacto nuevo, lo agrega a `allContacts` para que
+  // aparezca en próximos selects sin necesidad de refresh.
+  async function resolveContactoIdFromForm(form) {
+    if (form.contactoMode === 'nuevo') {
+      const nombre = (form.nuevoNombre || '').trim();
+      if (!nombre) {
+        const e = new Error('Ingresá el nombre del contacto nuevo.'); e.tag = 'validation'; throw e;
+      }
+      const nuevo = await contactosApi.create({
+        nombre,
+        apellido: (form.nuevoApellido || '').trim() || null,
+        tipo: form.nuevoTipo || 'amigo',
+      });
+      setAllContacts(prev => [...prev, nuevo]);
+      return nuevo.id;
+    }
+    // Modo existente
+    if (!form.contacto_id) {
+      const e = new Error('Seleccioná un contacto o creá uno nuevo.'); e.tag = 'validation'; throw e;
+    }
+    return Number(form.contacto_id);
   }
 
   async function handleCreateDeuda(e) {
     e.preventDefault();
-    if (!deudaForm.contacto_id) { setDeudaError('Seleccioná un contacto.'); return; }
     const monto_ars = parseFloat(deudaForm.monto_ars) || 0;
     const monto_usd = parseFloat(deudaForm.monto_usd) || 0;
     if (!monto_ars && !monto_usd) { setDeudaError('Ingresá al menos un monto.'); return; }
 
     setDeudaCreating(true); setDeudaError('');
     try {
+      // Resuelve el contacto (puede crear uno nuevo si contactoMode='nuevo').
+      const cid = await resolveContactoIdFromForm(deudaForm);
+
       await cajas.createDeuda({
         fecha:       deudaForm.fecha,
-        contacto_id: Number(deudaForm.contacto_id),
+        contacto_id: cid,
         tipo:        deudaForm.tipo,
         monto_ars,
         monto_usd,
         concepto:    deudaForm.concepto.trim() || null,
       });
       setShowDeuda(false);
-      toast.success('Movimiento registrado.');
+      toast.success(
+        deudaForm.contactoMode === 'nuevo'
+          ? `${deudaForm.nuevoNombre.trim()} creado y movimiento registrado.`
+          : 'Movimiento registrado.'
+      );
 
       // Refresh global deuda list
       setLoadingDeudas(true);
@@ -230,7 +249,6 @@ export default function Cajas() {
         .finally(() => setLoadingDeudas(false));
 
       // Auto-select the contacto and refresh its detail
-      const cid = Number(deudaForm.contacto_id);
       setSelectedContactoId(cid);
       setLoadingContactoMovs(true);
       cajas.deudas({ contacto_id: cid, limit: 200 })
@@ -243,20 +261,26 @@ export default function Cajas() {
 
   async function handleCreateInversion(e) {
     e.preventDefault();
-    if (!invForm.contacto_id) { setInvError('Seleccioná un contacto.'); return; }
     const monto = parseFloat(invForm.monto);
     if (!monto || monto <= 0) { setInvError('El monto debe ser mayor a 0.'); return; }
 
     setInvCreating(true); setInvError('');
     try {
+      // Resuelve el contacto (puede crear uno nuevo si contactoMode='nuevo').
+      const cid = await resolveContactoIdFromForm(invForm);
+
       await cajas.createInversion({
         fecha:       invForm.fecha,
-        contacto_id: Number(invForm.contacto_id),
+        contacto_id: cid,
         monto,
         tasa:        invForm.tasa.trim() || null,
       });
       setShowInv(false);
-      toast.success('Inversión registrada.');
+      toast.success(
+        invForm.contactoMode === 'nuevo'
+          ? `${invForm.nuevoNombre.trim()} creado e inversión registrada.`
+          : 'Inversión registrada.'
+      );
 
       // Refresh inversiones list
       setLoadingInv(true);
@@ -846,19 +870,17 @@ export default function Cajas() {
 
 
       {/* ── Modal: Nuevo contacto ────────────────────────────────────────
-          Puede abrirse desde dos lugares:
-          1. Botón "+ Nuevo contacto" de la barra principal — flow legacy.
-          2. Botón "+ Nuevo" en quick-add desde Inversión/Deuda — el callback
-             contactoSaved.fn se ejecuta al guardar y devuelve el contacto al
-             form de origen. Si el user cierra sin guardar, el callback queda
-             "huérfano" — lo limpiamos en cada cierre. */}
+          Solo se invoca desde el botón "+ Nuevo contacto" de la barra
+          principal — para crear contactos sin un movimiento asociado.
+          Los modales de Inversión y Deuda ya tienen el toggle Existente/
+          Nuevo embebido (mega-form) y no necesitan este modal. */}
       {showContacto && (
-        <div className="modal-overlay" onClick={() => { setShowContacto(false); setContactoSaved({ fn: null }); }}>
+        <div className="modal-overlay" onClick={() => setShowContacto(false)}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Nuevo contacto</h3>
               <button className="icon-btn" aria-label="Cerrar modal"
-                      onClick={() => { setShowContacto(false); setContactoSaved({ fn: null }); }}>
+                      onClick={() => setShowContacto(false)}>
                 <Icons.X size={16} />
               </button>
             </div>
@@ -892,7 +914,7 @@ export default function Cajas() {
               </div>
               <div className="modal-ft">
                 <button type="button" className="btn btn-ghost"
-                        onClick={() => { setShowContacto(false); setContactoSaved({ fn: null }); }}>
+                        onClick={() => setShowContacto(false)}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={cCreating}>
@@ -934,12 +956,27 @@ export default function Cajas() {
                       </select>
                     </div>
                   </div>
+                  {/* Contacto — mismo mega-form que en Inversión: toggle
+                      Existente/Nuevo + campos condicionales. Permite crear el
+                      contacto + el movimiento en un solo submit. */}
                   <div className="field">
                     <label className="field-label">Contacto <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    {/* Quick-add: ídem modal de Inversión — botón "+ Nuevo"
-                        que abre Nuevo Contacto y auto-selecciona al volver. */}
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <select className="input" style={{ flex: 1 }}
+                    <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
+                      <button type="button"
+                              className={'btn btn-sm ' + (deudaForm.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
+                              style={{ padding: '4px 12px' }}
+                              onClick={() => setDeudaForm(f => ({ ...f, contactoMode: 'existente' }))}>
+                        Existente
+                      </button>
+                      <button type="button"
+                              className={'btn btn-sm ' + (deudaForm.contactoMode === 'nuevo' ? 'btn-primary' : 'btn-ghost')}
+                              style={{ padding: '4px 12px' }}
+                              onClick={() => setDeudaForm(f => ({ ...f, contactoMode: 'nuevo' }))}>
+                        + Nuevo
+                      </button>
+                    </div>
+                    {deudaForm.contactoMode === 'existente' ? (
+                      <select className="input"
                         value={deudaForm.contacto_id}
                         onChange={e => setDeudaForm(f => ({ ...f, contacto_id: e.target.value }))}
                         autoFocus={!deudaForm.contacto_id}>
@@ -950,14 +987,34 @@ export default function Cajas() {
                           </option>
                         ))}
                       </select>
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }}
-                        onClick={() => openQuickAddContacto({
-                          defaultTipo: 'amigo', // deudas pueden ser de cualquier tipo, defaultea genérico
-                          onSaved: (nuevo) => setDeudaForm(f => ({ ...f, contacto_id: String(nuevo.id) })),
-                        })}>
-                        <Icons.Plus size={12} /> Nuevo
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="row" style={{ gap: 8 }}>
+                        <div className="field" style={{ flex: 1.5 }}>
+                          <label className="field-label tiny">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                          <input className="input" placeholder="ej. Martín" autoFocus
+                            value={deudaForm.nuevoNombre}
+                            onChange={e => setDeudaForm(f => ({ ...f, nuevoNombre: e.target.value }))} />
+                        </div>
+                        <div className="field" style={{ flex: 1.5 }}>
+                          <label className="field-label tiny">Apellido</label>
+                          <input className="input" placeholder="ej. García"
+                            value={deudaForm.nuevoApellido}
+                            onChange={e => setDeudaForm(f => ({ ...f, nuevoApellido: e.target.value }))} />
+                        </div>
+                        <div className="field" style={{ flex: 1 }}>
+                          <label className="field-label tiny">Tipo</label>
+                          <select className="input"
+                            value={deudaForm.nuevoTipo}
+                            onChange={e => setDeudaForm(f => ({ ...f, nuevoTipo: e.target.value }))}>
+                            <option value="amigo">Amigo</option>
+                            <option value="familiar">Familiar</option>
+                            <option value="cliente">Cliente</option>
+                            <option value="inversor">Inversor</option>
+                            <option value="ipro team">iPro Team</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
@@ -1014,14 +1071,27 @@ export default function Cajas() {
                       value={invForm.fecha}
                       onChange={e => setInvForm(f => ({ ...f, fecha: e.target.value }))} />
                   </div>
+                  {/* Inversor — toggle Existente/Nuevo + campos condicionales.
+                      Diseño "mega-form": evita el patrón modal-en-modal y permite
+                      crear el inversor + cargar la inversión en un solo submit. */}
                   <div className="field">
                     <label className="field-label">Inversor <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    {/* Quick-add: si el inversor no existe en la lista, click
-                        "+ Nuevo" abre el modal de Nuevo contacto SIN cerrar este.
-                        Al guardar, el contacto recién creado queda auto-
-                        seleccionado en este select (via callback contactoSaved.fn). */}
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <select className="input" style={{ flex: 1 }}
+                    <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
+                      <button type="button"
+                              className={'btn btn-sm ' + (invForm.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
+                              style={{ padding: '4px 12px' }}
+                              onClick={() => setInvForm(f => ({ ...f, contactoMode: 'existente' }))}>
+                        Existente
+                      </button>
+                      <button type="button"
+                              className={'btn btn-sm ' + (invForm.contactoMode === 'nuevo' ? 'btn-primary' : 'btn-ghost')}
+                              style={{ padding: '4px 12px' }}
+                              onClick={() => setInvForm(f => ({ ...f, contactoMode: 'nuevo' }))}>
+                        + Nuevo
+                      </button>
+                    </div>
+                    {invForm.contactoMode === 'existente' ? (
+                      <select className="input"
                         value={invForm.contacto_id}
                         onChange={e => setInvForm(f => ({ ...f, contacto_id: e.target.value }))}
                         autoFocus>
@@ -1032,14 +1102,36 @@ export default function Cajas() {
                           </option>
                         ))}
                       </select>
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }}
-                        onClick={() => openQuickAddContacto({
-                          defaultTipo: 'inversor',
-                          onSaved: (nuevo) => setInvForm(f => ({ ...f, contacto_id: String(nuevo.id) })),
-                        })}>
-                        <Icons.Plus size={12} /> Nuevo
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="stack" style={{ gap: 8 }}>
+                        <div className="row" style={{ gap: 8 }}>
+                          <div className="field" style={{ flex: 1.5 }}>
+                            <label className="field-label tiny">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+                            <input className="input" placeholder="ej. Martín" autoFocus
+                              value={invForm.nuevoNombre}
+                              onChange={e => setInvForm(f => ({ ...f, nuevoNombre: e.target.value }))} />
+                          </div>
+                          <div className="field" style={{ flex: 1.5 }}>
+                            <label className="field-label tiny">Apellido</label>
+                            <input className="input" placeholder="ej. García"
+                              value={invForm.nuevoApellido}
+                              onChange={e => setInvForm(f => ({ ...f, nuevoApellido: e.target.value }))} />
+                          </div>
+                          <div className="field" style={{ flex: 1 }}>
+                            <label className="field-label tiny">Tipo</label>
+                            <select className="input"
+                              value={invForm.nuevoTipo}
+                              onChange={e => setInvForm(f => ({ ...f, nuevoTipo: e.target.value }))}>
+                              <option value="inversor">Inversor</option>
+                              <option value="amigo">Amigo</option>
+                              <option value="familiar">Familiar</option>
+                              <option value="cliente">Cliente</option>
+                              <option value="ipro team">iPro Team</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="field">
                     <label className="field-label">Monto USD <span style={{ color: 'var(--neg)' }}>*</span></label>
