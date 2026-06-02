@@ -112,6 +112,84 @@ Cambia la contraseña. Invalida todos los tokens activos.
 
 ---
 
+## 2FA — TOTP (`/api/auth/2fa`)
+
+Endpoints para gestionar el segundo factor (RFC 6238 TOTP) del usuario actual.
+Todos requieren JWT válido (`requireAuth`) — son del flow "user gestiona su
+propia 2FA". El gate de 2FA durante login vive en `/api/auth/login` (ver arriba).
+
+**Rate limit dedicado:** 10 intentos / 15 min por `user.id` (no por IP).
+`skipSuccessfulRequests:true` — solo los fallos cuentan.
+
+### `GET /api/auth/2fa/status`
+
+Estado del 2FA del usuario actual.
+
+**Response 200:**
+```json
+{
+  "configured": true,
+  "enabled": true,
+  "enabled_at": "2026-06-01T10:00:00Z",
+  "last_used_at": "2026-06-02T22:00:00Z",
+  "recovery_codes_remaining": 7
+}
+```
+
+### `POST /api/auth/2fa/setup`
+
+Inicia el flow: genera secret TOTP cifrado + 8 recovery codes hasheados.
+
+Idempotente: si ya hay row pero NO `enabled_at`, lo reemplaza (re-setup).
+Si ya está enabled, devuelve `409` — primero `disable`.
+
+**Response 200:**
+```json
+{
+  "secret": "ABCDEFGH12345678ABCD",     // base32, fallback si el QR falla
+  "otpauth_uri": "otpauth://totp/...",   // para generar QR en el cliente
+  "recovery_codes": ["XXXX-XXXX-XX", ...] // 8 codes, mostrar AL USER UNA SOLA VEZ
+}
+```
+
+**Errores:** `409` 2FA ya activado (disable primero).
+
+### `POST /api/auth/2fa/enable`
+
+Confirma el setup con el primer código TOTP de la app autenticadora. Marca
+`enabled_at = NOW()`. Desde acá el login va a exigir 2FA.
+
+**Body:** `{ "code": "123456" }`
+
+**Response 200:** `{ "ok": true, "enabled_at": "..." }`
+
+**Errores:** `400` sin setup previo · `400` código incorrecto · `409` ya enabled.
+
+### `POST /api/auth/2fa/disable`
+
+Desactiva 2FA. Requiere código actual TOTP o un recovery code (defense vs
+alguien que tomó la sesión sin el cel del legítimo).
+
+**Body:** `{ "code": "123456" }` o `{ "code": "XXXX-XXXX-XX" }`
+
+**Response 200:** `{ "ok": true }`
+
+**Errores:** `400` 2FA no activado · `400` código incorrecto.
+
+### `POST /api/auth/2fa/regenerate-recovery`
+
+Genera 8 nuevos recovery codes e invalida los viejos. Mismo `code` requerido
+que en `disable`.
+
+**Body:** `{ "code": "123456" }` o `{ "code": "XXXX-XXXX-XX" }`
+
+**Response 200:** `{ "recovery_codes": ["XXXX-XXXX-XX", ...] }` (8 codes plain
+para mostrar UNA SOLA VEZ).
+
+**Errores:** `400` 2FA no activado · `400` código incorrecto.
+
+---
+
 ## Comprobantes (`/api/comprobantes`)
 
 **Permiso requerido:** `financiera`
