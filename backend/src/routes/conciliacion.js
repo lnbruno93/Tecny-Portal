@@ -419,6 +419,28 @@ router.post('/:id/cerrar', async (req, res, next) => {
       return res.status(409).json({ error: 'La conciliación ya está cerrada.' });
     }
 
+    // H5 auditoría 2026-06: validar que NO queden líneas pendientes (sin match
+    // y sin ignorar) antes de cerrar. La invariante `conciliacion_cerrada_con_
+    // lineas_pending` detecta esto 24h después como severity 'alta', pero el
+    // código permitía dejar la conciliación en estado inválido. Mejor rechazar
+    // ANTES del UPDATE en lugar de generar una alerta diferida.
+    const { rows: pendientes } = await client.query(
+      `SELECT COUNT(*)::int AS n
+         FROM conciliacion_lineas
+        WHERE conciliacion_id = $1
+          AND matched_caja_mov_id IS NULL
+          AND ignorada = false`,
+      [id]
+    );
+    if (pendientes[0].n > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `No se puede cerrar — quedan ${pendientes[0].n} línea(s) sin matchear y sin ignorar. ` +
+               `Resolvelas primero (matcheá o marcá como ignorada).`,
+        lineas_pendientes: pendientes[0].n,
+      });
+    }
+
     // Race condition fix: dos conciliaciones distintas podrían intentar cerrar
     // simultáneamente, ambas matcheando el mismo caja_movimiento. Sin lock,
     // ambas UPDATEs ven `conciliado_en IS NULL` y la última pisaría el match

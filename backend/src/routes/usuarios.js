@@ -86,13 +86,20 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      // H3 auditoría 2026-06: si el admin cambia la password (`hash` no null),
+      // bumpear también `password_changed_at = NOW()`. El middleware de auth
+      // compara `jwt.iat_ms` con `password_changed_at` y rechaza tokens viejos
+      // — así los tokens activos de la víctima quedan invalidados
+      // inmediatamente. Sin este bump, un atacante con un JWT robado seguía
+      // autenticado aunque el admin reseteara la password.
       const { rows } = await client.query(
         `UPDATE users SET
-          nombre        = COALESCE($1, nombre),
-          username      = COALESCE($2, username),
-          email         = COALESCE($3, email),
-          password_hash = COALESCE($4, password_hash),
-          role          = COALESCE($5, role)
+          nombre               = COALESCE($1, nombre),
+          username             = COALESCE($2, username),
+          email                = COALESCE($3, email),
+          password_hash        = COALESCE($4, password_hash),
+          role                 = COALESCE($5, role),
+          password_changed_at  = CASE WHEN $4 IS NOT NULL THEN NOW() ELSE password_changed_at END
         WHERE id = $6 RETURNING id, nombre, username, email, role`,
         [nombre, username, email, hash, role, id]
       );

@@ -299,7 +299,29 @@ app.use('/api/auth',          authRoutes);
 // 2FA — endpoints de setup/enable/disable. Requieren JWT válido (requireAuth)
 // porque son del flow "user gestiona su propia 2FA". La verificación durante
 // LOGIN ocurre dentro de authRoutes (no acá).
-app.use('/api/auth/2fa',      requireAuth, twoFaRoutes);
+//
+// Rate limit dedicado per-user (H2 auditoría 2026-06): si un JWT es robado
+// (XSS hipotético, dispositivo compartido sin lock), el atacante NO puede
+// martillar /disable o /regenerate-recovery para anular el 2FA del user
+// legítimo. La key es user.id (no IP) — un atacante con IP distinta pero
+// mismo JWT también queda limitado.
+//
+// Política: 10 intentos / 15 min por user.id. Suficiente para fat-fingers
+// del legítimo, demasiado bajo para brute force significativo (10^6 espacio
+// TOTP → 10^5 windows de 15min → años).
+const twoFaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de 2FA, esperá 15 minutos.' },
+  keyGenerator: (req) => req.user?.id ? String(req.user.id) : req.ip,
+  // Solo contar fallos (status >= 400). Los success (200) no degradan el límite,
+  // así que el legítimo no se auto-bloquea por uso normal.
+  skipSuccessfulRequests: true,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+app.use('/api/auth/2fa',      requireAuth, twoFaLimiter, twoFaRoutes);
 
 // Financiera — requiere permiso "financiera"
 app.use('/api/vendedores',    requireAuth, requirePermission('financiera'), vendedoresRoutes);

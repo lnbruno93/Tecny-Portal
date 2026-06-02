@@ -4,8 +4,10 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2 } = require('../lib/money');
+const { round2 } = require('../lib/money');
 const { createCachedFetcher } = require('../lib/cacheTtl');
+const withTx = require('../lib/withTx');
+const { postCajaMovimiento } = require('../lib/cajaLedger');
 const {
   createDeudaSchema, queryDeudasSchema,
   createInversionSchema, queryInversionesSchema,
@@ -349,11 +351,23 @@ router.get('/cajas/:id/movimientos', async (req, res, next) => {
 });
 
 // Ajuste manual de caja (ingreso/egreso suelto). Para correcciones / arqueo.
+//
+// H4 auditoría 2026-06: ahora envuelto en una tx con `postCajaMovimiento`
+// (FOR UPDATE sobre metodos_pago + validación atómica de saldo). Antes era:
+//   SELECT saldo → (gap TOCTOU) → INSERT
+// Dos egresos concurrentes contra una caja con saldo justo podían ambos
+// pasar el check y dejarla en negativo. Ahora el lock serializa.
 router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const caja = await db.query('SELECT id, moneda, saldo_inicial FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
+
+    // Pre-check de existencia y obtención de moneda (sin lock — el lock real
+    // lo hace postCajaMovimiento dentro de la tx).
+    const caja = await db.query(
+      'SELECT id, moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
     if (!caja.rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
 
     const { fecha, tipo, monto, tc, concepto } = req.body;
@@ -362,35 +376,37 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
       return res.status(400).json({ error: 'Para una caja en ARS se requiere el tipo de cambio (tc)' });
     }
 
-    // Validación de saldo no-negativo para egresos (misma política que postCajaMovimiento).
-    if (tipo === 'egreso') {
-      const { rows: balRows } = await db.query(
-        `SELECT
-           COALESCE($2::numeric, 0)
-           + COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END), 0)
-           - COALESCE(SUM(CASE WHEN tipo = 'egreso'  THEN monto ELSE 0 END), 0)
-           AS saldo
-           FROM caja_movimientos
-          WHERE caja_id = $1 AND deleted_at IS NULL`,
-        [id, caja.rows[0].saldo_inicial || 0]
-      );
-      const saldoActual = Number(balRows[0]?.saldo || 0);
-      if (saldoActual - Number(monto) < 0) {
-        return res.status(400).json({
-          error: `Saldo insuficiente en la caja (saldo actual: ${saldoActual.toFixed(2)} ${moneda}, ` +
-                 `egreso pedido: ${Number(monto).toFixed(2)}). Una caja no puede quedar en negativo.`,
+    try {
+      const row = await withTx(db, async (client) => {
+        const mov = await postCajaMovimiento(client, {
+          caja_id: id,
+          fecha,
+          tipo,
+          monto,
+          moneda,
+          tc,
+          origen: 'ajuste',
+          ref_tabla: null,
+          ref_id:    null,
+          concepto:  concepto ?? null,
+          user_id:   req.user.id,
         });
-      }
+        // Audit dentro de la tx (con SAVEPOINT) — atómico con el INSERT.
+        if (mov) {
+          await audit(client, 'caja_movimientos', 'INSERT', mov.id, {
+            despues: mov, user_id: req.user.id,
+          });
+        }
+        return mov;
+      });
+      if (!row) return res.status(400).json({ error: 'No se pudo crear el movimiento.' });
+      res.status(201).json(row);
+    } catch (err) {
+      // postCajaMovimiento usa err.status (400 para saldo insuficiente,
+      // moneda mal, etc.). Si trae status, devolverlo; sino propagar.
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      throw err;
     }
-
-    const monto_usd = round2(toUsd(monto, moneda, tc));
-    const { rows } = await db.query(
-      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, concepto, user_id)
-       VALUES ($1,$2,$3,$4,$5,'ajuste',$6,$7) RETURNING *`,
-      [id, fecha, tipo, monto, monto_usd, concepto ?? null, req.user.id]
-    );
-    await audit('caja_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
 

@@ -160,8 +160,13 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     const { rows } = await client.query('UPDATE tarjeta_movimientos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]);
     if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     await reverseCajaMovimientos(client, 'tarjeta_movimientos', id); // revierte la caja si era una liquidación
+    // H6 auditoría 2026-06: audit DENTRO de la tx (con SAVEPOINT) — atómico
+    // con el soft-delete y la reversión de caja. Antes audit corría DESPUÉS
+    // del COMMIT con el pool global — si el proceso moría entre COMMIT y
+    // audit (error de red, OOM kill, etc.), el cambio se persistía SIN trazas.
+    // Patrón ya aplicado al resto de tarjetas.js y al resto del módulo.
+    await audit(client, 'tarjeta_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    await audit('tarjeta_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
