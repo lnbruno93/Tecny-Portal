@@ -25,6 +25,7 @@ const {
   generateSecret,
   buildOtpAuthUri,
   verifyToken,
+  verifyTokenWithStep,
   generateRecoveryCodes,
   hashRecoveryCodes,
   findRecoveryCodeIndex,
@@ -46,41 +47,87 @@ const codeSchema = z.object({
 // Cargar el row de 2FA del user actual. Devuelve null si no existe.
 async function load2fa(userId) {
   const { rows } = await db.query(
-    'SELECT user_id, secret_encrypted, recovery_codes, enabled_at, last_used_at FROM user_2fa WHERE user_id = $1',
+    'SELECT user_id, secret_encrypted, recovery_codes, enabled_at, last_used_at, last_used_step FROM user_2fa WHERE user_id = $1',
     [userId]
   );
   return rows[0] || null;
 }
 
-// Verifica un código (TOTP o recovery). Si recovery match, "quema" el code
-// (reemplaza por null en el array). Devuelve { ok, kind: 'totp' | 'recovery' | null }.
-async function verifyAny(row, code) {
+// Verifica un código (TOTP o recovery) de forma ATÓMICA contra la DB. Esto
+// previene:
+//   B2: replay del MISMO TOTP dentro del window de ±90s (entre réplicas o
+//       requests concurrentes). Se persiste `last_used_step` y solo se acepta
+//       step > last_used_step (UPDATE WHERE atómico).
+//   B3: doble uso del MISMO recovery code en requests concurrentes (TOCTOU).
+//       El UPDATE incluye `WHERE recovery_codes[idx+1] = $old` — si otro
+//       request ya cambió la celda, rowCount=0 y rechazamos.
+//
+// Devuelve { ok, kind: 'totp' | 'recovery' | null }.
+//
+// ATENCIÓN: este helper hace TODO el trabajo internamente (load row + verify
+// + UPDATE atómico). El caller NO debe hacer SELECT previo y pasarlo —
+// usar verifyAndConsume(userId, code) directamente.
+async function verifyAndConsume(userId, code) {
+  // Cargamos el row para acceder al secret y a los recovery hashes. El UPDATE
+  // posterior es atómico vs concurrencia gracias al WHERE específico.
+  const row = await load2fa(userId);
   if (!row) return { ok: false, kind: null };
+
   // 1) Probar como TOTP (6 dígitos).
   if (/^\d{6}$/.test(code)) {
     const secret = decryptSecret(row.secret_encrypted);
-    if (verifyToken(secret, code)) {
-      return { ok: true, kind: 'totp' };
+    const step = verifyTokenWithStep(secret, code);
+    if (step !== null) {
+      // UPDATE atómico: solo "consume" si este step es estrictamente posterior
+      // al último consumido. Entre réplicas o requests concurrentes, solo el
+      // primero gana — los demás reciben rowCount=0 y rechazan (replay).
+      const r = await db.query(
+        `UPDATE user_2fa
+            SET last_used_step = $1,
+                last_used_at = NOW()
+          WHERE user_id = $2 AND last_used_step < $1
+        RETURNING 1`,
+        [step, userId]
+      );
+      if (r.rowCount > 0) return { ok: true, kind: 'totp' };
+      // rowCount=0 → replay rechazado. NO retornar ok=true.
+      // Caemos al siguiente check (recovery), aunque es muy improbable.
     }
   }
-  // 2) Probar como recovery code (formato XXXX-XXXX-XX, pero aceptamos
-  //    variaciones de mayúsculas / con-sin guiones).
+
+  // 2) Probar como recovery code.
   const idx = await findRecoveryCodeIndex(code, row.recovery_codes);
   if (idx >= 0) {
-    // Marcar el code como usado (reemplazar hash por string vacío en su posición).
-    // Usamos '' en lugar de NULL porque text[] no acepta NULL elements por default.
-    const newCodes = row.recovery_codes.slice();
-    newCodes[idx] = '';
-    await db.query(
-      'UPDATE user_2fa SET recovery_codes = $1, last_used_at = NOW() WHERE user_id = $2',
-      [newCodes, row.user_id]
+    const oldHash = row.recovery_codes[idx];
+    // UPDATE atómico: solo "quema" el code si la celda todavía tiene el hash
+    // que esperamos. Si otro request en otra réplica ya lo cambió a '',
+    // rowCount=0 y rechazamos (TOCTOU rejected).
+    //
+    // Postgres arrays son 1-indexed en SQL, JS es 0-indexed → idx+1.
+    const r = await db.query(
+      `UPDATE user_2fa
+          SET recovery_codes[$3] = '',
+              last_used_at = NOW()
+        WHERE user_id = $1 AND recovery_codes[$3] = $2
+      RETURNING 1`,
+      [userId, oldHash, idx + 1]
     );
-    return { ok: true, kind: 'recovery' };
+    if (r.rowCount > 0) return { ok: true, kind: 'recovery' };
+    // rowCount=0 → otro request consumió el code primero. Rechazamos.
   }
+
   return { ok: false, kind: null };
 }
 
-// Marca last_used_at sin tocar recovery codes (TOTP success).
+// ⚠️ DEPRECATED — mantenido para compatibilidad con tests existentes.
+// Nuevo código usar `verifyAndConsume(userId, code)`.
+async function verifyAny(row, code) {
+  if (!row) return { ok: false, kind: null };
+  return verifyAndConsume(row.user_id, code);
+}
+
+// Marca last_used_at sin tocar recovery codes ni step (usado solo para
+// `touchLastUsed` post-success en flows que ya consumieron el step por otra vía).
 async function touchLastUsed(userId) {
   await db.query('UPDATE user_2fa SET last_used_at = NOW() WHERE user_id = $1', [userId]);
 }
@@ -187,7 +234,7 @@ router.post('/disable', validate(codeSchema), async (req, res, next) => {
     if (!row || !row.enabled_at) {
       return res.status(400).json({ error: '2FA no está activado.' });
     }
-    const { ok } = await verifyAny(row, req.body.code);
+    const { ok } = await verifyAndConsume(req.user.id, req.body.code);
     if (!ok) return res.status(400).json({ error: 'Código incorrecto.' });
 
     await db.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
@@ -204,7 +251,7 @@ router.post('/regenerate-recovery', validate(codeSchema), async (req, res, next)
     if (!row || !row.enabled_at) {
       return res.status(400).json({ error: '2FA no está activado.' });
     }
-    const { ok } = await verifyAny(row, req.body.code);
+    const { ok } = await verifyAndConsume(req.user.id, req.body.code);
     if (!ok) return res.status(400).json({ error: 'Código incorrecto.' });
 
     const recovery = generateRecoveryCodes();
@@ -216,8 +263,9 @@ router.post('/regenerate-recovery', validate(codeSchema), async (req, res, next)
   } catch (err) { next(err); }
 });
 
-// Re-export helper para que auth.js pueda chequear 2FA durante login.
+// Re-export helpers para que auth.js pueda chequear 2FA durante login.
 module.exports = router;
 module.exports.load2fa = load2fa;
-module.exports.verifyAny = verifyAny;
+module.exports.verifyAndConsume = verifyAndConsume; // ← ATÓMICO (preferir este)
+module.exports.verifyAny = verifyAny;               // ⚠️ DEPRECATED — solo compat
 module.exports.touchLastUsed = touchLastUsed;
