@@ -1,5 +1,6 @@
 const db     = require('../config/database');
 const logger = require('./logger');
+const withAdvisoryLock = require('./withAdvisoryLock');
 
 // ──────────────────────── Redacción de PII ────────────────────────
 // Los `audit_logs` persisten `antes`/`despues` completos de las filas afectadas
@@ -136,11 +137,11 @@ async function purgarAuditLogsViejos(diasRetencion = 365) {
 // Job interno de purga periódica. Se invoca desde `server.js` al arrancar
 // y dispara purgarAuditLogsViejos() cada `intervalHours` horas (default 24).
 //
-// Por qué un setInterval interno y no pg_cron / Railway Scheduler:
-//   - Cero infra extra. Una instancia → un job.
-//   - Cuando escalemos a múltiples workers, esto se debe migrar a un
-//     scheduler externo (PG advisory lock entre workers, o cron de Railway)
-//     porque cada worker dispararía el DELETE simultáneamente.
+// Multi-instancia safety:
+//   El job está envuelto en `withAdvisoryLock('audit_purga', ...)` — cuando
+//   hay 2+ réplicas activas (Railway), solo UNA corre el DELETE cada noche.
+//   Las otras reciben false del lock y skip silently. Esto evita lock
+//   contention en `audit_logs` (tabla grande) y logging duplicado.
 //
 // Devuelve el handle del intervalo (para test/shutdown).
 function startPurgaJob({ diasRetencion = 365, intervalHours = 24, runOnStartup = false } = {}) {
@@ -150,8 +151,11 @@ function startPurgaJob({ diasRetencion = 365, intervalHours = 24, runOnStartup =
 
   const intervalMs = intervalHours * 60 * 60 * 1000;
   const runOnce = async () => {
-    try { await purgarAuditLogsViejos(diasRetencion); }
-    catch (err) { logger.error({ err }, 'audit_logs purga falló — reintenta mañana'); }
+    try {
+      await withAdvisoryLock('audit_purga', () => purgarAuditLogsViejos(diasRetencion));
+    } catch (err) {
+      logger.error({ err }, 'audit_logs purga falló — reintenta mañana');
+    }
   };
 
   if (runOnStartup) runOnce(); // útil en dev / al deployar después de mucho tiempo
@@ -159,7 +163,7 @@ function startPurgaJob({ diasRetencion = 365, intervalHours = 24, runOnStartup =
   const handle = setInterval(runOnce, intervalMs);
   // .unref() evita que el timer mantenga vivo el proceso durante shutdown.
   if (typeof handle.unref === 'function') handle.unref();
-  logger.info({ diasRetencion, intervalHours }, 'audit_logs purga job programado');
+  logger.info({ diasRetencion, intervalHours }, 'audit_logs purga job programado (con advisory lock)');
   return handle;
 }
 

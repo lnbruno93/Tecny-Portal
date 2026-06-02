@@ -1,9 +1,9 @@
 // Job nocturno que valida invariantes de integridad financiera.
 //
-// Por qué setInterval interno y no pg_cron / Railway Scheduler:
-//   - Cero infra extra. Single-instance only — cuando escalemos a múltiples
-//     workers, migrar a Railway Scheduler con advisory lock entre workers.
-//   - Mismo patrón que startPurgaJob en lib/audit.js (precedente del proyecto).
+// Multi-instancia safety:
+//   Envuelto en `withAdvisoryLock('invariants_check', ...)` — con 2+ réplicas
+//   activas solo UNA corre el evaluador cada noche, evitando alertas Sentry
+//   duplicadas (que disfrazaban incidentes reales como ruido x2).
 //
 // Frecuencia: cada 24h, default 03:00 UTC (madrugada AR). Si una corrida tarda
 // >5 min, el siguiente intervalo lo encuentra ya terminado.
@@ -15,6 +15,7 @@
 
 const logger = require('../lib/logger');
 const { evaluarTodos, resumir } = require('../lib/checkInvariants');
+const withAdvisoryLock = require('../lib/withAdvisoryLock');
 
 async function runInvariantsCheck() {
   const t0 = Date.now();
@@ -88,21 +89,18 @@ function startInvariantsJob({ intervalHours = 24, runOnStartup = false } = {}) {
 
   const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
 
-  if (runOnStartup) {
-    runInvariantsCheck().catch(err =>
-      logger.error({ err }, 'invariants check inicial falló')
-    );
-  }
+  // Wrapper que envuelve runInvariantsCheck en el advisory lock. Si otra
+  // réplica ya tiene el lock, skip silently (logSkip=true loguea info).
+  const runWithLock = () => withAdvisoryLock('invariants_check', runInvariantsCheck)
+    .catch(err => logger.error({ err }, 'invariants check con lock falló'));
 
-  const handle = setInterval(() => {
-    runInvariantsCheck().catch(err =>
-      logger.error({ err }, 'invariants check periódico falló')
-    );
-  }, intervalMs);
+  if (runOnStartup) runWithLock();
+
+  const handle = setInterval(runWithLock, intervalMs);
 
   // .unref() evita que el timer mantenga vivo el proceso durante shutdown.
   if (typeof handle.unref === 'function') handle.unref();
-  logger.info({ intervalHours }, 'invariants job programado');
+  logger.info({ intervalHours }, 'invariants job programado (con advisory lock)');
   return handle;
 }
 
