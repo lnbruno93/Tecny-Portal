@@ -76,12 +76,47 @@ function buildOtpAuthUri(secret, username, issuer = 'iPro Portal') {
 // ─────────── Verificación del token ───────────
 // Tolera ±1 step para clock drift. Devuelve true si el código es válido
 // para el secret + el momento actual (o ±30s).
+//
+// NOTA: esta versión NO protege contra replay. Para protección anti-replay
+// usar `verifyTokenWithStep` + persistir el step en `user_2fa.last_used_step`.
+// Mantenemos `verifyToken` para flows donde no se persiste step (ej. enable,
+// disable, regenerate-recovery — son operaciones autenticadas que ya pasaron
+// `requireAuth`, el factor 2FA es defense-in-depth pero no el único gate).
 function verifyToken(secret, token) {
   if (!token || !/^\d{6}$/.test(String(token))) return false;
   try {
     return speakeasy.totp.verify({ secret, token: String(token), ...TOTP_OPTS });
   } catch {
     return false;
+  }
+}
+
+// ─────────── Verificación anti-replay (con tracking de step) ───────────
+//
+// Para uso DURANTE LOGIN — donde un código válido pero ya consumido NO debería
+// abrir una segunda sesión (atacante que intercepta el TOTP no puede usarlo
+// dentro del mismo window 90s).
+//
+// Retorna el `step` numérico (BIGINT positivo) si el código es válido para
+// el secret + el momento actual (con tolerancia ±1 step). El caller debe
+// hacer un UPDATE atómico con `WHERE last_used_step < $step` para "consumir"
+// el step — si rowCount = 0, otro request ganó la carrera (replay rejected).
+//
+// Retorna `null` si el código es inválido (no matchea ningún step en el window)
+// o tiene formato incorrecto.
+//
+// Implementación: usa `speakeasy.totp.verifyDelta` que devuelve `{ delta }`
+// (-1, 0, +1) si el código matchea algún step en el window. Combinado con
+// `Math.floor(unix/30)` del momento actual obtenemos el step absoluto.
+function verifyTokenWithStep(secret, token) {
+  if (!token || !/^\d{6}$/.test(String(token))) return null;
+  try {
+    const result = speakeasy.totp.verifyDelta({ secret, token: String(token), ...TOTP_OPTS });
+    if (!result || typeof result.delta !== 'number') return null;
+    const nowStep = Math.floor(Date.now() / 1000 / TOTP_OPTS.step);
+    return nowStep + result.delta;
+  } catch {
+    return null;
   }
 }
 
@@ -128,6 +163,7 @@ module.exports = {
   generateSecret,
   buildOtpAuthUri,
   verifyToken,
+  verifyTokenWithStep,
   generateTokenForTest,
   generateRecoveryCodes,
   hashRecoveryCodes,

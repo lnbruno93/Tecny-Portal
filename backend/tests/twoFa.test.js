@@ -259,3 +259,83 @@ describe('POST /api/auth/2fa/regenerate-recovery', () => {
     expect(loginFail.status).toBe(401);
   });
 });
+
+// ─── Anti-replay (B2 + B3 de auditoría 2026-06) ──────────────────────────────
+//
+// B2: TOTP replay protection — un código válido NO se puede reusar dentro del
+//     window de 90s (delta -1, 0, +1). Sin esto, un atacante con un código
+//     interceptado podría abrir N sesiones durante esos 90s.
+// B3: Recovery code TOCTOU — dos requests concurrentes con el mismo recovery
+//     code: solo uno debe pasar. Sin esto, un code leakeado servía 2× si se
+//     usaba en paralelo.
+describe('2FA anti-replay (B2 + B3)', () => {
+  it('B2: el MISMO TOTP code no se puede usar 2 veces (replay rechazado)', async () => {
+    const setup = await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));
+    await request(app).post('/api/auth/2fa/enable').set(auth(adminToken))
+      .send({ code: twoFaLib.generateTokenForTest(setup.body.secret) });
+
+    // Generamos UN solo código TOTP, lo usamos para login → OK.
+    // Luego intentamos hacer login OTRA VEZ con el mismo código → 401 (replay).
+    const code = twoFaLib.generateTokenForTest(setup.body.secret);
+
+    const r1 = await loginAs(TEST_USER.username, TEST_USER.password, code);
+    expect(r1.status).toBe(200);
+    expect(r1.body.token).toBeTruthy();
+
+    // MISMO código, mismo window de 30s: debe rechazarse.
+    const r2 = await loginAs(TEST_USER.username, TEST_USER.password, code);
+    expect(r2.status).toBe(401);
+    expect(r2.body.error).toMatch(/2FA/i);
+  });
+
+  it('B2: dos logins CONCURRENTES con el mismo TOTP — solo uno pasa', async () => {
+    const setup = await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));
+    await request(app).post('/api/auth/2fa/enable').set(auth(adminToken))
+      .send({ code: twoFaLib.generateTokenForTest(setup.body.secret) });
+
+    const code = twoFaLib.generateTokenForTest(setup.body.secret);
+    const [a, b] = await Promise.all([
+      loginAs(TEST_USER.username, TEST_USER.password, code),
+      loginAs(TEST_USER.username, TEST_USER.password, code),
+    ]);
+    // Exactamente uno debería pasar (200) y el otro rechazarse (401 replay).
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 401]);
+  });
+
+  it('B3: dos logins CONCURRENTES con el mismo recovery code — solo uno pasa', async () => {
+    const setup = await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));
+    await request(app).post('/api/auth/2fa/enable').set(auth(adminToken))
+      .send({ code: twoFaLib.generateTokenForTest(setup.body.secret) });
+
+    const recovery = setup.body.recovery_codes[2];
+    const [a, b] = await Promise.all([
+      loginAs(TEST_USER.username, TEST_USER.password, recovery),
+      loginAs(TEST_USER.username, TEST_USER.password, recovery),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 401]);
+  });
+
+  it('B2: last_used_step se persiste y avanza con cada uso', async () => {
+    const setup = await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));
+    await request(app).post('/api/auth/2fa/enable').set(auth(adminToken))
+      .send({ code: twoFaLib.generateTokenForTest(setup.body.secret) });
+
+    // Inicialmente, last_used_step debe estar en algún valor (>= 0).
+    const beforeRow = (await pool.query('SELECT last_used_step FROM user_2fa WHERE user_id = (SELECT id FROM users WHERE username = $1)', [TEST_USER.username])).rows[0];
+    const stepBefore = Number(beforeRow.last_used_step);
+
+    // Login con TOTP → debe actualizar last_used_step al step actual.
+    const code = twoFaLib.generateTokenForTest(setup.body.secret);
+    const r1 = await loginAs(TEST_USER.username, TEST_USER.password, code);
+    expect(r1.status).toBe(200);
+
+    const afterRow = (await pool.query('SELECT last_used_step FROM user_2fa WHERE user_id = (SELECT id FROM users WHERE username = $1)', [TEST_USER.username])).rows[0];
+    const stepAfter = Number(afterRow.last_used_step);
+    expect(stepAfter).toBeGreaterThan(stepBefore);
+    // El step debe estar cerca de "ahora" (epoch_seconds / 30).
+    const nowStep = Math.floor(Date.now() / 1000 / 30);
+    expect(Math.abs(stepAfter - nowStep)).toBeLessThanOrEqual(1);
+  });
+});
