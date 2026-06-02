@@ -18,11 +18,19 @@
 //                   otros UI elements (ej. el toast de error).
 //   pdfLoading    — booleano. Si true, deshabilita el botón de descarga
 //                   y muestra "Generando…".
+//
+// U2 auditoría 2026-06: useModal aplicado — Esc cierra el modal (atajo
+// estándar), body scroll lock + foco inicial al botón OK (que ya tiene autoFocus).
+import { useRef } from 'react';
+import useModal from '../../lib/useModal';
+
 export default function ExitoModal({ state, onClose, onDescargar, pdfLoading }) {
+  const overlayRef = useRef(null);
+  useModal({ open: state.open, onClose, overlayRef });
   if (!state.open) return null;
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
-         onClick={onClose}>
+    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
+         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
         <div className="modal-body" style={{ padding: '36px 28px 18px', textAlign: 'center' }}>
           <div style={{

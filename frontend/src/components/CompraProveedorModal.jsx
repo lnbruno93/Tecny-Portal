@@ -18,7 +18,8 @@
  *   3. Si hay caja_id → egreso automático en caja_movimientos.
  *   4. IMEI duplicado (interno o vs stock) → 409, rollback total.
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import useModal from '../lib/useModal'; // U2 auditoría 2026-06
 import { Icons } from './Icons';
 import { proveedores as provApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
@@ -354,13 +355,18 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
     if (ok) onClose();
   }
 
+  // U2 auditoría 2026-06: useModal aplicado.
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose: tryClose, overlayRef });
+
   // Estilos compartidos: cellInp + headerTh vienen de lib/spreadsheetStyles
   return (
-    <div className="modal-overlay" onClick={tryClose}>
+    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compra-prov-modal-title"
+         onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
       <div className="modal" style={{ maxWidth: 1800, width: '98vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
-          <h3>Cargar compra · {proveedor.nombre}</h3>
-          <button className="icon-btn" onClick={tryClose}><Icons.X size={16} /></button>
+          <h3 id="compra-prov-modal-title">Cargar compra · {proveedor.nombre}</h3>
+          <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>

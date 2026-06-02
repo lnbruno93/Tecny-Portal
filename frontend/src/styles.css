@@ -16,7 +16,10 @@
 
   --text:          #e8ecf6;
   --text-2:        #b8c1d6;
-  --text-muted:    #7c87a5;
+  /* U4 auditoría 2026-06: subido de #7c87a5 (~4.4:1) a #8c97b5 (~5.2:1)
+     para que `.muted .tiny` (texto 11-12px) cumpla WCAG AA (4.5:1 normal,
+     ≥4.5:1 también para texto pequeño <14px en este caso). */
+  --text-muted:    #8c97b5;
   --text-dim:      #525c79;
 
   --accent:        #0ea5e9;       /* sky-500 */
@@ -54,7 +57,8 @@
 
   --text:          #ececef;
   --text-2:        #b8b9c3;
-  --text-muted:    #7a7c8a;
+  /* U4: subido de #7a7c8a a #8c8d9b para mejorar contraste en `.tiny` (WCAG AA). */
+  --text-muted:    #8c8d9b;
   --text-dim:      #4d4f5b;
 
   --accent:        #a78bfa;       /* violet */

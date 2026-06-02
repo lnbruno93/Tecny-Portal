@@ -15,7 +15,23 @@
 // El campo `resolve` es la promesa pending que el padre resuelve cuando
 // el usuario elige una opción. La promesa se setea desde el flow de submit
 // de la venta (await new Promise(resolve => setDiffModal({ ..., resolve }))).
+//
+// U2 auditoría 2026-06: useModal aplicado — Esc cancela (resuelve con false,
+// igual que "Corregir"), body lock activo mientras está abierto, foco inicial
+// va al botón primary "Aceptar igual" (que ya tenía autoFocus).
+import { useRef } from 'react';
+import useModal from '../../lib/useModal';
+
 export default function DiffModal({ state, onClose }) {
+  const overlayRef = useRef(null);
+  // Esc = "Corregir" (resolver false). Este es el comportamiento más seguro
+  // para un modal de confirmación destructiva.
+  const handleEscClose = () => {
+    const r = state.resolve;
+    onClose();
+    if (r) r(false);
+  };
+  useModal({ open: state.open, onClose: handleEscClose, overlayRef });
   if (!state.open) return null;
   const dif = state.dif;
   const aFavor = dif > 0;
@@ -25,7 +41,7 @@ export default function DiffModal({ state, onClose }) {
     if (r) r(aceptado);
   };
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" style={{ zIndex: 600 }}>
+    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title" style={{ zIndex: 600 }}>
       <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
         <div className="modal-body" style={{ padding: '32px 28px 18px', textAlign: 'left' }}>
           {/* Icono de warning grande, centrado */}
