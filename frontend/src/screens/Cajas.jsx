@@ -464,7 +464,18 @@ export default function Cajas() {
           <div style={{ display: 'grid', gridTemplateColumns: selectedContactoId ? '300px 1fr' : '1fr', gap: 16 }}>
             {/* Lista */}
             <div className="card card-flush">
-              <div className="card-hd"><h3>Por contacto</h3></div>
+              {/* Header del card con botón contextual de acción primaria.
+                  El mismo botón existe en el Shell (icono "+" arriba) — esta
+                  versión es más descubrible para users nuevos. Útil sobre todo
+                  cuando NO hay contacto seleccionado: el "+Movimiento" del
+                  detalle a la derecha requiere primero clickear un contacto. */}
+              <div className="card-hd flex-between" style={{ alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Por contacto</h3>
+                <button className="btn btn-primary btn-sm"
+                        onClick={() => { setDeudaForm(EMPTY_DEUDA()); setDeudaError(''); setShowDeuda(true); }}>
+                  <Icons.Plus size={13} /> Nuevo movimiento
+                </button>
+              </div>
               {loadingDeudas ? (
                 <div className="empty">Cargando…</div>
               ) : contactosDeuda.length === 0 ? (
@@ -603,7 +614,17 @@ export default function Cajas() {
           </div>
 
           <div className="card card-flush">
-            <div className="card-hd"><h3>Inversiones — {inversiones.length}</h3></div>
+            {/* Header del card con botón contextual de acción primaria.
+                El mismo botón existe en el Shell (icono "+" arriba a la derecha)
+                — esta versión es más descubrible para users nuevos que esperan
+                el botón DENTRO de la pantalla, al lado del título. */}
+            <div className="card-hd flex-between" style={{ alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>Inversiones — {inversiones.length}</h3>
+              <button className="btn btn-primary btn-sm"
+                      onClick={() => { setInvForm(EMPTY_INV()); setInvError(''); setShowInv(true); }}>
+                <Icons.Plus size={13} /> Nueva inversión
+              </button>
+            </div>
             {loadingInv ? (
               <div className="empty">Cargando…</div>
             ) : inversiones.length === 0 ? (
