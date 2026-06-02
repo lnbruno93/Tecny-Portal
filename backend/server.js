@@ -46,6 +46,8 @@ const logger = require('./src/lib/logger');
 const db     = require('./src/config/database');
 const { startPurgaJob } = require('./src/lib/audit');
 const { startInvariantsJob } = require('./src/jobs/invariantsJob');
+const withAdvisoryLock = require('./src/lib/withAdvisoryLock');
+const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
 const PORT = process.env.PORT || 3001;
 
@@ -64,6 +66,18 @@ const server = app.listen(PORT, () => {
   // runOnStartup deshabilitado en prod — el primer check corre 24h después
   // del deploy, lo cual es preferible (evita ruido en cada redeploy).
   startInvariantsJob({ intervalHours: 24 });
+
+  // P1 auditoría 2026-06: cleanup periódico de rate_limit_entries expiradas.
+  // El store nunca borra automáticamente — las filas con expires_at < NOW()
+  // quedan acumulándose. Sin cleanup, la tabla crece. Con cleanup horario
+  // y windows típicos de 15min, la tabla se mantiene en O(usuarios activos).
+  //
+  // Envuelto en withAdvisoryLock — solo una réplica ejecuta el DELETE.
+  const cleanupStore = new PostgresRateLimitStore({ db, logger });
+  const runCleanup = () => withAdvisoryLock('rate_limit_cleanup', () => cleanupStore.cleanup())
+    .catch(err => logger.error({ err }, 'rate_limit cleanup falló'));
+  setInterval(runCleanup, 60 * 60 * 1000).unref(); // cada 1h
+  logger.info('rate_limit cleanup job programado (con advisory lock, intervalHours: 1)');
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
