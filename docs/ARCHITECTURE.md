@@ -39,8 +39,8 @@ Maneja:
 | Frontend tests | Vitest | 156 tests |
 | Backend | Node 20 + Express | JWT HS256, helmet, compression |
 | Backend tests | Jest + supertest | 539 tests integration |
-| DB | PostgreSQL 16 | node-pg-migrate, sin ORM |
-| Auth | JWT HS256 + bcrypt + lockout | Sin OAuth/2FA todavía |
+| DB | PostgreSQL 18 | node-pg-migrate, sin ORM |
+| Auth | JWT HS256 + bcrypt + lockout + 2FA TOTP opcional | Ver §8 decisiones durables; sin OAuth todavía |
 | Deploy backend | Railway | `Postgres-AueP` (DB) + `ipro-backend` |
 | Deploy frontend | Netlify | `ipro-portal.netlify.app` |
 | Observability | pino (logs) + Sentry (errors) + UptimeRobot | Plus `/health` y `/ready` |

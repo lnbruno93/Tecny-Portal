@@ -2,6 +2,20 @@
 
 > Guía técnica para desarrolladores. Cubre arquitectura, setup local, estructura del proyecto y decisiones de diseño clave.
 
+> [!WARNING]
+> **Estado: parcialmente desactualizado** (junio 2026). Algunos counts de
+> migraciones, routes y screens están desfasados respecto al código actual; el
+> documento no menciona features post-mayo 2026 (2FA TOTP, conciliación bancaria,
+> alertas configurables, dashboard mensual, multi-instance hardening).
+>
+> **Fuente de verdad actual:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+> — estructura del proyecto, decisiones durables, stack vigente.
+>
+> Este onboarding sirve como introducción narrativa (qué es el portal, cómo
+> setearlo local, decisiones de diseño históricas). Para listar módulos/routes/
+> schemas reales, usá `find backend/src/routes -name '*.js'`, `ls backend/migrations/`,
+> y `ls frontend/src/screens/`.
+
 ---
 
 ## Índice
