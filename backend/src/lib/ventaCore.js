@@ -30,41 +30,80 @@ function necesidadPorProducto(items) {
 //      si querés un lote infinito tenés que setearlo en una cantidad alta a
 //      propósito. trackear_stock=false en lotes pasa a ser efectivamente lo mismo
 //      que con tracking — se mantiene el flag por compatibilidad histórica.
+//
+// P2 auditoría 2026-06: bulkificado de N round-trips (2N queries) a 2 queries
+// fijas (1 SELECT FOR UPDATE + 1 UPDATE con UNNEST). Para una venta típica con
+// 5 items: 10 → 2 queries. Para una B2B con 50 items: 100 → 2 queries. El
+// ORDER BY id en el SELECT mantiene el orden estable para evitar deadlocks
+// (mismo orden = serialización determinística entre tx concurrentes).
 async function descontarStock(client, items) {
   const need = necesidadPorProducto(items);
-  for (const id of [...need.keys()].sort((a, b) => a - b)) {
-    const { rows } = await client.query(
-      `SELECT id, nombre, tipo_carga, estado, cantidad, trackear_stock
-         FROM productos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, [id]
-    );
-    const p = rows[0];
-    if (!p) throw err400('Un producto ya no existe en el inventario.');
-    const qty = need.get(id);
-    if (p.tipo_carga === 'unitario' && p.estado === 'vendido') throw err400(`"${p.nombre}" ya figura como vendido.`);
+  if (need.size === 0) return;
+
+  const ids = [...need.keys()].sort((a, b) => a - b);
+
+  // 1 SELECT con FOR UPDATE — lockea todas las filas necesarias en orden
+  // estable. Validamos disponibilidad en JS antes del UPDATE.
+  const { rows } = await client.query(
+    `SELECT id, nombre, tipo_carga, estado, cantidad, trackear_stock
+       FROM productos
+      WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+      ORDER BY id
+      FOR UPDATE`,
+    [ids]
+  );
+
+  // Detectar productos que faltaron (deleted_at o id inexistente).
+  if (rows.length < ids.length) {
+    throw err400('Un producto ya no existe en el inventario.');
+  }
+
+  // Validación item por item (en memoria, no queries).
+  for (const p of rows) {
+    const qty = need.get(p.id);
+    if (p.tipo_carga === 'unitario' && p.estado === 'vendido') {
+      throw err400(`"${p.nombre}" ya figura como vendido.`);
+    }
     const debeValidarCantidad = p.trackear_stock || p.tipo_carga === 'lote';
     if (debeValidarCantidad && p.cantidad < qty) {
       throw err400(`Stock insuficiente de "${p.nombre}" (disponible: ${p.cantidad}, pedido: ${qty}).`);
     }
-    await client.query(
-      `UPDATE productos
-         SET cantidad = GREATEST(cantidad - $1, 0),
-             estado   = CASE WHEN tipo_carga = 'unitario' THEN 'vendido' ELSE estado END
-       WHERE id = $2`, [qty, id]
-    );
   }
+
+  // 1 UPDATE bulk con UNNEST — aplica el descuento a todos los productos a la vez.
+  // El array de cantidades va en el mismo orden que `ids`.
+  const cantidades = ids.map(id => need.get(id));
+  await client.query(
+    `UPDATE productos AS p
+        SET cantidad = GREATEST(p.cantidad - u.cant, 0),
+            estado   = CASE WHEN p.tipo_carga = 'unitario' THEN 'vendido' ELSE p.estado END
+       FROM UNNEST($1::int[], $2::int[]) AS u(id, cant)
+      WHERE p.id = u.id`,
+    [ids, cantidades]
+  );
 }
 
 // Repone stock (al eliminar o reeditar una venta). Devuelve unitarios vendidos a 'disponible'.
+//
+// P2 auditoría 2026-06: bulkificado igual que descontarStock — 1 UPDATE
+// con UNNEST en lugar de N UPDATEs serializados. No requiere SELECT FOR
+// UPDATE previo porque reponer es estrictamente aditivo (no puede romper
+// invariantes — un producto nunca tiene "demasiado stock" como problema).
 async function reponerStock(client, items) {
   const need = necesidadPorProducto(items);
-  for (const id of [...need.keys()].sort((a, b) => a - b)) {
-    await client.query(
-      `UPDATE productos
-         SET cantidad = cantidad + $1,
-             estado   = CASE WHEN tipo_carga = 'unitario' AND estado = 'vendido' THEN 'disponible' ELSE estado END
-       WHERE id = $2 AND deleted_at IS NULL`, [need.get(id), id]
-    );
-  }
+  if (need.size === 0) return;
+
+  const ids = [...need.keys()].sort((a, b) => a - b);
+  const cantidades = ids.map(id => need.get(id));
+  await client.query(
+    `UPDATE productos AS p
+        SET cantidad = p.cantidad + u.cant,
+            estado   = CASE WHEN p.tipo_carga = 'unitario' AND p.estado = 'vendido'
+                            THEN 'disponible' ELSE p.estado END
+       FROM UNNEST($1::int[], $2::int[]) AS u(id, cant)
+      WHERE p.id = u.id AND p.deleted_at IS NULL`,
+    [ids, cantidades]
+  );
 }
 
 module.exports = { err400, retieneStock, necesidadPorProducto, descontarStock, reponerStock };

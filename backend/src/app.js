@@ -6,6 +6,15 @@ const rateLimit   = require('express-rate-limit');
 const pinoHttp    = require('pino-http');
 const logger      = require('./lib/logger');
 const db = require('./config/database');
+const PostgresRateLimitStore = require('./lib/postgresRateLimitStore');
+
+// Store compartido para los rate-limiters críticos (login + 2FA). En tests
+// usamos MemoryStore (default) para no requerir DB en cada rate-limit assertion.
+// En producción/staging, ambos limiters comparten contadores entre las 2
+// réplicas Railway → defensa real contra brute force (P1 auditoría 2026-06).
+const isTestEnv = process.env.NODE_ENV === 'test';
+const loginStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'login', logger });
+const twoFaStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: '2fa',   logger });
 
 const authRoutes         = require('./routes/auth');
 const twoFaRoutes        = require('./routes/twoFa');
@@ -282,6 +291,10 @@ app.get('/ready', async (_req, res) => {
 // Strict login rate limit: 10 failed attempts / 15 min per IP.
 // En tests no aplica (la suite de lockout dispara &gt;10 intentos a propósito
 // para validar la política per-user, que es complementaria al IP limit).
+// P1 auditoría 2026-06: usa PostgresRateLimitStore en producción para que
+// las 2 réplicas compartan el counter. Antes era MemoryStore (process-local)
+// → con 2 réplicas el límite efectivo se relajaba al doble (20/15min en
+// lugar de 10/15min), debilitando la defensa contra brute force.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -290,6 +303,7 @@ const loginLimiter = rateLimit({
   message: { error: 'Demasiados intentos de login, esperá 15 minutos' },
   skipSuccessfulRequests: true,
   skip: () => process.env.NODE_ENV === 'test',
+  ...(loginStore && { store: loginStore }),
 });
 app.use('/api/auth/login', loginLimiter);
 
@@ -320,6 +334,8 @@ const twoFaLimiter = rateLimit({
   // así que el legítimo no se auto-bloquea por uso normal.
   skipSuccessfulRequests: true,
   skip: () => process.env.NODE_ENV === 'test',
+  // P1 auditoría 2026-06: store compartido entre réplicas (ver loginLimiter).
+  ...(twoFaStore && { store: twoFaStore }),
 });
 app.use('/api/auth/2fa',      requireAuth, twoFaLimiter, twoFaRoutes);
 

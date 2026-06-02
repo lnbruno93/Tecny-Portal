@@ -179,11 +179,20 @@ router.post('/', conciliacionPostLimiter, validate(createConciliacionSchema), as
     );
 
     // Auto-match (calculado contra el ledger).
+    //
+    // P3 auditoría 2026-06: aplicación bulkificada — antes corría N UPDATEs
+    // serializados (uno por match). Un CSV bancario con 200 matches = 200
+    // round-trips. Ahora un solo UPDATE con UNNEST aplica todos.
     const matches = await autoMatchLineas(client, conc.id, caja_id, lineas, tolerancia_dias);
-    for (const m of matches) {
+    if (matches.length > 0) {
+      const lineaIds = matches.map(m => lineasIns[m.lineaIdx].id);
+      const movIds   = matches.map(m => m.movId);
       await client.query(
-        'UPDATE conciliacion_lineas SET matched_caja_mov_id = $1 WHERE id = $2',
-        [m.movId, lineasIns[m.lineaIdx].id]
+        `UPDATE conciliacion_lineas AS cl
+            SET matched_caja_mov_id = u.mov_id
+           FROM UNNEST($1::int[], $2::int[]) AS u(linea_id, mov_id)
+          WHERE cl.id = u.linea_id`,
+        [lineaIds, movIds]
       );
     }
 
