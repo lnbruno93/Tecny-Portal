@@ -53,7 +53,7 @@ export function parseMonto(s) {
   } else if (str.includes(',')) {
     normalizado = str.replace(',', '.');
   }
-  normalizado = normalizado.replace(/[^\d.\-]/g, '');
+  normalizado = normalizado.replace(/[^\d.-]/g, '');
   const n = Number(normalizado);
   return Number.isFinite(n) ? n : 0;
 }
