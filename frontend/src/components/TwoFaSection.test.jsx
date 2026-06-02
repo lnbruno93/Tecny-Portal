@@ -124,6 +124,9 @@ describe('TwoFaSection — estado activado', () => {
   });
 });
 
+// U1 auditoría 2026-06: prompt() reemplazado por TwoFaCodeModal embebido.
+// Estos tests usan el nuevo modal (input estilizado + submit) en lugar del
+// window.prompt() nativo.
 describe('TwoFaSection — flow de regenerate recovery codes', () => {
   beforeEach(() => {
     twoFa.status.mockResolvedValue({
@@ -134,30 +137,31 @@ describe('TwoFaSection — flow de regenerate recovery codes', () => {
     });
   });
 
-  it('regenerate → confirm → prompt → muestra nuevos codes', async () => {
-    // Mock window.prompt para devolver un código.
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('123456');
-
-    const { findByText, container } = renderSection();
+  it('regenerate → confirm → modal input → muestra nuevos codes', async () => {
+    const { findByText, container, getByPlaceholderText } = renderSection();
     fireEvent.click(await findByText('Regenerar recovery codes'));
     // ConfirmModal aparece — click Continuar.
     fireEvent.click(await findByText('Continuar'));
-    // prompt() fue llamado.
-    await waitFor(() => expect(promptSpy).toHaveBeenCalled());
+    // Modal de código aparece — tipear código + submit.
+    const input = await findByPlaceholderTextWithWait(getByPlaceholderText);
+    fireEvent.change(input, { target: { value: '123456' } });
+    fireEvent.click(container.querySelector('button.btn-primary:not(:disabled)'));
     // Los nuevos codes aparecen en pantalla.
     await waitFor(() => expect(container.textContent).toContain('NEW1-AAAA-AA'));
     expect(container.textContent).toContain('NEW8-HHHH-HH');
-    promptSpy.mockRestore();
+    expect(twoFa.regenerateRecovery).toHaveBeenCalledWith('123456');
   });
 
-  it('si user cancela el prompt, NO llama regenerateRecovery', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null); // canceló
-    const { findByText } = renderSection();
+  it('si user cancela el modal de código, NO llama regenerateRecovery', async () => {
+    const { findByText, getAllByText } = renderSection();
     fireEvent.click(await findByText('Regenerar recovery codes'));
     fireEvent.click(await findByText('Continuar'));
-    await new Promise(r => setTimeout(r, 50)); // dejá que el async se settle
+    // Esperamos al modal de código y clickeamos Cancelar (puede haber dos botones "Cancelar"
+    // si los confirm modals legacy quedan abiertos — tomamos el del modal de código).
+    const cancelBtns = await waitFor(() => getAllByText('Cancelar'));
+    fireEvent.click(cancelBtns[cancelBtns.length - 1]);
+    await new Promise(r => setTimeout(r, 50));
     expect(twoFa.regenerateRecovery).not.toHaveBeenCalled();
-    promptSpy.mockRestore();
   });
 });
 
@@ -176,12 +180,18 @@ describe('TwoFaSection — disable 2FA', () => {
       });
   });
 
-  it('disable → confirm → prompt → llama twoFa.disable con el código', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('999999');
-    const { findByText } = renderSection();
+  it('disable → confirm → modal input → llama twoFa.disable con el código', async () => {
+    const { findByText, getByPlaceholderText, container } = renderSection();
     fireEvent.click(await findByText('Desactivar 2FA'));
     fireEvent.click(await findByText('Continuar'));
+    const input = await findByPlaceholderTextWithWait(getByPlaceholderText);
+    fireEvent.change(input, { target: { value: '999999' } });
+    fireEvent.click(container.querySelector('button.btn-primary:not(:disabled)'));
     await waitFor(() => expect(twoFa.disable).toHaveBeenCalledWith('999999'));
-    promptSpy.mockRestore();
   });
 });
+
+// Helper para esperar a que el input del modal de código aparezca.
+async function findByPlaceholderTextWithWait(getByPlaceholderText) {
+  return await waitFor(() => getByPlaceholderText(/6 dígitos|6 d.gitos/));
+}

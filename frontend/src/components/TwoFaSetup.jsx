@@ -126,7 +126,15 @@ export default function TwoFaSetup({ onDone, onCancel }) {
           display: 'flex', gap: 20, alignItems: 'flex-start',
           padding: 16, background: 'var(--surface-2)', borderRadius: 8, marginTop: 8,
         }}>
-          <canvas ref={canvasRef} style={{ flexShrink: 0, borderRadius: 4, background: '#fff' }} />
+          {/* U6 auditoría 2026-06: aria-label + role para screen readers.
+              El canvas es invisible para AT por default — sin el label, un user
+              con discapacidad visual no sabe que tiene la opción de escanear. */}
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label="Código QR de activación 2FA. Si no podés escanearlo, usá el código manual de abajo."
+            style={{ flexShrink: 0, borderRadius: 4, background: '#fff' }}
+          />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="muted tiny" style={{ marginBottom: 6 }}>
               ¿No podés escanear? Ingresá este código manualmente:
@@ -137,10 +145,13 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             }}>
               {setupData.secret}
             </div>
+            {/* aria-live para anunciar al lector de pantalla cuando el feedback
+                "✓ Copiado" aparece (sin esto, el texto cambia sin aviso). */}
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => copyToClipboard(setupData.secret, 'secret')}
+              aria-live="polite"
             >
               {copiedSecret ? '✓ Copiado' : 'Copiar código'}
             </button>
@@ -174,6 +185,7 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => copyToClipboard(setupData.recovery_codes.join('\n'), 'recovery')}
+            aria-live="polite"
           >
             {copiedRecovery ? '✓ Copiados' : 'Copiar los 8 codes'}
           </button>

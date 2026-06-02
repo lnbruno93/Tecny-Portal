@@ -5,16 +5,83 @@
 //   · NO configurado: hint + botón "Activar 2FA" → muestra TwoFaSetup.
 //   · Activado: status con check + 2 acciones (Desactivar, Regenerar recovery codes).
 //
-// Las acciones de "Desactivar" y "Regenerar" piden código TOTP/recovery via
-// prompt simple (no modal completo) — son flows cortos. Si en el futuro
-// se vuelve más complejo, extraer a modal.
+// U1 auditoría 2026-06: las acciones de "Desactivar" y "Regenerar" antes
+// usaban window.prompt() — rompía el look-and-feel oscuro del portal, sin
+// validación inline, sin a11y (aria-describedby), difícil pegar en mobile.
+// Ahora usan TwoFaCodeModal — modal embebido con input estilizado, autoComplete
+// one-time-code, validación visual, Esc para cancelar, mismo lenguaje que el
+// resto del portal.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { twoFa } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import { fmtFecha } from '../lib/format';
 import TwoFaSetup from './TwoFaSetup';
+import useModal from '../lib/useModal';
+
+// Modal embebido que pide código TOTP o recovery code. Reemplazo de window.prompt().
+function TwoFaCodeModal({ open, title, description, onSubmit, onCancel, loading }) {
+  const [code, setCode] = useState('');
+  const overlayRef = useRef(null);
+  const inputRef = useRef(null);
+  useModal({ open, onClose: onCancel, overlayRef });
+
+  // Reset al abrir/cerrar para no mostrar el código viejo.
+  useEffect(() => { if (open) { setCode(''); setTimeout(() => inputRef.current?.focus(), 0); } }, [open]);
+
+  if (!open) return null;
+  const trimmed = code.trim();
+  const valid = trimmed.length >= 6 && trimmed.length <= 20;
+
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      role="dialog" aria-modal="true" aria-labelledby="twofa-code-modal-title"
+      onClick={(e) => { if (e.target === e.currentTarget && !loading) onCancel(); }}
+      style={{ zIndex: 700 }}
+    >
+      <div className="modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <form onSubmit={(e) => { e.preventDefault(); if (valid && !loading) onSubmit(trimmed); }}>
+          <div className="modal-body" style={{ padding: '24px 22px 14px' }}>
+            <h3 id="twofa-code-modal-title" style={{ marginTop: 0, fontSize: 17, fontWeight: 700 }}>
+              {title}
+            </h3>
+            <div className="muted tiny" id="twofa-code-modal-desc" style={{ lineHeight: 1.5, marginBottom: 14 }}>
+              {description}
+            </div>
+            <input
+              ref={inputRef}
+              className="input mono"
+              type="text"
+              inputMode="numeric"
+              placeholder="6 dígitos o recovery code"
+              autoComplete="one-time-code"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={20}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              aria-describedby="twofa-code-modal-desc"
+              disabled={loading}
+              style={{ fontSize: 17, letterSpacing: 1, textAlign: 'center' }}
+            />
+          </div>
+          <div className="modal-ft" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={loading}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={!valid || loading}>
+              {loading ? 'Verificando…' : 'Confirmar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 export default function TwoFaSection() {
   const { toast } = useToast();
@@ -23,6 +90,9 @@ export default function TwoFaSection() {
   const [loading, setLoading] = useState(true);
   const [showSetup, setShowSetup] = useState(false);
   const [newRecoveryCodes, setNewRecoveryCodes] = useState(null);
+  // codeModal.action es 'disable' | 'regenerate' | null
+  const [codeModal, setCodeModal] = useState({ open: false, action: null });
+  const [codeModalLoading, setCodeModalLoading] = useState(false);
 
   function refresh() {
     setLoading(true);
@@ -37,37 +107,44 @@ export default function TwoFaSection() {
   async function handleDisable() {
     const ok = await confirm({
       title: 'Desactivar 2FA',
-      message: 'Vas a desactivar la autenticación de dos factores. Ingresá tu código actual de 6 dígitos para confirmar.',
+      message: 'Vas a desactivar la autenticación de dos factores. ¿Continuar?',
       confirmLabel: 'Continuar',
     });
     if (!ok) return;
-    const code = prompt('Ingresá tu código actual (6 dígitos) o un recovery code:');
-    if (!code) return;
-    try {
-      await twoFa.disable(code.trim());
-      toast.success('2FA desactivado.');
-      refresh();
-    } catch (err) {
-      toast.error(err.message || 'No se pudo desactivar 2FA');
-    }
+    setCodeModal({ open: true, action: 'disable' });
   }
 
   async function handleRegenerateRecovery() {
     const ok = await confirm({
       title: 'Regenerar recovery codes',
-      message: 'Vas a generar 8 nuevos recovery codes. Los anteriores quedarán invalidados. Ingresá tu código actual para confirmar.',
+      message: 'Vas a generar 8 nuevos recovery codes. Los anteriores quedarán invalidados. ¿Continuar?',
       confirmLabel: 'Continuar',
     });
     if (!ok) return;
-    const code = prompt('Ingresá tu código actual (6 dígitos) o un recovery code:');
-    if (!code) return;
+    setCodeModal({ open: true, action: 'regenerate' });
+  }
+
+  // Cuando el user confirma el código en el modal, ejecutamos la acción
+  // correspondiente. El modal cierra al éxito; si falla, queda abierto para
+  // que el user pueda reintentar.
+  async function handleCodeSubmit(code) {
+    setCodeModalLoading(true);
     try {
-      const { recovery_codes } = await twoFa.regenerateRecovery(code.trim());
-      setNewRecoveryCodes(recovery_codes);
-      toast.success('Nuevos recovery codes generados. Guardalos.');
+      if (codeModal.action === 'disable') {
+        await twoFa.disable(code);
+        toast.success('2FA desactivado.');
+      } else if (codeModal.action === 'regenerate') {
+        const { recovery_codes } = await twoFa.regenerateRecovery(code);
+        setNewRecoveryCodes(recovery_codes);
+        toast.success('Nuevos recovery codes generados. Guardalos.');
+      }
+      setCodeModal({ open: false, action: null });
       refresh();
     } catch (err) {
-      toast.error(err.message || 'No se pudo regenerar recovery codes');
+      toast.error(err.message || 'Código incorrecto.');
+      // No cerramos el modal — el user puede reintentar con otro código.
+    } finally {
+      setCodeModalLoading(false);
     }
   }
 
@@ -117,7 +194,7 @@ export default function TwoFaSection() {
         </div>
 
         {newRecoveryCodes && (
-          <div className="card card-tight" style={{
+          <div className="card card-tight" role="alert" aria-live="assertive" style={{
             padding: 14, background: 'rgba(234, 179, 8, 0.08)',
             border: '1px solid rgba(234, 179, 8, 0.3)',
           }}>
@@ -156,6 +233,17 @@ export default function TwoFaSection() {
             </div>
           </div>
         )}
+
+        <TwoFaCodeModal
+          open={codeModal.open}
+          title={codeModal.action === 'disable' ? 'Desactivar 2FA' : 'Regenerar recovery codes'}
+          description={codeModal.action === 'disable'
+            ? 'Ingresá tu código actual de 6 dígitos (o un recovery code) para confirmar.'
+            : 'Ingresá tu código actual de 6 dígitos (o un recovery code). Los recovery codes anteriores quedarán invalidados.'}
+          onSubmit={handleCodeSubmit}
+          onCancel={() => !codeModalLoading && setCodeModal({ open: false, action: null })}
+          loading={codeModalLoading}
+        />
       </div>
     );
   }

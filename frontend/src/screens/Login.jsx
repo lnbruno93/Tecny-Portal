@@ -52,9 +52,14 @@ export default function Login() {
 
   // Si el user quiere volver al form de password (ej. tipeó mal el username
   // y se dio cuenta en el step 2), permitirle resetear.
+  // U5 auditoría 2026-06: también reseteamos password — si el user volvió
+  // porque la password tenía algo mal, dejar el campo prellenado lo lleva a
+  // reintentar el mismo password mal sin darse cuenta. Vaciar es más explícito
+  // + reduce el tiempo que la password está en memoria React.
   const handleVolver = () => {
     setTwofaRequired(false);
     setCode('');
+    setPassword('');
     setError('');
   };
 

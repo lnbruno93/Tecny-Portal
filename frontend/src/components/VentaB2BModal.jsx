@@ -19,7 +19,7 @@
  *   3. Si caja_id → ingreso en caja_movimientos (origen='b2b').
  *   4. Stock insuficiente / producto inexistente → rollback total (409/404).
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Icons } from './Icons';
 import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
@@ -29,6 +29,7 @@ import { cellInp, headerTh as th, catalogosErrorBanner } from '../lib/spreadshee
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
+import useModal from '../lib/useModal'; // U2 auditoría 2026-06
 import CajaSelectHint from './CajaSelectHint';
 
 
@@ -200,13 +201,19 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
     }
   }
 
+  // U2 auditoría 2026-06: useModal aplicado — Esc llama tryClose (con guarda
+  // si hay data cargada), body scroll lock + restore focus al cerrar.
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose: tryClose, overlayRef });
+
   // Estilos compartidos vienen de lib/spreadsheetStyles
   return (
-    <div className="modal-overlay" onClick={tryClose}>
+    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="b2b-modal-title"
+         onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
       <div className="modal" style={{ maxWidth: 1700, width: '98vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
-          <h3>Cargar venta B2B · {cliente.nombre} {cliente.apellido || ''}</h3>
-          <button className="icon-btn" onClick={tryClose}><Icons.X size={16} /></button>
+          <h3 id="b2b-modal-title">Cargar venta B2B · {cliente.nombre} {cliente.apellido || ''}</h3>
+          <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>

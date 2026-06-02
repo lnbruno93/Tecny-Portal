@@ -13,7 +13,8 @@
  *   - Cliente picker filtra por saldo > 0 por defecto, toggle "Mostrar
  *     todos" para incluir saldo = 0 (parte_de_pago anticipado).
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import useModal from '../lib/useModal'; // U2 auditoría 2026-06
 import { Icons } from './Icons';
 import { cuentas as cuentasApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
@@ -187,13 +188,18 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
     }
   }
 
+  // U2 auditoría 2026-06: useModal aplicado.
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose: tryClose, overlayRef });
+
   // Estilos compartidos vienen de lib/spreadsheetStyles
   return (
-    <div className="modal-overlay" onClick={tryClose}>
+    <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cobranza-masiva-modal-title"
+         onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
       <div className="modal" style={{ maxWidth: 1400, width: '96vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
-          <h3>Cobranza masiva</h3>
-          <button className="icon-btn" onClick={tryClose}><Icons.X size={16} /></button>
+          <h3 id="cobranza-masiva-modal-title">Cobranza masiva</h3>
+          <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '82vh', overflowY: 'auto' }}>
