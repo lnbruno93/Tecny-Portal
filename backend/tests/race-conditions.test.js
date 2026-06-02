@@ -168,3 +168,59 @@ describe('Race condition — venta B2B con producto_id (#T-01)', () => {
     expect(Number(p.cantidad)).toBe(0); // sin negativos
   });
 });
+
+// ─── Race condition — advisory lock por IMEI en compras a proveedor (B5) ────
+//
+// Defensa de #H-04: `routes/proveedores.js:288` usa pg_advisory_xact_lock por
+// IMEI para evitar TOCTOU entre el SELECT de IMEIs existentes y el INSERT.
+// Sin el lock, 2 requests concurrentes con el MISMO IMEI en `producto_stock`
+// podrían ambos pasar el check de "IMEI no existe" y crear 2 productos con
+// el mismo IMEI (violando la regla del negocio "IMEI físicamente único").
+//
+// El test confirma que un refactor que quite o rompa el lock NO pasa CI:
+// dos POST simultáneos con el mismo IMEI deben terminar en 1×201 + 1×409.
+describe('Race condition — advisory lock por IMEI en compra-a-proveedor (B5)', () => {
+  it('2 compras concurrentes con el MISMO IMEI nuevo → 1 OK + 1 conflict, 1 solo producto', async () => {
+    // Crear proveedor
+    const prov = await request(app).post('/api/proveedores').set(auth())
+      .send({ nombre: 'Proveedor IMEI Race ' + Math.random() });
+    expect(prov.status).toBe(201);
+
+    const sharedImei = '356999' + Math.floor(Math.random() * 1e9);
+
+    // Payload que crea un producto en Inventario via producto_stock con IMEI
+    const mkCompra = () => request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.body.id, fecha: hoy, tipo: 'compra',
+        monto: 900, moneda: 'USD',
+        items: [{
+          producto: 'iPhone IMEI Race', valor: 900,
+          imei_serial: sharedImei,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            nombre: 'iPhone IMEI Race', imei: sharedImei,
+            costo: 900, costo_moneda: 'USD',
+            precio_venta: 1100, precio_moneda: 'USD',
+            cantidad: 1,
+          },
+        }],
+      });
+
+    // Disparamos las 2 EN PARALELO — el advisory lock por hashtext(IMEI) debe
+    // serializar la sección crítica (SELECT + INSERT) para que solo uno cree
+    // el producto.
+    const [r1, r2] = await Promise.all([mkCompra(), mkCompra()]);
+    const statuses = [r1.status, r2.status].sort();
+
+    // Esperado: 1×201 (ganó la carrera, creó el producto) + 1×409 (vio el
+    // IMEI ya existente después del lock y rechazó con "IMEI ya existe").
+    expect(statuses).toEqual([201, 409]);
+
+    // Cross-check: en la DB hay UN SOLO producto con ese IMEI (no duplicado).
+    const list = await request(app)
+      .get(`/api/inventario/productos?buscar=${sharedImei}&vista=todos_ocultos`)
+      .set(auth());
+    const productos = list.body.data.filter(p => p.imei === sharedImei);
+    expect(productos).toHaveLength(1);
+  });
+});
