@@ -64,7 +64,10 @@ jobs:
           # va por env var en Railway. Si falta, los tests de 2FA fallan en startup.
           TWOFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           NODE_ENV: test
-        run: npm test
+        # T4 auditoría 2026-06: corremos con --coverage para que jest gatee
+        # los thresholds configurados en jest.config.js. Un PR que baje la
+        # cobertura por debajo del baseline rompe CI.
+        run: npm test -- --coverage
 
   frontend-test:
     name: Frontend Tests
@@ -89,8 +92,12 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=moderate
 
-      # TODO: agregar `npm run lint` aquí cuando se limpien los ~100 warnings
-      # acumulados (catch sin uso, var sin uso). Follow-up de la auditoría ultra.
+      # Lint (T5 auditoría 2026-06): activado, rechaza solo ERRORS (no warnings).
+      # Los warnings acumulados (~120) son señales útiles pero no bloqueantes —
+      # bajarlos gradualmente en próximas tandas. Los errors SIEMPRE fallan CI.
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
 
       - name: Run frontend tests
         working-directory: frontend

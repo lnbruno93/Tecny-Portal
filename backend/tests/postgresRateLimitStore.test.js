@@ -79,13 +79,16 @@ describe('PostgresRateLimitStore — increment', () => {
     // Key único por test run para evitar interferencia con datos residuales
     // de otras suites que comparten la misma tabla rate_limit_entries.
     const uniqueKey = `concurrent-key-${Date.now()}-${Math.random()}`;
-    // 10 increments concurrentes — todos deben terminar con totalHits que
-    // formen el conjunto {1, 2, ..., 10} sin duplicados ni gaps.
+    // 5 increments concurrentes — bajo a propósito para no agotar el pool de
+    // conexiones (max=20) cuando esto corre en coverage mode junto a otras
+    // suites. La invariante (totalHits monotónicos sin gaps) se prueba igual
+    // con 5 que con 10.
+    const N = 5;
     const results = await Promise.all(
-      Array.from({ length: 10 }, () => store.increment(uniqueKey))
+      Array.from({ length: N }, () => store.increment(uniqueKey))
     );
     const hits = results.map(r => r.totalHits).sort((a, b) => a - b);
-    expect(hits).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(hits).toEqual([1, 2, 3, 4, 5]);
   });
 });
 
