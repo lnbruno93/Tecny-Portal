@@ -25,15 +25,28 @@ const ventaPagoSchema = z.object({
   es_cuenta_corriente: z.boolean().default(false),
 });
 
+// Schema de un canje (equipo tomado en parte de pago).
+//
+// Junio 2026: ampliado para capturar TODOS los campos que necesita el producto
+// al ingresar a Inventario (antes solo capturábamos descripcion + valor_toma →
+// el producto quedaba con campos clave en NULL, no era usable hasta editarlo).
 const canjeSchema = z.object({
-  descripcion:   z.string().trim().min(1, 'Descripción del canje requerida').max(300),
-  imei:          z.string().trim().max(50).optional().nullable(),
-  gb:            z.string().trim().max(20).optional().nullable(),
-  color:         z.string().trim().max(60).optional().nullable(),
-  bateria:       z.coerce.number().int().min(0).max(100).optional().nullable(),
-  valor_toma:    z.coerce.number().min(0).default(0),
-  moneda:        z.enum(['USD', 'ARS']).default('USD'),
-  agregar_stock: z.boolean().default(false),
+  descripcion:    z.string().trim().min(1, 'Descripción del canje requerida').max(300),
+  imei:           z.string().trim().max(50).optional().nullable(),
+  gb:             z.string().trim().max(20).optional().nullable(),
+  color:          z.string().trim().max(60).optional().nullable(),
+  bateria:        z.coerce.number().int().min(0).max(100).optional().nullable(),
+  valor_toma:     z.coerce.number().min(0).default(0),
+  moneda:         z.enum(['USD', 'ARS']).default('USD'),
+  agregar_stock:  z.boolean().default(false),
+  // ─── Campos extra cuando agregar_stock=true ──────────────────────────────
+  // Estos NO se persisten en la tabla `canjes` — solo viajan al INSERT
+  // `productos` cuando se crea el item en Inventario. El backend los ignora
+  // si agregar_stock=false (no rompe, solo se pierden).
+  categoria_id:          z.coerce.number().int().positive().optional().nullable(),
+  condicion:             z.enum(['nuevo', 'usado']).optional().nullable(),
+  precio_venta_sugerido: z.coerce.number().min(0).optional().nullable(),
+  observaciones:         z.string().trim().max(1000).optional().nullable(),
 });
 
 /* ── Venta ── */

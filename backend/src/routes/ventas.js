@@ -87,10 +87,36 @@ async function insertarDetalle(client, venta, b) {
   for (const c of (b.canjes || [])) {
     let prodId = null;
     if (c.agregar_stock) {
+      // Ampliación junio 2026: el producto se crea con TODOS los campos que el
+      // user cargó en el form de canje, no solo los básicos. Antes:
+      //   categoria_id=NULL, condicion=NULL (DB default 'nuevo'), precio_venta=0
+      // → el producto era inusable hasta editarlo a mano post-venta.
+      //
+      // Observaciones: si el user cargó un texto, lo prependeamos a la nota
+      // automática "Ingresado por canje (venta V-XXX)" para que el contexto
+      // (que el equipo entró por un canje) NUNCA se pierda.
+      const autoObs = `Ingresado por canje (venta ${venta.order_id})`;
+      const obsFinal = c.observaciones?.trim()
+        ? `${c.observaciones.trim()}\n— ${autoObs}`
+        : autoObs;
       const { rows: pr } = await client.query(
-        `INSERT INTO productos (tipo_carga, clase, nombre, imei, gb, color, bateria, costo, costo_moneda, precio_venta, precio_moneda, estado, observaciones)
-         VALUES ('unitario','celular',$1,$2,$3,$4,$5,$6,$7,0,$7,'disponible',$8) RETURNING id`,
-        [c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null, c.valor_toma, c.moneda, `Ingresado por canje (venta ${venta.order_id})`]
+        `INSERT INTO productos (
+            tipo_carga, clase, nombre, imei, gb, color, bateria,
+            categoria_id, condicion,
+            costo, costo_moneda, precio_venta, precio_moneda,
+            estado, observaciones
+         ) VALUES (
+            'unitario','celular',$1,$2,$3,$4,$5,
+            $6,$7,
+            $8,$9,$10,$9,
+            'disponible',$11
+         ) RETURNING id`,
+        [
+          c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null,
+          c.categoria_id ?? null, c.condicion ?? 'usado', // default 'usado' — un canje casi siempre lo es
+          c.valor_toma, c.moneda, c.precio_venta_sugerido ?? 0,
+          obsFinal,
+        ]
       );
       prodId = pr[0].id;
     }

@@ -82,6 +82,105 @@ describe('POST /api/ventas', () => {
     expect(inv.body.data.length).toBeGreaterThan(0);
     expect(Number(inv.body.data[0].costo)).toBe(250);
   });
+
+  // Junio 2026: canje completo con TODOS los campos del schema ampliado.
+  // Verifica que el producto creado en Inventario tiene TODA la info usable
+  // (antes el producto venía con categoria_id=NULL, condicion=NULL, etc).
+  it('canje completo con 9 campos → producto en Inventario tiene todos los datos', async () => {
+    // Crear categoría para asignarla al canje
+    const catRes = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone Test Canje' });
+    const catId = catRes.body.id;
+
+    const imei = '900' + Date.now().toString().slice(-12);
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16 Pro', cantidad: 1, precio_vendido: 1500, costo: 1200, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone 13 Pro 256 Sierra Blue',
+        imei, gb: '256', color: 'Sierra Blue', bateria: 87,
+        valor_toma: 600, moneda: 'USD', agregar_stock: true,
+        categoria_id: catId, condicion: 'usado',
+        precio_venta_sugerido: 950,
+        observaciones: 'Pantalla sin raspones. Caja original incluida.',
+      }],
+    });
+    expect(res.status).toBe(201);
+
+    // Verificar el producto creado tiene TODOS los campos correctamente seteados
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    const p = inv.body.data[0];
+    expect(p.nombre).toBe('iPhone 13 Pro 256 Sierra Blue');
+    expect(p.imei).toBe(imei);
+    expect(p.gb).toBe('256');
+    expect(p.color).toBe('Sierra Blue');
+    expect(Number(p.bateria)).toBe(87);
+    expect(p.categoria_id).toBe(catId);
+    expect(p.condicion).toBe('usado');
+    expect(Number(p.costo)).toBe(600);           // = valor_toma
+    expect(Number(p.precio_venta)).toBe(950);    // = precio_venta_sugerido
+    expect(p.estado).toBe('disponible');
+    // Observaciones: el texto del user prependido + la nota automática.
+    expect(p.observaciones).toContain('Pantalla sin raspones');
+    expect(p.observaciones).toContain('Ingresado por canje');
+  });
+
+  it('canje con agregar_stock=false NO crea producto en Inventario', async () => {
+    const imei = '901' + Date.now().toString().slice(-12);
+    await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1000, costo: 850, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'Algo viejo', imei,
+        valor_toma: 100, moneda: 'USD',
+        agregar_stock: false,            // ← clave
+      }],
+    });
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(0);
+  });
+
+  it('canje default condicion=usado si no se manda explícito', async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone Default Test' });
+    const imei = '902' + Date.now().toString().slice(-12);
+    await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1000, costo: 850, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone usado sin condición explícita', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        categoria_id: cat.body.id,
+        // condicion NO se envía
+      }],
+    });
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data[0].condicion).toBe('usado');
+  });
+
+  it('múltiples canjes en una venta → múltiples productos creados', async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone Multi-Canje' });
+    const imei1 = '903' + Date.now().toString().slice(-12);
+    const imei2 = '904' + Date.now().toString().slice(-12);
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1500, costo: 1100, moneda: 'USD' }],
+      canjes: [
+        { descripcion: 'iPhone 12', imei: imei1, valor_toma: 200, moneda: 'USD', agregar_stock: true, categoria_id: cat.body.id },
+        { descripcion: 'iPhone 11', imei: imei2, valor_toma: 150, moneda: 'USD', agregar_stock: true, categoria_id: cat.body.id },
+      ],
+    });
+    expect(res.status).toBe(201);
+
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei1}`).set(auth());
+    const inv2 = await request(app).get(`/api/inventario/productos?buscar=${imei2}`).set(auth());
+    expect(inv1.body.data).toHaveLength(1);
+    expect(inv2.body.data).toHaveLength(1);
+    expect(Number(inv1.body.data[0].costo)).toBe(200);
+    expect(Number(inv2.body.data[0].costo)).toBe(150);
+  });
 });
 
 describe('GET /api/ventas', () => {
