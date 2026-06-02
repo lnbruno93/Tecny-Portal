@@ -90,18 +90,12 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
 
-    // Éxito: reseteamos contador + lockout (si los había). Best-effort, no bloquea
-    // la respuesta si falla.
-    if (user.failed_login_count > 0 || user.lockout_until) {
-      try {
-        await db.query(
-          'UPDATE users SET failed_login_count = 0, lockout_until = NULL WHERE id = $1',
-          [user.id]
-        );
-      } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
-    }
-
     // ─── 2FA gate ───
+    // Importante (H1 auditoría 2026-06): el reset de `failed_login_count` se
+    // movió DESPUÉS de este gate. Antes se reseteaba apenas la password era
+    // OK — eso significaba que el contador volvía a 0 antes del check 2FA,
+    // y un fallo de 2FA empezaba a contar desde 0. Ahora se resetea solo
+    // cuando TODOS los gates (password + 2FA) pasan exitosos.
     // Si el user tiene 2FA enabled, exigir un segundo factor antes de emitir
     // el JWT. Si vino el código en el body, lo verificamos. Si no, devolvemos
     // 401 con un flag para que el frontend muestre el input del código.
@@ -114,6 +108,13 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     //     dentro del window de 90s (defensa B2 auditoría 2026-06).
     //   - Recovery code: UPDATE con WHERE específico, rechaza doble uso en
     //     requests concurrentes (defensa B3 auditoría 2026-06).
+    //
+    // H1 auditoría 2026-06: fallo de 2FA también incrementa `failed_login_count`
+    // y dispara lockout per-user al threshold. Antes, solo el fallo de password
+    // disparaba el contador — un atacante con password leakeada podía brute-
+    // forcear el TOTP de 6 dígitos rotando IPs (el espacio ~10^6 con window ±1
+    // es factible en horas). Ahora el lockout per-user defiende independiente
+    // del rate-limit por IP.
     const { load2fa, verifyAndConsume } = require('./twoFa');
     const twoFa = await load2fa(user.id);
     if (twoFa && twoFa.enabled_at) {
@@ -127,10 +128,38 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       const { ok } = await verifyAndConsume(user.id, String(code));
       if (!ok) {
         logger.warn({ user_id: user.id, ip: req.ip }, 'login 2FA fallido');
+        // Incrementar contador y disparar lockout si llegamos al threshold.
+        // Best-effort (no bloquea response). Misma lógica que el fallo de password.
+        try {
+          const nuevo = (user.failed_login_count || 0) + 1;
+          if (nuevo >= LOCKOUT_THRESHOLD) {
+            await db.query(
+              `UPDATE users SET failed_login_count = $1,
+                      lockout_until = NOW() + INTERVAL '${LOCKOUT_DURATION_MIN} minutes'
+                 WHERE id = $2`,
+              [nuevo, user.id]
+            );
+            logger.warn({ user_id: user.id, intentos: nuevo }, 'usuario bloqueado por lockout (2FA)');
+          } else {
+            await db.query('UPDATE users SET failed_login_count = $1 WHERE id = $2', [nuevo, user.id]);
+          }
+        } catch (e) {
+          logger.error({ err: e }, 'no se pudo actualizar failed_login_count (2FA)');
+        }
         return res.status(401).json({ error: 'Código 2FA incorrecto.' });
       }
-      // No hace falta touchLastUsed — verifyAndConsume ya hace el UPDATE
-      // atómico de last_used_at + last_used_step.
+      // 2FA OK: verifyAndConsume ya hizo el UPDATE atómico de last_used_at + last_used_step.
+    }
+
+    // Éxito completo (password + 2FA): reseteamos contador + lockout si los había.
+    // Best-effort, no bloquea la respuesta si falla.
+    if (user.failed_login_count > 0 || user.lockout_until) {
+      try {
+        await db.query(
+          'UPDATE users SET failed_login_count = 0, lockout_until = NULL WHERE id = $1',
+          [user.id]
+        );
+      } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
 
     const { rows: perms } = await db.query(
