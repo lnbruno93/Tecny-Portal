@@ -24,7 +24,14 @@ vi.mock('../lib/api', () => {
       createGarantia: vi.fn(), updateGarantia: vi.fn(), deleteGarantia: vi.fn(),
       createEgreso: vi.fn(), createRapida: vi.fn(), deleteRapida: vi.fn(), updateRapida: vi.fn(),
     },
-    inventario: { productos: vi.fn().mockResolvedValue(paginated) },
+    inventario: {
+      productos: vi.fn().mockResolvedValue(paginated),
+      // Categorías usadas en el picker del canje (junio 2026).
+      categorias: vi.fn().mockResolvedValue([
+        { id: 1, nombre: 'iPhone usado' },
+        { id: 2, nombre: 'iPhone nuevo' },
+      ]),
+    },
     vendedores: { list: vi.fn().mockResolvedValue([]) },
     cuentas: { clientes: vi.fn().mockResolvedValue(paginated) },
     contactos: { list: vi.fn().mockResolvedValue([]), create: vi.fn() },
@@ -75,5 +82,41 @@ describe('Pantalla Ventas', () => {
     fireEvent.click(await screen.findByText('__abrir__'));
     // El selector de cliente CC debe renderizar la opción (clientesCC tratado como array).
     expect(await screen.findByText('Mayorista SA')).toBeInTheDocument();
+  });
+
+  it('canje: arranca sin equipos, agregar muestra los 9 campos', async () => {
+    renderVentas();
+    fireEvent.click(await screen.findByText('__abrir__'));
+    // Estado inicial: ningún canje cargado.
+    expect(await screen.findByText(/Sin equipos en canje/)).toBeInTheDocument();
+    // Click "+ Agregar equipo" → aparece bloque con los inputs.
+    fireEvent.click(screen.getByText(/Agregar equipo/));
+    expect(await screen.findByText('Equipo 1')).toBeInTheDocument();
+    // Verificar que aparecen los inputs clave (descripción + IMEI + valor toma + % batería + categoría).
+    expect(screen.getByPlaceholderText(/iPhone 13 Pro/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('35...')).toBeInTheDocument();
+    expect(screen.getByText('Valor toma (USD)')).toBeInTheDocument();
+    expect(screen.getByText('% Batería')).toBeInTheDocument();
+    expect(screen.getByText('Categoría Inventario')).toBeInTheDocument();
+    // "A inventario" arranca tildado (default = true para canjes nuevos).
+    const aInvCheckbox = screen.getByLabelText('A inventario');
+    expect(aInvCheckbox.checked).toBe(true);
+  });
+
+  it('canje: agregar 2 equipos y quitar uno deja 1 equipo', async () => {
+    renderVentas();
+    fireEvent.click(await screen.findByText('__abrir__'));
+    const btnAgregar = screen.getByText(/Agregar equipo/);
+    fireEvent.click(btnAgregar);
+    fireEvent.click(btnAgregar);
+    await screen.findByText('Equipo 2');
+    // Quitar el primero (botón "X" con aria-label="Quitar equipo")
+    const quitarBtns = screen.getAllByLabelText('Quitar equipo');
+    expect(quitarBtns).toHaveLength(2);
+    fireEvent.click(quitarBtns[0]);
+    // Después de quitar, queda 1 botón Quitar.
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Quitar equipo')).toHaveLength(1);
+    });
   });
 });

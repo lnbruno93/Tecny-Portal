@@ -33,7 +33,18 @@ const GARANTIA_FALLBACK = 'Este comprobante es tu nota de compra y avala la oper
 const EMPTY_VENTA = {
   fecha: todayStr(), hora: '', cliente_nombre: '', cliente_id: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
   vendedor_id: '', comision: '', tc_venta: '', estado: 'pendiente', notas: '',
-  canjeOn: false, canjeDesc: '', canjeValor: '', canjeStock: false,
+  // Junio 2026: canjes pasa de 1 sola entrada con 4 campos a array de hasta N
+  // canjes con 10 campos c/u — cada canje puede ir a Inventario con todos sus
+  // datos. Ver schema canjeSchema en backend/src/schemas/ventas.js.
+  canjes: [],
+};
+
+// Forma de un canje vacío para usar como template al "+ Agregar equipo".
+const EMPTY_CANJE = {
+  descripcion: '', imei: '', gb: '', color: '', bateria: '',
+  valor_toma: '', moneda: 'USD', agregar_stock: true,
+  categoria_id: '', condicion: 'usado',
+  precio_venta_sugerido: '', observaciones: '',
 };
 
 // ─── Pantalla ──────────────────────────────────────────────────────────────────
@@ -58,6 +69,9 @@ export default function Ventas() {
   // Catálogos
   const [vendedores, setVendedores] = useState([]);
   const [etiquetas, setEtiquetas] = useState([]);
+  // Categorías de Inventario — usadas en el picker del canje (junio 2026)
+  // para que un equipo tomado entre directo en su categoría correcta.
+  const [categoriasInv, setCategoriasInv] = useState([]);
   const [metodos, setMetodos] = useState([]);
   const [garantias, setGarantias] = useState([]);
   const [clientesCC, setClientesCC] = useState([]);
@@ -104,8 +118,9 @@ export default function Ventas() {
 
   const loadCatalogos = useCallback(async () => {
     const safe = (p) => p.then(r => r).catch(() => []);
-    const [v, e, m, g, cc, ct] = await Promise.all([
+    const [v, e, m, g, cc, ct, cats] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
+      safe(inventario.categorias()), // categorías para el picker del canje (junio 2026)
     ]);
     // Los endpoints paginados devuelven { data, pagination }. Usamos un
     // unwrap defensivo: si vino array (endpoint no-paginado o vacío), tomar
@@ -114,6 +129,7 @@ export default function Ventas() {
     const ccArr = unwrap(cc);
     const ctArr = unwrap(ct); // post-audit: contactos ahora paginado
     setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ctArr);
+    setCategoriasInv(unwrap(cats));
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
@@ -152,7 +168,19 @@ export default function Ventas() {
       cliente_nombre: v.cliente_nombre || '', cliente_id: v.cliente_id || '', cliente_cc_id: v.cliente_cc_id || '', etiqueta_id: v.etiqueta_id || '', garantia_id: v.garantia_id || '',
       vendedor_id: (v.items.find(i => i.vendedor_id) || {}).vendedor_id || '', comision: v.items[0]?.comision || '',
       tc_venta: v.tc_venta || '', estado: v.estado, notas: v.notas || '',
-      canjeOn: (v.canjes || []).length > 0, canjeDesc: v.canjes?.[0]?.descripcion || '', canjeValor: v.canjes?.[0]?.valor_toma || '',
+      // Junio 2026: canjes existentes vienen del backend con descripcion + imei + gb + color +
+      // bateria + valor_toma + moneda + producto_id. Reconstruimos el form con esos campos +
+      // defaults para los nuevos (categoria/condicion/precio_venta_sugerido/observaciones) —
+      // edición de canjes existentes no permite cambiar campos que ya viajaron a Inventario.
+      canjes: (v.canjes || []).map(c => ({
+        descripcion: c.descripcion || '',
+        imei: c.imei || '', gb: c.gb || '', color: c.color || '', bateria: c.bateria ?? '',
+        valor_toma: c.valor_toma || '', moneda: c.moneda || 'USD',
+        agregar_stock: !!c.producto_id, // si ya tiene producto_id, está en Inventario
+        categoria_id: '', condicion: 'usado',
+        precio_venta_sugerido: '', observaciones: '',
+        _existing: true, // flag: este canje ya existe en DB, no se re-crea producto
+      })),
     });
     setCart((v.items || []).map(it => ({ producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
     setPagos((v.pagos || []).map(p => ({ metodo_pago_id: p.metodo_pago_id ?? null, metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '', es_cuenta_corriente: !!p.es_cuenta_corriente })));
@@ -234,10 +262,19 @@ export default function Ventas() {
     const tc = Number(vForm.tc_venta) || null;
     let items = 0; cart.forEach(it => { items += toUsd((Number(it.precio_vendido) || 0) * (Number(it.cantidad) || 0), it.moneda, tc); });
     let pg = 0; pagos.forEach(p => { pg += toUsd(p.monto, p.moneda, p.tc || tc); });
-    const canje = vForm.canjeOn ? (Number(vForm.canjeValor) || 0) : 0;
-    const cubierto = pg + canje;
-    return { items, cubierto, dif: cubierto - items };
-  }, [cart, pagos, vForm.tc_venta, vForm.canjeOn, vForm.canjeValor]);
+    // Suma de TODOS los valor_toma de canjes (asumimos USD — el form solo permite USD por canje).
+    const canjeTotal = (vForm.canjes || []).reduce((acc, c) => acc + (Number(c.valor_toma) || 0), 0);
+    const cubierto = pg + canjeTotal;
+    return { items, cubierto, dif: cubierto - items, canjeTotal };
+  }, [cart, pagos, vForm.tc_venta, vForm.canjes]);
+
+  // ── Helpers para manipular el array de canjes (junio 2026) ─────────────
+  const addCanje = () => setVForm(f => ({ ...f, canjes: [...(f.canjes || []), { ...EMPTY_CANJE }] }));
+  const rmCanje = (i) => setVForm(f => ({ ...f, canjes: (f.canjes || []).filter((_, idx) => idx !== i) }));
+  const setCanje = (i, k, v) => setVForm(f => ({
+    ...f,
+    canjes: (f.canjes || []).map((c, idx) => idx === i ? { ...c, [k]: v } : c),
+  }));
 
   async function handleSaveVenta(e) {
     e.preventDefault();
@@ -267,7 +304,33 @@ export default function Ventas() {
       setVentaError('Esta venta se cobra por la Financiera: adjuntá el comprobante antes de guardar.');
       return;
     }
-    const canjes = vForm.canjeOn ? [{ descripcion: (vForm.canjeDesc || 'Canje').trim(), valor_toma: Number(vForm.canjeValor) || 0, moneda: 'USD', agregar_stock: vForm.canjeStock }] : [];
+    // Junio 2026: array de canjes (puede ser N, ya no 1 fijo). Cada canje se
+    // sanitiza individualmente y se ignora cualquiera sin descripción ni valor.
+    // Los _existing (canjes que vienen de la DB en edit) se mandan con sus
+    // campos básicos pero NO con los nuevos (categoria/condicion/etc) porque
+    // edit no re-crea el producto en Inventario.
+    const canjes = (vForm.canjes || [])
+      .filter(c => String(c.descripcion || '').trim() || Number(c.valor_toma) > 0)
+      .map(c => {
+        const base = {
+          descripcion: String(c.descripcion || 'Canje').trim(),
+          imei: c.imei ? String(c.imei).trim() : null,
+          gb: c.gb ? String(c.gb).trim() : null,
+          color: c.color ? String(c.color).trim() : null,
+          bateria: c.bateria === '' || c.bateria == null ? null : Number(c.bateria),
+          valor_toma: Number(c.valor_toma) || 0,
+          moneda: c.moneda || 'USD',
+          agregar_stock: !!c.agregar_stock,
+        };
+        // Solo enviamos los campos extra si va a Inventario (sino no aportan nada).
+        if (c.agregar_stock) {
+          if (c.categoria_id)          base.categoria_id          = Number(c.categoria_id);
+          if (c.condicion)             base.condicion             = c.condicion;
+          if (c.precio_venta_sugerido) base.precio_venta_sugerido = Number(c.precio_venta_sugerido);
+          if (c.observaciones?.trim()) base.observaciones         = c.observaciones.trim();
+        }
+        return base;
+      });
 
     // Aviso de diferencia: si el total cobrado != total de items (con canje),
     // mostramos un modal visual rico (no el ConfirmModal genérico) con desglose
@@ -843,16 +906,130 @@ export default function Ventas() {
                     </select>
                   </div>
 
-                  {/* Canje */}
+                  {/* Canjes — equipos tomados en parte de pago (junio 2026: array de N)
+                      Si "A inventario" está activo, el equipo se crea como producto
+                      en Inventario con todos los campos cargados. */}
                   <div>
-                    <label className="flex-row" style={{ gap: 8, fontSize: 13, cursor: 'pointer' }}><input type="checkbox" checked={vForm.canjeOn} onChange={e => setVF('canjeOn', e.target.checked)} /> Incluir equipo en canje</label>
-                    {vForm.canjeOn && (
-                      <div className="row" style={{ marginTop: 8 }}>
-                        <div className="field" style={{ flex: 2 }}><label className="field-label">Equipo tomado</label><input className="input" placeholder="iPhone 12 usado" value={vForm.canjeDesc} onChange={e => setVF('canjeDesc', e.target.value)} /></div>
-                        <div className="field" style={{ flex: 1 }}><label className="field-label">Valor toma (USD)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.canjeValor} onChange={e => setVF('canjeValor', e.target.value)} /></div>
-                        <div className="field" style={{ flex: 1, alignSelf: 'end' }}><label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: 'pointer' }}><input type="checkbox" checked={vForm.canjeStock} onChange={e => setVF('canjeStock', e.target.checked)} /> A inventario</label></div>
+                    <div className="flex-between" style={{ alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        Equipos en canje {(vForm.canjes || []).length > 0 && <span className="muted tiny">({vForm.canjes.length})</span>}
+                      </div>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={addCanje}>
+                        <Icons.Plus size={12} /> Agregar equipo
+                      </button>
+                    </div>
+                    {(vForm.canjes || []).length === 0 && (
+                      <div className="muted tiny" style={{ padding: '6px 0' }}>
+                        Sin equipos en canje. Si el cliente entrega uno como parte de pago, agregalo acá.
                       </div>
                     )}
+                    <div className="stack" style={{ gap: 10 }}>
+                      {(vForm.canjes || []).map((c, i) => (
+                        <div key={i} style={{
+                          padding: 12, background: 'var(--surface-2)', border: '1px solid var(--border)',
+                          borderRadius: 8,
+                        }}>
+                          {/* Header del canje: índice + botón quitar */}
+                          <div className="flex-between" style={{ alignItems: 'center', marginBottom: 8 }}>
+                            <div className="muted tiny" style={{ fontWeight: 600 }}>
+                              Equipo {i + 1}
+                              {c._existing && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>(ya en Inventario)</span>}
+                            </div>
+                            <button type="button" className="icon-btn" aria-label="Quitar equipo" onClick={() => rmCanje(i)}>
+                              <Icons.X size={14} />
+                            </button>
+                          </div>
+
+                          {/* Fila 1: descripción + IMEI + valor toma */}
+                          <div className="row" style={{ marginBottom: 8 }}>
+                            <div className="field" style={{ flex: 2 }}>
+                              <label className="field-label">Descripción</label>
+                              <input className="input" placeholder="iPhone 13 Pro 256 Sierra Blue"
+                                     value={c.descripcion} onChange={e => setCanje(i, 'descripcion', e.target.value)} />
+                            </div>
+                            <div className="field" style={{ flex: 1.2 }}>
+                              <label className="field-label">IMEI / Nº serie</label>
+                              <input className="input mono" placeholder="35..."
+                                     value={c.imei} onChange={e => setCanje(i, 'imei', e.target.value)} />
+                            </div>
+                            <div className="field" style={{ flex: 1 }}>
+                              <label className="field-label">Valor toma (USD)</label>
+                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                                     placeholder="0" value={c.valor_toma} onChange={e => setCanje(i, 'valor_toma', e.target.value)} />
+                            </div>
+                          </div>
+
+                          {/* Fila 2: GB, color, batería, condición */}
+                          <div className="row" style={{ marginBottom: 8 }}>
+                            <div className="field" style={{ flex: 0.7 }}>
+                              <label className="field-label">GB</label>
+                              <input className="input" placeholder="256"
+                                     value={c.gb} onChange={e => setCanje(i, 'gb', e.target.value)} />
+                            </div>
+                            <div className="field" style={{ flex: 1 }}>
+                              <label className="field-label">Color</label>
+                              <input className="input" placeholder="Sierra Blue"
+                                     value={c.color} onChange={e => setCanje(i, 'color', e.target.value)} />
+                            </div>
+                            <div className="field" style={{ flex: 0.7 }}>
+                              <label className="field-label">% Batería</label>
+                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                                     min="0" max="100" placeholder="100"
+                                     value={c.bateria} onChange={e => setCanje(i, 'bateria', e.target.value)} />
+                            </div>
+                            <div className="field" style={{ flex: 0.8 }}>
+                              <label className="field-label">Condición</label>
+                              <select className="input" value={c.condicion}
+                                      onChange={e => setCanje(i, 'condicion', e.target.value)}>
+                                <option value="usado">Usado</option>
+                                <option value="nuevo">Nuevo</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Fila 3: categoría + precio sugerido + a inventario */}
+                          <div className="row" style={{ marginBottom: 8 }}>
+                            <div className="field" style={{ flex: 1.5 }}>
+                              <label className="field-label">Categoría Inventario</label>
+                              <select className="input" value={c.categoria_id}
+                                      onChange={e => setCanje(i, 'categoria_id', e.target.value)}
+                                      disabled={c._existing}>
+                                <option value="">— sin asignar —</option>
+                                {categoriasInv.map(cat => (
+                                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field" style={{ flex: 1 }}>
+                              <label className="field-label">Precio venta sugerido (USD)</label>
+                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                                     placeholder="0 (editar en Inventario después)"
+                                     value={c.precio_venta_sugerido}
+                                     onChange={e => setCanje(i, 'precio_venta_sugerido', e.target.value)}
+                                     disabled={c._existing} />
+                            </div>
+                            <div className="field" style={{ flex: 0.8, alignSelf: 'end' }}>
+                              <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: c._existing ? 'not-allowed' : 'pointer' }}>
+                                <input type="checkbox" checked={c.agregar_stock}
+                                       disabled={c._existing}
+                                       onChange={e => setCanje(i, 'agregar_stock', e.target.checked)} />
+                                A inventario
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Fila 4: observaciones (solo si va a inventario, sino no aporta) */}
+                          {c.agregar_stock && !c._existing && (
+                            <div className="field">
+                              <label className="field-label">Observaciones (opcional)</label>
+                              <input className="input" placeholder="Pantalla sin raspones, caja original, batería al 87%"
+                                     value={c.observaciones}
+                                     onChange={e => setCanje(i, 'observaciones', e.target.value)} />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Pagos */}
@@ -878,7 +1055,7 @@ export default function Ventas() {
                   {/* Totales */}
                   <div className="card card-tight" style={{ padding: '10px 14px' }}>
                     <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Total venta</span><span className="mono" style={{ fontWeight: 700 }}>u$s{fmt(totales.items)}</span></div>
-                    <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Pagos{vForm.canjeOn ? ' + canje' : ''}</span><span className="mono">u$s{fmt(totales.cubierto)}</span></div>
+                    <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Pagos{(vForm.canjes || []).length > 0 ? ` + ${vForm.canjes.length} canje${vForm.canjes.length > 1 ? 's' : ''}` : ''}</span><span className="mono">u$s{fmt(totales.cubierto)}</span></div>
                     <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Diferencia</span>
                       <span>{Math.abs(totales.dif) < 0.01 ? <span className="pos">Cubierto ✓</span> : totales.dif < 0 ? <span className="neg">Falta u$s{fmt(-totales.dif)}</span> : <span className="warn">Sobra u$s{fmt(totales.dif)}</span>}</span>
                     </div>
