@@ -284,3 +284,101 @@ describe('DELETE /api/cajas/inversiones/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// Mega-form transaccional (post-auditoría TANDA 0): POST /deudas y /inversiones
+// aceptan `contacto_nuevo` en lugar de `contacto_id`. El backend crea contacto +
+// movimiento en una sola tx — antes el frontend hacía 2 requests separados y
+// un fallo en el 2do dejaba contactos huérfanos.
+describe('Cajas — mega-form transaccional (contacto_nuevo)', () => {
+  it('POST /deudas con contacto_nuevo crea contacto Y movimiento atómicamente', async () => {
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha: '2026-06-03',
+        contacto_nuevo: { nombre: 'Juan', apellido: 'MegaForm', tipo: 'amigo' },
+        tipo: 'debe',
+        monto_ars: 50000,
+        concepto: 'Test mega-form',
+      });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.monto_ars)).toBe(50000);
+    expect(res.body.contacto_id).toBeGreaterThan(0);
+    // El contacto debe existir como entity propia.
+    const c = await request(app)
+      .get(`/api/contactos?buscar=MegaForm`)
+      .set('Authorization', `Bearer ${token}`);
+    const creado = c.body.data.find(x => x.nombre === 'Juan' && x.apellido === 'MegaForm');
+    expect(creado).toBeTruthy();
+    expect(creado.id).toBe(res.body.contacto_id);
+    expect(creado.origen).toBe('manual');
+  });
+
+  it('POST /inversiones con contacto_nuevo también es atómico', async () => {
+    const res = await request(app)
+      .post('/api/cajas/inversiones')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha: '2026-06-03',
+        contacto_nuevo: { nombre: 'Carla', tipo: 'inversor' },
+        monto: 5000,
+      });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.monto)).toBe(5000);
+    expect(res.body.contacto_id).toBeGreaterThan(0);
+  });
+
+  it('rechaza si manda contacto_id Y contacto_nuevo (xor)', async () => {
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha: '2026-06-03',
+        contacto_id: contactoId,
+        contacto_nuevo: { nombre: 'No debería' },
+        tipo: 'debe',
+        monto_ars: 100,
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('rechaza si no manda ni contacto_id ni contacto_nuevo', async () => {
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fecha: '2026-06-03', tipo: 'debe', monto_ars: 100 });
+    expect(res.status).toBe(400);
+  });
+
+  it('si falla el movimiento (validación), el contacto NO queda creado (rollback)', async () => {
+    // Forzar fallo en la 2da query: monto_ars=0 + monto_usd=0 → refine
+    // rechaza ANTES de empezar la tx (validate middleware). Pero para probar
+    // rollback real, generamos un caso donde el schema pase y el INSERT falle.
+    // Caso: tipo='inválido' es rechazado por z.enum en el schema → 400 sin tx.
+    //
+    // Caso útil: contacto_nuevo con nombre demasiado largo (>100 chars) →
+    // 400 por validación, no llega al INSERT del movimiento. El contacto
+    // tampoco se crea (porque la validación es ANTES de la tx).
+    //
+    // Para validar rollback real necesitaríamos un fallo durante la tx, lo
+    // que requeriría inyectar un error post-validación — fuera del alcance
+    // de un test e2e normal. Pero confirmamos el invariante visible:
+    // un request con monto inválido NO deja contacto huérfano.
+    const antes = await request(app).get('/api/contactos?buscar=NoCreado').set('Authorization', `Bearer ${token}`);
+    const idsAntes = antes.body.data.map(c => c.id);
+
+    const res = await request(app)
+      .post('/api/cajas/deudas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        fecha: '2026-06-03',
+        contacto_nuevo: { nombre: 'NoCreado', tipo: 'amigo' },
+        tipo: 'debe',
+        monto_ars: 0, monto_usd: 0, // refine rechaza
+      });
+    expect(res.status).toBe(400);
+
+    const despues = await request(app).get('/api/contactos?buscar=NoCreado').set('Authorization', `Bearer ${token}`);
+    expect(despues.body.data.map(c => c.id)).toEqual(idsAntes); // nadie nuevo
+  });
+});

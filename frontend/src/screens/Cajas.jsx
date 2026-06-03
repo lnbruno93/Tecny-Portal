@@ -192,27 +192,32 @@ export default function Cajas() {
   // Tira error con mensaje legible si los datos son inválidos — el caller lo
   // captura y muestra en el error del modal.
   //
-  // Side effect: si crea contacto nuevo, lo agrega a `allContacts` para que
-  // aparezca en próximos selects sin necesidad de refresh.
-  async function resolveContactoIdFromForm(form) {
+  // Construye el payload de contacto para el endpoint mega-form transaccional.
+  // El backend hace contacto + movimiento en una sola tx, así que NO creamos
+  // el contacto por separado. Antes esta función creaba un contacto HTTP y
+  // devolvía solo el id — si después fallaba el INSERT del movimiento, el
+  // contacto quedaba huérfano. Ahora le pasamos los datos al backend y él
+  // decide si crear o reusar.
+  //
+  // Retorna: { contacto_id } | { contacto_nuevo: { nombre, apellido, tipo } }
+  function buildContactoPayload(form) {
     if (form.contactoMode === 'nuevo') {
       const nombre = (form.nuevoNombre || '').trim();
       if (!nombre) {
         const e = new Error('Ingresá el nombre del contacto nuevo.'); e.tag = 'validation'; throw e;
       }
-      const nuevo = await contactosApi.create({
-        nombre,
-        apellido: (form.nuevoApellido || '').trim() || null,
-        tipo: form.nuevoTipo || 'amigo',
-      });
-      setAllContacts(prev => [...prev, nuevo]);
-      return nuevo.id;
+      return {
+        contacto_nuevo: {
+          nombre,
+          apellido: (form.nuevoApellido || '').trim() || null,
+          tipo: form.nuevoTipo || 'amigo',
+        },
+      };
     }
-    // Modo existente
     if (!form.contacto_id) {
       const e = new Error('Seleccioná un contacto o creá uno nuevo.'); e.tag = 'validation'; throw e;
     }
-    return Number(form.contacto_id);
+    return { contacto_id: Number(form.contacto_id) };
   }
 
   async function handleCreateDeuda(e) {
@@ -223,17 +228,23 @@ export default function Cajas() {
 
     setDeudaCreating(true); setDeudaError('');
     try {
-      // Resuelve el contacto (puede crear uno nuevo si contactoMode='nuevo').
-      const cid = await resolveContactoIdFromForm(deudaForm);
+      // Backend hace contacto + movimiento en una sola tx (atómico).
+      // buildContactoPayload puede tirar 'validation' error si nombre/select faltan.
+      const contactoPayload = buildContactoPayload(deudaForm);
 
-      await cajas.createDeuda({
+      const movimiento = await cajas.createDeuda({
         fecha:       deudaForm.fecha,
-        contacto_id: cid,
+        ...contactoPayload,
         tipo:        deudaForm.tipo,
         monto_ars,
         monto_usd,
         concepto:    deudaForm.concepto.trim() || null,
       });
+      const cid = movimiento.contacto_id;
+      // Si se creó contacto nuevo, refrescamos la lista para próximos selects.
+      if (contactoPayload.contacto_nuevo) {
+        contactosApi.list({ limit: 500 }).then(r => setAllContacts(r.data || [])).catch(() => {});
+      }
       setShowDeuda(false);
       toast.success(
         deudaForm.contactoMode === 'nuevo'
@@ -266,15 +277,19 @@ export default function Cajas() {
 
     setInvCreating(true); setInvError('');
     try {
-      // Resuelve el contacto (puede crear uno nuevo si contactoMode='nuevo').
-      const cid = await resolveContactoIdFromForm(invForm);
+      // Backend hace contacto + movimiento en una sola tx (atómico).
+      const contactoPayload = buildContactoPayload(invForm);
 
-      await cajas.createInversion({
+      const movimiento = await cajas.createInversion({
         fecha:       invForm.fecha,
-        contacto_id: cid,
+        ...contactoPayload,
         monto,
         tasa:        invForm.tasa.trim() || null,
       });
+      const cid = movimiento.contacto_id;
+      if (contactoPayload.contacto_nuevo) {
+        contactosApi.list({ limit: 500 }).then(r => setAllContacts(r.data || [])).catch(() => {});
+      }
       setShowInv(false);
       toast.success(
         invForm.contactoMode === 'nuevo'

@@ -27,6 +27,11 @@ export default function Capital() {
   const [provSaldos, setProvSaldos] = useState({});    // lo que le debemos a proveedores (USD)
   const [tarjSaldos, setTarjSaldos] = useState({});    // saldos pendientes en tarjetas (ARS + USD)
   const [cambSaldos, setCambSaldos] = useState({});    // saldos pendientes en cambios de divisa (USD)
+  // Fuentes que fallaron al cargar (no 403). Antes los .catch silenciaban TODO
+  // — si tarjetas.saldosResumen tiraba 500, el patrimonio se mostraba como si
+  // tarjetas valiera $0 y nadie se enteraba. Ahora trackeamos el fallo para
+  // advertir al usuario que el total puede estar incompleto.
+  const [fuentesError, setFuentesError] = useState([]);
   const [filtros, setFiltros] = useState(EMPTY_FILTROS);
   const [ledger, setLedger] = useState({ data: [], pagination: { pages: 1, page: 1, total: 0 }, totales: { ingresos_usd: 0, egresos_usd: 0, neto_usd: 0, count: 0 } });
   const [loading, setLoading] = useState(false);
@@ -36,15 +41,22 @@ export default function Capital() {
   // cajas/resumen (deudas a cobrar + inversiones), cuentas B2B (neto a cobrar),
   // tarjetas (saldos pendientes de liquidar) y cambios (USD que las financieras
   // todavía nos deben). Cada llamada es independiente — si una falla, el resto
-  // sigue cargando.
+  // sigue cargando, pero registramos la fuente fallida para mostrar warning.
+  //
+  // Excluimos 403 (sin permiso al módulo): es el estado esperado para users
+  // que no tienen acceso a tarjetas/cambios — la línea muestra $0 y no es bug.
   useEffect(() => {
-    cajas.listCajas().then(r => setCajasList(Array.isArray(r) ? r : [])).catch(() => {});
-    inventario.metricas().then(r => setMetricas(r || {})).catch(() => {});
-    cajas.resumen().then(r => setResumen({ deudas: r?.deudas || [], inversiones: r?.inversiones || [] })).catch(() => {});
-    cuentas.resumenGeneral().then(r => setCcGeneral(r || {})).catch(() => {});
-    proveedores.saldos().then(r => setProvSaldos(r || {})).catch(() => {});
-    tarjetas.saldosResumen().then(r => setTarjSaldos(r || {})).catch(() => {});
-    cambios.saldosResumen().then(r => setCambSaldos(r || {})).catch(() => {});
+    const onErr = (label) => (err) => {
+      if (err?.status === 403) return; // sin permiso al módulo: esperado, no se reporta
+      setFuentesError(prev => prev.includes(label) ? prev : [...prev, label]);
+    };
+    cajas.listCajas().then(r => setCajasList(Array.isArray(r) ? r : [])).catch(onErr('Cajas'));
+    inventario.metricas().then(r => setMetricas(r || {})).catch(onErr('Inventario'));
+    cajas.resumen().then(r => setResumen({ deudas: r?.deudas || [], inversiones: r?.inversiones || [] })).catch(onErr('Deudas/Inversiones'));
+    cuentas.resumenGeneral().then(r => setCcGeneral(r || {})).catch(onErr('Cuentas B2B'));
+    proveedores.saldos().then(r => setProvSaldos(r || {})).catch(onErr('Proveedores'));
+    tarjetas.saldosResumen().then(r => setTarjSaldos(r || {})).catch(onErr('Tarjetas'));
+    cambios.saldosResumen().then(r => setCambSaldos(r || {})).catch(onErr('Cambios de divisa'));
   }, []);
   // El ledger se carga solo cuando estás en la pestaña Movimientos (serán muchas
   // operaciones diarias; no tiene sentido traerlas mientras mirás el Capital).
@@ -120,6 +132,23 @@ export default function Capital() {
       </div>
 
       {tab === 'capital' && <>
+      {/* Banner de advertencia: si alguna fuente falló (no 403), avisar al
+          usuario que el patrimonio total puede estar incompleto. Sin esto,
+          un error en cualquier endpoint dejaba la línea en $0 y mentía. */}
+      {fuentesError.length > 0 && (
+        <div className="card card-tight" style={{
+          marginBottom: 14, borderLeft: '3px solid var(--warn, var(--neg))',
+          background: 'var(--surface-2)',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>
+            ⚠ El patrimonio mostrado puede estar incompleto
+          </div>
+          <div className="muted tiny" style={{ marginTop: 4 }}>
+            No se pudo cargar: <b>{fuentesError.join(', ')}</b>. Refrescá la página o probá en unos minutos.
+          </div>
+        </div>
+      )}
+
       {/* Patrimonio total por moneda (efectivo + inventario + inversiones + a cobrar + B2B) */}
       <div className="row" style={{ marginBottom: 14 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
