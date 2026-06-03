@@ -269,3 +269,102 @@ describe('Tarjetas — cobro previo (sin venta)', () => {
     expect(r.status).toBe(404);
   });
 });
+
+// ─── PATCH /movimientos/:id (editar cobro previo o liquidación) ─────────────
+// Refleja la misma política del DELETE: cobros de venta NO se tocan acá.
+// Cobros previos: recalcular comisión/neto desde bruto + pct.
+// Liquidaciones: revertir caja vieja + postear nueva (mismo helper que DELETE).
+describe('Tarjetas — PATCH /movimientos/:id (editar)', () => {
+  let tarjetaEdit;
+  beforeAll(async () => {
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Tarjeta Edit Test', moneda: 'ARS', es_tarjeta: true, comision_pct: 20 });
+    tarjetaEdit = mt.body.id;
+  });
+
+  it('edita un cobro previo y recalcula comisión + neto desde bruto + pct', async () => {
+    const create = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaEdit, fecha: hoy, monto_bruto: 10000, pct: 10 });
+    expect(create.status).toBe(201);
+    // Edición: bruto pasa de 10000 a 20000, pct de 10 a 15 → comisión 3000, neto 17000.
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${create.body.id}`).set(auth())
+      .send({ monto_bruto: 20000, pct: 15, comentarios: 'corregido' });
+    expect(r.status).toBe(200);
+    expect(Number(r.body.monto_bruto)).toBe(20000);
+    expect(Number(r.body.pct)).toBe(15);
+    expect(Number(r.body.monto_comision)).toBe(3000);
+    expect(Number(r.body.monto_neto)).toBe(17000);
+    expect(r.body.comentarios).toBe('corregido');
+  });
+
+  it('edita una liquidación: revierte la caja vieja y postea en la nueva', async () => {
+    // Generamos un cobro previo grande para tener saldo a liquidar.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaEdit, fecha: hoy, monto_bruto: 100000, pct: 0 });
+    // Caja origen + caja destino (ambas ARS).
+    const cajaA = (await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja Edit A', moneda: 'ARS', saldo_inicial: 0 })).body;
+    const cajaB = (await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja Edit B', moneda: 'ARS', saldo_inicial: 0 })).body;
+    // Liquidación de 30000 a cajaA.
+    const liq = await request(app).post('/api/tarjetas/liquidaciones').set(auth())
+      .send({ metodo_pago_id: tarjetaEdit, fecha: hoy, monto: 30000, caja_id: cajaA.id });
+    expect(liq.status).toBe(201);
+    expect(await saldoCaja(cajaA.id)).toBe(30000);
+    expect(await saldoCaja(cajaB.id)).toBe(0);
+    // Edición: ahora va a cajaB y por 25000.
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${liq.body.id}`).set(auth())
+      .send({ monto: 25000, caja_id: cajaB.id });
+    expect(r.status).toBe(200);
+    // cajaA vuelve a 0; cajaB pasa a 25000.
+    expect(await saldoCaja(cajaA.id)).toBe(0);
+    expect(await saldoCaja(cajaB.id)).toBe(25000);
+    // Saldo del movimiento en tarjeta_movimientos: monto_bruto = monto_neto = 25000.
+    expect(Number(r.body.monto_neto)).toBe(25000);
+    expect(Number(r.body.monto_bruto)).toBe(25000);
+    expect(r.body.caja_id).toBe(cajaB.id);
+  });
+
+  it('rechaza editar un cobro proveniente de una venta (venta_id != NULL)', async () => {
+    // Crear una venta para generar un cobro auto con venta_id.
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Edit No-Tocar', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'X', cantidad: 1, precio_vendido: 5000, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: tarjetaEdit, metodo_nombre: 'Tarjeta Edit Test', monto: 5000, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(venta.status).toBe(201);
+    const movs = await movimientos(tarjetaEdit);
+    const cobroDeVenta = movs.find(m => m.tipo === 'cobro' && m.venta_id != null);
+    expect(cobroDeVenta).toBeTruthy();
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${cobroDeVenta.id}`).set(auth())
+      .send({ monto_bruto: 999 });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/venta/i);
+  });
+
+  it('rechaza editar liquidación con caja de otra moneda', async () => {
+    // Cobro previo + liquidación en ARS, luego intentar editar a caja USD.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaEdit, fecha: hoy, monto_bruto: 10000, pct: 0 });
+    const liq = await request(app).post('/api/tarjetas/liquidaciones').set(auth())
+      .send({ metodo_pago_id: tarjetaEdit, fecha: hoy, monto: 5000, caja_id: cajaArs });
+    const cajaUsd = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Edit', moneda: 'USD', saldo_inicial: 0 });
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${liq.body.id}`).set(auth())
+      .send({ caja_id: cajaUsd.body.id });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/moneda/i);
+  });
+
+  it('rechaza editar movimiento inexistente (404)', async () => {
+    const r = await request(app).patch('/api/tarjetas/movimientos/999999').set(auth())
+      .send({ monto_bruto: 100 });
+    expect(r.status).toBe(404);
+  });
+
+  it('rechaza monto_bruto <= 0 al editar', async () => {
+    const create = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaEdit, fecha: hoy, monto_bruto: 5000, pct: 0 });
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${create.body.id}`).set(auth())
+      .send({ monto_bruto: 0 });
+    expect(r.status).toBe(400);
+  });
+});
