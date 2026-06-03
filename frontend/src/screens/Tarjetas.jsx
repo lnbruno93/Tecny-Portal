@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { tarjetas as tarjetasApi, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -7,6 +7,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
+import useModal from '../lib/useModal';
 
 
 
@@ -47,6 +48,21 @@ export default function Tarjetas() {
   const [editForm, setEditForm] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
+
+  // Refs para useModal (a11y: Esc cierra, body scroll lock, focus inicial).
+  // Antes los modales se hacían a mano sin Esc handler — auditoría TANDA 1.
+  const cobroPrevModalRef = useRef(null);
+  const editModalRef      = useRef(null);
+  useModal({
+    open: showCobroPrev,
+    onClose: () => !savingCobroPrev && setShowCobroPrev(false),
+    overlayRef: cobroPrevModalRef,
+  });
+  useModal({
+    open: !!editMov,
+    onClose: () => !savingEdit && setEditMov(null),
+    overlayRef: editModalRef,
+  });
 
   function loadList() {
     setLoadingList(true);
@@ -94,10 +110,19 @@ export default function Tarjetas() {
     } catch (err) { toast.error(err.message); } finally { setSavingLiq(false); }
   }
 
-  async function handleDeleteMov(id) {
-    const ok = await confirm({ title: 'Eliminar movimiento', message: 'Si era una liquidación, se revierte la caja.', confirmLabel: 'Eliminar', danger: true });
+  // Borrar con contexto del movimiento (fecha + tipo + monto) en el confirm.
+  // Sin contexto, el usuario veía un texto genérico fuera del row y podía
+  // equivocarse de operación. Acepta el row entero (no solo id).
+  async function handleDeleteMov(m) {
+    const tipoLabel = m.tipo === 'cobro' ? 'cobro previo' : 'liquidación';
+    const monto = `${sym(m.moneda)} ${fmt(m.monto_neto)}`;
+    const ok = await confirm({
+      title: `Eliminar ${tipoLabel}`,
+      message: `Fecha ${fmtFecha(m.fecha)} · Neto ${monto}.\n${m.tipo === 'liquidacion' ? 'Se revierte el ingreso a la caja.' : 'Se quita del saldo pendiente de la tarjeta.'}`,
+      confirmLabel: 'Eliminar', danger: true,
+    });
     if (!ok) return;
-    try { await tarjetasApi.deleteMovimiento(id); loadList(); loadDetalle(); } catch (err) { toast.error(err.message); }
+    try { await tarjetasApi.deleteMovimiento(m.id); loadList(); loadDetalle(); } catch (err) { toast.error(err.message); }
   }
 
   // Cobro previo: carga un saldo pendiente de venta anterior al sistema.
@@ -346,7 +371,7 @@ export default function Tarjetas() {
                             <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
                               <Icons.Edit size={13} />
                             </button>
-                            <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}>
+                            <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m)}>
                               <Icons.Trash size={13} />
                             </button>
                           </>
@@ -451,7 +476,7 @@ export default function Tarjetas() {
                                 <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
                                   <Icons.Edit size={13} />
                                 </button>
-                                <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}>
+                                <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m)}>
                                   <Icons.Trash size={13} />
                                 </button>
                               </>
@@ -470,16 +495,18 @@ export default function Tarjetas() {
 
       {/* ── Modal: Cobro previo (saldos de ventas anteriores al sistema) ── */}
       {showCobroPrev && (
-        <div className="modal-overlay" onClick={() => !savingCobroPrev && setShowCobroPrev(false)}>
+        <div ref={cobroPrevModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cobro-prev-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !savingCobroPrev) setShowCobroPrev(false); }}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Registrar cobro previo</h3>
+              <h3 id="cobro-prev-title">Registrar cobro previo</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowCobroPrev(false)} disabled={savingCobroPrev}>
                 <Icons.X size={16} />
               </button>
             </div>
             <form onSubmit={handleCobroPrevSave}>
               <div className="modal-body">
+                <fieldset disabled={savingCobroPrev} style={{ border: 0, padding: 0, margin: 0 }}>
                 <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
                   Para saldos pendientes de ventas anteriores al sistema. NO genera
                   una venta — solo agrega saldo a cobrar de la financiera. Una
@@ -541,6 +568,7 @@ export default function Tarjetas() {
                   </div>
                   {cobroPrevError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{cobroPrevError}</div>}
                 </div>
+                </fieldset>
               </div>
               <div className="modal-ft">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCobroPrev(false)} disabled={savingCobroPrev}>
@@ -557,16 +585,21 @@ export default function Tarjetas() {
 
       {/* ── Modal: Editar movimiento (cobro previo o liquidación) ── */}
       {editMov && (
-        <div className="modal-overlay" onClick={() => !savingEdit && setEditMov(null)}>
+        <div ref={editModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-mov-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !savingEdit) setEditMov(null); }}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Editar {editMov.tipo === 'cobro' ? 'cobro previo' : 'liquidación'}</h3>
+              <h3 id="edit-mov-title">Editar {editMov.tipo === 'cobro' ? 'cobro previo' : 'liquidación'}</h3>
               <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setEditMov(null)} disabled={savingEdit}>
                 <Icons.X size={16} />
               </button>
             </div>
             <form onSubmit={handleEditSave}>
               <div className="modal-body">
+                {/* fieldset[disabled] propaga a todos los inputs/selects internos:
+                    durante el save no se puede seguir tipeando (evita race con
+                    el toast de éxito + cierre que pisaba cambios). */}
+                <fieldset disabled={savingEdit} style={{ border: 0, padding: 0, margin: 0 }}>
                 <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
                   Tarjeta: <b>{editMov.metodo_nombre}</b>
                   {editMov.tipo === 'liquidacion' && (
@@ -642,6 +675,7 @@ export default function Tarjetas() {
                   </div>
                   {editError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{editError}</div>}
                 </div>
+                </fieldset>
               </div>
               <div className="modal-ft">
                 <button type="button" className="btn btn-ghost" onClick={() => setEditMov(null)} disabled={savingEdit}>
