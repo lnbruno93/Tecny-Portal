@@ -188,3 +188,84 @@ describe('Tarjetas — A4: liquidaciones bloquean cancelación de venta', () => 
     expect(del.status).toBe(200);
   });
 });
+
+// ─── Cobros previos (saldos pendientes pre-sistema) ─────────────────────────
+// Para cargar saldos de ventas que existieron antes del portal. No genera
+// venta, solo agrega saldo pendiente a la tarjeta. venta_id=NULL es el marker.
+describe('Tarjetas — cobro previo (sin venta)', () => {
+  let tarjetaPrevia;
+  beforeAll(async () => {
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Tarjeta Previa Test', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 });
+    tarjetaPrevia = mt.body.id;
+  });
+
+  it('POST /cobros-iniciales crea movimiento tipo=cobro con venta_id=NULL', async () => {
+    const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({
+        metodo_pago_id: tarjetaPrevia,
+        fecha: hoy,
+        monto_bruto: 10000,
+        pct: 10, // 10% → comisión 1000, neto 9000
+        comentarios: 'Ventas previas al sistema',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.tipo).toBe('cobro');
+    expect(r.body.venta_id).toBeNull();
+    expect(r.body.caja_id).toBeNull();
+    expect(Number(r.body.monto_bruto)).toBe(10000);
+    expect(Number(r.body.monto_comision)).toBe(1000);
+    expect(Number(r.body.monto_neto)).toBe(9000);
+    // El saldo de la tarjeta sube en 9000 (neto pendiente).
+    const list = await tarjetas();
+    const t = list.find(x => x.id === tarjetaPrevia);
+    expect(Number(t.saldo)).toBe(9000);
+  });
+
+  it('pct omitido → usa el comision_pct del método', async () => {
+    const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaPrevia, fecha: hoy, monto_bruto: 5000 });
+    expect(r.status).toBe(201);
+    expect(Number(r.body.pct)).toBe(10); // del método
+    expect(Number(r.body.monto_comision)).toBe(500); // 5000 * 10%
+    expect(Number(r.body.monto_neto)).toBe(4500);
+  });
+
+  it('cobro previo SÍ se puede borrar manualmente (venta_id=NULL)', async () => {
+    const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaPrevia, fecha: hoy, monto_bruto: 3000 });
+    expect(r.status).toBe(201);
+    const del = await request(app).delete(`/api/tarjetas/movimientos/${r.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+    expect(del.body.ok).toBe(true);
+  });
+
+  it('cobro de venta NO se puede borrar manualmente (venta_id != NULL)', async () => {
+    // Crear una venta con tarjeta — genera un cobro automático con venta_id seteado.
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy, cliente_nombre: 'Test No-Borrar', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'X', cantidad: 1, precio_vendido: 8000, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: tarjetaPrevia, metodo_nombre: 'Tarjeta Previa Test', monto: 8000, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(venta.status).toBe(201);
+    const movs = await movimientos(tarjetaPrevia);
+    const cobroVenta = movs.find(m => m.tipo === 'cobro' && m.venta_id != null);
+    expect(cobroVenta).toBeTruthy();
+    // Intentar borrarlo → 400.
+    const del = await request(app).delete(`/api/tarjetas/movimientos/${cobroVenta.id}`).set(auth());
+    expect(del.status).toBe(400);
+    expect(del.body.error).toMatch(/venta/i);
+  });
+
+  it('rechaza monto_bruto <= 0', async () => {
+    const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaPrevia, fecha: hoy, monto_bruto: 0 });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza tarjeta inexistente', async () => {
+    const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: 999999, fecha: hoy, monto_bruto: 1000 });
+    expect(r.status).toBe(404);
+  });
+});
