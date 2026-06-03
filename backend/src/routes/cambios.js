@@ -17,6 +17,21 @@ const { createEntidadSchema, updateEntidadSchema, createMovimientoSchema } = req
 const SALDO_SQL = `
   COALESCE(SUM(CASE WHEN m.tipo = 'entrega_ars' THEN m.monto_usd ELSE -m.monto_usd END), 0)`;
 
+// Saldo agregado (USD) — consumido por 360 & Capital para sumar al patrimonio
+// total lo que las financieras todavía nos deben (entregado − recibido). Una
+// sola query, sin paginar.
+router.get('/saldos-resumen', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT ${SALDO_SQL} AS saldo_usd
+         FROM cambio_movimientos m
+         JOIN cambio_entidades e ON e.id = m.entidad_id
+        WHERE m.deleted_at IS NULL AND e.deleted_at IS NULL`
+    );
+    res.json({ saldo_usd: Number(rows[0].saldo_usd || 0) });
+  } catch (err) { next(err); }
+});
+
 // ─── ENTIDADES (financieras de cambio) ───────────────────────────────────────
 router.get('/entidades', async (_req, res, next) => {
   try {

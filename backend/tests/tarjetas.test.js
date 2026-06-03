@@ -368,3 +368,41 @@ describe('Tarjetas — PATCH /movimientos/:id (editar)', () => {
     expect(r.status).toBe(400);
   });
 });
+
+// Endpoint consumido por 360 & Capital — agrega los netos pendientes (cobros −
+// liquidaciones) por moneda en un solo número. Permite sumar al patrimonio
+// total lo que la financiera todavía nos debe depositar.
+describe('Tarjetas — GET /saldos-resumen', () => {
+  it('devuelve saldo_ars y saldo_usd numéricos', async () => {
+    const r = await request(app).get('/api/tarjetas/saldos-resumen').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveProperty('saldo_ars');
+    expect(r.body).toHaveProperty('saldo_usd');
+    expect(typeof r.body.saldo_ars).toBe('number');
+    expect(typeof r.body.saldo_usd).toBe('number');
+  });
+
+  it('saldo_ars = suma de netos pendientes de todas las tarjetas ARS', async () => {
+    // El saldo agregado tiene que coincidir con SUM(saldo) sobre todas las
+    // tarjetas ARS devueltas por GET /api/tarjetas. Si difiere, hay un bug
+    // de coherencia entre los dos endpoints — y Capital mentiría.
+    const lista = (await request(app).get('/api/tarjetas').set(auth())).body;
+    const esperadoArs = lista.filter(t => t.moneda === 'ARS').reduce((s, t) => s + Number(t.saldo || 0), 0);
+    const r = await request(app).get('/api/tarjetas/saldos-resumen').set(auth());
+    expect(r.body.saldo_ars).toBeCloseTo(esperadoArs, 2);
+  });
+
+  it('una liquidación parcial baja el saldo agregado por su neto', async () => {
+    // Crear una tarjeta nueva con saldo conocido + liquidar parte → verificar
+    // que el agregado baja exactamente por el neto liquidado.
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Resumen Test', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: mt.body.id, fecha: hoy, monto_bruto: 1000, pct: 0 });
+    const antes = (await request(app).get('/api/tarjetas/saldos-resumen').set(auth())).body.saldo_ars;
+    await request(app).post('/api/tarjetas/liquidaciones').set(auth())
+      .send({ metodo_pago_id: mt.body.id, fecha: hoy, monto: 400, caja_id: cajaArs });
+    const despues = (await request(app).get('/api/tarjetas/saldos-resumen').set(auth())).body.saldo_ars;
+    expect(despues).toBeCloseTo(antes - 400, 2);
+  });
+});

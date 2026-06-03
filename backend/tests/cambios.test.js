@@ -71,4 +71,17 @@ describe('Cambios de Divisa', () => {
     await request(app).delete(`/api/cambios/movimientos/${m.body.id}`).set(auth());
     expect(await saldoDe(cajaUsd)).toBe(saldoCajaAntes);
   });
+
+  // Endpoint consumido por 360 & Capital — agrega saldo USD pendiente de TODAS
+  // las financieras en una sola cifra. Por construcción, debe coincidir con
+  // SUM(saldo_usd) por entidad.
+  it('GET /saldos-resumen devuelve el USD total que las financieras nos deben', async () => {
+    const r = await request(app).get('/api/cambios/saldos-resumen').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveProperty('saldo_usd');
+    // El test anterior dejó saldo = 400 (1000 entregado − 600 recibido) en la
+    // única financiera viva. El "borrar un movimiento" anterior posteó y
+    // borró 100 → no cambia el neto. Tenemos que dar 400.
+    expect(r.body.saldo_usd).toBe(400);
+  });
 });

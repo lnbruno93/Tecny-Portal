@@ -41,6 +41,32 @@ router.get('/', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Saldos agregados por moneda — consumido por 360 & Capital para sumar al
+// patrimonio total los netos pendientes de liquidación. Una sola query, sin
+// paginar. Agrupa USD y USDT en el mismo "grupoMoneda" porque conceptualmente
+// son equivalentes 1:1.
+router.get('/saldos-resumen', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN mp.moneda = 'ARS' THEN
+           CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
+         ELSE 0 END), 0) AS saldo_ars,
+         COALESCE(SUM(CASE WHEN mp.moneda IN ('USD','USDT') THEN
+           CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
+         ELSE 0 END), 0) AS saldo_usd
+       FROM tarjeta_movimientos m
+       JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+       WHERE m.deleted_at IS NULL AND mp.deleted_at IS NULL`
+    );
+    // Devolvemos números (no strings de pg) — el front suma directo sin Number().
+    res.json({
+      saldo_ars: Number(rows[0].saldo_ars || 0),
+      saldo_usd: Number(rows[0].saldo_usd || 0),
+    });
+  } catch (err) { next(err); }
+});
+
 // Estado de cuenta unificado (paginado): movimientos de todas las tarjetas con su
 // saldo acumulado calculado en el server (window) para que sea correcto aun paginando.
 router.get('/movimientos', async (req, res, next) => {
