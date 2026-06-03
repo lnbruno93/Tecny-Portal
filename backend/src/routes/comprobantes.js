@@ -4,7 +4,20 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
-const { createComprobanteSchema, queryComprobantesSchema } = require('../schemas/comprobantes');
+const { computeNeto } = require('../lib/money');
+const {
+  createComprobanteSchema, queryComprobantesSchema,
+  createManualComprobanteSchema, updateManualComprobanteSchema,
+} = require('../schemas/comprobantes');
+
+// Resolver el % de comisión efectivo para un comprobante manual: prioriza el
+// del request, fallback al `pct_financiera` global de config (mismo valor que
+// usa syncFinancieraComprobante para los auto-generados desde Ventas).
+async function resolverPctFinanciera(client, pctRequest) {
+  if (pctRequest != null) return Number(pctRequest);
+  const { rows } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
+  return Number(rows[0]?.pct_financiera || 0);
+}
 
 
 // ─── Totales con los mismos filtros que la lista ─────────────────────────────
@@ -110,24 +123,131 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
   }
 });
 
-// ─── Eliminar (soft delete) ───────────────────────────────────────────────────
-router.delete('/:id', async (req, res, next) => {
+// ─── Comprobante manual (venta previa al sistema) ────────────────────────────
+// Réplica del modelo "cobro previo" de Tarjetas. Carga un comprobante con
+// venta_id=NULL — para ventas históricas donde el cliente pagó con la caja
+// Financiera pero la venta no está en el sistema. No impacta caja_movimientos
+// (no hay venta real). Solo agrega al resumen de Financiera.
+router.post('/manuales', validate(createManualComprobanteSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { fecha, cliente, vendedor_id, monto_bruto, pct, referencia } = req.body;
+    await client.query('BEGIN');
 
-    const { rows } = await db.query(
+    const pctEfectivo = await resolverPctFinanciera(client, pct);
+    const { bruto, pct: pctFinal, comision, neto } = computeNeto(monto_bruto, pctEfectivo);
+
+    const { rows } = await client.query(
+      `INSERT INTO comprobantes
+        (fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto,
+         referencia, venta_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NULL)
+       RETURNING id, fecha, cliente, vendedor_id, monto, monto_financiera,
+                 monto_neto, referencia, venta_id, created_at`,
+      [fecha, cliente, vendedor_id ?? null, bruto, comision, neto, referencia ?? null]
+    );
+    await audit(client, 'comprobantes', 'INSERT', rows[0].id, {
+      despues: rows[0], tipo: 'manual_venta_previa', pct_aplicado: pctFinal,
+      user_id: req.user.id,
+    });
+    await client.query('COMMIT');
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
+});
+
+// PATCH solo aplica a comprobantes manuales (venta_id IS NULL). Los
+// autogenerados se ajustan editando la venta — bloqueamos con 400.
+router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      `SELECT id, fecha, cliente, vendedor_id, monto, monto_financiera,
+              monto_neto, referencia, venta_id
+         FROM comprobantes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [id]
+    );
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Comprobante no encontrado' }); }
+    if (before[0].venta_id != null) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Este comprobante proviene de una venta. Se ajusta editando la venta, no desde acá.' });
+    }
+    const cur = before[0];
+    const body = req.body;
+
+    // Resolver valores: priorizar el body, fallback al row actual.
+    const fecha       = body.fecha       ?? cur.fecha;
+    const cliente     = body.cliente     ?? cur.cliente;
+    const vendedor_id = body.vendedor_id === undefined ? cur.vendedor_id : (body.vendedor_id ?? null);
+    const referencia  = body.referencia  === undefined ? cur.referencia  : (body.referencia ?? null);
+
+    // Recalcular montos: el `pct` aplicado original NO se persiste en la tabla,
+    // así que si el body trae solo `monto_bruto` (sin pct), usamos el pct
+    // global actual de config. Esto puede dar un resultado distinto al original
+    // — el operador puede mandar pct explícito si quiere preservar el viejo.
+    const pctEfectivo = await resolverPctFinanciera(client, body.pct);
+    const brutoInput  = body.monto_bruto ?? cur.monto;
+    const { bruto, pct: pctFinal, comision, neto } = computeNeto(brutoInput, pctEfectivo);
+
+    const { rows } = await client.query(
+      `UPDATE comprobantes
+          SET fecha = $2, cliente = $3, vendedor_id = $4, monto = $5,
+              monto_financiera = $6, monto_neto = $7, referencia = $8
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING id, fecha, cliente, vendedor_id, monto, monto_financiera,
+                  monto_neto, referencia, venta_id, created_at`,
+      [id, fecha, cliente, vendedor_id, bruto, comision, neto, referencia]
+    );
+    await audit(client, 'comprobantes', 'UPDATE', id, {
+      antes: cur, despues: rows[0], pct_aplicado: pctFinal, user_id: req.user.id,
+    });
+    await client.query('COMMIT');
+    res.json(rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
+});
+
+// ─── Eliminar (soft delete) ───────────────────────────────────────────────────
+// Solo elimina comprobantes manuales (venta_id IS NULL). Los autogenerados
+// desde Ventas se reconcilian via syncFinancieraComprobante — borrarlos a mano
+// rompería el invariante (si la venta sigue activa con pago financiera +
+// archivo, el sync los recrearía igual).
+//
+// Audit-in-tx (regresión H6 que el sprint anterior arregló en otros módulos).
+router.delete('/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM comprobantes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'No encontrado' }); }
+    if (before[0].venta_id != null) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Este comprobante proviene de una venta. Se ajusta editando o cancelando la venta, no desde acá.' });
+    }
+    const { rows } = await client.query(
       'UPDATE comprobantes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'No encontrado' });
-
     const { archivo_data: _blob, ...comprobante } = rows[0];
-    await audit('comprobantes', 'DELETE', id, { antes: comprobante, user_id: req.user.id });
+    await audit(client, 'comprobantes', 'DELETE', id, { antes: comprobante, user_id: req.user.id });
+    await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 // ─── Archivo adjunto ──────────────────────────────────────────────────────────
