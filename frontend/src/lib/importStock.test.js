@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapStockRows, normHeader, parseNum } from './importStock';
+import { mapStockRows, normHeader, parseNum, extractNewCatalogos } from './importStock';
 
 // Encabezados reales del negocio (con aclaraciones entre paréntesis).
 const HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
@@ -113,10 +113,60 @@ describe('mapStockRows', () => {
     expect(error).toMatch(/categor/i);
   });
 
-  it('marca error si la categoría del archivo no existe en el sistema', () => {
+  // Junio 2026: si la categoría no existe ya NO es error — se marca para
+  // auto-create. El caller (Inventario.jsx confirmImport) la crea antes del bulk.
+  it('si la categoría no existe, NO es error y se marca como _categoriaNueva', () => {
     const rows = [HEADERS,
       ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'Categoria Fantasma', 'P']];
-    const [{ error }] = mapStockRows(rows, ctx);
-    expect(error).toMatch(/no existe/i);
+    const [{ error, _categoriaNueva, body }] = mapStockRows(rows, ctx);
+    expect(error).toBeNull();
+    expect(_categoriaNueva).toBe('Categoria Fantasma');
+    expect(body.categoria_id).toBeNull(); // se completa después del create
+  });
+
+  it('match case-insensitive contra categorías existentes (no duplica por mayúsculas)', () => {
+    const ctxCustom = { categorias: [{ id: 7, nombre: 'iPhone Nuevo' }], depositos: [] };
+    const rows = [HEADERS,
+      ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'IPHONE NUEVO', 'P']];
+    const [{ error, _categoriaNueva, body }] = mapStockRows(rows, ctxCustom);
+    expect(error).toBeNull();
+    expect(_categoriaNueva).toBeNull(); // matcheó la existente, no se crea otra
+    expect(body.categoria_id).toBe(7);
+  });
+
+  it('proveedor nuevo se marca con _proveedorNuevo (case-insensitive)', () => {
+    const ctxCustom = {
+      categorias: [{ id: 1, nombre: 'iPhone' }],
+      depositos: [],
+      proveedores: [{ id: 9, nombre: 'Francisco de la Torre' }],
+    };
+    const rows = [HEADERS,
+      ['iPhone X', '128', '90', 'Black', '800', 'USD', '900', 'USD', '111', 'Unitario', 'iPhone', 'Proveedor Nuevo'],
+      ['iPhone Y', '256', '95', 'White', '900', 'USD', '1100', 'USD', '222', 'Unitario', 'iPhone', 'francisco de la torre']]; // case-insensitive match
+    const [r1, r2] = mapStockRows(rows, ctxCustom);
+    expect(r1._proveedorNuevo).toBe('Proveedor Nuevo');
+    expect(r2._proveedorNuevo).toBeNull(); // matcheó "Francisco de la Torre" case-insensitive
+  });
+});
+
+describe('extractNewCatalogos', () => {
+  it('extrae nombres únicos de categorías y proveedores nuevos (case-insensitive)', () => {
+    const mapped = [
+      { _categoriaNueva: 'iPhone Pro', _proveedorNuevo: 'Distri A' },
+      { _categoriaNueva: 'IPHONE PRO', _proveedorNuevo: 'Distri B' }, // duplicado de cat
+      { _categoriaNueva: 'Accesorios', _proveedorNuevo: 'distri a' }, // duplicado de prov
+      { _categoriaNueva: null, _proveedorNuevo: null },
+    ];
+    const { categorias, proveedores } = extractNewCatalogos(mapped);
+    expect(categorias).toEqual(['iPhone Pro', 'Accesorios']); // primera aparición preserva caps
+    expect(proveedores).toEqual(['Distri A', 'Distri B']);
+  });
+
+  it('lista vacía si no hay catálogos nuevos', () => {
+    const mapped = [
+      { _categoriaNueva: null, _proveedorNuevo: null },
+      { _categoriaNueva: null, _proveedorNuevo: null },
+    ];
+    expect(extractNewCatalogos(mapped)).toEqual({ categorias: [], proveedores: [] });
   });
 });
