@@ -538,4 +538,70 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
     expect(r2.status).toBe(200);
     expect(r2.body.borrados).toBe(0);
   });
+
+  // Guarda post-auditoría TANDA 0: borrar productos disponibles referenciados
+  // por envíos Pendiente/En camino dejaría envíos con referencia rota.
+  it('bloquea con 409 si hay envíos en curso apuntando a productos disponibles', async () => {
+    // Crear producto disponible (fresh, después de los borrados anteriores).
+    const cat = await request(app).post('/api/inventario/categorias').set(auth()).send({ nombre: 'EnviosGuardCat' });
+    const dep = await request(app).post('/api/inventario/depositos').set(auth()).send({ nombre: 'EnviosGuardDep' });
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Telefono Guardado', categoria_id: cat.body.id, deposito_id: dep.body.id,
+      precio_venta: 100, costo: 50, estado: 'disponible',
+    });
+    expect(prod.status).toBe(201);
+
+    // Crear envío Pendiente con producto_id apuntando al disponible.
+    const envio = await request(app).post('/api/envios').set(auth()).send({
+      fecha: '2026-06-03', cliente: 'Cliente Guard', direccion: 'Calle 123', estado: 'Pendiente',
+      total_cobrado: 0, items: [{ tipo: 'producto', descripcion: 'Tel', cantidad: 1, producto_id: prod.body.id }],
+    });
+    expect(envio.status).toBe(201);
+
+    // Intentar vaciar disponibles → 409 con detalle del envío.
+    const del = await request(app).post('/api/inventario/productos/bulk-delete-disponibles').set(auth());
+    expect(del.status).toBe(409);
+    expect(del.body.error).toMatch(/envíos en curso/i);
+    expect(Array.isArray(del.body.envios_bloqueantes)).toBe(true);
+    expect(del.body.envios_bloqueantes.length).toBeGreaterThan(0);
+
+    // El producto NO se borró.
+    const listResp = await request(app).get('/api/inventario/productos?vista=todos_ocultos&limit=200').set(auth());
+    const ids = (listResp.body.data || []).map(p => p.id);
+    expect(ids).toContain(prod.body.id);
+
+    // Cleanup: cancelar el envío + borrar el producto manualmente para no
+    // contaminar otros tests del describe.
+    await request(app).put(`/api/envios/${envio.body.id}`).set(auth()).send({ estado: 'Cancelado' });
+    await request(app).delete(`/api/inventario/productos/${prod.body.id}`).set(auth());
+  });
+
+  // Auditoría TANDA 0: el audit_log se registra correctamente para la operación
+  // bulk. Antes la versión guardaba `ids: [...]` (40KB de JSONB para N grande);
+  // ahora solo `borrados: N` para evitar inflar audit_logs.
+  it('audit_log registra la operación con borrados:N (sin ids array)', async () => {
+    const cat2 = await request(app).post('/api/inventario/categorias').set(auth()).send({ nombre: 'AuditTestCat' });
+    const dep2 = await request(app).post('/api/inventario/depositos').set(auth()).send({ nombre: 'AuditTestDep' });
+    const prodAudit = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Audit Item', categoria_id: cat2.body.id, deposito_id: dep2.body.id,
+      precio_venta: 10, costo: 5, estado: 'disponible',
+    });
+    expect(prodAudit.status).toBe(201);
+
+    const r = await request(app).post('/api/inventario/productos/bulk-delete-disponibles').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.borrados).toBeGreaterThanOrEqual(1);
+
+    // Consultar el audit log (último registro de tabla='productos' acción='DELETE')
+    const { rows } = await pool.query(
+      `SELECT datos_despues FROM audit_logs
+        WHERE tabla='productos' AND accion='DELETE'
+        ORDER BY id DESC LIMIT 1`
+    );
+    expect(rows[0]).toBeTruthy();
+    expect(rows[0].datos_despues.tipo).toBe('bulk_delete_disponibles');
+    expect(rows[0].datos_despues.borrados).toBeGreaterThanOrEqual(1);
+    // No debe contener el array de ids (cambio post-auditoría — antes lo guardaba).
+    expect(rows[0].datos_despues.ids).toBeUndefined();
+  });
 });

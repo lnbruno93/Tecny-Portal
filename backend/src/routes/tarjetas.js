@@ -149,13 +149,19 @@ router.get('/:id/movimientos', async (req, res, next) => {
 // no viene, se usa el comision_pct del método. Esto evita que el cliente
 // pueda manipular el neto sin pasar por el cálculo correcto.
 router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req, res, next) => {
+  // Audit-in-tx (patrón H6): si el INSERT se commitea pero el audit falla, el
+  // movimiento quedaba sin traza. Envolvemos ambos en la misma tx con savepoint
+  // (audit.js lo maneja cuando recibe el client). Mismo patrón que el resto
+  // del archivo (liquidación, PATCH, DELETE) — esta era una regresión.
+  const client = await db.connect();
   try {
     const { metodo_pago_id, fecha, monto_bruto, pct, comentarios } = req.body;
-    const mp = await db.query(
+    await client.query('BEGIN');
+    const mp = await client.query(
       'SELECT moneda, comision_pct FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL',
       [metodo_pago_id]
     );
-    if (!mp.rows[0]) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+    if (!mp.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Tarjeta no encontrada' }); }
 
     // Resolver el % efectivo: prioriza el del request, fallback al del método.
     const pctEfectivo = round2(pct != null ? Number(pct) : Number(mp.rows[0].comision_pct || 0));
@@ -163,7 +169,7 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
     const comision    = round2(bruto * pctEfectivo / 100);
     const neto        = round2(bruto - comision);
 
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO tarjeta_movimientos
         (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto,
          venta_id, caja_id, comentarios, user_id)
@@ -172,11 +178,15 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
       [metodo_pago_id, fecha, mp.rows[0].moneda, bruto, pctEfectivo, comision, neto,
        comentarios ?? null, req.user.id]
     );
-    await audit('tarjeta_movimientos', 'INSERT', rows[0].id, {
+    await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, {
       despues: rows[0], tipo: 'cobro_inicial', user_id: req.user.id,
     });
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 // Liquidación: nos depositan el neto → ingreso a una caja real (origen 'tarjeta').

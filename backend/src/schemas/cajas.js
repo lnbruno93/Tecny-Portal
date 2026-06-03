@@ -1,18 +1,40 @@
 const { z } = require('zod');
+const { TIPOS_CONTACTO, ORIGENES } = require('./contactos');
+
+// Mega-form (PR #78 + post-auditoría TANDA 0): el frontend de Inversión/Deuda
+// permite crear contacto y movimiento en un solo step. Antes hacía 2 requests
+// HTTP separados — si el segundo fallaba, quedaba contacto huérfano. Ahora se
+// puede mandar `contacto_nuevo` en lugar de `contacto_id` y el backend crea
+// ambos en la misma tx. Schema reusado por createDeudaSchema y createInversionSchema.
+const contactoNuevoSchema = z.object({
+  nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
+  apellido: z.string().trim().max(100).optional().nullable(),
+  tipo:     z.enum(TIPOS_CONTACTO).optional(),
+}).strict();
+
+// XOR refinement: o contacto_id o contacto_nuevo, exactamente uno. Si el
+// frontend manda los dos, error claro; si no manda ninguno, también error.
+function refineContactoXor(d) {
+  return (!!d.contacto_id) !== (!!d.contacto_nuevo);
+}
+const xorMessage = { message: 'Enviá contacto_id (existente) o contacto_nuevo (a crear), exactamente uno', path: ['contacto_id'] };
 
 // ─── DEUDAS ─────────────────────────────────────────────────
 
 const createDeudaSchema = z.object({
-  fecha:       z.string().date('Fecha inválida — usar YYYY-MM-DD'),
-  contacto_id: z.number().int().positive('contacto_id inválido'),
-  tipo:        z.enum(['debe','pago'], { error: 'tipo debe ser: debe, pago' }),
-  monto_ars:   z.number().min(0).default(0),
-  monto_usd:   z.number().min(0).default(0),
-  concepto:    z.string().trim().max(500).optional().nullable(),
+  fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD'),
+  // contacto_id Y contacto_nuevo son opcionales individualmente; el refine de
+  // abajo garantiza que se mande exactamente uno.
+  contacto_id:    z.number().int().positive('contacto_id inválido').optional(),
+  contacto_nuevo: contactoNuevoSchema.optional(),
+  tipo:           z.enum(['debe','pago'], { error: 'tipo debe ser: debe, pago' }),
+  monto_ars:      z.number().min(0).default(0),
+  monto_usd:      z.number().min(0).default(0),
+  concepto:       z.string().trim().max(500).optional().nullable(),
 }).strict().refine(d => d.monto_ars > 0 || d.monto_usd > 0, {
   message: 'Al menos monto_ars o monto_usd debe ser mayor a 0',
   path: ['monto_ars'],
-});
+}).refine(refineContactoXor, xorMessage);
 
 const queryDeudasSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),
@@ -26,11 +48,12 @@ const queryDeudasSchema = z.object({
 // ─── INVERSIONES ────────────────────────────────────────────
 
 const createInversionSchema = z.object({
-  fecha:       z.string().date('Fecha inválida — usar YYYY-MM-DD'),
-  contacto_id: z.number().int().positive('contacto_id inválido'),
-  monto:       z.number().positive('Monto debe ser positivo'),
-  tasa:        z.string().trim().max(50).optional().nullable(),
-}).strict();
+  fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD'),
+  contacto_id:    z.number().int().positive('contacto_id inválido').optional(),
+  contacto_nuevo: contactoNuevoSchema.optional(),
+  monto:          z.number().positive('Monto debe ser positivo'),
+  tasa:           z.string().trim().max(50).optional().nullable(),
+}).strict().refine(refineContactoXor, xorMessage);
 
 const queryInversionesSchema = z.object({
   contacto_id: z.coerce.number().int().positive().optional(),

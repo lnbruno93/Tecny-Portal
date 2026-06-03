@@ -475,9 +475,52 @@ router.delete('/productos/:id', async (req, res, next) => {
 //
 // Reversible: como todo en iPro, es soft-delete (deleted_at = NOW()).
 // Para recuperar, hay que correr SQL directo en DB (no hay UI de undelete).
-router.post('/productos/bulk-delete-disponibles', async (req, res, next) => {
+router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, next) => {
+  // Auditoría 2026-06-03: cambios respecto a la versión original:
+  //
+  // 1) Tx + audit-in-tx: antes UPDATE y audit eran queries separadas con el pool
+  //    global — si crasheaba entre ambos, había productos borrados sin traza.
+  //
+  // 2) Guarda contra envíos en curso: si un envío Pendiente/En camino apunta a
+  //    un producto 'disponible' (caso real: envío cargado anticipado, venta sin
+  //    registrar todavía), borrar el producto deja el envío con referencia rota.
+  //    Bloqueamos con 409 + detalle para que el operador resuelva primero.
+  //
+  // 3) Audit lean: antes guardaba `ids: [...]` (puede ser ~40KB de JSONB con
+  //    miles de productos, anti-patrón sobre audit_logs que tiene retención).
+  //    Ahora solo `borrados: N`. La trazabilidad real está en productos.deleted_at:
+  //    `SELECT id FROM productos WHERE deleted_at = '...' AND estado='disponible'`.
+  //
+  // 4) bulkLimiter: endpoint destructivo masivo merece su carril propio. Sin
+  //    esto un script accidental podía pegarlo en loop dentro del 300/15min global.
+  const client = await db.connect();
   try {
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+
+    // Validación: ¿hay envíos en curso apuntando a productos disponibles?
+    // Estados 'Entregado' y 'Cancelado' son terminales — borrar el producto no
+    // afecta esos envíos (la referencia queda como "producto borrado" pero el
+    // envío ya cerró). 'Pendiente'/'En camino' son los que importan.
+    const enUso = await client.query(
+      `SELECT ei.envio_id, e.cliente, e.estado, ei.producto_id, p.nombre AS producto_nombre
+         FROM envio_items ei
+         JOIN envios   e ON e.id = ei.envio_id
+         JOIN productos p ON p.id = ei.producto_id
+        WHERE e.estado IN ('Pendiente', 'En camino')
+          AND p.estado = 'disponible'
+          AND p.deleted_at IS NULL
+          AND ei.producto_id IS NOT NULL
+        LIMIT 10`
+    );
+    if (enUso.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `No se puede vaciar: hay ${enUso.rows.length === 10 ? '10+' : enUso.rows.length} envíos en curso con productos disponibles referenciados. Resolvé esos envíos primero (marcar como Entregado o Cancelar).`,
+        envios_bloqueantes: enUso.rows,
+      });
+    }
+
+    const { rows } = await client.query(
       `UPDATE productos
           SET deleted_at = NOW()
         WHERE deleted_at IS NULL
@@ -485,22 +528,23 @@ router.post('/productos/bulk-delete-disponibles', async (req, res, next) => {
         RETURNING id`
     );
     const borrados = rows.length;
-    // Audit con un solo registro por la operación bulk — el detalle es el count
-    // y la lista de IDs, no auditamos uno por uno (ruido innecesario).
-    // accion='DELETE' porque el CHECK constraint del schema solo acepta
-    // INSERT/UPDATE/DELETE; el detalle del "bulk" va en datos_despues.tipo.
-    // registro_id=0 (no null) porque la columna admite NULL pero el endpoint
-    // se ve más limpio con un sentinel.
     if (borrados > 0) {
-      await audit('productos', 'DELETE', 0, {
+      // registro_id=0 sentinel (la columna admite NULL pero un literal queda
+      // más explícito para queries de búsqueda en audit). accion='DELETE'
+      // requerido por el CHECK constraint; el detalle 'bulk_delete_disponibles'
+      // va en datos_despues.tipo para filtrar después.
+      await audit(client, 'productos', 'DELETE', 0, {
         tipo: 'bulk_delete_disponibles',
         borrados,
-        ids: rows.map(r => r.id),
         user_id: req.user.id,
       });
     }
+    await client.query('COMMIT');
     res.json({ borrados });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {

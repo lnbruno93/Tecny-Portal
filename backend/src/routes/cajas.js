@@ -53,18 +53,40 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
 });
 
 router.post('/deudas', validate(createDeudaSchema), async (req, res, next) => {
+  // Mega-form transaccional (post-auditoría TANDA 0): si viene `contacto_nuevo`,
+  // se crea el contacto + el movimiento en una sola tx. Si falla el INSERT del
+  // movimiento, el contacto se revierte → no quedan contactos huérfanos. Antes
+  // el frontend hacía 2 requests separados y un error en el 2do dejaba data inconsistente.
+  const client = await db.connect();
   try {
-    const { fecha, contacto_id, tipo, monto_ars, monto_usd, concepto } = req.body;
-    const { rows } = await db.query(
+    const { fecha, contacto_id, contacto_nuevo, tipo, monto_ars, monto_usd, concepto } = req.body;
+    await client.query('BEGIN');
+
+    // Resolver contacto: usar el id existente, o crear uno nuevo en la misma tx.
+    let cid = contacto_id;
+    if (contacto_nuevo) {
+      const { rows: c } = await client.query(
+        `INSERT INTO contactos (nombre, apellido, tipo, origen)
+         VALUES ($1, $2, $3, 'manual')
+         RETURNING *`,
+        [contacto_nuevo.nombre, contacto_nuevo.apellido ?? null, contacto_nuevo.tipo ?? 'amigo']
+      );
+      cid = c[0].id;
+      await audit(client, 'contactos', 'INSERT', cid, { despues: c[0], _origen: 'mega_form_deuda', user_id: req.user.id });
+    }
+
+    const { rows } = await client.query(
       `INSERT INTO movimientos_deudas (fecha, contacto_id, tipo, monto_ars, monto_usd, concepto)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [fecha, contacto_id, tipo, monto_ars, monto_usd, concepto ?? null]
+      [fecha, cid, tipo, monto_ars, monto_usd, concepto ?? null]
     );
-    await audit('movimientos_deudas', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    await audit(client, 'movimientos_deudas', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 router.delete('/deudas/:id', async (req, res, next) => {
@@ -121,18 +143,36 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
 });
 
 router.post('/inversiones', validate(createInversionSchema), async (req, res, next) => {
+  // Mega-form transaccional (ver comentario equivalente en POST /deudas).
+  const client = await db.connect();
   try {
-    const { fecha, contacto_id, monto, tasa } = req.body;
-    const { rows } = await db.query(
+    const { fecha, contacto_id, contacto_nuevo, monto, tasa } = req.body;
+    await client.query('BEGIN');
+
+    let cid = contacto_id;
+    if (contacto_nuevo) {
+      const { rows: c } = await client.query(
+        `INSERT INTO contactos (nombre, apellido, tipo, origen)
+         VALUES ($1, $2, $3, 'manual')
+         RETURNING *`,
+        [contacto_nuevo.nombre, contacto_nuevo.apellido ?? null, contacto_nuevo.tipo ?? 'inversor']
+      );
+      cid = c[0].id;
+      await audit(client, 'contactos', 'INSERT', cid, { despues: c[0], _origen: 'mega_form_inversion', user_id: req.user.id });
+    }
+
+    const { rows } = await client.query(
       `INSERT INTO movimientos_inversiones (fecha, contacto_id, monto, tasa)
        VALUES ($1,$2,$3,$4) RETURNING *`,
-      [fecha, contacto_id, monto, tasa ?? null]
+      [fecha, cid, monto, tasa ?? null]
     );
-    await audit('movimientos_inversiones', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    await audit(client, 'movimientos_inversiones', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 router.delete('/inversiones/:id', async (req, res, next) => {
