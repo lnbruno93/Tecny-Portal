@@ -13,7 +13,7 @@ const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
-const { createLiquidacionSchema } = require('../schemas/tarjetas');
+const { createLiquidacionSchema, createCobroInicialSchema } = require('../schemas/tarjetas');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
 const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
@@ -107,6 +107,52 @@ router.get('/:id/movimientos', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Cobro inicial / previo: saldo pendiente de ventas anteriores al sistema.
+//
+// Caso de uso: el operador arranca con el portal y ya tiene cobros pendientes
+// en sus tarjetas de crédito de meses anteriores (ventas que no están
+// registradas como tales en el sistema). En lugar de re-cargar todas esas
+// ventas históricas, carga un "saldo inicial" por tarjeta.
+//
+// Crea un movimiento `tipo='cobro'` con `venta_id=NULL` (marker manual).
+// Suma al saldo pendiente igual que cualquier otro cobro. Liquidaciones
+// futuras lo cancelan sin distinción. El DELETE manual está permitido para
+// estos (a diferencia de los cobros de venta) — ver comentario en DELETE.
+//
+// El neto se calcula server-side: bruto * (1 - pct/100). pct opcional: si
+// no viene, se usa el comision_pct del método. Esto evita que el cliente
+// pueda manipular el neto sin pasar por el cálculo correcto.
+router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req, res, next) => {
+  try {
+    const { metodo_pago_id, fecha, monto_bruto, pct, comentarios } = req.body;
+    const mp = await db.query(
+      'SELECT moneda, comision_pct FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL',
+      [metodo_pago_id]
+    );
+    if (!mp.rows[0]) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+
+    // Resolver el % efectivo: prioriza el del request, fallback al del método.
+    const pctEfectivo = round2(pct != null ? Number(pct) : Number(mp.rows[0].comision_pct || 0));
+    const bruto       = round2(Number(monto_bruto));
+    const comision    = round2(bruto * pctEfectivo / 100);
+    const neto        = round2(bruto - comision);
+
+    const { rows } = await db.query(
+      `INSERT INTO tarjeta_movimientos
+        (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto,
+         venta_id, caja_id, comentarios, user_id)
+       VALUES ($1, $2, 'cobro', $3, $4, $5, $6, $7, NULL, NULL, $8, $9)
+       RETURNING *`,
+      [metodo_pago_id, fecha, mp.rows[0].moneda, bruto, pctEfectivo, comision, neto,
+       comentarios ?? null, req.user.id]
+    );
+    await audit('tarjeta_movimientos', 'INSERT', rows[0].id, {
+      despues: rows[0], tipo: 'cobro_inicial', user_id: req.user.id,
+    });
+    res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
 // Liquidación: nos depositan el neto → ingreso a una caja real (origen 'tarjeta').
 router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res, next) => {
   const client = await db.connect();
@@ -152,8 +198,11 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     await client.query('BEGIN');
     const { rows: before } = await client.query('SELECT tipo, venta_id FROM tarjeta_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
-    // Los cobros se generan/revierten desde Ventas; no se borran a mano (desincronizaría la venta).
-    if (before[0].tipo === 'cobro') {
+    // Los cobros que provienen de una venta NO se borran a mano (desincronizaría
+    // la venta). Pero los cobros iniciales/manuales (venta_id IS NULL — cargados
+    // desde "Registrar cobro previo") SÍ se pueden borrar — son saldos manuales
+    // que el operador agregó y puede revertir si se equivocó.
+    if (before[0].tipo === 'cobro' && before[0].venta_id != null) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Este cobro proviene de una venta. Se ajusta editando o cancelando la venta, no desde acá.' });
     }

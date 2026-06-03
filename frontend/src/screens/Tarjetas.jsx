@@ -31,6 +31,15 @@ export default function Tarjetas() {
   const [liq, setLiq] = useState({ fecha: todayISO(), monto: '', caja_id: '' });
   const [savingLiq, setSavingLiq] = useState(false);
 
+  // Cobro previo (saldos de ventas anteriores al sistema — junio 2026)
+  const EMPTY_COBRO_PREV = {
+    metodo_pago_id: '', fecha: todayISO(), monto_bruto: '', pct: '', comentarios: '',
+  };
+  const [showCobroPrev, setShowCobroPrev] = useState(false);
+  const [cobroPrev, setCobroPrev] = useState(EMPTY_COBRO_PREV);
+  const [savingCobroPrev, setSavingCobroPrev] = useState(false);
+  const [cobroPrevError, setCobroPrevError] = useState('');
+
   function loadList() {
     setLoadingList(true);
     tarjetasApi.list().then(r => setList(r || [])).catch(e => toast.error(e.message)).finally(() => setLoadingList(false));
@@ -83,6 +92,55 @@ export default function Tarjetas() {
     try { await tarjetasApi.deleteMovimiento(id); loadList(); loadDetalle(); } catch (err) { toast.error(err.message); }
   }
 
+  // Cobro previo: carga un saldo pendiente de venta anterior al sistema.
+  // Al elegir la tarjeta, el % comisión se pre-carga del método (editable).
+  function openCobroPrevio() {
+    setCobroPrev(EMPTY_COBRO_PREV);
+    setCobroPrevError('');
+    setShowCobroPrev(true);
+  }
+
+  // Cuando cambia la tarjeta seleccionada, pre-cargar el % comisión del método.
+  function setCobroPrevTarjeta(id) {
+    const t = list.find(x => String(x.id) === String(id));
+    setCobroPrev(f => ({ ...f, metodo_pago_id: id, pct: t ? String(t.comision_pct ?? '') : '' }));
+  }
+
+  // Cálculo client-side del neto para preview en el modal (el server recalcula
+  // al guardar — esto es solo informativo).
+  const cobroPrevCalc = useMemo(() => {
+    const bruto = Number(cobroPrev.monto_bruto) || 0;
+    const pct = Number(cobroPrev.pct) || 0;
+    const comision = Math.round(bruto * pct) / 100;
+    const neto = Math.round((bruto - comision) * 100) / 100;
+    return { bruto, comision, neto };
+  }, [cobroPrev.monto_bruto, cobroPrev.pct]);
+
+  async function handleCobroPrevSave(e) {
+    e?.preventDefault?.();
+    setCobroPrevError('');
+    if (!cobroPrev.metodo_pago_id) { setCobroPrevError('Elegí la tarjeta.'); return; }
+    if (!(Number(cobroPrev.monto_bruto) > 0)) { setCobroPrevError('El bruto debe ser mayor a 0.'); return; }
+    setSavingCobroPrev(true);
+    try {
+      await tarjetasApi.createCobroInicial({
+        metodo_pago_id: Number(cobroPrev.metodo_pago_id),
+        fecha:          cobroPrev.fecha,
+        monto_bruto:    Number(cobroPrev.monto_bruto),
+        pct:            cobroPrev.pct === '' ? undefined : Number(cobroPrev.pct),
+        comentarios:    cobroPrev.comentarios.trim() || null,
+      });
+      setShowCobroPrev(false);
+      loadList();
+      if (selectedId === Number(cobroPrev.metodo_pago_id)) loadDetalle();
+      toast.success('Cobro previo registrado.');
+    } catch (err) {
+      setCobroPrevError(err.message || 'No se pudo registrar el cobro previo.');
+    } finally {
+      setSavingCobroPrev(false);
+    }
+  }
+
   const r = detalle?.resumen || {};
   const mon = detalle?.moneda || 'ARS';
   const sinTarjetas = !loadingList && list.length === 0;
@@ -96,6 +154,12 @@ export default function Tarjetas() {
         </div>
         {!sinTarjetas && (
           <div className="page-actions">
+            {/* Cobro previo: carga saldos pendientes de ventas anteriores al
+                sistema. Útil al arrancar — sin obligar a re-cargar ventas
+                históricas para tener el saldo correcto en cada tarjeta. */}
+            <button className="btn btn-sm" onClick={openCobroPrevio}>
+              <Icons.Plus size={13} /> Cobro previo
+            </button>
             <div className="tabs">
               <button className={'tab' + (vista === 'general' ? ' active' : '')} onClick={() => setVista('general')}>General</button>
               <button className={'tab' + (vista === 'detalle' ? ' active' : '')} onClick={() => setVista('detalle')}>Detalle</button>
@@ -283,6 +347,93 @@ export default function Tarjetas() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Modal: Cobro previo (saldos de ventas anteriores al sistema) ── */}
+      {showCobroPrev && (
+        <div className="modal-overlay" onClick={() => !savingCobroPrev && setShowCobroPrev(false)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Registrar cobro previo</h3>
+              <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowCobroPrev(false)} disabled={savingCobroPrev}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleCobroPrevSave}>
+              <div className="modal-body">
+                <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+                  Para saldos pendientes de ventas anteriores al sistema. NO genera
+                  una venta — solo agrega saldo a cobrar de la financiera. Una
+                  liquidación futura lo cancela igual que cualquier otro cobro.
+                </div>
+                <div className="stack" style={{ gap: 12 }}>
+                  <div className="field">
+                    <label className="field-label">Tarjeta <span style={{ color: 'var(--neg)' }}>*</span></label>
+                    <select className="input" value={cobroPrev.metodo_pago_id}
+                            onChange={e => setCobroPrevTarjeta(e.target.value)} autoFocus>
+                      <option value="">— Seleccionar —</option>
+                      {list.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.nombre} ({t.moneda} · {Number(t.comision_pct).toFixed(1)}% comisión)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Fecha del cobro</label>
+                      <input type="date" className="input" value={cobroPrev.fecha}
+                             onChange={e => setCobroPrev(f => ({ ...f, fecha: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                             className="input mono" placeholder="0"
+                             value={cobroPrev.monto_bruto}
+                             onChange={e => setCobroPrev(f => ({ ...f, monto_bruto: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ width: 100 }}>
+                      <label className="field-label">% comisión</label>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
+                             className="input mono" placeholder="0"
+                             value={cobroPrev.pct}
+                             onChange={e => setCobroPrev(f => ({ ...f, pct: e.target.value }))} />
+                    </div>
+                  </div>
+                  {/* Preview client-side del cálculo (el server recalcula al guardar). */}
+                  {Number(cobroPrev.monto_bruto) > 0 && (
+                    <div style={{
+                      padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6,
+                      fontSize: 13, lineHeight: 1.6,
+                    }}>
+                      <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(cobroPrevCalc.bruto)}</span></div>
+                      <div className="flex-between"><span className="muted">Comisión ({cobroPrev.pct || 0}%):</span><span className="mono" style={{ color: 'var(--neg)' }}>− {fmt(cobroPrevCalc.comision)}</span></div>
+                      <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
+                        <strong>Neto a cobrar:</strong>
+                        <span className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmt(cobroPrevCalc.neto)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="field">
+                    <label className="field-label">Comentarios</label>
+                    <input className="input" placeholder="ej. Ventas de mayo 2026, previas al sistema"
+                           value={cobroPrev.comentarios}
+                           onChange={e => setCobroPrev(f => ({ ...f, comentarios: e.target.value }))} />
+                  </div>
+                  {cobroPrevError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{cobroPrevError}</div>}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCobroPrev(false)} disabled={savingCobroPrev}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={savingCobroPrev}>
+                  {savingCobroPrev ? 'Guardando…' : 'Registrar cobro'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

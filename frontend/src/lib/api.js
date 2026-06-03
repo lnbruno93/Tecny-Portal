@@ -191,6 +191,9 @@ export const tarjetas = {
   get:               (id) => api(`/api/tarjetas/${id}`),
   movimientos:       (id) => api(`/api/tarjetas/${id}/movimientos`),
   createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
+  // Cobro previo: saldos pendientes de ventas anteriores al sistema (sin venta_id).
+  // El backend calcula comisión y neto a partir de bruto + pct (o del % del método si pct omitido).
+  createCobroInicial: (data) => api('/api/tarjetas/cobros-iniciales', 'POST', data),
   deleteMovimiento:  (id) => api(`/api/tarjetas/movimientos/${id}`, 'DELETE'),
 };
 
