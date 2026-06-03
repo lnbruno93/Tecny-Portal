@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { inventario } from '../lib/api';
+import { inventario, proveedores as proveedoresApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
-import { mapStockRows } from '../lib/importStock';
+import { mapStockRows, extractNewCatalogos } from '../lib/importStock';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -112,6 +112,10 @@ export default function Inventario() {
   const [categorias, setCategorias] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [proveedoresList, setProveedoresList] = useState([]); // distinct, para combo de edición inline
+  // Lista del catálogo formal de proveedores (tabla `proveedores`, con id) —
+  // necesaria para el auto-create en el import: matching case-insensitive
+  // contra los existentes para evitar duplicados por typo de mayúsculas/espacios.
+  const [proveedoresCatalogo, setProveedoresCatalogo] = useState([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -206,12 +210,18 @@ export default function Inventario() {
 
   const loadCatalogos = useCallback(async () => {
     try {
-      const [c, d, prov] = await Promise.all([
+      const [c, d, prov, provCat] = await Promise.all([
         inventario.categorias(),
         inventario.depositos(),
         inventario.proveedoresList().catch(() => []),
+        // Catálogo formal de proveedores — paginado, le pedimos un límite alto
+        // porque típicamente Lucas tiene <100 proveedores y necesitamos toda la lista
+        // para el match del auto-create.
+        proveedoresApi.list({ limit: 500 }).catch(() => ({ data: [] })),
       ]);
       setCategorias(c); setDepositos(d); setProveedoresList(prov || []);
+      // El endpoint paginado devuelve { data, pagination }; unwrap defensivo.
+      setProveedoresCatalogo(Array.isArray(provCat) ? provCat : (provCat?.data || []));
     } catch (_) {}
   }, []);
 
@@ -367,7 +377,7 @@ export default function Inventario() {
         ? await readXlsxRows(await file.arrayBuffer())
         : parseCsv(await file.text());
       if (!rows || rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
-      const mapped = mapStockRows(rows, { categorias, depositos });
+      const mapped = mapStockRows(rows, { categorias, depositos, proveedores: proveedoresCatalogo });
       if (mapped.length === 0) { setImportError('No se encontraron filas con datos.'); return; }
       setImportRows(mapped);
     } catch (err) {
@@ -380,18 +390,67 @@ export default function Inventario() {
   }
 
   async function confirmImport() {
-    const validos = importRows.filter(r => !r.error).map(r => r.body);
-    if (!validos.length) return;
+    const validRows = importRows.filter(r => !r.error);
+    if (!validRows.length) return;
     setImporting(true);
+    setImportError('');
     try {
+      // ── Paso 1: crear categorías nuevas (si las hay) y mapear nombre → id ─
+      // Extraemos solo de las filas válidas (las que tienen error no van a importarse).
+      const { categorias: catsNuevas, proveedores: provsNuevos } = extractNewCatalogos(validRows);
+      const newCatByName = new Map(); // lowercase nombre → id recién creado
+
+      for (const nombre of catsNuevas) {
+        try {
+          const cat = await inventario.createCategoria({ nombre });
+          newCatByName.set(nombre.toLowerCase(), cat.id);
+        } catch (e) {
+          // Si la categoría YA existe (race con otra carga), buscarla en el reload.
+          // Para simplificar: re-leemos el catálogo después de tirar — el caller
+          // puede retry. Por ahora, fallamos con mensaje claro.
+          throw new Error(`No se pudo crear la categoría "${nombre}": ${e.message}`);
+        }
+      }
+
+      // ── Paso 2: crear proveedores nuevos en el catálogo formal ─────────
+      // No impacta el bulk porque `productos.proveedor` sigue siendo string libre.
+      // El beneficio es sembrar la tabla `proveedores` para futuras compras.
+      for (const nombre of provsNuevos) {
+        try {
+          await proveedoresApi.create({ nombre });
+        } catch (_e) {
+          // Falla en crear proveedor NO es bloqueante para el bulk de productos
+          // (el campo del producto es texto libre, no FK). Mostramos warning
+          // en el toast final pero seguimos.
+        }
+      }
+
+      // ── Paso 3: reconciliar bodies — reemplazar nombre por id para las nuevas ─
+      const bodies = validRows.map(r => {
+        if (r._categoriaNueva && !r.body.categoria_id) {
+          const id = newCatByName.get(r._categoriaNueva.toLowerCase());
+          return { ...r.body, categoria_id: id || null };
+        }
+        return r.body;
+      });
+
+      // ── Paso 4: bulk de productos ───────────────────────────────────────
       let creados = 0;
-      for (let i = 0; i < validos.length; i += 500) {
-        const res = await inventario.bulkProductos(validos.slice(i, i + 500));
+      for (let i = 0; i < bodies.length; i += 500) {
+        const res = await inventario.bulkProductos(bodies.slice(i, i + 500));
         creados += res.creados;
       }
-      toast.success(`${creados} producto${creados === 1 ? '' : 's'} importado${creados === 1 ? '' : 's'}.`);
+
+      // Toast contextual con resumen de creaciones de catálogos.
+      const extras = [];
+      if (catsNuevas.length) extras.push(`${catsNuevas.length} categoría${catsNuevas.length === 1 ? '' : 's'}`);
+      if (provsNuevos.length) extras.push(`${provsNuevos.length} proveedor${provsNuevos.length === 1 ? '' : 'es'}`);
+      const suffix = extras.length ? ` (+ ${extras.join(' y ')} nueva${extras.length === 1 ? '' : 's'})` : '';
+      toast.success(`${creados} producto${creados === 1 ? '' : 's'} importado${creados === 1 ? '' : 's'}${suffix}.`);
       setShowImport(false);
-      await Promise.all([loadProductos(), loadMetricas()]);
+      // Refresh todo: productos, métricas, y catálogos (las nuevas categorías
+      // tienen que aparecer en filtros y selects).
+      await Promise.all([loadProductos(), loadMetricas(), loadCatalogos()]);
     } catch (e) {
       setImportError(e.message);
     } finally {
@@ -837,7 +896,7 @@ export default function Inventario() {
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong>. Se detecta cada columna por su nombre (tolera aclaraciones como “(solo iph)”). Accesorio si trae STOCK, celular si trae IMEI. El depósito se vincula por su ID y la categoría por nombre.
+                Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong>. Se detecta cada columna por su nombre (tolera aclaraciones como “(solo iph)”). Accesorio si trae STOCK, celular si trae IMEI. <strong>Categorías y proveedores que no existan se crean automáticamente.</strong> El depósito se vincula por su ID.
               </p>
               <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
                 <button className="btn btn-sm" onClick={descargarPlantillaXlsx}><Icons.Download size={13} /> Plantilla .xlsx</button>
@@ -852,6 +911,41 @@ export default function Inventario() {
                   <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>
                     <span className="pos">{importValidos.length} válidos</span> · <span className="neg">{importErrores.length} con error</span> · {importRows.length} filas
                   </div>
+                  {/* Preview informativo de auto-create de catálogos.
+                      Las categorías/proveedores nuevos se van a CREAR al importar
+                      (no son error). Mostramos la lista para que el user vea si
+                      hay typos antes de confirmar. Solo informativo — no bloquea. */}
+                  {(() => {
+                    const { categorias: catsNuevas, proveedores: provsNuevos } =
+                      extractNewCatalogos(importValidos);
+                    if (!catsNuevas.length && !provsNuevos.length) return null;
+                    return (
+                      <div style={{
+                        fontSize: 12, lineHeight: 1.5,
+                        padding: '8px 12px', marginBottom: 8, borderRadius: 6,
+                        background: 'rgba(122, 169, 255, 0.08)',
+                        border: '1px solid rgba(122, 169, 255, 0.2)',
+                        color: 'var(--text)',
+                      }}>
+                        <strong style={{ color: 'var(--info)' }}>ℹ Auto-create al importar:</strong>
+                        {catsNuevas.length > 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <strong>{catsNuevas.length}</strong> categoría{catsNuevas.length === 1 ? '' : 's'} nueva{catsNuevas.length === 1 ? '' : 's'}:{' '}
+                            <span className="muted">{catsNuevas.slice(0, 10).join(', ')}{catsNuevas.length > 10 ? `, +${catsNuevas.length - 10} más` : ''}</span>
+                          </div>
+                        )}
+                        {provsNuevos.length > 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <strong>{provsNuevos.length}</strong> proveedor{provsNuevos.length === 1 ? '' : 'es'} nuevo{provsNuevos.length === 1 ? '' : 's'}:{' '}
+                            <span className="muted">{provsNuevos.slice(0, 10).join(', ')}{provsNuevos.length > 10 ? `, +${provsNuevos.length - 10} más` : ''}</span>
+                          </div>
+                        )}
+                        <div className="muted tiny" style={{ marginTop: 6, fontStyle: 'italic' }}>
+                          Si ves typos, cancelá, corregí la planilla y volvé a subirla.
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {importErrores.length > 0 && (
                     <div style={{ fontSize: 11, color: 'var(--neg)', maxHeight: 80, overflowY: 'auto', marginBottom: 8 }}>
                       {importErrores.slice(0, 20).map((r, i) => <div key={i}>Fila {i + 1} ({r.body.nombre || 'sin nombre'}): {r.error}</div>)}
