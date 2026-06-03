@@ -13,7 +13,7 @@ const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
-const { createLiquidacionSchema, createCobroInicialSchema } = require('../schemas/tarjetas');
+const { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
 const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
@@ -186,6 +186,111 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
+});
+
+// Edita un movimiento existente. Política simétrica al DELETE:
+//   - cobros de venta (venta_id IS NOT NULL) → 400 (se ajusta editando la venta).
+//   - cobros previos (venta_id IS NULL): se reescriben fecha, monto_bruto, pct,
+//     comentarios y se recalculan comisión/neto server-side. No tocan cajas.
+//   - liquidaciones: se reescriben fecha, monto, caja_id, comentarios. Como
+//     impactan en cajas, se revierte el caja_movimiento previo y se postea uno
+//     nuevo, todo dentro de la misma tx. Si la nueva caja difiere en moneda de
+//     la tarjeta, 400. La validación de "no dejar caja en negativo" la aplica
+//     reverseCajaMovimientos (mismo helper que DELETE).
+router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      `SELECT m.*, mp.comision_pct AS metodo_comision_pct, mp.moneda AS metodo_moneda
+         FROM tarjeta_movimientos m
+         JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+        WHERE m.id = $1 AND m.deleted_at IS NULL FOR UPDATE`,
+      [id]
+    );
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    const mov = before[0];
+
+    // Misma regla que DELETE: los cobros de venta no se editan a mano.
+    if (mov.tipo === 'cobro' && mov.venta_id != null) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Este cobro proviene de una venta. Se ajusta editando o cancelando la venta, no desde acá.' });
+    }
+
+    const body = req.body;
+    let updated;
+
+    if (mov.tipo === 'cobro') {
+      // Cobro previo: recalcular comisión/neto a partir del nuevo bruto/pct.
+      const fecha       = body.fecha       ?? mov.fecha;
+      const bruto       = round2(Number(body.monto_bruto ?? mov.monto_bruto));
+      const pctEfectivo = round2(Number(body.pct != null ? body.pct : mov.pct));
+      if (!(bruto > 0))     { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El bruto debe ser mayor a 0.' }); }
+      if (pctEfectivo < 0 || pctEfectivo > 100) { await client.query('ROLLBACK'); return res.status(400).json({ error: '% comisión inválido.' }); }
+      const comision = round2(bruto * pctEfectivo / 100);
+      const neto     = round2(bruto - comision);
+      const comentarios = body.comentarios === undefined ? mov.comentarios : (body.comentarios ?? null);
+      const { rows } = await client.query(
+        `UPDATE tarjeta_movimientos
+            SET fecha = $2, monto_bruto = $3, pct = $4, monto_comision = $5, monto_neto = $6, comentarios = $7
+          WHERE id = $1 AND deleted_at IS NULL
+          RETURNING *`,
+        [id, fecha, bruto, pctEfectivo, comision, neto, comentarios]
+      );
+      updated = rows[0];
+    } else if (mov.tipo === 'liquidacion') {
+      // Liquidación: si cambia fecha/monto/caja_id, hay que actualizar el ledger
+      // de cajas. Estrategia: revert (soft-delete del caja_movimiento existente
+      // con validación de saldo) + repost (con la nueva caja_id/monto/fecha).
+      // Es la misma mecánica que usa el DELETE de venta cuando hay cobros.
+      const fecha   = body.fecha   ?? mov.fecha;
+      const monto   = round2(Number(body.monto ?? mov.monto_neto));
+      const caja_id = body.caja_id != null ? Number(body.caja_id) : Number(mov.caja_id);
+      if (!(monto > 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El monto debe ser mayor a 0.' }); }
+      const caja = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]);
+      if (!caja.rows[0]) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'La caja seleccionada no existe.' }); }
+      const moneda = caja.rows[0].moneda;
+      if (grupoMoneda(moneda) !== grupoMoneda(mov.metodo_moneda)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `La caja (${moneda}) no coincide con la moneda de la tarjeta (${mov.metodo_moneda}).` });
+      }
+      const comentarios = body.comentarios === undefined ? mov.comentarios : (body.comentarios ?? null);
+
+      // 1) Soft-delete del caja_movimiento previo (revierte la caja vieja).
+      // Si esto dejara la caja en negativo, throwea 409 → propagamos al cliente.
+      await reverseCajaMovimientos(client, 'tarjeta_movimientos', id);
+
+      // 2) Update del movimiento de tarjeta con los nuevos valores.
+      const { rows } = await client.query(
+        `UPDATE tarjeta_movimientos
+            SET fecha = $2, monto_bruto = $3, monto_neto = $3, caja_id = $4, moneda = $5, comentarios = $6
+          WHERE id = $1 AND deleted_at IS NULL
+          RETURNING *`,
+        [id, fecha, monto, caja_id, moneda, comentarios]
+      );
+      updated = rows[0];
+
+      // 3) Postear el nuevo caja_movimiento con los nuevos valores.
+      await postCajaMovimiento(client, {
+        caja_id, fecha, tipo: 'ingreso', monto, moneda, tc: null,
+        origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: id,
+        concepto: 'Liquidación tarjeta', user_id: req.user.id,
+      });
+    } else {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Tipo de movimiento no soportado.' });
+    }
+
+    await audit(client, 'tarjeta_movimientos', 'UPDATE', id, { antes: mov, despues: updated, user_id: req.user.id });
+    await client.query('COMMIT');
+    res.json(updated);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.status === 409) return res.status(409).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });

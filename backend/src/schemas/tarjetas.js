@@ -25,4 +25,18 @@ const createCobroInicialSchema = z.object({
   comentarios:    z.string().trim().max(1000).optional().nullable(),
 }).strict();
 
-module.exports = { createLiquidacionSchema, createCobroInicialSchema };
+// Editar un movimiento existente. El handler valida según el tipo:
+//   - cobro previo (venta_id IS NULL): usa fecha, monto_bruto, pct, comentarios
+//   - liquidación: usa fecha, monto, caja_id, comentarios (revierte caja + repone)
+//   - cobro de venta (venta_id != NULL): se rechaza (se ajusta editando la venta)
+// Schema laxo a propósito — el dispatch real está en el route handler.
+const updateMovimientoSchema = z.object({
+  fecha:        fecha.optional(),
+  monto_bruto:  z.coerce.number().positive('El bruto debe ser mayor a 0').optional(),
+  pct:          z.coerce.number().min(0).max(100).optional().nullable(),
+  monto:        z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  caja_id:      z.coerce.number().int().positive('Elegí la caja donde entra').optional(),
+  comentarios:  z.string().trim().max(1000).optional().nullable(),
+}).strict();
+
+module.exports = { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchema };

@@ -194,6 +194,10 @@ export const tarjetas = {
   // Cobro previo: saldos pendientes de ventas anteriores al sistema (sin venta_id).
   // El backend calcula comisión y neto a partir de bruto + pct (o del % del método si pct omitido).
   createCobroInicial: (data) => api('/api/tarjetas/cobros-iniciales', 'POST', data),
+  // Edita un movimiento. Para cobros previos: { fecha?, monto_bruto?, pct?, comentarios? }.
+  // Para liquidaciones: { fecha?, monto?, caja_id?, comentarios? } (el backend revierte
+  // la caja vieja y postea una nueva). Cobros de venta no se editan acá → 400.
+  updateMovimiento:  (id, data) => api(`/api/tarjetas/movimientos/${id}`, 'PATCH', data),
   deleteMovimiento:  (id) => api(`/api/tarjetas/movimientos/${id}`, 'DELETE'),
 };
 

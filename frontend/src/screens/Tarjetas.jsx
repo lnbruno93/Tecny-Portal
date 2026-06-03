@@ -40,6 +40,14 @@ export default function Tarjetas() {
   const [savingCobroPrev, setSavingCobroPrev] = useState(false);
   const [cobroPrevError, setCobroPrevError] = useState('');
 
+  // Editar un movimiento existente. `editMov` guarda el row original; `editForm`
+  // tiene los campos editables según el tipo. Cobros de venta NO entran acá
+  // (botón oculto): se ajustan editando la venta.
+  const [editMov, setEditMov] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
   function loadList() {
     setLoadingList(true);
     tarjetasApi.list().then(r => setList(r || [])).catch(e => toast.error(e.message)).finally(() => setLoadingList(false));
@@ -141,6 +149,80 @@ export default function Tarjetas() {
     }
   }
 
+  // ── Edición de movimientos ──
+  // Cobros de venta (venta_id != null) NO se editan acá. El botón se oculta.
+  const canEdit = (m) => !(m.tipo === 'cobro' && m.venta_id != null);
+
+  function openEdit(m) {
+    setEditError('');
+    // metodo_nombre solo viene en la vista General (all-movs). Para la vista
+    // Detalle, fallback al nombre de la tarjeta seleccionada.
+    setEditMov({ ...m, metodo_nombre: m.metodo_nombre || detalle?.nombre || '' });
+    if (m.tipo === 'cobro') {
+      // Cobro previo (venta_id IS NULL): editar bruto + pct + fecha + comentarios.
+      setEditForm({
+        fecha:       (m.fecha || '').slice(0, 10),
+        monto_bruto: String(m.monto_bruto ?? ''),
+        pct:         String(m.pct ?? ''),
+        comentarios: m.comentarios || '',
+      });
+    } else {
+      // Liquidación: editar monto (neto recibido) + caja + fecha + comentarios.
+      setEditForm({
+        fecha:       (m.fecha || '').slice(0, 10),
+        monto:       String(m.monto_neto ?? ''),
+        caja_id:     String(m.caja_id ?? ''),
+        comentarios: m.comentarios || '',
+      });
+    }
+  }
+
+  // Preview client-side del recálculo en cobros previos (igual que en alta).
+  const editCobroCalc = useMemo(() => {
+    if (!editMov || editMov.tipo !== 'cobro') return { bruto: 0, comision: 0, neto: 0 };
+    const bruto = Number(editForm.monto_bruto) || 0;
+    const pct = Number(editForm.pct) || 0;
+    const comision = Math.round(bruto * pct) / 100;
+    const neto = Math.round((bruto - comision) * 100) / 100;
+    return { bruto, comision, neto };
+  }, [editMov, editForm.monto_bruto, editForm.pct]);
+
+  async function handleEditSave(e) {
+    e?.preventDefault?.();
+    if (!editMov) return;
+    setEditError('');
+    let payload;
+    if (editMov.tipo === 'cobro') {
+      if (!(Number(editForm.monto_bruto) > 0)) { setEditError('El bruto debe ser mayor a 0.'); return; }
+      payload = {
+        fecha:       editForm.fecha,
+        monto_bruto: Number(editForm.monto_bruto),
+        pct:         editForm.pct === '' ? null : Number(editForm.pct),
+        comentarios: (editForm.comentarios || '').trim() || null,
+      };
+    } else {
+      if (!(Number(editForm.monto) > 0)) { setEditError('El monto debe ser mayor a 0.'); return; }
+      if (!editForm.caja_id) { setEditError('Elegí la caja donde entra.'); return; }
+      payload = {
+        fecha:       editForm.fecha,
+        monto:       Number(editForm.monto),
+        caja_id:     Number(editForm.caja_id),
+        comentarios: (editForm.comentarios || '').trim() || null,
+      };
+    }
+    setSavingEdit(true);
+    try {
+      await tarjetasApi.updateMovimiento(editMov.id, payload);
+      setEditMov(null);
+      loadList(); loadDetalle();
+      toast.success('Movimiento actualizado.');
+    } catch (err) {
+      setEditError(err.message || 'No se pudo actualizar.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   const r = detalle?.resumen || {};
   const mon = detalle?.moneda || 'ARS';
   const sinTarjetas = !loadingList && list.length === 0;
@@ -235,11 +317,15 @@ export default function Tarjetas() {
                         alcanza porque la financiera factura sobre el bruto. */}
                     <th style={{ textAlign: 'right' }}>Bruto</th>
                     <th style={{ textAlign: 'right' }}>Neto</th>
-                    <th style={{ textAlign: 'right' }}>Saldo acum.</th><th>Origen</th>
+                    <th style={{ textAlign: 'right' }}>Saldo acum.</th>
+                    <th>Origen</th>
+                    {/* Acciones: editar + eliminar. Solo para cobros previos y liquidaciones —
+                        los cobros de venta (venta_id != null) NO se tocan acá. */}
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {estadoCuenta.length === 0 && <tr><td colSpan={7} className="empty">Sin movimientos todavía.</td></tr>}
+                  {estadoCuenta.length === 0 && <tr><td colSpan={8} className="empty">Sin movimientos todavía.</td></tr>}
                   {estadoCuenta.map(m => (
                     <tr key={m.id}>
                       <td className="mono tiny">{fmtFecha(m.fecha)}</td>
@@ -254,6 +340,18 @@ export default function Tarjetas() {
                       </td>
                       <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>$ {fmt(m.saldo_acum)}</td>
                       <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
+                      <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        {canEdit(m) ? (
+                          <>
+                            <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
+                              <Icons.Edit size={13} />
+                            </button>
+                            <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}>
+                              <Icons.Trash size={13} />
+                            </button>
+                          </>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -347,7 +445,18 @@ export default function Tarjetas() {
                           <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>{Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
                           <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
-                          <td><button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
+                          <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                            {canEdit(m) ? (
+                              <>
+                                <button className="icon-btn" title="Editar" aria-label="Editar movimiento" onClick={() => openEdit(m)}>
+                                  <Icons.Edit size={13} />
+                                </button>
+                                <button className="icon-btn" title="Eliminar" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}>
+                                  <Icons.Trash size={13} />
+                                </button>
+                              </>
+                            ) : null}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -439,6 +548,107 @@ export default function Tarjetas() {
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={savingCobroPrev}>
                   {savingCobroPrev ? 'Guardando…' : 'Registrar cobro'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Editar movimiento (cobro previo o liquidación) ── */}
+      {editMov && (
+        <div className="modal-overlay" onClick={() => !savingEdit && setEditMov(null)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3>Editar {editMov.tipo === 'cobro' ? 'cobro previo' : 'liquidación'}</h3>
+              <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setEditMov(null)} disabled={savingEdit}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleEditSave}>
+              <div className="modal-body">
+                <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+                  Tarjeta: <b>{editMov.metodo_nombre}</b>
+                  {editMov.tipo === 'liquidacion' && (
+                    <> · Si cambiás caja o monto, se revierte el ingreso anterior y se postea el nuevo.</>
+                  )}
+                </div>
+                <div className="stack" style={{ gap: 12 }}>
+                  {editMov.tipo === 'cobro' ? (
+                    <>
+                      <div className="row" style={{ gap: 8 }}>
+                        <div className="field" style={{ flex: 1 }}>
+                          <label className="field-label">Fecha</label>
+                          <input type="date" className="input" value={editForm.fecha || ''}
+                                 onChange={e => setEditForm(f => ({ ...f, fecha: e.target.value }))} />
+                        </div>
+                        <div className="field" style={{ flex: 1 }}>
+                          <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                                 className="input mono" value={editForm.monto_bruto || ''}
+                                 onChange={e => setEditForm(f => ({ ...f, monto_bruto: e.target.value }))} />
+                        </div>
+                        <div className="field" style={{ width: 100 }}>
+                          <label className="field-label">% comisión</label>
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
+                                 className="input mono" value={editForm.pct || ''}
+                                 onChange={e => setEditForm(f => ({ ...f, pct: e.target.value }))} />
+                        </div>
+                      </div>
+                      {Number(editForm.monto_bruto) > 0 && (
+                        <div style={{
+                          padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6,
+                          fontSize: 13, lineHeight: 1.6,
+                        }}>
+                          <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">{fmt(editCobroCalc.bruto)}</span></div>
+                          <div className="flex-between"><span className="muted">Comisión ({editForm.pct || 0}%):</span><span className="mono" style={{ color: 'var(--neg)' }}>− {fmt(editCobroCalc.comision)}</span></div>
+                          <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
+                            <strong>Neto a cobrar:</strong>
+                            <span className="mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmt(editCobroCalc.neto)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="row" style={{ gap: 8 }}>
+                      <div className="field" style={{ width: 150 }}>
+                        <label className="field-label">Fecha</label>
+                        <input type="date" className="input" value={editForm.fecha || ''}
+                               onChange={e => setEditForm(f => ({ ...f, fecha: e.target.value }))} />
+                      </div>
+                      <div className="field" style={{ width: 150 }}>
+                        <label className="field-label">Monto recibido <span style={{ color: 'var(--neg)' }}>*</span></label>
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                               className="input mono" value={editForm.monto || ''}
+                               onChange={e => setEditForm(f => ({ ...f, monto: e.target.value }))} />
+                      </div>
+                      <div className="field" style={{ flex: 1, minWidth: 160 }}>
+                        <label className="field-label">Entra a la caja</label>
+                        <select className="input" value={editForm.caja_id || ''}
+                                onChange={e => setEditForm(f => ({ ...f, caja_id: e.target.value }))}>
+                          <option value="">Elegí la caja…</option>
+                          {cajas.filter(c => !c.es_tarjeta).map(c => (
+                            <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>
+                          ))}
+                          <CajaSelectHint />
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  <div className="field">
+                    <label className="field-label">Comentarios</label>
+                    <input className="input" value={editForm.comentarios || ''}
+                           onChange={e => setEditForm(f => ({ ...f, comentarios: e.target.value }))} />
+                  </div>
+                  {editError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{editError}</div>}
+                </div>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setEditMov(null)} disabled={savingEdit}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={savingEdit}>
+                  {savingEdit ? 'Guardando…' : 'Guardar cambios'}
                 </button>
               </div>
             </form>
