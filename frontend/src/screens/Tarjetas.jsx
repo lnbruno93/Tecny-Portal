@@ -466,7 +466,12 @@ export default function Tarjetas() {
                         <tr key={m.id}>
                           <td className="mono tiny">{fmtFecha(m.fecha)}</td>
                           <td><span className={'badge ' + (m.tipo === 'cobro' ? '' : 'badge-info')}>{m.tipo === 'cobro' ? 'Cobro' : 'Liquidación'}</span></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{sym(m.moneda)} {fmt(m.monto_bruto)}</td>
+                          {/* Bruto: solo tiene sentido en cobros (en liquidaciones bruto=neto y es ruido).
+                              Mismo criterio que la vista General de Estado de cuenta — antes esta
+                              tabla mostraba el monto para liquidaciones también, inconsistente. */}
+                          <td className="mono" style={{ textAlign: 'right' }}>
+                            {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
+                          </td>
                           <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>{Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
                           <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>

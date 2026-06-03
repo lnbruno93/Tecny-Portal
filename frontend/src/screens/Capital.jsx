@@ -98,7 +98,12 @@ export default function Capital() {
       label: c.nombre, tone: 'pos', moneda: c.moneda,
       montos: [[sym(c.moneda), n(c.saldo_actual)]],
     }));
-    const cards = [
+    // Cards con TODAS las monedas que puede contener cada concepto. Después
+    // filtramos las que están en 0 para no mostrar "$ 0" como ruido visual
+    // (típico al arrancar el sistema o cuando un negocio no opera en USD).
+    // Las cajas individuales NO se filtran — si una caja tiene saldo 0 es
+    // útil verla igual (sabés que existe la caja, no es ruido).
+    const cardsRaw = [
       ...cajaCards,
       { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [['$', deudasArs], ['u$s', deudasUsd]] },
       { label: 'Deudas de clientes B2B a cobrar', tone: 'pos', montos: [['u$s', b2bUsd]] },
@@ -108,6 +113,15 @@ export default function Capital() {
       { label: 'Inversiones recibidas',           tone: 'neg', montos: [['u$s', inversionesUsd]] },
       { label: 'Deudas a proveedores a pagar',    tone: 'neg', montos: [['u$s', provUsd]] },
     ];
+    // Filtrar montos con valor < 0.01 (umbral defensivo para evitar mostrar
+    // ruido de redondeo como "$ 0"). Si después de filtrar la card queda sin
+    // montos visibles Y no es una caja física (que siempre se muestra),
+    // ocultar la card entera.
+    const cards = cardsRaw.flatMap(c => {
+      if (c.moneda) return [c]; // caja física — no filtrar
+      const montos = c.montos.filter(([, v]) => Math.abs(Number(v) || 0) >= 0.01);
+      return montos.length > 0 ? [{ ...c, montos }] : [];
+    });
     const totalArs  = cajasArs  + invArs + deudasArs + tarjArs;
     const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd + tarjUsd + cambUsd - provUsd - inversionesUsd;
     const totalUsdt = cajasUsdt;
