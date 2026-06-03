@@ -459,6 +459,50 @@ router.delete('/productos/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /productos/bulk-delete-disponibles
+//
+// Soft-delete masivo de todos los productos en estado 'disponible'. Útil cuando
+// el operador quiere vaciar el stock libre (ej. después de un import fallido o
+// reset operativo) sin perder histórico de vendidos / equipos en service /
+// reservados.
+//
+// Mantiene intencionalmente:
+//   · 'vendido'    — atado a ventas históricas, no se puede borrar sin romper
+//                    referencias en venta_items.producto_id
+//   · 'en_tecnico' — físicamente en stock pero en service (el operador lo
+//                    necesita para devolver el equipo cuando vuelve)
+//   · 'reservado'  — apartado para un cliente, no se borra a la ligera
+//
+// Reversible: como todo en iPro, es soft-delete (deleted_at = NOW()).
+// Para recuperar, hay que correr SQL directo en DB (no hay UI de undelete).
+router.post('/productos/bulk-delete-disponibles', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `UPDATE productos
+          SET deleted_at = NOW()
+        WHERE deleted_at IS NULL
+          AND estado = 'disponible'
+        RETURNING id`
+    );
+    const borrados = rows.length;
+    // Audit con un solo registro por la operación bulk — el detalle es el count
+    // y la lista de IDs, no auditamos uno por uno (ruido innecesario).
+    // accion='DELETE' porque el CHECK constraint del schema solo acepta
+    // INSERT/UPDATE/DELETE; el detalle del "bulk" va en datos_despues.tipo.
+    // registro_id=0 (no null) porque la columna admite NULL pero el endpoint
+    // se ve más limpio con un sentinel.
+    if (borrados > 0) {
+      await audit('productos', 'DELETE', 0, {
+        tipo: 'bulk_delete_disponibles',
+        borrados,
+        ids: rows.map(r => r.id),
+        user_id: req.user.id,
+      });
+    }
+    res.json({ borrados });
+  } catch (err) { next(err); }
+});
+
 router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {
   const productos = req.body.productos;
 

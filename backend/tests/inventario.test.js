@@ -478,3 +478,64 @@ describe('Filtros: vista (oculto/estado) y condicion', () => {
     expect(ids).not.toContain(oculto);
   });
 });
+
+// ─── POST /productos/bulk-delete-disponibles ─────────────────────────────────
+// Soft-delete masivo de productos en estado 'disponible'. Mantiene vendidos,
+// en_tecnico y reservados. Útil para resetear el stock libre sin perder
+// histórico de ventas.
+describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
+  let catBulk;
+  beforeAll(async () => {
+    const r = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Bulk Delete Test ' + Math.random() });
+    catBulk = r.body.id;
+  });
+
+  it('borra solo los disponibles, mantiene vendidos / en_tecnico / reservados', async () => {
+    // Crear productos en diferentes estados
+    const mkProducto = async (estado, suffix) => {
+      const r = await request(app).post('/api/inventario/productos').set(auth()).send({
+        nombre: 'iPhone Bulk Del ' + suffix,
+        clase: 'celular', tipo_carga: 'unitario', categoria_id: catBulk,
+        imei: '550' + Date.now().toString().slice(-11) + suffix,
+        costo: 100, precio_venta: 200, cantidad: 1, estado,
+      });
+      return r.body.id;
+    };
+    const idDisponible1 = await mkProducto('disponible', '1');
+    const idDisponible2 = await mkProducto('disponible', '2');
+    const idVendido    = await mkProducto('vendido', '3');
+    const idTecnico    = await mkProducto('en_tecnico', '4');
+    const idReservado  = await mkProducto('reservado', '5');
+
+    // Llamar el endpoint
+    const res = await request(app)
+      .post('/api/inventario/productos/bulk-delete-disponibles')
+      .set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.borrados).toBeGreaterThanOrEqual(2);
+
+    // Verificar: los disponibles ya NO aparecen en la lista activa.
+    // Buscamos por imei para acotar — limit 200 (max permitido), filtramos por
+    // los IDs específicos que sí esperamos ver.
+    const listResp = await request(app)
+      .get('/api/inventario/productos?vista=todos_ocultos&limit=200')
+      .set(auth());
+    expect(listResp.status).toBe(200);
+    const ids = (listResp.body.data || []).map(p => p.id);
+    expect(ids).not.toContain(idDisponible1);
+    expect(ids).not.toContain(idDisponible2);
+    // Los demás siguen
+    expect(ids).toContain(idVendido);
+    expect(ids).toContain(idTecnico);
+    expect(ids).toContain(idReservado);
+  });
+
+  it('idempotente: 2 calls seguidos no rompen (segundo borra 0)', async () => {
+    const r1 = await request(app).post('/api/inventario/productos/bulk-delete-disponibles').set(auth());
+    expect(r1.status).toBe(200);
+    const r2 = await request(app).post('/api/inventario/productos/bulk-delete-disponibles').set(auth());
+    expect(r2.status).toBe(200);
+    expect(r2.body.borrados).toBe(0);
+  });
+});

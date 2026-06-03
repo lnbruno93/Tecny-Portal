@@ -272,6 +272,9 @@ export const inventario = {
   updateProducto:  (id, data) => api(`/api/inventario/productos/${id}`, 'PUT', data),
   deleteProducto:  (id) => api(`/api/inventario/productos/${id}`, 'DELETE'),
   bulkProductos:   (productos) => api('/api/inventario/productos/bulk', 'POST', { productos }),
+  // Bulk soft-delete de productos en estado 'disponible'. Mantiene vendidos,
+  // en_tecnico y reservados. Devuelve { borrados: N }.
+  bulkDeleteDisponibles: () => api('/api/inventario/productos/bulk-delete-disponibles', 'POST'),
   categorias:      () => api('/api/inventario/categorias'),
   createCategoria: (data) => api('/api/inventario/categorias', 'POST', data),
   deleteCategoria: (id) => api(`/api/inventario/categorias/${id}`, 'DELETE'),

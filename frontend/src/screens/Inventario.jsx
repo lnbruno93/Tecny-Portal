@@ -458,6 +458,31 @@ export default function Inventario() {
     }
   }
 
+  // ── Bulk delete de stock disponible ────────────────────────────────────────
+  // Útil para resetear el inventario libre sin perder los vendidos. Acción
+  // destructiva — confirma con un modal explícito. Mantiene:
+  //   · 'vendido'    (atado a ventas históricas)
+  //   · 'en_tecnico' (físicamente en stock, en service)
+  //   · 'reservado'  (apartado para un cliente)
+  async function handleVaciarStock() {
+    const ok = await confirm({
+      title: 'Vaciar stock disponible',
+      message: 'Se van a eliminar TODOS los productos en estado "disponible". ' +
+               'Los vendidos, en técnico y reservados se mantienen. ' +
+               'Es reversible vía soporte (soft-delete) pero no hay UI para deshacer. ¿Continuar?',
+      confirmLabel: 'Sí, vaciar stock',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await inventario.bulkDeleteDisponibles();
+      toast.success(`${res.borrados} producto${res.borrados === 1 ? '' : 's'} eliminado${res.borrados === 1 ? '' : 's'}.`);
+      await Promise.all([loadProductos(), loadMetricas()]);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo vaciar el stock.');
+    }
+  }
+
   // ── Catálogos (categorías / depósitos) ──
   async function addCategoria() {
     setCatError('');
@@ -514,6 +539,12 @@ export default function Inventario() {
           <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
           <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
           <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
+          {/* Acción destructiva — separada visualmente con color rojo del ícono y
+              texto en variante ghost. El ConfirmModal con danger:true protege
+              contra clicks accidentales. */}
+          <button className="btn btn-ghost" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
+            <Icons.Trash size={14} /> Vaciar stock
+          </button>
           <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
         </div>
       </div>
