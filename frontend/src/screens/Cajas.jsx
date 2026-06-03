@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cajas, contactos as contactosApi } from '../lib/api';
@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import useModal from '../lib/useModal';
 
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -125,6 +126,18 @@ export default function Cajas() {
   const [cajaMovs, setCajaMovs] = useState([]);
   const [ajusteForm, setAjusteForm] = useState({ fecha: todayISO(), tipo: 'ingreso', monto: '', tc: '', concepto: '' });
   const [ajusteSaving, setAjusteSaving] = useState(false);
+
+  // Refs para useModal (TANDA 1 post-auditoría 2026-06-03): los 4 modales
+  // de esta pantalla se hacían sin Esc handler, focus-trap ni scroll-lock.
+  // El hook se encarga de los 3 patterns + foco al primer input.
+  const ledgerModalRef    = useRef(null);
+  const contactoModalRef  = useRef(null);
+  const deudaModalRef     = useRef(null);
+  const invModalRef       = useRef(null);
+  useModal({ open: !!cajaSel,    onClose: () => !ajusteSaving && setCajaSel(null),    overlayRef: ledgerModalRef });
+  useModal({ open: showContacto, onClose: () => !cCreating && setShowContacto(false), overlayRef: contactoModalRef });
+  useModal({ open: showDeuda,    onClose: () => !deudaCreating && setShowDeuda(false), overlayRef: deudaModalRef });
+  useModal({ open: showInv,      onClose: () => !invCreating && setShowInv(false),     overlayRef: invModalRef });
 
   // (El ledger global / historial de movimientos vive ahora en la pantalla "360 & Capital".)
 
@@ -826,11 +839,12 @@ export default function Cajas() {
 
       {/* ── Modal: Ledger de caja (movimientos + ajuste) ─────────────── */}
       {cajaSel && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setCajaSel(null)}>
-          <div className="modal" style={{ maxWidth: 640 }}>
+        <div ref={ledgerModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ledger-modal-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !ajusteSaving) setCajaSel(null); }}>
+          <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>{cajaSel.nombre} <span className="ccy">{cajaSel.moneda}</span></h3>
-              <button className="icon-btn" onClick={() => setCajaSel(null)}><Icons.X size={16} /></button>
+              <h3 id="ledger-modal-title">{cajaSel.nombre} <span className="ccy">{cajaSel.moneda}</span></h3>
+              <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setCajaSel(null)}><Icons.X size={16} /></button>
             </div>
             <div className="modal-body">
               {/* Ajuste manual */}
@@ -890,12 +904,13 @@ export default function Cajas() {
           Los modales de Inversión y Deuda ya tienen el toggle Existente/
           Nuevo embebido (mega-form) y no necesitan este modal. */}
       {showContacto && (
-        <div className="modal-overlay" onClick={() => setShowContacto(false)}>
+        <div ref={contactoModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="contacto-modal-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !cCreating) setShowContacto(false); }}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Nuevo contacto</h3>
+              <h3 id="contacto-modal-title">Nuevo contacto</h3>
               <button className="icon-btn" aria-label="Cerrar modal"
-                      onClick={() => setShowContacto(false)}>
+                      onClick={() => setShowContacto(false)} disabled={cCreating}>
                 <Icons.X size={16} />
               </button>
             </div>
@@ -943,11 +958,12 @@ export default function Cajas() {
 
       {/* ── Modal: Nuevo movimiento de deuda ────────────────────────── */}
       {showDeuda && (
-        <div className="modal-overlay" onClick={() => setShowDeuda(false)}>
+        <div ref={deudaModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="deuda-modal-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !deudaCreating) setShowDeuda(false); }}>
           <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Nuevo movimiento de deuda</h3>
-              <button className="icon-btn" onClick={() => setShowDeuda(false)}>
+              <h3 id="deuda-modal-title">Nuevo movimiento de deuda</h3>
+              <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowDeuda(false)} disabled={deudaCreating}>
                 <Icons.X size={16} />
               </button>
             </div>
@@ -1069,11 +1085,12 @@ export default function Cajas() {
 
       {/* ── Modal: Nueva inversión ───────────────────────────────────── */}
       {showInv && (
-        <div className="modal-overlay" onClick={() => setShowInv(false)}>
+        <div ref={invModalRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="inv-modal-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !invCreating) setShowInv(false); }}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Nueva inversión</h3>
-              <button className="icon-btn" onClick={() => setShowInv(false)}>
+              <h3 id="inv-modal-title">Nueva inversión</h3>
+              <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowInv(false)} disabled={invCreating}>
                 <Icons.X size={16} />
               </button>
             </div>
