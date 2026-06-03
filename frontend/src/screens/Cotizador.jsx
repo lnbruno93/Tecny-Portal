@@ -24,8 +24,12 @@ const COEFS = {
 
 function TabTarjetas() {
   const [tc, setTc]         = useState(1400);
+  // Nombre por defecto como hint (el placeholder del input igual lo muestra),
+  // pero precio en 0 para que el operador NO lo confunda con un valor real.
+  // Antes el default era 1185 y se prestaba a errores cuando se olvidaban de
+  // pisarlo (se cotizaba con un precio inventado).
   const [prods, setProds]   = useState([
-    { id: 1, nom: 'iPhone 16 Pro 256GB Natural Titanium', vari: '', usd: 1185 },
+    { id: 1, nom: 'iPhone 16 Pro 256GB Natural Titanium', vari: '', usd: 0 },
   ]);
   const [copiado, setCopiado] = useState(false);
 
