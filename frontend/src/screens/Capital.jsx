@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { cajas, inventario, cuentas, proveedores } from '../lib/api';
+import { cajas, inventario, cuentas, proveedores, tarjetas, cambios } from '../lib/api';
 import { fmt, fmtFecha } from '../lib/format';
 
 // Origen de cada movimiento del ledger (incluye los módulos financieros nuevos).
@@ -25,19 +25,26 @@ export default function Capital() {
   const [resumen, setResumen] = useState({ deudas: [], inversiones: [] }); // deudas a cobrar + inversiones
   const [ccGeneral, setCcGeneral] = useState({});      // cuenta corriente B2B (USD)
   const [provSaldos, setProvSaldos] = useState({});    // lo que le debemos a proveedores (USD)
+  const [tarjSaldos, setTarjSaldos] = useState({});    // saldos pendientes en tarjetas (ARS + USD)
+  const [cambSaldos, setCambSaldos] = useState({});    // saldos pendientes en cambios de divisa (USD)
   const [filtros, setFiltros] = useState(EMPTY_FILTROS);
   const [ledger, setLedger] = useState({ data: [], pagination: { pages: 1, page: 1, total: 0 }, totales: { ingresos_usd: 0, egresos_usd: 0, neto_usd: 0, count: 0 } });
   const [loading, setLoading] = useState(false);
   const setLF = (field, val) => setFiltros(f => ({ ...f, [field]: val, page: field === 'page' ? val : 1 }));
 
   // Fuentes del patrimonio total: cajas (efectivo), inventario (a costo),
-  // cajas/resumen (deudas a cobrar + inversiones) y cuentas B2B (neto a cobrar)
+  // cajas/resumen (deudas a cobrar + inversiones), cuentas B2B (neto a cobrar),
+  // tarjetas (saldos pendientes de liquidar) y cambios (USD que las financieras
+  // todavía nos deben). Cada llamada es independiente — si una falla, el resto
+  // sigue cargando.
   useEffect(() => {
     cajas.listCajas().then(r => setCajasList(Array.isArray(r) ? r : [])).catch(() => {});
     inventario.metricas().then(r => setMetricas(r || {})).catch(() => {});
     cajas.resumen().then(r => setResumen({ deudas: r?.deudas || [], inversiones: r?.inversiones || [] })).catch(() => {});
     cuentas.resumenGeneral().then(r => setCcGeneral(r || {})).catch(() => {});
     proveedores.saldos().then(r => setProvSaldos(r || {})).catch(() => {});
+    tarjetas.saldosResumen().then(r => setTarjSaldos(r || {})).catch(() => {});
+    cambios.saldosResumen().then(r => setCambSaldos(r || {})).catch(() => {});
   }, []);
   // El ledger se carga solo cuando estás en la pestaña Movimientos (serán muchas
   // operaciones diarias; no tiene sentido traerlas mientras mirás el Capital).
@@ -65,6 +72,14 @@ export default function Capital() {
     const inversionesUsd = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
     // Lo que le debemos a proveedores (USD) → resta.
     const provUsd = n(provSaldos.total_deuda_usd);
+    // Saldos pendientes en tarjetas (financiera nos debe depositar) → suma.
+    // Conceptualmente equivale a "Deudas de clientes a cobrar" — plata que
+    // existe, todavía no la recibimos. La moneda depende del método (las TC
+    // ARS suman a ARS; si hubiera tarjeta USD, sumaría a USD).
+    const tarjArs = n(tarjSaldos.saldo_ars);
+    const tarjUsd = n(tarjSaldos.saldo_usd);
+    // Saldos pendientes en cambios de divisa (financiera nos debe USD) → suma.
+    const cambUsd = n(cambSaldos.saldo_usd);
     // Cards de composición (lo que suma en verde, lo que resta en rojo).
     // Cada caja entra como su propia fila en "Suman".
     const cajaCards = cajasList.map(c => ({
@@ -75,15 +90,17 @@ export default function Capital() {
       ...cajaCards,
       { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [['$', deudasArs], ['u$s', deudasUsd]] },
       { label: 'Deudas de clientes B2B a cobrar', tone: 'pos', montos: [['u$s', b2bUsd]] },
+      { label: 'Tarjetas a cobrar',               tone: 'pos', montos: [['$', tarjArs], ['u$s', tarjUsd]] },
+      { label: 'Cambios de divisa a cobrar',      tone: 'pos', montos: [['u$s', cambUsd]] },
       { label: 'Stock valorizado',                tone: 'pos', montos: [['$', invArs], ['u$s', invUsd]] },
       { label: 'Inversiones recibidas',           tone: 'neg', montos: [['u$s', inversionesUsd]] },
       { label: 'Deudas a proveedores a pagar',    tone: 'neg', montos: [['u$s', provUsd]] },
     ];
-    const totalArs  = cajasArs  + invArs + deudasArs;
-    const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd - provUsd - inversionesUsd;
+    const totalArs  = cajasArs  + invArs + deudasArs + tarjArs;
+    const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd + tarjUsd + cambUsd - provUsd - inversionesUsd;
     const totalUsdt = cajasUsdt;
     return { cards, totalArs, totalUsd, totalUsdt };
-  }, [cajasList, metricas, resumen, ccGeneral, provSaldos]);
+  }, [cajasList, metricas, resumen, ccGeneral, provSaldos, tarjSaldos, cambSaldos]);
 
   return (
     <div>

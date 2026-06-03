@@ -175,6 +175,8 @@ export const egresos = {
 
 export const cambios = {
   entidades:       () => api('/api/cambios/entidades'),
+  // Saldo agregado en USD — consumido por 360 & Capital ({ saldo_usd }).
+  saldosResumen:   () => api('/api/cambios/saldos-resumen'),
   entidad:         (id) => api(`/api/cambios/entidades/${id}`),
   createEntidad:   (data) => api('/api/cambios/entidades', 'POST', data),
   updateEntidad:   (id, data) => api(`/api/cambios/entidades/${id}`, 'PUT', data),
@@ -187,6 +189,8 @@ export const cambios = {
 export const tarjetas = {
   // Las "tarjetas" son métodos de pago marcados como tal en Cajas (solo lectura acá).
   list:              () => api('/api/tarjetas'),
+  // Saldo agregado por moneda — consumido por 360 & Capital ({ saldo_ars, saldo_usd }).
+  saldosResumen:     () => api('/api/tarjetas/saldos-resumen'),
   movimientosAll:    () => api('/api/tarjetas/movimientos'),
   get:               (id) => api(`/api/tarjetas/${id}`),
   movimientos:       (id) => api(`/api/tarjetas/${id}/movimientos`),

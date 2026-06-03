@@ -35,6 +35,14 @@ vi.mock('../lib/api', () => ({
   proveedores: {
     saldos: vi.fn().mockResolvedValue({ proveedores: [{ id: 1, nombre: 'Prov A', saldo_usd: '700' }], total_deuda_usd: 700 }),
   },
+  // Saldos pendientes en tarjetas (lo que la financiera nos debe depositar) — suma al patrimonio.
+  tarjetas: {
+    saldosResumen: vi.fn().mockResolvedValue({ saldo_ars: 19850000, saldo_usd: 0 }),
+  },
+  // Saldos pendientes en cambios de divisa (USD que las financieras nos deben) — suma al patrimonio.
+  cambios: {
+    saldosResumen: vi.fn().mockResolvedValue({ saldo_usd: 400 }),
+  },
 }));
 
 import Capital from './Capital';
@@ -54,6 +62,9 @@ describe('Pantalla 360 & Capital', () => {
     expect(screen.getByText('Deudas de clientes B2B a cobrar')).toBeInTheDocument();
     expect(screen.getByText('Stock valorizado')).toBeInTheDocument();
     expect(screen.getByText('Deudas a proveedores a pagar')).toBeInTheDocument();
+    // Saldos pendientes en tarjetas y cambios — deben aparecer como líneas que SUMAN al patrimonio.
+    expect(screen.getByText('Tarjetas a cobrar')).toBeInTheDocument();
+    expect(screen.getByText('Cambios de divisa a cobrar')).toBeInTheDocument();
     // cada caja entra como fila en "Suman" dentro de la composición
     expect(screen.getByText('Caja Cripto')).toBeInTheDocument();
     expect(screen.getByText('Caja Pesos')).toBeInTheDocument();
