@@ -230,16 +230,25 @@ export default function Tarjetas() {
                 <thead>
                   <tr>
                     <th>Fecha</th><th>Tarjeta</th><th>Tipo</th>
-                    <th style={{ textAlign: 'right' }}>Neto</th><th style={{ textAlign: 'right' }}>Saldo acum.</th><th>Origen</th>
+                    {/* Bruto: para que el operador pueda chequear cupón por cupón
+                        contra el resumen físico de la financiera. El neto solo no
+                        alcanza porque la financiera factura sobre el bruto. */}
+                    <th style={{ textAlign: 'right' }}>Bruto</th>
+                    <th style={{ textAlign: 'right' }}>Neto</th>
+                    <th style={{ textAlign: 'right' }}>Saldo acum.</th><th>Origen</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {estadoCuenta.length === 0 && <tr><td colSpan={6} className="empty">Sin movimientos todavía.</td></tr>}
+                  {estadoCuenta.length === 0 && <tr><td colSpan={7} className="empty">Sin movimientos todavía.</td></tr>}
                   {estadoCuenta.map(m => (
                     <tr key={m.id}>
                       <td className="mono tiny">{fmtFecha(m.fecha)}</td>
                       <td className="tiny">{m.metodo_nombre}</td>
                       <td><span className={'badge ' + (m.tipo === 'cobro' ? '' : 'badge-info')}>{m.tipo === 'cobro' ? 'Cobro' : 'Liquidación'}</span></td>
+                      {/* Bruto: solo tiene sentido en cobros (en liquidaciones bruto=neto y se entiende como neto recibido). */}
+                      <td className="mono tiny" style={{ textAlign: 'right' }}>
+                        {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
+                      </td>
                       <td className="mono" style={{ textAlign: 'right', color: m.tipo === 'cobro' ? 'var(--accent)' : 'var(--neg)' }}>
                         {m.tipo === 'cobro' ? '+' : '−'} {sym(m.moneda)} {fmt(m.monto_neto)}
                       </td>
