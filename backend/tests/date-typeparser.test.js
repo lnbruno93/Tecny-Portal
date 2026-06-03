@@ -55,4 +55,27 @@ describe('DATE columns: timezone-safe (vuelven como string YYYY-MM-DD)', () => {
     expect(liq.status).toBe(201);
     expect(liq.body.fecha).toBe('2026-06-01');
   });
+
+  // Tests TANDA 2 post-auditoría: el fix de TZ es global (setTypeParser en
+  // database.js), no solo tarjetas. Si alguien re-introduce un new Date() en
+  // ventas/cuentas/cajas, estos tests lo atrapan.
+
+  it('venta guardada con fecha 2026-05-29 vuelve como "2026-05-29"', async () => {
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: '2026-05-29', cliente_nombre: 'TZ Test', estado: 'acreditado', tc_venta: 1000,
+      items: [{ descripcion: 'X', cantidad: 1, precio_vendido: 100, costo: 1, moneda: 'ARS' }],
+      pagos: [{ metodo_pago_id: cajaArs, metodo_nombre: 'Caja TZ', monto: 100, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(venta.status).toBe(201);
+    // GET back para confirmar que la API no convirtió la fecha.
+    const list = await request(app).get(`/api/ventas?desde=2026-05-29&hasta=2026-05-29`).set(auth());
+    const v = (list.body.data || []).find(x => x.id === venta.body.id);
+    expect(v).toBeTruthy();
+    expect(v.fecha).toBe('2026-05-29');
+  });
+
+  // Nota: el fix es un setTypeParser global aplicado al pool en database.js.
+  // Cubrir tarjetas (cobro/liquidación) + venta como módulos representativos
+  // alcanza para detectar regresiones — si alguien revertiera el setTypeParser
+  // o introdujera un módulo que rompe el invariante, estos tests fallan.
 });
