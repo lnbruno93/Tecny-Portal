@@ -62,7 +62,11 @@ router.get('/saldos-resumen', async (_req, res, next) => {
          ELSE 0 END), 0) AS saldo_usd
        FROM tarjeta_movimientos m
        JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
-       WHERE m.deleted_at IS NULL AND mp.deleted_at IS NULL`
+       -- mp.es_tarjeta=true es defense-in-depth: hoy no debería haber
+       -- tarjeta_movimientos con métodos no-tarjeta, pero si alguien futuro
+       -- introduce un bug que inserta uno (ej. seed mal escrito), Capital
+       -- mentiría sumando "saldos" de cuentas que no son tarjetas.
+       WHERE m.deleted_at IS NULL AND mp.deleted_at IS NULL AND mp.es_tarjeta = true`
     );
     // Devolvemos números (no strings de pg) — el front suma directo sin Number().
     res.json({
