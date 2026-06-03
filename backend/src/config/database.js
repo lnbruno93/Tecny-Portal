@@ -1,5 +1,15 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const logger   = require('../lib/logger');
+
+// PostgreSQL `DATE` (OID 1082) no tiene zona horaria — es una fecha calendario
+// pura. Por default node-pg lo parsea como `Date` JS en la zona del servidor
+// (Railway corre en UTC), y luego `JSON.stringify` lo emite como UTC ISO
+// ("2026-05-29T00:00:00.000Z"). En el browser (Argentina, UTC-3) eso se
+// interpreta como 2026-05-28 21:00 → la fecha se muestra UN DÍA ANTES de la
+// que el usuario tipeó. Lo arreglamos devolviendo el string crudo "YYYY-MM-DD"
+// que es exactamente lo que la columna guarda. TIMESTAMP/TIMESTAMPTZ no se
+// tocan (esos sí necesitan conversión de zona).
+types.setTypeParser(types.builtins.DATE, (val) => val);
 
 const pool = new Pool({
   connectionString:        process.env.DATABASE_URL,
