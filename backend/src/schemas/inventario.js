@@ -5,6 +5,12 @@ const nombreSchema = z.object({
   nombre: z.string().trim().min(1, 'Nombre requerido').max(120),
 });
 
+// Resolve-or-create bulk de catálogos (categorías, depósitos) — usado por el
+// import de stock para no hacer N round-trips HTTP. El backend dedup + ON CONFLICT.
+const nombresBulkSchema = z.object({
+  nombres: z.array(z.string().trim().min(1).max(120)).max(500, 'Máximo 500 nombres por lote'),
+}).strict();
+
 // --- Productos ---
 const baseProducto = z.object({
   tipo_carga:     z.enum(['unitario', 'lote']).default('unitario'),
@@ -139,6 +145,7 @@ const queryDesgloseSchema = z.object({
 
 module.exports = {
   nombreSchema,
+  nombresBulkSchema,
   baseProducto,                // se reutiliza desde proveedores (compra crea stock)
   createProductoSchema,
   updateProductoSchema,

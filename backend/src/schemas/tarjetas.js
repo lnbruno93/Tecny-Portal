@@ -1,6 +1,11 @@
 const { z } = require('zod');
+const { fechaNoFutura } = require('./_common');
 
-const fecha = z.string().date('Fecha inválida (YYYY-MM-DD)').refine(d => d >= '2000-01-01', 'Fecha anterior al año 2000');
+// Usamos `fechaNoFutura` del módulo compartido — antes el local `fecha` permitía
+// fechas futuras (solo validaba >= 2000-01-01), incluyendo año 2099. Para
+// liquidaciones/cobros/edits eso no tiene sentido: la fecha es siempre del
+// pasado o presente (no se "agendan" cobros futuros desde acá).
+const fecha = fechaNoFutura;
 
 // Liquidación: el procesador deposita lo que nos debe → ingreso a una caja real.
 // Resta del saldo pendiente del método de pago tarjeta.
@@ -37,6 +42,12 @@ const updateMovimientoSchema = z.object({
   monto:        z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
   caja_id:      z.coerce.number().int().positive('Elegí la caja donde entra').optional(),
   comentarios:  z.string().trim().max(1000).optional().nullable(),
-}).strict();
+}).strict().refine(
+  // TANDA 3 post-auditoría: rechazar PATCH con body vacío {}. Antes hacía 200
+  // con un UPDATE no-op + un audit ruidoso. Patrón consistente con el resto
+  // del repo (schemas/cajas.js updateCajaSchema, schemas/contactos.js, etc.).
+  (d) => Object.keys(d).some(k => d[k] !== undefined),
+  { message: 'Al menos un campo es requerido para actualizar' }
+);
 
 module.exports = { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchema };

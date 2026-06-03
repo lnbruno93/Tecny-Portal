@@ -605,3 +605,46 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
     expect(rows[0].datos_despues.ids).toBeUndefined();
   });
 });
+
+// Tests TANDA 3 post-auditoría: bulk de catálogos elimina los N round-trips
+// del import de stock. Idempotente + case-insensitive + dedup.
+describe('POST /api/inventario/categorias/bulk', () => {
+  it('crea las categorías nuevas y devuelve el mapping con todas (existentes + creadas)', async () => {
+    // Pre-existente.
+    const existente = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Bulk Pre' });
+    expect(existente.status).toBe(201);
+    // Bulk con 1 existente + 2 nuevos.
+    const r = await request(app).post('/api/inventario/categorias/bulk').set(auth())
+      .send({ nombres: ['Bulk Pre', 'Bulk Nueva A', 'Bulk Nueva B'] });
+    expect(r.status).toBe(200);
+    expect(Object.keys(r.body.map).sort()).toEqual(['bulk nueva a', 'bulk nueva b', 'bulk pre']);
+    // El id de 'Bulk Pre' debe coincidir con el creado antes.
+    expect(r.body.map['bulk pre']).toBe(existente.body.id);
+    // Los nuevos ids deben ser >0.
+    expect(r.body.map['bulk nueva a']).toBeGreaterThan(0);
+    expect(r.body.map['bulk nueva b']).toBeGreaterThan(0);
+  });
+
+  it('idempotente: 2da llamada con los mismos nombres no crea duplicados', async () => {
+    const r1 = await request(app).post('/api/inventario/categorias/bulk').set(auth())
+      .send({ nombres: ['Bulk Idem'] });
+    const r2 = await request(app).post('/api/inventario/categorias/bulk').set(auth())
+      .send({ nombres: ['Bulk Idem'] });
+    expect(r1.body.map['bulk idem']).toBe(r2.body.map['bulk idem']);
+  });
+
+  it('dedup case-insensitive: ["Apple","apple","APPLE"] crea 1 sola', async () => {
+    const r = await request(app).post('/api/inventario/categorias/bulk').set(auth())
+      .send({ nombres: ['Bulk Apple', 'BULK apple', 'bulk APPLE'] });
+    expect(r.status).toBe(200);
+    // El map tiene 1 sola clave (lowercase).
+    expect(Object.keys(r.body.map)).toEqual(['bulk apple']);
+  });
+
+  it('nombres vacíos/whitespace son rechazados por el schema', async () => {
+    const r = await request(app).post('/api/inventario/categorias/bulk').set(auth())
+      .send({ nombres: ['', '   '] });
+    expect(r.status).toBe(400);
+  });
+});

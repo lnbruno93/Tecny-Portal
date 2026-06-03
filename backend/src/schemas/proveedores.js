@@ -82,8 +82,16 @@ const createMovimientoProveedorSchema = z.object({
     path: ['monto'],
   });
 
+// Resolve-or-create bulk de proveedores — usado por el import de stock.
+// Solo recibe `nombres` (no contacto/ubicación/etc) porque el flow de import
+// solo necesita sembrar la tabla para autocomplete en futuras compras.
+const nombresBulkProveedoresSchema = z.object({
+  nombres: z.array(z.string().trim().min(1).max(200)).max(500, 'Máximo 500 nombres por lote'),
+}).strict();
+
 module.exports = {
   createProveedorSchema,
   updateProveedorSchema,
   createMovimientoProveedorSchema,
+  nombresBulkProveedoresSchema,
 };

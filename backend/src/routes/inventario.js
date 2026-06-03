@@ -24,6 +24,7 @@ const bulkLimiter = rateLimit({
 });
 const {
   nombreSchema,
+  nombresBulkSchema,
   createProductoSchema,
   updateProductoSchema,
   bulkProductoSchema,
@@ -66,6 +67,53 @@ router.post('/categorias', validate(nombreSchema), async (req, res, next) => {
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una categoría con ese nombre' });
     next(err);
   }
+});
+
+// Bulk resolve-or-create de categorías — usado por el import de stock
+// (Inventario.jsx confirmImport). Antes hacía N round-trips HTTP secuenciales
+// para crear cada categoría nueva (60 categorías × 150ms RTT = ~9s + 47% del
+// rate-limit). Ahora: 1 sola request que inserta con ON CONFLICT y devuelve
+// el mapping completo lower(nombre) → id (incluyendo las ya existentes).
+router.post('/categorias/bulk', validate(nombresBulkSchema), async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    // Deduplicar case-insensitive + descartar vacíos.
+    const inputDedup = [...new Map(
+      req.body.nombres.map(n => [String(n).trim().toLowerCase(), String(n).trim()])
+    ).values()].filter(Boolean);
+    if (inputDedup.length === 0) return res.json({ map: {} });
+
+    await client.query('BEGIN');
+    // ON CONFLICT con el índice parcial idx_categorias_nombre (LOWER(nombre) WHERE
+    // deleted_at IS NULL). Para evitar el límite de la inferencia con predicado
+    // — algunas versiones requieren WHERE — usamos el constraint inference por
+    // expresión. Los nombres que ya existen se ignoran (DO NOTHING).
+    await client.query(
+      `INSERT INTO categorias (nombre)
+       SELECT unnest($1::text[])
+       ON CONFLICT (LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING`,
+      [inputDedup]
+    );
+    // SELECT para obtener id de TODOS (recién creados + ya existentes).
+    const lowers = inputDedup.map(n => n.toLowerCase());
+    const { rows } = await client.query(
+      `SELECT id, nombre FROM categorias
+        WHERE LOWER(nombre) = ANY($1::text[]) AND deleted_at IS NULL`,
+      [lowers]
+    );
+    // Audit: 1 entry agregada por la operación bulk (con la lista de nombres input).
+    // No registramos uno por cada (audit_logs explotaría con imports grandes).
+    await audit(client, 'categorias', 'INSERT', 0, {
+      tipo: 'bulk_resolve_or_create_categorias', nombres: inputDedup, user_id: req.user.id,
+    });
+    await client.query('COMMIT');
+    const map = {};
+    for (const r of rows) map[r.nombre.toLowerCase()] = r.id;
+    res.json({ map });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.delete('/categorias/:id', async (req, res, next) => {

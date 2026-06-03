@@ -8,6 +8,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
+import ContactoPickerEmbedded from '../components/ContactoPickerEmbedded';
 
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -987,66 +988,8 @@ export default function Cajas() {
                       </select>
                     </div>
                   </div>
-                  {/* Contacto — mismo mega-form que en Inversión: toggle
-                      Existente/Nuevo + campos condicionales. Permite crear el
-                      contacto + el movimiento en un solo submit. */}
-                  <div className="field">
-                    <label className="field-label">Contacto <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
-                      <button type="button"
-                              className={'btn btn-sm ' + (deudaForm.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
-                              style={{ padding: '4px 12px' }}
-                              onClick={() => setDeudaForm(f => ({ ...f, contactoMode: 'existente' }))}>
-                        Existente
-                      </button>
-                      <button type="button"
-                              className={'btn btn-sm ' + (deudaForm.contactoMode === 'nuevo' ? 'btn-primary' : 'btn-ghost')}
-                              style={{ padding: '4px 12px' }}
-                              onClick={() => setDeudaForm(f => ({ ...f, contactoMode: 'nuevo' }))}>
-                        + Nuevo
-                      </button>
-                    </div>
-                    {deudaForm.contactoMode === 'existente' ? (
-                      <select className="input"
-                        value={deudaForm.contacto_id}
-                        onChange={e => setDeudaForm(f => ({ ...f, contacto_id: e.target.value }))}
-                        autoFocus={!deudaForm.contacto_id}>
-                        <option value="">— Seleccionar —</option>
-                        {allContacts.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.nombre}{c.apellido ? ` ${c.apellido}` : ''} ({TIPO_LABEL[c.tipo] || c.tipo})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="row" style={{ gap: 8 }}>
-                        <div className="field" style={{ flex: 1.5 }}>
-                          <label className="field-label tiny">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                          <input className="input" placeholder="ej. Martín" autoFocus
-                            value={deudaForm.nuevoNombre}
-                            onChange={e => setDeudaForm(f => ({ ...f, nuevoNombre: e.target.value }))} />
-                        </div>
-                        <div className="field" style={{ flex: 1.5 }}>
-                          <label className="field-label tiny">Apellido</label>
-                          <input className="input" placeholder="ej. García"
-                            value={deudaForm.nuevoApellido}
-                            onChange={e => setDeudaForm(f => ({ ...f, nuevoApellido: e.target.value }))} />
-                        </div>
-                        <div className="field" style={{ flex: 1 }}>
-                          <label className="field-label tiny">Tipo</label>
-                          <select className="input"
-                            value={deudaForm.nuevoTipo}
-                            onChange={e => setDeudaForm(f => ({ ...f, nuevoTipo: e.target.value }))}>
-                            <option value="amigo">Amigo</option>
-                            <option value="familiar">Familiar</option>
-                            <option value="cliente">Cliente</option>
-                            <option value="inversor">Inversor</option>
-                            <option value="ipro team">iPro Team</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  {/* Picker compartido con modal Inversión — toggle Existente/+Nuevo. */}
+                  <ContactoPickerEmbedded form={deudaForm} setForm={setDeudaForm} allContacts={allContacts} />
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Monto ARS</label>
@@ -1103,68 +1046,8 @@ export default function Cajas() {
                       value={invForm.fecha}
                       onChange={e => setInvForm(f => ({ ...f, fecha: e.target.value }))} />
                   </div>
-                  {/* Inversor — toggle Existente/Nuevo + campos condicionales.
-                      Diseño "mega-form": evita el patrón modal-en-modal y permite
-                      crear el inversor + cargar la inversión en un solo submit. */}
-                  <div className="field">
-                    <label className="field-label">Inversor <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    <div className="flex-row" style={{ gap: 4, marginBottom: 8, background: 'var(--surface-2)', padding: 3, borderRadius: 6, width: 'fit-content' }}>
-                      <button type="button"
-                              className={'btn btn-sm ' + (invForm.contactoMode === 'existente' ? 'btn-primary' : 'btn-ghost')}
-                              style={{ padding: '4px 12px' }}
-                              onClick={() => setInvForm(f => ({ ...f, contactoMode: 'existente' }))}>
-                        Existente
-                      </button>
-                      <button type="button"
-                              className={'btn btn-sm ' + (invForm.contactoMode === 'nuevo' ? 'btn-primary' : 'btn-ghost')}
-                              style={{ padding: '4px 12px' }}
-                              onClick={() => setInvForm(f => ({ ...f, contactoMode: 'nuevo' }))}>
-                        + Nuevo
-                      </button>
-                    </div>
-                    {invForm.contactoMode === 'existente' ? (
-                      <select className="input"
-                        value={invForm.contacto_id}
-                        onChange={e => setInvForm(f => ({ ...f, contacto_id: e.target.value }))}
-                        autoFocus>
-                        <option value="">— Seleccionar —</option>
-                        {allContacts.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.nombre}{c.apellido ? ` ${c.apellido}` : ''} ({TIPO_LABEL[c.tipo] || c.tipo})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="stack" style={{ gap: 8 }}>
-                        <div className="row" style={{ gap: 8 }}>
-                          <div className="field" style={{ flex: 1.5 }}>
-                            <label className="field-label tiny">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                            <input className="input" placeholder="ej. Martín" autoFocus
-                              value={invForm.nuevoNombre}
-                              onChange={e => setInvForm(f => ({ ...f, nuevoNombre: e.target.value }))} />
-                          </div>
-                          <div className="field" style={{ flex: 1.5 }}>
-                            <label className="field-label tiny">Apellido</label>
-                            <input className="input" placeholder="ej. García"
-                              value={invForm.nuevoApellido}
-                              onChange={e => setInvForm(f => ({ ...f, nuevoApellido: e.target.value }))} />
-                          </div>
-                          <div className="field" style={{ flex: 1 }}>
-                            <label className="field-label tiny">Tipo</label>
-                            <select className="input"
-                              value={invForm.nuevoTipo}
-                              onChange={e => setInvForm(f => ({ ...f, nuevoTipo: e.target.value }))}>
-                              <option value="inversor">Inversor</option>
-                              <option value="amigo">Amigo</option>
-                              <option value="familiar">Familiar</option>
-                              <option value="cliente">Cliente</option>
-                              <option value="ipro team">iPro Team</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  {/* Picker compartido con modal Deuda — toggle Existente/+Nuevo. */}
+                  <ContactoPickerEmbedded form={invForm} setForm={setInvForm} allContacts={allContacts} />
                   <div className="field">
                     <label className="field-label">Monto USD <span style={{ color: 'var(--neg)' }}>*</span></label>
                     <input type="number" onKeyDown={blockInvalidNumberKeys} min="1" step="0.01" className="input" placeholder="ej. 5000"

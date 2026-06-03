@@ -1,9 +1,14 @@
-// Módulo Tarjetas de Crédito (solo lectura + liquidaciones).
+// Módulo Tarjetas de Crédito.
 // La "tarjeta" es un método de pago marcado como tal en Cajas (es_tarjeta, con su
-// comision_pct). Los cobros se generan SOLOS desde Ventas (lib/tarjetas.js):
-// bruto → comisión de la financiera → neto que nos deben. Acá se ve el saldo
-// pendiente por método y se registra la liquidación (cuando nos pagan → entra a
-// una caja real y baja el saldo). No se configura nada en esta pantalla.
+// comision_pct) — la configuración vive ahí. Los cobros se generan SOLOS desde
+// Ventas (lib/tarjetas.js): bruto → comisión de la financiera → neto que nos deben.
+// Este módulo:
+//   · Muestra el saldo pendiente por método (cobros − liquidaciones).
+//   · Registra liquidaciones (cuando la financiera paga → ingresa a una caja real).
+//   · Registra cobros previos (saldos de ventas anteriores al sistema; venta_id=NULL).
+//   · Permite editar y eliminar cobros previos y liquidaciones. Los cobros
+//     que vienen de una venta NO se editan acá (se ajustan desde la venta).
+//   · Expone /saldos-resumen agregado para 360 & Capital.
 // Montado en /api/tarjetas con requireAuth + requirePermission('tarjetas') (app.js).
 const router   = require('express').Router();
 const db       = require('../config/database');
@@ -11,7 +16,7 @@ const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { round2 } = require('../lib/money');
+const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 
@@ -164,10 +169,10 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
     if (!mp.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Tarjeta no encontrada' }); }
 
     // Resolver el % efectivo: prioriza el del request, fallback al del método.
-    const pctEfectivo = round2(pct != null ? Number(pct) : Number(mp.rows[0].comision_pct || 0));
-    const bruto       = round2(Number(monto_bruto));
-    const comision    = round2(bruto * pctEfectivo / 100);
-    const neto        = round2(bruto - comision);
+    const pctEfectivo = pct != null ? Number(pct) : Number(mp.rows[0].comision_pct || 0);
+    const { bruto, comision, neto, pct: pctNorm } = computeNeto(monto_bruto, pctEfectivo);
+    // Re-asignamos pctEfectivo a la versión normalizada (round2) que se persiste.
+    const pctFinal = pctNorm;
 
     const { rows } = await client.query(
       `INSERT INTO tarjeta_movimientos
@@ -175,7 +180,7 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
          venta_id, caja_id, comentarios, user_id)
        VALUES ($1, $2, 'cobro', $3, $4, $5, $6, $7, NULL, NULL, $8, $9)
        RETURNING *`,
-      [metodo_pago_id, fecha, mp.rows[0].moneda, bruto, pctEfectivo, comision, neto,
+      [metodo_pago_id, fecha, mp.rows[0].moneda, bruto, pctFinal, comision, neto,
        comentarios ?? null, req.user.id]
     );
     await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, {
@@ -263,19 +268,17 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
     if (mov.tipo === 'cobro') {
       // Cobro previo: recalcular comisión/neto a partir del nuevo bruto/pct.
       const fecha       = body.fecha       ?? mov.fecha;
-      const bruto       = round2(Number(body.monto_bruto ?? mov.monto_bruto));
-      const pctEfectivo = round2(Number(body.pct != null ? body.pct : mov.pct));
+      const pctInput    = body.pct != null ? Number(body.pct) : Number(mov.pct);
+      if (pctInput < 0 || pctInput > 100) { await client.query('ROLLBACK'); return res.status(400).json({ error: '% comisión inválido.' }); }
+      const { bruto, comision, neto, pct: pctFinal } = computeNeto(body.monto_bruto ?? mov.monto_bruto, pctInput);
       if (!(bruto > 0))     { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El bruto debe ser mayor a 0.' }); }
-      if (pctEfectivo < 0 || pctEfectivo > 100) { await client.query('ROLLBACK'); return res.status(400).json({ error: '% comisión inválido.' }); }
-      const comision = round2(bruto * pctEfectivo / 100);
-      const neto     = round2(bruto - comision);
       const comentarios = body.comentarios === undefined ? mov.comentarios : (body.comentarios ?? null);
       const { rows } = await client.query(
         `UPDATE tarjeta_movimientos
             SET fecha = $2, monto_bruto = $3, pct = $4, monto_comision = $5, monto_neto = $6, comentarios = $7
           WHERE id = $1 AND deleted_at IS NULL
           RETURNING *`,
-        [id, fecha, bruto, pctEfectivo, comision, neto, comentarios]
+        [id, fecha, bruto, pctFinal, comision, neto, comentarios]
       );
       updated = rows[0];
     } else if (mov.tipo === 'liquidacion') {
@@ -321,7 +324,15 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       return res.status(400).json({ error: 'Tipo de movimiento no soportado.' });
     }
 
-    await audit(client, 'tarjeta_movimientos', 'UPDATE', id, { antes: mov, despues: updated, user_id: req.user.id });
+    // Pick de columnas reales de tarjeta_movimientos: `mov` viene de un JOIN
+    // con metodos_pago (alias metodo_comision_pct, metodo_moneda) que NO son
+    // columnas de la tabla auditada. Sin pick, esos aliases ensucian el
+    // audit_logs.datos_antes y rompen simetría con `despues` (que viene del
+    // RETURNING limpio).
+    const movClean = { ...mov };
+    delete movClean.metodo_comision_pct;
+    delete movClean.metodo_moneda;
+    await audit(client, 'tarjeta_movimientos', 'UPDATE', id, { antes: movClean, despues: updated, user_id: req.user.id });
     await client.query('COMMIT');
     res.json(updated);
   } catch (err) {

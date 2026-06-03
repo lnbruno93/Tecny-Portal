@@ -392,3 +392,39 @@ describe('Proveedores — compra crea producto en Inventario', () => {
     expect(res.body.productos_creados).toHaveLength(0);
   });
 });
+
+// Tests TANDA 3 post-auditoría: bulk de proveedores para import de stock.
+// No tiene UNIQUE constraint (decisión histórica), así que usa SELECT existentes +
+// INSERT solo los faltantes. Idempotente con case-insensitive match.
+describe('POST /api/proveedores/bulk', () => {
+  it('crea proveedores nuevos y devuelve count', async () => {
+    const r = await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkProvA', 'BulkProvB'] });
+    expect(r.status).toBe(200);
+    expect(r.body.creados).toBe(2);
+  });
+
+  it('idempotente: 2da llamada con los mismos no duplica', async () => {
+    await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkProvIdem'] });
+    const r = await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkProvIdem'] });
+    expect(r.body.creados).toBe(0);
+  });
+
+  it('case-insensitive: variantes de mayúsculas no duplican', async () => {
+    await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkApple'] });
+    const r = await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['bulkapple'] });
+    expect(r.body.creados).toBe(0);
+  });
+
+  it('lote mixto: 1 existente + 2 nuevos → creados=2', async () => {
+    await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkMezcla1'] });
+    const r = await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkMezcla1', 'BulkMezcla2', 'BulkMezcla3'] });
+    expect(r.body.creados).toBe(2);
+  });
+});

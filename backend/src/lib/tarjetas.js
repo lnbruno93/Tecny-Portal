@@ -7,7 +7,7 @@
 //
 // syncTarjetaCobros reconcilia de forma idempotente: borra los cobros previos de
 // la venta y los recrea desde los pagos actuales. Debe correr dentro de la tx.
-const { round2 } = require('./money');
+const { computeNeto } = require('./money');
 
 function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
 
@@ -78,10 +78,7 @@ async function syncTarjetaCobros(client, ventaId, estado) {
   const fecha = v[0]?.fecha;
 
   for (const p of pagos) {
-    const pct = Number(p.comision_pct || 0);
-    const bruto = round2(Number(p.monto));
-    const comision = round2(bruto * pct / 100);
-    const neto = round2(bruto - comision);
+    const { bruto, pct, comision, neto } = computeNeto(p.monto, p.comision_pct);
     await client.query(
       `INSERT INTO tarjeta_movimientos
          (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, venta_id)
