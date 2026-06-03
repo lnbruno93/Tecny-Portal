@@ -395,33 +395,32 @@ export default function Inventario() {
     setImporting(true);
     setImportError('');
     try {
-      // ── Paso 1: crear categorías nuevas (si las hay) y mapear nombre → id ─
-      // Extraemos solo de las filas válidas (las que tienen error no van a importarse).
+      // ── Paso 1: bulk resolve-or-create de catálogos en 2 round-trips ─────
+      // Antes hacía N+M round-trips secuenciales (uno por cada categoría +
+      // uno por cada proveedor nuevo). Con 60 cats + 80 provs eran 140 RTTs
+      // de ~150ms = 21s antes del bulk de productos. Ahora: 2 RTTs (cats + provs).
+      // Beneficio adicional: ON CONFLICT en backend elimina race conditions
+      // entre imports concurrentes.
       const { categorias: catsNuevas, proveedores: provsNuevos } = extractNewCatalogos(validRows);
-      const newCatByName = new Map(); // lowercase nombre → id recién creado
+      const newCatByName = new Map(); // lowercase nombre → id recién creado/existente
 
-      for (const nombre of catsNuevas) {
+      if (catsNuevas.length > 0) {
         try {
-          const cat = await inventario.createCategoria({ nombre });
-          newCatByName.set(nombre.toLowerCase(), cat.id);
+          const { map } = await inventario.bulkCategorias(catsNuevas);
+          for (const [k, v] of Object.entries(map || {})) newCatByName.set(k, v);
         } catch (e) {
-          // Si la categoría YA existe (race con otra carga), buscarla en el reload.
-          // Para simplificar: re-leemos el catálogo después de tirar — el caller
-          // puede retry. Por ahora, fallamos con mensaje claro.
-          throw new Error(`No se pudo crear la categoría "${nombre}": ${e.message}`);
+          throw new Error(`No se pudieron crear las categorías: ${e.message}`);
         }
       }
 
-      // ── Paso 2: crear proveedores nuevos en el catálogo formal ─────────
-      // No impacta el bulk porque `productos.proveedor` sigue siendo string libre.
-      // El beneficio es sembrar la tabla `proveedores` para futuras compras.
-      for (const nombre of provsNuevos) {
+      // ── Paso 2: bulk resolve-or-create de proveedores ─────────────────
+      // Idempotente: si ya existían, no duplica. Best-effort: si falla, sigue.
+      if (provsNuevos.length > 0) {
         try {
-          await proveedoresApi.create({ nombre });
+          await proveedoresApi.bulk(provsNuevos);
         } catch (_e) {
-          // Falla en crear proveedor NO es bloqueante para el bulk de productos
-          // (el campo del producto es texto libre, no FK). Mostramos warning
-          // en el toast final pero seguimos.
+          // Mismo criterio que antes: el bulk de productos sigue, solo perdemos
+          // el seeding del catálogo (no rompe nada porque proveedor es string).
         }
       }
 

@@ -521,15 +521,9 @@ describe('Tarjetas — PATCH /movimientos/:id casos límite', () => {
   it('PATCH con body vacío {} → 400 (refine "al menos un campo")', async () => {
     const create = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
       .send({ metodo_pago_id: tarjetaCasos, fecha: hoy, monto_bruto: 100, pct: 0 });
-    // El schema actual NO tiene refine "al menos un campo" — sin éste,
-    // PATCH {} hace UPDATE no-op pero responde 200. Caso conocido (Hygiene
-    // agent lo marcó). Este test deja constancia: si después se agrega el
-    // refine, cambiar a expect 400.
     const r = await request(app).patch(`/api/tarjetas/movimientos/${create.body.id}`).set(auth())
       .send({});
-    // Por ahora aceptamos 200 (sin refine). Cuando se agregue, este test
-    // pasará a expect 400. Marker para acordarse:
-    expect([200, 400]).toContain(r.status);
+    expect(r.status).toBe(400);
   });
 
   it('audit_log se escribe correctamente en PATCH liquidación (UPDATE)', async () => {

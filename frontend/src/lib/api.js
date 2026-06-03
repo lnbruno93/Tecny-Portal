@@ -240,6 +240,10 @@ export const proveedores = {
   list: (params = {}) => api('/api/proveedores?' + new URLSearchParams(params)),
   get: (id) => api(`/api/proveedores/${id}`),
   create: (data) => api('/api/proveedores', 'POST', data),
+  // Bulk resolve-or-create — para sembrar proveedores en el import de stock
+  // (autocomplete futuro). Devuelve { creados: N } solo (no IDs porque productos
+  // usa string libre, no FK).
+  bulk: (nombres) => api('/api/proveedores/bulk', 'POST', { nombres }),
   update: (id, data) => api(`/api/proveedores/${id}`, 'PUT', data),
   delete: (id) => api(`/api/proveedores/${id}`, 'DELETE'),
   movimientos: (id, params = {}) => api(`/api/proveedores/${id}/movimientos?` + new URLSearchParams(params)),
@@ -288,6 +292,10 @@ export const inventario = {
   bulkDeleteDisponibles: () => api('/api/inventario/productos/bulk-delete-disponibles', 'POST'),
   categorias:      () => api('/api/inventario/categorias'),
   createCategoria: (data) => api('/api/inventario/categorias', 'POST', data),
+  // Bulk resolve-or-create — devuelve { map: { lowercase_nombre: id } } para
+  // todas las categorías pedidas (recién creadas + ya existentes). Usado por
+  // el import de stock para no hacer N round-trips secuenciales.
+  bulkCategorias:  (nombres) => api('/api/inventario/categorias/bulk', 'POST', { nombres }),
   deleteCategoria: (id) => api(`/api/inventario/categorias/${id}`, 'DELETE'),
   depositos:       () => api('/api/inventario/depositos'),
   createDeposito:  (data) => api('/api/inventario/depositos', 'POST', data),

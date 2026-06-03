@@ -13,6 +13,7 @@ const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedge
 const { syncContactoSafe } = require('../lib/contactosSync');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
+  nombresBulkProveedoresSchema,
 } = require('../schemas/proveedores');
 
 // Mapeo de columnas de productos a su tipo PostgreSQL para UNNEST batched
@@ -100,6 +101,49 @@ router.get('/:id', async (req, res, next) => {
     if (!rows[0]) return res.status(404).json({ error: 'Proveedor no encontrado' });
     res.json(rows[0]);
   } catch (err) { next(err); }
+});
+
+// Bulk resolve-or-create de proveedores — para import de stock. No usa
+// ON CONFLICT porque `proveedores.nombre` no tiene UNIQUE (decision histórica:
+// permitir homónimos con datos de contacto distintos). Estrategia: SELECT
+// matching case-insensitive primero, después INSERT solo los que no existen.
+// El resultado es idempotente: imports repetidos no duplican.
+router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    const inputDedup = [...new Map(
+      req.body.nombres.map(n => [String(n).trim().toLowerCase(), String(n).trim()])
+    ).values()].filter(Boolean);
+    if (inputDedup.length === 0) return res.json({ creados: 0 });
+
+    await client.query('BEGIN');
+    const lowers = inputDedup.map(n => n.toLowerCase());
+    // Filtrar nombres que YA existen (case-insensitive).
+    const { rows: existentes } = await client.query(
+      `SELECT LOWER(nombre) AS k FROM proveedores
+        WHERE LOWER(nombre) = ANY($1::text[]) AND deleted_at IS NULL`,
+      [lowers]
+    );
+    const setExist = new Set(existentes.map(r => r.k));
+    const aCrear = inputDedup.filter(n => !setExist.has(n.toLowerCase()));
+    if (aCrear.length === 0) {
+      await client.query('COMMIT');
+      return res.json({ creados: 0 });
+    }
+    // INSERT en bloque solo los faltantes.
+    await client.query(
+      `INSERT INTO proveedores (nombre) SELECT unnest($1::text[])`,
+      [aCrear]
+    );
+    await audit(client, 'proveedores', 'INSERT', 0, {
+      tipo: 'bulk_resolve_or_create_proveedores', nombres: aCrear, user_id: req.user.id,
+    });
+    await client.query('COMMIT');
+    res.json({ creados: aCrear.length });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
 });
 
 router.post('/', validate(createProveedorSchema), async (req, res, next) => {
