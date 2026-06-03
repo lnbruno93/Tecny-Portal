@@ -115,6 +115,11 @@ export const comprobantes = {
   create: (data) => api('/api/comprobantes', 'POST', data),
   delete: (id) => api(`/api/comprobantes/${id}`, 'DELETE'),
   archivo: (id) => api(`/api/comprobantes/${id}/archivo`),  // { data, nombre, tipo }
+  // Réplica del modelo cobro previo de Tarjetas: comprobante manual con
+  // venta_id=NULL. El backend calcula comisión + neto server-side desde
+  // bruto + pct (fallback al pct_financiera de config).
+  createManual: (data) => api('/api/comprobantes/manuales', 'POST', data),
+  updateManual: (id, data) => api(`/api/comprobantes/manuales/${id}`, 'PATCH', data),
 };
 
 export const pagos = {

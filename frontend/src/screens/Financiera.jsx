@@ -83,6 +83,15 @@ export default function Financiera() {
   const [compsError, setCompsError] = useState('');
   const [pagosError, setPagosError] = useState('');
 
+  // Comprobante manual (venta previa al sistema) — réplica del cobro previo
+  // de Tarjetas. Modal único para alta y edición.
+  const EMPTY_MANUAL = { fecha: new Date().toLocaleDateString('sv'), cliente: '', vendedor_id: '', monto_bruto: '', pct: '', referencia: '' };
+  const [showManual, setShowManual] = useState(false);
+  const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
+  const [editingManualId, setEditingManualId] = useState(null);
+  const [savingManual, setSavingManual] = useState(false);
+  const [manualError, setManualError] = useState('');
+
   // ── Live calculations ──────────────────────────────────────────────────────
   const monto = parseFloat(cMonto) || 0;
   const finCalc = monto * (pct / 100);
@@ -237,15 +246,89 @@ export default function Financiera() {
   }
 
   // ── Delete comprobante ────────────────────────────────────────────────���────
-  async function handleDeleteComp(id) {
-    const ok = await confirm({ title: 'Eliminar comprobante', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+  async function handleDeleteComp(c) {
+    // canEdit: solo manuales (venta_id IS NULL) — los autogenerados se ajustan
+    // editando la venta. El backend también lo bloquea con 400.
+    const ok = await confirm({
+      title: 'Eliminar venta previa',
+      message: `Fecha ${fmtFecha(c.fecha)} · Cliente ${c.cliente} · Neto ARS ${fmt(c.monto_neto)}.\nEsta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar', danger: true,
+    });
     if (!ok) return;
     try {
-      await compApi.delete(id);
-      setComps(prev => prev.filter(c => c.id !== id));
-      toast.success('Comprobante eliminado.');
+      await compApi.delete(c.id);
+      setComps(prev => prev.filter(x => x.id !== c.id));
+      toast.success('Venta previa eliminada.');
     } catch (e) {
       toast.error(e.message);
+    }
+  }
+
+  // ── Manual (venta previa) handlers ─────────────────────────────────────────
+  // Edit + delete solo aplican a venta_id IS NULL. Los autogenerados desde
+  // Ventas no muestran el botón (canEdit en la tabla más abajo).
+  function openManualCreate() {
+    setEditingManualId(null);
+    setManualError('');
+    setManualForm({ ...EMPTY_MANUAL, pct: String(pct) }); // default al pct global
+    setShowManual(true);
+  }
+
+  function openManualEdit(c) {
+    setEditingManualId(c.id);
+    setManualError('');
+    // Para edición pre-cargamos los valores del row. No persistimos pct (no es
+    // columna), así que lo calculamos: pct = monto_financiera / monto_bruto * 100.
+    const bruto = Number(c.monto) || 0;
+    const fin = Number(c.monto_financiera) || 0;
+    const pctCalc = bruto > 0 ? Math.round((fin / bruto) * 100 * 100) / 100 : pct;
+    setManualForm({
+      fecha: (c.fecha || '').slice(0, 10),
+      cliente: c.cliente || '',
+      vendedor_id: c.vendedor_id ? String(c.vendedor_id) : '',
+      monto_bruto: String(bruto),
+      pct: String(pctCalc),
+      referencia: c.referencia || '',
+    });
+    setShowManual(true);
+  }
+
+  // Preview client-side del cálculo (el server recalcula al guardar).
+  const manualBruto = Number(manualForm.monto_bruto) || 0;
+  const manualPct = Number(manualForm.pct) || 0;
+  const manualFinCalc = Math.round((manualBruto * manualPct)) / 100;
+  const manualNetoCalc = Math.round((manualBruto - manualFinCalc) * 100) / 100;
+
+  async function handleManualSave(e) {
+    e?.preventDefault?.();
+    setManualError('');
+    if (!manualForm.cliente.trim()) { setManualError('Ingresá el cliente.'); return; }
+    if (!(Number(manualForm.monto_bruto) > 0)) { setManualError('El bruto debe ser mayor a 0.'); return; }
+    const payload = {
+      fecha:       manualForm.fecha,
+      cliente:     manualForm.cliente.trim(),
+      vendedor_id: manualForm.vendedor_id ? Number(manualForm.vendedor_id) : null,
+      monto_bruto: Number(manualForm.monto_bruto),
+      pct:         manualForm.pct === '' ? undefined : Number(manualForm.pct),
+      referencia:  manualForm.referencia.trim() || null,
+    };
+    setSavingManual(true);
+    try {
+      if (editingManualId) {
+        const updated = await compApi.updateManual(editingManualId, payload);
+        setComps(prev => prev.map(x => x.id === updated.id ? { ...x, ...updated, tiene_archivo: x.tiene_archivo } : x));
+        toast.success('Venta previa actualizada.');
+      } else {
+        const created = await compApi.createManual(payload);
+        // Inserta al principio. El listado se re-ordena por fecha al refetch.
+        setComps(prev => [{ ...created, tiene_archivo: false, vendedor_nombre: vendName(created.vendedor_id) }, ...prev]);
+        toast.success('Venta previa registrada.');
+      }
+      setShowManual(false);
+    } catch (err) {
+      setManualError(err.message || 'No se pudo guardar.');
+    } finally {
+      setSavingManual(false);
     }
   }
 
@@ -711,6 +794,12 @@ export default function Financiera() {
           <div className="card-hd">
             <h3>Comprobantes — {filteredComps.length}</h3>
             <div className="flex-row" style={{ gap: 8 }}>
+              {/* Cargar venta previa: para registrar ventas anteriores al
+                  sistema donde el cliente pagó con la caja Financiera.
+                  Mismo patrón que "Cobro previo" en Tarjetas. */}
+              <button className="btn btn-sm" onClick={openManualCreate}>
+                <Icons.Plus size={13} /> Venta previa
+              </button>
               <div className="input-group" style={{ width: 220 }}>
                 <span className="addon addon-l"><Icons.Search size={14} /></span>
                 <input
@@ -750,20 +839,30 @@ export default function Financiera() {
                   <th>Fecha</th>
                   <th>Cliente</th>
                   <th>Vendedor</th>
+                  <th>Origen</th>
                   <th>Referencia</th>
                   <th className="num">Bruto</th>
                   <th className="num">Retención</th>
                   <th className="num">Neto</th>
                   <th>Archivo</th>
-                  <th style={{ width: 60 }}></th>
+                  <th style={{ width: 80 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredComps.map(c => (
+                {filteredComps.map(c => {
+                  // Solo los manuales (venta_id IS NULL) se editan/eliminan desde acá.
+                  // Los autogenerados se ajustan editando la venta.
+                  const esManual = c.venta_id == null;
+                  return (
                   <tr key={c.id} className="tbl-row-click">
                     <td className="muted">{fmtFecha(c.fecha)}</td>
                     <td style={{ fontWeight: 600 }}>{c.cliente}</td>
                     <td>{c.vendedor_nombre || vendName(c.vendedor_id)}</td>
+                    <td>
+                      {esManual
+                        ? <Badge tone="warn">Venta previa</Badge>
+                        : <Badge tone="info">Venta #{c.venta_id}</Badge>}
+                    </td>
                     <td><Badge>{c.referencia || '—'}</Badge></td>
                     <td className="num mono">
                       <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
@@ -785,13 +884,22 @@ export default function Financiera() {
                     </td>
                     <td>
                       <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
-                        <button className="icon-btn" onClick={() => handleDeleteComp(c.id)}>
-                          <Icons.Trash size={14} />
-                        </button>
+                        {esManual && (
+                          <>
+                            <button className="icon-btn" title="Editar venta previa" aria-label="Editar venta previa"
+                                    onClick={() => openManualEdit(c)}>
+                              <Icons.Edit size={14} />
+                            </button>
+                            <button className="icon-btn" title="Eliminar venta previa" aria-label="Eliminar venta previa"
+                                    style={{ color: 'var(--neg)' }} onClick={() => handleDeleteComp(c)}>
+                              <Icons.Trash size={14} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           )}
@@ -1037,6 +1145,100 @@ export default function Financiera() {
                 <button className="btn btn-primary" onClick={() => setViewFile(null)}>Cerrar</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Cargar / editar venta previa ── */}
+      {showManual && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="manual-title"
+             onClick={(e) => { if (e.target === e.currentTarget && !savingManual) setShowManual(false); }}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3 id="manual-title">{editingManualId ? 'Editar venta previa' : 'Cargar venta previa'}</h3>
+              <button className="icon-btn" aria-label="Cerrar modal" onClick={() => setShowManual(false)} disabled={savingManual}>
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleManualSave}>
+              <div className="modal-body">
+                <fieldset disabled={savingManual} style={{ border: 0, padding: 0, margin: 0 }}>
+                <div className="muted tiny" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+                  Para ventas anteriores al sistema cobradas con la caja Financiera.
+                  NO crea una venta — solo agrega el comprobante al resumen
+                  (bruto, retención, neto). Cargá el % efectivo que la financiera
+                  aplicó en esa venta (por default usa el {pct}% global).
+                </div>
+                <div className="stack" style={{ gap: 12 }}>
+                  <div className="row" style={{ gap: 8 }}>
+                    <div className="field" style={{ width: 150 }}>
+                      <label className="field-label">Fecha</label>
+                      <input type="date" className="input" value={manualForm.fecha}
+                             onChange={e => setManualForm(f => ({ ...f, fecha: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Cliente <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input className="input" placeholder="Nombre del cliente" autoFocus
+                             value={manualForm.cliente}
+                             onChange={e => setManualForm(f => ({ ...f, cliente: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Vendedor</label>
+                    <select className="input" value={manualForm.vendedor_id}
+                            onChange={e => setManualForm(f => ({ ...f, vendedor_id: e.target.value }))}>
+                      <option value="">— Sin vendedor —</option>
+                      {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                             className="input mono" placeholder="0"
+                             value={manualForm.monto_bruto}
+                             onChange={e => setManualForm(f => ({ ...f, monto_bruto: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ width: 110 }}>
+                      <label className="field-label">% retención</label>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
+                             className="input mono"
+                             value={manualForm.pct}
+                             onChange={e => setManualForm(f => ({ ...f, pct: e.target.value }))} />
+                    </div>
+                  </div>
+                  {manualBruto > 0 && (
+                    <div style={{
+                      padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6,
+                      fontSize: 13, lineHeight: 1.6,
+                    }}>
+                      <div className="flex-between"><span className="muted">Bruto:</span><span className="mono">ARS {fmt(manualBruto)}</span></div>
+                      <div className="flex-between"><span className="muted">Retención ({manualPct}%):</span><span className="mono" style={{ color: 'var(--accent)' }}>− ARS {fmt(manualFinCalc)}</span></div>
+                      <div className="flex-between" style={{ paddingTop: 4, borderTop: '1px solid var(--hairline)', marginTop: 4 }}>
+                        <strong>Neto recibido:</strong>
+                        <span className="mono pos" style={{ fontWeight: 700 }}>ARS {fmt(manualNetoCalc)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="field">
+                    <label className="field-label">Referencia</label>
+                    <input className="input" placeholder="ej. Operación #1234"
+                           value={manualForm.referencia}
+                           onChange={e => setManualForm(f => ({ ...f, referencia: e.target.value }))} />
+                  </div>
+                  {manualError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{manualError}</div>}
+                </div>
+                </fieldset>
+              </div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowManual(false)} disabled={savingManual}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={savingManual}>
+                  {savingManual ? 'Guardando…' : (editingManualId ? 'Guardar cambios' : 'Registrar venta previa')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
