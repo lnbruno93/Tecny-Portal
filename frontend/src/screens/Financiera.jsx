@@ -240,7 +240,12 @@ export default function Financiera() {
         setOcrResult(result);
         if (result.monto) setCMonto(String(result.monto));
       } catch (err) {
-        console.warn('OCR error:', err);
+        // Antes era console.warn silencioso → si el OCR fallaba (rate limit,
+        // imagen mala, Anthropic caído), el operador no se enteraba: el campo
+        // de monto quedaba vacío y parecía "OCR procesa pero devuelve 0".
+        // Ahora mostramos el mensaje (con el detalle del backend para rate
+        // limit). El operador puede tipear el monto a mano.
+        toast.error(err.message || 'No se pudo procesar el OCR. Cargá el monto a mano.');
       } finally {
         setOcrLoading(false);
       }

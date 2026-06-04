@@ -8,15 +8,19 @@ const { ocrSchema } = require('../schemas/ocr');
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 
-// 10 llamadas OCR por usuario por hora — limita por user_id (no por IP)
-// Así un NAT compartido no afecta a otros usuarios, y cambiar de IP no evita el límite
+// 60 llamadas OCR por usuario por hora — limita por user_id (no por IP).
+// Así un NAT compartido no afecta a otros usuarios, y cambiar de IP no evita
+// el límite. Antes era 10/hora (#74 op feedback: 10 era muy bajo para sesiones
+// reales de carga de 40+ comprobantes). 60/hora = 1 por minuto sostenido,
+// suficiente para 6-8h de carga ininterrumpida sin reabrir ventana. Sigue
+// cortando abuso si alguien intenta usarlo en bucle automático.
 const ocrLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 60,
   keyGenerator: (req) => req.user?.id != null ? String(req.user.id) : ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Límite de OCR alcanzado. Intentá de nuevo en 1 hora.' },
+  message: { error: 'Pasaste el límite de OCR (60/hora). Esperá hasta que se libere la ventana y mientras cargá los montos a mano.' },
 });
 
 router.post('/', ocrLimiter, validate(ocrSchema), async (req, res, next) => {
