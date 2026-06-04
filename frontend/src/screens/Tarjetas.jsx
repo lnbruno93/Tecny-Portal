@@ -8,6 +8,7 @@ import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import useModal from '../lib/useModal';
+import { rangeToParams, rangeLabel, RANGE_PRESETS } from '../lib/dateRange';
 
 
 
@@ -27,6 +28,24 @@ export default function Tarjetas() {
   const [detalle, setDetalle] = useState(null);   // { ...metodo, resumen }
   const [movs, setMovs] = useState([]);
   const [cajas, setCajas] = useState([]);
+
+  // Filtro de período compartido entre vista General y Detalle (afecta el
+  // estado de cuenta unificado y la tabla de movs de la tarjeta seleccionada).
+  // Persistido en localStorage. Default 'todo' — los KPIs por tarjeta + el
+  // saldo "Te deben" se calculan SIEMPRE sobre el histórico completo (en
+  // tarjetas.list y tarjetas.get), así que el operador suele querer ver el
+  // ledger entero al entrar. Si quiere acotar, cambia con un click.
+  const TARJ_RANGE_KEY = 'tarj_range';
+  const [tarjRange, setTarjRange] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TARJ_RANGE_KEY) || 'null');
+      if (saved && saved.preset) return saved;
+    } catch { /* ignore */ }
+    return { preset: 'todo', desde: '', hasta: '' };
+  });
+  useEffect(() => {
+    try { localStorage.setItem(TARJ_RANGE_KEY, JSON.stringify(tarjRange)); } catch { /* ignore */ }
+  }, [tarjRange]);
 
   // Liquidación (cuando nos pagan)
   const [liq, setLiq] = useState({ fecha: todayISO(), monto: '', caja_id: '' });
@@ -64,12 +83,16 @@ export default function Tarjetas() {
     overlayRef: editModalRef,
   });
 
+  // KPIs por tarjeta (list) y por-tarjeta (detalle.resumen) siempre sin filtro:
+  // representan el saldo real y los totales históricos. Solo el LEDGER (allMovs
+  // en General, movs en Detalle) responde al filtro de período.
   function loadList() {
     setLoadingList(true);
     tarjetasApi.list().then(r => setList(r || [])).catch(e => toast.error(e.message)).finally(() => setLoadingList(false));
-    tarjetasApi.movimientosAll().then(r => setAllMovs(r.data || [])).catch(() => {});
+    tarjetasApi.movimientosAll({ ...rangeToParams(tarjRange), limit: 500 })
+      .then(r => setAllMovs(r.data || [])).catch(() => {});
   }
-  useEffect(() => { loadList(); }, []); // eslint-disable-line
+  useEffect(() => { loadList(); }, [tarjRange]); // eslint-disable-line
   useEffect(() => { cajasApi.listCajas().then(r => setCajas(Array.isArray(r) ? r : [])).catch(() => {}); }, []);
   useEffect(() => {
     setPrimaryAction(null);
@@ -79,11 +102,14 @@ export default function Tarjetas() {
 
   function loadDetalle() {
     if (!selectedId) { setDetalle(null); setMovs([]); return; }
-    Promise.all([tarjetasApi.get(selectedId), tarjetasApi.movimientos(selectedId)])
+    Promise.all([
+      tarjetasApi.get(selectedId),
+      tarjetasApi.movimientos(selectedId, { ...rangeToParams(tarjRange), limit: 500 }),
+    ])
       .then(([det, m]) => { setDetalle(det); setMovs(m.data || []); })
       .catch(e => toast.error(e.message));
   }
-  useEffect(() => { loadDetalle(); setLiq({ fecha: todayISO(), monto: '', caja_id: '' }); }, [selectedId]); // eslint-disable-line
+  useEffect(() => { loadDetalle(); setLiq({ fecha: todayISO(), monto: '', caja_id: '' }); }, [selectedId, tarjRange]); // eslint-disable-line
 
   // Totales globales (de las 3 tarjetas)
   const global = useMemo(() => list.reduce((a, t) => {
@@ -275,6 +301,36 @@ export default function Tarjetas() {
         )}
       </div>
 
+      {/* Filtro de período compartido por las vistas General y Detalle.
+          Solo afecta el ledger (Estado de cuenta / Movimientos) — los KPIs
+          de saldo, comisión y "Te deben" siempre reflejan el histórico
+          completo (se calculan en GET /tarjetas y /tarjetas/:id sin filtro). */}
+      {!sinTarjetas && (
+        <div className="card card-tight" style={{ marginBottom: 14 }}>
+          <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="muted tiny" style={{ marginRight: 4 }}>Período (ledger):</span>
+            {RANGE_PRESETS.map(p => (
+              <button key={p.v}
+                      className={'btn btn-sm ' + (tarjRange.preset === p.v ? 'btn-primary' : 'btn-ghost')}
+                      onClick={() => setTarjRange(r => ({ ...r, preset: p.v }))}>
+                {p.l}
+              </button>
+            ))}
+            {tarjRange.preset === 'custom' && (
+              <>
+                <input type="date" className="input" style={{ width: 140, marginLeft: 6 }}
+                       value={tarjRange.desde}
+                       onChange={e => setTarjRange(r => ({ ...r, desde: e.target.value }))} />
+                <span className="muted tiny">a</span>
+                <input type="date" className="input" style={{ width: 140 }}
+                       value={tarjRange.hasta}
+                       onChange={e => setTarjRange(r => ({ ...r, hasta: e.target.value }))} />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {sinTarjetas ? (
         <div className="card" style={{ padding: 24 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no hay tarjetas configuradas</div>
@@ -331,7 +387,12 @@ export default function Tarjetas() {
 
           {/* Estado de cuenta unificado */}
           <div className="card card-flush">
-            <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Estado de cuenta</div></div>
+            <div className="card-hd">
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                Estado de cuenta
+                <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
+              </div>
+            </div>
             <div style={{ overflow: 'auto' }}>
               <table className="tbl">
                 <thead>
