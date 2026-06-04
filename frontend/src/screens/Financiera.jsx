@@ -542,6 +542,7 @@ export default function Financiera() {
                 { v: 'hoy',         l: 'Hoy' },
                 { v: 'mes_actual',  l: 'Este mes' },
                 { v: 'mes_pasado',  l: 'Mes pasado' },
+                { v: 'todo',        l: 'Todo el período' },
                 { v: 'custom',      l: 'Personalizado' },
               ].map(p => (
                 <button key={p.v}
