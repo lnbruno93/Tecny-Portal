@@ -273,6 +273,28 @@ export default function Usuarios() {
                     <td>
                       {isAdmin ? (
                         <span className="muted tiny">Bypass total · acceso a todo</span>
+                      ) : editingId === u.id ? (
+                        // Modo edición: checkboxes de todos los TOOLS. Mismo
+                        // estilo que el modal de alta de usuario para que el
+                        // operador reconozca el patrón. El "Guardar" persiste
+                        // y "Cancelar" descarta — ambos en la columna de acciones.
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 6 }}>
+                          {TOOLS.map(t => (
+                            <label key={t} style={{
+                              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px',
+                              background: editPerms[t] ? 'var(--surface-2)' : 'var(--surface)',
+                              border: `1px solid ${editPerms[t] ? 'var(--border-strong)' : 'var(--border)'}`,
+                              borderRadius: 6, cursor: saving ? 'wait' : 'pointer',
+                              opacity: saving ? 0.6 : 1,
+                            }}>
+                              <input type="checkbox" checked={editPerms[t] || false}
+                                     disabled={saving}
+                                     onChange={e => setEditPerms(p => ({ ...p, [t]: e.target.checked }))}
+                                     style={{ accentColor: 'var(--accent)' }} />
+                              <span style={{ fontWeight: 600, fontSize: 12 }}>{TOOL_LABELS[t]}</span>
+                            </label>
+                          ))}
+                        </div>
                       ) : (
                         <div className="flex-row" style={{ gap: 4, flexWrap: 'wrap' }}>
                           {activeTools.length === 0
@@ -288,23 +310,51 @@ export default function Usuarios() {
                     </td>
                     <td>
                       <div className="flex-row" style={{ gap: 4, justifyContent: 'flex-end' }}>
-                        <button
-                          className="icon-btn"
-                          title="Editar permisos"
-                          onClick={() =>
-                            editingId === u.id ? cancelEdit() : startEdit(u)
-                          }
-                        >
-                          <Icons.Edit size={14} />
-                        </button>
-                        <button
-                          className="icon-btn"
-                          title="Eliminar usuario"
-                          style={{ color: 'var(--neg)' }}
-                          onClick={() => handleDelete(u.id)}
-                        >
-                          <Icons.Trash size={14} />
-                        </button>
+                        {editingId === u.id ? (
+                          // En edición: dos botones que actúan sobre el form.
+                          // Admin NO se edita (bypass total) — el lápiz solo aparece para operadores.
+                          <>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              title="Guardar permisos"
+                              disabled={saving}
+                              onClick={() => savePerms(u.id)}
+                            >
+                              {saving ? 'Guardando…' : 'Guardar'}
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              title="Cancelar"
+                              disabled={saving}
+                              onClick={cancelEdit}
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {/* Admin tiene bypass total — no hay nada que editar */}
+                            {!isAdmin && (
+                              <button
+                                className="icon-btn"
+                                title="Editar permisos"
+                                aria-label="Editar permisos"
+                                onClick={() => startEdit(u)}
+                              >
+                                <Icons.Edit size={14} />
+                              </button>
+                            )}
+                            <button
+                              className="icon-btn"
+                              title="Eliminar usuario"
+                              aria-label="Eliminar usuario"
+                              style={{ color: 'var(--neg)' }}
+                              onClick={() => handleDelete(u.id)}
+                            >
+                              <Icons.Trash size={14} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -315,79 +365,10 @@ export default function Usuarios() {
         )}
       </div>
 
-      {/* ── Inline permission editor ──────────────────────────────────────── */}
-      {editingId !== null && (() => {
-        const u = users.find(x => x.id === editingId);
-        if (!u) return null;
-        const isAdmin = u.role === 'admin';
-        return (
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="card-hd flex-between">
-              <div>
-                <div style={{ fontWeight: 600 }}>Permisos de {u.nombre}</div>
-                <div className="muted tiny" style={{ marginTop: 2 }}>
-                  {isAdmin
-                    ? 'Admin — los permisos se ignoran (acceso total)'
-                    : 'Marcá las tools a las que tiene acceso'}
-                </div>
-              </div>
-              <div className="flex-row" style={{ gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>
-                  Cancelar
-                </button>
-                {!isAdmin && (
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => savePerms(u.id)}
-                    disabled={saving}
-                  >
-                    <Icons.Check size={14} />
-                    {saving ? 'Guardando…' : 'Guardar'}
-                  </button>
-                )}
-              </div>
-            </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 8,
-              padding: 16,
-            }}>
-              {isAdmin ? (
-                <span className="muted tiny">Acceso total (admin)</span>
-              ) : (
-                TOOLS.map(t => (
-                  <label
-                    key={t}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '10px 14px',
-                      background: editPerms[t] ? 'var(--surface-2)' : 'var(--surface)',
-                      border: `1px solid ${editPerms[t] ? 'var(--border-strong)' : 'var(--border)'}`,
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={editPerms[t] || false}
-                      onChange={e =>
-                        setEditPerms(p => ({ ...p, [t]: e.target.checked }))
-                      }
-                      style={{ accentColor: 'var(--accent)' }}
-                    />
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>
-                      {TOOL_LABELS[t]}
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Antes existía un panel-card de edición de permisos debajo de la tabla.
+          El operador no lo veía con 10+ usuarios (necesitaba scroll), y por
+          eso el lápiz "parecía no responder". Se movió a edición INLINE en la
+          propia fila del usuario (más arriba en este mismo archivo). */}
 
       {/* ── Modal: nuevo usuario ──────────────────────────────────────────── */}
       {showCreate && (
