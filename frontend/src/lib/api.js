@@ -209,9 +209,15 @@ export const tarjetas = {
   list:              () => api('/api/tarjetas'),
   // Saldo agregado por moneda — consumido por 360 & Capital ({ saldo_ars, saldo_usd }).
   saldosResumen:     () => api('/api/tarjetas/saldos-resumen'),
-  movimientosAll:    () => api('/api/tarjetas/movimientos'),
+  // Estado de cuenta unificado (todas las tarjetas) + por tarjeta. Aceptan
+  // params { desde, hasta, limit } opcionales para filtrar por rango.
+  movimientosAll:    (params = {}) => api('/api/tarjetas/movimientos?' + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
+  )),
   get:               (id) => api(`/api/tarjetas/${id}`),
-  movimientos:       (id) => api(`/api/tarjetas/${id}/movimientos`),
+  movimientos:       (id, params = {}) => api(`/api/tarjetas/${id}/movimientos?` + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
+  )),
   createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
   // Cobro previo: saldos pendientes de ventas anteriores al sistema (sin venta_id).
   // El backend calcula comisión y neto a partir de bruto + pct (o del % del método si pct omitido).

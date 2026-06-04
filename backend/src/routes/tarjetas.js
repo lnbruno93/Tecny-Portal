@@ -81,8 +81,23 @@ router.get('/saldos-resumen', async (_req, res, next) => {
 router.get('/movimientos', async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    // Filtro opcional por rango de fechas. Importante: el saldo_acum SIEMPRE
+    // se calcula sobre TODOS los movimientos del histórico (no filtrado) —
+    // si filtráramos en la CTE base, el saldo acumulado mentiría al mostrar
+    // un rango parcial. Filtramos solo en el outer SELECT (y en el count
+    // para que coincida con lo visible).
+    const { desde, hasta } = req.query;
+    const params = [];
+    const outerFiltros = [];
+    if (desde) { params.push(desde); outerFiltros.push(`b.fecha >= $${params.length}`); }
+    if (hasta) { params.push(hasta); outerFiltros.push(`b.fecha <= $${params.length}`); }
+    const whereExtra = outerFiltros.length ? ' WHERE ' + outerFiltros.join(' AND ') : '';
+    const countParams = [];
+    let countWhere = ' WHERE deleted_at IS NULL';
+    if (desde) { countParams.push(desde); countWhere += ` AND fecha >= $${countParams.length}`; }
+    if (hasta) { countParams.push(hasta); countWhere += ` AND fecha <= $${countParams.length}`; }
     const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM tarjeta_movimientos WHERE deleted_at IS NULL'),
+      db.query('SELECT COUNT(*) FROM tarjeta_movimientos' + countWhere, countParams),
       db.query(
         `WITH base AS (
            SELECT m.id, m.metodo_pago_id, m.fecha, m.tipo, m.moneda, m.monto_bruto, m.pct,
@@ -97,9 +112,10 @@ router.get('/movimientos', async (req, res, next) => {
            JOIN metodos_pago mp ON mp.id = b.metodo_pago_id
            LEFT JOIN metodos_pago mc ON mc.id = b.caja_id
            LEFT JOIN ventas v ON v.id = b.venta_id
+          ${whereExtra}
           ORDER BY b.fecha DESC, b.id DESC
-          LIMIT $1 OFFSET $2`,
-        [limit, offset]
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
       ),
     ]);
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
@@ -126,16 +142,30 @@ router.get('/:id/movimientos', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    // Filtro opcional por fecha (vista Detalle de una tarjeta específica).
+    // Acá no hay saldo_acum sobre window — el saldo total está en /tarjetas/:id
+    // y se calcula sin filtro; la tabla del detalle solo lista movs del rango.
+    const { desde, hasta } = req.query;
+    const params = [id];
+    const fechaClauses = [];
+    if (desde) { params.push(desde); fechaClauses.push(`m.fecha >= $${params.length}`); }
+    if (hasta) { params.push(hasta); fechaClauses.push(`m.fecha <= $${params.length}`); }
+    const whereFecha = fechaClauses.length ? ' AND ' + fechaClauses.join(' AND ') : '';
     const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM tarjeta_movimientos WHERE metodo_pago_id = $1 AND deleted_at IS NULL', [id]),
+      db.query(
+        `SELECT COUNT(*) FROM tarjeta_movimientos m
+          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}`,
+        params
+      ),
       db.query(
         `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
            FROM tarjeta_movimientos m
            LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
            LEFT JOIN ventas v ON v.id = m.venta_id
-          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL
+          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}
           ORDER BY m.fecha DESC, m.id DESC
-          LIMIT $2 OFFSET $3`, [id, limit, offset]
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
       ),
     ]);
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
