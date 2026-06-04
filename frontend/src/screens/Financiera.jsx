@@ -46,6 +46,57 @@ export default function Financiera() {
   const [dashData, setDashData] = useState(null);
   const [recentComps, setRecentComps] = useState([]);
 
+  // Rango del dashboard (KPIs + recientes). Default 'hoy' para no romper el
+  // flujo operacional del día. Cuando hay ventas previas cargadas con fechas
+  // pasadas, el operador puede cambiar a "Mes pasado" o un rango custom para
+  // ver el agregado real. Se persiste en localStorage para no resetear cada
+  // vez que recarga la pantalla.
+  const RANGE_KEY = 'fin_dash_range';
+  const [dashRange, setDashRange] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(RANGE_KEY) || 'null');
+      if (saved && saved.preset) return saved;
+    } catch { /* ignore */ }
+    return { preset: 'hoy', desde: '', hasta: '' };
+  });
+  useEffect(() => {
+    try { localStorage.setItem(RANGE_KEY, JSON.stringify(dashRange)); } catch { /* ignore */ }
+  }, [dashRange]);
+
+  // Calcular { desde, hasta } a partir del preset. Para 'custom' usa los
+  // valores del propio dashRange. Toda fecha en YYYY-MM-DD (string) — el
+  // backend ya las parsea como DATE sin shift de zona (fix TZ del sprint).
+  function resolveRange(r) {
+    const today = new Date().toLocaleDateString('sv');
+    if (r.preset === 'custom') return { desde: r.desde || today, hasta: r.hasta || today };
+    const now = new Date();
+    if (r.preset === 'mes_actual') {
+      const y = now.getFullYear(), m = now.getMonth();
+      return {
+        desde: new Date(y, m, 1).toLocaleDateString('sv'),
+        hasta: new Date(y, m + 1, 0).toLocaleDateString('sv'),
+      };
+    }
+    if (r.preset === 'mes_pasado') {
+      const y = now.getFullYear(), m = now.getMonth();
+      return {
+        desde: new Date(y, m - 1, 1).toLocaleDateString('sv'),
+        hasta: new Date(y, m, 0).toLocaleDateString('sv'),
+      };
+    }
+    // 'hoy' (default)
+    return { desde: today, hasta: today };
+  }
+
+  // Label corto del rango (para mostrar en KPIs en lugar de "hoy").
+  function rangeLabel(r) {
+    if (r.preset === 'hoy') return 'hoy';
+    if (r.preset === 'mes_actual') return 'este mes';
+    if (r.preset === 'mes_pasado') return 'mes pasado';
+    const { desde, hasta } = resolveRange(r);
+    return desde === hasta ? desde : `${desde} → ${hasta}`;
+  }
+
   // Comprobantes tab
   const [comps, setComps] = useState([]);
   const [compSearch, setCompSearch] = useState('');
@@ -119,14 +170,17 @@ export default function Financiera() {
   }, []);
 
   // ── Dashboard data ─────────────────────────────────────────────────────────
+  // KPIs + recientes responden al rango filtrable (Hoy / Mes / Custom).
+  // Antes el filtro era fijo "hoy" y las ventas previas no impactaban — el
+  // operador no veía feedback de lo que cargaba con fechas pasadas.
   useEffect(() => {
     if (tab !== 'dashboard') return;
     let mounted = true;
     setDashError('');
-    const todayStr = new Date().toLocaleDateString('sv');
+    const { desde, hasta } = resolveRange(dashRange);
     Promise.all([
-      compApi.totales({ desde: todayStr, hasta: todayStr }),
-      compApi.list({ limit: 6 }),
+      compApi.totales({ desde, hasta }),
+      compApi.list({ desde, hasta, limit: 6 }),
     ])
       .then(([totals, list]) => {
         if (!mounted) return;
@@ -135,7 +189,8 @@ export default function Financiera() {
       })
       .catch(err => { if (mounted) setDashError(err.message); });
     return () => { mounted = false; };
-  }, [tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, dashRange]);
 
   // ── Comprobantes tab ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -433,16 +488,47 @@ export default function Financiera() {
               Error cargando dashboard: {dashError}
             </div>
           )}
+          {/* Presets de rango: Hoy / Este mes / Mes pasado / Personalizado.
+              Persistido en localStorage. Si elegís Personalizado, aparecen 2
+              inputs date adicionales para Desde/Hasta. */}
+          <div className="card card-tight" style={{ marginBottom: 14 }}>
+            <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
+              {[
+                { v: 'hoy',         l: 'Hoy' },
+                { v: 'mes_actual',  l: 'Este mes' },
+                { v: 'mes_pasado',  l: 'Mes pasado' },
+                { v: 'custom',      l: 'Personalizado' },
+              ].map(p => (
+                <button key={p.v}
+                        className={'btn btn-sm ' + (dashRange.preset === p.v ? 'btn-primary' : 'btn-ghost')}
+                        onClick={() => setDashRange(r => ({ ...r, preset: p.v }))}>
+                  {p.l}
+                </button>
+              ))}
+              {dashRange.preset === 'custom' && (
+                <>
+                  <input type="date" className="input" style={{ width: 140, marginLeft: 6 }}
+                         value={dashRange.desde}
+                         onChange={e => setDashRange(r => ({ ...r, desde: e.target.value }))} />
+                  <span className="muted tiny">a</span>
+                  <input type="date" className="input" style={{ width: 140 }}
+                         value={dashRange.hasta}
+                         onChange={e => setDashRange(r => ({ ...r, hasta: e.target.value }))} />
+                </>
+              )}
+            </div>
+          </div>
           {/* KPI cards */}
           <div className="row" style={{ marginBottom: 16 }}>
             <div className="card card-tight" style={{ flex: 1 }}>
-              <div className="kpi-label">Monto bruto · hoy</div>
+              <div className="kpi-label">Monto bruto · {rangeLabel(dashRange)}</div>
               <div className="kpi-value">
                 <span className="ccy">ARS </span>
                 <span className="mono">{fmt(dashData?.total_monto ?? 0)}</span>
               </div>
               <div className="muted tiny" style={{ marginTop: 6 }}>
-                {dashData?.count ?? 0} comprobantes hoy
+                {dashData?.count ?? 0} comprobantes
               </div>
             </div>
             <div className="card card-tight" style={{ flex: 1 }}>
@@ -479,7 +565,7 @@ export default function Financiera() {
           {/* Recent comprobantes table */}
           <div className="card card-flush">
             <div className="card-hd">
-              <h3>Comprobantes recientes</h3>
+              <h3>Comprobantes — {rangeLabel(dashRange)}</h3>
               <div className="flex-row" style={{ gap: 8 }}>
                 <button
                   className="btn btn-sm"
@@ -500,7 +586,7 @@ export default function Financiera() {
               </div>
             </div>
             {recentComps.length === 0 ? (
-              <div className="empty">Sin comprobantes hoy</div>
+              <div className="empty">Sin comprobantes en el período seleccionado</div>
             ) : (
               <table className="tbl">
                 <thead>
