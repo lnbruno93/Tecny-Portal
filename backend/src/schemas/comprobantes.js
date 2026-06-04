@@ -54,7 +54,11 @@ const queryComprobantesSchema = z.object({
   vendedor: z.string().trim().optional(),
   buscar:   z.string().trim().max(200).optional(),
   page:     z.coerce.number().int().positive().optional(),
-  limit:    z.coerce.number().int().positive().max(200).optional(),
+  // limit subido de 200 a 500 (mismo techo que cajas.deudas y cuentas):
+  // la pantalla Comprobantes muestra una sola tabla larga y el filtro de
+  // fecha es la herramienta principal de reducción. 500 acomoda ~10 días
+  // operativos a 50/día sin paginar.
+  limit:    z.coerce.number().int().positive().max(500).optional(),
 });
 
 module.exports = {

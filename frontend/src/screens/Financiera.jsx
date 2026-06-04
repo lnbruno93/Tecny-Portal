@@ -99,9 +99,25 @@ export default function Financiera() {
 
   // Comprobantes tab
   const [comps, setComps] = useState([]);
+  const [compsTotal, setCompsTotal] = useState(0);          // total real (pagination.total)
   const [compSearch, setCompSearch] = useState('');
   const [compVendFilter, setCompVendFilter] = useState('todos');
   const [loadingComps, setLoadingComps] = useState(false);
+
+  // Rango de fechas para la tab Comprobantes — mismo patrón que Dashboard
+  // pero default 'mes_actual' (no 'hoy'): en esta tab el operador busca y
+  // revisa, no carga del día; el mes corriente es el scope típico.
+  const COMP_RANGE_KEY = 'fin_comps_range';
+  const [compRange, setCompRange] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COMP_RANGE_KEY) || 'null');
+      if (saved && saved.preset) return saved;
+    } catch { /* ignore */ }
+    return { preset: 'mes_actual', desde: '', hasta: '' };
+  });
+  useEffect(() => {
+    try { localStorage.setItem(COMP_RANGE_KEY, JSON.stringify(compRange)); } catch { /* ignore */ }
+  }, [compRange]);
 
   // Cargar tab (form state)
   const [cFecha, setCFecha] = useState(new Date().toLocaleDateString('sv'));
@@ -198,15 +214,25 @@ export default function Financiera() {
     let mounted = true;
     setLoadingComps(true);
     setCompsError('');
-    const params = {};
+    // Pasamos desde/hasta del compRange + limit alto. El backend devuelve
+    // pagination.total con el conteo REAL (no recortado por limit), que es
+    // lo que mostramos en el header — antes mostrábamos array.length que
+    // mentía cuando el dataset crecía sobre el limit.
+    const { desde, hasta } = resolveRange(compRange);
+    const params = { desde, hasta, limit: 500 };
     if (compVendFilter !== 'todos') params.vendedor = compVendFilter;
     compApi
       .list(params)
-      .then(res => { if (mounted) setComps(res.data || []); })
+      .then(res => {
+        if (!mounted) return;
+        setComps(res.data || []);
+        setCompsTotal(res.pagination?.total ?? (res.data?.length || 0));
+      })
       .catch(err => { if (mounted) setCompsError(err.message); })
       .finally(() => { if (mounted) setLoadingComps(false); });
     return () => { mounted = false; };
-  }, [tab, compVendFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, compVendFilter, compRange]);
 
   // ── Pagos tab ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -881,9 +907,56 @@ export default function Financiera() {
           COMPROBANTES TAB
       ════════════════════════════════════════════════════════ */}
       {tab === 'comprobantes' && (
+        <>
+        {/* Barra de presets de rango (misma estética que Dashboard).
+            Persistida en localStorage con clave distinta (fin_comps_range)
+            para que cada tab recuerde su scope sin pisarse. */}
+        <div className="card card-tight" style={{ marginBottom: 14 }}>
+          <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
+            {[
+              { v: 'hoy',         l: 'Hoy' },
+              { v: 'mes_actual',  l: 'Este mes' },
+              { v: 'mes_pasado',  l: 'Mes pasado' },
+              { v: 'custom',      l: 'Personalizado' },
+            ].map(p => (
+              <button key={p.v}
+                      className={'btn btn-sm ' + (compRange.preset === p.v ? 'btn-primary' : 'btn-ghost')}
+                      onClick={() => setCompRange(r => ({ ...r, preset: p.v }))}>
+                {p.l}
+              </button>
+            ))}
+            {compRange.preset === 'custom' && (
+              <>
+                <input type="date" className="input" style={{ width: 140, marginLeft: 6 }}
+                       value={compRange.desde}
+                       onChange={e => setCompRange(r => ({ ...r, desde: e.target.value }))} />
+                <span className="muted tiny">a</span>
+                <input type="date" className="input" style={{ width: 140 }}
+                       value={compRange.hasta}
+                       onChange={e => setCompRange(r => ({ ...r, hasta: e.target.value }))} />
+              </>
+            )}
+          </div>
+        </div>
         <div className="card card-flush">
           <div className="card-hd">
-            <h3>Comprobantes — {filteredComps.length}</h3>
+            {/* compsTotal es pagination.total del backend (conteo real),
+                NO el length del array (que está capado al limit=500).
+                Cuando hay búsqueda local, mostramos también el sub-total. */}
+            <h3>
+              Comprobantes — {compsTotal}
+              {compSearch && filteredComps.length !== comps.length && (
+                <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                  · {filteredComps.length} coinciden con "{compSearch}"
+                </span>
+              )}
+              {compsTotal > 500 && (
+                <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                  · mostrando 500 más recientes — refiná el filtro de fecha
+                </span>
+              )}
+            </h3>
             <div className="flex-row" style={{ gap: 8 }}>
               {/* Cargar venta previa: para registrar ventas anteriores al
                   sistema donde el cliente pagó con la caja Financiera.
@@ -995,6 +1068,7 @@ export default function Financiera() {
             </table>
           )}
         </div>
+        </>
       )}
 
       {/* ════════════════════════════════════════════════════════
