@@ -44,7 +44,20 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
     throw new Error('NO_AUTH');
   }
   if (res.status === 403) throw new Error('No tenés permiso para realizar esta acción.');
-  if (res.status === 429) throw new Error('Demasiadas solicitudes. Esperá unos minutos e intentá de nuevo.');
+  // 429: preservar el mensaje custom del backend si lo trae (ej. OCR dice
+  // "Pasaste el límite, cargá a mano"; B2B bulk dice "Demasiadas cargas
+  // masivas"). Cae al genérico solo si el body no parsea como JSON o no
+  // tiene `error`. Antes pisaba todos los 429 con un mensaje genérico.
+  if (res.status === 429) {
+    let msg = 'Demasiadas solicitudes. Esperá unos minutos e intentá de nuevo.';
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch (_) { /* sin body parsable, mensaje genérico */ }
+    const err = new Error(msg);
+    err.status = 429;
+    throw err;
+  }
 
   if (!res.ok) {
     let msg = 'Error del servidor';
