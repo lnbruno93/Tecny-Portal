@@ -25,7 +25,7 @@
  * y el listener al desmontar. Múltiples modales abiertos a la vez funcionan
  * (el body lock se acumula con un contador interno).
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 // Contador global de modales abiertos. Cuando llega a 0, soltamos el lock.
 // Permite que dos modales anidados (ej. confirm dentro de un form) funcionen
@@ -44,21 +44,33 @@ function applyBodyLock(lock) {
 }
 
 export function useModal({ open, onClose, overlayRef, autoFocusSelector }) {
-  // Esc handler + body lock
+  // Ref para onClose: los callers pasan arrow functions inline que cambian
+  // identidad en cada render. Si onClose estuviera en las deps del useEffect,
+  // CUALQUIER setState del padre re-correría el efecto → re-foco al primer
+  // input → el cursor "saltaba" del input que estabas tipeando de vuelta al
+  // primer campo (bug reportado por el operador después de TANDA 1).
+  // Solución: ref estable, leemos el último callback al momento del Esc.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  // Esc handler + body lock + foco inicial. Solo depende de `open` —
+  // las otras props son refs estables o configuración inmutable, así que
+  // el efecto NO debe re-correr al cambiar onClose entre renders.
   useEffect(() => {
     if (!open) return undefined;
 
     applyBodyLock(true);
 
     function onKey(e) {
-      if (e.key === 'Escape' && typeof onClose === 'function') {
+      if (e.key === 'Escape' && typeof onCloseRef.current === 'function') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     }
     document.addEventListener('keydown', onKey);
 
-    // Foco inicial — esperamos un frame para que el modal esté en DOM
+    // Foco inicial — esperamos un frame para que el modal esté en DOM.
+    // Esto corre UNA SOLA VEZ al abrir el modal (no en cada re-render).
     const focusTimer = setTimeout(() => {
       const root = overlayRef?.current;
       if (!root) return;
@@ -73,7 +85,10 @@ export function useModal({ open, onClose, overlayRef, autoFocusSelector }) {
       document.removeEventListener('keydown', onKey);
       applyBodyLock(false);
     };
-  }, [open, onClose, overlayRef, autoFocusSelector]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  // overlayRef y autoFocusSelector son inmutables en la práctica (refs y
+  // strings estables); incluirlos en deps re-aplicaría el foco innecesariamente.
 }
 
 export default useModal;
