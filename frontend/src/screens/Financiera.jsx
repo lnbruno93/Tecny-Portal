@@ -64,10 +64,12 @@ export default function Financiera() {
   }, [dashRange]);
 
   // Calcular { desde, hasta } a partir del preset. Para 'custom' usa los
-  // valores del propio dashRange. Toda fecha en YYYY-MM-DD (string) — el
-  // backend ya las parsea como DATE sin shift de zona (fix TZ del sprint).
+  // valores del propio dashRange. Para 'todo' devuelve null/null para que
+  // el caller NO pase desde/hasta al backend (= sin filtro). Toda fecha en
+  // YYYY-MM-DD (string) — el backend la parsea como DATE sin shift de zona.
   function resolveRange(r) {
     const today = new Date().toLocaleDateString('sv');
+    if (r.preset === 'todo') return { desde: null, hasta: null };
     if (r.preset === 'custom') return { desde: r.desde || today, hasta: r.hasta || today };
     const now = new Date();
     if (r.preset === 'mes_actual') {
@@ -88,8 +90,20 @@ export default function Financiera() {
     return { desde: today, hasta: today };
   }
 
+  // Construye el objeto de params para los endpoints. Si desde/hasta son null
+  // (preset 'todo'), los OMITIMOS del payload — el backend interpreta su
+  // ausencia como "sin filtro de fecha" y devuelve todo el histórico.
+  function rangeToParams(r) {
+    const { desde, hasta } = resolveRange(r);
+    const params = {};
+    if (desde) params.desde = desde;
+    if (hasta) params.hasta = hasta;
+    return params;
+  }
+
   // Label corto del rango (para mostrar en KPIs en lugar de "hoy").
   function rangeLabel(r) {
+    if (r.preset === 'todo') return 'todo el período';
     if (r.preset === 'hoy') return 'hoy';
     if (r.preset === 'mes_actual') return 'este mes';
     if (r.preset === 'mes_pasado') return 'mes pasado';
@@ -193,10 +207,10 @@ export default function Financiera() {
     if (tab !== 'dashboard') return;
     let mounted = true;
     setDashError('');
-    const { desde, hasta } = resolveRange(dashRange);
+    const baseParams = rangeToParams(dashRange);
     Promise.all([
-      compApi.totales({ desde, hasta }),
-      compApi.list({ desde, hasta, limit: 6 }),
+      compApi.totales(baseParams),
+      compApi.list({ ...baseParams, limit: 6 }),
     ])
       .then(([totals, list]) => {
         if (!mounted) return;
@@ -218,8 +232,7 @@ export default function Financiera() {
     // pagination.total con el conteo REAL (no recortado por limit), que es
     // lo que mostramos en el header — antes mostrábamos array.length que
     // mentía cuando el dataset crecía sobre el limit.
-    const { desde, hasta } = resolveRange(compRange);
-    const params = { desde, hasta, limit: 500 };
+    const params = { ...rangeToParams(compRange), limit: 500 };
     if (compVendFilter !== 'todos') params.vendedor = compVendFilter;
     compApi
       .list(params)
@@ -918,6 +931,7 @@ export default function Financiera() {
               { v: 'hoy',         l: 'Hoy' },
               { v: 'mes_actual',  l: 'Este mes' },
               { v: 'mes_pasado',  l: 'Mes pasado' },
+              { v: 'todo',        l: 'Todo el período' },
               { v: 'custom',      l: 'Personalizado' },
             ].map(p => (
               <button key={p.v}
