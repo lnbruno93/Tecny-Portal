@@ -36,12 +36,14 @@ export default function Tarjetas() {
   const [movs, setMovs] = useState([]);
   const [cajas, setCajas] = useState([]);
 
-  // Filtro de período compartido entre vista General y Detalle. Afecta el
-  // ledger (estado de cuenta + movs por tarjeta) Y los KPIs agregados de
-  // operaciones (Comisión, Cobrado bruto, Ya recibido/liquidado, Movimientos).
-  // El KPI "Te deben / Saldo a tu favor" SÍ es histórico — es estado actual,
-  // no agregado. Persistido en localStorage; default 'todo' para que el
-  // operador vea el panorama completo al entrar.
+  // Filtro de período compartido entre vista General y Detalle. Afecta TODOS
+  // los KPIs (Te deben, Comisión, Cobrado, Liquidado, Movimientos) — el saldo
+  // del período = cobros del rango − liqs del rango. Con preset 'todo'
+  // coincide con el histórico real; con un rango específico puede ser negativo
+  // si en ese período se liquidaron cobros viejos. Persistido en localStorage;
+  // default 'todo' para que el operador vea el panorama completo al entrar.
+  // El "saldo histórico real" (cuánto te deben HOY independiente del filtro)
+  // sigue disponible vía /api/tarjetas/saldos-resumen para 360 & Capital.
   const TARJ_RANGE_KEY = 'tarj_range';
   const [tarjRange, setTarjRange] = useState(() => {
     try {
@@ -98,11 +100,12 @@ export default function Tarjetas() {
     overlayRef: editModalRef,
   });
 
-  // KPIs por tarjeta (list y detalle.resumen) responden al filtro de período en
-  // Comisión, Cobrado (bruto) y Movimientos — son agregados de operaciones, no
-  // tiene sentido sumar histórico cuando el operador eligió "este mes". El saldo
-  // (Te deben) se queda SIEMPRE sin filtrar: es un estado actual (cobros − liqs)
-  // que no depende del rango elegido. Decidido 2026-06 tras feedback del PO.
+  // KPIs por tarjeta (list y detalle.resumen) responden al filtro de período
+  // en TODO: saldo, Comisión, Cobrado, Liquidado, Movimientos. El saldo del
+  // período = cobros del rango − liqs del rango (puede ser negativo si en el
+  // período se liquidaron cobros viejos; con preset 'todo' coincide con el
+  // histórico real). Decidido 2026-06-05 tras feedback PO en uso operativo:
+  // priorizamos coherencia visual entre KPIs sobre la lectura "estado actual".
   function loadList() {
     setLoadingList(true);
     tarjetasApi.list(rangeToParams(tarjRange))
@@ -137,11 +140,8 @@ export default function Tarjetas() {
   }
   useEffect(() => { loadDetalle(); setLiq({ fecha: todayISO(), monto: '', caja_id: '' }); }, [selectedId, tarjRange]); // eslint-disable-line
 
-  // Totales globales (suma de las tarjetas).
-  // bruto/comision/liquidado responden al rango (server las filtra); saldo es
-  // siempre histórico (estado actual). No derivamos liquidado = bruto-com-saldo
-  // porque eso mezcla magnitudes de período con magnitudes históricas y queda
-  // negativo cuando el rango es chico.
+  // Totales globales (suma de las tarjetas). Todos los campos vienen ya
+  // filtrados por el server según el rango — esto solo agrega entre tarjetas.
   const global = useMemo(() => list.reduce((a, t) => {
     a.bruto     += Number(t.bruto_total     || 0);
     a.comision  += Number(t.comision_total  || 0);
@@ -422,11 +422,11 @@ export default function Tarjetas() {
       </div>
 
       {/* Filtro de período compartido por las vistas General y Detalle.
-          Afecta tanto al ledger (Estado de cuenta / Movimientos) como a los
-          KPIs agregados de operaciones: Comisión, Cobrado bruto, Ya recibido
-          y Movimientos. El único KPI que se queda fuera del filtro es
-          "Te deben / Saldo a tu favor": es estado actual (cobros − liqs),
-          no agregado de período. */}
+          Afecta a TODOS los KPIs (Te deben, Comisión, Cobrado, Ya recibido,
+          Movimientos) y al ledger. Con preset 'todo' los KPIs coinciden con
+          el histórico real; con un rango específico reflejan el movimiento
+          neto del período (puede dar negativo si se liquidaron más cobros
+          de los que entraron en ese rango). */}
       {!sinTarjetas && (
         <div className="card card-tight" style={{ marginBottom: 14 }}>
           <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

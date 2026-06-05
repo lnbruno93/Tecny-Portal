@@ -25,16 +25,23 @@ const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
 
 // Resumen por tarjeta. Acepta desde/hasta opcionales.
 //
-// Diseño operativo (decidido tras feedback del PO 2026-06):
-//   · saldo:            SIEMPRE histórico. Es el saldo real que la financiera
-//                       nos debe HOY. No tiene sentido filtrarlo por fecha
-//                       (no es agregado de operaciones, es un balance presente).
-//   · comision_total:   filtrado por rango si se manda desde/hasta. "Cuánto
-//                       pagué en comisiones en el período X".
+// Diseño operativo (decidido 2026-06-05 tras segundo feedback del PO):
+//   · saldo:            "Saldo del período" = cobros del rango − liqs del rango.
+//                       Si el rango es 'todo' (NULL/NULL), el saldo coincide
+//                       con el histórico real (= lo que la financiera te debe
+//                       HOY). Si filtrás por rango, refleja el MOVIMIENTO NETO
+//                       del período (puede ser negativo si en ese rango se
+//                       liquidaron más cobros de los que entraron — ej. mes
+//                       donde le pagaron atrasos viejos).
+//   · comision_total:   filtrado por rango. "Cuánto pagué en comisiones en X".
 //   · bruto_total:      filtrado por rango. "Cuánto facturé en el período X".
 //   · liquidado_total:  filtrado por rango. "Cuánto me liquidó la financiera
 //                       en el período X" (suma de neto de tipo='liquidacion').
 //   · movimientos:      count filtrado por rango (coherente con la tabla).
+//
+// El "estado actual real" (lo que te deben HOY sin importar filtro) sigue
+// disponible vía /api/tarjetas/saldos-resumen — ese endpoint no toca el
+// rango y lo usa 360 & Capital para sumar al patrimonio.
 //
 // El patrón "($N::date IS NULL OR m.fecha >= $N)" permite usar la misma
 // query con o sin filtro — pasamos NULL cuando no hay rango y los CASE WHEN
@@ -45,8 +52,18 @@ const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
 // son $1/$2; en `/:id` el $1 ya es el id, así que se usa $2/$3.
 function resumenSql(d, h) {
   return `
-    COALESCE(SUM(CASE WHEN m.tipo='cobro'        THEN m.monto_neto ELSE 0 END),0)
-    - COALESCE(SUM(CASE WHEN m.tipo='liquidacion' THEN m.monto_neto ELSE 0 END),0) AS saldo,
+    COALESCE(SUM(
+      CASE WHEN m.tipo='cobro'
+           AND ($${d}::date IS NULL OR m.fecha >= $${d}::date)
+           AND ($${h}::date IS NULL OR m.fecha <= $${h}::date)
+           THEN m.monto_neto ELSE 0 END
+    ),0)
+    - COALESCE(SUM(
+      CASE WHEN m.tipo='liquidacion'
+           AND ($${d}::date IS NULL OR m.fecha >= $${d}::date)
+           AND ($${h}::date IS NULL OR m.fecha <= $${h}::date)
+           THEN m.monto_neto ELSE 0 END
+    ),0) AS saldo,
     COALESCE(SUM(
       CASE WHEN m.tipo='cobro'
            AND ($${d}::date IS NULL OR m.fecha >= $${d}::date)
