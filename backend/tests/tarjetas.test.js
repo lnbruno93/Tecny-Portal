@@ -569,9 +569,11 @@ describe('Tarjetas — PATCH /movimientos/:id casos límite', () => {
 });
 
 // Tests para GET /api/tarjetas?desde=&hasta= y GET /api/tarjetas/:id?desde=&hasta=
-// — el resumen agregado por tarjeta ahora filtra Comisión/Cobrado/Liquidado/
-// Movimientos por rango. El "saldo" (cobros − liqs) SIEMPRE es histórico, sin
-// importar el rango. Decisión operativa: "Te deben" = estado actual.
+// — el resumen agregado por tarjeta filtra TODO por rango (incluido el saldo).
+// Decisión operativa 2026-06-05: el operador quiere consistencia visual entre
+// todos los KPIs. saldo del período = cobros del rango − liqs del rango. Si
+// rango = NULL/NULL coincide con el histórico real. Si filtrás, puede dar
+// negativo (período donde se liquidaron más cobros que los que entraron).
 describe('Tarjetas — GET resumen filtrado por rango (desde/hasta)', () => {
   let tarjetaRango;
   beforeAll(async () => {
@@ -590,40 +592,42 @@ describe('Tarjetas — GET resumen filtrado por rango (desde/hasta)', () => {
     await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
       .send({ metodo_pago_id: tarjetaRango, fecha: '2026-05-20', monto_bruto: 3000, pct: 10 });
     // Una liquidación en febrero (parcial: solo 500 del cobro de enero).
-    // Esto baja el saldo histórico a 5400 - 500 = 4900 (sin importar rango).
+    // Histórico final: 5400 cobros − 500 liq = 4900.
     await request(app).post('/api/tarjetas/liquidaciones').set(auth())
       .send({ metodo_pago_id: tarjetaRango, fecha: '2026-02-05', monto: 500, caja_id: cajaArs });
   });
 
-  it('GET /:id sin rango → totales históricos completos', async () => {
+  it('GET /:id sin rango → totales históricos completos (saldo = histórico real)', async () => {
     const r = await request(app).get(`/api/tarjetas/${tarjetaRango}`).set(auth());
     expect(r.status).toBe(200);
     const { resumen } = r.body;
     expect(Number(resumen.saldo)).toBe(4900);            // 5400 cobros - 500 liq
-    expect(Number(resumen.bruto_total)).toBe(6000);      // todos los cobros
+    expect(Number(resumen.bruto_total)).toBe(6000);
     expect(Number(resumen.comision_total)).toBe(600);
-    expect(Number(resumen.liquidado_total)).toBe(500);   // la liq de febrero
-    expect(Number(resumen.movimientos)).toBe(4);         // 3 cobros + 1 liq
+    expect(Number(resumen.liquidado_total)).toBe(500);
+    expect(Number(resumen.movimientos)).toBe(4);
   });
 
-  it('GET /:id con rango Marzo-Abril → solo cobro de Marzo + ninguna liq', async () => {
+  it('GET /:id con rango Marzo-Abril → saldo del período = solo cobro de Marzo (1800)', async () => {
     const r = await request(app).get(`/api/tarjetas/${tarjetaRango}?desde=2026-03-01&hasta=2026-04-30`).set(auth());
     expect(r.status).toBe(200);
     const { resumen } = r.body;
-    // Saldo SIEMPRE histórico, no responde al rango.
-    expect(Number(resumen.saldo)).toBe(4900);
-    expect(Number(resumen.bruto_total)).toBe(2000);    // solo cobro de marzo
+    // Saldo del período = cobros del rango (1800 de marzo) − liqs del rango (0). Filtra igual que el resto.
+    expect(Number(resumen.saldo)).toBe(1800);
+    expect(Number(resumen.bruto_total)).toBe(2000);
     expect(Number(resumen.comision_total)).toBe(200);
-    expect(Number(resumen.liquidado_total)).toBe(0);   // ninguna liq en el rango
+    expect(Number(resumen.liquidado_total)).toBe(0);
     expect(Number(resumen.movimientos)).toBe(1);
   });
 
-  it('GET /:id con rango Febrero → solo la liquidación', async () => {
+  it('GET /:id con rango Febrero → saldo del período NEGATIVO (-500): solo la liq, sin cobros', async () => {
     const r = await request(app).get(`/api/tarjetas/${tarjetaRango}?desde=2026-02-01&hasta=2026-02-28`).set(auth());
     expect(r.status).toBe(200);
     const { resumen } = r.body;
-    expect(Number(resumen.saldo)).toBe(4900);            // histórico
-    expect(Number(resumen.bruto_total)).toBe(0);         // ningún cobro
+    // Sin cobros en febrero (0) menos liq de febrero (500) = -500.
+    // Caso operativo: "este mes le devolví neto $500 a mi caja, sin generar saldo nuevo".
+    expect(Number(resumen.saldo)).toBe(-500);
+    expect(Number(resumen.bruto_total)).toBe(0);
     expect(Number(resumen.comision_total)).toBe(0);
     expect(Number(resumen.liquidado_total)).toBe(500);
     expect(Number(resumen.movimientos)).toBe(1);
@@ -634,22 +638,36 @@ describe('Tarjetas — GET resumen filtrado por rango (desde/hasta)', () => {
     expect(r.status).toBe(200);
     const t = r.body.find(x => x.id === tarjetaRango);
     expect(t).toBeTruthy();
-    expect(Number(t.saldo)).toBe(4900);            // histórico
-    expect(Number(t.bruto_total)).toBe(2000);      // filtrado
+    expect(Number(t.saldo)).toBe(1800);
+    expect(Number(t.bruto_total)).toBe(2000);
     expect(Number(t.comision_total)).toBe(200);
     expect(Number(t.liquidado_total)).toBe(0);
     expect(Number(t.movimientos)).toBe(1);
   });
 
-  it('GET /:id con rango sin movimientos (futuro) → ceros excepto saldo', async () => {
+  it('GET /:id con rango sin movimientos (futuro) → todo en cero (incluido el saldo)', async () => {
     const r = await request(app).get(`/api/tarjetas/${tarjetaRango}?desde=2030-01-01&hasta=2030-12-31`).set(auth());
     expect(r.status).toBe(200);
     const { resumen } = r.body;
-    expect(Number(resumen.saldo)).toBe(4900);            // sigue siendo el histórico
+    // Sin movs en el rango: saldo del período = 0. Consistente con el resto.
+    expect(Number(resumen.saldo)).toBe(0);
     expect(Number(resumen.bruto_total)).toBe(0);
     expect(Number(resumen.comision_total)).toBe(0);
     expect(Number(resumen.liquidado_total)).toBe(0);
     expect(Number(resumen.movimientos)).toBe(0);
+  });
+
+  it('saldos-resumen (consumido por 360) SIGUE siendo histórico — ese endpoint no usa rango', async () => {
+    // Defensa contra regresión: el cambio de semántica afecta a /api/tarjetas y
+    // /api/tarjetas/:id (vista operativa con filtro), pero 360 & Capital lee
+    // /saldos-resumen para sumar al patrimonio HOY. Ese endpoint NO acepta
+    // desde/hasta y devuelve el saldo histórico real, independiente del rango.
+    const lista = (await request(app).get('/api/tarjetas?desde=2030-01-01&hasta=2030-12-31').set(auth())).body;
+    const t = lista.find(x => x.id === tarjetaRango);
+    expect(Number(t.saldo)).toBe(0); // saldo del período (futuro) → 0
+    const r = await request(app).get('/api/tarjetas/saldos-resumen').set(auth());
+    // saldos-resumen debe incluir los 4900 históricos de esta tarjeta (entre los demás).
+    expect(r.body.saldo_ars).toBeGreaterThanOrEqual(4900);
   });
 });
 
