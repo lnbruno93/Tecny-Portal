@@ -34,11 +34,17 @@ beforeAll(async () => {
   await request(app).post('/api/comprobantes').set('Authorization', `Bearer ${token}`)
     .send({ fecha: '2026-01-20', cliente: 'Cliente C', monto: 5000,  monto_financiera: 150, monto_neto: 4850 });
 
+  // Caja destino ARS para pagos del setup. Desde junio 2026 caja_id es
+  // obligatorio en POST /api/pagos (el pago impacta a una caja real).
+  const cajaArs = await request(app).post('/api/cajas/cajas')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ nombre: 'Caja Pagos Setup', moneda: 'ARS', saldo_inicial: 0 });
+
   // Crear 2 pagos
   await request(app).post('/api/pagos').set('Authorization', `Bearer ${token}`)
-    .send({ fecha: '2026-01-12', monto: 5000,  referencia: 'Pago 1' });
+    .send({ fecha: '2026-01-12', monto: 5000,  referencia: 'Pago 1', caja_id: cajaArs.body.id });
   await request(app).post('/api/pagos').set('Authorization', `Bearer ${token}`)
-    .send({ fecha: '2026-01-22', monto: 10000, referencia: 'Pago 2' });
+    .send({ fecha: '2026-01-22', monto: 10000, referencia: 'Pago 2', caja_id: cajaArs.body.id });
 });
 
 afterAll(async () => {

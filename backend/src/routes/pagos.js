@@ -5,7 +5,11 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createPagoSchema, queryPagosSchema } = require('../schemas/pagos');
 const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 
+// Grupo de moneda (mismo criterio que tarjetas.js): USD y USDT son
+// intercambiables; ARS es su propio grupo.
+const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
 
 // ─── Totales globales ─────────────────────────────────────────────────────────
 router.get('/totales', async (_req, res, next) => {
@@ -54,35 +58,117 @@ router.get('/', validate(queryPagosSchema, 'query'), async (req, res, next) => {
 });
 
 // ─── Crear ────────────────────────────────────────────────────────────────────
+// Pago de financiera (junio 2026, espejo de liquidación de tarjetas):
+//   · `monto` (ARS) descuenta del saldo pendiente con la financiera
+//     (sum(comprobantes.neto) − sum(pagos.monto)).
+//   · `caja_id` es la caja real donde entra el dinero — desde ahora es
+//     obligatoria. La caja recibe ARS o USD según convertir_usd.
+//   · Si convertir_usd: la caja debe ser USD/USDT, ingresa `monto_usd`
+//     con tc guardado en el mov para reverso sin drift.
+//   · Si NO convertir_usd: la caja debe ser ARS, ingresa `monto`.
+//
+// Tx atómica con audit-in-tx (patrón H6): si el INSERT en pagos commitea
+// pero el audit o el cajaLedger fallan, no queremos pagos huérfanos.
 router.post('/', validate(createPagoSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
-    const { fecha, monto, referencia } = req.body;
-    const { rows } = await db.query(
-      'INSERT INTO pagos (fecha, monto, referencia) VALUES ($1,$2,$3) RETURNING *',
-      [fecha, monto, referencia ?? null]
+    const { fecha, monto, referencia, caja_id, convertir_usd, tc, monto_usd } = req.body;
+    await client.query('BEGIN');
+
+    // 1. Validar caja destino (existe + no eliminada).
+    const cajaRes = await client.query(
+      'SELECT id, nombre, moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]
     );
-    await audit('pagos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    if (!cajaRes.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'La caja seleccionada no existe.' });
+    }
+    const caja = cajaRes.rows[0];
+
+    // 2. Validar coherencia moneda caja ↔ flujo de conversión.
+    if (convertir_usd) {
+      if (grupoMoneda(caja.moneda) !== 'USD') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Si convertís a USD, la caja destino debe ser USD/USDT (es ${caja.moneda}).` });
+      }
+    } else {
+      if (grupoMoneda(caja.moneda) !== 'ARS') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Sin conversión, la caja destino debe ser ARS (es ${caja.moneda}).` });
+      }
+    }
+
+    // 3. Crear el pago. El `monto` es siempre ARS (descuenta del saldo);
+    //    tc y monto_usd quedan poblados solo si convirtió.
+    const { rows } = await client.query(
+      `INSERT INTO pagos (fecha, monto, referencia, caja_id, tc, monto_usd)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [
+        fecha, monto, referencia ?? null, caja_id,
+        convertir_usd ? Number(tc) : null,
+        convertir_usd ? Number(monto_usd) : null,
+      ]
+    );
+
+    // 4. Postear ingreso a la caja real. Monto y moneda dependen del flujo.
+    const montoIngresoCaja = convertir_usd ? Number(monto_usd) : Number(monto);
+    await postCajaMovimiento(client, {
+      caja_id, fecha, tipo: 'ingreso',
+      monto: montoIngresoCaja, moneda: caja.moneda,
+      tc: convertir_usd ? Number(tc) : null,
+      origen: 'financiera', ref_tabla: 'pagos', ref_id: rows[0].id,
+      concepto: `Pago financiera${referencia ? ' · ' + referencia : ''}`,
+      user_id: req.user.id,
+    });
+
+    await audit(client, 'pagos', 'INSERT', rows[0].id, {
+      despues: rows[0], user_id: req.user.id,
+    });
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 // ─── Eliminar (soft delete) ───────────────────────────────────────────────────
+// Si el pago tiene caja_id (NUEVOS), se revierte el ingreso a la caja igual
+// que en Tarjetas. Si no la tiene (legacy pre-junio 2026), solo se marca
+// como eliminado — esos no impactaban cajas.
+//
+// reverseCajaMovimientos puede tirar 409 ("caja en negativo") si el dinero
+// del pago ya fue gastado y la reversa dejaría la caja por debajo de 0.
+// Ese error se propaga al frontend para que el operador sepa por qué falló.
 router.delete('/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  const client = await db.connect();
   try {
-    const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE pagos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
-      [id]
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM pagos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'No encontrado' });
-    await audit('pagos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    if (!before[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No encontrado' });
+    }
+
+    if (before[0].caja_id) {
+      // Pago nuevo (post-junio 2026): revertir el caja_movimiento atómicamente.
+      await reverseCajaMovimientos(client, 'pagos', id);
+    }
+
+    await client.query(
+      'UPDATE pagos SET deleted_at = NOW() WHERE id = $1', [id]
+    );
+    await audit(client, 'pagos', 'DELETE', id, { antes: before[0], user_id: req.user.id });
+    await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
+    await client.query('ROLLBACK');
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 module.exports = router;
