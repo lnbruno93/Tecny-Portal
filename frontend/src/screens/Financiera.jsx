@@ -6,6 +6,7 @@ import {
   vendedores as vendsApi,
   config as configApi,
   ocr as ocrApi,
+  cajas as cajasApi,
 } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
@@ -147,13 +148,79 @@ export default function Financiera() {
   const [saveError, setSaveError] = useState('');
   const fileInputRef = useRef(null);
 
-  // Pagos tab
+  // Pagos tab — registro de pagos que recibimos de la financiera.
+  //
+  // Junio 2026: el form replica el patrón USD × TC = ARS de Tarjetas.
+  // Casi siempre la financiera deposita en USD a un TC del día, cancelando
+  // el saldo ARS pendiente. Los 3 inputs (usd, tc, ars) son editables y se
+  // auto-completan entre sí; el operador puede sobreescribir cualquiera
+  // para reflejar redondeos exactos del comprobante.
+  //
+  //   · USD recibido → entra a la caja USD destino.
+  //   · TC del día   → se persiste en el pago para trazabilidad.
+  //   · ARS          → descuenta del saldo pendiente con la financiera.
+  //   · Caja destino → obligatoria; filtrada por moneda según el toggle.
+  //
+  // La elección "Convertir a USD" se persiste en localStorage para que la
+  // próxima vez arranque con la misma config (espejo de Tarjetas).
   const [pagosList, setPagosList] = useState([]);
   const [pagosTotales, setPagosTotales] = useState(null);
-  const [pFecha, setPFecha] = useState(new Date().toLocaleDateString('sv'));
-  const [pMonto, setPMonto] = useState('');
-  const [pRef, setPRef] = useState('');
+  const [cajasList, setCajasList] = useState([]);
+  const PAGO_USD_KEY = 'fin_pago_convertir_usd';
+  const initialConvertirUSD = (() => {
+    try { return localStorage.getItem(PAGO_USD_KEY) === '1'; } catch { return false; }
+  })();
+  const [pagoForm, setPagoForm] = useState({
+    fecha:         new Date().toLocaleDateString('sv'),
+    monto:         '',  // ARS — descuenta del saldo
+    usd_recibido:  '',  // USD que entra a la caja
+    tc:            '',
+    caja_id:       '',
+    referencia:    '',
+    convertir_usd: initialConvertirUSD,
+  });
   const [savingPago, setSavingPago] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem(PAGO_USD_KEY, pagoForm.convertir_usd ? '1' : '0'); } catch { /* ignore */ }
+  }, [pagoForm.convertir_usd]);
+
+  // Helper de redondeo a 2 decimales (igual que Tarjetas).
+  const round2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+
+  // Handlers de los 3 inputs enlazados. Cuando editás uno, los otros se
+  // recalculan si hay info suficiente (USD × TC = ARS). Solo el handler del
+  // campo editado dispara el recálculo → no hay loops circulares.
+  const setPagoArs = (v) => {
+    setPagoForm(f => {
+      const ars = Number(v), tc = Number(f.tc);
+      const next = { ...f, monto: v };
+      if (Number.isFinite(ars) && ars > 0 && Number.isFinite(tc) && tc > 0) {
+        next.usd_recibido = String(round2(ars / tc));
+      }
+      return next;
+    });
+  };
+  const setPagoTc = (v) => {
+    setPagoForm(f => {
+      const tc = Number(v), usd = Number(f.usd_recibido), ars = Number(f.monto);
+      const next = { ...f, tc: v };
+      if (Number.isFinite(tc) && tc > 0) {
+        if (Number.isFinite(usd) && usd > 0) next.monto = String(round2(usd * tc));
+        else if (Number.isFinite(ars) && ars > 0) next.usd_recibido = String(round2(ars / tc));
+      }
+      return next;
+    });
+  };
+  const setPagoUsd = (v) => {
+    setPagoForm(f => {
+      const usd = Number(v), tc = Number(f.tc);
+      const next = { ...f, usd_recibido: v };
+      if (Number.isFinite(usd) && usd > 0 && Number.isFinite(tc) && tc > 0) {
+        next.monto = String(round2(usd * tc));
+      }
+      return next;
+    });
+  };
 
   // Vendedores tab
   const [newVend, setNewVend] = useState('');
@@ -252,11 +319,12 @@ export default function Financiera() {
     if (tab !== 'pagos') return;
     let mounted = true;
     setPagosError('');
-    Promise.all([pagosApi.list(), pagosApi.totales()])
-      .then(([list, tots]) => {
+    Promise.all([pagosApi.list(), pagosApi.totales(), cajasApi.listCajas()])
+      .then(([list, tots, cajas]) => {
         if (!mounted) return;
         setPagosList(list.data || []);
         setPagosTotales(tots);
+        setCajasList(Array.isArray(cajas) ? cajas : []);
       })
       .catch(err => { if (mounted) setPagosError(err.message); });
     return () => { mounted = false; };
@@ -432,18 +500,36 @@ export default function Financiera() {
   }
 
   // ── Save pago ──────────────────────────────────────────────────────────────
+  // Submit del nuevo flujo (junio 2026): valida los 3 inputs, manda payload
+  // completo al backend que crea el pago + postea ingreso a la caja en una tx.
   async function handleSavePago() {
-    if (!pMonto || Number(pMonto) <= 0) return;
+    const ars = Number(pagoForm.monto) || 0;
+    const tc  = Number(pagoForm.tc) || 0;
+    const usd = Number(pagoForm.usd_recibido) || 0;
+    if (ars <= 0)             { toast.error('Cargá el total ARS que descuenta del saldo.'); return; }
+    if (!pagoForm.caja_id)    { toast.error('Elegí la caja destino.'); return; }
+    if (pagoForm.convertir_usd) {
+      if (tc <= 0)  { toast.error('Cargá el TC del día.'); return; }
+      if (usd <= 0) { toast.error('Cargá el USD recibido.'); return; }
+    }
     setSavingPago(true);
     try {
-      const nuevo = await pagosApi.create({
-        fecha: pFecha,
-        monto: Number(pMonto),
-        referencia: pRef || null,
-      });
+      const payload = {
+        fecha:      pagoForm.fecha,
+        monto:      ars,
+        referencia: pagoForm.referencia.trim() || null,
+        caja_id:    Number(pagoForm.caja_id),
+        convertir_usd: !!pagoForm.convertir_usd,
+        ...(pagoForm.convertir_usd ? { tc, monto_usd: usd } : {}),
+      };
+      const nuevo = await pagosApi.create(payload);
       setPagosList(prev => [nuevo, ...prev]);
-      setPMonto('');
-      setPRef('');
+      // Reset mantiene fecha + caja + convertir_usd + tc (lunes/jueves
+      // suelen venir 2 liquidaciones con misma fecha pero distinto TC).
+      setPagoForm(f => ({
+        ...f,
+        monto: '', usd_recibido: '', referencia: '',
+      }));
       const tots = await pagosApi.totales();
       setPagosTotales(tots);
       toast.success('Pago registrado.');
@@ -1107,39 +1193,100 @@ export default function Financiera() {
                 </div>
               </div>
               <div style={{ padding: '0 18px 18px' }}>
-                <div className="row" style={{ marginBottom: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                {/* Fila 1: fecha + referencia + toggle USD. La elección se
+                    persiste en localStorage (default según última vez). */}
+                <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
+                  <div className="field" style={{ width: 150 }}>
                     <div className="field-label">Fecha</div>
-                    <input
-                      type="date"
-                      className="input mono"
-                      value={pFecha}
-                      onChange={e => setPFecha(e.target.value)}
-                    />
+                    <input type="date" className="input mono"
+                      value={pagoForm.fecha}
+                      onChange={e => setPagoForm(f => ({ ...f, fecha: e.target.value }))} />
                   </div>
                   <div className="field" style={{ flex: 1 }}>
+                    <div className="field-label">Referencia</div>
+                    <input className="input"
+                      placeholder="Ej: Liquidación semana 4 mayo"
+                      value={pagoForm.referencia}
+                      onChange={e => setPagoForm(f => ({ ...f, referencia: e.target.value }))} />
+                  </div>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', paddingBottom: 8 }}>
+                    <input type="checkbox"
+                      checked={pagoForm.convertir_usd}
+                      onChange={e => setPagoForm(f => ({
+                        ...f,
+                        convertir_usd: e.target.checked,
+                        caja_id: '', // reset: el filtro de cajas cambia con la moneda
+                      }))} />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Convertir a USD</span>
+                  </label>
+                </div>
+
+                {/* Fila 2: USD × TC = ARS (cuando hay conversión). Los 3
+                    inputs son editables; cuando edits uno, los otros se
+                    auto-completan vía USD × TC = ARS. */}
+                {pagoForm.convertir_usd && (
+                  <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
+                    <div className="field" style={{ width: 180 }}>
+                      <div className="field-label">USD recibido (caja)</div>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                        className="input mono" placeholder="0"
+                        value={pagoForm.usd_recibido}
+                        onChange={e => setPagoUsd(e.target.value)} />
+                    </div>
+                    <div style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>×</div>
+                    <div className="field" style={{ width: 140 }}>
+                      <div className="field-label">TC del día</div>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                        className="input mono" placeholder="0"
+                        value={pagoForm.tc}
+                        onChange={e => setPagoTc(e.target.value)} />
+                    </div>
+                    <div style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>=</div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <div className="field-label">Total ARS (descuenta del saldo)</div>
+                      <div className="input-group">
+                        <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                          className="input mono" placeholder="0,00"
+                          value={pagoForm.monto}
+                          onChange={e => setPagoArs(e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sin conversión: solo input ARS. */}
+                {!pagoForm.convertir_usd && (
+                  <div className="field" style={{ marginBottom: 12 }}>
                     <div className="field-label">Monto (ARS)</div>
                     <div className="input-group">
                       <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
-                      <input
-                        type="number" onKeyDown={blockInvalidNumberKeys}
-                        className="input mono"
-                        placeholder="0,00"
-                        value={pMonto}
-                        onChange={e => setPMonto(e.target.value)}
-                      />
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                        className="input mono" placeholder="0,00"
+                        value={pagoForm.monto}
+                        onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* Caja destino: filtrada por moneda según el toggle. */}
                 <div className="field" style={{ marginBottom: 14 }}>
-                  <div className="field-label">Referencia</div>
-                  <input
-                    className="input"
-                    placeholder="Ej: Liquidación semana 4 mayo"
-                    value={pRef}
-                    onChange={e => setPRef(e.target.value)}
-                  />
+                  <div className="field-label">Entra a la caja {pagoForm.convertir_usd ? '(USD)' : '(ARS)'}</div>
+                  <select className="input"
+                    value={pagoForm.caja_id}
+                    onChange={e => setPagoForm(f => ({ ...f, caja_id: e.target.value }))}>
+                    <option value="">Elegí la caja…</option>
+                    {cajasList
+                      .filter(c => !c.es_tarjeta)
+                      .filter(c => pagoForm.convertir_usd
+                        ? (c.moneda === 'USD' || c.moneda === 'USDT')
+                        : c.moneda === 'ARS')
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>
+                      ))}
+                  </select>
                 </div>
+
                 <button
                   className="btn btn-primary"
                   onClick={handleSavePago}
