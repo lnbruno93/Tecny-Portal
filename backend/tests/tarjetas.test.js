@@ -750,7 +750,7 @@ describe('Tarjetas — POST /liquidaciones-multiples', () => {
     expect(await saldoCaja(cajaMult)).toBe(cajaAntes);
   });
 
-  it('rechaza caja de moneda distinta a alguna tarjeta → 400 con rollback', async () => {
+  it('rechaza repartos con tarjetas de distintas monedas → 400 con rollback', async () => {
     const tarUsd = (await request(app).post('/api/cajas/cajas').set(auth())
       .send({ nombre: 'TC USD Mult', moneda: 'USD', es_tarjeta: true, comision_pct: 0 })).body.id;
     const cajaAntes = await saldoCaja(cajaMult);
@@ -758,13 +758,25 @@ describe('Tarjetas — POST /liquidaciones-multiples', () => {
       .send({
         fecha: hoy, caja_id: cajaMult, // ARS
         repartos: [
-          { metodo_pago_id: tarjetaA, monto: 100 }, // ARS — ok
-          { metodo_pago_id: tarUsd,   monto: 50 },  // USD — rompe
+          { metodo_pago_id: tarjetaA, monto: 100 }, // ARS
+          { metodo_pago_id: tarUsd,   monto: 50 },  // USD — mezcla
         ],
       });
     expect(r.status).toBe(400);
-    expect(r.body.error).toMatch(/no coincide/);
+    expect(r.body.error).toMatch(/mezclar/i);
     expect(await saldoCaja(cajaMult)).toBe(cajaAntes);
+  });
+
+  it('rechaza caja de moneda distinta a las tarjetas (sin conversión) → 400 con rollback', async () => {
+    const cajaUsd = (await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Mult', moneda: 'USD', saldo_inicial: 0 })).body.id;
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsd, // USD
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 100 }], // ARS — no coincide
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/no coincide/);
   });
 
   it('rechaza repartos con tarjetas duplicadas (refine)', async () => {
@@ -798,6 +810,133 @@ describe('Tarjetas — POST /liquidaciones-multiples', () => {
         ],
       });
     expect(r.status).toBe(400);
+  });
+
+  // ── Conversión a USD (junio 2026) ──
+  // Caso operativo: la financiera deposita el neto ARS y se convierte a USD
+  // con el TC del día. Las liquidaciones se siguen registrando en ARS en
+  // tarjeta_movimientos (bajan el pendiente correcto), pero la caja USD
+  // recibe el equivalente en USD.
+
+  it('convertir_usd: caja USD recibe ARS total / TC, distribuido entre N repartos', async () => {
+    const cajaUsd = (await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Liq', moneda: 'USD', saldo_inicial: 0 })).body.id;
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsd,
+        convertir_usd: true,
+        tc: 1100,
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 1100 },   // → USD 1.00
+          { metodo_pago_id: tarjetaB, monto: 2200 },   // → USD 2.00
+        ],
+        // Sin override: USD total = 3300/1100 = 3.00 distribuido proporcional.
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.total_usd).toBeCloseTo(3, 2);
+    // Caja USD subió por la suma USD (3.00).
+    expect(await saldoCaja(cajaUsd)).toBeCloseTo(3, 2);
+    // En tarjeta_movimientos los netos siguen en ARS (1100 y 2200).
+    const movs = r.body.movimientos;
+    expect(Number(movs[0].monto_neto)).toBe(1100);
+    expect(Number(movs[1].monto_neto)).toBe(2200);
+    // El TC quedó persistido en cada mov.
+    expect(Number(movs[0].tc)).toBe(1100);
+    expect(Number(movs[1].tc)).toBe(1100);
+  });
+
+  it('convertir_usd con override total_usd_efectivo: caja recibe exactamente el override', async () => {
+    const cajaUsd = (await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Override', moneda: 'USD', saldo_inicial: 0 })).body.id;
+    // ARS 1.332.588,40 a TC 1100 → calculo da 1211.4440. La financiera
+    // depositó 1211.40 por redondeo distinto → cargamos ese override.
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsd,
+        convertir_usd: true, tc: 1100, total_usd_efectivo: 1211.40,
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 169990.00 },
+          { metodo_pago_id: tarjetaB, monto: 1162598.40 },
+        ],
+      });
+    expect(r.status).toBe(201);
+    // La suma exacta de USD en la caja = override (no el cálculo automático).
+    expect(await saldoCaja(cajaUsd)).toBeCloseTo(1211.40, 2);
+    expect(r.body.total_usd).toBeCloseTo(1211.40, 2);
+  });
+
+  it('convertir_usd requiere TC → 400', async () => {
+    const cajaUsd = (await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD No TC', moneda: 'USD', saldo_inicial: 0 })).body.id;
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsd,
+        convertir_usd: true,
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 1000 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.fields?.some(f => /TC/i.test(f.error))).toBe(true);
+  });
+
+  it('convertir_usd con caja ARS → 400', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult, // ARS
+        convertir_usd: true, tc: 1100,
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 1000 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/USD\/USDT/i);
+  });
+
+  it('TC sin convertir_usd → 400 (defensa contra ruido en el payload)', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        tc: 1100, // ruido, sin convertir_usd
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 100 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.fields?.some(f => /TC/i.test(f.error))).toBe(true);
+  });
+
+  it('período cubierto: se persisten desde y hasta en cada mov', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        periodo_desde: '2026-05-26', periodo_hasta: '2026-05-27',
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 500 },
+          { metodo_pago_id: tarjetaB, monto: 300 },
+        ],
+      });
+    expect(r.status).toBe(201);
+    r.body.movimientos.forEach(m => {
+      expect(m.periodo_desde).toBe('2026-05-26');
+      expect(m.periodo_hasta).toBe('2026-05-27');
+    });
+  });
+
+  it('período cubierto con desde > hasta → 400', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        periodo_desde: '2026-05-28', periodo_hasta: '2026-05-26',
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 100 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.fields?.some(f => /desde/i.test(f.error) && /hasta/i.test(f.error))).toBe(true);
+  });
+
+  it('período cubierto con solo desde (sin hasta) → 400', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        periodo_desde: '2026-05-26', // sin hasta
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 100 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.fields?.some(f => /ambos extremos/i.test(f.error))).toBe(true);
   });
 
   it('audit_log marca batch=liquidacion_multiple en cada mov creado', async () => {
