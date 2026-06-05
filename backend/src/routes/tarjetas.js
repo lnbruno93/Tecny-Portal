@@ -340,11 +340,25 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
 // con la caja), rollback completo — no querés un depósito a medias en
 // producción. Audit-in-tx por cada movimiento creado.
 //
-// Body: { fecha, caja_id, repartos: [{ metodo_pago_id, monto }], comentarios? }
+// Conversión a USD (junio 2026): si convertir_usd=true + tc, las liquidaciones
+// se siguen registrando en ARS en tarjeta_movimientos (bajan el pendiente
+// correcto), pero el ingreso a la caja destino va en USD usando el TC.
+// total_usd_efectivo (opcional) override del cálculo automático ARS/TC —
+// útil cuando la financiera te depositó X USD con un redondeo distinto al
+// matemático. Se distribuye proporcional al peso de cada reparto sobre el
+// total ARS, preservando la suma exacta de USD en la caja.
+//
+// Body: { fecha, caja_id, repartos: [{ metodo_pago_id, monto }],
+//         comentarios?, convertir_usd?, tc?, total_usd_efectivo?,
+//         periodo_desde?, periodo_hasta? }
 router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
-    const { fecha, caja_id, comentarios, repartos } = req.body;
+    const {
+      fecha, caja_id, comentarios, repartos,
+      convertir_usd, tc, total_usd_efectivo,
+      periodo_desde, periodo_hasta,
+    } = req.body;
     await client.query('BEGIN');
 
     // 1. Validar caja destino.
@@ -357,10 +371,14 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
     }
     const monedaCaja = caja.rows[0].moneda;
 
-    // 2. Cargar todas las tarjetas en una sola query y validar que (a) existen,
-    //    (b) son tarjetas activas, (c) todas tienen moneda compatible con la caja.
-    //    El "compatible" usa grupoMoneda (USD/USDT son intercambiables, ARS es su
-    //    propio grupo) — mismo criterio que la liquidación simple.
+    // 2. Cargar todas las tarjetas en una sola query y validar (a) existen,
+    //    (b) son tarjetas activas, (c) todas son de la MISMA moneda entre sí
+    //    (no permitimos mezclar ARS + USD en un mismo reparto — sería ambiguo
+    //    distribuir el TC). Cuando convertir_usd: la caja debe ser USD/USDT
+    //    y las tarjetas deben ser ARS (operativamente: convertís pesos a
+    //    dólares; los demás casos no se dan en la práctica). Cuando NO
+    //    convertir_usd: caja y tarjetas deben coincidir en grupoMoneda
+    //    (mismo criterio que la liquidación simple, retrocompat).
     const ids = repartos.map(r => r.metodo_pago_id);
     const mps = await client.query(
       'SELECT id, moneda, nombre FROM metodos_pago WHERE id = ANY($1) AND es_tarjeta = true AND deleted_at IS NULL',
@@ -370,38 +388,108 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Alguna tarjeta no existe o no está activa.' });
     }
-    const incompat = mps.rows.find(mp => grupoMoneda(mp.moneda) !== grupoMoneda(monedaCaja));
-    if (incompat) {
+    const monedasTarjetas = new Set(mps.rows.map(m => m.moneda));
+    if (monedasTarjetas.size > 1) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: `La caja (${monedaCaja}) no coincide con la moneda de "${incompat.nombre}" (${incompat.moneda}).` });
+      return res.status(400).json({ error: 'No se pueden mezclar tarjetas de distintas monedas en un mismo reparto.' });
+    }
+    const monedaTarjetas = mps.rows[0].moneda;
+
+    if (convertir_usd) {
+      // Solo soportamos ARS → USD (el caso real). Si el operador eligió
+      // convertir pero la tarjeta ya está en USD, no hay nada que convertir.
+      if (grupoMoneda(monedaTarjetas) === 'USD') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Las tarjetas ya están en USD; no hay nada que convertir.' });
+      }
+      if (grupoMoneda(monedaCaja) !== 'USD') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Si convertís a USD, la caja destino debe ser USD/USDT (es ${monedaCaja}).` });
+      }
+    } else {
+      // Sin conversión: caja y tarjetas en mismo grupoMoneda (comportamiento
+      // pre-existente para no romper liquidaciones que no convierten).
+      if (grupoMoneda(monedaTarjetas) !== grupoMoneda(monedaCaja)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `La caja (${monedaCaja}) no coincide con la moneda de las tarjetas (${monedaTarjetas}).` });
+      }
     }
 
-    // 3. Crear N filas + N ingresos a la caja + N audit logs.
-    //    Reusamos exactamente el patrón de POST /liquidaciones (1 mov por reparto).
-    //    Cada concepto en la caja queda etiquetado con el nombre de la tarjeta
-    //    para que la conciliación bancaria muestre el desglose claro.
+    // 3. Calcular el reparto USD si aplica. Math:
+    //    totalARS = suma(reparto.monto)
+    //    totalUSD = total_usd_efectivo (override) ?? totalARS / tc
+    //    USD_de_cada_reparto = (reparto.monto / totalARS) * totalUSD
+    //    El último reparto absorbe el residuo de redondeo para preservar
+    //    la suma exacta = totalUSD (evitar que la caja USD reciba 0.01 menos).
+    const totalArs = round2(repartos.reduce((a, r) => a + Number(r.monto), 0));
+    let usdPorReparto = null; // Map<metodo_pago_id, montoUsd> si convertir_usd
+    if (convertir_usd) {
+      const totalUsdRaw = total_usd_efectivo != null
+        ? Number(total_usd_efectivo)
+        : (totalArs / Number(tc));
+      const totalUsd = round2(totalUsdRaw);
+      usdPorReparto = new Map();
+      let acumUsd = 0;
+      for (let i = 0; i < repartos.length; i++) {
+        const r = repartos[i];
+        let usd;
+        if (i === repartos.length - 1) {
+          // Último → residuo exacto, no se redondea (cuadra la suma).
+          usd = round2(totalUsd - acumUsd);
+        } else {
+          usd = round2((Number(r.monto) / totalArs) * totalUsd);
+          acumUsd = round2(acumUsd + usd);
+        }
+        if (usd <= 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `El reparto USD para uno de los repartos quedó en 0 o negativo (revisá TC y montos).` });
+        }
+        usdPorReparto.set(r.metodo_pago_id, usd);
+      }
+    }
+
+    // 4. Crear N filas + N ingresos a la caja + N audit logs.
+    //    En tarjeta_movimientos el monto_neto sigue en ARS (es lo que baja
+    //    el saldo pendiente de la tarjeta). El TC y el período se guardan
+    //    en las columnas nuevas para trazabilidad (reverso, conciliación).
+    //    El ingreso a caja va en USD si convertir_usd, sino en la moneda
+    //    de la tarjeta (igual que antes).
     const created = [];
     for (const reparto of repartos) {
       const mp = mps.rows.find(m => m.id === reparto.metodo_pago_id);
       const m = round2(Number(reparto.monto));
+      const tcGuardado = convertir_usd ? Number(tc) : null;
       const { rows } = await client.query(
-        `INSERT INTO tarjeta_movimientos (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, caja_id, comentarios, user_id)
-         VALUES ($1,$2,'liquidacion',$3,$4,0,0,$4,$5,$6,$7) RETURNING *`,
-        [reparto.metodo_pago_id, fecha, mp.moneda, m, caja_id, comentarios ?? null, req.user.id]
+        `INSERT INTO tarjeta_movimientos (
+           metodo_pago_id, fecha, tipo, moneda,
+           monto_bruto, pct, monto_comision, monto_neto,
+           caja_id, comentarios, user_id,
+           periodo_desde, periodo_hasta, tc
+         )
+         VALUES ($1,$2,'liquidacion',$3,$4,0,0,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [
+          reparto.metodo_pago_id, fecha, mp.moneda,
+          m,
+          caja_id, comentarios ?? null, req.user.id,
+          periodo_desde ?? null, periodo_hasta ?? null, tcGuardado,
+        ]
       );
+      const montoIngresoCaja = convertir_usd ? usdPorReparto.get(mp.id) : m;
       await postCajaMovimiento(client, {
-        caja_id, fecha, tipo: 'ingreso', monto: m, moneda: mp.moneda, tc: null,
+        caja_id, fecha, tipo: 'ingreso',
+        monto: montoIngresoCaja, moneda: monedaCaja, tc: tcGuardado,
         origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: rows[0].id,
         concepto: `Liquidación ${mp.nombre}`, user_id: req.user.id,
       });
-      // Audit con marker `batch: 'liquidacion_multiple'` para distinguir estos
-      // movs en el audit log de las liquidaciones individuales — útil si en el
-      // futuro hay que undo masivo o auditar el conjunto. audit() mergea las
-      // props extra (cualquier key fuera de antes/despues/user_id) en `despues`.
+      // Audit con marker `batch: 'liquidacion_multiple'`. Si hubo conversión,
+      // guardamos el USD efectivo del reparto para reconstruir la operación
+      // desde el audit log si fuese necesario.
       await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, {
         despues: rows[0],
         batch: 'liquidacion_multiple',
         total_repartos: repartos.length,
+        convertir_usd: !!convertir_usd,
+        monto_caja: montoIngresoCaja,
         user_id: req.user.id,
       });
       created.push(rows[0]);
@@ -409,7 +497,11 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
 
     await client.query('COMMIT');
     const total = created.reduce((a, r) => a + Number(r.monto_neto), 0);
-    res.status(201).json({ movimientos: created, total });
+    res.status(201).json({
+      movimientos: created,
+      total,
+      ...(convertir_usd ? { total_usd: Array.from(usdPorReparto.values()).reduce((a, v) => a + v, 0) } : {}),
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
