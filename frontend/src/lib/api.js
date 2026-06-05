@@ -206,7 +206,11 @@ export const cambios = {
 
 export const tarjetas = {
   // Las "tarjetas" son métodos de pago marcados como tal en Cajas (solo lectura acá).
-  list:              () => api('/api/tarjetas'),
+  // list/get aceptan { desde, hasta } opcionales: el backend filtra Comisión/Cobrado/
+  // Movimientos del resumen por ese rango; el saldo se mantiene histórico (estado actual).
+  list:              (params = {}) => api('/api/tarjetas?' + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
+  )),
   // Saldo agregado por moneda — consumido por 360 & Capital ({ saldo_ars, saldo_usd }).
   saldosResumen:     () => api('/api/tarjetas/saldos-resumen'),
   // Estado de cuenta unificado (todas las tarjetas) + por tarjeta. Aceptan
@@ -214,7 +218,9 @@ export const tarjetas = {
   movimientosAll:    (params = {}) => api('/api/tarjetas/movimientos?' + new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
   )),
-  get:               (id) => api(`/api/tarjetas/${id}`),
+  get:               (id, params = {}) => api(`/api/tarjetas/${id}?` + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
+  )),
   movimientos:       (id, params = {}) => api(`/api/tarjetas/${id}/movimientos?` + new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
   )),
