@@ -15,6 +15,13 @@ import { rangeToParams, rangeLabel, RANGE_PRESETS } from '../lib/dateRange';
 const todayISO = () => new Date().toLocaleDateString('sv');
 const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
 
+// Sentinel para la "tarjeta virtual" Todas las tarjetas (junio 2026). Cuando
+// selectedId === ALL_TARJETAS, el Detalle muestra KPIs sumados de todas las
+// tarjetas y un form de liquidación múltiple (la financiera deposita un solo
+// monto que cubre cupones de varias modalidades). String para no chocar con
+// los IDs numéricos de las tarjetas reales.
+const ALL_TARJETAS = 'todas';
+
 export default function Tarjetas() {
   const { toast } = useToast();
   const confirm   = useConfirm();
@@ -50,6 +57,14 @@ export default function Tarjetas() {
   // Liquidación (cuando nos pagan)
   const [liq, setLiq] = useState({ fecha: todayISO(), monto: '', caja_id: '' });
   const [savingLiq, setSavingLiq] = useState(false);
+
+  // Liquidación múltiple (junio 2026): para la vista "Todas las tarjetas".
+  // El depósito de la financiera viene desglosado por modalidad — el operador
+  // ingresa total + monto por tarjeta. La suma de repartos debe igualar al
+  // total recibido. `repartos` es un dict {tarjetaId: stringMonto} para que
+  // los inputs se manejen como texto (vacío = 0, no se envía).
+  const [multiLiq, setMultiLiq] = useState({ fecha: todayISO(), monto: '', caja_id: '', comentarios: '', repartos: {} });
+  const [savingMultiLiq, setSavingMultiLiq] = useState(false);
 
   // Cobro previo (saldos de ventas anteriores al sistema — junio 2026)
   const EMPTY_COBRO_PREV = {
@@ -103,10 +118,16 @@ export default function Tarjetas() {
     setPrimaryAction(null);
     return () => setPrimaryAction(null);
   }, [setPrimaryAction]);
-  useEffect(() => { if (list.length > 0 && !selectedId) setSelectedId(list[0].id); }, [list]); // eslint-disable-line
+  // Al entrar al Detalle por primera vez, default a "Todas las tarjetas" — es
+  // la vista panorama (4 KPIs sumados + ledger unificado + form de liquidación
+  // múltiple), que es lo que el operador usa más seguido cuando la financiera
+  // le deposita un único monto que cubre las 3 modalidades.
+  useEffect(() => { if (list.length > 0 && !selectedId) setSelectedId(ALL_TARJETAS); }, [list]); // eslint-disable-line
 
   function loadDetalle() {
-    if (!selectedId) { setDetalle(null); setMovs([]); return; }
+    // En la vista "Todas" no cargamos detalle de una tarjeta puntual — los
+    // datos ya están en `list` (KPIs agregados) y `allMovs` (ledger unificado).
+    if (!selectedId || selectedId === ALL_TARJETAS) { setDetalle(null); setMovs([]); return; }
     Promise.all([
       tarjetasApi.get(selectedId, rangeToParams(tarjRange)),
       tarjetasApi.movimientos(selectedId, { ...rangeToParams(tarjRange), limit: 500 }),
@@ -144,6 +165,95 @@ export default function Tarjetas() {
       loadList(); loadDetalle();
       toast.success('Liquidación registrada.');
     } catch (err) { toast.error(err.message); } finally { setSavingLiq(false); }
+  }
+
+  // ── Liquidación múltiple (vista "Todas las tarjetas") ──
+  // Suma de los repartos = lo que el operador asignó a cada tarjeta.
+  // La validación clave: sumaRepartos === monto total recibido (con tolerancia
+  // 0.01 por el redondeo cuando alguien hace el FIFO automático).
+  const sumaRepartos = useMemo(() => {
+    return Object.values(multiLiq.repartos).reduce((a, v) => a + (Number(v) || 0), 0);
+  }, [multiLiq.repartos]);
+
+  const totalMulti = Number(multiLiq.monto) || 0;
+  const deltaRepartos = sumaRepartos - totalMulti;
+  const multiOk = totalMulti > 0 && Math.abs(deltaRepartos) < 0.01 && !!multiLiq.caja_id;
+
+  // FIFO sugerido: ordena las tarjetas por la fecha del cobro pendiente más
+  // viejo y asigna del total disponible hasta agotar (o saturar el saldo de la
+  // tarjeta). Es una ayuda — el operador puede sobreescribir cualquier monto.
+  // Heurística: usamos allMovs para encontrar la fecha del primer cobro de cada
+  // tarjeta. Tarjetas con saldo 0 se omiten.
+  function sugerirFifo() {
+    const total = Number(multiLiq.monto) || 0;
+    if (total <= 0) { toast.error('Cargá primero el monto total recibido.'); return; }
+    const ordered = list
+      .filter(t => Number(t.saldo) > 0)
+      .map(t => {
+        const cobrosT = allMovs.filter(m => m.metodo_pago_id === t.id && m.tipo === 'cobro');
+        // Si no hay cobros conocidos en allMovs (raro), poner una fecha lejana
+        // para que vaya último — preferimos asignar a tarjetas con cobros viejos.
+        const oldest = cobrosT.length
+          ? cobrosT.reduce((a, c) => (c.fecha < a ? c.fecha : a), cobrosT[0].fecha)
+          : '9999-12-31';
+        return { id: t.id, saldo: Number(t.saldo), oldest };
+      })
+      .sort((a, b) => a.oldest.localeCompare(b.oldest));
+    let restante = total;
+    const repartos = {};
+    for (const t of ordered) {
+      if (restante <= 0) break;
+      const asignar = Math.round(Math.min(restante, t.saldo) * 100) / 100;
+      if (asignar > 0) repartos[t.id] = String(asignar);
+      restante = Math.round((restante - asignar) * 100) / 100;
+    }
+    setMultiLiq(f => ({ ...f, repartos }));
+    if (restante > 0.01) {
+      toast.warn?.(`El total supera el saldo pendiente por ${fmt(restante)}. Ajustá manualmente.`);
+    }
+  }
+
+  function setReparto(tarjetaId, valor) {
+    setMultiLiq(f => ({
+      ...f,
+      repartos: { ...f.repartos, [tarjetaId]: valor },
+    }));
+  }
+
+  async function handleLiquidarMultiple(e) {
+    e.preventDefault();
+    if (!multiLiq.caja_id) { toast.error('Elegí la caja donde entra el dinero.'); return; }
+    if (totalMulti <= 0) { toast.error('Ingresá el monto total recibido.'); return; }
+    if (!multiOk) {
+      toast.error(`La suma de los repartos (${fmt(sumaRepartos)}) no coincide con el total (${fmt(totalMulti)}).`);
+      return;
+    }
+    // Filtramos repartos con monto > 0 — el backend rechaza ceros y vacíos.
+    const repartosArr = Object.entries(multiLiq.repartos)
+      .map(([id, v]) => ({ metodo_pago_id: Number(id), monto: Number(v) || 0 }))
+      .filter(r => r.monto > 0);
+    if (repartosArr.length === 0) {
+      toast.error('Asigná al menos una tarjeta con monto > 0.');
+      return;
+    }
+    setSavingMultiLiq(true);
+    try {
+      await tarjetasApi.createLiquidacionMultiple({
+        fecha: multiLiq.fecha,
+        caja_id: Number(multiLiq.caja_id),
+        repartos: repartosArr,
+        comentarios: multiLiq.comentarios.trim() || null,
+      });
+      // Reset y refresh — mantener fecha + caja para liquidaciones encadenadas
+      // del mismo día (patrón pickado del form simple).
+      setMultiLiq(f => ({ ...f, monto: '', repartos: {}, comentarios: '' }));
+      loadList();
+      toast.success(`Liquidación registrada (${repartosArr.length} ${repartosArr.length === 1 ? 'tarjeta' : 'tarjetas'}).`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingMultiLiq(false);
+    }
   }
 
   // Borrar con contexto del movimiento (fecha + tipo + monto) en el confirm.
@@ -459,8 +569,22 @@ export default function Tarjetas() {
         </>
       ) : (
         <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
-          {/* Lista de tarjetas (métodos de pago) */}
+          {/* Lista de tarjetas (métodos de pago) + ítem virtual "Todas las
+              tarjetas" al inicio para ver el resumen agregado y registrar
+              la liquidación múltiple (un depósito que cubre N modalidades). */}
           <div className="card card-flush" style={{ maxHeight: '78vh', overflow: 'auto' }}>
+            <div onClick={() => setSelectedId(ALL_TARJETAS)} style={{
+              padding: '10px 13px', cursor: 'pointer',
+              borderBottom: '1px solid var(--hairline)',
+              background: selectedId === ALL_TARJETAS ? 'var(--surface-2)' : 'transparent',
+              borderLeft: selectedId === ALL_TARJETAS ? '3px solid var(--accent)' : '3px solid transparent',
+            }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Todas las tarjetas</div>
+              <div className="muted tiny" style={{ marginTop: 2 }}>{list.length} {list.length === 1 ? 'modalidad' : 'modalidades'} · resumen + liquidación múltiple</div>
+              <div className="mono tiny" style={{ marginTop: 2, color: global.saldo > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                Te deben: $ {fmt(global.saldo)}
+              </div>
+            </div>
             {list.map((t, i) => (
               <div key={t.id} onClick={() => setSelectedId(t.id)} style={{
                 padding: '10px 13px', cursor: 'pointer',
@@ -478,7 +602,177 @@ export default function Tarjetas() {
           </div>
 
           {/* Detalle */}
-          {!detalle ? (
+          {selectedId === ALL_TARJETAS ? (
+            // ── Vista "Todas las tarjetas" — KPIs sumados + form de liquidación
+            //    múltiple + ledger unificado. Pensada para registrar el depósito
+            //    de la financiera que cubre N modalidades en una sola operación. ──
+            <div className="stack" style={{ gap: 14 }}>
+              <div className="card">
+                <div style={{ fontWeight: 700, fontSize: 18 }}>Todas las tarjetas</div>
+                <div className="muted tiny" style={{ marginTop: 4 }}>
+                  Resumen agregado de las {list.length} {list.length === 1 ? 'modalidad activa' : 'modalidades activas'}.
+                </div>
+              </div>
+
+              {/* KPIs sumados — mismos 4 cards que cada tarjeta individual,
+                  pero con los totales globales del rango elegido. */}
+              <div className="row">
+                <div className="card card-tight" style={{ flex: 1 }}>
+                  <div className="kpi-label">Te deben (falta cobrar)</div>
+                  <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>$ {fmt(global.saldo)}</div>
+                </div>
+                <div className="card card-tight" style={{ flex: 1 }}>
+                  <div className="kpi-label">Comisión financiera</div>
+                  <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>$ {fmt(global.comision)}</div>
+                </div>
+                <div className="card card-tight" style={{ flex: 1 }}>
+                  <div className="kpi-label">Cobrado (bruto)</div>
+                  <div className="kpi-value mono">$ {fmt(global.bruto)}</div>
+                </div>
+                <div className="card card-tight" style={{ flex: 1 }}>
+                  <div className="kpi-label">Movimientos</div>
+                  <div className="kpi-value mono">{estadoCuenta.length}</div>
+                </div>
+              </div>
+
+              {/* ── Liquidación múltiple ──
+                  La financiera deposita un solo monto que cubre cupones de
+                  varios planes (Lucas confirma que viene desglosado en el
+                  comprobante). Form: total + caja + N inputs por modalidad
+                  con validación en vivo de "suma === total". */}
+              <div className="card">
+                <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Registrar liquidación múltiple</div></div>
+                <form onSubmit={handleLiquidarMultiple} className="stack" style={{ gap: 10 }}>
+                  <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div className="field" style={{ width: 150 }}>
+                      <label className="field-label tiny">Fecha</label>
+                      <input type="date" className="input"
+                             value={multiLiq.fecha}
+                             onChange={e => setMultiLiq(f => ({ ...f, fecha: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ width: 180 }}>
+                      <label className="field-label tiny">Monto total recibido</label>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                             placeholder="0"
+                             value={multiLiq.monto}
+                             onChange={e => setMultiLiq(f => ({ ...f, monto: e.target.value }))} />
+                    </div>
+                    <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                      <label className="field-label tiny">Entra a la caja</label>
+                      <select className="input"
+                              value={multiLiq.caja_id}
+                              onChange={e => setMultiLiq(f => ({ ...f, caja_id: e.target.value }))}>
+                        <option value="">Elegí la caja…</option>
+                        {cajas.filter(c => !c.es_tarjeta).map(c => (
+                          <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>
+                        ))}
+                        <CajaSelectHint />
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Reparto por modalidad: 1 fila por tarjeta con saldo > 0.
+                      Si no hay saldo pendiente en ninguna, mostramos un empty state
+                      en vez del editor (no tiene sentido liquidar contra cero). */}
+                  {list.filter(t => Number(t.saldo) > 0).length === 0 ? (
+                    <div className="empty" style={{ padding: 12 }}>
+                      No hay saldo pendiente en ninguna tarjeta. Cargá ventas o cobros previos primero.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="muted tiny" style={{ fontWeight: 600, marginTop: 4 }}>
+                        Reparto por modalidad (suma debe ser igual al total):
+                      </div>
+                      <div className="stack" style={{ gap: 6 }}>
+                        {list.filter(t => Number(t.saldo) > 0).map(t => (
+                          <div key={t.id} className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>{t.nombre}</div>
+                              <div className="muted tiny mono">Saldo pendiente: {sym(t.moneda)} {fmt(t.saldo)}</div>
+                            </div>
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                                   style={{ width: 160, textAlign: 'right' }}
+                                   placeholder="0"
+                                   value={multiLiq.repartos[t.id] ?? ''}
+                                   onChange={e => setReparto(t.id, e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Validador en vivo. Si delta ≈ 0 → verde; sino mostrar
+                          cuánto falta o sobra para que el operador ajuste. */}
+                      <div className="flex-row" style={{ gap: 12, alignItems: 'center', marginTop: 4 }}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={sugerirFifo}
+                                disabled={!(Number(multiLiq.monto) > 0)}>
+                          Sugerir reparto (FIFO)
+                        </button>
+                        <div className="mono tiny" style={{
+                          fontWeight: 600,
+                          color: totalMulti <= 0 ? 'var(--text-muted)' : (multiOk ? 'var(--pos)' : 'var(--neg)'),
+                        }}>
+                          {totalMulti <= 0
+                            ? 'Cargá el total recibido para empezar.'
+                            : multiOk
+                              ? `Suma OK: $ ${fmt(sumaRepartos)}`
+                              : (deltaRepartos > 0
+                                  ? `Te sobran $ ${fmt(deltaRepartos)} sin asignar al total`
+                                  : `Te faltan $ ${fmt(-deltaRepartos)} para llegar al total`)}
+                        </div>
+                        <div style={{ flex: 1 }} />
+                        <button className="btn btn-primary btn-sm"
+                                disabled={savingMultiLiq || !multiOk}
+                                type="submit">
+                          {savingMultiLiq ? '…' : 'Registrar liquidación'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </form>
+              </div>
+
+              {/* Ledger unificado — todos los movs de las 3 tarjetas con su
+                  saldo acumulado real (window calculado en el server). */}
+              <div className="card card-flush">
+                <div className="card-hd">
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>
+                    Estado de cuenta unificado
+                    <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
+                  </div>
+                </div>
+                <div style={{ overflow: 'auto' }}>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th><th>Tarjeta</th><th>Tipo</th>
+                        <th style={{ textAlign: 'right' }}>Bruto</th>
+                        <th style={{ textAlign: 'right' }}>Comisión</th>
+                        <th style={{ textAlign: 'right' }}>Neto</th>
+                        <th>Origen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {estadoCuenta.length === 0 && <tr><td colSpan={7} className="empty">Sin movimientos en este período.</td></tr>}
+                      {estadoCuenta.map(m => (
+                        <tr key={m.id}>
+                          <td className="mono tiny">{fmtFecha(m.fecha)}</td>
+                          <td className="tiny">{m.metodo_nombre}</td>
+                          <td><span className={'badge ' + (m.tipo === 'cobro' ? '' : 'badge-info')}>{m.tipo === 'cobro' ? 'Cobro' : 'Liquidación'}</span></td>
+                          <td className="mono" style={{ textAlign: 'right' }}>
+                            {m.tipo === 'cobro' ? `${sym(m.moneda)} ${fmt(m.monto_bruto)}` : '—'}
+                          </td>
+                          <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>
+                            {Number(m.monto_comision) > 0 ? sym(m.moneda) + ' ' + fmt(m.monto_comision) : '—'}
+                          </td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{sym(m.moneda)} {fmt(m.monto_neto)}</td>
+                          <td className="tiny">{m.venta_order_id ? `Venta ${m.venta_order_id}` : (m.caja_nombre || '—')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : !detalle ? (
             <div className="card" style={{ minHeight: 200, display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>Elegí una tarjeta</div>
           ) : (
             <div className="stack" style={{ gap: 14 }}>

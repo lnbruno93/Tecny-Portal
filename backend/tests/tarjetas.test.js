@@ -652,3 +652,157 @@ describe('Tarjetas — GET resumen filtrado por rango (desde/hasta)', () => {
     expect(Number(resumen.movimientos)).toBe(0);
   });
 });
+
+// POST /api/tarjetas/liquidaciones-multiples — un depósito de la financiera
+// que cubre cupones de varias modalidades (1c + 3c + 6c). Crea N liquidaciones
+// + N ingresos a la caja destino en UNA tx. Si una falla → rollback completo.
+describe('Tarjetas — POST /liquidaciones-multiples', () => {
+  let tarjetaA, tarjetaB, tarjetaC, cajaMult;
+  beforeAll(async () => {
+    const a = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Mult A', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 });
+    const b = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Mult B', moneda: 'ARS', es_tarjeta: true, comision_pct: 20 });
+    const c = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Mult C', moneda: 'ARS', es_tarjeta: true, comision_pct: 30 });
+    tarjetaA = a.body.id; tarjetaB = b.body.id; tarjetaC = c.body.id;
+    const cj = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Mult ARS', moneda: 'ARS', saldo_inicial: 0 });
+    cajaMult = cj.body.id;
+    // Cargamos saldo en las 3 tarjetas para poder liquidar.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaA, fecha: hoy, monto_bruto: 50000, pct: 0 });
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaB, fecha: hoy, monto_bruto: 30000, pct: 0 });
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaC, fecha: hoy, monto_bruto: 20000, pct: 0 });
+  });
+
+  it('happy path: 3 repartos → 3 movs + 3 ingresos a caja en una tx', async () => {
+    const cajaAntes = await saldoCaja(cajaMult);
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 10000 },
+          { metodo_pago_id: tarjetaB, monto: 5000 },
+          { metodo_pago_id: tarjetaC, monto: 3000 },
+        ],
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.movimientos).toHaveLength(3);
+    expect(Number(r.body.total)).toBe(18000);
+    // Caja sube por la suma de los 3 ingresos.
+    expect(await saldoCaja(cajaMult)).toBe(cajaAntes + 18000);
+    // Cada tarjeta baja su saldo por el neto liquidado.
+    const a = (await tarjetas()).find(x => x.id === tarjetaA);
+    const b = (await tarjetas()).find(x => x.id === tarjetaB);
+    const c = (await tarjetas()).find(x => x.id === tarjetaC);
+    expect(Number(a.saldo)).toBe(40000);  // 50000 - 10000
+    expect(Number(b.saldo)).toBe(25000);  // 30000 - 5000
+    expect(Number(c.saldo)).toBe(17000);  // 20000 - 3000
+  });
+
+  it('una sola tarjeta también funciona (degenera al caso simple)', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        repartos: [{ metodo_pago_id: tarjetaA, monto: 1000 }],
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.movimientos).toHaveLength(1);
+  });
+
+  it('rechaza tarjeta soft-deleted → 404 con rollback (caja intacta)', async () => {
+    const ghost = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Ghost Mult', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    await pool.query('UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1', [ghost.body.id]);
+    const cajaAntes = await saldoCaja(cajaMult);
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 500 },
+          { metodo_pago_id: ghost.body.id, monto: 500 },
+        ],
+      });
+    expect(r.status).toBe(404);
+    expect(r.body.error).toMatch(/no existe o no está activa/);
+    // Rollback: la caja NO cambió, ni siquiera por el reparto válido de tarjetaA.
+    expect(await saldoCaja(cajaMult)).toBe(cajaAntes);
+  });
+
+  it('rechaza caja de moneda distinta a alguna tarjeta → 400 con rollback', async () => {
+    const tarUsd = (await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC USD Mult', moneda: 'USD', es_tarjeta: true, comision_pct: 0 })).body.id;
+    const cajaAntes = await saldoCaja(cajaMult);
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult, // ARS
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 100 }, // ARS — ok
+          { metodo_pago_id: tarUsd,   monto: 50 },  // USD — rompe
+        ],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/no coincide/);
+    expect(await saldoCaja(cajaMult)).toBe(cajaAntes);
+  });
+
+  it('rechaza repartos con tarjetas duplicadas (refine)', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 100 },
+          { metodo_pago_id: tarjetaA, monto: 200 }, // misma tarjeta repetida
+        ],
+      });
+    expect(r.status).toBe(400);
+    // validate() devuelve { error: 'Datos inválidos', fields: [{ field, error }] }
+    // El mensaje del refine vive en fields[0].error.
+    expect(r.body.fields?.some(f => /repetir/.test(f.error))).toBe(true);
+  });
+
+  it('rechaza repartos vacíos (.min(1))', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({ fecha: hoy, caja_id: cajaMult, repartos: [] });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza monto cero o negativo en algún reparto (.positive())', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        repartos: [
+          { metodo_pago_id: tarjetaA, monto: 100 },
+          { metodo_pago_id: tarjetaB, monto: 0 }, // inválido
+        ],
+      });
+    expect(r.status).toBe(400);
+  });
+
+  it('audit_log marca batch=liquidacion_multiple en cada mov creado', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaMult,
+        repartos: [
+          { metodo_pago_id: tarjetaB, monto: 333 },
+          { metodo_pago_id: tarjetaC, monto: 777 },
+        ],
+        comentarios: 'depósito 4-jun',
+      });
+    expect(r.status).toBe(201);
+    const ids = r.body.movimientos.map(m => m.id);
+    const { rows } = await pool.query(
+      `SELECT registro_id, datos_despues FROM audit_logs
+        WHERE tabla='tarjeta_movimientos' AND accion='INSERT' AND registro_id = ANY($1)`,
+      [ids]
+    );
+    expect(rows).toHaveLength(2);
+    rows.forEach(row => {
+      expect(row.datos_despues.batch).toBe('liquidacion_multiple');
+      expect(row.datos_despues.total_repartos).toBe(2);
+    });
+  });
+});

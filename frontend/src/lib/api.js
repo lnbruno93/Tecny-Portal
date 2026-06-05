@@ -225,6 +225,10 @@ export const tarjetas = {
     Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
   )),
   createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
+  // Liquidación múltiple: un depósito de la financiera repartido entre N tarjetas.
+  // Body: { fecha, caja_id, repartos: [{ metodo_pago_id, monto }], comentarios? }.
+  // Backend crea N movs + N ingresos a la caja en UNA tx atómica.
+  createLiquidacionMultiple: (data) => api('/api/tarjetas/liquidaciones-multiples', 'POST', data),
   // Cobro previo: saldos pendientes de ventas anteriores al sistema (sin venta_id).
   // El backend calcula comisión y neto a partir de bruto + pct (o del % del método si pct omitido).
   createCobroInicial: (data) => api('/api/tarjetas/cobros-iniciales', 'POST', data),
