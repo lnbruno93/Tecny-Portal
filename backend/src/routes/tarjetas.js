@@ -18,7 +18,7 @@ const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
-const { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
+const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
 const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
@@ -309,6 +309,90 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     res.status(201).json(rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
+});
+
+// Liquidación múltiple: la financiera deposita UN solo monto que cubre cupones
+// de varios planes (TC | 1 Cuota + 3 Cuotas + 6 Cuotas en el mismo depósito).
+// El operador desglosa el reparto en el front (le llega desglosado por la
+// financiera) y este endpoint crea N movs + N ingresos a la caja destino,
+// todo en UNA sola tx. Si cualquier reparto falla (ej. moneda incompatible
+// con la caja), rollback completo — no querés un depósito a medias en
+// producción. Audit-in-tx por cada movimiento creado.
+//
+// Body: { fecha, caja_id, repartos: [{ metodo_pago_id, monto }], comentarios? }
+router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema), async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    const { fecha, caja_id, comentarios, repartos } = req.body;
+    await client.query('BEGIN');
+
+    // 1. Validar caja destino.
+    const caja = await client.query(
+      'SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]
+    );
+    if (!caja.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'La caja seleccionada no existe.' });
+    }
+    const monedaCaja = caja.rows[0].moneda;
+
+    // 2. Cargar todas las tarjetas en una sola query y validar que (a) existen,
+    //    (b) son tarjetas activas, (c) todas tienen moneda compatible con la caja.
+    //    El "compatible" usa grupoMoneda (USD/USDT son intercambiables, ARS es su
+    //    propio grupo) — mismo criterio que la liquidación simple.
+    const ids = repartos.map(r => r.metodo_pago_id);
+    const mps = await client.query(
+      'SELECT id, moneda, nombre FROM metodos_pago WHERE id = ANY($1) AND es_tarjeta = true AND deleted_at IS NULL',
+      [ids]
+    );
+    if (mps.rows.length !== ids.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Alguna tarjeta no existe o no está activa.' });
+    }
+    const incompat = mps.rows.find(mp => grupoMoneda(mp.moneda) !== grupoMoneda(monedaCaja));
+    if (incompat) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `La caja (${monedaCaja}) no coincide con la moneda de "${incompat.nombre}" (${incompat.moneda}).` });
+    }
+
+    // 3. Crear N filas + N ingresos a la caja + N audit logs.
+    //    Reusamos exactamente el patrón de POST /liquidaciones (1 mov por reparto).
+    //    Cada concepto en la caja queda etiquetado con el nombre de la tarjeta
+    //    para que la conciliación bancaria muestre el desglose claro.
+    const created = [];
+    for (const reparto of repartos) {
+      const mp = mps.rows.find(m => m.id === reparto.metodo_pago_id);
+      const m = round2(Number(reparto.monto));
+      const { rows } = await client.query(
+        `INSERT INTO tarjeta_movimientos (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, caja_id, comentarios, user_id)
+         VALUES ($1,$2,'liquidacion',$3,$4,0,0,$4,$5,$6,$7) RETURNING *`,
+        [reparto.metodo_pago_id, fecha, mp.moneda, m, caja_id, comentarios ?? null, req.user.id]
+      );
+      await postCajaMovimiento(client, {
+        caja_id, fecha, tipo: 'ingreso', monto: m, moneda: mp.moneda, tc: null,
+        origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: rows[0].id,
+        concepto: `Liquidación ${mp.nombre}`, user_id: req.user.id,
+      });
+      // Audit con marker `batch: 'liquidacion_multiple'` para distinguir estos
+      // movs en el audit log de las liquidaciones individuales — útil si en el
+      // futuro hay que undo masivo o auditar el conjunto. audit() mergea las
+      // props extra (cualquier key fuera de antes/despues/user_id) en `despues`.
+      await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, {
+        despues: rows[0],
+        batch: 'liquidacion_multiple',
+        total_repartos: repartos.length,
+        user_id: req.user.id,
+      });
+      created.push(rows[0]);
+    }
+
+    await client.query('COMMIT');
+    const total = created.reduce((a, r) => a + Number(r.monto_neto), 0);
+    res.status(201).json({ movimientos: created, total });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

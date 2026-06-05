@@ -50,4 +50,32 @@ const updateMovimientoSchema = z.object({
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 
-module.exports = { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchema };
+// Liquidación múltiple (junio 2026): la financiera deposita UN solo monto
+// que cubre cupones de varios planes (1 cuota, 3 cuotas, 6 cuotas, etc.).
+// El operador desglosa cuánto del depósito va a cada tarjeta. El backend
+// crea N movimientos atómicamente: 1 mov de liquidación por tarjeta + 1
+// ingreso a la caja destino por tarjeta. Si una falla, rollback completo.
+//
+// El monto por reparto es la cifra exacta del comprobante de la financiera
+// (Lucas confirmó que le llega desglosado). El cliente puede pedir un FIFO
+// sugerido en UI, pero al backend siempre llegan los montos finales.
+const createLiquidacionMultipleSchema = z.object({
+  fecha,
+  caja_id:     z.coerce.number().int().positive('Elegí la caja donde entra'),
+  comentarios: z.string().trim().max(1000).optional().nullable(),
+  repartos:    z.array(z.object({
+    metodo_pago_id: z.coerce.number().int().positive(),
+    monto:          z.coerce.number().positive(),
+  }).strict()).min(1, 'Necesitás al menos una tarjeta con monto').refine(
+    (repartos) => {
+      // No permitimos repetir tarjetas — sería ambiguo (¿dos liquidaciones a
+      // la misma tarjeta en el mismo depósito?). Si el operador necesita
+      // dos movs distintos a la misma tarjeta, los registra por separado.
+      const ids = repartos.map(r => r.metodo_pago_id);
+      return new Set(ids).size === ids.length;
+    },
+    { message: 'No se puede repetir una tarjeta en el reparto' }
+  ),
+}).strict();
+
+module.exports = { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema };
