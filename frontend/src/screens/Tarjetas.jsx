@@ -66,12 +66,21 @@ export default function Tarjetas() {
   // total recibido. `repartos` es un dict {tarjetaId: stringMonto} para que
   // los inputs se manejen como texto (vacío = 0, no se envía).
   //
-  // Conversión a USD (junio 2026 v2): si convertir_usd=true, además del total
-  // ARS el operador carga el TC del día. El backend convierte: caja USD
-  // recibe ARS/TC (o el override usd_efectivo si lo cargó). La elección
-  // convertir_usd se persiste en localStorage para que la próxima vez arranque
-  // con la misma config (Lucas convierte "casi siempre"). periodo_desde/hasta
-  // opcionales para registrar el rango cubierto por la planilla.
+  // Conversión a USD (junio 2026 v3): 3 inputs editables enlazados con
+  // auto-cálculo cruzado. Flujo visual: USD recibido | TC | Total ARS.
+  //   · usd_recibido: lo que efectivamente entra a la caja USD.
+  //   · tc:           TC informado por la financiera.
+  //   · monto (ARS):  lo que descuenta del saldo de las tarjetas (planilla).
+  //
+  // Cuando el operador edita uno, los otros se auto-completan si hay info
+  // suficiente (USD×TC=ARS). Si el operador sobreescribe manualmente uno,
+  // el sistema respeta ese valor sin recalcularlo a menos que vuelva a
+  // tocarlo. Esto permite reflejar exactamente lo que dice la planilla
+  // cuando el USD recibido no cuadra matemáticamente con ARS/TC por
+  // redondeo a centavos del dólar.
+  //
+  // La elección convertir_usd se persiste en localStorage (Lucas convierte
+  // "casi siempre"). periodo_desde/hasta opcionales.
   const TARJ_LIQ_USD_KEY = 'tarj_liq_convertir_usd';
   const initialConvertirUSD = (() => {
     try {
@@ -81,13 +90,13 @@ export default function Tarjetas() {
   })();
   const [multiLiq, setMultiLiq] = useState({
     fecha: todayISO(),
-    monto: '',
+    monto: '',           // ARS total que descuenta del saldo (planilla)
     caja_id: '',
     comentarios: '',
     repartos: {},
     convertir_usd: initialConvertirUSD,
     tc: '',
-    usd_override: '',
+    usd_recibido: '',    // USD que entra a la caja USD destino
     periodo_desde: '',
     periodo_hasta: '',
   });
@@ -97,6 +106,56 @@ export default function Tarjetas() {
   useEffect(() => {
     try { localStorage.setItem(TARJ_LIQ_USD_KEY, multiLiq.convertir_usd ? '1' : '0'); } catch { /* ignore */ }
   }, [multiLiq.convertir_usd]);
+
+  // Round-2 helper para los auto-cálculos. Math.round((x + Number.EPSILON) * 100)
+  // / 100 evita el clásico 0.1 + 0.2 = 0.30000000000000004 de IEEE-754 al
+  // mostrar/guardar valores monetarios.
+  const round2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+
+  // Handlers que actualizan un campo y recalculan los otros cuando hay info
+  // suficiente. Solo el handler del campo editado dispara el recálculo —
+  // evita loops circulares. Si el operador borra un campo, los otros NO se
+  // tocan (no perdemos valores que ya tenía cargados).
+  const setMontoArs = (v) => {
+    setMultiLiq(f => {
+      const ars = Number(v);
+      const tc = Number(f.tc);
+      const next = { ...f, monto: v };
+      if (Number.isFinite(ars) && ars > 0 && Number.isFinite(tc) && tc > 0) {
+        next.usd_recibido = String(round2(ars / tc));
+      }
+      return next;
+    });
+  };
+  const setTcMulti = (v) => {
+    setMultiLiq(f => {
+      const tc = Number(v);
+      const usd = Number(f.usd_recibido);
+      const ars = Number(f.monto);
+      const next = { ...f, tc: v };
+      if (Number.isFinite(tc) && tc > 0) {
+        // Si hay USD, ARS es derivado (USD es la "verdad concreta" que
+        // entra a la caja). Si no hay USD pero hay ARS, completar USD.
+        if (Number.isFinite(usd) && usd > 0) {
+          next.monto = String(round2(usd * tc));
+        } else if (Number.isFinite(ars) && ars > 0) {
+          next.usd_recibido = String(round2(ars / tc));
+        }
+      }
+      return next;
+    });
+  };
+  const setUsdRecibido = (v) => {
+    setMultiLiq(f => {
+      const usd = Number(v);
+      const tc = Number(f.tc);
+      const next = { ...f, usd_recibido: v };
+      if (Number.isFinite(usd) && usd > 0 && Number.isFinite(tc) && tc > 0) {
+        next.monto = String(round2(usd * tc));
+      }
+      return next;
+    });
+  };
 
   // Cobro previo (saldos de ventas anteriores al sistema — junio 2026)
   const EMPTY_COBRO_PREV = {
@@ -207,22 +266,23 @@ export default function Tarjetas() {
 
   const totalMulti = Number(multiLiq.monto) || 0;
   const deltaRepartos = sumaRepartos - totalMulti;
-  // Conversión USD: si está activa, el TC del día es obligatorio. El USD
-  // calculado (informativo) = totalARS / TC. El operador puede sobreescribir
-  // con usd_override cuando la financiera depositó un USD distinto al
-  // matemático por redondeo.
-  const tcNum = Number(multiLiq.tc) || 0;
-  const usdCalculado = (multiLiq.convertir_usd && tcNum > 0) ? (totalMulti / tcNum) : 0;
-  const usdOverrideNum = Number(multiLiq.usd_override) || 0;
-  const usdEfectivo = multiLiq.convertir_usd
-    ? (usdOverrideNum > 0 ? usdOverrideNum : usdCalculado)
-    : 0;
-  const tcOk = !multiLiq.convertir_usd || tcNum > 0;
+  // Conversión USD: el operador edita libremente USD, TC y ARS (los 3 se
+  // auto-completan entre sí cuando hay info suficiente, pero cada uno puede
+  // sobreescribirse para reflejar exacto la planilla cuando hay redondeo de
+  // centavos del dólar). Lo que IMPORTA al guardar:
+  //   · monto (ARS) → descuenta del saldo de las tarjetas (= los repartos).
+  //   · usd_recibido → entra a la caja USD destino.
+  //   · tc → se persiste en cada mov para trazabilidad (no se usa para
+  //     recalcular en backend si usd_recibido está cargado).
+  const tcNum         = Number(multiLiq.tc) || 0;
+  const usdRecibidoN  = Number(multiLiq.usd_recibido) || 0;
+  const tcOk          = !multiLiq.convertir_usd || tcNum > 0;
+  const usdOk         = !multiLiq.convertir_usd || usdRecibidoN > 0;
   const multiOk =
     totalMulti > 0 &&
     Math.abs(deltaRepartos) < 0.01 &&
     !!multiLiq.caja_id &&
-    tcOk;
+    tcOk && usdOk;
 
   // FIFO sugerido: ordena las tarjetas por la fecha del cobro pendiente más
   // viejo y asigna del total disponible hasta agotar (o saturar el saldo de la
@@ -268,13 +328,13 @@ export default function Tarjetas() {
   async function handleLiquidarMultiple(e) {
     e.preventDefault();
     if (!multiLiq.caja_id) { toast.error('Elegí la caja donde entra el dinero.'); return; }
-    if (totalMulti <= 0) { toast.error('Ingresá el monto total recibido.'); return; }
-    if (multiLiq.convertir_usd && tcNum <= 0) {
-      toast.error('Cargá el TC del día para convertir a USD.');
-      return;
+    if (totalMulti <= 0) { toast.error('Ingresá el total ARS (descuenta del saldo).'); return; }
+    if (multiLiq.convertir_usd) {
+      if (tcNum <= 0) { toast.error('Cargá el TC del día.'); return; }
+      if (usdRecibidoN <= 0) { toast.error('Cargá el USD recibido (lo que entra a la caja).'); return; }
     }
     if (!multiOk) {
-      toast.error(`La suma de los repartos (${fmt(sumaRepartos)}) no coincide con el total (${fmt(totalMulti)}).`);
+      toast.error(`La suma de los repartos (${fmt(sumaRepartos)}) no coincide con el total ARS (${fmt(totalMulti)}).`);
       return;
     }
     // Filtramos repartos con monto > 0 — el backend rechaza ceros y vacíos.
@@ -296,8 +356,15 @@ export default function Tarjetas() {
         repartos: repartosArr,
         comentarios: multiLiq.comentarios.trim() || null,
         convertir_usd: !!multiLiq.convertir_usd,
-        ...(multiLiq.convertir_usd ? { tc: tcNum } : {}),
-        ...(multiLiq.convertir_usd && usdOverrideNum > 0 ? { total_usd_efectivo: usdOverrideNum } : {}),
+        // Cuando convertimos: SIEMPRE mandamos total_usd_efectivo = lo que
+        // el operador cargó como USD recibido. Esto le dice al backend
+        // "no recalcules USD desde ARS/TC — usá este valor exacto". Garantiza
+        // que la caja USD reciba exactamente lo que dice la planilla, incluso
+        // si los 3 valores no son matemáticamente consistentes por redondeo.
+        ...(multiLiq.convertir_usd ? {
+          tc: tcNum,
+          total_usd_efectivo: usdRecibidoN,
+        } : {}),
         ...(periodoCompleto ? {
           periodo_desde: multiLiq.periodo_desde,
           periodo_hasta: multiLiq.periodo_hasta,
@@ -307,10 +374,10 @@ export default function Tarjetas() {
       // Reset parcial y refresh. Mantenemos fecha + caja + convertir_usd + tc
       // para liquidaciones encadenadas del mismo día (lunes/jueves vienen 2
       // liquidaciones en la misma planilla, con su propio TC pero misma fecha
-      // de depósito). Limpiamos monto/repartos/override/período.
+      // de depósito). Limpiamos USD/ARS/repartos/período.
       setMultiLiq(f => ({
         ...f,
-        monto: '', repartos: {}, comentarios: '', usd_override: '',
+        monto: '', usd_recibido: '', repartos: {}, comentarios: '',
         periodo_desde: '', periodo_hasta: '',
       }));
       loadList();
@@ -709,9 +776,8 @@ export default function Tarjetas() {
               <div className="card">
                 <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Registrar liquidación múltiple</div></div>
                 <form onSubmit={handleLiquidarMultiple} className="stack" style={{ gap: 10 }}>
-                  {/* Fila 1: fecha del depósito + monto total ARS. Período
-                      cubierto opcional (lo que la planilla de la financiera
-                      dice tipo "26-27/5"). */}
+                  {/* Fila 1: fecha del depósito + período cubierto (opcional,
+                      lo que la planilla de la financiera dice tipo "26-27/5"). */}
                   <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                     <div className="field" style={{ width: 150 }}>
                       <label className="field-label tiny">Fecha depósito</label>
@@ -719,33 +785,19 @@ export default function Tarjetas() {
                              value={multiLiq.fecha}
                              onChange={e => setMultiLiq(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ width: 200 }}>
-                      <label className="field-label tiny">Monto total recibido (ARS)</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
-                             placeholder="0"
-                             value={multiLiq.monto}
-                             onChange={e => setMultiLiq(f => ({ ...f, monto: e.target.value }))} />
-                    </div>
-                    <div className="field" style={{ width: 140 }}>
+                    <div className="field" style={{ width: 150 }}>
                       <label className="field-label tiny">Período desde (opc.)</label>
                       <input type="date" className="input"
                              value={multiLiq.periodo_desde}
                              onChange={e => setMultiLiq(f => ({ ...f, periodo_desde: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ width: 140 }}>
+                    <div className="field" style={{ width: 150 }}>
                       <label className="field-label tiny">Período hasta (opc.)</label>
                       <input type="date" className="input"
                              value={multiLiq.periodo_hasta}
                              onChange={e => setMultiLiq(f => ({ ...f, periodo_hasta: e.target.value }))} />
                     </div>
-                  </div>
-
-                  {/* Fila 2: toggle "Convertir a USD" — Lucas convierte casi
-                      siempre (lunes/jueves). La elección persiste en
-                      localStorage. Si está activo, aparecen TC + USD calc +
-                      override y la caja se filtra a USD/USDT. */}
-                  <div className="flex-row" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <label className="flex-row" style={{ gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                    <label className="flex-row" style={{ gap: 6, alignItems: 'center', cursor: 'pointer', marginLeft: 'auto', marginBottom: 6 }}>
                       <input type="checkbox"
                              checked={multiLiq.convertir_usd}
                              onChange={e => setMultiLiq(f => ({
@@ -755,31 +807,56 @@ export default function Tarjetas() {
                              }))} />
                       <span style={{ fontSize: 13, fontWeight: 600 }}>Convertir a USD</span>
                     </label>
-                    {multiLiq.convertir_usd && (
-                      <>
-                        <div className="field" style={{ width: 130 }}>
-                          <label className="field-label tiny">TC del día</label>
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
-                                 placeholder="0"
-                                 value={multiLiq.tc}
-                                 onChange={e => setMultiLiq(f => ({ ...f, tc: e.target.value }))} />
-                        </div>
-                        <div className="field" style={{ width: 170 }}>
-                          <label className="field-label tiny">USD calculado</label>
-                          <input type="text" className="input mono" readOnly tabIndex={-1}
-                                 style={{ background: 'var(--surface-2)', opacity: 0.85 }}
-                                 value={usdCalculado > 0 ? `u$s ${fmt(usdCalculado)}` : '—'} />
-                        </div>
-                        <div className="field" style={{ width: 170 }}>
-                          <label className="field-label tiny">USD recibido (override)</label>
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
-                                 placeholder="vacío = usar calculado"
-                                 value={multiLiq.usd_override}
-                                 onChange={e => setMultiLiq(f => ({ ...f, usd_override: e.target.value }))} />
-                        </div>
-                      </>
-                    )}
                   </div>
+
+                  {/* Fila 2 — flujo USD → TC → ARS (solo si convertir_usd).
+                      Los 3 inputs son editables; cuando el operador edita
+                      uno, los otros se auto-completan vía USD×TC=ARS. Cada
+                      uno puede sobreescribirse para reflejar la planilla
+                      exacta (ej. ARS de la planilla con redondeo distinto
+                      al matemático USD×TC). */}
+                  {multiLiq.convertir_usd && (
+                    <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <div className="field" style={{ width: 180 }}>
+                        <label className="field-label tiny">USD recibido (caja)</label>
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                               placeholder="0"
+                               value={multiLiq.usd_recibido}
+                               onChange={e => setUsdRecibido(e.target.value)} />
+                      </div>
+                      <div className="flex-row" style={{ alignItems: 'center', marginBottom: 8 }}>
+                        <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>×</span>
+                      </div>
+                      <div className="field" style={{ width: 140 }}>
+                        <label className="field-label tiny">TC del día</label>
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                               placeholder="0"
+                               value={multiLiq.tc}
+                               onChange={e => setTcMulti(e.target.value)} />
+                      </div>
+                      <div className="flex-row" style={{ alignItems: 'center', marginBottom: 8 }}>
+                        <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>=</span>
+                      </div>
+                      <div className="field" style={{ width: 200 }}>
+                        <label className="field-label tiny">Total ARS (descuenta del saldo)</label>
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                               placeholder="0"
+                               value={multiLiq.monto}
+                               onChange={e => setMontoArs(e.target.value)} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Si no se convierte a USD: solo input ARS (flujo simple). */}
+                  {!multiLiq.convertir_usd && (
+                    <div className="field" style={{ width: 220 }}>
+                      <label className="field-label tiny">Total ARS recibido</label>
+                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                             placeholder="0"
+                             value={multiLiq.monto}
+                             onChange={e => setMultiLiq(f => ({ ...f, monto: e.target.value }))} />
+                    </div>
+                  )}
 
                   {/* Fila 3: caja destino. El filtro depende del toggle —
                       cuando convertís a USD solo mostramos cajas USD/USDT. */}
@@ -849,12 +926,9 @@ export default function Tarjetas() {
                                   ? `Te sobran $ ${fmt(deltaRepartos)} sin asignar al total`
                                   : `Te faltan $ ${fmt(-deltaRepartos)} para llegar al total`)}
                         </div>
-                        {multiLiq.convertir_usd && usdEfectivo > 0 && (
+                        {multiLiq.convertir_usd && usdRecibidoN > 0 && (
                           <div className="mono tiny" style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                            · Caja USD recibe: u$s {fmt(usdEfectivo)}
-                            {usdOverrideNum > 0 && usdCalculado > 0 && Math.abs(usdOverrideNum - usdCalculado) > 0.01
-                              ? ` (override; calc ${fmt(usdCalculado)})`
-                              : ''}
+                            · Caja USD recibe: u$s {fmt(usdRecibidoN)}
                           </div>
                         )}
                         <div style={{ flex: 1 }} />
