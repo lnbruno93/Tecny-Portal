@@ -29,12 +29,12 @@ export default function Tarjetas() {
   const [movs, setMovs] = useState([]);
   const [cajas, setCajas] = useState([]);
 
-  // Filtro de período compartido entre vista General y Detalle (afecta el
-  // estado de cuenta unificado y la tabla de movs de la tarjeta seleccionada).
-  // Persistido en localStorage. Default 'todo' — los KPIs por tarjeta + el
-  // saldo "Te deben" se calculan SIEMPRE sobre el histórico completo (en
-  // tarjetas.list y tarjetas.get), así que el operador suele querer ver el
-  // ledger entero al entrar. Si quiere acotar, cambia con un click.
+  // Filtro de período compartido entre vista General y Detalle. Afecta el
+  // ledger (estado de cuenta + movs por tarjeta) Y los KPIs agregados de
+  // operaciones (Comisión, Cobrado bruto, Ya recibido/liquidado, Movimientos).
+  // El KPI "Te deben / Saldo a tu favor" SÍ es histórico — es estado actual,
+  // no agregado. Persistido en localStorage; default 'todo' para que el
+  // operador vea el panorama completo al entrar.
   const TARJ_RANGE_KEY = 'tarj_range';
   const [tarjRange, setTarjRange] = useState(() => {
     try {
@@ -83,12 +83,17 @@ export default function Tarjetas() {
     overlayRef: editModalRef,
   });
 
-  // KPIs por tarjeta (list) y por-tarjeta (detalle.resumen) siempre sin filtro:
-  // representan el saldo real y los totales históricos. Solo el LEDGER (allMovs
-  // en General, movs en Detalle) responde al filtro de período.
+  // KPIs por tarjeta (list y detalle.resumen) responden al filtro de período en
+  // Comisión, Cobrado (bruto) y Movimientos — son agregados de operaciones, no
+  // tiene sentido sumar histórico cuando el operador eligió "este mes". El saldo
+  // (Te deben) se queda SIEMPRE sin filtrar: es un estado actual (cobros − liqs)
+  // que no depende del rango elegido. Decidido 2026-06 tras feedback del PO.
   function loadList() {
     setLoadingList(true);
-    tarjetasApi.list().then(r => setList(r || [])).catch(e => toast.error(e.message)).finally(() => setLoadingList(false));
+    tarjetasApi.list(rangeToParams(tarjRange))
+      .then(r => setList(r || []))
+      .catch(e => toast.error(e.message))
+      .finally(() => setLoadingList(false));
     tarjetasApi.movimientosAll({ ...rangeToParams(tarjRange), limit: 500 })
       .then(r => setAllMovs(r.data || [])).catch(() => {});
   }
@@ -103,7 +108,7 @@ export default function Tarjetas() {
   function loadDetalle() {
     if (!selectedId) { setDetalle(null); setMovs([]); return; }
     Promise.all([
-      tarjetasApi.get(selectedId),
+      tarjetasApi.get(selectedId, rangeToParams(tarjRange)),
       tarjetasApi.movimientos(selectedId, { ...rangeToParams(tarjRange), limit: 500 }),
     ])
       .then(([det, m]) => { setDetalle(det); setMovs(m.data || []); })
@@ -111,11 +116,16 @@ export default function Tarjetas() {
   }
   useEffect(() => { loadDetalle(); setLiq({ fecha: todayISO(), monto: '', caja_id: '' }); }, [selectedId, tarjRange]); // eslint-disable-line
 
-  // Totales globales (de las 3 tarjetas)
+  // Totales globales (suma de las tarjetas).
+  // bruto/comision/liquidado responden al rango (server las filtra); saldo es
+  // siempre histórico (estado actual). No derivamos liquidado = bruto-com-saldo
+  // porque eso mezcla magnitudes de período con magnitudes históricas y queda
+  // negativo cuando el rango es chico.
   const global = useMemo(() => list.reduce((a, t) => {
-    const bruto = Number(t.bruto_total || 0), com = Number(t.comision_total || 0), saldo = Number(t.saldo || 0);
-    a.bruto += bruto; a.comision += com; a.saldo += saldo;
-    a.liquidado += (bruto - com - saldo); // neto cobrado − pendiente = lo ya recibido
+    a.bruto     += Number(t.bruto_total     || 0);
+    a.comision  += Number(t.comision_total  || 0);
+    a.saldo     += Number(t.saldo           || 0);
+    a.liquidado += Number(t.liquidado_total || 0);
     return a;
   }, { bruto: 0, comision: 0, saldo: 0, liquidado: 0 }), [list]);
 
@@ -302,9 +312,11 @@ export default function Tarjetas() {
       </div>
 
       {/* Filtro de período compartido por las vistas General y Detalle.
-          Solo afecta el ledger (Estado de cuenta / Movimientos) — los KPIs
-          de saldo, comisión y "Te deben" siempre reflejan el histórico
-          completo (se calculan en GET /tarjetas y /tarjetas/:id sin filtro). */}
+          Afecta tanto al ledger (Estado de cuenta / Movimientos) como a los
+          KPIs agregados de operaciones: Comisión, Cobrado bruto, Ya recibido
+          y Movimientos. El único KPI que se queda fuera del filtro es
+          "Te deben / Saldo a tu favor": es estado actual (cobros − liqs),
+          no agregado de período. */}
       {!sinTarjetas && (
         <div className="card card-tight" style={{ marginBottom: 14 }}>
           <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

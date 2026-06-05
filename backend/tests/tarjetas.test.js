@@ -567,3 +567,88 @@ describe('Tarjetas — PATCH /movimientos/:id casos límite', () => {
     expect(rows[0].datos_despues.comentarios).toBe('audit test');
   });
 });
+
+// Tests para GET /api/tarjetas?desde=&hasta= y GET /api/tarjetas/:id?desde=&hasta=
+// — el resumen agregado por tarjeta ahora filtra Comisión/Cobrado/Liquidado/
+// Movimientos por rango. El "saldo" (cobros − liqs) SIEMPRE es histórico, sin
+// importar el rango. Decisión operativa: "Te deben" = estado actual.
+describe('Tarjetas — GET resumen filtrado por rango (desde/hasta)', () => {
+  let tarjetaRango;
+  beforeAll(async () => {
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Rango Test', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 });
+    tarjetaRango = mt.body.id;
+    // Tres cobros previos en fechas distintas. Bruto/Comision/Neto por cobro:
+    //   2026-01-10 → 1000 / 100 / 900
+    //   2026-03-15 → 2000 / 200 / 1800
+    //   2026-05-20 → 3000 / 300 / 2700
+    // Total histórico: bruto 6000, com 600, saldo 5400, movs 3.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaRango, fecha: '2026-01-10', monto_bruto: 1000, pct: 10 });
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaRango, fecha: '2026-03-15', monto_bruto: 2000, pct: 10 });
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaRango, fecha: '2026-05-20', monto_bruto: 3000, pct: 10 });
+    // Una liquidación en febrero (parcial: solo 500 del cobro de enero).
+    // Esto baja el saldo histórico a 5400 - 500 = 4900 (sin importar rango).
+    await request(app).post('/api/tarjetas/liquidaciones').set(auth())
+      .send({ metodo_pago_id: tarjetaRango, fecha: '2026-02-05', monto: 500, caja_id: cajaArs });
+  });
+
+  it('GET /:id sin rango → totales históricos completos', async () => {
+    const r = await request(app).get(`/api/tarjetas/${tarjetaRango}`).set(auth());
+    expect(r.status).toBe(200);
+    const { resumen } = r.body;
+    expect(Number(resumen.saldo)).toBe(4900);            // 5400 cobros - 500 liq
+    expect(Number(resumen.bruto_total)).toBe(6000);      // todos los cobros
+    expect(Number(resumen.comision_total)).toBe(600);
+    expect(Number(resumen.liquidado_total)).toBe(500);   // la liq de febrero
+    expect(Number(resumen.movimientos)).toBe(4);         // 3 cobros + 1 liq
+  });
+
+  it('GET /:id con rango Marzo-Abril → solo cobro de Marzo + ninguna liq', async () => {
+    const r = await request(app).get(`/api/tarjetas/${tarjetaRango}?desde=2026-03-01&hasta=2026-04-30`).set(auth());
+    expect(r.status).toBe(200);
+    const { resumen } = r.body;
+    // Saldo SIEMPRE histórico, no responde al rango.
+    expect(Number(resumen.saldo)).toBe(4900);
+    expect(Number(resumen.bruto_total)).toBe(2000);    // solo cobro de marzo
+    expect(Number(resumen.comision_total)).toBe(200);
+    expect(Number(resumen.liquidado_total)).toBe(0);   // ninguna liq en el rango
+    expect(Number(resumen.movimientos)).toBe(1);
+  });
+
+  it('GET /:id con rango Febrero → solo la liquidación', async () => {
+    const r = await request(app).get(`/api/tarjetas/${tarjetaRango}?desde=2026-02-01&hasta=2026-02-28`).set(auth());
+    expect(r.status).toBe(200);
+    const { resumen } = r.body;
+    expect(Number(resumen.saldo)).toBe(4900);            // histórico
+    expect(Number(resumen.bruto_total)).toBe(0);         // ningún cobro
+    expect(Number(resumen.comision_total)).toBe(0);
+    expect(Number(resumen.liquidado_total)).toBe(500);
+    expect(Number(resumen.movimientos)).toBe(1);
+  });
+
+  it('GET / (lista) con rango Marzo-Abril → mismas reglas que /:id', async () => {
+    const r = await request(app).get('/api/tarjetas?desde=2026-03-01&hasta=2026-04-30').set(auth());
+    expect(r.status).toBe(200);
+    const t = r.body.find(x => x.id === tarjetaRango);
+    expect(t).toBeTruthy();
+    expect(Number(t.saldo)).toBe(4900);            // histórico
+    expect(Number(t.bruto_total)).toBe(2000);      // filtrado
+    expect(Number(t.comision_total)).toBe(200);
+    expect(Number(t.liquidado_total)).toBe(0);
+    expect(Number(t.movimientos)).toBe(1);
+  });
+
+  it('GET /:id con rango sin movimientos (futuro) → ceros excepto saldo', async () => {
+    const r = await request(app).get(`/api/tarjetas/${tarjetaRango}?desde=2030-01-01&hasta=2030-12-31`).set(auth());
+    expect(r.status).toBe(200);
+    const { resumen } = r.body;
+    expect(Number(resumen.saldo)).toBe(4900);            // sigue siendo el histórico
+    expect(Number(resumen.bruto_total)).toBe(0);
+    expect(Number(resumen.comision_total)).toBe(0);
+    expect(Number(resumen.liquidado_total)).toBe(0);
+    expect(Number(resumen.movimientos)).toBe(0);
+  });
+});

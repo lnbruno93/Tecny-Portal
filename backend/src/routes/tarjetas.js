@@ -23,24 +23,68 @@ const { createLiquidacionSchema, createCobroInicialSchema, updateMovimientoSchem
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
 const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
 
-// Saldo pendiente de un método = neto cobrado − neto liquidado (lo que falta cobrar).
-const RESUMEN_SQL = `
-  COALESCE(SUM(CASE WHEN m.tipo='cobro'       THEN m.monto_neto ELSE 0 END),0)
-  - COALESCE(SUM(CASE WHEN m.tipo='liquidacion' THEN m.monto_neto ELSE 0 END),0) AS saldo,
-  COALESCE(SUM(CASE WHEN m.tipo='cobro' THEN m.monto_comision ELSE 0 END),0) AS comision_total,
-  COALESCE(SUM(CASE WHEN m.tipo='cobro' THEN m.monto_bruto ELSE 0 END),0) AS bruto_total,
-  COUNT(m.id) AS movimientos`;
+// Resumen por tarjeta. Acepta desde/hasta opcionales.
+//
+// Diseño operativo (decidido tras feedback del PO 2026-06):
+//   · saldo:            SIEMPRE histórico. Es el saldo real que la financiera
+//                       nos debe HOY. No tiene sentido filtrarlo por fecha
+//                       (no es agregado de operaciones, es un balance presente).
+//   · comision_total:   filtrado por rango si se manda desde/hasta. "Cuánto
+//                       pagué en comisiones en el período X".
+//   · bruto_total:      filtrado por rango. "Cuánto facturé en el período X".
+//   · liquidado_total:  filtrado por rango. "Cuánto me liquidó la financiera
+//                       en el período X" (suma de neto de tipo='liquidacion').
+//   · movimientos:      count filtrado por rango (coherente con la tabla).
+//
+// El patrón "($N::date IS NULL OR m.fecha >= $N)" permite usar la misma
+// query con o sin filtro — pasamos NULL cuando no hay rango y los CASE WHEN
+// se cumplen siempre. Más limpio que tener dos variantes de SQL.
+//
+// resumenSql(d, h) genera el SQL con los placeholders de fecha en las
+// posiciones d y h. Cada caller adapta según los params previos: en `/`
+// son $1/$2; en `/:id` el $1 ya es el id, así que se usa $2/$3.
+function resumenSql(d, h) {
+  return `
+    COALESCE(SUM(CASE WHEN m.tipo='cobro'        THEN m.monto_neto ELSE 0 END),0)
+    - COALESCE(SUM(CASE WHEN m.tipo='liquidacion' THEN m.monto_neto ELSE 0 END),0) AS saldo,
+    COALESCE(SUM(
+      CASE WHEN m.tipo='cobro'
+           AND ($${d}::date IS NULL OR m.fecha >= $${d}::date)
+           AND ($${h}::date IS NULL OR m.fecha <= $${h}::date)
+           THEN m.monto_comision ELSE 0 END
+    ),0) AS comision_total,
+    COALESCE(SUM(
+      CASE WHEN m.tipo='cobro'
+           AND ($${d}::date IS NULL OR m.fecha >= $${d}::date)
+           AND ($${h}::date IS NULL OR m.fecha <= $${h}::date)
+           THEN m.monto_bruto ELSE 0 END
+    ),0) AS bruto_total,
+    COALESCE(SUM(
+      CASE WHEN m.tipo='liquidacion'
+           AND ($${d}::date IS NULL OR m.fecha >= $${d}::date)
+           AND ($${h}::date IS NULL OR m.fecha <= $${h}::date)
+           THEN m.monto_neto ELSE 0 END
+    ),0) AS liquidado_total,
+    COUNT(
+      CASE WHEN ($${d}::date IS NULL OR m.fecha >= $${d}::date)
+                AND ($${h}::date IS NULL OR m.fecha <= $${h}::date)
+           THEN 1 END
+    ) AS movimientos`;
+}
 
 // Lista de tarjetas = métodos de pago marcados como tarjeta, con su saldo pendiente.
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
+    const desde = req.query.desde || null;
+    const hasta = req.query.hasta || null;
     const { rows } = await db.query(
-      `SELECT mp.id, mp.nombre, mp.moneda, mp.comision_pct, mp.activo, ${RESUMEN_SQL}
+      `SELECT mp.id, mp.nombre, mp.moneda, mp.comision_pct, mp.activo, ${resumenSql(1, 2)}
          FROM metodos_pago mp
          LEFT JOIN tarjeta_movimientos m ON m.metodo_pago_id = mp.id AND m.deleted_at IS NULL
         WHERE mp.es_tarjeta = true AND mp.deleted_at IS NULL
         GROUP BY mp.id
-        ORDER BY mp.nombre`
+        ORDER BY mp.nombre`,
+      [desde, hasta]
     );
     res.json(rows);
   } catch (err) { next(err); }
@@ -126,12 +170,18 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const desde = req.query.desde || null;
+    const hasta = req.query.hasta || null;
     const { rows: mp } = await db.query(
       'SELECT id, nombre, moneda, comision_pct, activo FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL', [id]
     );
     if (!mp[0]) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+    // $1 = id (filtro fijo). $2/$3 son las fechas del rango opcional, que
+    // el resumenSql usa para Comisión/Cobrado/Movimientos. Saldo sigue sin
+    // filtrar (es estado actual, no agregado de período).
     const { rows: tot } = await db.query(
-      `SELECT ${RESUMEN_SQL} FROM tarjeta_movimientos m WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL`, [id]
+      `SELECT ${resumenSql(2, 3)} FROM tarjeta_movimientos m WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL`,
+      [id, desde, hasta]
     );
     res.json({ ...mp[0], resumen: tot[0] });
   } catch (err) { next(err); }
