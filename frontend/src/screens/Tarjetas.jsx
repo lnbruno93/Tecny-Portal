@@ -7,6 +7,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
+import TcWarning from '../components/TcWarning';
 import useModal from '../lib/useModal';
 import { rangeToParams, rangeLabel, RANGE_PRESETS } from '../lib/dateRange';
 
@@ -837,42 +838,74 @@ export default function Tarjetas() {
                       exacta (ej. ARS de la planilla con redondeo distinto
                       al matemático USD×TC). */}
                   {multiLiq.convertir_usd && (
+                    <>
+                    {/* Anchos fluidos (`flex: 1 1 140px`) en vez de fijos para
+                        que en mobile (<480px) cada input se acomode en su
+                        propia línea sin salirse. Símbolos `×` y `=` tienen
+                        aria-hidden por ser decorativos (lectores no los
+                        anuncian sueltos). U4/U11 auditoría 2026-06-06. */}
                     <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                      <div className="field" style={{ width: 180 }}>
-                        <label className="field-label tiny">USD recibido (caja)</label>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                      <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
+                        <label htmlFor="multiliq-usd" className="field-label tiny">USD recibido (caja)</label>
+                        <input id="multiliq-usd" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                                placeholder="0"
                                value={multiLiq.usd_recibido}
                                onChange={e => setUsdRecibido(e.target.value)} />
                       </div>
-                      <div className="flex-row" style={{ alignItems: 'center', marginBottom: 8 }}>
+                      <div className="flex-row" aria-hidden="true" style={{ alignItems: 'center', marginBottom: 8 }}>
                         <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>×</span>
                       </div>
-                      <div className="field" style={{ width: 140 }}>
-                        <label className="field-label tiny">TC del día</label>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                      <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
+                        <label htmlFor="multiliq-tc" className="field-label tiny">TC del día</label>
+                        <input id="multiliq-tc" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                                placeholder="0"
                                value={multiLiq.tc}
                                onChange={e => setTcMulti(e.target.value)} />
+                        {/* U13: alerta TC fuera de rango si el operador
+                            configuró un TC de referencia en Alertas. */}
+                        <TcWarning tc={multiLiq.tc} />
                       </div>
-                      <div className="flex-row" style={{ alignItems: 'center', marginBottom: 8 }}>
+                      <div className="flex-row" aria-hidden="true" style={{ alignItems: 'center', marginBottom: 8 }}>
                         <span className="muted" style={{ fontSize: 18, fontWeight: 700 }}>=</span>
                       </div>
-                      <div className="field" style={{ width: 200 }}>
-                        <label className="field-label tiny">Total ARS (descuenta del saldo)</label>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                      <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
+                        <label htmlFor="multiliq-ars" className="field-label tiny">Total ARS (descuenta del saldo)</label>
+                        <input id="multiliq-ars" type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                                placeholder="0"
                                value={multiLiq.monto}
                                onChange={e => setMontoArs(e.target.value)} />
                       </div>
                     </div>
+                    {/* U6: indicador de descalce entre USD×TC y el ARS cargado.
+                        Lucas EXPLICITAMENTE puede dejar los 3 inconsistentes
+                        para reflejar el comprobante exacto con redondeos —
+                        este chip solo informa, no bloquea. Útil para detectar
+                        un cero de más (USD 500 × TC 1100 = $550.000, no
+                        $5.500.000). */}
+                    {(() => {
+                      const usd = Number(multiLiq.usd_recibido) || 0;
+                      const tc  = Number(multiLiq.tc) || 0;
+                      const ars = Number(multiLiq.monto) || 0;
+                      if (!(usd > 0 && tc > 0 && ars > 0)) return null;
+                      const arsCalc = usd * tc;
+                      const delta = ars - arsCalc;
+                      if (Math.abs(delta) < 0.01) return null; // matchea exacto
+                      const color = Math.abs(delta) < 100 ? 'var(--text-muted)' : 'var(--warn, #d97706)';
+                      return (
+                        <div className="mono tiny" style={{ color, marginTop: -2 }} role="status">
+                          USD × TC = $ {fmt(arsCalc)} (Δ {delta >= 0 ? '+' : ''}{fmt(delta)})
+                          {Math.abs(delta) >= 100 && ' — revisá si es lo que dice la planilla.'}
+                        </div>
+                      );
+                    })()}
+                    </>
                   )}
 
                   {/* Si no se convierte a USD: solo input ARS (flujo simple). */}
                   {!multiLiq.convertir_usd && (
                     <div className="field" style={{ width: 220 }}>
-                      <label className="field-label tiny">Total ARS recibido</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                      <label htmlFor="multiliq-ars-only" className="field-label tiny">Total ARS recibido</label>
+                      <input id="multiliq-ars-only" type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                              placeholder="0"
                              value={multiLiq.monto}
                              onChange={e => setMultiLiq(f => ({ ...f, monto: e.target.value }))} />
