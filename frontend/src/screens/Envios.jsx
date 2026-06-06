@@ -7,6 +7,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
+import useModal from '../lib/useModal';
 
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
@@ -97,6 +98,14 @@ export default function Envios() {
   const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  // useModal — auditoría 2026-06-06 UX B2: Esc cierra el modal de "Nuevo
+  // envío", focus trap, body scroll lock.
+  const createModalRef = useRef(null);
+  useModal({
+    open: showCreate,
+    onClose: () => !creating && setShowCreate(false),
+    overlayRef: createModalRef,
+  });
 
   const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
   const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM }]);
@@ -756,11 +765,11 @@ export default function Envios() {
 
       {/* ── Modal: Nuevo envío ─────────────────────────────────────────── */}
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+        <div ref={createModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && !creating && setShowCreate(false)}>
           <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Nuevo envío</h3>
-              <button className="icon-btn" onClick={() => setShowCreate(false)}>
+              <button type="button" className="icon-btn" onClick={() => setShowCreate(false)} disabled={creating} aria-label="Cerrar" title="Cerrar">
                 <Icons.X size={16} />
               </button>
             </div>

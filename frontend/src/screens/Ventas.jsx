@@ -9,6 +9,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useLoadingAction from '../lib/useLoadingAction'; // #F-2
+import useModal from '../lib/useModal';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
 import { fmt, fmt2 } from '../lib/format';
@@ -95,6 +96,16 @@ export default function Ventas() {
   const [nuevaEtiqueta, setNuevaEtiqueta] = useState('');
   const [showComprob, setShowComprob] = useState(null); // venta id
   const [comprobList, setComprobList] = useState([]);
+  // useModal — auditoría 2026-06-06 UX B2: Esc cierra los modales,
+  // focus trap, body scroll lock. Aplicado a los 3 modales operativos
+  // más usados (venta nueva, venta rápida, garantías). showEtiquetas y
+  // showComprob (poco frecuentes) quedan para una iteración posterior.
+  const ventaModalRef = useRef(null);
+  const rapidaModalRef = useRef(null);
+  const garantiasModalRef = useRef(null);
+  useModal({ open: showVenta, onClose: () => setShowVenta(false), overlayRef: ventaModalRef });
+  useModal({ open: showRapida, onClose: () => setShowRapida(false), overlayRef: rapidaModalRef });
+  useModal({ open: showGarantias, onClose: () => setShowGarantias(false), overlayRef: garantiasModalRef });
 
   // ── Carga ──
   const loadDash = useCallback(async () => {
@@ -732,9 +743,9 @@ export default function Ventas() {
 
       {/* ── Modal Nueva venta ── */}
       {showVenta && (
-        <div className="modal-overlay" onClick={() => setShowVenta(false)}>
+        <div ref={ventaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowVenta(false)}>
           <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button className="icon-btn" onClick={() => setShowVenta(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3>{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             <form onSubmit={handleSaveVenta}>
               <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
                 <div className="stack" style={{ gap: 14 }}>
@@ -1083,9 +1094,9 @@ export default function Ventas() {
 
       {/* ── Modal Venta rápida ── */}
       {showRapida && (
-        <div className="modal-overlay" onClick={() => setShowRapida(false)}>
+        <div ref={rapidaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowRapida(false)}>
           <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Venta rápida</h3><button className="icon-btn" onClick={() => setShowRapida(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3>Venta rápida</h3><button type="button" className="icon-btn" onClick={() => setShowRapida(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             <form onSubmit={handleSaveRapida}>
               <div className="modal-body">
                 <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Nota rápida para cargar después como venta completa.</p>
@@ -1104,9 +1115,9 @@ export default function Ventas() {
 
       {/* ── Modal Garantías ── */}
       {showGarantias && (
-        <div className="modal-overlay" onClick={() => setShowGarantias(false)}>
+        <div ref={garantiasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowGarantias(false)}>
           <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Plantillas de garantía</h3><button className="icon-btn" onClick={() => setShowGarantias(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3>Plantillas de garantía</h3><button type="button" className="icon-btn" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
               <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
