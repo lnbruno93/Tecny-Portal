@@ -74,7 +74,12 @@ const createLiquidacionMultipleSchema = z.object({
   fecha,
   caja_id:            z.coerce.number().int().positive('Elegí la caja donde entra'),
   comentarios:        z.string().trim().max(1000).optional().nullable(),
-  convertir_usd:      z.coerce.boolean().optional().default(false),
+  // No usamos z.coerce.boolean() — convierte el string "false" a true. Ver
+  // comentario en schemas/pagos.js (mismo bug latente, mismo fix).
+  convertir_usd:      z.union([
+    z.boolean(),
+    z.enum(['true', 'false']).transform(v => v === 'true'),
+  ]).optional().default(false),
   tc:                 z.coerce.number().positive('TC debe ser mayor a 0').optional(),
   total_usd_efectivo: z.coerce.number().positive('El USD recibido debe ser > 0').optional(),
   periodo_desde:      fechaNoFutura.optional(),
@@ -106,11 +111,15 @@ const createLiquidacionMultipleSchema = z.object({
   (d) => d.tc === undefined || d.convertir_usd,
   { message: 'El TC solo aplica si convertís a USD', path: ['tc'] }
 ).refine(
-  // Si está cargado un solo extremo del período, el otro también debe estar
-  // (rango completo o ningún rango — evita ambigüedad). Permitimos que ambos
-  // estén ausentes (caso liquidación sin rango info).
-  (d) => (d.periodo_desde && d.periodo_hasta) || (!d.periodo_desde && !d.periodo_hasta),
+  // Si está cargado "desde" pero falta "hasta", el error apunta a "hasta"
+  // (campo a completar). Permitimos que ambos estén ausentes.
+  (d) => !d.periodo_desde || d.periodo_hasta,
   { message: 'Cargá ambos extremos del período o ninguno', path: ['periodo_hasta'] }
+).refine(
+  // Espejo: si está cargado "hasta" pero falta "desde", el error apunta a
+  // "desde" para que el frontend pinte el campo correcto.
+  (d) => !d.periodo_hasta || d.periodo_desde,
+  { message: 'Cargá ambos extremos del período o ninguno', path: ['periodo_desde'] }
 ).refine(
   (d) => !d.periodo_desde || !d.periodo_hasta || d.periodo_desde <= d.periodo_hasta,
   { message: 'El "desde" del período debe ser ≤ "hasta"', path: ['periodo_hasta'] }

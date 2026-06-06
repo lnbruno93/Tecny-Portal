@@ -13,6 +13,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import CajaSelectHint from '../components/CajaSelectHint';
 
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -524,11 +525,13 @@ export default function Financiera() {
       };
       const nuevo = await pagosApi.create(payload);
       setPagosList(prev => [nuevo, ...prev]);
-      // Reset mantiene fecha + caja + convertir_usd + tc (lunes/jueves
-      // suelen venir 2 liquidaciones con misma fecha pero distinto TC).
+      // Reset mantiene fecha + caja + convertir_usd. Limpiamos TC también
+      // porque lunes/jueves suelen venir 2 liquidaciones con la misma fecha
+      // de depósito pero DISTINTO TC; mantener el TC viejo hace que el
+      // siguiente ARS se autocomplete con un TC equivocado.
       setPagoForm(f => ({
         ...f,
-        monto: '', usd_recibido: '', referencia: '',
+        monto: '', usd_recibido: '', tc: '', referencia: '',
       }));
       const tots = await pagosApi.totales();
       setPagosTotales(tots);
@@ -1192,7 +1195,10 @@ export default function Financiera() {
                   <div className="muted tiny">Liquidaciones que recibimos</div>
                 </div>
               </div>
-              <div style={{ padding: '0 18px 18px' }}>
+              {/* Envolver en <form> para que Enter submitee (espejo del form
+                  Tarjetas). Antes era un <div> y Enter no hacía nada → fricción. */}
+              <form onSubmit={e => { e.preventDefault(); if (!savingPago) handleSavePago(); }}
+                    style={{ padding: '0 18px 18px' }}>
                 {/* Fila 1: fecha + referencia + toggle USD. La elección se
                     persiste en localStorage (default según última vez). */}
                 <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
@@ -1215,7 +1221,11 @@ export default function Financiera() {
                       onChange={e => setPagoForm(f => ({
                         ...f,
                         convertir_usd: e.target.checked,
-                        caja_id: '', // reset: el filtro de cajas cambia con la moneda
+                        // Reset: el filtro de cajas cambia con la moneda.
+                        // Si DESACTIVA el toggle, además limpiamos TC y USD
+                        // para que no queden valores fantasma en el state.
+                        caja_id: '',
+                        ...(e.target.checked ? {} : { tc: '', usd_recibido: '' }),
                       }))} />
                     <span style={{ fontSize: 13, fontWeight: 600 }}>Convertir a USD</span>
                   </label>
@@ -1284,18 +1294,19 @@ export default function Financiera() {
                       .map(c => (
                         <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>
                       ))}
+                    <CajaSelectHint />
                   </select>
                 </div>
 
                 <button
+                  type="submit"
                   className="btn btn-primary"
-                  onClick={handleSavePago}
                   disabled={savingPago}
                 >
                   <Icons.Check size={14} />
                   {savingPago ? 'Registrando…' : 'Registrar pago'}
                 </button>
-              </div>
+              </form>
             </div>
 
             {/* Estado de cuenta */}
