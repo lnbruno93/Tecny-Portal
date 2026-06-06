@@ -1181,87 +1181,331 @@ body {
   margin-top: 2px;
 }
 
-/* ── Login screen ──────────────────────────────────────────────────── */
+/* ── Login screen (rediseño split-screen, 2026-06-06) ──────────────────
+   Todas las reglas nuevas están scopeadas bajo #login-screen o en clases
+   exclusivas del login (.login-box, .login-btn, .login-err) que NO se
+   usan en ningún otro lugar del repo. Verificado para evitar leak visual
+   a otras pantallas. NO toca variables CSS de :root. */
 #login-screen {
   min-height: 100vh;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  background-image: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(var(--accent-rgb, 240,234,214), 0.04) 0%, transparent 70%);
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
 }
-.login-box {
-  width: 360px;
-  padding: 44px 36px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow-md, 0 8px 32px rgba(0,0,0,.18));
-}
-.login-box .brand {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text);
-  border: none;
-  padding: 0;
-  margin-bottom: 4px;
-  display: block;
-}
-.login-box .brand-sub {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 28px;
-  display: block;
-}
-.login-box .field {
+/* Panel marca (izquierda) — gradiente sutil + grid pattern decorativo */
+#login-screen .lg-brand {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--bg) 0%, var(--bg-elev) 55%, var(--surface) 100%);
+  border-right: 1px solid var(--hairline, rgba(255,255,255,.06));
+  padding: 56px 60px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
 }
-.login-box .field label {
+#login-screen .lg-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 700px 500px at 75% -5%, var(--accent-soft, rgba(56,189,248,.16)), transparent 60%),
+    radial-gradient(ellipse 500px 400px at 5% 105%, var(--accent-soft, rgba(56,189,248,.08)), transparent 55%);
+  pointer-events: none;
+}
+#login-screen .lg-brand::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, #000 30%, transparent 75%);
+          mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, #000 30%, transparent 75%);
+  pointer-events: none;
+}
+#login-screen .lg-top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#login-screen .lg-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2, var(--accent)));
+  color: var(--accent-ink, #04253a);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -.04em;
+  box-shadow: 0 8px 22px -6px var(--accent-ring, rgba(56,189,248,.6)),
+              0 1px 0 rgba(255,255,255,.3) inset;
+}
+#login-screen .lg-name {
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+#login-screen .lg-sub {
+  font-size: 10.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+#login-screen .lg-mid {
+  position: relative;
+  z-index: 1;
+  margin: auto 0;
+  padding: 48px 0;
+}
+#login-screen .lg-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 0.02em;
+  letter-spacing: .04em;
+  color: var(--accent);
+  background: var(--accent-soft, rgba(56,189,248,.12));
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin-bottom: 28px;
+  border: 1px solid var(--accent-ring, rgba(56,189,248,.25));
 }
-.login-box .field input {
-  height: 38px;
-  padding: 0 12px;
+#login-screen .lg-eyebrow .d {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+#login-screen .lg-headline {
+  font-size: clamp(30px, 3.6vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  font-weight: 700;
+  margin: 0 0 20px;
+  max-width: 460px;
+  color: var(--text);
+}
+#login-screen .lg-headline .hl { color: var(--accent); }
+#login-screen .lg-tagline {
+  font-size: 16px;
+  color: var(--text-2);
+  max-width: 420px;
+  line-height: 1.55;
+}
+#login-screen .lg-chips {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 40px;
+}
+#login-screen .lg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--hairline, rgba(255,255,255,.06));
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+#login-screen .lg-chip svg { color: var(--accent); }
+/* Form panel (derecha) */
+#login-screen .lg-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: var(--bg);
+}
+/* Override de .login-box vieja: ahora es solo el wrapper del form */
+#login-screen .login-box {
+  width: 100%;
+  max-width: 380px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+#login-screen .lg-h { margin-bottom: 32px; }
+#login-screen .lg-h h1 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+#login-screen .lg-h p {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+#login-screen .field {
+  display: block;
+  margin-bottom: 18px;
+}
+#login-screen .field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+/* Input wrapper con ícono leading + opcionalmente ojito */
+#login-screen .iw {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+#login-screen .iw .lead {
+  position: absolute;
+  left: 13px;
+  color: var(--text-dim);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+#login-screen .iw:focus-within .lead { color: var(--accent); }
+#login-screen .field input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px 0 42px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
   font-family: inherit;
   outline: none;
-  transition: border-color .15s;
+  transition: border-color .15s, box-shadow .15s, background .15s;
 }
-.login-box .field input:focus { border-color: var(--accent); }
+#login-screen .field input::placeholder { color: var(--text-dim); }
+#login-screen .field input:hover { border-color: var(--border-strong, var(--border)); }
+#login-screen .field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring, rgba(56,189,248,.35));
+  background: var(--bg-elev);
+}
+/* Toggle ojito para mostrar contraseña */
+#login-screen .pw-toggle {
+  position: absolute;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: color .14s, background .14s;
+}
+#login-screen .pw-toggle:hover {
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+/* Nota debajo del input 2FA (preserva flow 2FA existente) */
+#login-screen .field .field-note {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+/* Botón principal — más alto que el original, sombra accent */
 .login-btn {
   width: 100%;
-  margin-top: 20px;
-  padding: 11px;
+  height: 48px;
+  margin-top: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   background: var(--accent);
+  color: var(--accent-ink, #04253a);
   border: none;
-  border-radius: 8px;
-  color: var(--accent-ink, #0d1f3c);
+  border-radius: 10px;
   font-family: inherit;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
+  letter-spacing: -.005em;
   cursor: pointer;
-  transition: opacity .2s;
+  transition: background .14s, transform .06s, opacity .14s;
+  box-shadow: 0 1px 0 rgba(255,255,255,.25) inset,
+              0 10px 28px -10px var(--accent-ring, rgba(56,189,248,.6));
 }
-.login-btn:hover { opacity: 0.88; }
+.login-btn:hover { background: var(--accent-2, var(--accent)); opacity: 1; }
+.login-btn:active { transform: translateY(1px); }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.login-err {
-  font-size: 12px;
-  color: var(--neg, #e5484d);
-  margin-top: 8px;
+/* Botón secundario "Volver al login" del flow 2FA */
+#login-screen .lg-link-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
   text-align: center;
+  font-family: inherit;
+}
+#login-screen .lg-link-btn:hover { color: var(--text-2); }
+/* Error pill */
+.login-err {
+  display: block;
+  font-size: 13px;
+  color: var(--neg, #f87171);
+  background: rgba(248,113,113,.1);
+  border: 1px solid rgba(248,113,113,.25);
+  padding: 10px 12px;
+  border-radius: 9px;
+  margin-top: 16px;
+  text-align: left;
+}
+/* Footer del form */
+#login-screen .lg-foot {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--hairline, rgba(255,255,255,.06));
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#login-screen .lg-foot svg { color: var(--pos, #4ade80); flex-shrink: 0; }
+/* Logo mobile (visible solo cuando el panel marca se oculta) */
+#login-screen .lg-mobile { display: none; }
+@media (max-width: 900px) {
+  #login-screen { grid-template-columns: 1fr; }
+  #login-screen .lg-brand { display: none; }
+  #login-screen .lg-form { padding: 32px 24px; }
+  #login-screen .lg-mobile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 36px;
+  }
+  #login-screen .lg-mobile .lg-mark {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+    border-radius: 9px;
+  }
 }
 
 /* ── Modal ────────────────────────────────────────────────────── */
