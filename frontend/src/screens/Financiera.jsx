@@ -14,6 +14,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
+import TcWarning from '../components/TcWarning';
 
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -1233,45 +1234,71 @@ export default function Financiera() {
 
                 {/* Fila 2: USD × TC = ARS (cuando hay conversión). Los 3
                     inputs son editables; cuando edits uno, los otros se
-                    auto-completan vía USD × TC = ARS. */}
+                    auto-completan vía USD × TC = ARS.
+                    U4/U11/U13/U6 auditoría 2026-06-06: labels con htmlFor,
+                    anchos fluidos, alerta TC fuera de rango, indicador de
+                    descalce USD×TC vs ARS. */}
                 {pagoForm.convertir_usd && (
+                  <>
                   <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
-                    <div className="field" style={{ width: 180 }}>
-                      <div className="field-label">USD recibido (caja)</div>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                    <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
+                      <label htmlFor="pago-usd" className="field-label">USD recibido (caja)</label>
+                      <input id="pago-usd" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                         className="input mono" placeholder="0"
                         value={pagoForm.usd_recibido}
                         onChange={e => setPagoUsd(e.target.value)} />
                     </div>
-                    <div style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>×</div>
-                    <div className="field" style={{ width: 140 }}>
-                      <div className="field-label">TC del día</div>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                    <div aria-hidden="true" style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>×</div>
+                    <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
+                      <label htmlFor="pago-tc" className="field-label">TC del día</label>
+                      <input id="pago-tc" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                         className="input mono" placeholder="0"
                         value={pagoForm.tc}
                         onChange={e => setPagoTc(e.target.value)} />
+                      <TcWarning tc={pagoForm.tc} />
                     </div>
-                    <div style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>=</div>
-                    <div className="field" style={{ flex: 1 }}>
-                      <div className="field-label">Total ARS (descuenta del saldo)</div>
+                    <div aria-hidden="true" style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>=</div>
+                    <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
+                      <label htmlFor="pago-ars" className="field-label">Total ARS (descuenta del saldo)</label>
                       <div className="input-group">
                         <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                        <input id="pago-ars" type="number" onKeyDown={blockInvalidNumberKeys} min="0"
                           className="input mono" placeholder="0,00"
                           value={pagoForm.monto}
                           onChange={e => setPagoArs(e.target.value)} />
                       </div>
                     </div>
                   </div>
+                  {/* U6: indicador de descalce USD×TC vs ARS. Lucas puede
+                      mantenerlos descalzados por redondeo (comportamiento
+                      esperado), pero el chip ayuda a detectar un cero de
+                      más en el tipeo. */}
+                  {(() => {
+                    const usd = Number(pagoForm.usd_recibido) || 0;
+                    const tc  = Number(pagoForm.tc) || 0;
+                    const ars = Number(pagoForm.monto) || 0;
+                    if (!(usd > 0 && tc > 0 && ars > 0)) return null;
+                    const arsCalc = usd * tc;
+                    const delta = ars - arsCalc;
+                    if (Math.abs(delta) < 0.01) return null;
+                    const color = Math.abs(delta) < 100 ? 'var(--text-muted)' : 'var(--warn, #d97706)';
+                    return (
+                      <div className="mono tiny" style={{ color, marginTop: -8, marginBottom: 8 }} role="status">
+                        USD × TC = $ {fmt(arsCalc)} (Δ {delta >= 0 ? '+' : ''}{fmt(delta)})
+                        {Math.abs(delta) >= 100 && ' — revisá si es lo que dice la planilla.'}
+                      </div>
+                    );
+                  })()}
+                  </>
                 )}
 
                 {/* Sin conversión: solo input ARS. */}
                 {!pagoForm.convertir_usd && (
                   <div className="field" style={{ marginBottom: 12 }}>
-                    <div className="field-label">Monto (ARS)</div>
+                    <label htmlFor="pago-ars-only" className="field-label">Monto (ARS)</label>
                     <div className="input-group">
                       <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                      <input id="pago-ars-only" type="number" onKeyDown={blockInvalidNumberKeys} min="0"
                         className="input mono" placeholder="0,00"
                         value={pagoForm.monto}
                         onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
