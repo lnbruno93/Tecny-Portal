@@ -10,6 +10,7 @@ import CompraProveedorModal from '../components/CompraProveedorModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
+import useModal from '../lib/useModal';
 
 
 
@@ -199,6 +200,13 @@ export default function Proveedores() {
   const [showCompra, setShowCompra] = useState(false);
   // ── Modal de pago simple (caja + monto + tc opcional + notas) ──────────
   const [showPago, setShowPago] = useState(false);
+  // Refs para useModal — auditoría 2026-06-06 UX B2: Esc cierra modales,
+  // focus trap, body scroll lock. Antes los 2 modales (Nuevo proveedor y
+  // Pago) eran inconsistentes con Tarjetas/Cajas que sí lo soportaban.
+  const provModalRef = useRef(null);
+  const pagoModalRef = useRef(null);
+  useModal({ open: showProv, onClose: () => setShowProv(false), overlayRef: provModalRef });
+  useModal({ open: showPago, onClose: () => setShowPago(false), overlayRef: pagoModalRef });
   const [pagoForm, setPagoForm] = useState({ fecha: todayISO(), caja_id: '', monto: '', tc: '', notas: '' });
   const [pagoSaving, setPagoSaving] = useState(false);
 
@@ -513,13 +521,17 @@ export default function Proveedores() {
         )}
       </div>
 
-      {/* Nuevo proveedor */}
+      {/* Nuevo proveedor — auditoría 2026-06-06 UX B1+B2:
+          - useModal con overlayRef da Esc-cierra + focus trap + body lock.
+          - <form onSubmit> con button type="submit" hace que Enter envíe
+            (antes el botón era onClick suelto, Enter no funcionaba). */}
       {showProv && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowProv(false)}>
+        <div ref={provModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowProv(false)}>
           <div className="modal" style={{ maxWidth: 520 }}>
+            <form onSubmit={e => { e.preventDefault(); if (!provSaving) handleSaveProv(); }}>
             <div className="modal-hd">
               <h3>{editId ? 'Editar proveedor' : 'Nuevo proveedor'}</h3>
-              <button className="icon-btn" onClick={() => setShowProv(false)}><Icons.X size={16} /></button>
+              <button type="button" className="icon-btn" onClick={() => setShowProv(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body">
               <div className="stack" style={{ gap: 12 }}>
@@ -569,11 +581,12 @@ export default function Proveedores() {
               </div>
             </div>
             <div className="modal-ft">
-              <button className="btn btn-ghost" onClick={() => setShowProv(false)} disabled={provSaving}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSaveProv} disabled={provSaving}>
+              <button type="button" className="btn btn-ghost" onClick={() => setShowProv(false)} disabled={provSaving}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={provSaving}>
                 {provSaving ? 'Guardando…' : (editId ? 'Guardar cambios' : 'Crear proveedor')}
               </button>
             </div>
+            </form>
           </div>
         </div>
       )}
@@ -587,13 +600,14 @@ export default function Proveedores() {
         />
       )}
 
-      {/* ── Modal Pago (simple) ── */}
+      {/* ── Modal Pago (simple) — auditoría 2026-06-06 UX B1+B2 ── */}
       {showPago && selected && (
-        <div className="modal-overlay" onClick={() => setShowPago(false)}>
+        <div ref={pagoModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowPago(false)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <form onSubmit={e => { e.preventDefault(); if (!pagoSaving) savePago(); }}>
             <div className="modal-hd">
               <h3>Registrar pago · {selected.nombre}</h3>
-              <button className="icon-btn" onClick={() => setShowPago(false)}><Icons.X size={16} /></button>
+              <button type="button" className="icon-btn" onClick={() => setShowPago(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body">
               <div className="row">
@@ -643,11 +657,12 @@ export default function Proveedores() {
               </div>
             </div>
             <div className="modal-ft">
-              <button className="btn btn-ghost" onClick={() => setShowPago(false)} disabled={pagoSaving}>Cancelar</button>
-              <button className="btn btn-primary" onClick={savePago} disabled={pagoSaving}>
+              <button type="button" className="btn btn-ghost" onClick={() => setShowPago(false)} disabled={pagoSaving}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={pagoSaving}>
                 {pagoSaving ? 'Guardando…' : 'Registrar pago'}
               </button>
             </div>
+            </form>
           </div>
         </div>
       )}

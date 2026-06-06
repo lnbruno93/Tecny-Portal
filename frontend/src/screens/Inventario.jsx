@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { inventario, proveedores as proveedoresApi } from '../lib/api';
@@ -12,6 +12,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import useModal from '../lib/useModal';
 
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
@@ -168,6 +169,16 @@ export default function Inventario() {
   const [nuevaCat, setNuevaCat] = useState('');
   const [nuevoDep, setNuevoDep] = useState('');
   const [catError, setCatError] = useState('');
+
+  // useModal hooks — auditoría 2026-06-06 UX B2: Esc cierra los 3 modales
+  // (form de producto, import xlsx, catálogos), focus trap, body scroll lock.
+  // Antes eran <div className="modal-overlay"> con click-outside pero sin Esc.
+  const formModalRef = useRef(null);
+  const importModalRef = useRef(null);
+  const catalogosModalRef = useRef(null);
+  useModal({ open: showForm, onClose: () => setShowForm(false), overlayRef: formModalRef });
+  useModal({ open: showImport, onClose: () => !importing && setShowImport(false), overlayRef: importModalRef });
+  useModal({ open: showCatalogos, onClose: () => setShowCatalogos(false), overlayRef: catalogosModalRef });
 
   // ── Carga de datos ──
   const loadProductos = useCallback(async () => {
@@ -816,11 +827,11 @@ export default function Inventario() {
 
       {/* ── Modal alta/edición ── */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div ref={formModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>{editId ? 'Editar producto' : 'Agregar producto'}</h3>
-              <button className="icon-btn" onClick={() => setShowForm(false)}><Icons.X size={16} /></button>
+              <button type="button" className="icon-btn" onClick={() => setShowForm(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <form onSubmit={handleSave}>
               <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
@@ -918,11 +929,11 @@ export default function Inventario() {
 
       {/* ── Modal import ── */}
       {showImport && (
-        <div className="modal-overlay" onClick={() => setShowImport(false)}>
+        <div ref={importModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && !importing && setShowImport(false)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Importar stock desde planilla</h3>
-              <button className="icon-btn" onClick={() => setShowImport(false)}><Icons.X size={16} /></button>
+              <button type="button" className="icon-btn" onClick={() => setShowImport(false)} disabled={importing} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
@@ -1001,11 +1012,11 @@ export default function Inventario() {
 
       {/* ── Modal catálogos ── */}
       {showCatalogos && (
-        <div className="modal-overlay" onClick={() => setShowCatalogos(false)}>
+        <div ref={catalogosModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCatalogos(false)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Categorías &amp; Depósitos</h3>
-              <button className="icon-btn" onClick={() => setShowCatalogos(false)}><Icons.X size={16} /></button>
+              <button type="button" className="icon-btn" onClick={() => setShowCatalogos(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <div className="row">
