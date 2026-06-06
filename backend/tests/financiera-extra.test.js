@@ -175,6 +175,85 @@ describe('Pagos — conversión USD + impacto en cajas', () => {
     const list = await request(app).get(`/api/pagos?buscar=`).set(auth());
     expect(list.body.data.some(p => p.id === r.body.id)).toBe(true);
   });
+
+  // T2 (auditoría 2026-06-06): pagos legacy (creados antes del sprint USD)
+  // tienen caja_id=NULL. El DELETE actual debe skipear reverseCajaMovimientos
+  // en ese caso. Sin este test, una refactorización que cambie `if (caja_id)`
+  // a `if (caja_id != null)` no se detecta — Lucas tiene pagos legacy reales
+  // en producción y borrar uno crashearía.
+  it('DELETE de pago legacy (sin caja_id) NO crashea ni intenta reverse', async () => {
+    // Insertar pago "legacy" directo en DB con caja_id=NULL (simula registro
+    // pre-junio 2026 cuando los pagos no impactaban cajas).
+    const insert = await pool.query(
+      `INSERT INTO pagos (fecha, monto, referencia, caja_id, tc, monto_usd)
+       VALUES ('2025-12-01', 5000, 'legacy pre-sprint', NULL, NULL, NULL) RETURNING id`
+    );
+    const legacyId = insert.rows[0].id;
+    const del = await request(app).delete(`/api/pagos/${legacyId}`).set(auth());
+    expect(del.status).toBe(200);
+    expect(del.body).toEqual({ ok: true });
+  });
+});
+
+/* ═══════════ T3 — Redondeo USD extremo en liquidación múltiple ═══════════ */
+// Si el operador (o un descalce con la financiera) genera un payload donde el
+// total_usd_efectivo se reparte sub-centavo entre N tarjetas, alguno de los
+// repartos puede dar 0 al round2. La defensa `usd <= 0 → 400` cubre el caso
+// pero sin test, una refactorización silenciosa rompe el guard.
+describe('Tarjetas — liquidación múltiple redondeo USD extremo', () => {
+  let cajaArs, cajaUsd, t1, t2, t3;
+  beforeAll(async () => {
+    const ar = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja ARS Redondeo', moneda: 'ARS', saldo_inicial: 0 });
+    const us = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Redondeo', moneda: 'USD', saldo_inicial: 0 });
+    cajaArs = ar.body.id; cajaUsd = us.body.id;
+    const a = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Round A', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    const b = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Round B', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    const c = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Round C', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    t1 = a.body.id; t2 = b.body.id; t3 = c.body.id;
+    // Cargo saldos para que la liquidación tenga contra qué imputar.
+    for (const id of [t1, t2, t3]) {
+      await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+        .send({ metodo_pago_id: id, fecha: '2026-01-01', monto_bruto: 100, pct: 0 });
+    }
+  });
+
+  it('total_usd_efectivo=0.01 con 3 repartos iguales → 400 con mensaje claro', async () => {
+    // 3 repartos ARS de 33.33 c/u + total_usd_efectivo=0.01. Cada reparto
+    // tocaría USD ~0.0033 → round2(0.0033)=0 → guard "usd <= 0 → 400".
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: '2026-01-15', caja_id: cajaUsd,
+        convertir_usd: true, tc: 10000, total_usd_efectivo: 0.01,
+        repartos: [
+          { metodo_pago_id: t1, monto: 33.33 },
+          { metodo_pago_id: t2, monto: 33.33 },
+          { metodo_pago_id: t3, monto: 33.34 },
+        ],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/0 o negativo/i);
+  });
+
+  it('total_usd_efectivo cuyo reparto da exactamente 0.01 en último → OK (no rechaza al borde)', async () => {
+    // 2 repartos iguales + total_usd 0.02. Cada reparto debe quedar en 0.01.
+    // Validamos que el guard NO sea "< 0.01" sino "< 0" — 0.01 es válido.
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: '2026-01-16', caja_id: cajaUsd,
+        convertir_usd: true, tc: 10000, total_usd_efectivo: 0.02,
+        repartos: [
+          { metodo_pago_id: t1, monto: 50 },
+          { metodo_pago_id: t2, monto: 50 },
+        ],
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.total_usd).toBeCloseTo(0.02, 2);
+  });
 });
 
 /* ═══════════ COMPROBANTES ═══════════ */

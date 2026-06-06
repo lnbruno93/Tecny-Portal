@@ -559,6 +559,21 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       );
       updated = rows[0];
     } else if (mov.tipo === 'liquidacion') {
+      // H1 (auditoría 2026-06-06): si la liquidación se hizo con conversión
+      // USD (tc IS NOT NULL), el PATCH actual NO soporta editarla — el bloque
+      // de abajo reposteria a la caja con monto=ARS y tc=null, corrompiendo
+      // la caja USD (mismatch de moneda) o, mejor caso, fallando con error
+      // técnico confuso. Hasta que se implemente edición completa con tc/
+      // monto_usd, rechazamos explícitamente con un mensaje operativo.
+      //
+      // Workaround para el operador: anular (DELETE) la liquidación USD y
+      // crearla de nuevo con los datos correctos.
+      if (mov.tc != null) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: 'Esta liquidación se registró con conversión USD. Para corregirla, eliminala y registrá una nueva (la edición de liquidaciones USD aún no está implementada).',
+        });
+      }
       // Liquidación: si cambia fecha/monto/caja_id, hay que actualizar el ledger
       // de cajas. Estrategia: revert (soft-delete del caja_movimiento existente
       // con validación de saldo) + repost (con la nueva caja_id/monto/fecha).

@@ -568,6 +568,58 @@ describe('Tarjetas — PATCH /movimientos/:id casos límite', () => {
   });
 });
 
+// H1 (auditoría 2026-06-06): cuando una liquidación se registró con conversión
+// USD (tc IS NOT NULL en el row), el PATCH actual NO sabe cómo editarla — el
+// código repostaba a caja con monto=ARS y tc=null, lo que en una caja USD
+// rompe por mismatch de moneda. La defensa rechaza el PATCH con mensaje
+// operativo hasta que se implemente edición completa.
+describe('Tarjetas — PATCH de liquidación USD-convertida (H1 defensa)', () => {
+  let tarjetaUSDTest, cajaUsdTest;
+  beforeAll(async () => {
+    const mt = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC USD Patch Defensa', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    tarjetaUSDTest = mt.body.id;
+    const cu = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja USD Patch Defensa', moneda: 'USD', saldo_inicial: 0 });
+    cajaUsdTest = cu.body.id;
+    // Cargar saldo ARS para tener algo que liquidar.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaUSDTest, fecha: hoy, monto_bruto: 110000, pct: 0 });
+  });
+
+  it('PATCH cualquier campo de una liquidación USD-convertida → 400 con mensaje operativo', async () => {
+    // Crear liquidación múltiple con conversión USD.
+    const liq = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdTest,
+        convertir_usd: true, tc: 1100, total_usd_efectivo: 100,
+        repartos: [{ metodo_pago_id: tarjetaUSDTest, monto: 110000 }],
+      });
+    expect(liq.status).toBe(201);
+    const movId = liq.body.movimientos[0].id;
+    // Intentar editar SOLO el comentario (un edit "inofensivo") → 400.
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ comentarios: 'arreglo' });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/conversión USD/i);
+    expect(r.body.error).toMatch(/eliminala/i);
+  });
+
+  it('PATCH a liquidación NO convertida sigue funcionando (no rompe el flujo viejo)', async () => {
+    // Cobro previo + liquidación simple en ARS (sin conversión).
+    const cobro = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaUSDTest, fecha: hoy, monto_bruto: 5000, pct: 0 });
+    expect(cobro.status).toBe(201);
+    const liq = await request(app).post('/api/tarjetas/liquidaciones').set(auth())
+      .send({ metodo_pago_id: tarjetaUSDTest, fecha: hoy, monto: 5000, caja_id: cajaArs });
+    expect(liq.status).toBe(201);
+    const r = await request(app).patch(`/api/tarjetas/movimientos/${liq.body.id}`).set(auth())
+      .send({ comentarios: 'edit ok' });
+    expect(r.status).toBe(200);
+    expect(r.body.comentarios).toBe('edit ok');
+  });
+});
+
 // Tests para GET /api/tarjetas?desde=&hasta= y GET /api/tarjetas/:id?desde=&hasta=
 // — el resumen agregado por tarjeta filtra TODO por rango (incluido el saldo).
 // Decisión operativa 2026-06-05: el operador quiere consistencia visual entre
