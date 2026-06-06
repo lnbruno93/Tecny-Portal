@@ -283,14 +283,45 @@ describe('POST /api/contactos', () => {
     expect(res.status).toBe(400);
   });
 
-  it('agenda compartida: cualquier usuario autenticado puede crear contacto → 201', async () => {
-    // Contactos es un recurso compartido (lo usan Ventas, Cajas, Proyectos para
-    // quick-add), así que solo requiere sesión, no un permiso de módulo.
+  it('usuario sin permiso contactos NO puede crear → 403 (auditoría 2026-06-06 Sec H1)', async () => {
+    // Antes: agenda compartida — cualquier sesión podía crear contactos.
+    // Ahora: GET sigue abierto (necesario para quick-add desde Ventas/Cajas/
+    // Proyectos), pero POST/PUT/DELETE requieren permiso 'contactos'. El
+    // toggle del frontend ahora bloquea efectivamente la edición.
     const res = await request(app)
       .post('/api/contactos')
       .set('Authorization', `Bearer ${opToken}`)
       .send({ nombre: 'Test', tipo: 'cliente' });
+    expect(res.status).toBe(403);
+  });
+
+  it('usuario op con permiso contactos SÍ puede crear → 201', async () => {
+    // Otorgar el permiso 'contactos' al opuser y verificar que ahora pasa.
+    await pool.query(
+      `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1, 'contactos', true)
+       ON CONFLICT (user_id, tool) DO UPDATE SET enabled = true`,
+      [opId]
+    );
+    const res = await request(app)
+      .post('/api/contactos')
+      .set('Authorization', `Bearer ${opToken}`)
+      .send({ nombre: 'Test op', tipo: 'cliente' });
     expect(res.status).toBe(201);
+    // Limpieza: dejar el opuser como estaba para no contaminar otros tests.
+    await pool.query(
+      `DELETE FROM user_permissions WHERE user_id = $1 AND tool = 'contactos'`,
+      [opId]
+    );
+  });
+
+  it('GET sigue abierto sin permiso (necesario para quick-add)', async () => {
+    // El GET de contactos lo necesitan los quick-add desde otros módulos —
+    // si lo bloqueamos, rompemos Ventas/Cajas/Proyectos para users sin
+    // permiso de contactos.
+    const res = await request(app)
+      .get('/api/contactos')
+      .set('Authorization', `Bearer ${opToken}`);
+    expect(res.status).toBe(200);
   });
 
   it('sin token → 401', async () => {

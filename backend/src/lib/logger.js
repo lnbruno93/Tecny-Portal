@@ -29,6 +29,18 @@ const logger = pino({
       '*.token',
       '*.DATABASE_URL',
       '*.JWT_SECRET',
+      // Campos 2FA (auditoría 2026-06-06 Sec M3): el código TOTP en texto plano,
+      // los recovery codes (incluso si son hash bcrypt) y el secret cifrado no
+      // deben terminar en logs si un error arrastra el req.body o el row de
+      // user_2fa al logger.
+      '*.code',
+      '*.totp_code',
+      '*.recovery_code',
+      '*.recovery_codes',
+      '*.recovery_codes_hash',
+      '*.secret',
+      '*.secret_encrypted',
+      '*.TWOFA_ENCRYPTION_KEY',
     ],
     censor: '[REDACTED]',
   },

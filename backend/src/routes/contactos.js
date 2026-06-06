@@ -3,9 +3,15 @@ const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
+const requirePermission = require('../middleware/requirePermission');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createContactoSchema, updateContactoSchema, queryContactosSchema } = require('../schemas/contactos');
 
+// Auditoría 2026-06-06 (Sec H1): GET queda abierto para quick-add desde
+// Ventas/Cajas/Proyectos (lectura de agenda con sesión válida). POST/PUT/
+// DELETE requieren permiso 'contactos' explícito — el toggle del frontend
+// ahora es real, no decorativo. Sin este enforce, cualquier operador con
+// permiso parcial podía editar/borrar el directorio entero.
 
 router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) => {
   try {
@@ -46,7 +52,7 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
   }
 });
 
-router.post('/', validate(createContactoSchema), async (req, res, next) => {
+router.post('/', requirePermission('contactos'), validate(createContactoSchema), async (req, res, next) => {
   try {
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
     const { rows } = await db.query(
@@ -62,7 +68,7 @@ router.post('/', validate(createContactoSchema), async (req, res, next) => {
   }
 });
 
-router.put('/:id', validate(updateContactoSchema), async (req, res, next) => {
+router.put('/:id', requirePermission('contactos'), validate(updateContactoSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -94,7 +100,7 @@ router.put('/:id', validate(updateContactoSchema), async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requirePermission('contactos'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });

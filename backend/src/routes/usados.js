@@ -79,11 +79,14 @@ router.put('/bulk', validate(bulkUpdateUsadosSchema), async (req, res, next) => 
         );
         count += rowCount;
       }
-      await client.query('COMMIT');
-      await audit('catalogo_usados', 'UPDATE', null, {
+      // Audit-in-tx (auditoría 2026-06-06 Sol M2) — antes corría en pool
+      // global después del COMMIT, dejando ventana para audit huérfano si
+      // el proceso moría entre commit y audit.
+      await audit(client, 'catalogo_usados', 'UPDATE', null, {
         despues: { count, ids: updates.map(u => u.id) },
         user_id: req.user.id,
       });
+      await client.query('COMMIT');
       res.json({ updated: count });
     } catch (err) {
       await client.query('ROLLBACK');
