@@ -15,6 +15,18 @@ import { rangeToParams, rangeLabel, RANGE_PRESETS } from '../lib/dateRange';
 const todayISO = () => new Date().toLocaleDateString('sv');
 const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
 
+// Color para mostrar saldo: positivo → accent (azul), negativo → neg (rojo),
+// cero → muted. El saldo "Te deben" puede ser negativo cuando el operador
+// filtra por un período donde liquidó más de lo cobrado (movimiento neto
+// del período < 0). Sin este helper, los 4 puntos donde se muestra el saldo
+// pintaban negativo en azul-positivo, visualmente engañoso.
+const saldoColor = (v) => {
+  const n = Number(v) || 0;
+  if (n > 0) return 'var(--accent)';
+  if (n < 0) return 'var(--neg)';
+  return 'var(--text-muted)';
+};
+
 // Sentinel para la "tarjeta virtual" Todas las tarjetas (junio 2026). Cuando
 // selectedId === ALL_TARJETAS, el Detalle muestra KPIs sumados de todas las
 // tarjetas y un form de liquidación múltiple (la financiera deposita un solo
@@ -314,7 +326,9 @@ export default function Tarjetas() {
     }
     setMultiLiq(f => ({ ...f, repartos }));
     if (restante > 0.01) {
-      toast.warn?.(`El total supera el saldo pendiente por ${fmt(restante)}. Ajustá manualmente.`);
+      // toast.warn siempre existe (ToastContext); el `?.` que estaba antes era
+      // ruido sin defensa real — quitado en auditoría 2026-06-06.
+      toast.warn(`El total supera el saldo pendiente por ${fmt(restante)}. Ajustá manualmente.`);
     }
   }
 
@@ -371,13 +385,15 @@ export default function Tarjetas() {
         } : {}),
       };
       await tarjetasApi.createLiquidacionMultiple(payload);
-      // Reset parcial y refresh. Mantenemos fecha + caja + convertir_usd + tc
+      // Reset parcial y refresh. Mantenemos fecha + caja + convertir_usd
       // para liquidaciones encadenadas del mismo día (lunes/jueves vienen 2
-      // liquidaciones en la misma planilla, con su propio TC pero misma fecha
-      // de depósito). Limpiamos USD/ARS/repartos/período.
+      // liquidaciones en la misma planilla, con SU PROPIO TC pero misma
+      // fecha de depósito). Limpiamos TC también — la segunda liquidación
+      // tiene un TC distinto al de la primera y sino el ARS se autocompleta
+      // con el TC viejo y queda mal.
       setMultiLiq(f => ({
         ...f,
-        monto: '', usd_recibido: '', repartos: {}, comentarios: '',
+        monto: '', usd_recibido: '', tc: '', repartos: {}, comentarios: '',
         periodo_desde: '', periodo_hasta: '',
       }));
       loadList();
@@ -600,7 +616,7 @@ export default function Tarjetas() {
           <div className="row" style={{ marginBottom: 14 }}>
             <div className="card card-tight" style={{ flex: 1 }}>
               <div className="kpi-label">Saldo a tu favor</div>
-              <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>$ {fmt(global.saldo)}</div>
+              <div className="kpi-value mono" style={{ color: saldoColor(global.saldo) }}>$ {fmt(global.saldo)}</div>
             </div>
             <div className="card card-tight" style={{ flex: 1 }}>
               <div className="kpi-label">Comisión financiera</div>
@@ -714,7 +730,7 @@ export default function Tarjetas() {
             }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>Todas las tarjetas</div>
               <div className="muted tiny" style={{ marginTop: 2 }}>{list.length} {list.length === 1 ? 'modalidad' : 'modalidades'} · resumen + liquidación múltiple</div>
-              <div className="mono tiny" style={{ marginTop: 2, color: global.saldo > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+              <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(global.saldo) }}>
                 Te deben: $ {fmt(global.saldo)}
               </div>
             </div>
@@ -727,7 +743,7 @@ export default function Tarjetas() {
               }}>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{t.nombre}</div>
                 <div className="muted tiny" style={{ marginTop: 2 }}>Comisión {Number(t.comision_pct || 0)}%</div>
-                <div className="mono tiny" style={{ marginTop: 2, color: Number(t.saldo) > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                <div className="mono tiny" style={{ marginTop: 2, color: saldoColor(t.saldo) }}>
                   Te deben: {sym(t.moneda)} {fmt(t.saldo)}
                 </div>
               </div>
@@ -803,7 +819,12 @@ export default function Tarjetas() {
                              onChange={e => setMultiLiq(f => ({
                                ...f,
                                convertir_usd: e.target.checked,
-                               caja_id: '', // reset: el filtro de cajas cambia con la moneda
+                               // Reset: el filtro de cajas cambia con la moneda.
+                               // Si DESACTIVA el toggle, además limpiamos TC y USD
+                               // para que no queden valores fantasma ocultos en el
+                               // state (la fila con los 3 inputs se desmonta).
+                               caja_id: '',
+                               ...(e.target.checked ? {} : { tc: '', usd_recibido: '' }),
                              }))} />
                       <span style={{ fontSize: 13, fontWeight: 600 }}>Convertir a USD</span>
                     </label>
@@ -997,7 +1018,7 @@ export default function Tarjetas() {
               <div className="row">
                 <div className="card card-tight" style={{ flex: 1 }}>
                   <div className="kpi-label">Te deben (falta cobrar)</div>
-                  <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>{sym(mon)} {fmt(r.saldo)}</div>
+                  <div className="kpi-value mono" style={{ color: saldoColor(r.saldo) }}>{sym(mon)} {fmt(r.saldo)}</div>
                 </div>
                 <div className="card card-tight" style={{ flex: 1 }}>
                   <div className="kpi-label">Comisión financiera</div>

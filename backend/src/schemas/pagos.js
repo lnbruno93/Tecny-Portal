@@ -15,7 +15,15 @@ const createPagoSchema = z.object({
   monto:         z.number().positive('Monto ARS debe ser positivo'),
   referencia:    z.string().trim().max(500).optional().nullable(),
   caja_id:       z.coerce.number().int().positive('Elegí la caja destino'),
-  convertir_usd: z.coerce.boolean().optional().default(false),
+  // No usamos z.coerce.boolean() acá — coerce hace Boolean(v), que para el
+  // string "false" devuelve true (string no vacío). Eso es bug latente: un
+  // POST con { convertir_usd: "false" } (curl, n8n, otro cliente) terminaría
+  // convirtiendo a USD aunque el operador NO lo quiso. Aceptamos boolean
+  // nativo o los strings literales 'true'/'false' y normalizamos.
+  convertir_usd: z.union([
+    z.boolean(),
+    z.enum(['true', 'false']).transform(v => v === 'true'),
+  ]).optional().default(false),
   tc:            z.coerce.number().positive('TC debe ser mayor a 0').optional(),
   monto_usd:     z.coerce.number().positive('USD recibido debe ser > 0').optional(),
 }).strict().refine(
