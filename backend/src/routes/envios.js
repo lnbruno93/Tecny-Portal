@@ -58,8 +58,13 @@ async function validarPagosAvanzados(client, items, registrarVenta, clienteCcId)
   }
   const cajaIds = pagos.map(p => p.metodo_pago_id).filter(Boolean);
   if (cajaIds.length) {
+    // Defense-in-depth: filtramos cajas borradas (soft-delete) acá
+    // explícitamente — sino `usaFinTar` se calcula sobre cajas históricas
+    // borradas, y aunque postCajaMovimiento rechazaría después con error
+    // técnico ("la caja no existe"), preferimos detectar acá y dar mensaje
+    // claro. Auditoría 2026-06-06 Sol M1.
     const { rows } = await client.query(
-      'SELECT id, es_financiera, es_tarjeta FROM metodos_pago WHERE id = ANY($1::int[])',
+      'SELECT id, es_financiera, es_tarjeta FROM metodos_pago WHERE id = ANY($1::int[]) AND deleted_at IS NULL',
       [cajaIds]
     );
     const usaFinTar = rows.some(c => c.es_financiera || c.es_tarjeta);

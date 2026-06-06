@@ -348,7 +348,12 @@ app.use('/api/config',        requireAuth, requirePermission('financiera'), conf
 app.use('/api/ocr',           requireAuth, requirePermission('financiera'), ocrRoutes);
 
 // Contactos — agenda compartida (la usan Ventas, Cajas, Proyectos para quick-add).
-// Solo requiere sesión; la pantalla "Contactos" se gatea por permiso en el front.
+// Mount con sesión + permisos por método (auditoría 2026-06-06 Sec H1):
+//   · GET (list/search) — solo requiere sesión: necesario para el quick-add
+//     desde Ventas/Cajas/Proyectos. Es lectura no destructiva.
+//   · POST/PUT/DELETE — requieren permiso 'contactos' (enforced en cada
+//     handler de routes/contactos.js). El toggle del frontend ahora SÍ
+//     bloquea efectivamente la edición del directorio.
 app.use('/api/contactos',     requireAuth, contactosRoutes);
 
 // Cajas — requiere permiso "cajas"

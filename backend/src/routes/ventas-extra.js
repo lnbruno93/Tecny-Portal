@@ -157,11 +157,17 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
     // comisión = monto × pct_financiera (de Config), sin duplicar.
     const comprobanteFinanciera = await syncFinancieraComprobante(client, id, venta.estado);
     if (comprobanteFinanciera) {
-      await audit('comprobantes', 'INSERT', comprobanteFinanciera.id, { despues: { venta_id: id, auto: true, monto: comprobanteFinanciera.monto, monto_financiera: comprobanteFinanciera.monto_financiera }, user_id: req.user.id });
+      // Audit-in-tx (patrón H6) — auditoría 2026-06-06 Sol H1.
+      // Antes pasaba `audit(...)` sin `client` (pool global, autocommit) →
+      // si el proceso moría entre las líneas 160 y 163, quedaba el audit_log
+      // persistido pero el comprobante no existía (rollback). Ahora atómico.
+      await audit(client, 'comprobantes', 'INSERT', comprobanteFinanciera.id, { despues: { venta_id: id, auto: true, monto: comprobanteFinanciera.monto, monto_financiera: comprobanteFinanciera.monto_financiera }, user_id: req.user.id });
     }
+    // Mismo fix para el audit de venta_comprobantes — debe ir DENTRO de la tx,
+    // antes del COMMIT. Auditoría 2026-06-06 Sol M2.
+    await audit(client, 'venta_comprobantes', 'INSERT', rows[0].id, { despues: { venta_id: id, nombre: archivo_nombre }, user_id: req.user.id });
 
     await client.query('COMMIT');
-    await audit('venta_comprobantes', 'INSERT', rows[0].id, { despues: { venta_id: id, nombre: archivo_nombre }, user_id: req.user.id });
     res.status(201).json({ ...rows[0], comprobante_financiera: comprobanteFinanciera });
   } catch (err) {
     await client.query('ROLLBACK');

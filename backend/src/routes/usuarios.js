@@ -55,8 +55,11 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
         `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ${permValues}`,
         [user.id, ...TOOLS, ...TOOLS.map(t => perms[t] === true)]
       );
+      // Audit-in-tx (auditoría 2026-06-06 Sol M2) — antes corría en pool
+      // global después del COMMIT, dejando ventana para que el proceso muera
+      // entre commit y audit, perdiendo la traza.
+      await audit(client, 'users', 'INSERT', user.id, { despues: user, user_id: req.user.id });
       await client.query('COMMIT');
-      await audit('users', 'INSERT', user.id, { despues: user, user_id: req.user.id });
       res.status(201).json({ ...user, perms });
     } catch (err) {
       await client.query('ROLLBACK');
@@ -121,14 +124,16 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
           [id, ...TOOLS, ...TOOLS.map(t => perms[t] === true)]
         );
       }
-      await client.query('COMMIT');
+      // Audit-in-tx (auditoría 2026-06-06 Sol M2) — antes corría en pool
+      // global después del COMMIT.
       // Excluir password_hash del audit log — es un hash pero no debe persistirse innecesariamente
       const { password_hash: _phAntes, ...safeAntes } = before[0];
-      await audit('users', 'UPDATE', id, {
+      await audit(client, 'users', 'UPDATE', id, {
         antes:   { ...safeAntes, perms: permsAntes },
         despues: { ...rows[0],  perms: perms ?? permsAntes },
         user_id: req.user.id,
       });
+      await client.query('COMMIT');
       res.json(rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');

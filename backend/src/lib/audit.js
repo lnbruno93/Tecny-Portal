@@ -20,7 +20,17 @@ const withAdvisoryLock = require('./withAdvisoryLock');
 // Las columnas de catálogo (categoria, deposito, proveedor, estado, fecha,
 // montos) NO se redactan: no son PII y son las que dan utilidad al audit.
 
-const ALWAYS_REMOVE = new Set(['password', 'password_hash', 'token', 'api_key', 'secret', 'jwt']);
+// ALWAYS_REMOVE — campos que se borran completamente. Auditoría 2026-06-06
+// Sec M2: agregamos campos de 2FA (`secret_encrypted` cifrado AES-GCM,
+// `recovery_codes` hashes bcrypt, `recovery_codes_hash`) por defensa en
+// profundidad. Hoy las llamadas a audit() pasan objetos curados, pero el
+// día que alguien haga audit('user_2fa', 'UPDATE', id, { antes: row }) con
+// el row completo, estos campos terminaban en audit_logs sin protección.
+const ALWAYS_REMOVE = new Set([
+  'password', 'password_hash', 'token', 'api_key', 'secret', 'jwt',
+  'secret_encrypted', 'recovery_codes', 'recovery_codes_hash',
+  'code', 'totp_code', 'recovery_code',
+]);
 const FULL_REDACT   = new Set(['telefono', 'direccion', 'barrio', 'notas', 'observaciones', 'whatsapp']);
 const PARTIAL_IMEI  = new Set(['imei', 'serie', 'nroserie', 'numero_serie']);
 const PARTIAL_NAME  = new Set(['cliente_nombre', 'cliente', 'nombre_cliente', 'contacto_nombre', 'contacto_apellido']);

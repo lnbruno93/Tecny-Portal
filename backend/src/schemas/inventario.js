@@ -123,7 +123,12 @@ const queryProductosSchema = z.object({
   condicion:    z.enum(['nuevo', 'usado']).optional(),
   // Legacy (compat): `solo_stock=true` se mapea a vista='no_vendidos' si no se
   // pasó `vista` explícita. El router resuelve la prioridad.
-  solo_stock:   z.coerce.boolean().optional(),
+  // No usamos z.coerce.boolean() — convierte el string "false" a true
+  // (Boolean(str-no-vacío) === true). Mismo bug latente que se arregló en
+  // schemas/pagos.js y schemas/tarjetas.js (TANDA 1 sprint USD). Aceptamos
+  // boolean nativo o los literales 'true'/'false' y normalizamos.
+  // Auditoría 2026-06-06 Sol H2 / Sec M1.
+  solo_stock:   z.union([z.boolean(), z.enum(['true','false']).transform(v => v === 'true')]).optional(),
   page:         z.coerce.number().int().positive().optional(),
   limit:        z.coerce.number().int().positive().max(200).optional(),
 });
@@ -139,7 +144,12 @@ const queryDesgloseSchema = z.object({
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),
   proveedor:    z.string().trim().max(200).optional(),
-  solo_stock:   z.coerce.boolean().optional(),
+  // No usamos z.coerce.boolean() — convierte el string "false" a true
+  // (Boolean(str-no-vacío) === true). Mismo bug latente que se arregló en
+  // schemas/pagos.js y schemas/tarjetas.js (TANDA 1 sprint USD). Aceptamos
+  // boolean nativo o los literales 'true'/'false' y normalizamos.
+  // Auditoría 2026-06-06 Sol H2 / Sec M1.
+  solo_stock:   z.union([z.boolean(), z.enum(['true','false']).transform(v => v === 'true')]).optional(),
   buscar:       z.string().trim().max(200).optional(),
 });
 
