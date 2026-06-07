@@ -307,7 +307,9 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 0 24px;
+  /* UX H2 auditoría 2026-06-06: padding lateral fluido. En mobile el 24px
+     comía un cacho del topbar; ahora 12–24px según viewport. */
+  padding: 0 clamp(12px, 2.4vw, 24px);
   flex-shrink: 0;
 }
 .crumbs {
@@ -361,10 +363,14 @@ body {
 .content {
   flex: 1;
   overflow: auto;
-  padding: 28px 32px 48px;
+  /* UX H2 auditoría 2026-06-06: padding fluido — el contenido respira en
+     desktop (32px) y se ajusta en mobile (16px) sin necesitar @media en
+     cada wrapper. clamp(min, ideal-vw, max). Las @media siguen aplicando
+     overrides específicos por viewport (1100/880/640px). */
+  padding: clamp(16px, 2.4vw, 28px) clamp(14px, 2.6vw, 32px) clamp(24px, 4vw, 48px);
   min-height: 0;
 }
-.content-narrow { max-width: 1280px; margin: 0 auto; }
+.content-narrow { max-width: min(1280px, 100%); margin: 0 auto; }
 
 /* ── Page header ──────────────────────────────────────────────────── */
 .page-head {
@@ -375,7 +381,10 @@ body {
   margin-bottom: 24px;
 }
 .page-title {
-  font-size: 26px;
+  /* UX H2 auditoría 2026-06-06: title fluido — 22px en mobile, 26px en
+     desktop. Mejora la legibilidad en mobile (donde 26px+títulos largos
+     forzaban wrap) sin perder presencia en desktop. */
+  font-size: clamp(20px, 2.2vw, 26px);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0;
@@ -1517,17 +1526,25 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 200;
-  padding: 24px;
+  /* UX H2 auditoría 2026-06-06: padding fluido — en mobile (≤375px) el
+     padding de 24px eat 48px del ancho útil del modal. Bajamos a 12px
+     en pantallas chicas manteniéndolo holgado en desktop. */
+  padding: clamp(12px, 2.5vw, 24px);
 }
 .modal {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  width: 100%;
+  /* UX H2 auditoría 2026-06-06: anchos fluidos en mobile. El inline
+     `style={{ maxWidth: 480 }}` de cada modal sigue mandando, pero
+     ahora `width: min(100%, NNNpx)` garantiza que en viewport chico
+     el modal ocupe lo que pueda sin desbordar. svh > vh evita el clip
+     del toolbar en iOS Safari. */
+  width: min(100%, 720px);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100svh - 48px);
   overflow: hidden;
 }
 .modal-hd {

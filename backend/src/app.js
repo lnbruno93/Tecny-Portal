@@ -113,7 +113,12 @@ app.use(rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, intentá de nuevo en 15 minutos' },
-  skip: (req) => req.path === '/health' || req.path === '/ready',
+  // En tests skipeamos COMPLETO: 1) /health|/ready siempre (probes externos
+  // de monitoring); 2) si NODE_ENV=test — el smoke test + suites combinadas
+  // disparan >300 requests, lo que con el PG store (T3) deja el contador
+  // pinchado entre runs (la tabla rate_limit_entries persiste) generando
+  // 429s cascada en suites posteriores. Mismo patrón que login/2FA.
+  skip: (req) => req.path === '/health' || req.path === '/ready' || isTestEnv,
   ...(globalStore && { store: globalStore }),
 }));
 logger.info({ globalRateLimit: GLOBAL_RATE_LIMIT_MAX }, 'rate-limit global configurado');
