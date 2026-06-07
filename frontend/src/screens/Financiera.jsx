@@ -12,6 +12,7 @@ import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { round2 } from '../lib/money';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -185,9 +186,6 @@ export default function Financiera() {
   useEffect(() => {
     try { localStorage.setItem(PAGO_USD_KEY, pagoForm.convertir_usd ? '1' : '0'); } catch { /* ignore */ }
   }, [pagoForm.convertir_usd]);
-
-  // Helper de redondeo a 2 decimales (igual que Tarjetas).
-  const round2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
 
   // Handlers de los 3 inputs enlazados. Cuando editás uno, los otros se
   // recalculan si hay info suficiente (USD × TC = ARS). Solo el handler del

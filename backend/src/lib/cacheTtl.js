@@ -8,6 +8,10 @@
 //
 // Concurrencia: si llegan N requests al mismo tiempo con el caché expirado,
 // se hace UNA sola query y todos esperan (deduplicación con promise pending).
+//
+// El fetcher devuelto expone `.invalidate()` para forzar refresh post-write
+// dentro del mismo proceso. Multi-instance: la otra réplica sigue su TTL
+// natural — para invalidación cross-instance hay que mover a Redis.
 
 function createCachedFetcher(key, ttlMs, fetcher) {
   // En tests, los assertions esperan ver cambios al instante. Para no introducir
@@ -15,7 +19,7 @@ function createCachedFetcher(key, ttlMs, fetcher) {
   const disabled = process.env.NODE_ENV === 'test' || !ttlMs;
   let entry = null; // { value, expiresAt } | null
   let pending = null;
-  return async function getCached() {
+  async function getCached() {
     if (disabled) return fetcher();
     const now = Date.now();
     if (entry && entry.expiresAt > now) return entry.value;
@@ -30,7 +34,14 @@ function createCachedFetcher(key, ttlMs, fetcher) {
       }
     })();
     return pending;
-  };
+  }
+  // Invalidación manual: el próximo get() refetchea. El pending in-flight
+  // (si hay) NO se cancela — espera y lo que devuelva es el valor stale,
+  // pero el SIGUIENTE call después de invalidate ya refetchea. Es ok para
+  // el caso "writer invalida luego de COMMIT": no hay pending nuevo hasta
+  // que llega el próximo GET.
+  getCached.invalidate = () => { entry = null; };
+  return getCached;
 }
 
 module.exports = { createCachedFetcher };

@@ -5,6 +5,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { round2 } from '../lib/money';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -120,10 +121,9 @@ export default function Tarjetas() {
     try { localStorage.setItem(TARJ_LIQ_USD_KEY, multiLiq.convertir_usd ? '1' : '0'); } catch { /* ignore */ }
   }, [multiLiq.convertir_usd]);
 
-  // Round-2 helper para los auto-cálculos. Math.round((x + Number.EPSILON) * 100)
-  // / 100 evita el clásico 0.1 + 0.2 = 0.30000000000000004 de IEEE-754 al
-  // mostrar/guardar valores monetarios.
-  const round2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+  // `round2` viene de '../lib/money' (Hygiene H1 auditoría 2026-06-06).
+  // Math.round((x + Number.EPSILON) * 100) / 100 evita el clásico
+  // 0.1 + 0.2 = 0.30000000000000004 de IEEE-754 al mostrar/guardar montos.
 
   // Handlers que actualizan un campo y recalculan los otros cuando hay info
   // suficiente. Solo el handler del campo editado dispara el recálculo —

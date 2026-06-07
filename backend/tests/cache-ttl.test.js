@@ -55,4 +55,17 @@ describe('createCachedFetcher', () => {
     v = 2;
     expect(await get()).toBe(2);
   });
+
+  test('invalidate() fuerza refetch en la próxima llamada (Perf H3 cajas)', async () => {
+    await withProdEnv(async () => {
+      let calls = 0;
+      const get = createCachedFetcher('k', 5000, async () => ++calls);
+      await get();
+      await get();
+      expect(calls).toBe(1);          // cacheado
+      get.invalidate();
+      await get();
+      expect(calls).toBe(2);          // refetch tras invalidate
+    });
+  });
 });

@@ -6,6 +6,7 @@ const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { createCachedFetcher } = require('../lib/cacheTtl');
+const { getCajasList, invalidateCajas } = require('../lib/cajasCache');
 const withTx = require('../lib/withTx');
 const { postCajaMovimiento } = require('../lib/cajaLedger');
 const {
@@ -197,19 +198,13 @@ router.delete('/inversiones/:id', async (req, res, next) => {
 // (GET /api/ventas/metodos-pago) lee solo las activas; acá se administran todas.
 
 router.get('/cajas', async (_req, res, next) => {
+  // Perf H3 auditoría 2026-06-06: lectura cacheada (15s TTL) — la query
+  // hace LEFT JOIN + GROUP BY sobre caja_movimientos (saldo_actual), pesada
+  // y se llama mucho desde dropdowns de pago en varios módulos. Invalidación
+  // explícita en escrituras a metodos_pago / caja_movimientos. Ver
+  // backend/src/lib/cajasCache.js para detalles del trade-off multi-instance.
   try {
-    const { rows } = await db.query(
-      `SELECT mp.id, mp.nombre, mp.moneda, mp.activo, mp.orden, mp.saldo_inicial, mp.es_financiera,
-              mp.es_tarjeta, mp.comision_pct,
-              mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo_actual,
-              COUNT(cm.id) FILTER (WHERE cm.id IS NOT NULL) AS movimientos
-         FROM metodos_pago mp
-         LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id AND cm.deleted_at IS NULL
-        WHERE mp.deleted_at IS NULL
-        GROUP BY mp.id
-        ORDER BY mp.orden, mp.nombre`
-    );
-    res.json(rows);
+    res.json(await getCajasList());
   } catch (err) { next(err); }
 });
 
@@ -250,6 +245,7 @@ router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
     // cambios.js, egresos.js, cuentas.js, proveedores.js y tarjetas.js (Ola 3).
     await audit(client, 'metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas();  // Perf H3: forzar refresh del cache tras crear caja
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -291,6 +287,7 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
     );
     await audit(client, 'metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateCajas();  // Perf H3: refresh cache (cambió nombre/saldo_inicial/flags)
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -320,6 +317,7 @@ router.delete('/cajas/:id', async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
     await audit('metodos_pago', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    invalidateCajas();  // Perf H3: caja soft-deleted desaparece del listado
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -440,6 +438,7 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
         return mov;
       });
       if (!row) return res.status(400).json({ error: 'No se pudo crear el movimiento.' });
+      invalidateCajas();  // Perf H3: nuevo movimiento mueve saldo_actual
       res.status(201).json(row);
     } catch (err) {
       // postCajaMovimiento usa err.status (400 para saldo insuficiente,
@@ -461,6 +460,7 @@ router.delete('/cajas/movimientos/:id', async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Movimiento de ajuste no encontrado' });
     await audit('caja_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    invalidateCajas();  // Perf H3: reversión recalcula saldo_actual
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

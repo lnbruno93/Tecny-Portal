@@ -18,8 +18,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
+import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
 
-function fmt(n) { return Math.round(Number(n) || 0).toLocaleString('es-AR'); }
 function money(n, moneda) {
   const sym = moneda === 'ARS' ? '$' : 'u$s';
   return sym + fmt(n);

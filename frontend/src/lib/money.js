@@ -1,0 +1,16 @@
+// Helpers numéricos compartidos para conversiones de moneda.
+//
+// Hygiene H1 auditoría 2026-06-06: `round2` estaba duplicado idéntico en
+// Financiera.jsx, Tarjetas.jsx (y futuras pantallas USD×TC). DRY.
+//
+// Conversiones USD ↔ ARS reales — usamos Number.EPSILON para evitar artefactos
+// de IEEE 754 (e.g. 0.1 + 0.2 = 0.30000000000000004). Math.round con + EPSILON
+// es el patrón canónico para "redondear 2 decimales como espera el contador".
+
+// Redondea a 2 decimales con guarda contra epsilon de coma flotante.
+// Devuelve Number. Si la entrada no es finita, devuelve 0.
+export function round2(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
