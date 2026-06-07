@@ -1,7 +1,7 @@
 /**
  * EditableCell — celda de tabla editable in-place.
  *
- * Hace click en cualquier celda → entra en modo edición.
+ * Click (o tap en mobile) en cualquier celda → entra en modo edición.
  * Enter (o blur) guarda. Esc cancela. Spinner mientras guarda.
  * Si onSave falla, se restaura el valor anterior y se muestra un toast
  * (el caller maneja el toast; acá sólo se hace rollback visual).

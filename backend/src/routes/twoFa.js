@@ -119,13 +119,6 @@ async function verifyAndConsume(userId, code) {
   return { ok: false, kind: null };
 }
 
-// ⚠️ DEPRECATED — mantenido para compatibilidad con tests existentes.
-// Nuevo código usar `verifyAndConsume(userId, code)`.
-async function verifyAny(row, code) {
-  if (!row) return { ok: false, kind: null };
-  return verifyAndConsume(row.user_id, code);
-}
-
 // Marca last_used_at sin tocar recovery codes ni step (usado solo para
 // `touchLastUsed` post-success en flows que ya consumieron el step por otra vía).
 async function touchLastUsed(userId) {
@@ -266,6 +259,5 @@ router.post('/regenerate-recovery', validate(codeSchema), async (req, res, next)
 // Re-export helpers para que auth.js pueda chequear 2FA durante login.
 module.exports = router;
 module.exports.load2fa = load2fa;
-module.exports.verifyAndConsume = verifyAndConsume; // ← ATÓMICO (preferir este)
-module.exports.verifyAny = verifyAny;               // ⚠️ DEPRECATED — solo compat
+module.exports.verifyAndConsume = verifyAndConsume;
 module.exports.touchLastUsed = touchLastUsed;
