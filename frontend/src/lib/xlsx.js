@@ -180,11 +180,26 @@ const le16 = (n) => [n & 0xff, (n >> 8) & 0xff];
 const le32 = (n) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
 
 // aoa: array de filas (cada fila array de celdas). Devuelve un Blob .xlsx.
-export function writeXlsx(aoa) {
+// Las celdas pueden ser:
+//   · string / null / undefined  → texto (inlineStr)
+//   · number (finito)            → número (Excel lo trata como tal — suma, ordena)
+// Si necesitás un string que se ve como número (ej. ID de cliente con ceros a la
+// izquierda), pásalo como string ya formateado.
+//
+// `opts.sheetName` (default "Sheet1") nombra la hoja — Excel lo muestra en la
+// pestaña inferior. Útil cuando el archivo se llama "comprobantes" pero la
+// hoja queremos que diga "Resumen junio 2026".
+export function writeXlsx(aoa, opts = {}) {
+  const sheetName = String(opts.sheetName || 'Sheet1').slice(0, 31); // Excel cap = 31 chars
   const sheetRows = aoa.map((row, ri) => {
     const cells = row.map((val, ci) => {
       if (val === '' || val == null) return '';
-      return `<c r="${colLetter(ci)}${ri + 1}" t="inlineStr"><is><t xml:space="preserve">${escXml(val)}</t></is></c>`;
+      const ref = `${colLetter(ci)}${ri + 1}`;
+      // Detect number — solo finitos para evitar NaN/Infinity que Excel rechaza.
+      if (typeof val === 'number' && Number.isFinite(val)) {
+        return `<c r="${ref}"><v>${val}</v></c>`;
+      }
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escXml(val)}</t></is></c>`;
     }).join('');
     return `<row r="${ri + 1}">${cells}</row>`;
   }).join('');
@@ -192,7 +207,7 @@ export function writeXlsx(aoa) {
   const files = [
     ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'],
     ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
-    ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Stock" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
     ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'],
     ['xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`],
   ];
