@@ -103,7 +103,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // Política: 2FA es OPCIONAL al inicio (decisión durable, ver ARCHITECTURE).
     // Usuarios sin row en user_2fa o con enabled_at NULL hacen login normal.
     //
-    // `verifyAndConsume` (no `verifyAny`) — verificación ATÓMICA en DB:
+    // `verifyAndConsume` — verificación ATÓMICA en DB:
     //   - TOTP: persiste `last_used_step`, rechaza replay del mismo código
     //     dentro del window de 90s (defensa B2 auditoría 2026-06).
     //   - Recovery code: UPDATE con WHERE específico, rechaza doble uso en

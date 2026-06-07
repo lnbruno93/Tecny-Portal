@@ -794,9 +794,9 @@ export default function Ventas() {
                         <span>Cliente</span>
                         {/* Botón siempre visible para abrir el mini-form de cliente nuevo
                             sin tener que tipear primero en el buscador. Si el operador
-                            quiere cargar un cliente con datos completos directo, hace
-                            click acá. (También se sigue ofreciendo desde el dropdown
-                            como "Crear cliente «X»" si tipea algo nuevo.) */}
+                            quiere cargar un cliente con datos completos directo, tocá
+                            acá. (También se sigue ofreciendo desde el dropdown como
+                            "Crear cliente «X»" si tipea algo nuevo.) */}
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirQuickClient(vForm.cliente_nombre)}>
                           <Icons.Plus size={11} /> Nuevo cliente
                         </button>

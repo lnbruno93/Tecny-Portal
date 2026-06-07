@@ -1,16 +1,96 @@
-# React + Vite
+# iPro Portal — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SPA del portal de operaciones de iPro (B2B reseller de celulares + accesorios
+en Argentina). Lleva inventario, ventas, cajas, cuentas corrientes, financiera,
+proveedores, proyectos, tarjetas, cambios de divisa, conciliación y alertas.
 
-Currently, two official plugins are available:
+> Documentación principal del repo: [`/README.md`](../README.md) — arquitectura,
+> backend, stack, deploy. Este README es solo del frontend.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+- **React 19** + **Vite 6** (SWC) — build rápido, HMR.
+- **React Router 7** — routing client-side.
+- **Vitest** + Testing Library — 241+ tests unitarios + de integración.
+- **ESLint** + **prettier** (vía `lint:fix`) — calidad y formato.
+- **Sentry** (`@sentry/react`) — captura de errores en producción.
+- **vite-plugin-pwa** — instalable como PWA en desktop y mobile.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Estructura
 
-## Expanding the ESLint configuration
+```
+src/
+├── App.jsx                  # router root + layout
+├── main.jsx                 # entrypoint (createRoot)
+├── styles.css               # CSS global (~1700 líneas, design system)
+├── contexts/                # AuthContext, ToastContext, PageActionsContext, ConfirmModal
+├── components/              # Icons, EditableCell, CajaSelectHint, TcWarning, ScrollFadeX…
+├── lib/                     # api wrapper, format, money, friendlyError, useModal, xlsx…
+└── screens/                 # 17 pantallas, una por módulo: Ventas, Inventario, Cajas, …
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Setup local
+
+Requiere Node 20+. El backend tiene que estar corriendo en `localhost:3001`
+(ver `/backend/.env.example` o `/README.md` del repo).
+
+```bash
+npm install
+npm run dev          # Vite dev server en http://localhost:5173
+```
+
+Si querés apuntar a un backend remoto en lugar del local, creá un `.env.local`:
+
+```
+VITE_API_URL=https://api.tu-staging.com
+```
+
+## Scripts
+
+| Comando             | Qué hace                                                     |
+| ------------------- | ------------------------------------------------------------ |
+| `npm run dev`       | Vite dev server con HMR.                                     |
+| `npm run build`     | Build de producción a `dist/` + cleanup de sourcemaps.       |
+| `npm run preview`   | Sirve el build de `dist/` localmente.                        |
+| `npm test`          | Vitest en modo watch.                                        |
+| `npm test -- --run` | Vitest en modo run (single-shot, para CI).                   |
+| `npm run lint`      | ESLint sobre `src/`.                                         |
+| `npm run lint:fix`  | ESLint con autofix.                                          |
+
+## Convenciones del proyecto
+
+- **Voseo rioplatense en UI**: "tocá", "guardá", "creá" — no "haga click",
+  "guarde", "cree". Sí usamos "click" en comentarios técnicos cuando se
+  refiere específicamente al input de mouse.
+- **Helpers compartidos en `lib/`**: cualquier función que se repita en
+  2+ screens va a `lib/` (ver `format.js`, `money.js`, `friendlyError.js`,
+  `dateRange.js`, `inputUtils.js`, `useModal.js`).
+- **Modales con `useModal`**: Esc para cerrar + focus trap + body scroll
+  lock. Patrón establecido — todo nuevo modal debe usarlo.
+- **Errores al usuario**: `toast.error(err)` — el helper interno corre
+  `friendlyError()` que neutraliza casos crípticos (`NO_AUTH`, TypeError).
+- **CSS**: variables CSS-custom en `styles.css` (no theme-provider). Usar
+  `clamp()` para tamaños fluidos en mobile/desktop antes que `@media`.
+
+## Deploy
+
+Build + deploy automático a Netlify desde `main` (CI). El SHA del commit se
+inyecta en runtime para que Sentry resuelva sourcemaps por release.
+
+```bash
+npm run build        # local — verifica que el build cierre sin errores
+```
+
+Variables de entorno de producción están en Netlify (`VITE_API_URL`,
+`VITE_SENTRY_DSN`).
+
+## Tests
+
+```bash
+npm test -- --run             # corre TODOS
+npm test Ventas               # corre solo los que matchean 'Ventas'
+npm test -- --coverage        # con reporte de cobertura
+```
+
+Mocks de `lib/api` se hacen con `vi.mock('../lib/api', () => ({…}))` en cada
+suite — ver `Financiera.test.jsx` o `Login.test.jsx` como referencia.
