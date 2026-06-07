@@ -61,6 +61,10 @@ export const Icons = {
   Lock: (p) => <ICO {...p}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V8a4 4 0 1 1 8 0v3" /></ICO>,
   Bolt: (p) => <ICO {...p}><path d="M13 2 4 14h7l-1 8 9-12h-7Z" /></ICO>,
   Menu: (p) => <ICO {...p}><path d="M4 6h16M4 12h16M4 18h16" /></ICO>,
+  // Documento con líneas — usado para botones de export PDF / informes.
+  FileText: (p) => <ICO {...p}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="M8 13h8M8 17h6" /></ICO>,
+  // Grilla de planilla — usado para botones de export XLSX.
+  Sheet: (p) => <ICO {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 16h18M9 4v16M15 4v16" /></ICO>,
 };
 
 export default Icons;

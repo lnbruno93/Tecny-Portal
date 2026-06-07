@@ -133,6 +133,25 @@ export const comprobantes = {
   // bruto + pct (fallback al pct_financiera de config).
   createManual: (data) => api('/api/comprobantes/manuales', 'POST', data),
   updateManual: (id, data) => api(`/api/comprobantes/manuales/${id}`, 'PATCH', data),
+  // Export ZIP — NO usa el wrapper api() porque devuelve un stream binario
+  // (no JSON). Devolvemos una Response cruda; el caller hace .blob() + descarga.
+  // Mandamos el JWT por header como el resto del API.
+  exportZip: async (params = {}) => {
+    const token = localStorage.getItem('fin_token');
+    const url = (import.meta.env.VITE_API_URL || 'https://ipro-backend-production.up.railway.app')
+      + '/api/comprobantes/export-zip?' + new URLSearchParams(params);
+    const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    if (!res.ok) {
+      // Errores se sirven como JSON (no como zip). Parseamos el body para
+      // exponer el mensaje del backend ("no hay comprobantes", "429", etc.).
+      let msg = `Error ${res.status}`;
+      try { const body = await res.json(); msg = body?.error || msg; } catch { /* ignore */ }
+      const err = new Error(msg);
+      err.status = res.status;
+      throw err;
+    }
+    return res.blob();
+  },
 };
 
 export const pagos = {

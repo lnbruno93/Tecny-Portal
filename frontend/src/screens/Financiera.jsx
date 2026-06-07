@@ -14,6 +14,8 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { round2 } from '../lib/money';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import { generarComprobantesResumenPdf } from '../lib/generarComprobantesResumenPdf';
+import { generarComprobantesResumenXlsx } from '../lib/generarComprobantesResumenXlsx';
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
 
@@ -136,6 +138,103 @@ export default function Financiera() {
   useEffect(() => {
     try { localStorage.setItem(COMP_RANGE_KEY, JSON.stringify(compRange)); } catch { /* ignore */ }
   }, [compRange]);
+
+  // Export — un solo state ('zip'|'pdf'|'xlsx'|null) basta para mostrar el
+  // spinner en el botón en curso y deshabilitar los otros mientras tanto
+  // (no permitimos exports concurrentes para no saturar la conexión / ledger).
+  const [exporting, setExporting] = useState(null);
+
+  // Helper: params actuales del filtro de comprobantes (mismo shape que la
+  // query de la lista). Usado por los 3 botones de export.
+  function compParamsActuales() {
+    const p = { ...rangeToParams(compRange) };
+    if (compVendFilter !== 'todos') p.vendedor = compVendFilter;
+    return p;
+  }
+
+  // Fetch fresco para los exports de resumen — el listado en pantalla está
+  // capado a 500. Para el PDF/XLSX queremos TODOS los del período (un mes real
+  // puede tener >500). Tope defensivo de 5000: si lo supera, el contador debe
+  // refinar el filtro y exportar por partes.
+  async function fetchTodoElPeriodo() {
+    const p = { ...compParamsActuales(), limit: 5000 };
+    const [{ data = [] }, totales] = await Promise.all([
+      compApi.list(p),
+      compApi.totales(p),
+    ]);
+    if (totales.count > 5000) {
+      throw new Error(`El período tiene ${totales.count} comprobantes (tope 5000). Refiná el filtro de fecha y exportá por partes.`);
+    }
+    return { comprobantes: data, totales };
+  }
+
+  // ── ZIP de archivos físicos del período ───────────────────────────────────
+  async function exportZipComprobantes() {
+    setExporting('zip');
+    try {
+      const params = compParamsActuales();
+      const blob = await compApi.exportZip(params);
+      const { desde, hasta } = params;
+      const tag = desde && hasta ? `${desde}_${hasta}` : (desde || hasta || new Date().toISOString().slice(0, 10));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `comprobantes_${tag}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast.success('ZIP descargado');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  // ── PDF resumen del período ───────────────────────────────────────────────
+  async function exportPdfComprobantes() {
+    setExporting('pdf');
+    try {
+      const { comprobantes, totales } = await fetchTodoElPeriodo();
+      if (!comprobantes.length) {
+        toast.error('No hay comprobantes en el período seleccionado.');
+        return;
+      }
+      await generarComprobantesResumenPdf({
+        comprobantes,
+        totales,
+        periodoLabel: rangeLabel(compRange),
+      });
+      toast.success('PDF generado');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  // ── XLSX resumen del período ──────────────────────────────────────────────
+  async function exportXlsxComprobantes() {
+    setExporting('xlsx');
+    try {
+      const { comprobantes, totales } = await fetchTodoElPeriodo();
+      if (!comprobantes.length) {
+        toast.error('No hay comprobantes en el período seleccionado.');
+        return;
+      }
+      generarComprobantesResumenXlsx({
+        comprobantes,
+        totales,
+        periodoLabel: rangeLabel(compRange),
+      });
+      toast.success('Planilla generada');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setExporting(null);
+    }
+  }
 
   // Cargar tab (form state)
   const [cFecha, setCFecha] = useState(new Date().toLocaleDateString('sv'));
@@ -1060,7 +1159,25 @@ export default function Financiera() {
                 </span>
               )}
             </h3>
-            <div className="flex-row" style={{ gap: 8 }}>
+            <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {/* Exportar el período actual: ZIP de archivos físicos + resumen
+                  PDF/XLSX. Los 3 botones respetan el filtro de período + vendedor
+                  visible arriba; el ZIP además es streamed server-side. */}
+              <button className="btn btn-sm btn-ghost" onClick={exportZipComprobantes}
+                      disabled={!!exporting} title="Descarga un .zip con los archivos del período + manifest.csv">
+                <Icons.Download size={13} />
+                {exporting === 'zip' ? ' Generando ZIP…' : ' ZIP archivos'}
+              </button>
+              <button className="btn btn-sm btn-ghost" onClick={exportPdfComprobantes}
+                      disabled={!!exporting} title="PDF con KPIs + tabla detalle del período">
+                <Icons.FileText size={13} />
+                {exporting === 'pdf' ? ' Generando PDF…' : ' PDF resumen'}
+              </button>
+              <button className="btn btn-sm btn-ghost" onClick={exportXlsxComprobantes}
+                      disabled={!!exporting} title="Planilla Excel con KPIs + detalle (montos como números)">
+                <Icons.Sheet size={13} />
+                {exporting === 'xlsx' ? ' Generando XLSX…' : ' XLSX resumen'}
+              </button>
               {/* Cargar venta previa: para registrar ventas anteriores al
                   sistema donde el cliente pagó con la caja Financiera.
                   Mismo patrón que "Cobro previo" en Tarjetas. */}

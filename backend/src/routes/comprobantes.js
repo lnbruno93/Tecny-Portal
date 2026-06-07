@@ -1,4 +1,7 @@
 const router = require('express').Router();
+const archiver = require('archiver');
+const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
@@ -9,6 +12,20 @@ const {
   createComprobanteSchema, queryComprobantesSchema,
   createManualComprobanteSchema, updateManualComprobanteSchema,
 } = require('../schemas/comprobantes');
+
+// Rate limit dedicado para el ZIP export: arma un paquete con los archivos del
+// período (potencialmente cientos de MB). 10/15min/usuario es generoso para uso
+// real (mensual al contador) y suficiente piso contra scripts que iteren períodos.
+const exportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id != null
+    ? `comprob-export:${req.user.id}`
+    : `comprob-export:ip:${ipKeyGenerator(req)}`,
+  message: { error: 'Demasiadas descargas masivas. Probá de nuevo en unos minutos.' },
+});
 
 // Resolver el % de comisión efectivo para un comprobante manual: prioriza el
 // del request, fallback al `pct_financiera` global de config (mismo valor que
@@ -266,5 +283,148 @@ router.get('/:id/archivo', async (req, res, next) => {
     next(err);
   }
 });
+
+// ─── Export ZIP: archivos del período + manifest CSV ──────────────────────────
+//
+// Devuelve un .zip stream con:
+//   · Un archivo por cada comprobante del período que tenga `archivo_data`,
+//     nombrado `YYYY-MM-DD_cliente_id.{ext}` (ext detectada del MIME).
+//   · `_manifest.csv` con la grilla de comprobantes (id, fecha, cliente,
+//     vendedor, referencia, montos, archivo) — sirve para cruzar contra
+//     planillas del contador.
+//
+// Diseño:
+//   · Stream — no buffereamos el ZIP completo en memoria. Para un período de
+//     ~300 comprobantes × 1MB c/u (300MB), la RAM del proceso queda en MB
+//     bajos, no en cientos.
+//   · Filtros idénticos a GET /api/comprobantes (desde, hasta, vendedor, buscar)
+//     para que el ZIP coincida exactamente con lo que el usuario está viendo.
+//   · Trae `archivo_data` (la única query que lo hace en este módulo además del
+//     archivo individual). Si el período tiene mucho contenido, esta query
+//     puede tardar — `query_timeout` 15s a nivel del pool actúa como techo.
+router.get('/export-zip', exportLimiter, validate(queryComprobantesSchema, 'query'), async (req, res, next) => {
+  try {
+    const { desde, hasta, vendedor, buscar } = req.query;
+    let where = 'WHERE c.deleted_at IS NULL';
+    const params = [];
+
+    if (desde)   { params.push(desde);    where += ` AND c.fecha >= $${params.length}`; }
+    if (hasta)   { params.push(hasta);    where += ` AND c.fecha <= $${params.length}`; }
+    if (vendedor){ params.push(vendedor); where += ` AND v.nombre = $${params.length}`; }
+    if (buscar)  {
+      params.push(`%${buscar}%`);
+      where += ` AND (c.cliente ILIKE $${params.length} OR c.referencia ILIKE $${params.length})`;
+    }
+
+    const { rows } = await db.query(`
+      SELECT c.id, c.fecha, c.cliente, v.nombre AS vendedor, c.referencia,
+             c.monto, c.monto_financiera, c.monto_neto,
+             c.archivo_data, c.archivo_nombre, c.archivo_tipo
+      FROM comprobantes c
+      LEFT JOIN vendedores v ON v.id = c.vendedor_id
+      ${where}
+      ORDER BY c.fecha ASC, c.id ASC
+    `, params);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'No hay comprobantes en el período seleccionado.' });
+    }
+
+    // Headers de descarga ANTES de escribir contenido. Si después algo falla en
+    // medio del stream el response ya está commiteado, pero al menos el browser
+    // ofrece guardar lo descargado. Nombre del archivo refleja el rango.
+    const rangeTag = desde && hasta
+      ? `${desde}_${hasta}`
+      : (desde || hasta || new Date().toISOString().slice(0, 10));
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="comprobantes_${rangeTag}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    // En caso de error del archiver, abortamos el response. El browser ve la
+    // descarga truncada pero el cliente ya tiene los bytes que llegaron.
+    archive.on('error', (err) => {
+      // No podemos res.status() acá (headers ya enviados) — solo log + abort.
+      req.log?.error({ err }, 'export-zip: archiver error');
+      try { res.destroy(err); } catch { /* ignore */ }
+    });
+    archive.pipe(res);
+
+    // Manifest CSV (BOM UTF-8 para que Excel lo abra con tildes bien).
+    const csvLines = ['id,fecha,cliente,vendedor,referencia,monto,monto_financiera,monto_neto,archivo'];
+    const usedNames = new Set();
+
+    for (const c of rows) {
+      const fechaIso = c.fecha instanceof Date
+        ? c.fecha.toISOString().slice(0, 10)
+        : String(c.fecha).slice(0, 10);
+      // Si hay archivo: lo metemos al zip con nombre derivado de fecha+cliente+id.
+      // El cliente puede tener tildes/espacios/slash; sanitizamos.
+      let nombreArchivo = '';
+      if (c.archivo_data) {
+        const ext = extensionFromMime(c.archivo_tipo) || extensionFromFilename(c.archivo_nombre) || 'bin';
+        const clienteSlug = String(c.cliente || 'sin-cliente')
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .replace(/[^a-zA-Z0-9_-]+/g, '_')
+          .slice(0, 40)
+          .replace(/^_+|_+$/g, '');
+        let candidato = `${fechaIso}_${clienteSlug || 'sin-cliente'}_${c.id}.${ext}`;
+        // Defensa contra colisión (improbable porque incluye id, pero por las dudas)
+        let n = 1;
+        while (usedNames.has(candidato)) {
+          candidato = `${fechaIso}_${clienteSlug || 'sin-cliente'}_${c.id}_${n}.${ext}`;
+          n++;
+        }
+        usedNames.add(candidato);
+        nombreArchivo = candidato;
+        const buf = Buffer.from(c.archivo_data, 'base64');
+        archive.append(buf, { name: candidato });
+      }
+      // CSV row — escape mínimo (comillas dobles cuando hay comas o quotes).
+      csvLines.push([
+        c.id,
+        fechaIso,
+        csvEscape(c.cliente),
+        csvEscape(c.vendedor),
+        csvEscape(c.referencia),
+        c.monto,
+        c.monto_financiera,
+        c.monto_neto,
+        csvEscape(nombreArchivo),
+      ].join(','));
+    }
+
+    // BOM + CSV. El BOM (EF BB BF) hace que Excel lo abra como UTF-8.
+    archive.append('﻿' + csvLines.join('\n'), { name: '_manifest.csv' });
+    await archive.finalize();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Helpers locales para el ZIP export (no usados en otro lado).
+function extensionFromMime(mime) {
+  if (!mime) return null;
+  const m = String(mime).toLowerCase();
+  if (m.includes('pdf')) return 'pdf';
+  if (m.includes('png')) return 'png';
+  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+  if (m.includes('webp')) return 'webp';
+  if (m.includes('gif')) return 'gif';
+  if (m.includes('heic')) return 'heic';
+  return null;
+}
+function extensionFromFilename(name) {
+  if (!name) return null;
+  const dot = String(name).lastIndexOf('.');
+  if (dot < 0 || dot === name.length - 1) return null;
+  return name.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function csvEscape(val) {
+  if (val == null) return '';
+  const s = String(val);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
 
 module.exports = router;
