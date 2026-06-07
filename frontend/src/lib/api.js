@@ -144,8 +144,18 @@ export const comprobantes = {
     if (!res.ok) {
       // Errores se sirven como JSON (no como zip). Parseamos el body para
       // exponer el mensaje del backend ("no hay comprobantes", "429", etc.).
-      let msg = `Error ${res.status}`;
-      try { const body = await res.json(); msg = body?.error || msg; } catch { /* ignore */ }
+      // Si el body NO es JSON (ej. backend del staging todavía deployando y el
+      // 404 cae al Express default en HTML), damos un mensaje específico — no
+      // queremos mostrar "Error 404" pelado al operador.
+      let msg = null;
+      try { const body = await res.json(); msg = body?.error || null; } catch { /* body no es JSON */ }
+      if (!msg) {
+        if (res.status === 404) msg = 'La descarga ZIP no está disponible en este servidor (deploy aún en curso). Probá de nuevo en 1-2 min.';
+        else if (res.status === 401) msg = 'NO_AUTH';
+        else if (res.status === 403) msg = 'No tenés permiso para descargar comprobantes.';
+        else if (res.status === 429) msg = 'Demasiadas descargas masivas. Esperá unos minutos.';
+        else msg = `Error del servidor (${res.status})`;
+      }
       const err = new Error(msg);
       err.status = res.status;
       throw err;
