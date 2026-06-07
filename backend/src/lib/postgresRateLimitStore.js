@@ -16,8 +16,13 @@
 //
 // Para iPro a escala actual (~50 users): impacto irrelevante. El loginLimiter
 // solo se aplica a /api/auth/login y el twoFaLimiter a /api/auth/2fa/* — ambos
-// endpoints de tráfico bajo. No usar este store en endpoints alto-tráfico
-// sin antes considerar Redis.
+// endpoints de tráfico bajo.
+//
+// Perf M3 auditoría 2026-06-06: también lo usa el globalLimiter (prefix 'global').
+// Ese SÍ se aplica a TODOS los endpoints — pero a escala iPro (~50 users → ~4
+// req/sec) el costo es <1% del load PG (1 query UPSERT trivial por request).
+// Si el tráfico crece 10×+ revisar; con 50 req/sec + el resto del workload
+// considerar Redis para el global, manteniendo Postgres para login/2FA.
 //
 // Cumple el contract de express-rate-limit v7+ Store:
 //   - localKeys: false → contadores compartidos (señal al middleware).

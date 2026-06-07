@@ -13,12 +13,12 @@ import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
+import { fmt } from '../lib/format';
 
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
-function fmt(n) {
-  return Math.round(Number(n) || 0).toLocaleString('es-AR');
-}
+// `fmt` viene de '../lib/format' (Hygiene H2 auditoría 2026-06-06). Wrapper
+// `money` con prefijo según moneda — local porque solo Inventario lo usa así.
 function money(n, moneda) {
   const sym = moneda === 'ARS' ? '$' : 'u$s';
   return sym + fmt(n);

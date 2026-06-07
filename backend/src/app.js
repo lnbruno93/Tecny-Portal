@@ -13,8 +13,13 @@ const PostgresRateLimitStore = require('./lib/postgresRateLimitStore');
 // En producción/staging, ambos limiters comparten contadores entre las 2
 // réplicas Railway → defensa real contra brute force (P1 auditoría 2026-06).
 const isTestEnv = process.env.NODE_ENV === 'test';
-const loginStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'login', logger });
-const twoFaStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: '2fa',   logger });
+const loginStore  = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'login',  logger });
+const twoFaStore  = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: '2fa',    logger });
+// Perf M3 auditoría 2026-06-06: global limiter también con store compartido.
+// Antes era MemoryStore → con 2 réplicas Railway, una IP podía duplicar su
+// share efectivo del límite (600/15min en lugar de 300). Mismo patrón que
+// loginStore/twoFaStore: en tests usa MemoryStore para no requerir DB.
+const globalStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'global', logger });
 
 const authRoutes         = require('./routes/auth');
 const twoFaRoutes        = require('./routes/twoFa');
@@ -109,6 +114,7 @@ app.use(rateLimit({
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, intentá de nuevo en 15 minutos' },
   skip: (req) => req.path === '/health' || req.path === '/ready',
+  ...(globalStore && { store: globalStore }),
 }));
 logger.info({ globalRateLimit: GLOBAL_RATE_LIMIT_MAX }, 'rate-limit global configurado');
 

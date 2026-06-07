@@ -114,10 +114,16 @@ router.get('/', async (req, res, next) => {
       conditions.push(`a.tabla = $${params.length}`);
     }
 
+    // Perf H1 auditoría 2026-06-06: usar `created_at >= $::date` en vez de
+    // `created_at::date >= $`. El cast a date EN LA COLUMNA invalida el
+    // índice `idx_audit_created` (btree sobre created_at DESC) → seq scan
+    // sobre toda audit_logs (millones de filas con la purga a 365d).
+    // Esta forma usa el índice y mantiene el comportamiento "inclusivo del
+    // día completo" agregando un day a `hasta`.
     const desdeValido = desde && /^\d{4}-\d{2}-\d{2}$/.test(desde);
     if (desdeValido) {
       params.push(desde);
-      conditions.push(`a.created_at::date >= $${params.length}::date`);
+      conditions.push(`a.created_at >= $${params.length}::date`);
     } else if (hayBusqueda) {
       // No hay `desde` pero sí búsqueda libre: forzamos un rango máximo para
       // limitar el universo escaneado por el ILIKE sobre JSONB::text.
@@ -126,7 +132,7 @@ router.get('/', async (req, res, next) => {
 
     if (hasta && /^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
       params.push(hasta);
-      conditions.push(`a.created_at::date <= $${params.length}::date`);
+      conditions.push(`a.created_at < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
     const where    = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

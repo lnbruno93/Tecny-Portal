@@ -3,12 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../components/Icons';
 import { config, comprobantes, cuentas, envios, historial } from '../lib/api';
+import { fmt as fmtMagnitud } from '../lib/format';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
+// Hygiene H2 auditoría 2026-06-06: usar lib/format como fuente única.
+// Mantenemos wrappers locales por:
+//   · fmt() — prefijo '$' (las tarjetas del dashboard piden moneda visible).
+//   · fmtFecha() — variante "hoy con día semana" sin argumentos (header del
+//     saludo); el helper compartido toma ISO y devuelve dd/mm/aa.
+//   · fmtCount() — String(n) trivial, no vale la pena un helper.
 
 function fmt(n) {
-  const v = Math.abs(Number(n));
-  return '$' + Math.round(v).toLocaleString('es-AR');
+  return '$' + fmtMagnitud(n);
 }
 
 function fmtCount(n) {

@@ -620,17 +620,51 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
   try {
     await client.query('BEGIN');
     const cols = PRODUCTO_COLS.filter(c => !c.startsWith('foto_'));
-    const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
-    const creados = [];
-    for (const p of productos) {
-      // Mismo default explícito que en el POST simple: columnas NOT NULL nuevas.
-      const pBuf = { ...p, condicion: p.condicion ?? 'nuevo', oculto: p.oculto ?? false };
-      const values = cols.map(c => pBuf[c] ?? null);
-      const { rows } = await client.query(
-        `INSERT INTO productos (${cols.join(',')}) VALUES (${placeholders}) RETURNING id`, values
-      );
-      creados.push(rows[0].id);
-    }
+
+    // Mismo default explícito que en el POST simple: columnas NOT NULL nuevas.
+    const buf = productos.map(p => ({
+      ...p,
+      condicion: p.condicion ?? 'nuevo',
+      oculto:    p.oculto    ?? false,
+    }));
+
+    // Perf H2 auditoría 2026-06-06: bulk INSERT con UNNEST en una sola query.
+    // Antes hacíamos un INSERT por producto dentro del for → 500 productos =
+    // 500 round-trips a PG (latencia se acumulaba a varios segundos). Con
+    // UNNEST le mandamos arrays paralelos y PG arma todas las filas en una
+    // sola pasada; ~25× más rápido en lotes grandes.
+    //
+    // El mapeo columna→tipo PG está alineado con migración 20260524000001
+    // (tabla productos). Si se agrega una columna a productos, actualizar
+    // PG_TYPES acá. Mismo patrón que items_movimiento_cc en cuentas.js:470.
+    const PG_TYPES = {
+      tipo_carga:    'text',    clase:         'text',
+      nombre:        'text',    imei:          'text',
+      gb:            'text',    color:         'text',
+      bateria:       'smallint', categoria_id: 'int',
+      deposito_id:   'int',     proveedor:     'text',
+      costo:         'numeric', costo_moneda:  'text',
+      precio_venta:  'numeric', precio_moneda: 'text',
+      trackear_stock:'boolean', cantidad:      'int',
+      estado:        'text',    observaciones: 'text',
+      condicion:     'text',    oculto:        'boolean',
+    };
+    const unnestArgs = cols.map((c, i) => `$${i + 1}::${PG_TYPES[c]}[]`).join(', ');
+    const arrays     = cols.map(c => buf.map(b => b[c] ?? null));
+
+    // WITH ORDINALITY + ORDER BY ord: garantiza que las filas se inserten en
+    // el orden del input, así RETURNING id devuelve ids alineados con
+    // productos[i] para el audit posterior (que asume creados[i] ↔ productos[i]).
+    const colList = cols.join(', ');
+    const { rows } = await client.query(
+      `INSERT INTO productos (${colList})
+       SELECT ${colList}
+         FROM UNNEST(${unnestArgs}) WITH ORDINALITY AS u(${colList}, ord)
+        ORDER BY ord
+       RETURNING id`,
+      arrays
+    );
+    const creados = rows.map(r => r.id);
     await client.query('COMMIT');
     // Un audit por producto (registro_id != null) — así el historial filtrable por producto los muestra.
     await Promise.all(creados.map((id, i) =>

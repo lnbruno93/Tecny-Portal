@@ -1,15 +1,10 @@
 import { useState, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
 
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function fmt(n) {
-  const v = Math.abs(Number(n));
-  if (!v && v !== 0) return '0';
-  return v.toLocaleString('es-AR');
-}
 
 // Coeficientes de financiación
 const COEFS = {
