@@ -5,6 +5,7 @@
 //      toast.info('Procesando…');
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
+import { friendlyError } from '../lib/friendlyError';
 
 const ToastContext = createContext(null);
 
@@ -50,9 +51,16 @@ export function ToastProvider({ children }) {
   // que tengan `toast` en las deps de useEffect (Desglose360, etc.) entrarían
   // en loop si su effect dispara errores que generan toast.error → render
   // → nueva ref → effect → error → loop. Memoizando, la cadena se rompe.
+  // toast.error acepta string O Error: si se pasa un Error, lo pipea por
+  // friendlyError() (UX H1 auditoría 2026-06-06) que neutraliza casos crípticos
+  // como 'NO_AUTH' (marker interno del wrapper api()) o TypeError genéricos.
+  // Backward compatible: los call sites existentes con strings siguen igual.
   const toast = useMemo(() => ({
     success: (msg, opts) => push(msg, 'success', opts?.duration ?? 4000),
-    error:   (msg, opts) => push(msg, 'error',   opts?.duration ?? 6000),
+    error:   (msgOrErr, opts) => {
+      const msg = (typeof msgOrErr === 'string') ? msgOrErr : friendlyError(msgOrErr);
+      return push(msg, 'error', opts?.duration ?? 6000);
+    },
     info:    (msg, opts) => push(msg, 'info',    opts?.duration ?? 4000),
     warn:    (msg, opts) => push(msg, 'warn',    opts?.duration ?? 5000),
     dismiss,
