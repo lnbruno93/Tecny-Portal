@@ -54,11 +54,13 @@ const queryComprobantesSchema = z.object({
   vendedor: z.string().trim().optional(),
   buscar:   z.string().trim().max(200).optional(),
   page:     z.coerce.number().int().positive().optional(),
-  // limit subido de 200 a 500 (mismo techo que cajas.deudas y cuentas):
-  // la pantalla Comprobantes muestra una sola tabla larga y el filtro de
-  // fecha es la herramienta principal de reducción. 500 acomoda ~10 días
-  // operativos a 50/día sin paginar.
-  limit:    z.coerce.number().int().positive().max(500).optional(),
+  // Listado normal: el frontend pasa limit=500 (max usable en la UI, tope
+  // legacy). El cap del schema se subió a 5000 para acomodar el caso de
+  // export PDF/XLSX desde Financiera, que hace un re-fetch del período
+  // completo para incluir TODO en el resumen (no solo lo paginado en
+  // pantalla). 5000 acomoda ~3-6 meses operativos a volumen actual y la
+  // UI sigue limitada por su propio cap de 500 en el componente.
+  limit:    z.coerce.number().int().positive().max(5000).optional(),
 });
 
 module.exports = {

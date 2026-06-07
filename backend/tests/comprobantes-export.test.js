@@ -107,3 +107,26 @@ describe('GET /api/comprobantes/export-zip', () => {
     expect(r.status).toBe(401);
   });
 });
+
+// El front de Comprobantes (Financiera tab) hace `fetchTodoElPeriodo()` con
+// limit=5000 para que el PDF/XLSX incluya TODO el período (no solo lo paginado
+// en pantalla). El schema debe aceptar ese tope; el cap original era 500 y un
+// hotfix lo subió. Estos tests bloquean regresiones futuras.
+describe('GET /api/comprobantes — cap de `limit` para exports', () => {
+  it('limit=5000 → 200 (suficiente para exports masivos de PDF/XLSX)', async () => {
+    const r = await request(app).get('/api/comprobantes?limit=5000').set(auth());
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.data)).toBe(true);
+  });
+
+  it('limit=5001 → 400 (techo del schema preserva la protección)', async () => {
+    const r = await request(app).get('/api/comprobantes?limit=5001').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('GET /totales también acepta limit=5000', async () => {
+    const r = await request(app).get('/api/comprobantes/totales?limit=5000').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveProperty('count');
+  });
+});
