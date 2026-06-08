@@ -405,6 +405,16 @@ export const config = {
   update: (data) => api('/api/config', 'PUT', data),
 };
 
+// Endpoints admin (rol=admin requerido server-side). Pantalla Config →
+// tab Mantenimiento. El UI los oculta si user.role !== 'admin', pero el
+// backend rechaza de todos modos con 403.
+export const admin = {
+  // Backfill caja Financiera: dry-run + apply. Wrapper de los scripts
+  // de TANDA 2. Ver scripts/backfill-caja-financiera.js.
+  backfillFinancieraReport: () => api('/api/admin/backfill-caja-financiera'),
+  backfillFinancieraApply:  () => api('/api/admin/backfill-caja-financiera/apply', 'POST'),
+};
+
 export const historial = {
   list: (params = {}) => api('/api/historial?' + new URLSearchParams(params)),
 };

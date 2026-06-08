@@ -8,6 +8,7 @@ const router = require('express').Router();
 const adminOnly = require('../middleware/adminOnly');
 const { runInvariantsCheck } = require('../jobs/invariantsJob');
 const { evaluarTodos, resumir } = require('../lib/checkInvariants');
+const { runBackfill } = require('../../scripts/backfill-caja-financiera');
 
 // Todas las rutas de este módulo requieren rol admin (no solo permiso).
 router.use(adminOnly);
@@ -51,6 +52,42 @@ router.post('/invariants/run', async (_req, res, next) => {
     if (!result) return res.status(500).json({ error: 'Falló el check' });
     res.json({ ok: true, ...result });
   } catch (err) { next(err); }
+});
+
+// ─── Backfill caja Financiera ─────────────────────────────────────────────────
+//
+// Trazabilidad junio 2026: dos endpoints que disparan el script de backfill
+// histórico (lib/scripts/backfill-caja-financiera.js) desde la UI admin.
+// Reemplazan la necesidad de correr `node scripts/...` por SSH/Railway CLI.
+//
+//   GET  /api/admin/backfill-caja-financiera          → DRY-RUN, devuelve reporte JSON.
+//   POST /api/admin/backfill-caja-financiera/apply    → APPLY, devuelve resultado.
+//
+// Ambos respetan `adminOnly` (req.user.role === 'admin'). El script ya está
+// envuelto en transacción y valida saldo final >= 0 antes de COMMIT.
+router.get('/backfill-caja-financiera', async (_req, res, next) => {
+  try {
+    const result = await runBackfill({ apply: false, silent: true });
+    res.json(result);
+  } catch (err) {
+    // El script throwea con mensaje claro si no hay caja FV (status 400 implícito).
+    if (err.message && /es_financiera|Cajas → Config/i.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.post('/backfill-caja-financiera/apply', async (_req, res, next) => {
+  try {
+    const result = await runBackfill({ apply: true, silent: true });
+    res.json(result);
+  } catch (err) {
+    if (err.message && /es_financiera|Cajas → Config|negativo/i.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
 });
 
 module.exports = router;
