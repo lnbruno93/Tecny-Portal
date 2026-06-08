@@ -41,7 +41,7 @@
 
 const db = require('../src/config/database');
 const {
-  fmtARS, fmtDate, err400, CONCEPTOS, insertCajaMovimientoBackfill,
+  fmtARS, fmtDate, err400, CONCEPTOS, insertCajaMovimientosBatch,
 } = require('./lib/backfillUtils');
 
 // H2 (TANDA 1 trazab): lock ID arbitrario para pg_try_advisory_xact_lock.
@@ -291,27 +291,25 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
     // el endpoint. CLI sin endpoint deja null (= "operación de sistema").
     const uid = userId ?? null;
 
-    let comprObjInserted = 0;
-    for (const c of comprobantes) {
-      await insertCajaMovimientoBackfill(client, {
+    // TANDA 2 trazab: batch INSERT con UNNEST en lugar de N round-trips.
+    // Para casos reales (cientos/miles de filas) reduce el tiempo de tx
+    // dramáticamente — y el advisory lock se libera antes.
+    const comprObjInserted = await insertCajaMovimientosBatch(client,
+      comprobantes.map(c => ({
         caja_id: fv.id, fecha: c.fecha, tipo: 'ingreso', monto: c.monto_neto,
         origen: 'financiera', ref_tabla: 'comprobantes', ref_id: c.id,
         concepto: CONCEPTOS.backfillComprobante(c.cliente, c.referencia),
         user_id: uid,
-      });
-      comprObjInserted++;
-    }
-
-    let pagosInserted = 0;
-    for (const p of pagos) {
-      await insertCajaMovimientoBackfill(client, {
+      }))
+    );
+    const pagosInserted = await insertCajaMovimientosBatch(client,
+      pagos.map(p => ({
         caja_id: fv.id, fecha: p.fecha, tipo: 'egreso', monto: p.monto,
         origen: 'financiera', ref_tabla: 'pagos', ref_id: p.id,
         concepto: CONCEPTOS.backfillPago(p.caja_destino, p.referencia),
         user_id: uid,
-      });
-      pagosInserted++;
-    }
+      }))
+    );
 
     // Validar saldo final post-inserts.
     const saldoFinal = await getSaldoActual(client, fv.id);

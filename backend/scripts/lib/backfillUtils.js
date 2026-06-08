@@ -86,10 +86,51 @@ async function insertCajaMovimientoBackfill(client, {
   `, [caja_id, fecha, tipo, monto, origen, ref_tabla, ref_id, concepto, user_id ?? null]);
 }
 
+// Versión batch del INSERT con UNNEST — un solo round-trip a Postgres por
+// lote, vs N round-trips de insertCajaMovimientoBackfill (TANDA 2 trazab,
+// hallazgo Performance). Vale la pena cuando hay >100 filas; con 5000+
+// (caso real de prod) es ~50× más rápido.
+//
+// `rows` es un array de objetos con el mismo shape que insertCajaMovimientoBackfill.
+// Devuelve la cantidad insertada.
+async function insertCajaMovimientosBatch(client, rows) {
+  if (rows.length === 0) return 0;
+  // Construir arrays paralelos para UNNEST. Cada uno tipado explícitamente
+  // (postgres node driver no inferiría int[] sin la cast en UNNEST).
+  const cajaIds   = rows.map(r => r.caja_id);
+  const fechas    = rows.map(r => r.fecha);
+  const tipos     = rows.map(r => r.tipo);
+  const montos    = rows.map(r => r.monto);
+  const origenes  = rows.map(r => r.origen);
+  const refTablas = rows.map(r => r.ref_tabla);
+  const refIds    = rows.map(r => r.ref_id);
+  const conceptos = rows.map(r => r.concepto);
+  const userIds   = rows.map(r => r.user_id ?? null);
+
+  await client.query(`
+    INSERT INTO caja_movimientos
+      (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
+    SELECT caja_id, fecha, tipo, monto, monto AS monto_usd, origen, ref_tabla, ref_id, concepto, user_id
+      FROM UNNEST(
+        $1::int[],         -- caja_id
+        $2::date[],        -- fecha
+        $3::text[],        -- tipo
+        $4::numeric[],     -- monto (= monto_usd, ver insertCajaMovimientoBackfill)
+        $5::text[],        -- origen
+        $6::text[],        -- ref_tabla
+        $7::int[],         -- ref_id
+        $8::text[],        -- concepto
+        $9::int[]          -- user_id (NULL ok)
+      ) AS t(caja_id, fecha, tipo, monto, origen, ref_tabla, ref_id, concepto, user_id)
+  `, [cajaIds, fechas, tipos, montos, origenes, refTablas, refIds, conceptos, userIds]);
+  return rows.length;
+}
+
 module.exports = {
   fmtARS, fmtDate,
   err400,
   CONCEPTOS,
   parseCommonArgs,
   insertCajaMovimientoBackfill,
+  insertCajaMovimientosBatch,
 };
