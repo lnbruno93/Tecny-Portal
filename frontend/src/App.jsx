@@ -23,6 +23,7 @@ const Config     = lazy(() => import('./screens/Config'));
 const Cotizador  = lazy(() => import('./screens/Cotizador'));
 const Inventario = lazy(() => import('./screens/Inventario'));
 const Desglose360 = lazy(() => import('./screens/Desglose360'));
+const RecepcionStock = lazy(() => import('./screens/RecepcionStock'));
 const NotFound   = lazy(() => import('./screens/NotFound'));
 const Ventas     = lazy(() => import('./screens/Ventas'));
 const Proveedores = lazy(() => import('./screens/Proveedores'));
@@ -168,6 +169,11 @@ export default function App() {
                   <Route path="inventario/desglose" element={
                     <RequirePermission perm="inventario">
                       <ErrorBoundary><Desglose360 /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="inventario/recepcion" element={
+                    <RequirePermission perm="inventario">
+                      <ErrorBoundary><RecepcionStock /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="ventas" element={

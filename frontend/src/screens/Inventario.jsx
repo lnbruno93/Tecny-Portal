@@ -547,6 +547,9 @@ export default function Inventario() {
           <button className="btn" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
           <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
           <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
+          {/* Recepción con scanner móvil — pensado para uso en celular en
+              depósito al recibir mercadería. Junio 2026. */}
+          <Link to="/inventario/recepcion" className="btn"><Icons.Camera size={14} /> Recepción con scanner</Link>
           <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
           <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
           {/* Acción destructiva — separada visualmente con color rojo del ícono y

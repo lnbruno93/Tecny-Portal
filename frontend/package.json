@@ -12,6 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "qrcode": "^1.5.4",
