@@ -247,6 +247,11 @@ export const tarjetas = {
   movimientosAll:    (params = {}) => api('/api/tarjetas/movimientos?' + new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
   )),
+  // Totales agregados del período (sin pagación) — KPIs separados por moneda
+  // (ARS/USD/USDT) para el header del export PDF/XLSX.
+  movimientosTotales:(params = {}) => api('/api/tarjetas/movimientos/totales?' + new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
+  )),
   get:               (id, params = {}) => api(`/api/tarjetas/${id}?` + new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
   )),

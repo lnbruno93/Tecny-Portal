@@ -139,9 +139,12 @@ router.get('/saldos-resumen', async (_req, res, next) => {
 
 // Estado de cuenta unificado (paginado): movimientos de todas las tarjetas con su
 // saldo acumulado calculado en el server (window) para que sea correcto aun paginando.
+// maxLimit subido a 5000 (mismo techo que comprobantes) para el caso de export:
+// la UI normal sigue pidiendo limit=500, el export PDF/XLSX hace re-fetch con 5000
+// para incluir TODO el período (no solo lo paginado en pantalla).
 router.get('/movimientos', async (req, res, next) => {
   try {
-    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 5000 });
     // Filtro opcional por rango de fechas. Importante: el saldo_acum SIEMPRE
     // se calcula sobre TODOS los movimientos del histórico (no filtrado) —
     // si filtráramos en la CTE base, el saldo acumulado mentiría al mostrar
@@ -180,6 +183,64 @@ router.get('/movimientos', async (req, res, next) => {
       ),
     ]);
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+  } catch (err) { next(err); }
+});
+
+// Totales por período — agregado del estado de cuenta unificado para el header
+// del export PDF/XLSX. Devuelve KPIs separados por moneda (ARS/USD/USDT) porque
+// Tarjetas mezcla las tres y sumarlas todas falsea el "neto a recibir".
+//
+// El saldo NO se incluye acá (es histórico, no del período); para presentar
+// "te deben" del período el helper lo calcula a partir de cobros − liquidaciones
+// dentro del rango. Si querés saldo histórico, usá GET /api/tarjetas (resumen).
+router.get('/movimientos/totales', async (req, res, next) => {
+  try {
+    const { desde, hasta } = req.query;
+    const params = [];
+    let where = ' WHERE deleted_at IS NULL';
+    if (desde) { params.push(desde); where += ` AND fecha >= $${params.length}`; }
+    if (hasta) { params.push(hasta); where += ` AND fecha <= $${params.length}`; }
+
+    const { rows } = await db.query(
+      `SELECT
+         moneda,
+         COUNT(*) FILTER (WHERE tipo = 'cobro')                                         AS cobros_count,
+         COALESCE(SUM(monto_bruto)    FILTER (WHERE tipo = 'cobro'), 0)                 AS cobros_bruto,
+         COALESCE(SUM(monto_comision) FILTER (WHERE tipo = 'cobro'), 0)                 AS comision,
+         COALESCE(SUM(monto_neto)     FILTER (WHERE tipo = 'cobro'), 0)                 AS cobros_neto,
+         COUNT(*) FILTER (WHERE tipo = 'liquidacion')                                   AS liquidaciones_count,
+         COALESCE(SUM(monto_neto)     FILTER (WHERE tipo = 'liquidacion'), 0)           AS liquidado,
+         COUNT(*)                                                                       AS total_count
+       FROM tarjeta_movimientos
+       ${where}
+       GROUP BY moneda`,
+      params
+    );
+
+    // Estructura por moneda: facilita render condicional en el helper (si una
+    // moneda no tiene movimientos, no aparece como sección).
+    const init = () => ({
+      cobros_count: 0, cobros_bruto: 0, comision: 0, cobros_neto: 0,
+      liquidaciones_count: 0, liquidado: 0, total_count: 0,
+      saldo_periodo: 0, // = cobros_neto − liquidado
+    });
+    const out = { ARS: init(), USD: init(), USDT: init(), count: 0 };
+    for (const r of rows) {
+      const k = (r.moneda || 'ARS').toUpperCase();
+      if (!out[k]) continue; // moneda desconocida — defensivo, no debería pasar
+      out[k] = {
+        cobros_count:        parseInt(r.cobros_count),
+        cobros_bruto:        parseFloat(r.cobros_bruto),
+        comision:            parseFloat(r.comision),
+        cobros_neto:         parseFloat(r.cobros_neto),
+        liquidaciones_count: parseInt(r.liquidaciones_count),
+        liquidado:           parseFloat(r.liquidado),
+        total_count:         parseInt(r.total_count),
+        saldo_periodo:       parseFloat(r.cobros_neto) - parseFloat(r.liquidado),
+      };
+      out.count += parseInt(r.total_count);
+    }
+    res.json(out);
   } catch (err) { next(err); }
 });
 

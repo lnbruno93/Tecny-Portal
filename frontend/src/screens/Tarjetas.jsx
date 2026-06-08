@@ -11,6 +11,8 @@ import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
 import useModal from '../lib/useModal';
 import { rangeToParams, rangeLabel, RANGE_PRESETS } from '../lib/dateRange';
+import { generarTarjetasResumenPdf } from '../lib/generarTarjetasResumenPdf';
+import { generarTarjetasResumenXlsx } from '../lib/generarTarjetasResumenXlsx';
 
 
 
@@ -255,6 +257,67 @@ export default function Tarjetas() {
   // El estado de cuenta viene del server ya ordenado (más reciente arriba) y con el
   // saldo acumulado calculado (window sobre todo el historial), así que se usa tal cual.
   const estadoCuenta = allMovs;
+
+  // Export del Estado de cuenta del período (PDF + XLSX). Único state
+  // ('pdf'|'xlsx'|null) para mostrar "Generando…" en el botón activo y
+  // disable el otro. Réplica del patrón de Financiera/Comprobantes.
+  const [exportingTarj, setExportingTarj] = useState(null);
+
+  // Trae TODO el período (no solo lo paginado a 500) + totales agregados.
+  // Tope 5000 — si el rango pasa de ese número, error claro al operador.
+  async function fetchTodoElPeriodoTarj() {
+    const p = rangeToParams(tarjRange);
+    const [movsRes, totales] = await Promise.all([
+      tarjetasApi.movimientosAll({ ...p, limit: 5000 }),
+      tarjetasApi.movimientosTotales(p),
+    ]);
+    if ((totales.count || 0) > 5000) {
+      throw new Error(`El período tiene ${totales.count} movimientos (tope 5000). Refiná el filtro de fecha y exportá por partes.`);
+    }
+    return { movimientos: movsRes.data || [], totales };
+  }
+
+  async function exportPdfTarj() {
+    setExportingTarj('pdf');
+    try {
+      const { movimientos, totales } = await fetchTodoElPeriodoTarj();
+      if (!movimientos.length) {
+        toast.error('No hay movimientos en el período seleccionado.');
+        return;
+      }
+      await generarTarjetasResumenPdf({
+        movimientos,
+        totales,
+        periodoLabel: rangeLabel(tarjRange),
+      });
+      toast.success('PDF generado');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setExportingTarj(null);
+    }
+  }
+
+  async function exportXlsxTarj() {
+    setExportingTarj('xlsx');
+    try {
+      const { movimientos, totales } = await fetchTodoElPeriodoTarj();
+      if (!movimientos.length) {
+        toast.error('No hay movimientos en el período seleccionado.');
+        return;
+      }
+      generarTarjetasResumenXlsx({
+        movimientos,
+        totales,
+        periodoLabel: rangeLabel(tarjRange),
+      });
+      toast.success('Planilla generada');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setExportingTarj(null);
+    }
+  }
 
   async function handleLiquidar(e) {
     e.preventDefault();
@@ -663,6 +726,20 @@ export default function Tarjetas() {
               <div style={{ fontWeight: 600, fontSize: 14 }}>
                 Estado de cuenta
                 <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>· {rangeLabel(tarjRange)} ({estadoCuenta.length})</span>
+              </div>
+              {/* Export del período actual — mismo patrón que Comprobantes/Financiera.
+                  Sin ZIP porque Tarjetas no tiene archivos físicos asociados. */}
+              <div className="flex-row" style={{ gap: 8 }}>
+                <button className="btn btn-sm btn-ghost" onClick={exportPdfTarj}
+                        disabled={!!exportingTarj} title="PDF con KPIs + tabla detalle del período">
+                  <Icons.FileText size={13} />
+                  {exportingTarj === 'pdf' ? ' Generando PDF…' : ' PDF resumen'}
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={exportXlsxTarj}
+                        disabled={!!exportingTarj} title="Planilla Excel con KPIs + detalle (montos como números)">
+                  <Icons.Sheet size={13} />
+                  {exportingTarj === 'xlsx' ? ' Generando XLSX…' : ' XLSX resumen'}
+                </button>
               </div>
             </div>
             <div style={{ overflow: 'auto' }}>
