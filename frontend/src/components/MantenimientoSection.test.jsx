@@ -142,7 +142,9 @@ describe('MantenimientoSection — dos paneles paralelos', () => {
     await user.click(within(panel).getByRole('button', { name: /aplicar/i }));
     expect(mockTarjApply).toHaveBeenCalled();
     await waitFor(() => {
-      expect(within(panel).getByText(/✓ Aplicado/)).toBeInTheDocument();
+      // TANDA 3 trazab: "✓" emoji reemplazado por <Icons.Check/>, ahora el texto
+      // del header de reporte es solo "Aplicado · HH:MM".
+      expect(within(panel).getByText(/Aplicado/)).toBeInTheDocument();
     });
   });
 });

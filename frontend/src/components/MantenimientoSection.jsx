@@ -18,17 +18,28 @@
 // y la composición de los 2 paneles.
 import { admin as adminApi } from '../lib/api';
 import BackfillPanel from './admin/BackfillPanel';
+import { Icons } from './Icons';
 
 function fmtARS(n) {
   return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+}
+
+// TANDA 3 trazab (UX M6): símbolo de moneda dinámico — el '$' siempre era
+// engañoso para tarjetas USD/USDT. ARS y "" → "$"; USDT → "USDT "; USD → "US$ ".
+function fmtMoneda(n, moneda) {
+  const v = Math.round(Number(n) || 0).toLocaleString('es-AR');
+  const m = String(moneda || 'ARS').toUpperCase();
+  if (m === 'USD')  return `US$ ${v}`;
+  if (m === 'USDT') return `USDT ${v}`;
+  return `$ ${v}`;
 }
 
 // ─── Render del reporte para Financiera (1 caja) ────────────────────────────
 function FinancieraReport({ report }) {
   if (report.skipped) {
     return (
-      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600 }}>
-        ✓ Nada pendiente. Todos los comprobantes y pagos ya impactan la caja FV.
+      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Icons.Check size={14} aria-hidden="true"/> Nada pendiente. Todos los comprobantes y pagos ya impactan la caja FV.
       </div>
     );
   }
@@ -113,8 +124,8 @@ function FinancieraReport({ report }) {
 function TarjetasReport({ report }) {
   if (report.skipped) {
     return (
-      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600 }}>
-        ✓ Nada pendiente. Todas las tarjetas ya tienen su trazabilidad al día.
+      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Icons.Check size={14} aria-hidden="true"/> Nada pendiente. Todas las tarjetas ya tienen su trazabilidad al día.
       </div>
     );
   }
@@ -124,40 +135,50 @@ function TarjetasReport({ report }) {
         {report.cobros} cobros + {report.liquidaciones} liquidaciones pendientes.
         Detalle por tarjeta:
       </div>
-      <table className="tbl">
-        <thead>
-          <tr>
-            <th>Tarjeta</th>
-            <th style={{ textAlign: 'right' }}>Saldo {report.apply ? 'previo' : 'actual'}</th>
-            <th style={{ textAlign: 'right' }}>+ Cobros</th>
-            <th style={{ textAlign: 'right' }}>− Liquidaciones</th>
-            <th style={{ textAlign: 'right' }}>Saldo {report.apply ? 'final' : 'proyectado'}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.porTarjeta.map(g => {
-            const negativo = g.saldoProyectado < 0;
-            return (
-              <tr key={g.tarjeta.id}>
-                <td>
-                  <b>{g.tarjeta.nombre}</b>
-                  <span className="muted tiny" style={{ marginLeft: 6 }}>{g.tarjeta.moneda}</span>
-                </td>
-                <td className="mono tiny" style={{ textAlign: 'right' }}>{fmtARS(g.saldoAntes)}</td>
-                <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--pos)' }}>
-                  {g.cobros > 0 ? `+${fmtARS(g.totalCobros)} (${g.cobros})` : '—'}
-                </td>
-                <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>
-                  {g.liquidaciones > 0 ? `−${fmtARS(g.totalLiq)} (${g.liquidaciones})` : '—'}
-                </td>
-                <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: negativo ? 'var(--neg)' : 'inherit' }}>
-                  {fmtARS(g.saldoProyectado)} {negativo && '⚠️'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {/* TANDA 3 trazab (UX M1): overflow-x:auto evita que la tabla rompa el
+          layout en viewports estrechos (< 500px). En desktop no cambia nada. */}
+      <div style={{ overflowX: 'auto' }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Tarjeta</th>
+              <th style={{ textAlign: 'right' }}>Saldo {report.apply ? 'previo' : 'actual'}</th>
+              <th style={{ textAlign: 'right' }}>+ Cobros</th>
+              <th style={{ textAlign: 'right' }}>− Liquidaciones</th>
+              <th style={{ textAlign: 'right' }}>Saldo {report.apply ? 'final' : 'proyectado'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.porTarjeta.map(g => {
+              const negativo = g.saldoProyectado < 0;
+              // UX M6 (TANDA 3 trazab): formatter con moneda de la tarjeta —
+              // antes mostraba "$ X" para tarjetas USDT, era engañoso.
+              const fmt = (n) => fmtMoneda(n, g.tarjeta.moneda);
+              return (
+                <tr key={g.tarjeta.id}>
+                  <td>
+                    <b>{g.tarjeta.nombre}</b>
+                    <span className="muted tiny" style={{ marginLeft: 6 }}>{g.tarjeta.moneda}</span>
+                  </td>
+                  <td className="mono tiny" style={{ textAlign: 'right' }}>{fmt(g.saldoAntes)}</td>
+                  <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--pos)' }}>
+                    {g.cobros > 0 ? `+${fmt(g.totalCobros)} (${g.cobros})` : '—'}
+                  </td>
+                  <td className="mono tiny" style={{ textAlign: 'right', color: 'var(--neg)' }}>
+                    {g.liquidaciones > 0 ? `−${fmt(g.totalLiq)} (${g.liquidaciones})` : '—'}
+                  </td>
+                  <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: negativo ? 'var(--neg)' : 'inherit' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                      {fmt(g.saldoProyectado)}
+                      {negativo && <Icons.Alert size={12} aria-label="Saldo negativo" />}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -196,7 +217,7 @@ export default function MantenimientoSection() {
         getStateChecks={{
           hayNegativo: (r) => !!r.saldoProyectadoNegativo,
           summaryToast: (r) => `${r.comprobantes} comprobantes + ${r.pagos} pagos pendientes.`,
-          successToast: (r) => `✓ Backfill aplicado. Saldo final: ${fmtARS(r.saldoFinal)}.`,
+          successToast: (r) => `Backfill aplicado. Saldo final: ${fmtARS(r.saldoFinal)}.`,
         }}
       />
 
@@ -235,7 +256,7 @@ export default function MantenimientoSection() {
         getStateChecks={{
           hayNegativo: (r) => !!r.hayNegativos,
           summaryToast: (r) => `${r.cobros} cobros + ${r.liquidaciones} liquidaciones en ${r.porTarjeta.length} tarjetas.`,
-          successToast: (r) => `✓ Backfill aplicado en ${r.porTarjeta.length} tarjetas (${r.cobros + r.liquidaciones} movs).`,
+          successToast: (r) => `Backfill aplicado en ${r.porTarjeta.length} tarjetas (${r.cobros + r.liquidaciones} movs).`,
         }}
       />
     </>
