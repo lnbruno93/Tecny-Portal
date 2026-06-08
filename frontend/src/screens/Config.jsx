@@ -48,6 +48,18 @@ export default function Config() {
     else if (location.hash === '#general') setTab('general');
   }, [location.hash, isAdmin]);
 
+  // TANDA 5 trazab (UX L4): cambiar tab actualiza el hash con replaceState (no
+  // pushState — evita ensuciar el history). Permite copiar URL y compartir,
+  // y que F5 mantenga la tab activa en lugar de pegarse al hash inicial.
+  function goToTab(t) {
+    setTab(t);
+    if (window.history.replaceState) {
+      window.history.replaceState(null, '', `#${t}`);
+    } else {
+      window.location.hash = `#${t}`;
+    }
+  }
+
   useEffect(() => {
     configApi.get()
       .then(data => {
@@ -116,24 +128,27 @@ export default function Config() {
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      {/* TANDA 5 trazab (UX L4): goToTab sincroniza el hash con el tab activo.
+          Antes, si el usuario llegaba via #mantenimiento y luego cambiaba a
+          General, el hash quedaba pegado y un F5 lo devolvía a Mantenimiento. */}
       <div className="flex-row" style={{ gap: 4, marginBottom: 16 }}>
         <button className={'btn ' + (tab === 'general' ? 'btn-primary' : '')}
-                onClick={() => setTab('general')}>
+                onClick={() => goToTab('general')}>
           General
         </button>
         <button className={'btn ' + (tab === 'alertas' ? 'btn-primary' : '')}
-                onClick={() => setTab('alertas')}>
+                onClick={() => goToTab('alertas')}>
           <Icons.Bell size={14} /> Alertas
         </button>
         <button className={'btn ' + (tab === 'seguridad' ? 'btn-primary' : '')}
-                onClick={() => setTab('seguridad')}>
+                onClick={() => goToTab('seguridad')}>
           <Icons.Shield size={14} /> Seguridad
         </button>
         {/* Tab admin-only: aparece solo si user.role === 'admin'. El backend
             igual rechaza con 403 a no-admins si intentan hitear los endpoints. */}
         {isAdmin && (
           <button className={'btn ' + (tab === 'mantenimiento' ? 'btn-primary' : '')}
-                  onClick={() => setTab('mantenimiento')}>
+                  onClick={() => goToTab('mantenimiento')}>
             <Icons.Bolt size={14} /> Mantenimiento
           </button>
         )}
