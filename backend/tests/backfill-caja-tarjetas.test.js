@@ -155,9 +155,17 @@ describe('backfill-caja-tarjetas (TANDA 2)', () => {
   });
 
   it('si no hay tarjetas configuradas, throwea con mensaje guía', async () => {
-    await pool.query(`UPDATE metodos_pago SET es_tarjeta = false WHERE es_tarjeta = true`);
-    await expect(runBackfill({ apply: false })).rejects.toThrow(/tarjeta/i);
-    // Restaurar.
-    await pool.query(`UPDATE metodos_pago SET es_tarjeta = true WHERE nombre = 'TC Backfill'`);
+    // TANDA 4 trazab: capturar ids ANTES de desmarcar — restaurar por id
+    // y try/finally garantiza que assertion failure no deje DB con 0 tarjetas.
+    const { rows: prev } = await pool.query(
+      `SELECT id FROM metodos_pago WHERE es_tarjeta = true`
+    );
+    const ids = prev.map(r => r.id);
+    await pool.query(`UPDATE metodos_pago SET es_tarjeta = false WHERE id = ANY($1)`, [ids]);
+    try {
+      await expect(runBackfill({ apply: false })).rejects.toThrow(/tarjeta/i);
+    } finally {
+      await pool.query(`UPDATE metodos_pago SET es_tarjeta = true WHERE id = ANY($1)`, [ids]);
+    }
   });
 });

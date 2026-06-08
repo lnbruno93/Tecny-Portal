@@ -68,12 +68,21 @@ describe('GET /api/admin/backfill-caja-financiera (dry-run)', () => {
   });
 
   it('sin caja FV configurada → 400 con mensaje guía', async () => {
-    await pool.query(`UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true`);
-    const r = await request(app).get('/api/admin/backfill-caja-financiera').set(auth());
-    expect(r.status).toBe(400);
-    expect(r.body.error).toMatch(/es_financiera|Cajas → Config/i);
-    // Restaurar.
-    await pool.query(`UPDATE metodos_pago SET es_financiera = true WHERE nombre = 'Pesos Ars | Efectivo'`);
+    // TANDA 4 trazab: capturar el id ANTES de desmarcar — restaurar por id
+    // (no por nombre, que asume el seed) y try/finally garantiza que si una
+    // assertion falla, la restore corre igual y no deja la DB sin caja FV.
+    const { rows: prev } = await pool.query(
+      `SELECT id FROM metodos_pago WHERE es_financiera = true LIMIT 1`
+    );
+    const fvId = prev[0]?.id;
+    await pool.query(`UPDATE metodos_pago SET es_financiera = false WHERE id = $1`, [fvId]);
+    try {
+      const r = await request(app).get('/api/admin/backfill-caja-financiera').set(auth());
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/es_financiera|Cajas → Config/i);
+    } finally {
+      await pool.query(`UPDATE metodos_pago SET es_financiera = true WHERE id = $1`, [fvId]);
+    }
   });
 
   it('rechaza usuario sin role=admin → 403', async () => {

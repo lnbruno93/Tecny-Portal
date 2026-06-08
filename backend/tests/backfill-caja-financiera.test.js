@@ -183,9 +183,16 @@ describe('backfill-caja-financiera (TANDA 2)', () => {
   });
 
   it('si no hay caja FV configurada, throwea con mensaje guía', async () => {
-    await pool.query(`UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true`);
-    await expect(runBackfill({ apply: false })).rejects.toThrow(/es_financiera|Cajas → Config/i);
-    // Restaurar.
-    await pool.query(`UPDATE metodos_pago SET es_financiera = true WHERE nombre = 'Pesos Ars | Efectivo'`);
+    // TANDA 4 trazab: try/finally con id capturado (no por nombre).
+    const { rows: prev } = await pool.query(
+      `SELECT id FROM metodos_pago WHERE es_financiera = true LIMIT 1`
+    );
+    const fvId = prev[0]?.id;
+    await pool.query(`UPDATE metodos_pago SET es_financiera = false WHERE id = $1`, [fvId]);
+    try {
+      await expect(runBackfill({ apply: false })).rejects.toThrow(/es_financiera|Cajas → Config/i);
+    } finally {
+      await pool.query(`UPDATE metodos_pago SET es_financiera = true WHERE id = $1`, [fvId]);
+    }
   });
 });

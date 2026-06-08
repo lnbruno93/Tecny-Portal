@@ -40,6 +40,9 @@
  */
 
 const db = require('../src/config/database');
+const {
+  fmtARS, fmtDate, err400, CONCEPTOS, insertCajaMovimientoBackfill,
+} = require('./lib/backfillUtils');
 
 // H2 (TANDA 1 trazab): lock ID arbitrario para pg_try_advisory_xact_lock.
 // Diferente por script (financiera/tarjetas) — pueden correr en paralelo
@@ -47,14 +50,10 @@ const db = require('../src/config/database');
 // se libera al COMMIT/ROLLBACK automáticamente.
 const ADVISORY_LOCK_ID = 0x6AC8F1FC; // arbitrary stable int32 (~1.79B)
 
-// Helper de error con status — el endpoint admin lo levanta a HTTP 400.
-function err400(message) {
-  const e = new Error(message);
-  e.status = 400;
-  return e;
-}
-
 function parseArgs(argv) {
+  // Flags propios del script Financiera (soloComprobantes/soloPagos) +
+  // los comunes (apply, verbose). Mantengo este parseArgs ad-hoc en vez de
+  // usar parseCommonArgs() para no romper los `--solo-X` que ya documentamos.
   const args = { apply: false, verbose: false, soloComprobantes: false, soloPagos: false };
   for (const a of argv.slice(2)) {
     if (a === '--apply') args.apply = true;
@@ -89,15 +88,7 @@ Ejemplos:
 `);
 }
 
-function fmtARS(n) {
-  return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
-}
-
-function fmtDate(d) {
-  if (!d) return '';
-  if (d instanceof Date) return d.toISOString().slice(0, 10);
-  return String(d).slice(0, 10);
-}
+// fmtARS / fmtDate / err400 vienen de './lib/backfillUtils' (TANDA 4 trazab).
 
 // ─── Lógica core (exportada para tests) ──────────────────────────────────────
 
@@ -302,21 +293,23 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
 
     let comprObjInserted = 0;
     for (const c of comprobantes) {
-      await client.query(`
-        INSERT INTO caja_movimientos
-          (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'ingreso', $3, $3, 'financiera', 'comprobantes', $4, $5, $6)
-      `, [fv.id, c.fecha, c.monto_neto, c.id, `Backfill venta previa · ${c.cliente}${c.referencia ? ' · ' + c.referencia : ''}`, uid]);
+      await insertCajaMovimientoBackfill(client, {
+        caja_id: fv.id, fecha: c.fecha, tipo: 'ingreso', monto: c.monto_neto,
+        origen: 'financiera', ref_tabla: 'comprobantes', ref_id: c.id,
+        concepto: CONCEPTOS.backfillComprobante(c.cliente, c.referencia),
+        user_id: uid,
+      });
       comprObjInserted++;
     }
 
     let pagosInserted = 0;
     for (const p of pagos) {
-      await client.query(`
-        INSERT INTO caja_movimientos
-          (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'egreso', $3, $3, 'financiera', 'pagos', $4, $5, $6)
-      `, [fv.id, p.fecha, p.monto, p.id, `Backfill egreso pago vendedor → ${p.caja_destino || '?'}${p.referencia ? ' · ' + p.referencia : ''}`, uid]);
+      await insertCajaMovimientoBackfill(client, {
+        caja_id: fv.id, fecha: p.fecha, tipo: 'egreso', monto: p.monto,
+        origen: 'financiera', ref_tabla: 'pagos', ref_id: p.id,
+        concepto: CONCEPTOS.backfillPago(p.caja_destino, p.referencia),
+        user_id: uid,
+      });
       pagosInserted++;
     }
 

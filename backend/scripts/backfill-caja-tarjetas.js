@@ -28,18 +28,14 @@
  */
 
 const db = require('../src/config/database');
+const {
+  fmtARS, fmtDate, err400, CONCEPTOS, insertCajaMovimientoBackfill,
+} = require('./lib/backfillUtils');
 
 // H2 (TANDA 1 trazab): lock ID arbitrario para pg_try_advisory_xact_lock.
 // Diferente del de financiera para permitir corridas paralelas entre scripts
 // distintos, pero no 2 corridas del MISMO. Per-transaction.
 const ADVISORY_LOCK_ID = 0x6AC8F2A0; // arbitrary stable int32
-
-// Helper de error con status — el endpoint admin lo levanta a HTTP 400.
-function err400(message) {
-  const e = new Error(message);
-  e.status = 400;
-  return e;
-}
 
 function parseArgs(argv) {
   const args = { apply: false, verbose: false };
@@ -71,14 +67,7 @@ Ejemplos:
   node scripts/backfill-caja-tarjetas.js --apply        # aplicar`);
 }
 
-function fmtARS(n) {
-  return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
-}
-function fmtDate(d) {
-  if (!d) return '';
-  if (d instanceof Date) return d.toISOString().slice(0, 10);
-  return String(d).slice(0, 10);
-}
+// fmtARS / fmtDate / err400 vienen de './lib/backfillUtils' (TANDA 4 trazab).
 
 // ─── Lógica core (exportada para tests) ──────────────────────────────────────
 
@@ -313,21 +302,23 @@ async function runBackfill({ apply, verbose, silent, userId } = {}) {
 
     let cobrosOk = 0, liqOk = 0;
     for (const c of cobros) {
-      await client.query(`
-        INSERT INTO caja_movimientos
-          (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'ingreso', $3, $3, 'tarjeta', 'tarjeta_movimientos', $4, $5, $6)
-      `, [c.metodo_pago_id, c.fecha, c.monto_neto, c.id,
-          `Backfill ${c.venta_id ? `cobro venta #${c.venta_id}` : 'cobro previo'}`, uid]);
+      await insertCajaMovimientoBackfill(client, {
+        caja_id: c.metodo_pago_id, fecha: c.fecha, tipo: 'ingreso',
+        monto: c.monto_neto,
+        origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: c.id,
+        concepto: CONCEPTOS.backfillCobro(c.venta_id),
+        user_id: uid,
+      });
       cobrosOk++;
     }
     for (const l of liquidaciones) {
-      await client.query(`
-        INSERT INTO caja_movimientos
-          (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'egreso', $3, $3, 'tarjeta', 'tarjeta_movimientos', $4, $5, $6)
-      `, [l.metodo_pago_id, l.fecha, l.monto_neto, l.id,
-          `Backfill egreso liquidación → ${l.caja_destino_nombre || '?'}`, uid]);
+      await insertCajaMovimientoBackfill(client, {
+        caja_id: l.metodo_pago_id, fecha: l.fecha, tipo: 'egreso',
+        monto: l.monto_neto,
+        origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: l.id,
+        concepto: CONCEPTOS.backfillLiquidacion(l.caja_destino_nombre),
+        user_id: uid,
+      });
       liqOk++;
     }
 
