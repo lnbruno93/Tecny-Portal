@@ -6,6 +6,7 @@ const { createPagoSchema, queryPagosSchema } = require('../schemas/pagos');
 const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimientoFinanciera } = require('../lib/financiera');
 
 // Grupo de moneda (mismo criterio que tarjetas.js): USD y USDT son
 // intercambiables; ARS es su propio grupo.
@@ -121,6 +122,25 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
       user_id: req.user.id,
     });
 
+    // 5. Egreso de la caja FV (`es_financiera=true`) por el mismo `monto` ARS
+    //    que el pago descuenta del saldo Financiera. Misma ref_tabla/ref_id
+    //    que el ingreso del paso 4 — reverseCajaMovimientos en el DELETE
+    //    revierte LOS DOS movimientos en bloque sin tener que listarlos.
+    //
+    //    Trazabilidad junio 2026: antes los pagos solo creaban ingreso en la
+    //    caja destino. La caja FV nunca reflejaba salidas → el saldo del libro
+    //    caja crecía indefinidamente y mentía. Ahora cada pago = ingreso real
+    //    en destino + egreso real en FV (transacción atómica).
+    await postCajaMovimientoFinanciera(client, {
+      tipo: 'egreso',
+      fecha,
+      monto: Number(monto), // siempre el ARS del pago (no el monto_usd convertido)
+      ref_tabla: 'pagos',
+      ref_id: rows[0].id,
+      concepto: `Egreso por pago a vendedor → ${caja.nombre}${referencia ? ' · ' + referencia : ''}`,
+      user_id: req.user.id,
+    });
+
     await audit(client, 'pagos', 'INSERT', rows[0].id, {
       despues: rows[0], user_id: req.user.id,
     });
@@ -128,6 +148,9 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    // postCajaMovimientoFinanciera y postCajaMovimiento throwean con err.status
+    // (400 si falta caja FV, si moneda no coincide, si saldo insuficiente).
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });
