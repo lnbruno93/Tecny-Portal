@@ -357,6 +357,40 @@ describe('POST /api/inventario/productos/bulk', () => {
       .set(auth()).send({ productos: [] });
     expect(res.status).toBe(400);
   });
+
+  // Feature recepción móvil (junio 2026): el endpoint rechaza IMEIs que ya
+  // existen en productos activos. Antes se podían crear duplicados silenciosos
+  // re-importando el mismo XLSX.
+  it('rechaza IMEIs ya existentes en inventario → 409 con lista de duplicados', async () => {
+    // Crear un producto con IMEI conocido.
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'iPhone existente', clase: 'celular', categoria_id: catBase,
+      imei: '359123456789012', costo: 400, precio_venta: 500,
+    });
+
+    // Intentar bulk con un producto cuyo IMEI ya existe + otros nuevos.
+    const res = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
+      productos: [
+        { nombre: 'Nuevo OK', clase: 'celular', categoria_id: catBase, imei: '359999999999999', costo: 400, precio_venta: 500 },
+        { nombre: 'Choque IMEI', clase: 'celular', categoria_id: catBase, imei: '359123456789012', costo: 400, precio_venta: 500 },
+      ],
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.duplicados).toContain('359123456789012');
+    // El "Nuevo OK" NO debería haberse creado (rollback completo).
+    const check = await request(app).get('/api/inventario/productos?buscar=Nuevo OK').set(auth());
+    expect(check.body.data.find(p => p.imei === '359999999999999')).toBeUndefined();
+  });
+
+  it('acepta bulk sin IMEIs (accesorios, lotes) sin chequear duplicados', async () => {
+    const res = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
+      productos: [
+        { nombre: 'Funda Genérica X', clase: 'accesorio', categoria_id: catBase, costo: 5, precio_venta: 10, tipo_carga: 'lote', cantidad: 50 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.creados).toBe(1);
+  });
 });
 
 // ─── Vista + oculto + condición ──────────────────────────────

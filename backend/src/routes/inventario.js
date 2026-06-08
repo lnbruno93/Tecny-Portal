@@ -616,6 +616,25 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
   });
   if (filasInvalidas.length) return res.status(400).json({ error: 'Referencias inválidas en el lote', detalles: filasInvalidas });
 
+  // Feature recepción móvil (junio 2026): rechazar IMEIs que ya existen en
+  // productos activos. Antes el import XLSX podía crear duplicados silenciosos
+  // si el operador re-importaba la misma planilla por error. Una sola query
+  // con ANY($1::text[]) — barata gracias al índice idx_productos_imei.
+  const imeisDelLote = productos.map(p => (p.imei || '').trim()).filter(Boolean);
+  if (imeisDelLote.length) {
+    const { rows: yaExisten } = await db.query(
+      `SELECT imei FROM productos
+        WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
+      [imeisDelLote]
+    );
+    if (yaExisten.length) {
+      return res.status(409).json({
+        error: 'Hay IMEIs que ya existen en inventario',
+        duplicados: yaExisten.map(r => r.imei),
+      });
+    }
+  }
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
