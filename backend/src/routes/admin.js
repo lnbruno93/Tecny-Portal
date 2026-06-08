@@ -9,6 +9,7 @@ const adminOnly = require('../middleware/adminOnly');
 const { runInvariantsCheck } = require('../jobs/invariantsJob');
 const { evaluarTodos, resumir } = require('../lib/checkInvariants');
 const { runBackfill } = require('../../scripts/backfill-caja-financiera');
+const { runBackfill: runBackfillTarjetas } = require('../../scripts/backfill-caja-tarjetas');
 
 // Todas las rutas de este módulo requieren rol admin (no solo permiso).
 router.use(adminOnly);
@@ -84,6 +85,35 @@ router.post('/backfill-caja-financiera/apply', async (_req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err.message && /es_financiera|Cajas → Config|negativo/i.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// ─── Backfill cajas-tarjeta ──────────────────────────────────────────────────
+//
+// Análogo al de Financiera pero para tarjetas. Reconstruye la trazabilidad
+// histórica de cada caja-tarjeta (cada metodo_pago con es_tarjeta=true).
+// Ver scripts/backfill-caja-tarjetas.js.
+router.get('/backfill-caja-tarjetas', async (_req, res, next) => {
+  try {
+    const result = await runBackfillTarjetas({ apply: false, silent: true });
+    res.json(result);
+  } catch (err) {
+    if (err.message && /es_tarjeta|Cajas → Config/i.test(err.message)) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.post('/backfill-caja-tarjetas/apply', async (_req, res, next) => {
+  try {
+    const result = await runBackfillTarjetas({ apply: true, silent: true });
+    res.json(result);
+  } catch (err) {
+    if (err.message && /es_tarjeta|Cajas → Config|negativo/i.test(err.message)) {
       return res.status(400).json({ error: err.message });
     }
     next(err);

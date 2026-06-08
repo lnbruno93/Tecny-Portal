@@ -413,6 +413,10 @@ export const admin = {
   // de TANDA 2. Ver scripts/backfill-caja-financiera.js.
   backfillFinancieraReport: () => api('/api/admin/backfill-caja-financiera'),
   backfillFinancieraApply:  () => api('/api/admin/backfill-caja-financiera/apply', 'POST'),
+  // Backfill cajas-tarjeta (paralelo al de Financiera). Reconstruye
+  // trazabilidad para cobros y liquidaciones histor­icos pre-TANDA 1 Tarjetas.
+  backfillTarjetasReport: () => api('/api/admin/backfill-caja-tarjetas'),
+  backfillTarjetasApply:  () => api('/api/admin/backfill-caja-tarjetas/apply', 'POST'),
 };
 
 export const historial = {
