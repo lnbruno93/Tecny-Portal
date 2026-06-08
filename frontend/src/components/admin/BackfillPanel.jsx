@@ -84,10 +84,15 @@ export default function BackfillPanel({
   const applyDisabled =
     !!running || !report || report.skipped || getStateChecks.hayNegativo(report);
 
+  // TANDA 3 trazab (UX M3): aria-labelledby + section semántico. Cada panel es
+  // una región con su título como label, mejor para screen readers cuando hay
+  // 2 paneles paralelos (Financiera + Tarjetas).
+  const titleId = `backfill-${title.replace(/\s+/g, '-').toLowerCase()}-title`;
+
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
+    <section className="card" style={{ marginBottom: 16 }} aria-labelledby={titleId}>
       <div className="card-hd">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <h3 id={titleId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Icons.Bolt size={16} /> {title}
         </h3>
       </div>
@@ -97,7 +102,13 @@ export default function BackfillPanel({
       </div>
 
       <div className="flex-row" style={{ gap: 8, padding: '14px 18px', flexWrap: 'wrap' }}>
-        <button className="btn" onClick={handleReport} disabled={!!running}>
+        <button
+          className="btn"
+          onClick={handleReport}
+          disabled={!!running}
+          aria-label={`Ver reporte de ${title}`}
+          aria-busy={running === 'report'}
+        >
           <Icons.Search size={13} />
           {running === 'report' ? ' Calculando…' : ' Ver reporte (dry-run)'}
         </button>
@@ -105,6 +116,8 @@ export default function BackfillPanel({
           className="btn btn-primary"
           onClick={handleApply}
           disabled={applyDisabled}
+          aria-label={`Aplicar ${title}`}
+          aria-busy={running === 'apply'}
           title={
             !report ? 'Primero "Ver reporte"'
             : report.skipped ? 'Nada pendiente'
@@ -118,13 +131,21 @@ export default function BackfillPanel({
       </div>
 
       {report && (
-        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--hairline)', background: 'var(--surface-2)' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-            {report.apply ? '✓ Aplicado' : '· Reporte'} · {reportAt ? reportAt.toLocaleTimeString('es-AR') : '—'}
+        // aria-live="polite" anuncia el reporte cuando aparece (UX M2 a11y).
+        <div
+          style={{ padding: '14px 18px', borderTop: '1px solid var(--hairline)', background: 'var(--surface-2)' }}
+          role="status"
+          aria-live="polite"
+        >
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {report.apply
+              ? <><Icons.Check size={12} style={{ color: 'var(--pos)' }} aria-hidden="true"/> Aplicado</>
+              : <>· Reporte</>}
+            {' · '}{reportAt ? reportAt.toLocaleTimeString('es-AR') : '—'}
           </div>
           {renderReport(report)}
         </div>
       )}
-    </div>
+    </section>
   );
 }
