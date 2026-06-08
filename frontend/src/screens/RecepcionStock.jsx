@@ -155,6 +155,14 @@ export default function RecepcionStock() {
     setItems(prev => prev.filter((_, i) => i !== idx));
   };
 
+  // Editar un campo puntual de un item (costo, precio, etc.). Lo necesitamos
+  // porque dentro de una caja con varios modelos del mismo tipo, el costo y
+  // el precio de venta pueden variar producto-a-producto (un usado con
+  // detalle, una unidad demo, una negociación puntual).
+  const editarItem = (idx, campo, valor) => {
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [campo]: valor } : it));
+  };
+
   // Guardar todo el lote.
   const guardar = async () => {
     if (items.length === 0) { toast.error('No hay productos cargados.'); return; }
@@ -354,49 +362,104 @@ export default function RecepcionStock() {
         </div>
       </div>
 
-      {/* 4. Lista de items */}
+      {/* 4. Lista de items con costo + precio editables por fila.
+          Diseño en cards (no tabla) porque en mobile los inputs de moneda
+          + edit inline son incómodos en celdas estrechas. Cada card = un
+          producto, ocupa todo el ancho y es fácil de tocar con el pulgar. */}
       {items.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
           <div className="card-hd">
             <h3>4. Productos a cargar ({items.length})</h3>
+            <div className="muted tiny" style={{ marginLeft: 8 }}>
+              Tocá costo o precio para ajustarlo individualmente.
+            </div>
           </div>
-          <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-            <table className="tbl" style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th>IMEI</th>
-                  <th>Modelo</th>
-                  <th style={{ textAlign: 'right' }}>Costo</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it, idx) => (
-                  <tr key={it.imei}>
-                    <td className="mono tiny">{it.imei}</td>
-                    <td className="tiny">
-                      <div>{it.nombre}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>
-                        {[it.color, it.gb, it.condicion].filter(Boolean).join(' · ')}
-                      </div>
-                    </td>
-                    <td className="mono tiny" style={{ textAlign: 'right' }}>
-                      {it.costo_moneda === 'USD' ? 'US$ ' : '$ '}{fmtNumero(it.costo)}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button
-                        className="icon-btn"
-                        onClick={() => eliminarItem(idx)}
-                        aria-label={`Eliminar ${it.imei}`}
-                        title="Eliminar del lote"
+          <div style={{ maxHeight: '55vh', overflowY: 'auto', padding: 8 }}>
+            {items.map((it, idx) => (
+              <div
+                key={it.imei}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  padding: 10,
+                  marginBottom: 8,
+                  border: '1px solid var(--hairline)',
+                  borderRadius: 8,
+                  background: 'var(--surface)',
+                }}
+              >
+                {/* Header de card: IMEI + delete */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{it.imei}</div>
+                    <div style={{ fontSize: 13, marginTop: 2 }}>{it.nombre}</div>
+                    <div className="muted" style={{ fontSize: 11 }}>
+                      {[it.color, it.gb, it.condicion].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  <button
+                    className="icon-btn"
+                    onClick={() => eliminarItem(idx)}
+                    aria-label={`Eliminar ${it.imei} del lote`}
+                    title="Eliminar del lote"
+                  >
+                    <Icons.X size={14} />
+                  </button>
+                </div>
+                {/* Costo + Precio editables */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <label style={{ flex: 1 }}>
+                    <div className="muted tiny" style={{ marginBottom: 2 }}>Costo</div>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      <input
+                        className="input"
+                        type="text"
+                        inputMode="decimal"
+                        value={it.costo}
+                        onChange={e => editarItem(idx, 'costo', Number(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.')) || 0)}
+                        aria-label={`Costo de ${it.imei}`}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <select
+                        className="input"
+                        value={it.costo_moneda}
+                        onChange={e => editarItem(idx, 'costo_moneda', e.target.value)}
+                        aria-label="Moneda del costo"
+                        style={{ width: 60 }}
                       >
-                        <Icons.X size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <option>USD</option>
+                        <option>ARS</option>
+                      </select>
+                    </div>
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    <div className="muted tiny" style={{ marginBottom: 2 }}>Precio venta</div>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      <input
+                        className="input"
+                        type="text"
+                        inputMode="decimal"
+                        value={it.precio_venta}
+                        onChange={e => editarItem(idx, 'precio_venta', Number(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.')) || 0)}
+                        aria-label={`Precio venta de ${it.imei}`}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <select
+                        className="input"
+                        value={it.precio_moneda}
+                        onChange={e => editarItem(idx, 'precio_moneda', e.target.value)}
+                        aria-label="Moneda del precio"
+                        style={{ width: 60 }}
+                      >
+                        <option>USD</option>
+                        <option>ARS</option>
+                      </select>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
