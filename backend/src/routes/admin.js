@@ -10,6 +10,7 @@ const { runInvariantsCheck } = require('../jobs/invariantsJob');
 const { evaluarTodos, resumir } = require('../lib/checkInvariants');
 const { runBackfill } = require('../../scripts/backfill-caja-financiera');
 const { runBackfill: runBackfillTarjetas } = require('../../scripts/backfill-caja-tarjetas');
+const { invalidateCajas } = require('../lib/cajasCache');
 
 // Todas las rutas de este módulo requieren rol admin (no solo permiso).
 router.use(adminOnly);
@@ -79,9 +80,15 @@ router.get('/backfill-caja-financiera', async (_req, res, next) => {
   }
 });
 
-router.post('/backfill-caja-financiera/apply', async (_req, res, next) => {
+router.post('/backfill-caja-financiera/apply', async (req, res, next) => {
   try {
-    const result = await runBackfill({ apply: true, silent: true });
+    // B2 audit trail: el user_id del admin que dispara el backfill queda
+    // estampado en cada caja_movimiento creado, para trazar quién lo corrió.
+    const result = await runBackfill({ apply: true, silent: true, userId: req.user?.id ?? null });
+    // B1 cache invalidation: cacheCajas tiene TTL 15s — sin esto, el siguiente
+    // GET /cajas devuelve saldos viejos. invalidateCajas es process-local
+    // (en multi-instance la otra réplica se entera al expirar el TTL — ok).
+    invalidateCajas();
     res.json(result);
   } catch (err) {
     if (err.message && /es_financiera|Cajas → Config|negativo/i.test(err.message)) {
@@ -108,9 +115,10 @@ router.get('/backfill-caja-tarjetas', async (_req, res, next) => {
   }
 });
 
-router.post('/backfill-caja-tarjetas/apply', async (_req, res, next) => {
+router.post('/backfill-caja-tarjetas/apply', async (req, res, next) => {
   try {
-    const result = await runBackfillTarjetas({ apply: true, silent: true });
+    const result = await runBackfillTarjetas({ apply: true, silent: true, userId: req.user?.id ?? null });
+    invalidateCajas();  // B1: ver comentario en /backfill-caja-financiera/apply
     res.json(result);
   } catch (err) {
     if (err.message && /es_tarjeta|Cajas → Config|negativo/i.test(err.message)) {

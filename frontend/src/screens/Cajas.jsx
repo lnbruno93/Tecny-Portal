@@ -170,6 +170,15 @@ export default function Cajas() {
   }
   useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);
 
+  // B1 trazabilidad: tras correr backfill en Config → Mantenimiento, el
+  // backend invalida su cache pero acá tenemos saldos en state local. Refresh
+  // si la pantalla está montada cuando llega el evento.
+  useEffect(() => {
+    const onCajasChanged = () => { if (tab === 'config') loadCajas(); };
+    window.addEventListener('cajas-changed', onCajasChanged);
+    return () => window.removeEventListener('cajas-changed', onCajasChanged);
+  }, [tab]);
+
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleCreateContacto(e) {

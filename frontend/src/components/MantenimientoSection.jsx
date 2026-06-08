@@ -201,6 +201,11 @@ function BackfillPanel({ title, descripcion, apiReport, apiApply, renderReport, 
       setReport(data);
       setReportAt(new Date());
       toast.success(getStateChecks.successToast(data));
+      // B1: emitir evento global para que las pantallas de Cajas / 360 /
+      // Tarjetas / Financiera refresquen sus saldos. El backend ya invalidó
+      // su cache TTL — esto cierra el loop en el frontend (que tiene su
+      // propio state local por screen).
+      window.dispatchEvent(new Event('cajas-changed'));
     } catch (err) {
       toast.error(err);
     } finally {
