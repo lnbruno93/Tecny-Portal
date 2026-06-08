@@ -18,6 +18,7 @@ const parseId  = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimientoTarjeta } = require('../lib/tarjetas');
 const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
@@ -345,6 +346,15 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
       [metodo_pago_id, fecha, mp.rows[0].moneda, bruto, pctFinal, comision, neto,
        comentarios ?? null, req.user.id]
     );
+
+    // +ingreso por monto_neto en la caja-tarjeta (trazabilidad junio 2026).
+    // Si la moneda del cobro no coincide con la de la tarjeta, postCaja
+    // Movimiento throwea 400; el ROLLBACK del catch deja todo limpio.
+    await postCajaMovimientoTarjeta(client, {
+      metodo_pago_id, fecha, tipo: 'ingreso', monto: neto, moneda: mp.rows[0].moneda,
+      ref_id: rows[0].id, concepto: 'Cobro previo', user_id: req.user.id,
+    });
+
     await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, {
       despues: rows[0], tipo: 'cobro_inicial', user_id: req.user.id,
     });
@@ -352,6 +362,7 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });
@@ -379,16 +390,24 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
        VALUES ($1,$2,'liquidacion',$3,$4,0,0,$4,$5,$6,$7) RETURNING *`,
       [metodo_pago_id, fecha, moneda, m, caja_id, comentarios ?? null, req.user.id]
     );
+    // Ingreso a la caja destino (lo que ya existía).
     await postCajaMovimiento(client, {
       caja_id, fecha, tipo: 'ingreso', monto: m, moneda, tc: null,
       origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: rows[0].id,
       concepto: 'Liquidación tarjeta', user_id: req.user.id,
+    });
+    // Egreso de la caja-tarjeta (trazabilidad junio 2026 — mismo ref_tabla/
+    // ref_id, así reverseCajaMovimientos en DELETE revierte AMBOS en bloque).
+    await postCajaMovimientoTarjeta(client, {
+      metodo_pago_id, fecha, tipo: 'egreso', monto: m, moneda,
+      ref_id: rows[0].id, concepto: 'Liquidación tarjeta', user_id: req.user.id,
     });
     await audit(client, 'tarjeta_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });
@@ -542,6 +561,14 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
         origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: rows[0].id,
         concepto: `Liquidación ${mp.nombre}`, user_id: req.user.id,
       });
+      // Egreso de la caja-tarjeta (trazabilidad junio 2026). Monto en ARS
+      // (m), igual al que se descuenta del saldo pendiente.
+      await postCajaMovimientoTarjeta(client, {
+        metodo_pago_id: reparto.metodo_pago_id, fecha, tipo: 'egreso',
+        monto: m, moneda: mp.moneda,
+        ref_id: rows[0].id,
+        concepto: `Liquidación ${mp.nombre} (múltiple)`, user_id: req.user.id,
+      });
       // Audit con marker `batch: 'liquidacion_multiple'`. Si hubo conversión,
       // guardamos el USD efectivo del reparto para reconstruir la operación
       // desde el audit log si fuese necesario.
@@ -619,6 +646,22 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
         [id, fecha, bruto, pctFinal, comision, neto, comentarios]
       );
       updated = rows[0];
+
+      // Trazabilidad junio 2026: si cambió el neto o la fecha, revertimos el
+      // ingreso viejo en la caja-tarjeta y posteamos uno nuevo. Si solo cambió
+      // metadata (comentarios), no tocamos la caja. reverseCajaMovimientos
+      // valida que el saldo no quede negativo — si ya hubo una liquidación
+      // que consumió este cobro, devuelve 409 con mensaje claro.
+      const netoCambio  = Number(mov.monto_neto) !== neto;
+      const fechaCambio = String(mov.fecha).slice(0, 10) !== String(fecha).slice(0, 10);
+      if (netoCambio || fechaCambio) {
+        await reverseCajaMovimientos(client, 'tarjeta_movimientos', id);
+        await postCajaMovimientoTarjeta(client, {
+          metodo_pago_id: mov.metodo_pago_id,
+          fecha, tipo: 'ingreso', monto: neto, moneda: mov.moneda,
+          ref_id: id, concepto: 'Cobro previo (editado)', user_id: req.user.id,
+        });
+      }
     } else if (mov.tipo === 'liquidacion') {
       // H1 (auditoría 2026-06-06): si la liquidación se hizo con conversión
       // USD (tc IS NOT NULL), el PATCH actual NO soporta editarla — el bloque
@@ -652,8 +695,10 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       }
       const comentarios = body.comentarios === undefined ? mov.comentarios : (body.comentarios ?? null);
 
-      // 1) Soft-delete del caja_movimiento previo (revierte la caja vieja).
-      // Si esto dejara la caja en negativo, throwea 409 → propagamos al cliente.
+      // 1) Soft-delete de TODOS los caja_movimientos del mov (ingreso destino
+      //    + egreso caja-tarjeta). reverseCajaMovimientos revierte por
+      //    ref_tabla='tarjeta_movimientos' AND ref_id=id, así que pesca AMBOS.
+      //    Si el egreso reverse dejara la caja-tarjeta en negativo, throwea 409.
       await reverseCajaMovimientos(client, 'tarjeta_movimientos', id);
 
       // 2) Update del movimiento de tarjeta con los nuevos valores.
@@ -666,11 +711,17 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       );
       updated = rows[0];
 
-      // 3) Postear el nuevo caja_movimiento con los nuevos valores.
+      // 3) Postear de nuevo AMBOS caja_movimientos: ingreso destino + egreso
+      //    caja-tarjeta (trazabilidad junio 2026).
       await postCajaMovimiento(client, {
         caja_id, fecha, tipo: 'ingreso', monto, moneda, tc: null,
         origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: id,
         concepto: 'Liquidación tarjeta', user_id: req.user.id,
+      });
+      await postCajaMovimientoTarjeta(client, {
+        metodo_pago_id: mov.metodo_pago_id, fecha, tipo: 'egreso',
+        monto, moneda: mov.metodo_moneda,
+        ref_id: id, concepto: 'Liquidación tarjeta (editado)', user_id: req.user.id,
       });
     } else {
       await client.query('ROLLBACK');
@@ -690,7 +741,9 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
     res.json(updated);
   } catch (err) {
     await client.query('ROLLBACK');
-    if (err.status === 409) return res.status(409).json({ error: err.message });
+    // postCajaMovimiento(Tarjeta) y reverseCajaMovimientos throwean con
+    // err.status (400 moneda mal/saldo insuficiente, 409 quedar negativo).
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });

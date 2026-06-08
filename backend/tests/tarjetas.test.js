@@ -39,7 +39,7 @@ describe('Tarjetas — método de pago con comisión', () => {
 });
 
 describe('Tarjetas — cobro automático desde Ventas', () => {
-  it('una venta con el método tarjeta genera el cobro con la comisión, sin tocar la caja', async () => {
+  it('una venta con el método tarjeta genera el cobro Y +ingreso por monto_neto en la caja-tarjeta', async () => {
     const saldoTarAntes = await saldoCaja(metodoTarjeta);
     const venta = await request(app).post('/api/ventas').set(auth()).send({
       fecha: hoy, cliente_nombre: 'Cliente Tarjeta', estado: 'acreditado', tc_venta: 1000,
@@ -47,8 +47,10 @@ describe('Tarjetas — cobro automático desde Ventas', () => {
       pagos: [{ metodo_pago_id: metodoTarjeta, metodo_nombre: 'Tarjeta de Crédito | 3 Cuotas', monto: 100000, moneda: 'ARS', tc: 1000 }],
     });
     expect(venta.status).toBe(201);
-    // la "caja tarjeta" no recibe el ingreso (entra en la liquidación)
-    expect(await saldoCaja(metodoTarjeta)).toBe(saldoTarAntes);
+    // Trazabilidad junio 2026: la caja-tarjeta AHORA refleja el cobro pendiente.
+    // Antes el saldo de la caja-tarjeta solo cambiaba al liquidar; ahora cada
+    // cobro (de venta o previo) suma el monto_neto al saldo de la caja.
+    expect(await saldoCaja(metodoTarjeta)).toBe(saldoTarAntes + 76500);
     // cobro automático con 23,5%
     const movs = await movimientos(metodoTarjeta);
     const cobro = movs.find(m => m.tipo === 'cobro' && m.venta_id === venta.body.id);
@@ -56,7 +58,7 @@ describe('Tarjetas — cobro automático desde Ventas', () => {
     expect(Number(cobro.monto_bruto)).toBe(100000);
     expect(Number(cobro.monto_comision)).toBe(23500);
     expect(Number(cobro.monto_neto)).toBe(76500);
-    // saldo de la tarjeta = neto pendiente
+    // saldo virtual del módulo = neto pendiente, coincide con caja-tarjeta.
     const t = (await tarjetas()).find(x => x.id === metodoTarjeta);
     expect(Number(t.saldo)).toBe(76500);
   });
@@ -739,13 +741,18 @@ describe('Tarjetas — POST /liquidaciones-multiples', () => {
     const cj = await request(app).post('/api/cajas/cajas').set(auth())
       .send({ nombre: 'Caja Mult ARS', moneda: 'ARS', saldo_inicial: 0 });
     cajaMult = cj.body.id;
-    // Cargamos saldo en las 3 tarjetas para poder liquidar.
+    // Cargamos saldo holgado en las 3 tarjetas para poder liquidar incluso
+    // los casos con override USD (~1.3M ARS). Trazabilidad junio 2026: ahora
+    // la caja-tarjeta valida saldo no negativo al egresar (postCajaMovimiento
+    // Tarjeta) — antes no había check y se podía liquidar más de lo cobrado.
+    // Los tests dependían del comportamiento viejo; ahora pre-cargamos el
+    // saldo necesario.
     await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
-      .send({ metodo_pago_id: tarjetaA, fecha: hoy, monto_bruto: 50000, pct: 0 });
+      .send({ metodo_pago_id: tarjetaA, fecha: hoy, monto_bruto: 5_000_000, pct: 0 });
     await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
-      .send({ metodo_pago_id: tarjetaB, fecha: hoy, monto_bruto: 30000, pct: 0 });
+      .send({ metodo_pago_id: tarjetaB, fecha: hoy, monto_bruto: 5_000_000, pct: 0 });
     await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
-      .send({ metodo_pago_id: tarjetaC, fecha: hoy, monto_bruto: 20000, pct: 0 });
+      .send({ metodo_pago_id: tarjetaC, fecha: hoy, monto_bruto: 5_000_000, pct: 0 });
   });
 
   it('happy path: 3 repartos → 3 movs + 3 ingresos a caja en una tx', async () => {
@@ -768,9 +775,11 @@ describe('Tarjetas — POST /liquidaciones-multiples', () => {
     const a = (await tarjetas()).find(x => x.id === tarjetaA);
     const b = (await tarjetas()).find(x => x.id === tarjetaB);
     const c = (await tarjetas()).find(x => x.id === tarjetaC);
-    expect(Number(a.saldo)).toBe(40000);  // 50000 - 10000
-    expect(Number(b.saldo)).toBe(25000);  // 30000 - 5000
-    expect(Number(c.saldo)).toBe(17000);  // 20000 - 3000
+    // Setup precarga 5M en cada tarjeta (era 50k/30k/20k antes del cambio a
+    // saldo holgado para los tests de USD override que requieren más fondos).
+    expect(Number(a.saldo)).toBe(5_000_000 - 10000);
+    expect(Number(b.saldo)).toBe(5_000_000 - 5000);
+    expect(Number(c.saldo)).toBe(5_000_000 - 3000);
   });
 
   it('una sola tarjeta también funciona (degenera al caso simple)', async () => {
