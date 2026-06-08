@@ -150,8 +150,11 @@ async function getSaldoTarjeta(client, tarjetaId) {
  *
  * `silent: true` suprime el reporte humano — para uso desde endpoint admin
  * (el reporte se transmite en el JSON de respuesta).
+ *
+ * `userId` se estampa en cada caja_movimiento.user_id para audit trail.
+ * En modo CLI queda null (= "operación de sistema").
  */
-async function runBackfill({ apply, verbose, silent } = {}) {
+async function runBackfill({ apply, verbose, silent, userId } = {}) {
   const log = silent ? () => {} : (...args) => console.log(...args);
   const client = await db.connect();
   try {
@@ -287,23 +290,26 @@ async function runBackfill({ apply, verbose, silent } = {}) {
       throw new Error(`El saldo proyectado de al menos una tarjeta quedaría negativo. ABORTADO sin tocar la DB.`);
     }
 
+    // B2 audit trail: ver comentario en backfill-caja-financiera.
+    const uid = userId ?? null;
+
     let cobrosOk = 0, liqOk = 0;
     for (const c of cobros) {
       await client.query(`
         INSERT INTO caja_movimientos
           (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'ingreso', $3, $3, 'tarjeta', 'tarjeta_movimientos', $4, $5, NULL)
+        VALUES ($1, $2, 'ingreso', $3, $3, 'tarjeta', 'tarjeta_movimientos', $4, $5, $6)
       `, [c.metodo_pago_id, c.fecha, c.monto_neto, c.id,
-          `Backfill ${c.venta_id ? `cobro venta #${c.venta_id}` : 'cobro previo'}`]);
+          `Backfill ${c.venta_id ? `cobro venta #${c.venta_id}` : 'cobro previo'}`, uid]);
       cobrosOk++;
     }
     for (const l of liquidaciones) {
       await client.query(`
         INSERT INTO caja_movimientos
           (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'egreso', $3, $3, 'tarjeta', 'tarjeta_movimientos', $4, $5, NULL)
+        VALUES ($1, $2, 'egreso', $3, $3, 'tarjeta', 'tarjeta_movimientos', $4, $5, $6)
       `, [l.metodo_pago_id, l.fecha, l.monto_neto, l.id,
-          `Backfill egreso liquidación → ${l.caja_destino_nombre || '?'}`]);
+          `Backfill egreso liquidación → ${l.caja_destino_nombre || '?'}`, uid]);
       liqOk++;
     }
 

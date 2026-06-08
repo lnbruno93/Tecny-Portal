@@ -117,6 +117,21 @@ describe('POST /api/admin/backfill-caja-financiera/apply', () => {
     expect(parseInt(rows[0].count)).toBe(1);
   });
 
+  // B2 audit trail (TANDA 0 trazabilidad): el endpoint admin debe estampar
+  // user_id del admin disparador en cada caja_movimiento creado, para trazar
+  // quién corrió el backfill. CLI sin endpoint deja null.
+  it('B2: estampa req.user.id en user_id de los caja_movimientos del backfill', async () => {
+    await seedComprobanteHistorico({ fecha: '2026-03-02', cliente: 'Audit trail', monto_neto: 1000 });
+    const r = await request(app).post('/api/admin/backfill-caja-financiera/apply').set(auth());
+    expect(r.status).toBe(200);
+    // El TEST_USER usado en login es admin (id=1 según el seed).
+    const { rows } = await pool.query(
+      `SELECT user_id FROM caja_movimientos WHERE ref_tabla = 'comprobantes' AND deleted_at IS NULL`
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user_id).not.toBeNull();
+  });
+
   it('correr 2 veces no duplica (idempotente)', async () => {
     await seedComprobanteHistorico({ fecha: '2026-03-01', cliente: 'Idem', monto_neto: 10000 });
     await request(app).post('/api/admin/backfill-caja-financiera/apply').set(auth());

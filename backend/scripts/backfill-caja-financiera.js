@@ -163,8 +163,11 @@ async function getSaldoActual(client, cajaId) {
  *
  * `silent: true` suprime el reporte humano (para uso desde endpoint HTTP —
  * el reporte se transmite en el JSON de respuesta, no en stdout).
+ *
+ * `userId` se estampa en cada caja_movimiento.user_id para audit trail.
+ * En modo CLI (sin endpoint) queda null — visible como "operación de sistema".
  */
-async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent } = {}) {
+async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent, userId } = {}) {
   const log = silent ? () => {} : (...args) => console.log(...args);
   const client = await db.connect();
   try {
@@ -272,13 +275,17 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
       throw new Error(`El saldo proyectado quedaría negativo (${fmtARS(saldoProyectado)}). ABORTADO.`);
     }
 
+    // B2 audit trail: cada mov del backfill lleva user_id = admin que disparó
+    // el endpoint. CLI sin endpoint deja null (= "operación de sistema").
+    const uid = userId ?? null;
+
     let comprObjInserted = 0;
     for (const c of comprobantes) {
       await client.query(`
         INSERT INTO caja_movimientos
           (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'ingreso', $3, $3, 'financiera', 'comprobantes', $4, $5, NULL)
-      `, [fv.id, c.fecha, c.monto_neto, c.id, `Backfill venta previa · ${c.cliente}${c.referencia ? ' · ' + c.referencia : ''}`]);
+        VALUES ($1, $2, 'ingreso', $3, $3, 'financiera', 'comprobantes', $4, $5, $6)
+      `, [fv.id, c.fecha, c.monto_neto, c.id, `Backfill venta previa · ${c.cliente}${c.referencia ? ' · ' + c.referencia : ''}`, uid]);
       comprObjInserted++;
     }
 
@@ -287,8 +294,8 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
       await client.query(`
         INSERT INTO caja_movimientos
           (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, user_id)
-        VALUES ($1, $2, 'egreso', $3, $3, 'financiera', 'pagos', $4, $5, NULL)
-      `, [fv.id, p.fecha, p.monto, p.id, `Backfill egreso pago vendedor → ${p.caja_destino || '?'}${p.referencia ? ' · ' + p.referencia : ''}`]);
+        VALUES ($1, $2, 'egreso', $3, $3, 'financiera', 'pagos', $4, $5, $6)
+      `, [fv.id, p.fecha, p.monto, p.id, `Backfill egreso pago vendedor → ${p.caja_destino || '?'}${p.referencia ? ' · ' + p.referencia : ''}`, uid]);
       pagosInserted++;
     }
 
