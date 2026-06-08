@@ -8,6 +8,8 @@ const audit = require('../lib/audit');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
 const { computeNeto } = require('../lib/money');
+const { postCajaMovimientoFinanciera } = require('../lib/financiera');
+const { reverseCajaMovimientos } = require('../lib/cajaLedger');
 const {
   createComprobanteSchema, queryComprobantesSchema,
   createManualComprobanteSchema, updateManualComprobanteSchema,
@@ -123,28 +125,60 @@ router.get('/', validate(queryComprobantesSchema, 'query'), async (req, res, nex
 
 // ─── Crear ────────────────────────────────────────────────────────────────────
 router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
+  // Antes: el INSERT no estaba en tx y no impactaba caja_movimientos. Junio
+  // 2026: trazabilidad Financiera → toda carga de comprobante (genérico o
+  // manual) genera un ingreso de `monto_neto` en la caja `es_financiera=true`.
+  // Misma tx para que si el postCajaMovimientoFinanciera falla (ej. no hay
+  // caja FV configurada), el comprobante no quede huérfano.
+  const client = await db.connect();
   try {
     const { fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo } = req.body;
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+
+    const { rows } = await client.query(
       `INSERT INTO comprobantes (fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [fecha, cliente, vendedor_id ?? null, monto, monto_financiera, monto_neto ?? monto, referencia ?? null,
        archivo_data ?? null, archivo_nombre ?? null, archivo_tipo ?? null]
     );
+    const compId = rows[0].id;
+    const netoMov = Number(monto_neto ?? monto);
+
+    // Ingreso en caja FV. Si no hay caja `es_financiera=true`, throwea con
+    // mensaje claro al operador y el comprobante se rollbackea.
+    await postCajaMovimientoFinanciera(client, {
+      tipo: 'ingreso',
+      fecha,
+      monto: netoMov,
+      ref_tabla: 'comprobantes',
+      ref_id: compId,
+      concepto: `Comprobante · ${cliente}${referencia ? ' · ' + referencia : ''}`,
+      user_id: req.user.id,
+    });
+
     // Excluir el base64 del audit (infla la tabla) y de la respuesta (el cliente ya lo tiene)
     const { archivo_data: _blob, ...comprobante } = rows[0];
-    await audit('comprobantes', 'INSERT', rows[0].id, { despues: comprobante, user_id: req.user.id });
+    await audit(client, 'comprobantes', 'INSERT', compId, { despues: comprobante, user_id: req.user.id });
+    await client.query('COMMIT');
     res.status(201).json(comprobante);
   } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 // ─── Comprobante manual (venta previa al sistema) ────────────────────────────
 // Réplica del modelo "cobro previo" de Tarjetas. Carga un comprobante con
 // venta_id=NULL — para ventas históricas donde el cliente pagó con la caja
-// Financiera pero la venta no está en el sistema. No impacta caja_movimientos
-// (no hay venta real). Solo agrega al resumen de Financiera.
+// Financiera pero la venta no está en el sistema.
+//
+// Junio 2026: AHORA impacta caja_movimientos. La decisión original ("no impacta
+// caja, no hay venta real") rompía trazabilidad — el operador tenía dinero
+// REAL entrando a la caja Financiera y el saldo del libro caja no lo reflejaba.
+// Ahora se postea un ingreso de `monto_neto` en la caja `es_financiera=true`,
+// con `ref_tabla='comprobantes'` para que reverseCajaMovimientos lo revierta
+// al borrar/editar.
 router.post('/manuales', validate(createManualComprobanteSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
@@ -163,7 +197,19 @@ router.post('/manuales', validate(createManualComprobanteSchema), async (req, re
                  monto_neto, referencia, venta_id, created_at`,
       [fecha, cliente, vendedor_id ?? null, bruto, comision, neto, referencia ?? null]
     );
-    await audit(client, 'comprobantes', 'INSERT', rows[0].id, {
+    const compId = rows[0].id;
+
+    await postCajaMovimientoFinanciera(client, {
+      tipo: 'ingreso',
+      fecha,
+      monto: neto,
+      ref_tabla: 'comprobantes',
+      ref_id: compId,
+      concepto: `Venta previa · ${cliente}${referencia ? ' · ' + referencia : ''}`,
+      user_id: req.user.id,
+    });
+
+    await audit(client, 'comprobantes', 'INSERT', compId, {
       despues: rows[0], tipo: 'manual_venta_previa', pct_aplicado: pctFinal,
       user_id: req.user.id,
     });
@@ -171,6 +217,7 @@ router.post('/manuales', validate(createManualComprobanteSchema), async (req, re
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });
@@ -203,13 +250,27 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
     const vendedor_id = body.vendedor_id === undefined ? cur.vendedor_id : (body.vendedor_id ?? null);
     const referencia  = body.referencia  === undefined ? cur.referencia  : (body.referencia ?? null);
 
-    // Recalcular montos: el `pct` aplicado original NO se persiste en la tabla,
-    // así que si el body trae solo `monto_bruto` (sin pct), usamos el pct
-    // global actual de config. Esto puede dar un resultado distinto al original
-    // — el operador puede mandar pct explícito si quiere preservar el viejo.
-    const pctEfectivo = await resolverPctFinanciera(client, body.pct);
-    const brutoInput  = body.monto_bruto ?? cur.monto;
-    const { bruto, pct: pctFinal, comision, neto } = computeNeto(brutoInput, pctEfectivo);
+    // Recalcular montos solo si el body trae monto_bruto o pct. Si solo se
+    // editan metadatos (cliente, vendedor, referencia, fecha), preservamos
+    // los montos originales — antes el PATCH siempre recomputaba con el pct
+    // global actual de config, lo que cambiaba el neto al editar solo el
+    // cliente si la config había cambiado desde la carga original.
+    //
+    // Trazabilidad junio 2026: este fix es clave porque ahora el caja_movimiento
+    // en FV se revierte/repostea cuando cambia el neto. Sin esta guarda, editar
+    // solo el cliente movería el saldo de la caja FV sin razón.
+    const recalcMontos = (body.monto_bruto !== undefined) || (body.pct !== undefined);
+    let bruto, pctFinal, comision, neto;
+    if (recalcMontos) {
+      const pctEfectivo = await resolverPctFinanciera(client, body.pct);
+      const brutoInput  = body.monto_bruto ?? cur.monto;
+      ({ bruto, pct: pctFinal, comision, neto } = computeNeto(brutoInput, pctEfectivo));
+    } else {
+      bruto    = Number(cur.monto);
+      comision = Number(cur.monto_financiera);
+      neto     = Number(cur.monto_neto);
+      pctFinal = null; // no aplica — no recalculamos
+    }
 
     const { rows } = await client.query(
       `UPDATE comprobantes
@@ -220,6 +281,25 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
                   monto_neto, referencia, venta_id, created_at`,
       [id, fecha, cliente, vendedor_id, bruto, comision, neto, referencia]
     );
+
+    // Trazabilidad caja FV: si cambió el neto o la fecha, revertimos el
+    // caja_movimiento viejo y posteamos uno nuevo. Si solo cambiaron campos
+    // de metadata (cliente, referencia, vendedor), no tocamos la caja.
+    const netoCambio  = Number(cur.monto_neto) !== neto;
+    const fechaCambio = String(cur.fecha).slice(0, 10) !== String(fecha).slice(0, 10);
+    if (netoCambio || fechaCambio) {
+      await reverseCajaMovimientos(client, 'comprobantes', id);
+      await postCajaMovimientoFinanciera(client, {
+        tipo: 'ingreso',
+        fecha,
+        monto: neto,
+        ref_tabla: 'comprobantes',
+        ref_id: id,
+        concepto: `Venta previa (editado) · ${cliente}${referencia ? ' · ' + referencia : ''}`,
+        user_id: req.user.id,
+      });
+    }
+
     await audit(client, 'comprobantes', 'UPDATE', id, {
       antes: cur, despues: rows[0], pct_aplicado: pctFinal, user_id: req.user.id,
     });
@@ -227,6 +307,7 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });
@@ -257,12 +338,18 @@ router.delete('/:id', async (req, res, next) => {
       'UPDATE comprobantes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
+    // Revertir el caja_movimiento en caja FV (si existe — los comprobantes
+    // pre-junio 2026 no tienen mov asociado, así que reverseCajaMovimientos
+    // es no-op para ellos).
+    await reverseCajaMovimientos(client, 'comprobantes', id);
+
     const { archivo_data: _blob, ...comprobante } = rows[0];
     await audit(client, 'comprobantes', 'DELETE', id, { antes: comprobante, user_id: req.user.id });
     await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
 });

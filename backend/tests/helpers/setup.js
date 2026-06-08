@@ -64,6 +64,15 @@ async function setupTestDb() {
     ON CONFLICT DO NOTHING
   `);
 
+  // Marcar una caja como Financiera (es_financiera=true) — desde junio 2026
+  // los flujos POST /api/comprobantes y POST /api/pagos REQUIEREN una caja FV
+  // para postear el caja_movimiento de trazabilidad. Si no hay ninguna, todos
+  // esos endpoints rebotan con 400. Tests que crean su propia caja FV vía
+  // POST /api/cajas/cajas la sobreescriben (constraint UNIQUE).
+  await pool.query(`
+    UPDATE metodos_pago SET es_financiera = true WHERE nombre = 'Pesos Ars | Efectivo'
+  `);
+
   // Crear usuario admin de prueba
   const hash = await bcrypt.hash(TEST_USER.password, 10);
   const { rows } = await pool.query(

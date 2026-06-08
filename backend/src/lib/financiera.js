@@ -75,4 +75,76 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
   return rows[0];
 }
 
-module.exports = { syncFinancieraComprobante };
+/**
+ * postCajaMovimientoFinanciera — registra un caja_movimiento sobre la caja
+ * marcada `es_financiera = true` para reflejar TODO movimiento del módulo
+ * Financiera (comprobantes manuales, pagos a vendedor) en el libro caja.
+ *
+ * Decisión durable (junio 2026): el módulo Financiera ya tenía un "saldo
+ * virtual" calculado del SUM(comprobantes) − SUM(pagos), pero ese saldo no
+ * impactaba la caja `es_financiera`. Resultado: el libro caja no reflejaba
+ * los comprobantes manuales (ventas previas al sistema) ni la salida de
+ * dinero al pagar vendedores. Trazabilidad rota.
+ *
+ * Con este helper, el invariante pasa a ser:
+ *
+ *    saldo caja FV  ≡  Σ ingresos (ventas con pago FV + comprobantes manuales)
+ *                    − Σ egresos  (pagos a vendedor)
+ *
+ * Convenciones:
+ *  · El monto que se postea es el `monto_neto` (lo que efectivamente queda
+ *    en la caja después de la retención de la financiera). La comisión nunca
+ *    pasa por la caja del comercio — la retiene la fuente. Si en el futuro
+ *    quisieras ver el bruto entrando y la comisión saliendo (2 movs), revisar
+ *    esta decisión — afecta el saldo histórico.
+ *  · La moneda del movimiento usa la moneda de la caja FV (lo que postCaja
+ *    Movimiento espera). Si los montos vienen en otra moneda, el caller debe
+ *    convertir antes.
+ *  · `ref_tabla` / `ref_id` permiten que `reverseCajaMovimientos` revierta
+ *    automáticamente al borrar/editar el documento origen (comprobante o pago).
+ *
+ * Errors: si no existe ninguna caja marcada `es_financiera=true`, throwea
+ * con un mensaje claro al operador — pidiéndole que configure la caja en
+ * Cajas → Config. NO crea movimientos huérfanos.
+ */
+const { postCajaMovimiento } = require('./cajaLedger');
+
+async function postCajaMovimientoFinanciera(client, {
+  tipo,        // 'ingreso' | 'egreso'
+  fecha,
+  monto,       // monto NETO del movimiento (positivo)
+  ref_tabla,   // 'comprobantes' | 'pagos'
+  ref_id,
+  concepto,
+  user_id,
+}) {
+  const { rows } = await client.query(
+    `SELECT id, moneda FROM metodos_pago
+      WHERE es_financiera = true AND deleted_at IS NULL
+      LIMIT 1`
+  );
+  if (!rows[0]) {
+    const e = new Error(
+      'No hay caja marcada como Financiera. Configurá una caja con "es_financiera = true" en Cajas → Config antes de operar.'
+    );
+    e.status = 400;
+    throw e;
+  }
+  const fv = rows[0];
+
+  return postCajaMovimiento(client, {
+    caja_id: fv.id,
+    fecha,
+    tipo,
+    monto,
+    moneda: fv.moneda, // la moneda del movimiento es la de la caja (grupoMoneda check delegado)
+    tc: null,          // hoy la caja FV es ARS — si en el futuro hay FV en USD/USDT, ajustar
+    origen: 'financiera',
+    ref_tabla,
+    ref_id,
+    concepto: concepto ?? null,
+    user_id: user_id ?? null,
+  });
+}
+
+module.exports = { syncFinancieraComprobante, postCajaMovimientoFinanciera };

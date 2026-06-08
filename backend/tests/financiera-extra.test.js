@@ -27,6 +27,11 @@ describe('Pagos — DELETE y filtros', () => {
     const c = await request(app).post('/api/cajas/cajas').set(auth())
       .send({ nombre: 'Caja ARS Pagos Extra', moneda: 'ARS', saldo_inicial: 0 });
     cajaArs = c.body.id;
+    // Trazabilidad junio 2026: POST /api/pagos ahora hace egreso desde la caja
+    // FV (es_financiera=true). Para que estos tests pasen el saldo, primero
+    // cargamos un comprobante manual que dé balance a la caja FV.
+    await request(app).post('/api/comprobantes/manuales').set(auth())
+      .send({ fecha: '2026-01-01', cliente: 'Prime FV', monto_bruto: 1000000, pct: 0 });
   });
 
   it('borra un pago (soft-delete), y devuelve 404/400 según corresponda', async () => {
@@ -69,6 +74,10 @@ describe('Pagos — conversión USD + impacto en cajas', () => {
     const us = await request(app).post('/api/cajas/cajas').set(auth())
       .send({ nombre: 'Caja USD Pagos USD Test', moneda: 'USD', saldo_inicial: 0 });
     cajaArs = ar.body.id; cajaUsd = us.body.id;
+    // Prime caja FV con saldo holgado para todos los pagos del bloque.
+    // Los pagos hacen egreso desde FV (trazabilidad junio 2026).
+    await request(app).post('/api/comprobantes/manuales').set(auth())
+      .send({ fecha: '2026-02-15', cliente: 'Prime FV USD', monto_bruto: 5000000, pct: 0 });
   });
 
   it('pago en ARS (sin conversión): la caja ARS sube por el monto exacto', async () => {
