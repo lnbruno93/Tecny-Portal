@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { config as configApi } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import { fmt } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import AlertasModule from './Alertas';
 import TwoFaSection from '../components/TwoFaSection';
+import MantenimientoSection from '../components/MantenimientoSection';
 
 
 const SYSTEM_LIMITS = [
@@ -19,12 +21,17 @@ const SYSTEM_LIMITS = [
 
 export default function Config() {
   const location = useLocation();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   // Tab inicial: si el hash es #alertas (deep-link desde el badge de alertas
   // en el sidebar), arrancamos en esa tab. Si no, default general.
+  // #mantenimiento solo se respeta si el usuario es admin (de lo contrario
+  // cae a 'general'); el backend igual rechaza con 403 a no-admins.
   const initialTab = location.hash === '#alertas' ? 'alertas'
                     : location.hash === '#seguridad' ? 'seguridad'
+                    : (location.hash === '#mantenimiento' && isAdmin) ? 'mantenimiento'
                     : 'general';
-  const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad'
+  const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad' | 'mantenimiento'
   const [pct, setPct]           = useState(3);
   const [inputVal, setInputVal] = useState('3');
   const [saving, setSaving]     = useState(false);
@@ -37,8 +44,9 @@ export default function Config() {
   useEffect(() => {
     if (location.hash === '#alertas') setTab('alertas');
     else if (location.hash === '#seguridad') setTab('seguridad');
+    else if (location.hash === '#mantenimiento' && isAdmin) setTab('mantenimiento');
     else if (location.hash === '#general') setTab('general');
-  }, [location.hash]);
+  }, [location.hash, isAdmin]);
 
   useEffect(() => {
     configApi.get()
@@ -121,10 +129,19 @@ export default function Config() {
                 onClick={() => setTab('seguridad')}>
           <Icons.Shield size={14} /> Seguridad
         </button>
+        {/* Tab admin-only: aparece solo si user.role === 'admin'. El backend
+            igual rechaza con 403 a no-admins si intentan hitear los endpoints. */}
+        {isAdmin && (
+          <button className={'btn ' + (tab === 'mantenimiento' ? 'btn-primary' : '')}
+                  onClick={() => setTab('mantenimiento')}>
+            <Icons.Bolt size={14} /> Mantenimiento
+          </button>
+        )}
       </div>
 
       {tab === 'alertas' && <AlertasModule />}
       {tab === 'seguridad' && <TwoFaSection />}
+      {tab === 'mantenimiento' && isAdmin && <MantenimientoSection />}
 
       {tab === 'general' && (
       <>

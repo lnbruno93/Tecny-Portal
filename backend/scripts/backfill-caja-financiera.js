@@ -160,8 +160,12 @@ async function getSaldoActual(client, cajaId) {
 /**
  * Ejecuta el backfill dentro de una transacción. Si apply=false, ROLLBACK
  * (lo que hicimos no se persiste, pero el saldo proyectado es real).
+ *
+ * `silent: true` suprime el reporte humano (para uso desde endpoint HTTP —
+ * el reporte se transmite en el JSON de respuesta, no en stdout).
  */
-async function runBackfill({ apply, verbose, soloComprobantes, soloPagos } = {}) {
+async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent } = {}) {
+  const log = silent ? () => {} : (...args) => console.log(...args);
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -180,64 +184,83 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos } = {})
     const totalPagos       = pagos.reduce((s, p) => s + Number(p.monto || 0), 0);
     const saldoProyectado  = saldoAntes + totalCompromisos - totalPagos;
 
-    // Reporte
-    console.log('═'.repeat(70));
-    console.log(`  Backfill caja FV  ·  ${apply ? 'APPLY' : 'DRY-RUN'}`);
-    console.log('═'.repeat(70));
-    console.log('');
-    console.log(`Caja FV: #${fv.id} · "${fv.nombre}" · ${fv.moneda}`);
-    console.log(`Saldo actual:        ${fmtARS(saldoAntes).padStart(18)}`);
-    console.log('');
+    // Reporte humano (CLI). El endpoint admin pasa silent=true.
+    log('═'.repeat(70));
+    log(`  Backfill caja FV  ·  ${apply ? 'APPLY' : 'DRY-RUN'}`);
+    log('═'.repeat(70));
+    log('');
+    log(`Caja FV: #${fv.id} · "${fv.nombre}" · ${fv.moneda}`);
+    log(`Saldo actual:        ${fmtARS(saldoAntes).padStart(18)}`);
+    log('');
 
     if (verbose && comprobantes.length > 0) {
-      console.log('─── Comprobantes manuales pendientes ─────────────────────');
-      console.log('   ID    Fecha       Cliente                       Neto');
+      log('─── Comprobantes manuales pendientes ─────────────────────');
+      log('   ID    Fecha       Cliente                       Neto');
       for (const c of comprobantes) {
         const cliente = String(c.cliente || '').slice(0, 28).padEnd(28);
-        console.log(`   ${String(c.id).padStart(4)}  ${fmtDate(c.fecha)}  ${cliente}  ${fmtARS(c.monto_neto).padStart(14)}`);
+        log(`   ${String(c.id).padStart(4)}  ${fmtDate(c.fecha)}  ${cliente}  ${fmtARS(c.monto_neto).padStart(14)}`);
       }
-      console.log('');
+      log('');
     }
-    console.log(`Comprobantes pendientes: ${comprobantes.length.toString().padStart(4)} · +${fmtARS(totalCompromisos)}`);
+    log(`Comprobantes pendientes: ${comprobantes.length.toString().padStart(4)} · +${fmtARS(totalCompromisos)}`);
 
     if (verbose && pagos.length > 0) {
-      console.log('');
-      console.log('─── Pagos sin egreso desde FV ────────────────────────────');
-      console.log('   ID    Fecha       Caja destino                  Monto');
+      log('');
+      log('─── Pagos sin egreso desde FV ────────────────────────────');
+      log('   ID    Fecha       Caja destino                  Monto');
       for (const p of pagos) {
         const dest = String(p.caja_destino || '').slice(0, 28).padEnd(28);
-        console.log(`   ${String(p.id).padStart(4)}  ${fmtDate(p.fecha)}  ${dest}  ${fmtARS(p.monto).padStart(14)}`);
+        log(`   ${String(p.id).padStart(4)}  ${fmtDate(p.fecha)}  ${dest}  ${fmtARS(p.monto).padStart(14)}`);
       }
-      console.log('');
+      log('');
     }
-    console.log(`Pagos pendientes:        ${pagos.length.toString().padStart(4)} · −${fmtARS(totalPagos)}`);
-    console.log('');
-    console.log('─── Resumen ────────────────────────────────────────────────');
-    console.log(`   Saldo actual:        ${fmtARS(saldoAntes).padStart(18)}`);
-    console.log(`   + Comprobantes:      ${fmtARS(totalCompromisos).padStart(18)}`);
-    console.log(`   − Pagos:             ${fmtARS(totalPagos).padStart(18)}`);
-    console.log(`   ───────────────────────────────────────────────────────`);
-    console.log(`   Saldo proyectado:    ${fmtARS(saldoProyectado).padStart(18)}`);
-    console.log('');
+    log(`Pagos pendientes:        ${pagos.length.toString().padStart(4)} · −${fmtARS(totalPagos)}`);
+    log('');
+    log('─── Resumen ────────────────────────────────────────────────');
+    log(`   Saldo actual:        ${fmtARS(saldoAntes).padStart(18)}`);
+    log(`   + Comprobantes:      ${fmtARS(totalCompromisos).padStart(18)}`);
+    log(`   − Pagos:             ${fmtARS(totalPagos).padStart(18)}`);
+    log(`   ───────────────────────────────────────────────────────`);
+    log(`   Saldo proyectado:    ${fmtARS(saldoProyectado).padStart(18)}`);
+    log('');
 
     if (saldoProyectado < 0) {
-      console.log('⚠️  ATENCIÓN: el saldo proyectado quedaría NEGATIVO.');
-      console.log('   Probablemente hay pagos sin sus comprobantes contraparte.');
-      console.log('   Investigá antes de aplicar; revisá si faltan comprobantes históricos.');
-      console.log('');
+      log('⚠️  ATENCIÓN: el saldo proyectado quedaría NEGATIVO.');
+      log('   Probablemente hay pagos sin sus comprobantes contraparte.');
+      log('   Investigá antes de aplicar; revisá si faltan comprobantes históricos.');
+      log('');
     }
 
+    // Datos estructurados para el caller (sirve UI + tests).
+    const muestras = {
+      comprobantes: comprobantes.slice(0, 10).map(c => ({
+        id: c.id, fecha: fmtDate(c.fecha), cliente: c.cliente, monto_neto: Number(c.monto_neto),
+      })),
+      pagos: pagos.slice(0, 10).map(p => ({
+        id: p.id, fecha: fmtDate(p.fecha), caja_destino: p.caja_destino, monto: Number(p.monto),
+      })),
+    };
+
     if (comprobantes.length === 0 && pagos.length === 0) {
-      console.log('✓ Nada que backfillear. Todos los comprobantes/pagos ya tienen caja_movimiento.');
+      log('✓ Nada que backfillear. Todos los comprobantes/pagos ya tienen caja_movimiento.');
       await client.query('ROLLBACK');
-      return { apply, comprobantes: 0, pagos: 0, saldoAntes, saldoProyectado, skipped: true };
+      return {
+        apply, comprobantes: 0, pagos: 0, saldoAntes, saldoProyectado, saldoProyectadoNegativo: false,
+        totalCompromisos: 0, totalPagos: 0, muestras, skipped: true,
+        caja: { id: fv.id, nombre: fv.nombre, moneda: fv.moneda },
+      };
     }
 
     if (!apply) {
-      console.log('Para aplicar:  node scripts/backfill-caja-financiera.js --apply');
-      console.log('');
+      log('Para aplicar:  node scripts/backfill-caja-financiera.js --apply');
+      log('');
       await client.query('ROLLBACK');
-      return { apply: false, comprobantes: comprobantes.length, pagos: pagos.length, saldoAntes, saldoProyectado };
+      return {
+        apply: false, comprobantes: comprobantes.length, pagos: pagos.length,
+        saldoAntes, saldoProyectado, saldoProyectadoNegativo: saldoProyectado < 0,
+        totalCompromisos, totalPagos, muestras,
+        caja: { id: fv.id, nombre: fv.nombre, moneda: fv.moneda },
+      };
     }
 
     // ── APPLY: insertar los caja_movimientos directamente con SQL ──
@@ -276,11 +299,17 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos } = {})
     }
 
     await client.query('COMMIT');
-    console.log(`✓ ${comprObjInserted} ingresos por comprobantes manuales`);
-    console.log(`✓ ${pagosInserted} egresos por pagos`);
-    console.log(`✓ Saldo final: ${fmtARS(saldoFinal)} (validado >= 0)`);
-    console.log(`COMMIT.`);
-    return { apply: true, comprobantes: comprObjInserted, pagos: pagosInserted, saldoAntes, saldoFinal };
+    log(`✓ ${comprObjInserted} ingresos por comprobantes manuales`);
+    log(`✓ ${pagosInserted} egresos por pagos`);
+    log(`✓ Saldo final: ${fmtARS(saldoFinal)} (validado >= 0)`);
+    log(`COMMIT.`);
+    return {
+      apply: true,
+      comprobantes: comprObjInserted, pagos: pagosInserted,
+      saldoAntes, saldoFinal,
+      totalCompromisos, totalPagos,
+      caja: { id: fv.id, nombre: fv.nombre, moneda: fv.moneda },
+    };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
