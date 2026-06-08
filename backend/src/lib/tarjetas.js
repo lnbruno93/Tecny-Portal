@@ -8,6 +8,41 @@
 // syncTarjetaCobros reconcilia de forma idempotente: borra los cobros previos de
 // la venta y los recrea desde los pagos actuales. Debe correr dentro de la tx.
 const { computeNeto } = require('./money');
+const { postCajaMovimiento, reverseCajaMovimientos } = require('./cajaLedger');
+
+/**
+ * Postea un caja_movimiento sobre la caja-tarjeta correspondiente. Wrapper
+ * fino sobre postCajaMovimiento que fija origen='tarjeta' y ref_tabla=
+ * 'tarjeta_movimientos' para que reverseCajaMovimientos lo revierta en bloque
+ * al DELETE/cancelación.
+ *
+ * Trazabilidad junio 2026 (TANDA 1 Tarjetas): cada cobro de tarjeta (de venta
+ * o previo) postea +ingreso en su caja-tarjeta con monto_neto; cada liquidación
+ * postea −egreso por monto_neto. El saldo del libro caja queda alineado con
+ * el saldo "Te deben" virtual del módulo Tarjetas (Σ neto cobros − Σ neto
+ * liquidaciones).
+ *
+ * `metodo_pago_id` ES la caja-tarjeta (cada tarjeta es su propia caja en
+ * metodos_pago con es_tarjeta=true).
+ */
+async function postCajaMovimientoTarjeta(client, {
+  metodo_pago_id, fecha, tipo, monto, moneda,
+  ref_id, concepto, user_id,
+}) {
+  return postCajaMovimiento(client, {
+    caja_id: metodo_pago_id,
+    fecha,
+    tipo,
+    monto,
+    moneda,
+    tc: null,
+    origen: 'tarjeta',
+    ref_tabla: 'tarjeta_movimientos',
+    ref_id,
+    concepto: concepto ?? null,
+    user_id: user_id ?? null,
+  });
+}
 
 function err400(msg) { return Object.assign(new Error(msg), { status: 400 }); }
 
@@ -59,7 +94,17 @@ async function syncTarjetaCobros(client, ventaId, estado) {
   if (estado === 'cancelado') {
     await checkLiquidacionesBloqueantes(client, ventaId);
   }
-  // Revertir cobros previos de esta venta
+  // Antes de soft-deletear los tarjeta_movimientos, listamos sus IDs para
+  // revertir sus caja_movimientos asociados (trazabilidad junio 2026). Si
+  // no había caja_movs (cobros pre-TANDA 1), reverseCajaMovimientos es no-op.
+  const { rows: cobrosViejos } = await client.query(
+    `SELECT id FROM tarjeta_movimientos
+      WHERE venta_id = $1 AND tipo = 'cobro' AND deleted_at IS NULL`, [ventaId]
+  );
+  for (const c of cobrosViejos) {
+    await reverseCajaMovimientos(client, 'tarjeta_movimientos', c.id);
+  }
+  // Soft-delete los cobros viejos (se recrearán abajo si la venta sigue activa).
   await client.query(
     `UPDATE tarjeta_movimientos SET deleted_at = NOW()
       WHERE venta_id = $1 AND tipo = 'cobro' AND deleted_at IS NULL`, [ventaId]
@@ -79,13 +124,24 @@ async function syncTarjetaCobros(client, ventaId, estado) {
 
   for (const p of pagos) {
     const { bruto, pct, comision, neto } = computeNeto(p.monto, p.comision_pct);
-    await client.query(
+    const { rows } = await client.query(
       `INSERT INTO tarjeta_movimientos
          (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, venta_id)
-       VALUES ($1,$2,'cobro',$3,$4,$5,$6,$7,$8)`,
+       VALUES ($1,$2,'cobro',$3,$4,$5,$6,$7,$8) RETURNING id`,
       [p.metodo_pago_id, fecha, p.moneda, bruto, pct, comision, neto, ventaId]
     );
+    // +ingreso por monto_neto en la caja-tarjeta. Si la moneda del cobro no
+    // matchea el grupo de la tarjeta, postCajaMovimiento throwea 400.
+    await postCajaMovimientoTarjeta(client, {
+      metodo_pago_id: p.metodo_pago_id,
+      fecha,
+      tipo: 'ingreso',
+      monto: neto,
+      moneda: p.moneda,
+      ref_id: rows[0].id,
+      concepto: `Cobro venta #${ventaId}`,
+    });
   }
 }
 
-module.exports = { syncTarjetaCobros };
+module.exports = { syncTarjetaCobros, postCajaMovimientoTarjeta };
