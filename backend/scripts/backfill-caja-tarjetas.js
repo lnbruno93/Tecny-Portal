@@ -25,6 +25,12 @@
  *   node scripts/backfill-caja-tarjetas.js             # reporte (no destructivo)
  *   node scripts/backfill-caja-tarjetas.js --apply     # ejecutar
  *   node scripts/backfill-caja-tarjetas.js --verbose   # detalle de cada mov
+ *
+ * Nota: A diferencia de backfill-caja-financiera (que tiene flags
+ * --solo-comprobantes / --solo-pagos), acá no exponemos --solo-cobros ni
+ * --solo-liquidaciones — los 2 paths son simétricos y no hubo caso de uso
+ * para correr uno sin el otro. Si llegan a hacer falta, agregar siguiendo el
+ * patrón de financiera.
  */
 
 const db = require('../src/config/database');
