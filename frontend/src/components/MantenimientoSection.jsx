@@ -13,23 +13,14 @@
  * monta solo si user.role === 'admin'. El backend también impone el role
  * check (defensa en profundidad).
  */
-import { useState } from 'react';
-import { Icons } from './Icons';
+// TANDA 4 trazab: BackfillPanel + showApiError extraídos a components/admin/.
+// Acá solo viven los renderers específicos (FinancieraReport, TarjetasReport)
+// y la composición de los 2 paneles.
 import { admin as adminApi } from '../lib/api';
-import { useToast } from '../contexts/ToastContext';
-import { useConfirm } from './ConfirmModal';
+import BackfillPanel from './admin/BackfillPanel';
 
 function fmtARS(n) {
   return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
-}
-
-// H5 (TANDA 1 trazab): manejo coherente de errores de API.
-//   · `toast.error(err)` con un Error object puede mostrar "[object Object]".
-//   · "NO_AUTH" lo emite api.js cuando vence el JWT — el AuthContext ya
-//     redirecciona, así que filtrarlo evita un toast confuso.
-function showApiError(toast, err) {
-  if (err?.message === 'NO_AUTH') return; // el AuthContext lo maneja
-  toast.error(err?.message || 'Error inesperado. Revisá la consola.');
 }
 
 // ─── Render del reporte para Financiera (1 caja) ────────────────────────────
@@ -168,105 +159,6 @@ function TarjetasReport({ report }) {
         </tbody>
       </table>
     </>
-  );
-}
-
-// ─── Panel reutilizable ─────────────────────────────────────────────────────
-function BackfillPanel({ title, descripcion, apiReport, apiApply, renderReport, confirmConfig, getStateChecks }) {
-  const { toast } = useToast();
-  const confirm = useConfirm();
-  const [report, setReport] = useState(null);
-  const [reportAt, setReportAt] = useState(null);
-  const [running, setRunning] = useState(null);
-
-  async function handleReport() {
-    setRunning('report');
-    try {
-      const data = await apiReport();
-      setReport(data);
-      setReportAt(new Date());
-      if (data.skipped) toast.success('Sin movimientos pendientes — la trazabilidad está al día.');
-      else toast.info(getStateChecks.summaryToast(data));
-    } catch (err) {
-      showApiError(toast, err);
-    } finally {
-      setRunning(null);
-    }
-  }
-
-  async function handleApply() {
-    if (!report) { toast.error('Primero corré "Ver reporte".'); return; }
-    if (report.skipped) { toast.info('No hay nada pendiente.'); return; }
-    if (getStateChecks.hayNegativo(report)) {
-      toast.error('Hay saldo proyectado negativo. Revisá antes de aplicar.');
-      return;
-    }
-    const ok = await confirm(confirmConfig(report));
-    if (!ok) return;
-
-    setRunning('apply');
-    try {
-      const data = await apiApply();
-      setReport(data);
-      setReportAt(new Date());
-      toast.success(getStateChecks.successToast(data));
-      // B1: emitir evento global para que las pantallas de Cajas / 360 /
-      // Tarjetas / Financiera refresquen sus saldos. El backend ya invalidó
-      // su cache TTL — esto cierra el loop en el frontend (que tiene su
-      // propio state local por screen).
-      window.dispatchEvent(new Event('cajas-changed'));
-    } catch (err) {
-      showApiError(toast, err);
-    } finally {
-      setRunning(null);
-    }
-  }
-
-  const applyDisabled =
-    !!running || !report || report.skipped || getStateChecks.hayNegativo(report);
-
-  return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-hd">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Icons.Bolt size={16} /> {title}
-        </h3>
-      </div>
-
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
-        {descripcion}
-      </div>
-
-      <div className="flex-row" style={{ gap: 8, padding: '14px 18px', flexWrap: 'wrap' }}>
-        <button className="btn" onClick={handleReport} disabled={!!running}>
-          <Icons.Search size={13} />
-          {running === 'report' ? ' Calculando…' : ' Ver reporte (dry-run)'}
-        </button>
-        <button
-          className="btn btn-primary"
-          onClick={handleApply}
-          disabled={applyDisabled}
-          title={
-            !report ? 'Primero "Ver reporte"'
-            : report.skipped ? 'Nada pendiente'
-            : getStateChecks.hayNegativo(report) ? 'Proyección negativa — revisá antes'
-            : 'Aplicar backfill'
-          }
-        >
-          <Icons.Check size={13} />
-          {running === 'apply' ? ' Aplicando…' : ' Aplicar'}
-        </button>
-      </div>
-
-      {report && (
-        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--hairline)', background: 'var(--surface-2)' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-            {report.apply ? '✓ Aplicado' : '· Reporte'} · {reportAt ? reportAt.toLocaleTimeString('es-AR') : '—'}
-          </div>
-          {renderReport(report)}
-        </div>
-      )}
-    </div>
   );
 }
 
