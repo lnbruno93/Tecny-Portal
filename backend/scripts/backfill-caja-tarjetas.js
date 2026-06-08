@@ -29,7 +29,7 @@
 
 const db = require('../src/config/database');
 const {
-  fmtARS, fmtDate, err400, CONCEPTOS, insertCajaMovimientoBackfill,
+  fmtARS, fmtDate, err400, CONCEPTOS, insertCajaMovimientosBatch,
 } = require('./lib/backfillUtils');
 
 // H2 (TANDA 1 trazab): lock ID arbitrario para pg_try_advisory_xact_lock.
@@ -145,6 +145,26 @@ async function getSaldoTarjeta(client, tarjetaId) {
   return Number(rows[0]?.saldo || 0);
 }
 
+// TANDA 2 trazab: trae saldo_actual de TODAS las tarjetas en 1 query (vs N).
+// Para 50 tarjetas pasa de 50 LEFT JOIN/GROUP BY a 1 — diferencia notable si
+// caja_movimientos tiene cientos de miles de filas.
+//
+// Devuelve un Map<tarjetaId, Number(saldo)> para lookup O(1).
+async function getSaldosTodasTarjetas(client) {
+  const { rows } = await client.query(`
+    SELECT mp.id,
+           mp.saldo_inicial
+           + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo
+      FROM metodos_pago mp
+      LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id AND cm.deleted_at IS NULL
+     WHERE mp.es_tarjeta = true AND mp.deleted_at IS NULL
+     GROUP BY mp.id, mp.saldo_inicial
+  `);
+  const map = new Map();
+  for (const r of rows) map.set(r.id, Number(r.saldo || 0));
+  return map;
+}
+
 /**
  * Ejecuta el backfill dentro de una transacción. Si apply=false, ROLLBACK
  * (lo que hicimos no se persiste, pero el saldo proyectado es real).
@@ -175,12 +195,15 @@ async function runBackfill({ apply, verbose, silent, userId } = {}) {
     const cobros        = await listarCobrosPendientes(client);
     const liquidaciones = await listarLiquidacionesPendientes(client);
 
+    // TANDA 2 trazab: 1 query bulk en vez de N getSaldoTarjeta(). Performance.
+    const saldosMap = await getSaldosTodasTarjetas(client);
+
     // Agrupar por tarjeta para el reporte + para validar saldo final por tarjeta.
     const porTarjeta = new Map(); // tarjetaId → { tarjeta, saldoAntes, cobros, liquidaciones, totalCobros, totalLiq, saldoProyectado }
     for (const t of tarjetas) {
       porTarjeta.set(t.id, {
         tarjeta: t,
-        saldoAntes: await getSaldoTarjeta(client, t.id),
+        saldoAntes: saldosMap.get(t.id) ?? 0,
         cobros: [],
         liquidaciones: [],
         totalCobros: 0,
@@ -300,32 +323,32 @@ async function runBackfill({ apply, verbose, silent, userId } = {}) {
     // B2 audit trail: ver comentario en backfill-caja-financiera.
     const uid = userId ?? null;
 
-    let cobrosOk = 0, liqOk = 0;
-    for (const c of cobros) {
-      await insertCajaMovimientoBackfill(client, {
+    // TANDA 2 trazab: batch INSERT con UNNEST.
+    const cobrosOk = await insertCajaMovimientosBatch(client,
+      cobros.map(c => ({
         caja_id: c.metodo_pago_id, fecha: c.fecha, tipo: 'ingreso',
         monto: c.monto_neto,
         origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: c.id,
         concepto: CONCEPTOS.backfillCobro(c.venta_id),
         user_id: uid,
-      });
-      cobrosOk++;
-    }
-    for (const l of liquidaciones) {
-      await insertCajaMovimientoBackfill(client, {
+      }))
+    );
+    const liqOk = await insertCajaMovimientosBatch(client,
+      liquidaciones.map(l => ({
         caja_id: l.metodo_pago_id, fecha: l.fecha, tipo: 'egreso',
         monto: l.monto_neto,
         origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: l.id,
         concepto: CONCEPTOS.backfillLiquidacion(l.caja_destino_nombre),
         user_id: uid,
-      });
-      liqOk++;
-    }
+      }))
+    );
 
     // Sanity check post-apply: ninguna caja-tarjeta puede quedar en negativo.
+    // TANDA 2 trazab: 1 query bulk para todos los saldos finales (vs N).
+    const saldosFinalesMap = await getSaldosTodasTarjetas(client);
     for (const g of porTarjeta.values()) {
       if (g.cobros.length + g.liquidaciones.length === 0) continue;
-      const saldoFinal = await getSaldoTarjeta(client, g.tarjeta.id);
+      const saldoFinal = saldosFinalesMap.get(g.tarjeta.id) ?? 0;
       if (saldoFinal < 0) {
         throw err400(`Saldo final de "${g.tarjeta.nombre}" es negativo (${fmtARS(saldoFinal)}). ROLLBACK.`);
       }
