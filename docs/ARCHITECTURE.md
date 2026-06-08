@@ -167,6 +167,40 @@ suficiente, que la moneda match el grupo de la caja, etc. Lanza error 400 o
 permite invariantes tipo "todo caja_mov con origen=egreso debe tener un
 egreso correspondiente vivo" (ver §7).
 
+#### 5.2.1 Trazabilidad por módulo (Financiera + Tarjetas, junio 2026)
+
+Dos módulos exponen su propio saldo virtual que **debe coincidir** con el
+saldo real de una caja específica. La trazabilidad la garantizan helpers
+dedicados que envuelven `postCajaMovimiento`:
+
+**Financiera ↔ caja `es_financiera=true` (singleton):**
+- `lib/financiera.js → postCajaMovimientoFinanciera(client, { fecha, tipo, monto, ref_tabla, ref_id, concepto, user_id })`
+- Busca internamente la caja con `es_financiera=true` (debe existir 1, throwea
+  400 si no). Origen: `'financiera'`.
+- Forward path: `comprobantes.js` POST (+ingreso por venta), POST /manuales
+  (+ingreso), DELETE/PATCH (reverse+repost si cambió neto); `pagos.js` POST
+  (−egreso por pago a vendedor).
+- **Decisión durable:** se usa `monto_neto`, NO bruto. La comisión retenida
+  por la financiera no pasa por caja — es ingreso virtual del módulo, no real.
+
+**Tarjetas ↔ caja `es_tarjeta=true` (N, una por tarjeta):**
+- `lib/tarjetas.js → postCajaMovimientoTarjeta(client, { metodo_pago_id, fecha, tipo, monto, ref_id, concepto, user_id })`
+- Recibe `metodo_pago_id` explícito porque cada tarjeta es su propia caja
+  (modelo N-to-N, no singleton como Financiera).
+- Forward path: `tarjetas.js` POST /cobros-iniciales (+ingreso), POST
+  /liquidaciones (−egreso), POST /liquidaciones-multiples (−egreso por
+  reparto); `syncTarjetaCobros` reverse+repost cobros de venta al editar.
+- **Decisión durable:** monto = neto cobrado (igual que Financiera). La
+  comisión nunca toca caja.
+
+**Backfill histórico:** `scripts/backfill-caja-financiera.js` y
+`scripts/backfill-caja-tarjetas.js` reconstruyen los movs pre-cutover.
+Idempotentes (WHERE NOT EXISTS), corren en una tx con advisory lock
+(`pg_try_advisory_xact_lock`) para evitar 2 admins en paralelo, validan
+saldo final ≥ 0 antes de COMMIT. UI inline en Config → Mantenimiento
+(admin only) + endpoints `GET|POST /api/admin/backfill-caja-*` con
+rate-limit propio.
+
 ### 5.3 Audit logs
 
 Cada `INSERT`/`UPDATE`/`DELETE` significativo escribe en `audit_logs`:
@@ -307,7 +341,16 @@ Las críticas (severity `crítica`):
   `metodo_pago_id` debe tener un `caja_movimientos` correspondiente.
 - **Proyecto mov con caja_id → caja_movimiento:** análogo.
 
-Las altas/medias miran consistencia referencial de conciliación, soft-delete
+Trazabilidad por módulo (severity `alta`, ver §5.2.1):
+- **Comprobante manual → +ingreso en caja FV:** todo comprobante con
+  `venta_id IS NULL` debe tener `caja_movimientos` `tipo=ingreso` referenciándolo.
+- **Pago → −egreso en caja FV:** todo `pagos.caja_id IS NOT NULL` debe tener
+  un −egreso en la caja `es_financiera=true`.
+- **Cobro → +ingreso en caja-tarjeta:** todo `tarjeta_movimientos.tipo='cobro'`
+  debe tener `caja_movimientos` `tipo=ingreso` en su caja-tarjeta (`metodo_pago_id`).
+- **Liquidación → −egreso en caja-tarjeta:** análogo con `tipo=liquidacion`.
+
+Las medias miran consistencia referencial de conciliación, soft-delete
 across tables, etc.
 
 ---
