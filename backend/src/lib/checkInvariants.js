@@ -218,6 +218,111 @@ const INVARIANTES = [
     `,
     format: r => `Conciliación #${r.id} (${r.fecha_desde}/${r.fecha_hasta}) cerrada con ${r.pendientes} líneas pendientes`,
   },
+
+  // ─── Trazabilidad Financiera ↔ caja FV (TANDA 1 trazab) ───────────────
+  //
+  // Estos 2 invariantes capturan el modelo que introdujeron los PRs #119+#120:
+  //   · Todo comprobante manual debe tener un +ingreso en la caja FV
+  //     (es_financiera=true). Forward path lo crea en POST /comprobantes/manuales,
+  //     backfill (PR #120) lo crea para los históricos.
+  //   · Todo pago a vendedor con caja_id NOT NULL debe tener un −egreso en FV.
+  //     Forward path: pagos.js POST; backfill: scripts/backfill-caja-financiera.
+  //
+  // Si alguno dispara post-cutover, significa que hay un nuevo flujo que omite
+  // el helper postCajaMovimientoFinanciera o un bug en el forward path.
+  {
+    id: 'comprobante_manual_sin_caja_mov_fv',
+    descripcion: 'Comprobantes manuales (venta_id NULL) sin +ingreso en la caja Financiera',
+    severity: 'alta',
+    query: `
+      SELECT c.id, c.fecha, c.cliente, c.monto_neto
+        FROM comprobantes c
+       WHERE c.deleted_at IS NULL
+         AND c.venta_id IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM caja_movimientos cm
+            WHERE cm.ref_tabla = 'comprobantes'
+              AND cm.ref_id   = c.id
+              AND cm.tipo     = 'ingreso'
+              AND cm.deleted_at IS NULL
+         )
+       LIMIT 20
+    `,
+    format: r => `Comprobante manual #${r.id} (${r.fecha}, ${r.cliente}, ${r.monto_neto}) sin +ingreso en caja FV`,
+  },
+
+  {
+    id: 'pago_sin_egreso_caja_fv',
+    descripcion: 'Pagos con caja_id NOT NULL sin −egreso en la caja Financiera',
+    severity: 'alta',
+    query: `
+      SELECT p.id, p.fecha, p.monto, p.caja_id
+        FROM pagos p
+       WHERE p.deleted_at IS NULL
+         AND p.caja_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM caja_movimientos cm
+            JOIN metodos_pago mp ON mp.id = cm.caja_id AND mp.es_financiera = true
+            WHERE cm.ref_tabla = 'pagos'
+              AND cm.ref_id   = p.id
+              AND cm.tipo     = 'egreso'
+              AND cm.deleted_at IS NULL
+         )
+       LIMIT 20
+    `,
+    format: r => `Pago #${r.id} (${r.fecha}, $${r.monto}, destino caja ${r.caja_id}) sin −egreso en caja FV`,
+  },
+
+  // ─── Trazabilidad Tarjetas ↔ caja-tarjeta (TANDA 1+2 Tarjetas trazab) ──
+  //
+  // Análogo al modelo Financiera: cada tarjeta_movimiento debe tener su
+  // contraparte en caja_movimientos sobre la caja-tarjeta (= el método de
+  // pago con es_tarjeta=true) que lo originó.
+  {
+    id: 'cobro_sin_ingreso_caja_tarjeta',
+    descripcion: 'tarjeta_movimientos tipo=cobro sin +ingreso en su caja-tarjeta',
+    severity: 'alta',
+    query: `
+      SELECT tm.id, tm.metodo_pago_id, tm.fecha, tm.monto_neto, mp.nombre AS tarjeta
+        FROM tarjeta_movimientos tm
+        JOIN metodos_pago mp ON mp.id = tm.metodo_pago_id
+       WHERE tm.tipo = 'cobro'
+         AND tm.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM caja_movimientos cm
+            WHERE cm.ref_tabla = 'tarjeta_movimientos'
+              AND cm.ref_id   = tm.id
+              AND cm.caja_id  = tm.metodo_pago_id
+              AND cm.tipo     = 'ingreso'
+              AND cm.deleted_at IS NULL
+         )
+       LIMIT 20
+    `,
+    format: r => `Cobro #${r.id} (${r.fecha}, ${r.tarjeta}, ${r.monto_neto}) sin +ingreso en caja-tarjeta`,
+  },
+
+  {
+    id: 'liquidacion_sin_egreso_caja_tarjeta',
+    descripcion: 'tarjeta_movimientos tipo=liquidacion sin −egreso en su caja-tarjeta',
+    severity: 'alta',
+    query: `
+      SELECT tm.id, tm.metodo_pago_id, tm.fecha, tm.monto_neto, mp.nombre AS tarjeta
+        FROM tarjeta_movimientos tm
+        JOIN metodos_pago mp ON mp.id = tm.metodo_pago_id
+       WHERE tm.tipo = 'liquidacion'
+         AND tm.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM caja_movimientos cm
+            WHERE cm.ref_tabla = 'tarjeta_movimientos'
+              AND cm.ref_id   = tm.id
+              AND cm.caja_id  = tm.metodo_pago_id
+              AND cm.tipo     = 'egreso'
+              AND cm.deleted_at IS NULL
+         )
+       LIMIT 20
+    `,
+    format: r => `Liquidación #${r.id} (${r.fecha}, ${r.tarjeta}, ${r.monto_neto}) sin −egreso en caja-tarjeta`,
+  },
 ];
 
 /**

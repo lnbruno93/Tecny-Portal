@@ -23,6 +23,15 @@ function fmtARS(n) {
   return '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 }
 
+// H5 (TANDA 1 trazab): manejo coherente de errores de API.
+//   · `toast.error(err)` con un Error object puede mostrar "[object Object]".
+//   · "NO_AUTH" lo emite api.js cuando vence el JWT — el AuthContext ya
+//     redirecciona, así que filtrarlo evita un toast confuso.
+function showApiError(toast, err) {
+  if (err?.message === 'NO_AUTH') return; // el AuthContext lo maneja
+  toast.error(err?.message || 'Error inesperado. Revisá la consola.');
+}
+
 // ─── Render del reporte para Financiera (1 caja) ────────────────────────────
 function FinancieraReport({ report }) {
   if (report.skipped) {
@@ -179,7 +188,7 @@ function BackfillPanel({ title, descripcion, apiReport, apiApply, renderReport, 
       if (data.skipped) toast.success('Sin movimientos pendientes — la trazabilidad está al día.');
       else toast.info(getStateChecks.summaryToast(data));
     } catch (err) {
-      toast.error(err);
+      showApiError(toast, err);
     } finally {
       setRunning(null);
     }
@@ -207,7 +216,7 @@ function BackfillPanel({ title, descripcion, apiReport, apiApply, renderReport, 
       // propio state local por screen).
       window.dispatchEvent(new Event('cajas-changed'));
     } catch (err) {
-      toast.error(err);
+      showApiError(toast, err);
     } finally {
       setRunning(null);
     }
@@ -284,9 +293,9 @@ export default function MantenimientoSection() {
           title: 'Aplicar backfill Financiera',
           message: (
             <>
-              <p>Se van a crear <b>{r.comprobantes} ingresos</b> y <b>{r.pagos} egresos</b> en la caja <b>{r.caja?.nombre}</b>.</p>
+              <p>Se van a crear <b>{r.comprobantes} ingresos</b> (+{fmtARS(r.totalCompromisos)}) y <b>{r.pagos} egresos</b> (−{fmtARS(r.totalPagos)}) en la caja <b>{r.caja?.nombre}</b>.</p>
               <p>Saldo proyectado: <b>{fmtARS(r.saldoProyectado)}</b>.</p>
-              <p>Esta operación es <b>reversible solo a mano</b>. ¿Continuar?</p>
+              <p>Para revertir hay que borrar los <code>caja_movimientos</code> creados desde la base directamente. ¿Continuar?</p>
             </>
           ),
           confirmLabel: 'Sí, aplicar',
@@ -314,17 +323,23 @@ export default function MantenimientoSection() {
         apiReport={adminApi.backfillTarjetasReport}
         apiApply={adminApi.backfillTarjetasApply}
         renderReport={(r) => <TarjetasReport report={r} />}
-        confirmConfig={(r) => ({
-          title: 'Aplicar backfill Tarjetas',
-          message: (
-            <>
-              <p>Se van a crear <b>{r.cobros} ingresos</b> y <b>{r.liquidaciones} egresos</b> distribuidos en <b>{r.porTarjeta.length} tarjetas</b>.</p>
-              <p>Esta operación es <b>reversible solo a mano</b>. ¿Continuar?</p>
-            </>
-          ),
-          confirmLabel: 'Sí, aplicar',
-          tone: 'danger',
-        })}
+        confirmConfig={(r) => {
+          // H6 (TANDA 1 trazab): mostrar total agregado para que el operador
+          // dimensione la operación. Antes solo veía cantidad de movs sin monto.
+          const totalCobros = r.porTarjeta.reduce((s, g) => s + Number(g.totalCobros || 0), 0);
+          const totalLiq    = r.porTarjeta.reduce((s, g) => s + Number(g.totalLiq || 0), 0);
+          return {
+            title: 'Aplicar backfill Tarjetas',
+            message: (
+              <>
+                <p>Se van a crear <b>{r.cobros} ingresos</b> (+{fmtARS(totalCobros)}) y <b>{r.liquidaciones} egresos</b> (−{fmtARS(totalLiq)}) distribuidos en <b>{r.porTarjeta.length} tarjetas</b>.</p>
+                <p>Para revertir hay que borrar los <code>caja_movimientos</code> creados desde la base directamente. ¿Continuar?</p>
+              </>
+            ),
+            confirmLabel: 'Sí, aplicar',
+            tone: 'danger',
+          };
+        }}
         getStateChecks={{
           hayNegativo: (r) => !!r.hayNegativos,
           summaryToast: (r) => `${r.cobros} cobros + ${r.liquidaciones} liquidaciones en ${r.porTarjeta.length} tarjetas.`,

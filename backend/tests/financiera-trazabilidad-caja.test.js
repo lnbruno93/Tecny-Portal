@@ -146,6 +146,74 @@ describe('Trazabilidad: pagos a vendedor → ingreso destino + egreso FV', () =>
   });
 });
 
+// H3 (TANDA 1 trazab): pago USD a caja destino USD/USDT vs caja FV ARS.
+// Path crítico que estaba sin cubrir: el convertir_usd flow (que SÍ está en
+// producción desde el sprint USD×TC=ARS) crea el ingreso destino en USD y el
+// egreso FV en ARS — dos monedas distintas en la misma tx.
+describe('Trazabilidad: pago USD vs FV ARS (convertir_usd)', () => {
+  let cajaUsdt;
+  beforeAll(async () => {
+    const c = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'USDT Pago Test', moneda: 'USDT', saldo_inicial: 0 });
+    cajaUsdt = c.body.id;
+    // Primear FV con saldo holgado.
+    await request(app).post('/api/comprobantes/manuales').set(auth())
+      .send({ fecha: '2026-04-25', cliente: 'Prime USD test', monto_bruto: 3000000, pct: 0 });
+  });
+
+  it('POST /pagos convertir_usd=true → +monto_usd en USDT, −monto en FV ARS', async () => {
+    const fvId    = await getFvId();
+    const fvAntes = await saldoCaja(fvId);
+    const dstAntes = await saldoCaja(cajaUsdt);
+
+    const r = await request(app).post('/api/pagos').set(auth()).send({
+      fecha: '2026-04-26',
+      monto: 600000,           // ARS equivalente
+      caja_id: cajaUsdt,
+      convertir_usd: true,
+      tc: 1200,
+      monto_usd: 500,          // 600000 / 1200
+      referencia: 'Pago vendedor USDT',
+    });
+    expect(r.status).toBe(201);
+
+    // Destino USDT recibe USD; FV ARS descuenta el ARS equivalente.
+    expect(await saldoCaja(cajaUsdt)).toBeCloseTo(dstAntes + 500, 2);
+    expect(await saldoCaja(fvId)).toBe(fvAntes - 600000);
+
+    // Verificar que ambos movs existen con la moneda correcta y misma ref_id.
+    const { rows } = await pool.query(`
+      SELECT caja_id, tipo, monto, monto_usd
+        FROM caja_movimientos
+       WHERE ref_tabla = 'pagos' AND ref_id = $1 AND deleted_at IS NULL
+       ORDER BY tipo
+    `, [r.body.id]);
+    expect(rows).toHaveLength(2);
+    // 'egreso' viene antes que 'ingreso' alfabéticamente.
+    expect(rows[0].tipo).toBe('egreso');
+    expect(Number(rows[0].monto)).toBe(600000); // ARS en FV
+    expect(rows[1].tipo).toBe('ingreso');
+    expect(Number(rows[1].monto)).toBe(500);    // USD en USDT
+  });
+
+  it('DELETE del pago USD revierte AMBOS movs (USDT destino + ARS FV)', async () => {
+    const fvId    = await getFvId();
+    const pago = await request(app).post('/api/pagos').set(auth()).send({
+      fecha: '2026-04-27', monto: 120000, caja_id: cajaUsdt,
+      convertir_usd: true, tc: 1200, monto_usd: 100, referencia: 'Reverso USD',
+    });
+    expect(pago.status).toBe(201);
+    const fvConPago  = await saldoCaja(fvId);
+    const dstConPago = await saldoCaja(cajaUsdt);
+
+    const del = await request(app).delete(`/api/pagos/${pago.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+
+    expect(await saldoCaja(cajaUsdt)).toBeCloseTo(dstConPago - 100, 2);
+    expect(await saldoCaja(fvId)).toBe(fvConPago + 120000);
+  });
+});
+
 describe('Trazabilidad: sin caja FV configurada → error claro', () => {
   it('si no existe caja es_financiera=true, POST /manuales devuelve 400 con mensaje guía', async () => {
     // Desmarcar la caja FV del setup.

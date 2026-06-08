@@ -128,6 +128,76 @@ describe('Trazabilidad: liquidaciones → −egreso en caja-tarjeta', () => {
   });
 });
 
+// H4 (TANDA 1 trazab): liquidación múltiple con conversión USD — N tarjetas ARS
+// liquidadas en bloque a una caja USDT/USD destino. Cubre la trazabilidad
+// completa: cada tarjeta-ARS lleva su −egreso ARS, la caja-destino recibe +ingreso
+// USD por cada reparto, y la suma de USD coincide con el total efectivo.
+describe('Trazabilidad: liquidación múltiple ARS → USDT con conversión', () => {
+  let tarjeta2Id, cajaUsdtId;
+  beforeAll(async () => {
+    // Una segunda tarjeta ARS para liquidar en bloque.
+    const t = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Mixto Test', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    tarjeta2Id = t.body.id;
+    // Caja destino USDT.
+    const c = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'USDT Liq Mult', moneda: 'USDT', saldo_inicial: 0 });
+    cajaUsdtId = c.body.id;
+    // Cebar ambas tarjetas con cobros previos en ARS para tener saldo a liquidar.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjetaId, fecha: hoy, monto_bruto: 600000, pct: 0 });
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjeta2Id, fecha: hoy, monto_bruto: 400000, pct: 0 });
+  });
+
+  it('Cada tarjeta-ARS recibe −egreso ARS, caja USDT recibe +ingresos en USD, suma exacta', async () => {
+    const t1Antes  = await saldoCaja(tarjetaId);
+    const t2Antes  = await saldoCaja(tarjeta2Id);
+    const usdtAntes = await saldoCaja(cajaUsdtId);
+
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId,
+        repartos: [
+          { metodo_pago_id: tarjetaId,  monto: 600000 },
+          { metodo_pago_id: tarjeta2Id, monto: 400000 },
+        ],
+        convertir_usd: true, tc: 1000, total_usd_efectivo: 1000,
+        comentarios: 'Liq múltiple mixto',
+      });
+    expect(r.status).toBe(201);
+
+    // Cada caja-tarjeta ARS bajó por SU monto ARS.
+    expect(await saldoCaja(tarjetaId)).toBe(t1Antes - 600000);
+    expect(await saldoCaja(tarjeta2Id)).toBe(t2Antes - 400000);
+    // Caja USDT recibe el total USD exacto (1000 USDT).
+    expect(await saldoCaja(cajaUsdtId)).toBeCloseTo(usdtAntes + 1000, 2);
+
+    // Verificar trazabilidad: 2 movs INGRESO USD + 2 movs EGRESO ARS, todos
+    // con origen correcto. Filtramos por los IDs de tarjeta_movimientos creados.
+    const ids = r.body.movimientos.map(m => m.id);
+    const { rows } = await pool.query(`
+      SELECT cm.caja_id, cm.tipo, cm.monto, mp.moneda
+        FROM caja_movimientos cm
+        JOIN metodos_pago mp ON mp.id = cm.caja_id
+       WHERE cm.ref_tabla = 'tarjeta_movimientos' AND cm.ref_id = ANY($1)
+         AND cm.deleted_at IS NULL
+       ORDER BY cm.caja_id, cm.tipo
+    `, [ids]);
+    // 4 caja_movimientos: 2 ingreso (a caja USDT) + 2 egreso (uno por tarjeta).
+    expect(rows).toHaveLength(4);
+    const ingresos = rows.filter(r => r.tipo === 'ingreso');
+    const egresos  = rows.filter(r => r.tipo === 'egreso');
+    expect(ingresos).toHaveLength(2);
+    expect(egresos).toHaveLength(2);
+    // Los ingresos van a la caja USDT (en USD).
+    ingresos.forEach(i => { expect(i.caja_id).toBe(cajaUsdtId); expect(i.moneda).toBe('USDT'); });
+    // Los egresos van a cada caja-tarjeta ARS (en ARS).
+    const egresosMontos = egresos.map(e => Number(e.monto)).sort();
+    expect(egresosMontos).toEqual([400000, 600000]);
+  });
+});
+
 describe('Trazabilidad: cobro previo, PATCH y DELETE', () => {
   it('PATCH de cobro previo con neto distinto recalcula caja-tarjeta', async () => {
     const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())

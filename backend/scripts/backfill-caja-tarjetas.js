@@ -29,6 +29,18 @@
 
 const db = require('../src/config/database');
 
+// H2 (TANDA 1 trazab): lock ID arbitrario para pg_try_advisory_xact_lock.
+// Diferente del de financiera para permitir corridas paralelas entre scripts
+// distintos, pero no 2 corridas del MISMO. Per-transaction.
+const ADVISORY_LOCK_ID = 0x6AC8F2A0; // arbitrary stable int32
+
+// Helper de error con status — el endpoint admin lo levanta a HTTP 400.
+function err400(message) {
+  const e = new Error(message);
+  e.status = 400;
+  return e;
+}
+
 function parseArgs(argv) {
   const args = { apply: false, verbose: false };
   for (const a of argv.slice(2)) {
@@ -160,9 +172,15 @@ async function runBackfill({ apply, verbose, silent, userId } = {}) {
   try {
     await client.query('BEGIN');
 
+    // H2: advisory lock per-transaction (ver comentario en script Financiera).
+    const { rows: lockRows } = await client.query('SELECT pg_try_advisory_xact_lock($1) AS got', [ADVISORY_LOCK_ID]);
+    if (!lockRows[0]?.got) {
+      throw err400('Otro backfill de cajas Tarjeta ya está en curso. Esperá que termine y reintentá.');
+    }
+
     const tarjetas = await getTarjetas(client);
     if (tarjetas.length === 0) {
-      throw new Error('No hay tarjetas configuradas (metodos_pago con es_tarjeta=true). Configurá al menos una en Cajas → Config antes de correr el backfill.');
+      throw err400('No hay tarjetas configuradas (metodos_pago con es_tarjeta=true). Configurá al menos una en Cajas → Config antes de correr el backfill.');
     }
 
     const cobros        = await listarCobrosPendientes(client);
@@ -287,7 +305,7 @@ async function runBackfill({ apply, verbose, silent, userId } = {}) {
     // antes que su cobro contraparte en el orden. Validamos saldo FINAL
     // por tarjeta al cierre.
     if (hayNegativos) {
-      throw new Error(`El saldo proyectado de al menos una tarjeta quedaría negativo. ABORTADO sin tocar la DB.`);
+      throw err400(`El saldo proyectado de al menos una tarjeta quedaría negativo. ABORTADO sin tocar la DB.`);
     }
 
     // B2 audit trail: ver comentario en backfill-caja-financiera.
@@ -318,7 +336,7 @@ async function runBackfill({ apply, verbose, silent, userId } = {}) {
       if (g.cobros.length + g.liquidaciones.length === 0) continue;
       const saldoFinal = await getSaldoTarjeta(client, g.tarjeta.id);
       if (saldoFinal < 0) {
-        throw new Error(`Saldo final de "${g.tarjeta.nombre}" es negativo (${fmtARS(saldoFinal)}). ROLLBACK.`);
+        throw err400(`Saldo final de "${g.tarjeta.nombre}" es negativo (${fmtARS(saldoFinal)}). ROLLBACK.`);
       }
     }
 

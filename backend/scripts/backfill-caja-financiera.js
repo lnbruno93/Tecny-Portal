@@ -41,6 +41,19 @@
 
 const db = require('../src/config/database');
 
+// H2 (TANDA 1 trazab): lock ID arbitrario para pg_try_advisory_xact_lock.
+// Diferente por script (financiera/tarjetas) — pueden correr en paralelo
+// entre sí, pero no 2 corridas del MISMO backfill. Per-transaction lock:
+// se libera al COMMIT/ROLLBACK automáticamente.
+const ADVISORY_LOCK_ID = 0x6AC8F1FC; // arbitrary stable int32 (~1.79B)
+
+// Helper de error con status — el endpoint admin lo levanta a HTTP 400.
+function err400(message) {
+  const e = new Error(message);
+  e.status = 400;
+  return e;
+}
+
 function parseArgs(argv) {
   const args = { apply: false, verbose: false, soloComprobantes: false, soloPagos: false };
   for (const a of argv.slice(2)) {
@@ -173,9 +186,17 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
   try {
     await client.query('BEGIN');
 
+    // H2: advisory lock per-transaction. Si otro admin ya está corriendo este
+    // backfill en paralelo, abortamos limpio (no esperamos — preferimos error
+    // claro). El ID es arbitrario pero estable, único por script.
+    const { rows: lockRows } = await client.query('SELECT pg_try_advisory_xact_lock($1) AS got', [ADVISORY_LOCK_ID]);
+    if (!lockRows[0]?.got) {
+      throw err400('Otro backfill de caja Financiera ya está en curso. Esperá que termine y reintentá.');
+    }
+
     const fv = await getCajaFV(client);
     if (!fv) {
-      throw new Error('No hay caja con es_financiera=true. Configurá una en Cajas → Config antes de correr el backfill.');
+      throw err400('No hay caja con es_financiera=true. Configurá una en Cajas → Config antes de correr el backfill.');
     }
 
     const saldoAntes = await getSaldoActual(client, fv.id);
@@ -272,7 +293,7 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
     // (ej. pago de marzo se aplica antes que comprobante de abril). El
     // saldo FINAL es lo que importa — y lo validamos al cierre.
     if (saldoProyectado < 0) {
-      throw new Error(`El saldo proyectado quedaría negativo (${fmtARS(saldoProyectado)}). ABORTADO.`);
+      throw err400(`El saldo proyectado quedaría negativo (${fmtARS(saldoProyectado)}). ABORTADO.`);
     }
 
     // B2 audit trail: cada mov del backfill lleva user_id = admin que disparó
@@ -302,7 +323,7 @@ async function runBackfill({ apply, verbose, soloComprobantes, soloPagos, silent
     // Validar saldo final post-inserts.
     const saldoFinal = await getSaldoActual(client, fv.id);
     if (saldoFinal < 0) {
-      throw new Error(`Saldo final ${fmtARS(saldoFinal)} es negativo. ROLLBACK.`);
+      throw err400(`Saldo final ${fmtARS(saldoFinal)} es negativo. ROLLBACK.`);
     }
 
     await client.query('COMMIT');
