@@ -436,6 +436,31 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
         .sort((a, b) => Number(a.producto_id) - Number(b.producto_id));
       const prodIds = itemsConProd.map(it => Number(it.producto_id));
 
+      // Detección temprana de producto_id duplicados ANTES de tocar nada.
+      // Antes, el bulk UPDATE con UNNEST devolvía rowCount=1 cuando había 2
+      // items con el mismo producto_id (PG dedupea) y caíamos a un 500 opaco
+      // "Inconsistencia al actualizar stock" que confundía al operador.
+      // Ahora devolvemos 409 con la lista exacta de IDs duplicados.
+      const dupIds = [];
+      const seenIds = new Set();
+      for (const pid of prodIds) {
+        if (seenIds.has(pid)) dupIds.push(pid);
+        else seenIds.add(pid);
+      }
+      if (dupIds.length > 0) {
+        await client.query('ROLLBACK');
+        // Resolver nombres/IMEIs para que el frontend muestre algo útil.
+        const { rows: dupRows } = await db.query(
+          `SELECT id, nombre, imei FROM productos
+             WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+          [[...new Set(dupIds)]]
+        );
+        return res.status(409).json({
+          error: 'Hay productos repetidos en la venta — no se puede vender el mismo unitario dos veces',
+          duplicados: dupRows.map(p => ({ id: p.id, nombre: p.nombre, imei: p.imei })),
+        });
+      }
+
       // 1) Batch SELECT FOR UPDATE de todos los productos relevantes en una
       //    sola query, ordenados por id para evitar deadlock.
       let prodMap = new Map();
@@ -512,10 +537,17 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
             itemsConProd.map(it => Number(it.cantidad || 1)),
           ]
         );
-        // Asegura que afectamos N filas (sanity check)
+        // Sanity check: deberíamos haber afectado N filas únicas. Si no, algo
+        // raro pasó (ej. un producto se soft-deletó entre el SELECT FOR UPDATE
+        // y este UPDATE — race window mínima). Devolvemos 500 con info para
+        // diagnosticar. Los duplicados de producto_id ya fueron filtrados arriba.
         if (updateRes.rowCount !== itemsConProd.length) {
           await client.query('ROLLBACK');
-          return res.status(500).json({ error: 'Inconsistencia al actualizar stock' });
+          return res.status(500).json({
+            error: 'No se pudo actualizar el stock de todos los productos. Reintentá; si persiste, contactá soporte.',
+            esperado: itemsConProd.length,
+            afectado: updateRes.rowCount,
+          });
         }
       }
     }
