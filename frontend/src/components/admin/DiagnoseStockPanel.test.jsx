@@ -115,12 +115,16 @@ describe('DiagnoseStockPanel', () => {
     // Modal abierto: el botón confirm está disabled hasta tipear ≥ 5 chars.
     const dialog = screen.getByRole('dialog');
     const confirmBtn = within(dialog).getByRole('button', { name: /confirmar restauración/i });
+    const textarea = within(dialog).getByPlaceholderText(/limpieza/i);
     expect(confirmBtn).toBeDisabled();
 
-    await user.type(within(dialog).getByPlaceholderText(/limpieza/i), 'test');
+    // fireEvent.change setea el value de una vez (determinístico). user.type
+    // tenía race condition en CI más lento donde el último char a veces no
+    // se aplicaba antes del assert (CI Frontend Tests falló 2026-06-09 acá).
+    fireEvent.change(textarea, { target: { value: 'test' } });
     expect(confirmBtn).toBeDisabled(); // 4 chars < 5
 
-    await user.type(within(dialog).getByPlaceholderText(/limpieza/i), 'x');
+    fireEvent.change(textarea, { target: { value: 'testx' } });
     expect(confirmBtn).not.toBeDisabled(); // ahora 5 chars
   });
 
