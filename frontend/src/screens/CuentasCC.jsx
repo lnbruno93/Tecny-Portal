@@ -627,6 +627,34 @@ export default function CuentasCC() {
     });
   }
 
+  // Devolución inline de un item del desglose B2B (PR 2026-06-09).
+  // Flow: confirm con resumen → POST devolverItem → refresh detail.
+  async function handleDevolverItem(movId, item) {
+    const desc = [item.producto, item.imei_serial && `IMEI ${item.imei_serial}`].filter(Boolean).join(' · ') || 'este item';
+    const monto = Number(item.valor || 0);
+    const ok = await confirm({
+      title: 'Devolver al stock',
+      message: `Vas a devolver ${desc}.\n\n• Vuelve al Inventario como disponible.\n• Se descuenta USD ${monto.toLocaleString('es-AR')} del saldo del cliente.\n• El item queda tachado en el desglose para mantener la trazabilidad.\n\nNo se puede deshacer.`,
+      confirmLabel: 'Devolver al stock',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await cuentas.devolverItem(movId, item.id);
+      toast.success(`Item devuelto. Stock restaurado y USD ${monto.toLocaleString('es-AR')} descontados del saldo.`);
+      // Refrescar resumen + movimientos del cliente para ver tachado y saldo nuevo.
+      if (selectedId) {
+        const [resumen, movsResp] = await Promise.all([
+          cuentas.resumen(selectedId),
+          cuentas.movimientos(selectedId, { page: 1, limit: 100 }),
+        ]);
+        setClienteDetail({ resumen, movimientos: movsResp.data || [] });
+      }
+    } catch (e) {
+      toast.error(e.message || 'No se pudo devolver el item.');
+    }
+  }
+
   function handleEditSuccess(updated) {
     setShowEdit(false);
     setClientes(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
@@ -1069,7 +1097,7 @@ export default function CuentasCC() {
                       {isExpanded && (
                         <tr key={`${m.id}-detail`} style={{ borderBottom: '1px solid var(--hairline)' }}>
                           <td colSpan={10} style={{ padding: '4px 12px 12px 36px', background: 'var(--surface-2, rgba(0,0,0,0.02))' }}>
-                            <MovimientoDesglose mov={m} />
+                            <MovimientoDesglose mov={m} onDevolverItem={handleDevolverItem} />
                           </td>
                         </tr>
                       )}
@@ -1241,15 +1269,25 @@ export default function CuentasCC() {
 // MovimientoDesglose — sub-tabla con TODOS los items de un movimiento. Muestra
 // costo + precio mayorista + ganancia por unidad. Para ventas pre-migración
 // (costo_unit NULL) muestra "—" con un asterisco "histórico, sin dato".
-function MovimientoDesglose({ mov }) {
+//
+// Junio 2026 (devolución inline): cada fila tiene botón ↺ que devuelve ese
+// item al stock. El item devuelto queda TACHADO + badge "↺ Devuelto" en su
+// lugar (no se elimina) para preservar trazabilidad visual de la venta. El
+// callback `onDevolverItem(movId, item)` lo maneja el padre.
+function MovimientoDesglose({ mov, onDevolverItem }) {
   const items = mov.items || [];
   if (items.length === 0) return <div className="muted" style={{ fontSize: 12 }}>Sin items.</div>;
 
   const fmtMoney = (n) => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  // Solo permitimos devolver items de movimientos tipo 'compra'. Backend
+  // valida igual — esto evita mostrar botón en un mov de devolución.
+  const movEsCompra = mov.tipo === 'compra';
 
-  // Totales para footer
-  let totalVenta = 0, totalCosto = 0, hayHistoricos = false;
+  // Totales: items devueltos NO suman (criterio contable — el monto neto
+  // vigente de la venta baja con cada devolución).
+  let totalVenta = 0, totalCosto = 0, hayHistoricos = false, hayDevueltos = false;
   items.forEach(it => {
+    if (it.devuelto_at) { hayDevueltos = true; return; }
     totalVenta += Number(it.valor) || 0;
     if (it.costo_unit != null) totalCosto += Number(it.costo_unit) * Number(it.cantidad || 1);
     else hayHistoricos = true;
@@ -1269,6 +1307,7 @@ function MovimientoDesglose({ mov }) {
             <th style={{ textAlign: 'right', padding: '6px 8px' }}>P. mayorista unit.</th>
             <th style={{ textAlign: 'right', padding: '6px 8px' }}>Subtotal</th>
             <th style={{ textAlign: 'right', padding: '6px 8px' }}>Ganancia</th>
+            {movEsCompra && <th style={{ textAlign: 'center', padding: '6px 8px', width: 56 }}>↺</th>}
           </tr>
         </thead>
         <tbody>
@@ -1278,9 +1317,30 @@ function MovimientoDesglose({ mov }) {
             const precioUnit = cant > 0 ? valor / cant : 0;
             const costoUnit = it.costo_unit != null ? Number(it.costo_unit) : null;
             const ganancia = costoUnit != null ? valor - costoUnit * cant : null;
+            const devuelto = !!it.devuelto_at;
+            const puedeDevolver = movEsCompra && !devuelto && it.producto_id;
+            // Items devueltos: tachado + fondo rojo tenue. La fila SIGUE en el
+            // DOM para que el operador vea qué se devolvió de esta venta.
+            const rowStyle = {
+              borderBottom: '1px solid var(--hairline)',
+              ...(devuelto && {
+                textDecoration: 'line-through',
+                color: 'var(--text-muted)',
+                background: 'rgba(255, 107, 107, 0.06)',
+              }),
+            };
             return (
-              <tr key={it.id} style={{ borderBottom: '1px solid var(--hairline)' }}>
-                <td style={{ padding: '6px 8px' }}>{it.producto || <span className="dim">—</span>}</td>
+              <tr key={it.id} style={rowStyle}>
+                <td style={{ padding: '6px 8px' }}>
+                  {it.producto || <span className="dim">—</span>}
+                  {devuelto && (
+                    <span style={{
+                      marginLeft: 8, padding: '1px 6px', borderRadius: 4,
+                      background: 'var(--neg)', color: 'white', fontSize: 10,
+                      textDecoration: 'none', fontWeight: 600, verticalAlign: 'middle',
+                    }}>↺ Devuelto</span>
+                  )}
+                </td>
                 <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{it.imei_serial || <span className="dim">—</span>}</td>
                 <td style={{ padding: '6px 8px' }} className="muted tiny">
                   {[it.tamano, it.color].filter(Boolean).join(' · ') || '—'}
@@ -1296,16 +1356,32 @@ function MovimientoDesglose({ mov }) {
                   USD {fmtMoney(valor)}
                 </td>
                 <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600,
-                             color: ganancia == null ? 'var(--text-muted)' : ganancia >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                             color: devuelto ? 'var(--text-muted)' : ganancia == null ? 'var(--text-muted)' : ganancia >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                   {ganancia != null ? `${ganancia >= 0 ? '+' : ''}USD ${fmtMoney(ganancia)}` : '—'}
                 </td>
+                {movEsCompra && (
+                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                    {puedeDevolver ? (
+                      <button
+                        className="icon-btn"
+                        title="Devolver este item al stock (resta del saldo del cliente)"
+                        onClick={() => onDevolverItem && onDevolverItem(mov.id, it)}
+                        style={{ color: 'var(--warn, #f59e0b)', fontSize: 14 }}
+                      >↺</button>
+                    ) : devuelto ? null : (
+                      <span className="dim tiny" title="Sin producto del Inventario — no se puede devolver">—</span>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
         </tbody>
         <tfoot>
           <tr style={{ borderTop: '2px solid var(--border)' }}>
-            <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>Totales:</td>
+            <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>
+              Totales{hayDevueltos ? ' (sin devueltos)' : ''}:
+            </td>
             <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
               USD {fmtMoney(totalVenta)}
             </td>
@@ -1315,6 +1391,7 @@ function MovimientoDesglose({ mov }) {
                 ? <span title="Algunos items pre-migración no tienen costo histórico — ganancia parcial">USD {fmtMoney(totalGanancia)}*</span>
                 : `${totalGanancia >= 0 ? '+' : ''}USD ${fmtMoney(totalGanancia)}`}
             </td>
+            {movEsCompra && <td></td>}
           </tr>
         </tfoot>
       </table>

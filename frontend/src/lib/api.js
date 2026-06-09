@@ -305,6 +305,11 @@ export const cuentas = {
   calendario: (mes) => api(`/api/cuentas/calendario?mes=${mes}`),
   createMovimiento: (data) => api('/api/cuentas/movimientos', 'POST', data),
   deleteMovimiento: (id) => api(`/api/cuentas/movimientos/${id}`, 'DELETE'),
+  // Devolución inline de un item de una venta B2B: marca el item con
+  // devuelto_at, crea mov_cc tipo 'devolucion' asociado, restaura stock y
+  // ajusta saldo. Junio 2026 — PR del feature ↺.
+  devolverItem: (movId, itemId) =>
+    api(`/api/cuentas/movimientos/${movId}/items/${itemId}/devolver`, 'POST'),
   cobranzaMasiva:   (data) => api('/api/cuentas/cobranzas-masivas', 'POST', data),
 };
 

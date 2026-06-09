@@ -742,6 +742,157 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   }
 });
 
+// ─── POST /movimientos/:movId/items/:itemId/devolver ────────────────────────
+//
+// Devolución inline de UN item de una venta B2B. Junio 2026 — Lucas pidió
+// poder devolver un producto individual sin tener que cargar un movimiento
+// nuevo manual. UX: el item queda visible en el desglose original con
+// tachado + badge "Devuelto"; en paralelo se crea un movimiento_cc tipo
+// 'devolucion' nuevo para mantener la trazabilidad contable + la lógica
+// existente de saldo/caja (el saldo del cliente baja porque la devolución
+// le da crédito).
+//
+// Idempotente: si el item ya fue devuelto (devuelto_at IS NOT NULL), tira 409.
+// Atómico: si falla cualquier paso, rollback total.
+//
+// Pre-condiciones:
+//   · movimiento_cc vivo (no soft-deleted) y tipo='compra' (no se devuelve
+//     una devolución ni un pago).
+//   · item del movimiento existe.
+//   · item.producto_id NO NULL (sin producto_id no podemos restaurar stock —
+//     items legacy de texto libre no se pueden devolver por este flow).
+router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next) => {
+  const movId  = parseId(req.params.movId);
+  const itemId = parseId(req.params.itemId);
+  if (!movId || !itemId) return res.status(400).json({ error: 'IDs inválidos' });
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Lock del movimiento padre + validación.
+    const { rows: movs } = await client.query(
+      'SELECT * FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [movId]
+    );
+    if (!movs[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Movimiento no encontrado' });
+    }
+    const movOrig = movs[0];
+    if (movOrig.tipo !== 'compra') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Solo se pueden devolver items de movimientos tipo "compra".' });
+    }
+
+    // 2. Lock del item + validación.
+    const { rows: items } = await client.query(
+      `SELECT * FROM items_movimiento_cc
+        WHERE id = $1 AND movimiento_cc_id = $2
+        FOR UPDATE`,
+      [itemId, movId]
+    );
+    if (!items[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Item no encontrado en este movimiento' });
+    }
+    const item = items[0];
+    if (item.devuelto_at) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este item ya fue devuelto.' });
+    }
+    if (!item.producto_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Este item no tiene producto del Inventario asociado (texto libre); no se puede devolver por este flow.',
+      });
+    }
+
+    // 3. Crear el movimiento_cc tipo 'devolucion' por este solo item. Le pasa
+    //    el saldo del cliente (resta deuda) y restaura stock del producto.
+    const cantidad = Number(item.cantidad || 1);
+    const valor    = Number(item.valor || 0);
+    const { rows: devMovRows } = await client.query(
+      `INSERT INTO movimientos_cc
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, caja_id, created_by_user_id)
+       VALUES ($1, NOW()::date, 'devolucion', $2, $3, NULL, $4)
+       RETURNING *`,
+      [
+        movOrig.cliente_cc_id,
+        `Devolución item de mov #${movId}`,
+        valor * cantidad,
+        req.user.id,
+      ]
+    );
+    const devMov = devMovRows[0];
+
+    // 4. Copiar item al nuevo movimiento (para que el desglose del mov de
+    //    devolución muestre qué se devolvió). Costo congelado igual que el
+    //    original. NO seteamos devuelto_at acá — el flag lo lleva el item
+    //    original, no la copia.
+    await client.query(
+      `INSERT INTO items_movimiento_cc
+         (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado,
+          notas, producto_id, cantidad, costo_unit, costo_moneda)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [
+        devMov.id, item.producto, item.modelo, item.tamano, item.color,
+        item.imei_serial, item.valor, item.verificado, item.notas,
+        item.producto_id, cantidad, item.costo_unit, item.costo_moneda,
+      ]
+    );
+
+    // 5. Restaurar stock — incrementar cantidad y volver a 'disponible' si
+    //    el producto había quedado vendido. Mismo CASE que cancelMovimientoCC.
+    await client.query(
+      `UPDATE productos
+          SET cantidad = cantidad + $2,
+              estado = CASE
+                WHEN cantidad + $2 <= 0                              THEN 'vendido'
+                WHEN cantidad + $2 > 0  AND estado = 'vendido'       THEN 'disponible'
+                ELSE estado
+              END
+        WHERE id = $1`,
+      [item.producto_id, cantidad]
+    );
+
+    // 6. Marcar el item ORIGINAL como devuelto. Esto es lo que el frontend
+    //    lee para tachar la fila y ocultar el botón ↺.
+    await client.query(
+      `UPDATE items_movimiento_cc
+          SET devuelto_at = NOW(),
+              devolucion_mov_id = $2,
+              devolucion_user_id = $3
+        WHERE id = $1`,
+      [itemId, devMov.id, req.user.id]
+    );
+
+    // 7. Audit: queda registrado quién devolvió qué item de qué mov.
+    await audit(client, 'items_movimiento_cc', 'UPDATE', itemId, {
+      antes: { devuelto_at: null },
+      despues: { devuelto_at: 'NOW', devolucion_mov_id: devMov.id },
+      user_id: req.user.id,
+      _origen: 'devolucion_inline',
+      _mov_original_id: movId,
+    });
+
+    await client.query('COMMIT');
+    invalidateMetricas();
+    res.json({
+      ok: true,
+      item_id: itemId,
+      devolucion_mov_id: devMov.id,
+      monto_devuelto_usd: valor * cantidad,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // ─── COBRANZA MASIVA ──────────────────────────────────────────────────────────
 // Registra N pagos de distintos clientes en una sola TX (todo o nada).
 //   - Cada fila es un movimiento_cc independiente (tipo=pago/parte_de_pago).
