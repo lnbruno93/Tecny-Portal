@@ -1210,6 +1210,154 @@ describe('DELETE movimiento B2B — edge cases con stock', () => {
   });
 });
 
+// ─── Devolución INLINE de item (2026-06-09) ─────────────────────────────
+// Lucas pidió un botón ↺ por fila en el desglose de la venta B2B: marcar
+// un item devuelto sin crear un movimiento manual. El item original queda
+// con devuelto_at != NULL (frontend lo tacha) y se crea un mov_cc
+// 'devolucion' asociado para preservar trazabilidad contable + restaurar
+// stock + ajustar saldo del cliente.
+describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
+  let cliId, catId, prod1, prod2, ventaId;
+
+  beforeAll(async () => {
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente Devo Inline', categoria: 'A+' });
+    cliId = cli.body.id;
+    const cat = await request(app).post('/api/inventario/categorias').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Devo Inline Cat' });
+    catId = cat.body.id;
+    // 2 productos para la venta multi-item
+    const p1 = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        nombre: 'iPhone Devo Inline 1', imei: '359000000000001',
+        costo: 500, costo_moneda: 'USD',
+        precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
+      });
+    prod1 = p1.body;
+    const p2 = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        nombre: 'iPhone Devo Inline 2', imei: '359000000000002',
+        costo: 700, costo_moneda: 'USD',
+        precio_venta: 1400, precio_moneda: 'USD', cantidad: 1,
+      });
+    prod2 = p2.body;
+    // Venta B2B multi-item, sin caja (queda como deuda)
+    const venta = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'compra', monto_total: 2400,
+        items: [
+          { producto_id: prod1.id, producto: 'iPhone Devo Inline 1', imei_serial: '359000000000001', cantidad: 1, valor: 1000 },
+          { producto_id: prod2.id, producto: 'iPhone Devo Inline 2', imei_serial: '359000000000002', cantidad: 1, valor: 1400 },
+        ],
+      });
+    expect(venta.status).toBe(201);
+    ventaId = venta.body.id;
+  });
+
+  async function getItems() {
+    const r = await pool.query(
+      `SELECT * FROM items_movimiento_cc WHERE movimiento_cc_id = $1 ORDER BY id`,
+      [ventaId]
+    );
+    return r.rows;
+  }
+  async function getSaldoCliente() {
+    const r = await request(app).get(`/api/cuentas/clientes/${cliId}`).set('Authorization', `Bearer ${adminToken}`);
+    return Number(r.body.saldo || 0);
+  }
+
+  it('devuelve un item → marca devuelto_at + crea mov de devolución + restaura stock + baja saldo', async () => {
+    const items = await getItems();
+    const itemAdevolver = items.find(i => i.producto_id === prod1.id);
+    expect(itemAdevolver.devuelto_at).toBeNull();
+    const saldoAntes = await getSaldoCliente();
+    expect(saldoAntes).toBeCloseTo(2400, 2);
+
+    const r = await request(app)
+      .post(`/api/cuentas/movimientos/${ventaId}/items/${itemAdevolver.id}/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.devolucion_mov_id).toBeGreaterThan(0);
+    expect(Number(r.body.monto_devuelto_usd)).toBe(1000);
+
+    // Item original quedó marcado.
+    const itemPost = (await getItems()).find(i => i.id === itemAdevolver.id);
+    expect(itemPost.devuelto_at).not.toBeNull();
+    expect(itemPost.devolucion_mov_id).toBe(r.body.devolucion_mov_id);
+
+    // Stock restaurado.
+    const p = await request(app).get(`/api/inventario/productos?buscar=359000000000001&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAct = p.body.data.find(x => x.id === prod1.id);
+    expect(Number(pAct.cantidad)).toBe(1);
+    expect(pAct.estado).toBe('disponible');
+
+    // Saldo del cliente bajó por el monto del item devuelto (la devolución
+    // resta deuda — el cliente "te debe menos" porque te devolvió mercadería).
+    const saldoPost = await getSaldoCliente();
+    expect(saldoPost).toBeCloseTo(saldoAntes - 1000, 2);
+
+    // El otro item del mov original NO se tocó.
+    const itemOtro = (await getItems()).find(i => i.producto_id === prod2.id);
+    expect(itemOtro.devuelto_at).toBeNull();
+  });
+
+  it('devolver un item ya devuelto → 409 idempotente', async () => {
+    const items = await getItems();
+    const yaDevuelto = items.find(i => i.producto_id === prod1.id);
+    expect(yaDevuelto.devuelto_at).not.toBeNull();
+    const r = await request(app)
+      .post(`/api/cuentas/movimientos/${ventaId}/items/${yaDevuelto.id}/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/ya fue devuelto/i);
+  });
+
+  it('item de movimiento que NO es tipo "compra" → 409', async () => {
+    // Crear un pago y intentar devolver "su item" (no tiene, pero el mov no es compra)
+    const pago = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'pago', monto_total: 500 });
+    expect(pago.status).toBe(201);
+    // No tiene items pero igual probamos con un id cualquiera; el endpoint
+    // valida el tipo del movimiento ANTES de buscar el item.
+    const r = await request(app)
+      .post(`/api/cuentas/movimientos/${pago.body.id}/items/999999/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/tipo "compra"/i);
+  });
+
+  it('item sin producto_id (texto libre) → 409', async () => {
+    // Crear venta con item de texto libre (sin producto_id)
+    const venta = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'compra', monto_total: 100,
+        items: [{ producto: 'Accesorio varios', valor: 100 }],
+      });
+    expect(venta.status).toBe(201);
+    const itemTxt = venta.body.items[0];
+    const r = await request(app)
+      .post(`/api/cuentas/movimientos/${venta.body.id}/items/${itemTxt.id}/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/texto libre|no tiene producto/i);
+  });
+
+  it('movimiento o item inexistente → 404', async () => {
+    const r1 = await request(app)
+      .post(`/api/cuentas/movimientos/999999/items/1/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r1.status).toBe(404);
+    const r2 = await request(app)
+      .post(`/api/cuentas/movimientos/${ventaId}/items/999999/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r2.status).toBe(404);
+  });
+});
+
 // ─── #T-05: schemas .strict() rechazan campos extra ──────────────────
 describe('Schemas .strict() — rechazar campos extra', () => {
   let cliId, cajaUsdId;
