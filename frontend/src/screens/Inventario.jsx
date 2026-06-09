@@ -355,9 +355,46 @@ export default function Inventario() {
     URL.revokeObjectURL(url);
   }
 
-  function exportProductos() {
-    if (!productos.length) { toast.error('No hay productos para exportar.'); return; }
-    exportCsv('inventario.csv', rowsToObjects(productos.map(productoARow)), plantillaCols());
+  // Exporta TODO el inventario que matchea los filtros activos, no solo la
+  // página visible. Antes el botón "Exportar" solo bajaba ~50 productos (la
+  // página actual), causando data silenciosamente perdida — bug crítico
+  // reportado en testing pre-salida 2026-06-09.
+  //
+  // Estrategia: iterar páginas en lotes de 200 (max del backend) hasta
+  // agotar. Con 863 productos son 5 round-trips. Toast con progreso si tarda.
+  async function exportProductos() {
+    const params = { vista: vistaFiltro, limit: 200 };
+    if (claseFilter === 'celular' || claseFilter === 'accesorio') params.clase = claseFilter;
+    else if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
+    else if (claseFilter === 'usados') params.condicion = 'usado';
+    else if (claseFilter && claseFilter.startsWith('cat:')) params.categoria_id = claseFilter.slice(4);
+    if (dSearch.trim()) params.buscar = dSearch.trim();
+    if (Object.keys(drillFilters).length) {
+      Object.assign(params, drillFilters);
+      params.vista = 'todos_ocultos';
+    }
+
+    setLoading(true);
+    try {
+      const acumulado = [];
+      let pagina = 1;
+      let totalPaginas = 1;
+      // Primer llamada — sabemos el total.
+      do {
+        const res = await inventario.productos({ ...params, page: pagina });
+        acumulado.push(...(res.data || []));
+        totalPaginas = res.pagination?.pages || 1;
+        pagina++;
+      } while (pagina <= totalPaginas);
+
+      if (acumulado.length === 0) { toast.error('No hay productos para exportar.'); return; }
+      exportCsv('inventario.csv', rowsToObjects(acumulado.map(productoARow)), plantillaCols());
+      toast.success(`✓ Exportados ${acumulado.length} productos.`);
+    } catch (e) {
+      toast.error('Error exportando: ' + (e.message || 'desconocido'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   function descargarPlantillaXlsx() {
