@@ -194,9 +194,8 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       db.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p),
       // Ventas por etiqueta
       db.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p),
-      // Top productos (por unidades): UNION retail + B2B. Junio 2026 — antes
-      // solo contaba retail, ahora si vendiste un iPhone por B2B aparece en
-      // el top junto con los retail.
+      // Top productos (por unidades): UNION retail + B2B. Items B2B devueltos
+      // (devuelto_at IS NOT NULL) NO cuentan — la unidad volvió al stock.
       db.query(`
         WITH all_items AS (
           SELECT vi.descripcion, vi.cantidad
@@ -206,7 +205,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
           SELECT COALESCE(NULLIF(TRIM(i.producto), ''), '(sin nombre)') AS descripcion,
                  COALESCE(i.cantidad, 1)
             FROM items_movimiento_cc i JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
-            WHERE ${B2B_BASE}
+            WHERE ${B2B_BASE} AND i.devuelto_at IS NULL
         )
         SELECT descripcion, SUM(cantidad)::int AS unidades
         FROM all_items
@@ -222,13 +221,21 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
                 WHERE ${BASE} GROUP BY ve.nombre ORDER BY total_usd DESC LIMIT 5`, p),
       // B2B: ventas via movimientos_cc (junio 2026). count + ingresos +
       // costos + ganancia + unidades por clase. Asumimos costos en USD.
+      //
+      // 2026-06-09: items devueltos (i.devuelto_at IS NOT NULL) NO suman a
+      // ingresos/costos/unidades — la mercadería volvió al stock y el monto
+      // se restó del saldo del cliente. Es como si esa porción de la venta
+      // nunca hubiera ocurrido para fines de KPI del período.
+      //
+      // El `count` cuenta movimientos con AL MENOS un item vivo (no devuelto).
+      // Una venta con todos sus items devueltos no aparece en los totales.
       db.query(`
         SELECT
-          COUNT(DISTINCT m.id)::int                                          AS count,
-          COALESCE(SUM(DISTINCT m.monto_total), 0)                           AS ingresos_usd,
-          COALESCE(SUM(i.costo_unit * i.cantidad), 0)                        AS costos_usd,
-          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'celular'), 0)::int   AS celulares,
-          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'accesorio'), 0)::int AS accesorios
+          COUNT(DISTINCT m.id) FILTER (WHERE i.devuelto_at IS NULL)::int                            AS count,
+          COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL), 0)                AS ingresos_usd,
+          COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL), 0)          AS costos_usd,
+          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'celular'   AND i.devuelto_at IS NULL), 0)::int AS celulares,
+          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'accesorio' AND i.devuelto_at IS NULL), 0)::int AS accesorios
         FROM movimientos_cc m
         LEFT JOIN items_movimiento_cc i ON i.movimiento_cc_id = m.id
         LEFT JOIN productos pr ON pr.id = i.producto_id
@@ -388,6 +395,11 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
     // no tiene costo_unit (ventas legacy pre-migración 20260608), se asume 0
     // y la ganancia queda inflada — aceptable: las ventas legacy no son el
     // caso común y el operador puede editar después.
+    // 2026-06-09: total_usd y ganancia_usd ahora restan items devueltos
+    // (devuelto_at IS NOT NULL). Si una venta multi-item tuvo 1 devolución,
+    // el total mostrado en la grilla refleja el monto NETO vigente. Los items
+    // devueltos siguen viajando en el array `items` con su devuelto_at para
+    // que el frontend pueda tacharlos.
     const b2bQuery = `
       SELECT
         ('b2b-' || m.id)                                                    AS id_str,
@@ -398,11 +410,19 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
         m.descripcion                                                       AS notas,
         'pendiente'                                                         AS estado,
         ('B2B-' || LPAD(m.id::text, 6, '0'))                                AS order_id,
-        m.monto_total                                                       AS total_usd,
+        ROUND(COALESCE((
+          SELECT SUM(i.valor) FROM items_movimiento_cc i
+            WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
+        ), 0)::numeric, 2)                                                  AS total_usd,
         ROUND(
-          (m.monto_total - COALESCE((
+          (COALESCE((
+            SELECT SUM(i.valor) FROM items_movimiento_cc i
+              WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
+          ), 0)
+          - COALESCE((
             SELECT SUM(COALESCE(i.costo_unit,0) * COALESCE(i.cantidad,1))
-              FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
+              FROM items_movimiento_cc i
+              WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
           ), 0))::numeric, 2
         )                                                                   AS ganancia_usd,
         m.cliente_cc_id,
@@ -419,7 +439,8 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
             'precio_vendido',  i.valor,
             'precio_original', i.valor,
             'costo',           i.costo_unit,
-            'moneda',          COALESCE(i.costo_moneda, 'USD')
+            'moneda',          COALESCE(i.costo_moneda, 'USD'),
+            'devuelto_at',     i.devuelto_at
           ) ORDER BY i.id)
             FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
         ), '[]'::json)                                                      AS items

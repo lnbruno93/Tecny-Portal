@@ -66,17 +66,29 @@ export default function VentasList({
                   // 2026-06-09: costo + precio bajo el nombre del producto. Lucas
                   // pidió ver de un vistazo cuánto le costó vs cuánto vendió cada
                   // item. Retail usa `costo` + `precio_vendido`; B2B mapea ambos al
-                  // mismo shape desde el backend. Si falta alguno (legacy
-                  // pre-migración costo_unit), no mostramos esa línea.
+                  // mismo shape desde el backend.
+                  // Items B2B devueltos vienen con devuelto_at != null — los
+                  // tachamos para consistencia con el desglose del cliente.
                   const costo  = i.costo != null ? Number(i.costo) : null;
                   const precio = i.precio_vendido != null ? Number(i.precio_vendido) : null;
                   const mon    = i.moneda || 'USD';
                   const sufMon = mon === 'USD' ? 'u$s' : (mon === 'ARS' ? '$' : mon + ' ');
+                  const devuelto = !!i.devuelto_at;
+                  const itemStyle = devuelto
+                    ? { marginBottom: 2, textDecoration: 'line-through', color: 'var(--text-muted)' }
+                    : { marginBottom: 2 };
                   return (
-                    <div key={k} style={{ marginBottom: 2 }}>
+                    <div key={k} style={itemStyle}>
                       <div>
                         {i.descripcion}{i.cantidad > 1 ? ' ×' + i.cantidad : ''}
                         {esB2B && i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>{i.imei}</span>}
+                        {devuelto && (
+                          <span style={{
+                            marginLeft: 6, padding: '0 5px', borderRadius: 3,
+                            background: 'var(--neg)', color: 'white', fontSize: 9,
+                            textDecoration: 'none', fontWeight: 600, verticalAlign: 'middle',
+                          }}>↺ Devuelto</span>
+                        )}
                       </div>
                       {(costo != null || precio != null) && (
                         <div className="muted tiny" style={{ marginTop: 1 }}>
