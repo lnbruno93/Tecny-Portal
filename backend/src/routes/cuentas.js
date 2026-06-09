@@ -51,6 +51,7 @@ const {
   cobranzaMasivaSchema,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { invalidateMetricas } = require('../lib/inventarioCache');
 const { syncContactoSafe } = require('../lib/contactosSync');
 
 // Expresión CASE compartida para calcular el aporte de cada movimiento al saldo.
@@ -571,6 +572,9 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       user_id: req.user.id,
     });
     await client.query('COMMIT');
+    // Venta B2B descontó stock — invalidar el cache de métricas para que el
+    // dashboard de Inventario refleje el nuevo total en el próximo refresh.
+    if (insertedItems.length > 0) invalidateMetricas();
 
     res.status(201).json({ ...mov, items: insertedItems });
   } catch (err) {
@@ -676,6 +680,9 @@ router.delete('/movimientos/:id', async (req, res, next) => {
 
     await audit(client, 'movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    // DELETE de venta B2B repuso stock — invalidar cache para que el dashboard
+    // refleje el nuevo total inmediatamente.
+    invalidateMetricas();
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
