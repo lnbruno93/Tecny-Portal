@@ -192,6 +192,57 @@ describe('GET /api/ventas', () => {
     expect(conPago).toBeDefined();
     expect(Array.isArray(conPago.items)).toBe(true);
   });
+
+  // 2026-06-09: la grilla ahora incluye ventas B2B (movimientos_cc tipo='compra')
+  // mapeadas al mismo shape. Lucas las quería "como una venta más".
+  it('incluye ventas B2B (origen=b2b) con shape unificado + badge B2B', async () => {
+    // Crear cliente CC + producto + venta B2B.
+    const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+      .send({ nombre: 'Cliente Grilla', categoria: 'A+' });
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Grilla Cat' });
+    const prod = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'iPhone Grilla', imei: '350888100000001',
+        costo: 500, costo_moneda: 'USD',
+        precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
+      });
+    const mov = await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 1000,
+        // imei_serial: el modal B2B real lo pasa del picker. En tests
+        // lo seteamos explícitamente para verificar el mapeo en el listado.
+        items: [{ producto_id: prod.body.id, producto: 'iPhone Grilla', imei_serial: '350888100000001', cantidad: 1, valor: 1000 }],
+      });
+    expect(mov.status).toBe(201);
+
+    const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}`).set(auth());
+    expect(res.status).toBe(200);
+    const b2bRow = res.body.data.find(v => v.origen === 'b2b' && v._b2b_mov_id === mov.body.id);
+    expect(b2bRow).toBeDefined();
+    expect(b2bRow.order_id).toMatch(/^B2B-/);
+    expect(b2bRow.cliente_nombre).toContain('Cliente Grilla');
+    expect(b2bRow.estado).toBe('pendiente');
+    expect(b2bRow.etiqueta_nombre).toBe('B2B');
+    expect(Number(b2bRow.total_usd)).toBe(1000);
+    expect(b2bRow.items).toHaveLength(1);
+    expect(b2bRow.items[0].imei).toBe('350888100000001');
+    expect(b2bRow.pagos).toEqual([]);
+  });
+
+  it('filtro estado=acreditado descarta B2B (siempre pendiente en esta vista)', async () => {
+    const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}&estado=acreditado`).set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.data.every(v => v.origen !== 'b2b')).toBe(true);
+  });
+
+  it('búsqueda por IMEI/serial encuentra ventas B2B también', async () => {
+    const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}&buscar=350888100000001`).set(auth());
+    expect(res.status).toBe(200);
+    const found = res.body.data.find(v => v.origen === 'b2b');
+    expect(found).toBeDefined();
+  });
 });
 
 describe('DELETE /api/ventas/:id repone stock', () => {

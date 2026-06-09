@@ -172,6 +172,14 @@ export default function Ventas() {
   const setVF = (k, v) => setVForm(f => ({ ...f, [k]: v }));
 
   function openEdit(v) {
+    // 2026-06-09: si la fila es una venta B2B (origen='b2b'), no podemos
+    // editarla con el modal de retail (estructura distinta). La grilla
+    // unificada redirige al cliente B2B para que la edite desde su pantalla
+    // dedicada. CuentasCC ya tiene el flow de editar movimientos.
+    if (v.origen === 'b2b' && v.cliente_cc_id) {
+      navigate(`/cuentas?cliente=${v.cliente_cc_id}`);
+      return;
+    }
     setEditId(v.id); setProcRapidaId(null); setComprobantes([]); setVentaError(''); setProdSearch(''); setProdResults([]);
     setVForm({
       ...EMPTY_VENTA,
@@ -469,10 +477,24 @@ export default function Ventas() {
     catch (e) { toast.error(e.message); }
   }
   async function deleteVenta(v) {
-    const ok = await confirm({ title: 'Eliminar venta', message: 'Se repondrá el stock de los productos vinculados. Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
+    // Si la fila es B2B (origen='b2b'), el endpoint correcto es el de
+    // movimientos_cc (que cascadea: revierte caja + restaura stock + audit).
+    // El _b2b_mov_id lo arrastra el backend desde el listado unificado.
+    const esB2B = v.origen === 'b2b';
+    const msg = esB2B
+      ? 'Se cancelará el movimiento B2B, se repondrá el stock y se revertirá la caja (si la había). Esta acción no se puede deshacer.'
+      : 'Se repondrá el stock de los productos vinculados. Esta acción no se puede deshacer.';
+    const ok = await confirm({ title: 'Eliminar venta', message: msg, confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
-    try { await ventas.delete(v.id); toast.success('Venta eliminada.'); await Promise.all([loadLista(), loadDash()]); }
-    catch (e) { toast.error(e.message); }
+    try {
+      if (esB2B) {
+        await cuentasApi.deleteMovimiento(v._b2b_mov_id);
+      } else {
+        await ventas.delete(v.id);
+      }
+      toast.success('Venta eliminada.');
+      await Promise.all([loadLista(), loadDash()]);
+    } catch (e) { toast.error(e.message); }
   }
   async function deleteRapida(id) {
     const ok = await confirm({ title: 'Eliminar venta rápida', message: '¿Seguro?', confirmLabel: 'Eliminar', danger: true });

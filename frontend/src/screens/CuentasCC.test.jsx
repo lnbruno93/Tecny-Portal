@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../lib/api', () => ({
   cuentas: {
@@ -23,10 +24,12 @@ import { ConfirmProvider } from '../components/ConfirmModal';
 import { PageActionsProvider } from '../contexts/PageActionsContext';
 
 function renderScreen() {
+  // MemoryRouter requerido tras 2026-06-09: CuentasCC ahora usa useSearchParams
+  // para soportar deep-link /cuentas?cliente=<id> desde la grilla de Ventas.
   return render(
-    <ToastProvider><ConfirmProvider><PageActionsProvider>
+    <MemoryRouter><ToastProvider><ConfirmProvider><PageActionsProvider>
       <CuentasCC />
-    </PageActionsProvider></ConfirmProvider></ToastProvider>
+    </PageActionsProvider></ConfirmProvider></ToastProvider></MemoryRouter>
   );
 }
 
