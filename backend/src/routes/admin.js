@@ -12,6 +12,10 @@ const { evaluarTodos, resumir } = require('../lib/checkInvariants');
 const { runBackfill } = require('../../scripts/backfill-caja-financiera');
 const { runBackfill: runBackfillTarjetas } = require('../../scripts/backfill-caja-tarjetas');
 const { invalidateCajas } = require('../lib/cajasCache');
+const { invalidateMetricas } = require('../lib/inventarioCache');
+const db = require('../config/database');
+const audit = require('../lib/audit');
+const parseId = require('../lib/parseId');
 
 // Todas las rutas de este módulo requieren rol admin (no solo permiso).
 router.use(adminOnly);
@@ -141,6 +145,160 @@ router.post('/backfill-caja-tarjetas/apply', backfillLimiter, async (req, res, n
     res.json(result);
   } catch (err) {
     handleBackfillError(err, res, next);
+  }
+});
+
+// ─── Diagnóstico de stock ─────────────────────────────────────────────────────
+// Surgió en testing pre-salida 2026-06-09: Lucas reportó productos que
+// quedaron en estado='vendido' después de borrar la venta B2B que los descontó.
+// Mi reproducción local del flujo (multi-item venta B2B → DELETE) restauró
+// stock correctamente, pero los datos en prod mostraban lo contrario. Hacía
+// falta una forma read-only de inspeccionar el historial completo de un
+// producto sin abrir SQL directo contra la DB.
+//
+// GET /api/admin/diagnose-producto?imei=350909000000001  → busca por IMEI
+// GET /api/admin/diagnose-producto?producto_id=123       → busca por ID
+//
+// Devuelve TODOS los productos que matchean (vivos y soft-deleted, porque al
+// vaciar + reimportar pueden coexistir múltiples filas con el mismo IMEI), y
+// para cada uno, el árbol completo de items_movimiento_cc que lo referencian
+// con la info del movimiento padre (vivo o borrado).
+router.get('/diagnose-producto', async (req, res, next) => {
+  try {
+    const { imei, producto_id } = req.query;
+    let productos = [];
+    if (producto_id) {
+      const id = parseId(producto_id);
+      if (!id) return res.status(400).json({ error: 'producto_id inválido' });
+      const r = await db.query('SELECT * FROM productos WHERE id = $1', [id]);
+      productos = r.rows;
+    } else if (imei && typeof imei === 'string' && imei.trim()) {
+      // Sin filtro deleted_at: queremos ver también los soft-deleted (huérfanos
+      // de vaciados + reimportaciones).
+      const r = await db.query(
+        'SELECT * FROM productos WHERE imei = $1 ORDER BY id DESC',
+        [imei.trim()]
+      );
+      productos = r.rows;
+    } else {
+      return res.status(400).json({ error: 'Pasá imei o producto_id como query param' });
+    }
+
+    if (productos.length === 0) {
+      return res.json({ productos: [], movimientos_cc: [] });
+    }
+
+    // Cargar todos los items_movimiento_cc + movimiento_cc relacionados
+    // a estos producto_id en una sola query. JOIN al movimiento incluye
+    // borrados (sin filtrar deleted_at).
+    const prodIds = productos.map(p => p.id);
+    const { rows: trail } = await db.query(
+      `SELECT
+         i.id              AS item_id,
+         i.movimiento_cc_id,
+         i.producto_id,
+         i.cantidad        AS item_cantidad,
+         i.valor           AS item_valor,
+         i.producto        AS item_producto_txt,
+         i.imei_serial,
+         m.id              AS mov_id,
+         m.cliente_cc_id,
+         m.fecha           AS mov_fecha,
+         m.tipo            AS mov_tipo,
+         m.monto_total     AS mov_monto,
+         m.caja_id         AS mov_caja_id,
+         m.created_at      AS mov_created_at,
+         m.deleted_at      AS mov_deleted_at,
+         m.created_by_user_id AS mov_created_by,
+         c.nombre          AS cliente_nombre,
+         c.apellido        AS cliente_apellido
+       FROM items_movimiento_cc i
+       JOIN movimientos_cc m  ON m.id = i.movimiento_cc_id
+       LEFT JOIN clientes_cc c ON c.id = m.cliente_cc_id
+       WHERE i.producto_id = ANY($1::int[])
+       ORDER BY m.created_at DESC, i.id DESC`,
+      [prodIds]
+    );
+
+    res.json({
+      productos: productos.map(p => ({
+        id: p.id,
+        nombre: p.nombre,
+        imei: p.imei,
+        clase: p.clase,
+        cantidad: Number(p.cantidad),
+        estado: p.estado,
+        costo: p.costo,
+        costo_moneda: p.costo_moneda,
+        precio_venta: p.precio_venta,
+        precio_moneda: p.precio_moneda,
+        created_at: p.created_at,
+        deleted_at: p.deleted_at,
+      })),
+      movimientos_cc: trail,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Restaurar producto al stock (limpieza puntual) ───────────────────────────
+// Compañero del diagnose. Usar SOLO cuando ya diagnosticamos que un producto
+// quedó incorrectamente en 'vendido' y necesitamos restaurarlo sin tener que
+// reimportar todo el inventario. Audit log obligatorio (incluye `reason` del
+// admin para trazabilidad) e invalida cache de métricas.
+//
+// POST body: { producto_id: number, cantidad?: number = 1, reason: string }
+router.post('/restore-producto', async (req, res, next) => {
+  const { producto_id, cantidad: cantBody, reason } = req.body || {};
+  // parseId requiere string; el body JSON puede mandar number. Coerción defensiva.
+  const id = parseId(producto_id == null ? '' : String(producto_id));
+  if (!id) return res.status(400).json({ error: 'producto_id inválido' });
+  const cantidad = Number.isFinite(Number(cantBody)) && Number(cantBody) > 0 ? Number(cantBody) : 1;
+  if (typeof reason !== 'string' || reason.trim().length < 5) {
+    return res.status(400).json({ error: 'reason es obligatorio (mínimo 5 caracteres) para auditoría' });
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: pre } = await client.query(
+      'SELECT * FROM productos WHERE id = $1 FOR UPDATE', [id]
+    );
+    if (!pre[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Producto no encontrado' });
+    }
+    if (pre[0].deleted_at) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Producto está soft-deleted. Restaurarlo manualmente desde Inventario antes.' });
+    }
+    const { rows: post } = await client.query(
+      `UPDATE productos
+         SET cantidad = $2, estado = 'disponible'
+         WHERE id = $1
+         RETURNING *`,
+      [id, cantidad]
+    );
+    // audit_logs.accion tiene CHECK constraint a INSERT/UPDATE/DELETE.
+    // Usamos UPDATE (semánticamente correcto: cambia estado+cantidad) y
+    // marcamos el origen del UPDATE en `_origen: 'admin_restore'` dentro del
+    // JSONB para que sea filtrable en queries de auditoría.
+    await audit(client, 'productos', 'UPDATE', id, {
+      antes: { cantidad: pre[0].cantidad, estado: pre[0].estado },
+      despues: { cantidad: post[0].cantidad, estado: post[0].estado },
+      user_id: req.user.id,
+      _origen: 'admin_restore',
+      _reason: reason.trim(),
+    });
+    await client.query('COMMIT');
+    invalidateMetricas();
+    res.json({ ok: true, producto: post[0] });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
   }
 });
 
