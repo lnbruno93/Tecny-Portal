@@ -463,10 +463,12 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
 
       // 1) Batch SELECT FOR UPDATE de todos los productos relevantes en una
       //    sola query, ordenados por id para evitar deadlock.
+      //    Traemos también costo + costo_moneda para congelar el snapshot
+      //    en items_movimiento_cc (junio 2026 — desglose de venta B2B).
       let prodMap = new Map();
       if (prodIds.length > 0) {
         const { rows: prodRows } = await client.query(
-          `SELECT id, nombre, cantidad, estado FROM productos
+          `SELECT id, nombre, cantidad, estado, costo, costo_moneda FROM productos
              WHERE id = ANY($1::int[]) AND deleted_at IS NULL
              ORDER BY id
              FOR UPDATE`,
@@ -492,14 +494,24 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       }
 
       // 2) Bulk INSERT de los items en una sola query con UNNEST.
+      //    costo_unit + costo_moneda: snapshot congelado del producto al
+      //    momento de la venta. Items sin producto_id (texto libre) → NULL.
+      //    Ventas históricas pre-migración → NULL también.
+      const costoSnap = (it) => {
+        if (!it.producto_id) return { unit: null, moneda: null };
+        const p = prodMap.get(Number(it.producto_id));
+        if (!p) return { unit: null, moneda: null };
+        return { unit: Number(p.costo) || 0, moneda: p.costo_moneda || 'USD' };
+      };
       const itemRes = await client.query(
         `INSERT INTO items_movimiento_cc
-           (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas, producto_id, cantidad)
-         SELECT $1, p, m, t, c, i, v, vf, n, pid, cant
+           (movimiento_cc_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas, producto_id, cantidad, costo_unit, costo_moneda)
+         SELECT $1, p, m, t, c, i, v, vf, n, pid, cant, cu, cm
            FROM UNNEST(
              $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
-             $7::numeric[], $8::boolean[], $9::text[], $10::int[], $11::int[]
-           ) AS u(p, m, t, c, i, v, vf, n, pid, cant)
+             $7::numeric[], $8::boolean[], $9::text[], $10::int[], $11::int[],
+             $12::numeric[], $13::text[]
+           ) AS u(p, m, t, c, i, v, vf, n, pid, cant, cu, cm)
          RETURNING *`,
         [
           mov.id,
@@ -513,6 +525,8 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
           items.map(it => it.notas ?? null),
           items.map(it => it.producto_id ?? null),
           items.map(it => Number(it.cantidad || 1)),
+          items.map(it => costoSnap(it).unit),
+          items.map(it => costoSnap(it).moneda),
         ]
       );
       insertedItems = itemRes.rows;
