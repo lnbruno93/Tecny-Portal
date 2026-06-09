@@ -1007,7 +1007,7 @@ export default function CuentasCC() {
 
                 <thead>
                   <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
-                    {['Fecha', 'Tipo', 'Producto', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', ''].map((h, i) => (
+                    {['Fecha', 'Tipo', 'Detalle', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
