@@ -194,10 +194,26 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       db.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p),
       // Ventas por etiqueta
       db.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p),
-      // Top productos (por unidades)
-      db.query(`SELECT vi.descripcion, SUM(vi.cantidad)::int AS unidades
-                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id WHERE ${BASE}
-                GROUP BY vi.descripcion ORDER BY unidades DESC, vi.descripcion LIMIT 5`, p),
+      // Top productos (por unidades): UNION retail + B2B. Junio 2026 — antes
+      // solo contaba retail, ahora si vendiste un iPhone por B2B aparece en
+      // el top junto con los retail.
+      db.query(`
+        WITH all_items AS (
+          SELECT vi.descripcion, vi.cantidad
+            FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+            WHERE ${BASE}
+          UNION ALL
+          SELECT COALESCE(NULLIF(TRIM(i.producto), ''), '(sin nombre)') AS descripcion,
+                 COALESCE(i.cantidad, 1)
+            FROM items_movimiento_cc i JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
+            WHERE ${B2B_BASE}
+        )
+        SELECT descripcion, SUM(cantidad)::int AS unidades
+        FROM all_items
+        GROUP BY descripcion
+        ORDER BY unidades DESC, descripcion
+        LIMIT 5
+      `, p),
       // Top vendedores (por total facturado en USD)
       db.query(`SELECT ve.nombre AS vendedor,
                        COALESCE(SUM(CASE WHEN vi.moneda='ARS' AND v.tc_venta>0 THEN vi.precio_vendido*vi.cantidad/v.tc_venta ELSE vi.precio_vendido*vi.cantidad END),0) AS total_usd,
@@ -295,24 +311,44 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
 
 /* ═══════════════════════ VENTAS ═══════════════════════ */
 
+// GET /api/ventas — listado unificado retail + B2B (cuentas corrientes).
+//
+// 2026-06-09: ahora incluye las ventas B2B (movimientos_cc tipo='compra'),
+// mapeadas al mismo shape que las retail. Lucas pidió ver "una venta más" en
+// la grilla, sin tener que cambiar de pantalla para ver lo vendido por CC.
+// Cada fila B2B trae:
+//   - `origen: 'b2b'` (retail usa 'retail') — discriminador para el frontend
+//   - `order_id: 'B2B-{id}'` — etiqueta visual
+//   - `estado: 'pendiente'` — los B2B siempre quedan pendientes en esta vista
+//     (no atamos pagos CC a ventas específicas; el saldo es por cliente, no
+//     por mov). Versión futura: 'acreditado' si saldo del cliente = 0.
+//   - `etiqueta_nombre: 'B2B'` — badge visual
+//   - `items[]` derivados de items_movimiento_cc con el mismo shape
+//   - `pagos[]` derivados del caja_movimiento asociado (si tuvo caja_id)
+//   - `canjes: []`, `comprobantes_count: 0` (no aplica)
+//
+// Estrategia: dos queries en paralelo, combinar+ordenar en JS, paginar al
+// final. Más legible que UNION SQL y permite mapeos custom sin acrobacias.
+// Performance ok para volúmenes típicos (un día/mes); si en el futuro hay
+// millones de filas, se puede mover el merge al SQL.
 router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => {
   try {
     const { desde, hasta, estado, etiqueta_id, buscar } = req.query;
-    const conditions = ['v.deleted_at IS NULL'];
-    const params = [];
-    if (desde)       { params.push(desde);       conditions.push(`v.fecha >= $${params.length}`); }
-    if (hasta)       { params.push(hasta);       conditions.push(`v.fecha <= $${params.length}`); }
-    if (estado)      { params.push(estado);      conditions.push(`v.estado = $${params.length}`); }
-    if (etiqueta_id) { params.push(etiqueta_id); conditions.push(`v.etiqueta_id = $${params.length}`); }
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      conditions.push(`(v.order_id ILIKE $${params.length} OR v.cliente_nombre ILIKE $${params.length}
-                        OR EXISTS (SELECT 1 FROM venta_items vi WHERE vi.venta_id = v.id AND (vi.descripcion ILIKE $${params.length} OR vi.imei ILIKE $${params.length})))`);
-    }
-    const where = conditions.join(' AND ');
-    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
-    const dataQuery = `
+    // ── Query 1: ventas retail (igual que antes) ───────────────────────────
+    const condR = ['v.deleted_at IS NULL'];
+    const paramsR = [];
+    if (desde)       { paramsR.push(desde);       condR.push(`v.fecha >= $${paramsR.length}`); }
+    if (hasta)       { paramsR.push(hasta);       condR.push(`v.fecha <= $${paramsR.length}`); }
+    if (estado)      { paramsR.push(estado);      condR.push(`v.estado = $${paramsR.length}`); }
+    if (etiqueta_id) { paramsR.push(etiqueta_id); condR.push(`v.etiqueta_id = $${paramsR.length}`); }
+    if (buscar) {
+      paramsR.push(`%${buscar}%`);
+      condR.push(`(v.order_id ILIKE $${paramsR.length} OR v.cliente_nombre ILIKE $${paramsR.length}
+                   OR EXISTS (SELECT 1 FROM venta_items vi WHERE vi.venta_id = v.id AND (vi.descripcion ILIKE $${paramsR.length} OR vi.imei ILIKE $${paramsR.length})))`);
+    }
+    const whereR = condR.join(' AND ');
+    const retailQuery = `
       SELECT v.*, e.nombre AS etiqueta_nombre, e.color AS etiqueta_color,
         COALESCE((SELECT json_agg(i ORDER BY i.id) FROM venta_items i WHERE i.venta_id = v.id), '[]') AS items,
         COALESCE((SELECT json_agg(p ORDER BY p.id) FROM venta_pagos p WHERE p.venta_id = v.id), '[]') AS pagos,
@@ -320,15 +356,130 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
         COALESCE((SELECT COUNT(*) FROM venta_comprobantes vc WHERE vc.venta_id = v.id AND vc.deleted_at IS NULL), 0) AS comprobantes_count
       FROM ventas v
       LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
-      WHERE ${where}
-      ORDER BY v.fecha DESC, v.id DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+      WHERE ${whereR}`;
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM ventas v WHERE ${where}`, params),
-      db.query(dataQuery, [...params, limit, offset]),
+    // ── Query 2: B2B (movimientos_cc tipo='compra' con su cliente) ─────────
+    // Si el filtro pide etiqueta_id concreto, los B2B no la tienen → no
+    // matchean. Si pide estado != 'pendiente', tampoco (B2B siempre pendiente
+    // en esta vista). Ambos casos: skipear la query B2B para ahorrar trabajo.
+    const skipB2B = (etiqueta_id != null && etiqueta_id !== '') ||
+                    (estado && estado !== 'pendiente');
+    const condB = [
+      `m.deleted_at IS NULL`,
+      `m.tipo = 'compra'`,
+      `c.deleted_at IS NULL`,
+    ];
+    const paramsB = [];
+    if (desde) { paramsB.push(desde); condB.push(`m.fecha >= $${paramsB.length}`); }
+    if (hasta) { paramsB.push(hasta); condB.push(`m.fecha <= $${paramsB.length}`); }
+    if (buscar) {
+      paramsB.push(`%${buscar}%`);
+      condB.push(`(c.nombre ILIKE $${paramsB.length} OR c.apellido ILIKE $${paramsB.length}
+                   OR ('B2B-' || m.id) ILIKE $${paramsB.length}
+                   OR EXISTS (SELECT 1 FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
+                              AND (i.producto ILIKE $${paramsB.length} OR i.imei_serial ILIKE $${paramsB.length})))`);
+    }
+    const whereB = condB.join(' AND ');
+    // Mapeo de items_movimiento_cc → mismo shape que venta_items:
+    // - descripcion ← producto (texto libre o copia del producto)
+    // - cantidad, costo (costo_unit), moneda (costo_moneda || 'USD'),
+    //   precio_vendido ← valor, imei ← imei_serial.
+    // ganancia_usd = monto_total - SUM(costo_unit*cantidad). Si algún item
+    // no tiene costo_unit (ventas legacy pre-migración 20260608), se asume 0
+    // y la ganancia queda inflada — aceptable: las ventas legacy no son el
+    // caso común y el operador puede editar después.
+    const b2bQuery = `
+      SELECT
+        ('b2b-' || m.id)                                                    AS id_str,
+        m.id::int                                                           AS id_num,
+        m.fecha,
+        NULL::time                                                          AS hora,
+        TRIM(COALESCE(c.nombre,'') || ' ' || COALESCE(c.apellido,''))       AS cliente_nombre,
+        m.descripcion                                                       AS notas,
+        'pendiente'                                                         AS estado,
+        ('B2B-' || LPAD(m.id::text, 6, '0'))                                AS order_id,
+        m.monto_total                                                       AS total_usd,
+        ROUND(
+          (m.monto_total - COALESCE((
+            SELECT SUM(COALESCE(i.costo_unit,0) * COALESCE(i.cantidad,1))
+              FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
+          ), 0))::numeric, 2
+        )                                                                   AS ganancia_usd,
+        m.cliente_cc_id,
+        m.caja_id,
+        m.created_by_user_id,
+        m.created_at,
+        COALESCE((
+          SELECT json_agg(json_build_object(
+            'id',              i.id,
+            'descripcion',     COALESCE(i.producto, ''),
+            'cantidad',        COALESCE(i.cantidad, 1),
+            'imei',            i.imei_serial,
+            'producto_id',     i.producto_id,
+            'precio_vendido',  i.valor,
+            'precio_original', i.valor,
+            'costo',           i.costo_unit,
+            'moneda',          COALESCE(i.costo_moneda, 'USD')
+          ) ORDER BY i.id)
+            FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
+        ), '[]'::json)                                                      AS items
+      FROM movimientos_cc m
+      JOIN clientes_cc c ON c.id = m.cliente_cc_id
+      WHERE ${whereB}`;
+
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
+
+    // Lanzar ambas en paralelo. Skipea B2B cuando los filtros lo descartan.
+    const [retailRes, b2bRes] = await Promise.all([
+      db.query(retailQuery, paramsR),
+      skipB2B ? Promise.resolve({ rows: [] }) : db.query(b2bQuery, paramsB),
     ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+
+    // Mapear B2B al shape unificado (mismas keys que retail).
+    const b2bMapped = b2bRes.rows.map(r => ({
+      id:               r.id_str,
+      origen:           'b2b',
+      order_id:         r.order_id,
+      fecha:            r.fecha,
+      hora:             r.hora,
+      cliente_nombre:   r.cliente_nombre || '—',
+      cliente_cc_id:    r.cliente_cc_id,
+      estado:           r.estado,
+      total_usd:        Number(r.total_usd) || 0,
+      ganancia_usd:     Number(r.ganancia_usd) || 0,
+      etiqueta_id:      null,
+      etiqueta_nombre:  'B2B',
+      etiqueta_color:   '#6b7cff',
+      items:            r.items || [],
+      pagos:            [],   // pagos CC no se atan a movs específicos (saldo es por cliente)
+      canjes:           [],
+      comprobantes_count: 0,
+      notas:            r.notas,
+      caja_id:          r.caja_id,
+      created_by_user_id: r.created_by_user_id,
+      created_at:       r.created_at,
+      _b2b_mov_id:      r.id_num,  // para que el frontend sepa qué endpoint llamar al eliminar
+    }));
+
+    // Marcar retail con origen para que el frontend distinga (default 'retail').
+    const retailMapped = retailRes.rows.map(v => ({ ...v, origen: 'retail' }));
+
+    // Combinar y ordenar por fecha DESC, id DESC. Fecha es 'YYYY-MM-DD' ya, igual
+    // que m.fecha — el orden lexicográfico de strings funciona.
+    const todas = [...retailMapped, ...b2bMapped].sort((a, b) => {
+      const fA = String(a.fecha || '');
+      const fB = String(b.fecha || '');
+      if (fA !== fB) return fA < fB ? 1 : -1;
+      // mismo día → ordenamos por id numérico (retail.id es num, b2b._b2b_mov_id es num)
+      const idA = a.origen === 'b2b' ? a._b2b_mov_id : a.id;
+      const idB = b.origen === 'b2b' ? b._b2b_mov_id : b.id;
+      return (Number(idB) || 0) - (Number(idA) || 0);
+    });
+
+    const total = todas.length;
+    const data  = todas.slice(offset, offset + limit);
+
+    res.json(paginatedResponse(data, total, { page, limit }));
   } catch (err) { next(err); }
 });
 

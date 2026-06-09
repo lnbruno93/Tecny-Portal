@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cuentas, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -376,7 +377,11 @@ export default function CuentasCC() {
   const [catFilter, setCatFilter] = useState('todas');
   const [search, setSearch]       = useState('');
   const [clientes, setClientes]   = useState([]);
-  const [selectedId, setSelectedId]       = useState(null);
+  // Deep-link desde Ventas: /cuentas?cliente=<id> abre directo ese cliente.
+  // Usado por la grilla de Ventas cuando el operador edita una fila B2B.
+  const [searchParams] = useSearchParams();
+  const initialClienteParam = searchParams.get('cliente');
+  const [selectedId, setSelectedId]       = useState(initialClienteParam ? Number(initialClienteParam) : null);
   const [clienteDetail, setClienteDetail] = useState(null);
   const [rgData, setRgData]       = useState(null);
   const [loadingClientes, setLoadingClientes] = useState(true);
