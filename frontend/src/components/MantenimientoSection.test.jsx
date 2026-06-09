@@ -13,6 +13,11 @@ vi.mock('../lib/api', () => ({
     backfillFinancieraApply:  () => mockFinApply(),
     backfillTarjetasReport:   () => mockTarjReport(),
     backfillTarjetasApply:    () => mockTarjApply(),
+    // DiagnoseStockPanel también vive en MantenimientoSection — mockeamos
+    // sus dos endpoints para que el render no tire. Tests específicos del
+    // panel están en DiagnoseStockPanel.test.jsx.
+    diagnoseProducto: () => Promise.resolve({ productos: [], movimientos_cc: [] }),
+    restoreProducto:  () => Promise.resolve({ ok: true, producto: {} }),
   },
 }));
 
