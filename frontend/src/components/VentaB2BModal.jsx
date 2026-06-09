@@ -47,6 +47,10 @@ const mkRow = () => ({
   gb: '',
   color: '',
   stock_disp: null,  // cuántas unidades tiene en stock (informativo)
+  // Costo del producto (snapshot al elegir del picker — informativo para que
+  // el operador vea cuánto ganará al fijar el precio).
+  costo:        null,
+  costo_moneda: null,
   // Cantidad a vender y precio
   cantidad: '1',
   precio_unit: '',
@@ -131,6 +135,10 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
       gb:     p.gb || '',
       color:  p.color || '',
       stock_disp: Number(p.cantidad ?? 0),
+      // Snapshot del costo al momento de elegir del picker. Solo informativo
+      // — el backend congela su propio snapshot en items_movimiento_cc.costo_unit.
+      costo:        p.costo != null ? Number(p.costo) : null,
+      costo_moneda: p.costo_moneda || null,
       precio_unit:   r.precio_unit || (p.precio_venta != null ? String(p.precio_venta) : ''),
       precio_moneda: r.precio_unit ? r.precio_moneda : (p.precio_moneda || 'USD'),
     }));
@@ -138,6 +146,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   function clearProducto(idx) {
     setRows(rs => rs.map((r, i) => i !== idx ? r : {
       ...r, producto_id: null, stock_disp: null, imei: '', gb: '', color: '',
+      costo: null, costo_moneda: null,
     }));
   }
   // Set de producto_id duplicados — el mismo producto unitario no puede
@@ -290,6 +299,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                 <col style={{ width: 60 }} />   {/* GB */}
                 <col style={{ width: 90 }} />   {/* Color */}
                 <col style={{ width: 80 }} />   {/* Stock */}
+                <col style={{ width: 100 }} />  {/* Costo unit (2026-06-09) */}
                 <col style={{ width: 70 }} />   {/* Cant */}
                 <col style={{ width: 100 }} />  {/* Precio unit */}
                 <col style={{ width: 64 }} />   {/* M */}
@@ -298,7 +308,9 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               </colgroup>
               <thead>
                 <tr>
-                  {['#','Producto *','IMEI','GB','Color','Stock','Cant. *','Precio *','M.','Subtotal',''].map((h, i) =>
+                  {/* "Costo" agregado 2026-06-09 — informativo, no editable. Permite
+                      ver de un vistazo cuánto se gana antes de cargar el precio. */}
+                  {['#','Producto *','IMEI','GB','Color','Stock','Costo','Cant. *','Precio *','M.','Subtotal',''].map((h, i) =>
                     <th key={i} style={{ ...th, textAlign: i === 0 ? 'center' : 'left' }}>{h}</th>
                   )}
                 </tr>
@@ -343,6 +355,14 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>
                         {r.stock_disp != null ? r.stock_disp : '—'}
                       </td>
+                      {/* Costo unit (2026-06-09) — informativo, snapshot del picker.
+                          Si moneda del costo difiere de la del precio, mostramos igual
+                          la moneda explícita para no confundir (ej. costo USD, precio ARS). */}
+                      <td style={{ padding: '3px 4px', textAlign: 'right', fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                        {r.costo != null
+                          ? `${r.costo_moneda || 'USD'} ${Number(r.costo).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+                          : '—'}
+                      </td>
                       <td style={{ padding: '3px 4px' }}>
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="1" style={{
                           ...cellInp, textAlign: 'right',
@@ -351,9 +371,24 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                           onChange={e => updCell(idx, 'cantidad', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{ ...cellInp, textAlign: 'right', fontWeight: 700 }}
-                          value={r.precio_unit} placeholder="0"
-                          onChange={e => updCell(idx, 'precio_unit', e.target.value)} />
+                        {/* Si precio < costo en la misma moneda, fondo rojo tenue para
+                            avisar que vende a pérdida. Comparamos solo cuando ambos
+                            están en la misma moneda (sin TC para no inventar conversión). */}
+                        {(() => {
+                          const precioN = Number(r.precio_unit) || 0;
+                          const mismaMoneda = r.costo != null && r.precio_moneda === (r.costo_moneda || 'USD');
+                          const aPerdida = mismaMoneda && precioN > 0 && precioN < Number(r.costo);
+                          return (
+                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" style={{
+                              ...cellInp, textAlign: 'right', fontWeight: 700,
+                              borderColor: aPerdida ? 'var(--neg)' : cellInp.borderColor,
+                              background:  aPerdida ? 'rgba(220, 38, 38, 0.08)' : cellInp.background,
+                            }}
+                              title={aPerdida ? `Precio menor al costo (${r.costo_moneda || 'USD'} ${r.costo}) — vendés a pérdida` : undefined}
+                              value={r.precio_unit} placeholder="0"
+                              onChange={e => updCell(idx, 'precio_unit', e.target.value)} />
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: '3px 4px' }}>
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}

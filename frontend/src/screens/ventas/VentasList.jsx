@@ -62,12 +62,32 @@ export default function VentasList({
                 {!esB2B && v.etiqueta_nombre && <><br /><Badge tone="default">{v.etiqueta_nombre}</Badge></>}
               </td>
               <td style={{ fontSize: 12 }}>
-                {(v.items || []).map((i, k) => (
-                  <div key={k}>
-                    {i.descripcion}{i.cantidad > 1 ? ' ×' + i.cantidad : ''}
-                    {esB2B && i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>{i.imei}</span>}
-                  </div>
-                ))}
+                {(v.items || []).map((i, k) => {
+                  // 2026-06-09: costo + precio bajo el nombre del producto. Lucas
+                  // pidió ver de un vistazo cuánto le costó vs cuánto vendió cada
+                  // item. Retail usa `costo` + `precio_vendido`; B2B mapea ambos al
+                  // mismo shape desde el backend. Si falta alguno (legacy
+                  // pre-migración costo_unit), no mostramos esa línea.
+                  const costo  = i.costo != null ? Number(i.costo) : null;
+                  const precio = i.precio_vendido != null ? Number(i.precio_vendido) : null;
+                  const mon    = i.moneda || 'USD';
+                  const sufMon = mon === 'USD' ? 'u$s' : (mon === 'ARS' ? '$' : mon + ' ');
+                  return (
+                    <div key={k} style={{ marginBottom: 2 }}>
+                      <div>
+                        {i.descripcion}{i.cantidad > 1 ? ' ×' + i.cantidad : ''}
+                        {esB2B && i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>{i.imei}</span>}
+                      </div>
+                      {(costo != null || precio != null) && (
+                        <div className="muted tiny" style={{ marginTop: 1 }}>
+                          {costo  != null && <>costo {sufMon}{fmt(costo)}</>}
+                          {costo != null && precio != null && <span style={{ margin: '0 4px', opacity: 0.5 }}>·</span>}
+                          {precio != null && <>venta {sufMon}{fmt(precio)}</>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {(v.canjes || []).map((c, k) => (
                   <div key={'c' + k} style={{ color: 'var(--warn)', fontSize: 11 }}>
                     ↺ {c.descripcion}
