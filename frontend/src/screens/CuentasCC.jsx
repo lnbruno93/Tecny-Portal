@@ -619,26 +619,54 @@ export default function CuentasCC() {
     } catch (e) { toast.error(e.message); }
   }
 
-  // Soft-delete del cliente B2B. El backend mantiene movimientos pero deja
-  // de listarlos en GET /clientes. Si el cliente tiene saldo != 0, avisamos
-  // pero igual permitimos borrar (auditoría queda en audit_logs).
+  // Soft-delete del cliente B2B con cascada en backend (2026-06-09): cancela
+  // todos sus movimientos vivos, restaura stock y revierte caja en la misma
+  // TX. ANTES de la confirmación, traemos el preview con números concretos
+  // para que el operador sepa exactamente qué va a pasar — la copia previa
+  // ("histórico queda guardado") era engañosa y llevó a Lucas a borrar
+  // iConnect el 2026-06-09 esperando que el stock vuelva.
   async function handleDeleteCliente() {
     const cli = clienteDetail?.resumen?.cliente;
     if (!cli) return;
-    const saldo = Number(clienteDetail?.resumen?.saldo || 0);
-    const warn = saldo !== 0
-      ? `\n\n⚠ El cliente tiene saldo USD ${fmtSigned(saldo)}. Al borrarlo dejará de aparecer en los listados pero su histórico queda guardado.`
-      : '';
+    let preview;
+    try {
+      preview = await cuentas.deleteClientePreview(cli.id);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo cargar el preview.');
+      return;
+    }
+    const nombre = [cli.nombre, cli.apellido].filter(Boolean).join(' ');
+    const lineas = [
+      `Esta acción no se puede deshacer.`,
+      ``,
+      preview.movimientos_a_cancelar > 0
+        ? `Al borrar el cliente se van a cancelar AUTOMÁTICAMENTE en la misma operación:`
+        : `Este cliente no tiene movimientos vivos: solo se borra la ficha.`,
+    ];
+    if (preview.movimientos_a_cancelar > 0) {
+      lineas.push(`• ${preview.movimientos_a_cancelar} movimiento(s) B2B`);
+      if (preview.productos_a_restaurar > 0) {
+        lineas.push(`• ${preview.productos_a_restaurar} producto(s) volverán al stock`);
+      }
+      if (preview.caja_a_revertir_usd > 0) {
+        lineas.push(`• USD ${preview.caja_a_revertir_usd.toLocaleString('es-AR')} se revertirán de las cajas`);
+      }
+    }
     const ok = await confirm({
-      title: `Eliminar cliente "${[cli.nombre, cli.apellido].filter(Boolean).join(' ')}"`,
-      message: `Esta acción no se puede deshacer.${warn}`,
+      title: `Eliminar cliente "${nombre}"`,
+      message: lineas.join('\n'),
       confirmLabel: 'Eliminar cliente',
       danger: true,
     });
     if (!ok) return;
     try {
-      await cuentas.deleteCliente(cli.id);
-      toast.success('Cliente eliminado.');
+      const r = await cuentas.deleteCliente(cli.id);
+      const cascade = r?.cascade;
+      if (cascade?.movimientos_cancelados > 0) {
+        toast.success(`Cliente eliminado. Se cancelaron ${cascade.movimientos_cancelados} movs y se restauraron ${cascade.productos_restaurados} productos.`);
+      } else {
+        toast.success('Cliente eliminado.');
+      }
       setClientes(prev => prev.filter(c => c.id !== cli.id));
       setSelectedId(null);
       setClienteDetail(null);

@@ -295,6 +295,10 @@ export const cuentas = {
   createCliente: (data) => api('/api/cuentas/clientes', 'POST', data),
   updateCliente: (id, data) => api(`/api/cuentas/clientes/${id}`, 'PUT', data),
   deleteCliente: (id) => api(`/api/cuentas/clientes/${id}`, 'DELETE'),
+  // Preview de la cascada antes de confirmar: cuántos movs se van a cancelar,
+  // cuánta caja a revertir, cuántos productos a restaurar. Usado por el
+  // confirm modal de CuentasCC.jsx para mostrar números concretos.
+  deleteClientePreview: (id) => api(`/api/cuentas/clientes/${id}/delete-preview`),
   movimientos: (clienteId, params = {}) => api(`/api/cuentas/clientes/${clienteId}/movimientos?` + new URLSearchParams(params)),
   resumen: (clienteId) => api(`/api/cuentas/clientes/${clienteId}/resumen`),
   resumenGeneral: () => api('/api/cuentas/resumen-general'),
@@ -425,6 +429,11 @@ export const admin = {
   // Restaurar producto vendido a estado='disponible' + cantidad indicada.
   // Audit log obligatorio (reason mínimo 5 chars). Solo para productos vivos.
   restoreProducto: (body) => api('/api/admin/restore-producto', 'POST', body),
+  // Cleanup de movimientos B2B huérfanos (cliente borrado, mov vivo). Existe
+  // para limpiar el estado sucio pre-fix de DELETE /clientes/:id (que hoy ya
+  // cascadea). PR #137.
+  orphanMovsReport: () => api('/api/admin/orphan-movs'),
+  orphanMovsApply:  () => api('/api/admin/orphan-movs/apply', 'POST'),
 };
 
 export const historial = {

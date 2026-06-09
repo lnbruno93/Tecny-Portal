@@ -18,6 +18,9 @@ vi.mock('../lib/api', () => ({
     // panel están en DiagnoseStockPanel.test.jsx.
     diagnoseProducto: () => Promise.resolve({ productos: [], movimientos_cc: [] }),
     restoreProducto:  () => Promise.resolve({ ok: true, producto: {} }),
+    // OrphanMovs panel (2026-06-09): cleanup de movs huérfanos.
+    orphanMovsReport: () => Promise.resolve({ movs_count: 0, deuda_huerfana: 0, caja_movs_a_revertir: 0, muestras: [] }),
+    orphanMovsApply:  () => Promise.resolve({ apply: true, movs_procesados: 0, productos_restaurados: 0, errores: [] }),
   },
 }));
 
