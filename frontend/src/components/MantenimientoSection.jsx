@@ -18,6 +18,7 @@
 // y la composición de los 2 paneles.
 import { admin as adminApi } from '../lib/api';
 import BackfillPanel from './admin/BackfillPanel';
+import DiagnoseStockPanel from './admin/DiagnoseStockPanel';
 import { Icons } from './Icons';
 
 function fmtARS(n) {
@@ -187,6 +188,8 @@ function TarjetasReport({ report }) {
 export default function MantenimientoSection() {
   return (
     <>
+      <DiagnoseStockPanel />
+
       <BackfillPanel
         title="Backfill caja Financiera"
         descripcion={

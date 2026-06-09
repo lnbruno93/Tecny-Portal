@@ -417,6 +417,14 @@ export const admin = {
   // trazabilidad para cobros y liquidaciones histor­icos pre-TANDA 1 Tarjetas.
   backfillTarjetasReport: () => api('/api/admin/backfill-caja-tarjetas'),
   backfillTarjetasApply:  () => api('/api/admin/backfill-caja-tarjetas/apply', 'POST'),
+  // Diagnóstico de stock: dado un IMEI o producto_id, devuelve el árbol completo
+  // de productos (vivos + soft-deleted) + items_movimiento_cc que los referencian
+  // (incluso movs borrados). Útil para auditar por qué un producto quedó en
+  // estado='vendido' tras borrar la venta que lo descontó. PR #136.
+  diagnoseProducto: (q) => api('/api/admin/diagnose-producto?' + new URLSearchParams(q)),
+  // Restaurar producto vendido a estado='disponible' + cantidad indicada.
+  // Audit log obligatorio (reason mínimo 5 chars). Solo para productos vivos.
+  restoreProducto: (body) => api('/api/admin/restore-producto', 'POST', body),
 };
 
 export const historial = {
