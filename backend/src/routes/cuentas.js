@@ -52,6 +52,7 @@ const {
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { invalidateMetricas } = require('../lib/inventarioCache');
+const { cancelMovimientoCC } = require('../lib/cancelMovimientoCC');
 const { syncContactoSafe } = require('../lib/contactosSync');
 
 // Expresión CASE compartida para calcular el aporte de cada movimiento al saldo.
@@ -282,24 +283,136 @@ router.put('/clientes/:id', validate(updateClienteCCSchema), async (req, res, ne
   }
 });
 
-router.delete('/clientes/:id', async (req, res, next) => {
-  // #H-09: TX para que audit y delete sean atómicos
-  const client = await db.connect();
+// ─── GET /clientes/:id/delete-preview ───────────────────────────────────────
+// Devuelve el "diff" de lo que va a pasar si el operador borra este cliente:
+//   - cantidad de movimientos vivos que serán cancelados
+//   - productos a restaurar al stock (sumando cantidades por flow B2B)
+//   - total a revertir en caja_movimientos (USD)
+// Lo usa el frontend para mostrar un confirm con números concretos. Antes la
+// UI solo mostraba "se borrará el cliente; su histórico queda guardado", lo
+// cual era engañoso — Lucas borró iConnect el 2026-06-09 esperando que el
+// stock volviera, y los 7 movs huérfanos quedaron afectando inventario y caja
+// invisiblemente. No invocable si el cliente ya está borrado.
+router.get('/clientes/:id/delete-preview', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
-    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
+    const { rows: cli } = await db.query(
+      'SELECT id, nombre, apellido FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL', [id]
+    );
+    if (!cli[0]) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+    // Conteo + total caja a revertir + items con producto_id (para "productos a restaurar")
+    const [{ rows: movsAgg }, { rows: cajaAgg }, { rows: itemsAgg }] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*)::int AS n,
+                COALESCE(SUM(CASE WHEN tipo IN ('compra','entrega_mercaderia') THEN monto_total ELSE 0 END), 0) AS deuda_a_revertir
+           FROM movimientos_cc
+          WHERE cliente_cc_id = $1 AND deleted_at IS NULL`,
+        [id]
+      ),
+      db.query(
+        `SELECT COALESCE(SUM(cm.monto), 0)::numeric AS total
+           FROM caja_movimientos cm
+           JOIN movimientos_cc m ON m.id = cm.ref_id
+          WHERE cm.ref_tabla = 'movimientos_cc'
+            AND cm.deleted_at IS NULL
+            AND m.cliente_cc_id = $1 AND m.deleted_at IS NULL`,
+        [id]
+      ),
+      db.query(
+        `SELECT COUNT(*)::int AS n
+           FROM items_movimiento_cc i
+           JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
+          WHERE m.cliente_cc_id = $1 AND m.deleted_at IS NULL
+            AND i.producto_id IS NOT NULL
+            AND m.tipo IN ('compra','entrega_mercaderia','devolucion')`,
+        [id]
+      ),
+    ]);
+    res.json({
+      cliente: cli[0],
+      movimientos_a_cancelar: movsAgg[0].n,
+      caja_a_revertir_usd: Number(cajaAgg[0].total) || 0,
+      productos_a_restaurar: itemsAgg[0].n,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/clientes/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+  // 2026-06-09: cascada. Antes el DELETE solo soft-deleteaba la fila de
+  // clientes_cc, dejando movimientos_cc huérfanos (vivos en DB, invisibles en
+  // listados, afectando stock y caja). Hoy en la misma TX: cancela todos los
+  // movimientos vivos del cliente (revierte caja + restaura stock + audit
+  // con _origen='cliente_cascade') y después soft-deletea el cliente.
+  const client = await db.connect();
+  try {
     await client.query('BEGIN');
-    const { rows } = await client.query(
-      'UPDATE clientes_cc SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+
+    // 1. Lockear cliente.
+    const { rows: cliRows } = await client.query(
+      'SELECT * FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
+    );
+    if (!cliRows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    // 2. Listar movimientos vivos a cancelar (ordenado por id para evitar deadlock
+    //    si dos requests intentan borrar clientes con movs solapados — ej. el
+    //    cleanup admin de huérfanos corriendo al mismo tiempo).
+    const { rows: movs } = await client.query(
+      `SELECT id FROM movimientos_cc
+         WHERE cliente_cc_id = $1 AND deleted_at IS NULL
+         ORDER BY id`,
       [id]
     );
-    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Cliente no encontrado' }); }
-    await audit(client, 'clientes_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+
+    // 3. Cancelar cada uno con el helper compartido. Si alguno falla (#B-06 de
+    //    devolución revendida), el throw rompe el loop y el catch hace ROLLBACK
+    //    de TODO — el cliente NO queda borrado a medias.
+    let productosRestaurados = 0;
+    for (const m of movs) {
+      const r = await cancelMovimientoCC(client, {
+        movimientoId: m.id,
+        userId: req.user.id,
+        origen: 'cliente_cascade',
+      });
+      productosRestaurados += r.productos_restaurados;
+    }
+
+    // 4. Soft-delete del cliente.
+    await client.query(
+      'UPDATE clientes_cc SET deleted_at = NOW() WHERE id = $1',
+      [id]
+    );
+    await audit(client, 'clientes_cc', 'DELETE', id, {
+      antes: cliRows[0],
+      user_id: req.user.id,
+      _cascade: {
+        movimientos_cancelados: movs.length,
+        productos_restaurados: productosRestaurados,
+      },
+    });
+
     await client.query('COMMIT');
-    res.json({ ok: true });
+    if (productosRestaurados > 0) invalidateMetricas();
+    res.json({
+      ok: true,
+      cascade: {
+        movimientos_cancelados: movs.length,
+        productos_restaurados: productosRestaurados,
+      },
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally {
     client.release();
@@ -597,7 +710,7 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     // cualquiera. Movimientos legacy (created_by_user_id IS NULL, anteriores
     // al deploy de la migración 013) solo los borra admin.
     const { rows: pre } = await client.query(
-      'SELECT id, created_by_user_id FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      'SELECT id, created_by_user_id FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (!pre[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
@@ -607,85 +720,22 @@ router.delete('/movimientos/:id', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'No tenés permiso para borrar este movimiento (lo creó otro usuario).' });
     }
-    const { rows } = await client.query(
-      'UPDATE movimientos_cc SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
-      [id]
-    );
-    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
-    // Revertir el ingreso de caja asociado (si lo hubo)
-    await reverseCajaMovimientos(client, 'movimientos_cc', id);
-
-    // Devolver el stock al Inventario para los items que lo descontaron.
-    //   - Si el mov era compra/entrega_mercaderia → reentra al stock.
-    //   - Si era devolucion → vuelve a salir (compensa el ingreso original).
-    // Soft-delete (items_movimiento_cc no se borra pero la PK del mov ya quedó
-    // marcada con deleted_at, así que esta query usa la lista de items vivos
-    // ANTES del soft-delete del padre via JOIN sobre el id del movimiento).
-    // #M-05 bulkificado: ANTES era loop con N+1 queries (1 SELECT items +
-    // N SELECT FOR UPDATE en devoluciones + N UPDATE). AHORA: 1 SELECT
-    // items + 1 SELECT batch FOR UPDATE + 1 UPDATE bulk = 3 RTT.
-    const tipo = rows[0].tipo;
-    if (['compra', 'entrega_mercaderia', 'devolucion'].includes(tipo)) {
-      const sign = tipo === 'devolucion' ? -1 : 1; // compra/entrega: + (reintegrar); devolución: − (sacar)
-      const { rows: items } = await client.query(
-        `SELECT producto_id, cantidad FROM items_movimiento_cc
-           WHERE movimiento_cc_id = $1 AND producto_id IS NOT NULL
-           ORDER BY producto_id`,
-        [id]
-      );
-
-      if (items.length > 0) {
-        const prodIds = items.map(it => Number(it.producto_id));
-        const cants   = items.map(it => sign * Number(it.cantidad || 1));
-
-        // Pre-validar SOLO si vamos a restar (auditoría #B-06): el CHECK
-        // (cantidad >= 0) puede romperse si entre la venta original y este
-        // delete alguien revendió el stock. Lockeo batch ordenado.
-        if (sign < 0) {
-          const { rows: prods } = await client.query(
-            `SELECT id, nombre, cantidad FROM productos
-               WHERE id = ANY($1::int[])
-               ORDER BY id FOR UPDATE`,
-            [prodIds]
-          );
-          const prodMap = new Map(prods.map(p => [Number(p.id), p]));
-          for (let i = 0; i < items.length; i++) {
-            const p = prodMap.get(Number(items[i].producto_id));
-            if (!p) continue;
-            if (Number(p.cantidad) + cants[i] < 0) {
-              await client.query('ROLLBACK');
-              return res.status(409).json({
-                error: `No se puede borrar la devolución: el stock de "${p.nombre}" ya fue vendido (disponible ${p.cantidad}, necesario ${-cants[i]}).`,
-                producto_id: Number(items[i].producto_id),
-              });
-            }
-          }
-        }
-
-        // Bulk UPDATE: FROM UNNEST + JOIN aplica el delta en una query.
-        await client.query(
-          `UPDATE productos p SET
-             cantidad = p.cantidad + u.delta,
-             estado = CASE
-               WHEN p.cantidad + u.delta <= 0                              THEN 'vendido'
-               WHEN p.cantidad + u.delta > 0 AND p.estado = 'vendido'      THEN 'disponible'
-               ELSE p.estado
-             END
-           FROM UNNEST($1::int[], $2::int[]) AS u(pid, delta)
-           WHERE p.id = u.pid`,
-          [prodIds, cants]
-        );
-      }
-    }
-
-    await audit(client, 'movimientos_cc', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    // Helper compartido: soft-delete + revertir caja + restaurar stock + audit.
+    // Mismo flow que DELETE /clientes/:id (cascada) y POST /admin/orphan-movs
+    // (cleanup huérfanos). Lanza errors con .status que mapeamos a HTTP.
+    await cancelMovimientoCC(client, {
+      movimientoId: id,
+      userId: req.user.id,
+      origen: 'manual',
+    });
     await client.query('COMMIT');
     // DELETE de venta B2B repuso stock — invalidar cache para que el dashboard
     // refleje el nuevo total inmediatamente.
     invalidateMetricas();
     res.json({ ok: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.status) return res.status(err.status).json({ error: err.message, producto_id: err.producto_id });
     next(err);
   } finally {
     client.release();

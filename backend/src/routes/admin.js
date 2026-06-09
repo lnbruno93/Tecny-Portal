@@ -16,6 +16,7 @@ const { invalidateMetricas } = require('../lib/inventarioCache');
 const db = require('../config/database');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
+const { cancelMovimientoCC } = require('../lib/cancelMovimientoCC');
 
 // Todas las rutas de este módulo requieren rol admin (no solo permiso).
 router.use(adminOnly);
@@ -294,6 +295,107 @@ router.post('/restore-producto', async (req, res, next) => {
     await client.query('COMMIT');
     invalidateMetricas();
     res.json({ ok: true, producto: post[0] });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Cleanup de movimientos B2B huérfanos ──────────────────────────────────
+// Movimientos huérfanos = movimientos_cc vivos (deleted_at IS NULL) cuyo
+// cliente_cc está soft-deleted (deleted_at IS NOT NULL). Hasta 2026-06-09 el
+// DELETE /clientes/:id no cascadeaba, así que cualquier cliente B2B borrado
+// con movimientos activos los dejaba en ese estado: invisibles en los
+// listados (porque el cliente desapareció) pero todavía afectando stock
+// (productos vendidos sin venta visible) y caja (ingresos sin contraparte).
+//
+// El fix forward (cuentas.js) hace cascada. Estos endpoints existen para
+// limpiar los huérfanos pre-existentes en producción. Dry-run primero, apply
+// confirmado por el operador.
+router.get('/orphan-movs', async (_req, res, next) => {
+  try {
+    // Conteo + agregados para mostrar en el dry-run.
+    const { rows: agg } = await db.query(
+      `SELECT
+         COUNT(*)::int                                                                       AS movs_count,
+         COALESCE(SUM(CASE WHEN m.tipo IN ('compra','entrega_mercaderia') THEN m.monto_total ELSE 0 END), 0)::numeric AS deuda_huerfana,
+         COALESCE((
+           SELECT COUNT(*)::int FROM caja_movimientos cm
+           JOIN movimientos_cc mm ON mm.id = cm.ref_id
+           WHERE cm.ref_tabla = 'movimientos_cc' AND cm.deleted_at IS NULL
+             AND mm.deleted_at IS NULL
+             AND mm.cliente_cc_id IN (SELECT id FROM clientes_cc WHERE deleted_at IS NOT NULL)
+         ), 0)                                                                                AS caja_movs_a_revertir
+       FROM movimientos_cc m
+       JOIN clientes_cc c ON c.id = m.cliente_cc_id
+       WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL`
+    );
+    // Muestra: primeros 10 movs con info útil para que el operador entienda
+    // antes de apretar apply.
+    const { rows: muestras } = await db.query(
+      `SELECT m.id, m.fecha, m.tipo, m.monto_total, m.cliente_cc_id,
+              c.nombre AS cliente_nombre, c.apellido AS cliente_apellido,
+              c.deleted_at AS cliente_borrado_en
+         FROM movimientos_cc m
+         JOIN clientes_cc c ON c.id = m.cliente_cc_id
+        WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL
+        ORDER BY m.created_at DESC
+        LIMIT 10`
+    );
+    res.json({
+      apply: false,
+      movs_count: agg[0].movs_count,
+      deuda_huerfana: Number(agg[0].deuda_huerfana) || 0,
+      caja_movs_a_revertir: agg[0].caja_movs_a_revertir,
+      muestras,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    // Lockeo + listado dentro de la TX para que nadie pueda crear nuevos
+    // huérfanos mientras procesamos. Sin LIMIT — queremos cleanup completo.
+    const { rows: movs } = await client.query(
+      `SELECT m.id
+         FROM movimientos_cc m
+         JOIN clientes_cc c ON c.id = m.cliente_cc_id
+        WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL
+        ORDER BY m.id
+        FOR UPDATE OF m`
+    );
+    let productosRestaurados = 0;
+    const errors = [];
+    for (const m of movs) {
+      try {
+        const r = await cancelMovimientoCC(client, {
+          movimientoId: m.id,
+          userId: req.user.id,
+          origen: 'orphan_cleanup',
+        });
+        productosRestaurados += r.productos_restaurados;
+      } catch (err) {
+        // No tiramos abajo todo el cleanup por un mov problemático (#B-06:
+        // una devolución cuya cantidad ya fue revendida). Lo loggeamos y
+        // seguimos con el resto. El operador puede repetir el apply después
+        // de resolver los conflictos.
+        errors.push({ mov_id: m.id, error: err.message, status: err.status || 500 });
+      }
+    }
+    await client.query('COMMIT');
+    if (productosRestaurados > 0) invalidateMetricas();
+    res.json({
+      apply: true,
+      movs_procesados: movs.length - errors.length,
+      productos_restaurados: productosRestaurados,
+      errores: errors,
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     next(err);

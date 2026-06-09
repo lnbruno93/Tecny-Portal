@@ -184,11 +184,119 @@ function TarjetasReport({ report }) {
   );
 }
 
+// ─── Render del reporte para Movimientos huérfanos ──────────────────────────
+function OrphanMovsReport({ report }) {
+  if (report.movs_count === 0) {
+    return (
+      <div style={{ color: 'var(--pos)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Icons.Check size={14} aria-hidden="true"/> Sin movimientos huérfanos. Todo en orden.
+      </div>
+    );
+  }
+  return (
+    <>
+      <table className="tbl" style={{ width: 'auto' }}>
+        <tbody>
+          <tr>
+            <td style={{ paddingRight: 16 }}>Movimientos huérfanos detectados</td>
+            <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{report.movs_count}</td>
+          </tr>
+          <tr>
+            <td style={{ paddingRight: 16 }}>Deuda B2B asociada</td>
+            <td className="mono" style={{ textAlign: 'right' }}>US$ {Number(report.deuda_huerfana || 0).toLocaleString('es-AR')}</td>
+          </tr>
+          <tr>
+            <td style={{ paddingRight: 16 }}>Caja movimientos a revertir</td>
+            <td className="mono" style={{ textAlign: 'right' }}>{report.caja_movs_a_revertir}</td>
+          </tr>
+        </tbody>
+      </table>
+      {report.muestras && report.muestras.length > 0 && (
+        <details style={{ marginTop: 12, fontSize: 13 }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+            Ver primeros 10 movimientos huérfanos
+          </summary>
+          <div style={{ marginTop: 8, overflowX: 'auto' }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cliente (borrado)</th>
+                  <th>Tipo</th>
+                  <th style={{ textAlign: 'right' }}>Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.muestras.map(m => (
+                  <tr key={m.id}>
+                    <td className="mono tiny">{m.fecha}</td>
+                    <td className="tiny">{[m.cliente_nombre, m.cliente_apellido].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="tiny"><b>{m.tipo}</b></td>
+                    <td className="mono tiny" style={{ textAlign: 'right' }}>US$ {Number(m.monto_total).toLocaleString('es-AR')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      {report.apply && Array.isArray(report.errores) && report.errores.length > 0 && (
+        <div style={{ marginTop: 10, padding: 10, background: 'var(--surface-2)', borderRadius: 6, fontSize: 13, color: 'var(--neg)' }}>
+          <b>{report.errores.length} movimiento(s) con error</b> — los demás se procesaron OK. Revisá y reintentá:
+          <ul style={{ margin: '6px 0 0 18px' }}>
+            {report.errores.slice(0, 5).map(e => <li key={e.mov_id}>Mov #{e.mov_id}: {e.error}</li>)}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Section principal ──────────────────────────────────────────────────────
 export default function MantenimientoSection() {
   return (
     <>
       <DiagnoseStockPanel />
+
+      <BackfillPanel
+        title="Movimientos B2B huérfanos"
+        descripcion={
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13.5 }}>
+            Detecta movimientos B2B vivos cuyo cliente fue borrado. Hasta el 2026-06-09 el
+            DELETE de cliente no cascadeaba, así que pueden quedar movimientos que siguen
+            afectando stock (productos vendidos sin venta visible) y caja (ingresos huérfanos).
+            Al aplicar, los cancela en bloque: restaura el stock + revierte caja + audit log.
+            Idempotente.
+          </p>
+        }
+        apiReport={adminApi.orphanMovsReport}
+        apiApply={adminApi.orphanMovsApply}
+        renderReport={(r) => <OrphanMovsReport report={r} />}
+        confirmConfig={(r) => ({
+          title: 'Limpiar movimientos huérfanos',
+          message: (
+            <>
+              <p>Se van a cancelar <b>{r.movs_count} movimientos B2B huérfanos</b>:</p>
+              <ul>
+                <li>Productos volverán al stock disponible.</li>
+                <li>{r.caja_movs_a_revertir} ingreso(s) se revertirán de las cajas.</li>
+                <li>Cada movimiento queda en audit_logs con _origen='orphan_cleanup'.</li>
+              </ul>
+              <p>¿Continuar?</p>
+            </>
+          ),
+          confirmLabel: 'Sí, limpiar',
+          tone: 'danger',
+        })}
+        getStateChecks={{
+          // No hay concepto de "saldo negativo" acá — el chequeo siempre pasa.
+          hayNegativo: () => false,
+          summaryToast: (r) => r.movs_count === 0
+            ? 'Sin huérfanos pendientes.'
+            : `${r.movs_count} movimiento(s) huérfanos detectados.`,
+          successToast: (r) => `Limpieza aplicada: ${r.movs_procesados} movs procesados, ${r.productos_restaurados} productos restaurados.`,
+        }}
+      />
 
       <BackfillPanel
         title="Backfill caja Financiera"

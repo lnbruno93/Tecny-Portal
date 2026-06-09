@@ -567,6 +567,109 @@ describe('DELETE /api/cuentas/clientes/:id', () => {
   });
 });
 
+// ─── DELETE cliente con cascada (2026-06-09) ────────────────────────────────
+// Bug raíz descubierto en testing pre-salida: borrar un cliente solo
+// soft-deleteaba la fila de clientes_cc, dejando sus movimientos vivos.
+// Resultado: stock vendido sin venta visible + caja con ingresos huérfanos.
+//
+// Hoy DELETE /clientes/:id ahora cascadea: en la misma TX cancela todos los
+// movimientos del cliente (restaura stock + revierte caja + audit). Acá
+// verificamos los 3 efectos en un caso E2E con 2 ventas distintas.
+describe('DELETE /api/cuentas/clientes/:id — cascada de movimientos', () => {
+  let cliId, catId, cajaUsdId;
+
+  beforeAll(async () => {
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente Cascada', categoria: 'A+' });
+    cliId = cli.body.id;
+    const cat = await request(app).post('/api/inventario/categorias').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cascada Cat' });
+    catId = cat.body.id;
+    const metRes = await request(app).get('/api/ventas/metodos-pago').set('Authorization', `Bearer ${adminToken}`);
+    cajaUsdId = (metRes.body || []).find(m => m.moneda === 'USD').id;
+  });
+
+  async function crearProducto(imei) {
+    const r = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        nombre: `Cascada ${imei}`, imei, costo: 500, costo_moneda: 'USD',
+        precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
+      });
+    return r.body;
+  }
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas').set('Authorization', `Bearer ${adminToken}`);
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+
+  it('GET /clientes/:id/delete-preview devuelve diff esperado', async () => {
+    const prod = await crearProducto('350777000000001');
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'compra',
+        monto_total: 1000, caja_id: cajaUsdId,
+        items: [{ producto_id: prod.id, cantidad: 1, valor: 1000 }],
+      });
+
+    const r = await request(app).get(`/api/cuentas/clientes/${cliId}/delete-preview`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.cliente.id).toBe(cliId);
+    expect(r.body.movimientos_a_cancelar).toBe(1);
+    expect(Number(r.body.caja_a_revertir_usd)).toBe(1000);
+    expect(r.body.productos_a_restaurar).toBe(1);
+  });
+
+  it('borrar cliente cascadea: 2 ventas → 2 productos restaurados + caja vuelta a 0', async () => {
+    // 2da venta para tener 2 movimientos vivos.
+    const prod2 = await crearProducto('350777000000002');
+    await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'compra',
+        monto_total: 1000, caja_id: cajaUsdId,
+        items: [{ producto_id: prod2.id, cantidad: 1, valor: 1000 }],
+      });
+
+    const cajaAntes = await saldoCaja(cajaUsdId);
+
+    const del = await request(app).delete(`/api/cuentas/clientes/${cliId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+    expect(del.body.cascade.movimientos_cancelados).toBe(2);
+    expect(del.body.cascade.productos_restaurados).toBe(2);
+
+    // Stock de ambos productos: vuelto a disponible / cantidad 1.
+    for (const imei of ['350777000000001', '350777000000002']) {
+      const p = await request(app)
+        .get(`/api/inventario/productos?buscar=${imei}&vista=todos_ocultos`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      const pAct = p.body.data.find(x => x.imei === imei);
+      expect(Number(pAct.cantidad)).toBe(1);
+      expect(pAct.estado).toBe('disponible');
+    }
+
+    // Caja: se revirtieron los 2 ingresos de USD 1000 → bajó USD 2000.
+    const cajaPost = await saldoCaja(cajaUsdId);
+    expect(cajaPost - cajaAntes).toBeCloseTo(-2000, 2);
+
+    // Cliente quedó soft-deleted.
+    const r = await request(app).get(`/api/cuentas/clientes/${cliId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(404);
+  });
+
+  it('cliente sin movimientos → cascada es 0, cliente sigue borrado normalmente', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cliente sin movs', categoria: 'A+' });
+    const del = await request(app).delete(`/api/cuentas/clientes/${cli.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+    expect(del.body.cascade.movimientos_cancelados).toBe(0);
+    expect(del.body.cascade.productos_restaurados).toBe(0);
+  });
+});
+
 // ─── Venta B2B con descuento de stock (#75) ──────────────────────────────
 // Verifica el flujo "sale stock, entra dinero":
 //   - Items con producto_id descuentan stock en una TX.
