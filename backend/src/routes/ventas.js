@@ -28,6 +28,7 @@ function genOrderId() {
 }
 
 const { err400, retieneStock, descontarStock, reponerStock } = require('../lib/ventaCore');
+const { invalidateMetricas } = require('../lib/inventarioCache');
 
 // (syncVentaCaja y sincronizarCuentaCorriente movidos a lib/ventaSync.js — reusados desde envíos)
 
@@ -362,6 +363,7 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
 
     await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateMetricas();  // venta retail descontó stock
     res.status(201).json(venta);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -419,6 +421,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await syncTarjetaCobros(client, id, vrows[0].estado);
       await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
+      invalidateMetricas();  // edición completa pudo tocar stock
       return res.json(vrows[0]);
     }
 
@@ -446,6 +449,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     await syncTarjetaCobros(client, id, rows[0].estado);
     await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateMetricas();
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -469,6 +473,7 @@ router.delete('/:id', async (req, res, next) => {
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await audit(client, 'ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
+    invalidateMetricas();  // DELETE repuso stock
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

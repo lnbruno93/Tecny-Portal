@@ -6,7 +6,6 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { createCachedFetcher } = require('../lib/cacheTtl');
 
 // Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
 // (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
@@ -168,27 +167,10 @@ router.delete('/depositos/:id', async (req, res, next) => {
 
 /* ───────────────────────── Métricas de inventario ───────────────────────── */
 
-// Métricas globales: SUM full-table. Cacheado 20s para no escanear `productos`
-// en cada apertura del Dashboard / Capital. Ventana corta para que las cargas
-// de stock se reflejen rápido.
-const fetchMetricas = createCachedFetcher('inv:metricas', 20_000, async () => {
-  const { rows } = await db.query(`
-    SELECT
-      COUNT(*)                          FILTER (WHERE estado = 'en_tecnico')                                          AS en_tecnico_count,
-      COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'USD'), 0)             AS en_tecnico_usd,
-      COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'ARS'), 0)             AS en_tecnico_ars,
-      COALESCE(SUM(cantidad)            FILTER (WHERE estado = 'disponible'), 0)                                      AS stock_disponible,
-      COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'celular'   AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_equipos_usd,
-      COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'celular'   AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_equipos_ars,
-      COALESCE(SUM(cantidad)            FILTER (WHERE clase = 'celular'   AND estado = 'disponible'), 0)              AS equipos_count,
-      COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'accesorio' AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_accesorios_usd,
-      COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'accesorio' AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_accesorios_ars,
-      COALESCE(SUM(cantidad)            FILTER (WHERE clase = 'accesorio' AND estado = 'disponible'), 0)              AS accesorios_count
-    FROM productos
-    WHERE deleted_at IS NULL
-  `);
-  return rows[0];
-});
+// Cache de métricas extraído a lib/inventarioCache.js — junio 2026.
+// La función `invalidateMetricas` se importa también en otros routers que
+// modifican productos (cuentas.js para venta B2B, ventas.js para retail, etc).
+const { fetchMetricas, invalidateMetricas } = require('../lib/inventarioCache');
 
 router.get('/productos/metricas', async (_req, res, next) => {
   try { res.json(await fetchMetricas()); } catch (err) { next(err); }
@@ -468,6 +450,7 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
       values
     );
     await audit('productos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    invalidateMetricas();  // junio 2026: cache stale era fuente de bugs de baseline
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -490,6 +473,7 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       [...values, id]
     );
     await audit('productos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+    invalidateMetricas();
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -503,6 +487,7 @@ router.delete('/productos/:id', async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
     await audit('productos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    invalidateMetricas();
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -588,6 +573,7 @@ router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, 
       });
     }
     await client.query('COMMIT');
+    invalidateMetricas();  // vaciado masivo → cache definitivamente stale
     res.json({ borrados });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -689,6 +675,7 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
     await Promise.all(creados.map((id, i) =>
       audit('productos', 'INSERT', id, { despues: { ...productos[i], id, _bulk: true }, user_id: req.user.id })
     ));
+    invalidateMetricas();  // import masivo → cache definitivamente stale
     res.status(201).json({ ok: true, creados: creados.length });
   } catch (err) {
     await client.query('ROLLBACK');
