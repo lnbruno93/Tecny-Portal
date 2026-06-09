@@ -140,12 +140,34 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
       ...r, producto_id: null, stock_disp: null, imei: '', gb: '', color: '',
     }));
   }
+  // Set de producto_id duplicados — el mismo producto unitario no puede
+  // venderse dos veces en la misma venta. Si se cuela, el backend rebota
+  // con "Inconsistencia al actualizar stock" (rowCount mismatch en el UPDATE
+  // bulk). Detectamos en cliente para avisar inline antes de enviar.
+  const dupProductoIds = (() => {
+    const counts = new Map();
+    for (const r of rows) {
+      if (!r.producto_id) continue;
+      counts.set(r.producto_id, (counts.get(r.producto_id) || 0) + 1);
+    }
+    return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id));
+  })();
+  const hayDuplicados = dupProductoIds.size > 0;
+
   function validar() {
     if (!fecha) return 'Falta la fecha';
     if (cajaId && monedaCaja !== 'USD' && (!Number(tc) || Number(tc) <= 0))
       return `Cargá el TC para convertir ${monedaCaja} → USD`;
     const used = rows.filter(isUsedRow);
     if (used.length === 0) return 'Cargá al menos un item';
+    // Chequeo de duplicados PRIMERO — mensaje específico con los IMEIs.
+    if (hayDuplicados) {
+      const dupRows = rows
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.producto_id && dupProductoIds.has(r.producto_id));
+      const imeis = [...new Set(dupRows.map(({ r }) => r.imei || r.nombre || `#${r.producto_id}`))];
+      return `Tenés productos repetidos: ${imeis.join(', ')}. Eliminá las filas duplicadas.`;
+    }
     for (let i = 0; i < used.length; i++) {
       const r = used[i];
       if (!r.producto_id) return `Fila ${i + 1}: elegí un producto del stock`;
@@ -286,12 +308,15 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                   const used = isUsedRow(r);
                   const cant = Number(r.cantidad) || 0;
                   const exceeds = r.stock_disp != null && cant > r.stock_disp;
+                  const dup = r.producto_id && dupProductoIds.has(r.producto_id);
                   const sub = (Number(r.precio_unit) || 0) * cant;
                   return (
                     <tr key={r._id} style={{
-                      background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
+                      background: dup ? 'rgba(220, 38, 38, 0.08)'
+                                      : used ? 'rgba(99,102,241,0.04)' : 'transparent',
                       borderTop: '1px solid var(--hairline)',
-                    }}>
+                    }}
+                    title={dup ? 'IMEI duplicado en otra fila — eliminá una' : undefined}>
                       <td style={{ padding: '3px 6px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{idx + 1}</td>
                       <td style={{ padding: '3px 4px' }}>
                         <ProductoPicker
@@ -374,8 +399,21 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
         </div>
 
         <div className="modal-ft">
+          {hayDuplicados && (
+            <div style={{
+              flex: 1, fontSize: 12, color: 'var(--neg)', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <Icons.Alert size={12} /> Hay {dupProductoIds.size} producto{dupProductoIds.size > 1 ? 's' : ''} repetido{dupProductoIds.size > 1 ? 's' : ''} (filas en rojo) — eliminá las duplicadas
+            </div>
+          )}
           <button className="btn btn-ghost" onClick={tryClose}>Cancelar</button>
-          <button className="btn btn-primary" disabled={saving} onClick={handleGuardar}>
+          <button
+            className="btn btn-primary"
+            disabled={saving || hayDuplicados}
+            onClick={handleGuardar}
+            title={hayDuplicados ? 'Resolvé los duplicados antes de guardar' : ''}
+          >
             {saving ? 'Guardando…' : `Guardar venta (${rows.filter(isUsedRow).length})`}
           </button>
         </div>

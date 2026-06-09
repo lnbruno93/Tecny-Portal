@@ -655,6 +655,37 @@ describe('Venta B2B con stock', () => {
     expect(await saldoCaja(cajaUsdId)).toBeCloseTo(saldoCajaAntes, 2);
   });
 
+  // Bug reportado durante testing pre-salida 2026-06-08: al cargar 2 ítems con
+  // el mismo producto_id (ej. operador eligió el mismo IMEI 2 veces en el modal
+  // B2B), el bulk UPDATE con UNNEST devolvía rowCount=1 (PG dedupea), el sanity
+  // check fallaba y el endpoint retornaba 500 con "Inconsistencia al actualizar
+  // stock" — confuso para el operador. Ahora detectamos los duplicados ANTES
+  // y devolvemos 409 con la lista de productos duplicados.
+  it('producto_id duplicado en items → 409 con lista de duplicados (no 500 opaco)', async () => {
+    const prod = await crearProducto({ nombre: 'iPhone Dup', imei: '350200000000099' });
+    const saldoCliAntes = await saldoCliente(cliId);
+
+    const res = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliId, fecha: '2026-05-29', tipo: 'compra', monto_total: 1600,
+        items: [
+          { producto_id: prod.id, cantidad: 1, valor: 800 },
+          { producto_id: prod.id, cantidad: 1, valor: 800 }, // ← duplicado intencional
+        ],
+      });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/repetidos?|duplicad/i);
+    expect(res.body.duplicados).toBeDefined();
+    expect(res.body.duplicados.map(d => d.id)).toContain(prod.id);
+    // Rollback total: el producto sigue disponible, no se sumó deuda.
+    const p = await request(app).get(`/api/inventario/productos?buscar=350200000000099&vista=todos_ocultos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const pAct = p.body.data.find(x => x.id === prod.id);
+    expect(Number(pAct.cantidad)).toBe(1);
+    expect(pAct.estado).toBe('disponible');
+    expect(await saldoCliente(cliId)).toBeCloseTo(saldoCliAntes, 2);
+  });
+
   it('stock insuficiente → 409 con rollback total', async () => {
     const prod = await crearProducto({ nombre: 'Accesorio Limitado', cantidad: 3 });
     const saldoCliAntes = await saldoCliente(cliId);
