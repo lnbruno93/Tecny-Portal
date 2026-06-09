@@ -386,6 +386,18 @@ export default function CuentasCC() {
   const [movsPag, setMovsPag]         = useState({ page: 1, pages: 1, total: 0 }); // paginación de movimientos
   const [loadingMasMovs, setLoadingMasMovs] = useState(false);
 
+  // Junio 2026: Set de movimiento_id expandidos en la grilla. Cada uno muestra
+  // un desglose completo con costo + precio mayorista + ganancia por item.
+  const [expandedMovIds, setExpandedMovIds] = useState(() => new Set());
+  const toggleExpand = (id) => {
+    setExpandedMovIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const [showEdit, setShowEdit]             = useState(false);
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [showVentaModal,   setShowVentaModal]   = useState(false);
@@ -935,12 +947,34 @@ export default function CuentasCC() {
                   {movimientos.map(m => {
                     const t    = TIPO_DISPLAY[m.tipo] || { label: m.tipo, tone: 'default', signo: 1 };
                     const item = m.items?.[0];
-                    const extra = m.items?.length > 1 ? ` +${m.items.length - 1}` : '';
+                    const nItems = m.items?.length || 0;
+                    const extra = nItems > 1 ? ` +${nItems - 1}` : '';
+                    // Junio 2026: fila expandible con desglose completo cuando hay
+                    // >1 item — permite ver TODOS los productos vendidos en una
+                    // venta B2B con costo, precio mayorista y ganancia por unidad.
+                    const isExpanded = expandedMovIds.has(m.id);
+                    const canExpand = nItems > 1;
                     return (
-                      <tr key={m.id} style={{ borderBottom: '1px solid var(--hairline)', opacity: m._pending ? 0.55 : 1 }}>
+                      <>
+                      <tr key={m.id} style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--hairline)', opacity: m._pending ? 0.55 : 1 }}>
                         <td style={cell} className="muted mono">{fmtFecha(m.fecha)}</td>
                         <td style={cell}><Status tone={t.tone}>{t.label}</Status></td>
                         <td style={cell}>
+                          {canExpand && (
+                            <button
+                              onClick={() => toggleExpand(m.id)}
+                              aria-label={isExpanded ? 'Ocultar desglose' : 'Ver desglose'}
+                              title={isExpanded ? 'Ocultar desglose' : 'Ver desglose'}
+                              style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                marginRight: 6, padding: 0, verticalAlign: 'middle',
+                              }}
+                            >
+                              <Icons.ChevronRight size={12}
+                                style={{ transform: isExpanded ? 'rotate(90deg)' : 'none',
+                                         transition: 'transform .15s' }} />
+                            </button>
+                          )}
                           {item?.producto
                             ? <>{item.producto}<span className="muted tiny">{extra}</span></>
                             : (m.descripcion || <span className="dim">—</span>)
@@ -976,6 +1010,14 @@ export default function CuentasCC() {
                           )}
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr key={`${m.id}-detail`} style={{ borderBottom: '1px solid var(--hairline)' }}>
+                          <td colSpan={10} style={{ padding: '4px 12px 12px 36px', background: 'var(--surface-2, rgba(0,0,0,0.02))' }}>
+                            <MovimientoDesglose mov={m} />
+                          </td>
+                        </tr>
+                      )}
+                      </>
                     );
                   })}
 
@@ -1135,6 +1177,95 @@ export default function CuentasCC() {
             }
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// MovimientoDesglose — sub-tabla con TODOS los items de un movimiento. Muestra
+// costo + precio mayorista + ganancia por unidad. Para ventas pre-migración
+// (costo_unit NULL) muestra "—" con un asterisco "histórico, sin dato".
+function MovimientoDesglose({ mov }) {
+  const items = mov.items || [];
+  if (items.length === 0) return <div className="muted" style={{ fontSize: 12 }}>Sin items.</div>;
+
+  const fmtMoney = (n) => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+
+  // Totales para footer
+  let totalVenta = 0, totalCosto = 0, hayHistoricos = false;
+  items.forEach(it => {
+    totalVenta += Number(it.valor) || 0;
+    if (it.costo_unit != null) totalCosto += Number(it.costo_unit) * Number(it.cantidad || 1);
+    else hayHistoricos = true;
+  });
+  const totalGanancia = totalVenta - totalCosto;
+
+  return (
+    <div>
+      <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--hairline)' }}>
+            <th style={{ textAlign: 'left',  padding: '6px 8px' }}>Producto</th>
+            <th style={{ textAlign: 'left',  padding: '6px 8px' }}>IMEI / Serial</th>
+            <th style={{ textAlign: 'left',  padding: '6px 8px' }}>Var.</th>
+            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Cant.</th>
+            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Costo unit.</th>
+            <th style={{ textAlign: 'right', padding: '6px 8px' }}>P. mayorista unit.</th>
+            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Subtotal</th>
+            <th style={{ textAlign: 'right', padding: '6px 8px' }}>Ganancia</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(it => {
+            const cant = Number(it.cantidad) || 1;
+            const valor = Number(it.valor) || 0;
+            const precioUnit = cant > 0 ? valor / cant : 0;
+            const costoUnit = it.costo_unit != null ? Number(it.costo_unit) : null;
+            const ganancia = costoUnit != null ? valor - costoUnit * cant : null;
+            return (
+              <tr key={it.id} style={{ borderBottom: '1px solid var(--hairline)' }}>
+                <td style={{ padding: '6px 8px' }}>{it.producto || <span className="dim">—</span>}</td>
+                <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{it.imei_serial || <span className="dim">—</span>}</td>
+                <td style={{ padding: '6px 8px' }} className="muted tiny">
+                  {[it.tamano, it.color].filter(Boolean).join(' · ') || '—'}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right' }}>{cant}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                  {costoUnit != null ? `USD ${fmtMoney(costoUnit)}` : <span className="dim" title="Venta pre-migración — sin dato de costo histórico">—*</span>}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                  USD {fmtMoney(precioUnit)}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                  USD {fmtMoney(valor)}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600,
+                             color: ganancia == null ? 'var(--text-muted)' : ganancia >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+                  {ganancia != null ? `${ganancia >= 0 ? '+' : ''}USD ${fmtMoney(ganancia)}` : '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: '2px solid var(--border)' }}>
+            <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>Totales:</td>
+            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>
+              USD {fmtMoney(totalVenta)}
+            </td>
+            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace',
+                         color: hayHistoricos ? 'var(--text-muted)' : totalGanancia >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+              {hayHistoricos
+                ? <span title="Algunos items pre-migración no tienen costo histórico — ganancia parcial">USD {fmtMoney(totalGanancia)}*</span>
+                : `${totalGanancia >= 0 ? '+' : ''}USD ${fmtMoney(totalGanancia)}`}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      {hayHistoricos && (
+        <div className="muted tiny" style={{ marginTop: 6, fontStyle: 'italic' }}>
+          * Items pre-migración sin dato de costo histórico — la ganancia mostrada es parcial.
+        </div>
       )}
     </div>
   );

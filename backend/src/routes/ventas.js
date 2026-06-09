@@ -139,7 +139,18 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     // Filtro base de ventas del período (excluye canceladas y borradas)
     const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2`;
 
-    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend] = await Promise.all([
+    // B2B: ventas registradas como movimientos_cc tipo='compra' en el período.
+    // Antes el dashboard solo miraba la tabla `ventas` (retail). Ahora sumamos
+    // las B2B en un bloque aparte + las totalizamos en los KPIs generales
+    // (ventas_count, ingresos, costos, ganancia).
+    //
+    // monto_total y valor ya están persistidos en USD (frontend convierte al
+    // mandar). costo_unit puede estar en USD o ARS — si está en ARS y no hay
+    // info de TC, asumimos costo_unit como USD (caso 99% del catálogo). Si
+    // empieza a haber casos mixtos importantes, agregar columna tc al movimiento.
+    const B2B_BASE = `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.fecha >= $1 AND m.fecha <= $2`;
+
+    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await Promise.all([
       // Totales de ventas
       db.query(`SELECT COUNT(*) AS count, COALESCE(SUM(total_usd),0) AS ingresos_usd, COALESCE(SUM(ganancia_usd),0) AS ganancia_bruta_usd FROM ventas v WHERE ${BASE}`, p),
       // Por método de pago (monto en moneda original + equivalente USD)
@@ -192,6 +203,20 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
                        COUNT(*)::int AS items
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN vendedores ve ON ve.id = vi.vendedor_id
                 WHERE ${BASE} GROUP BY ve.nombre ORDER BY total_usd DESC LIMIT 5`, p),
+      // B2B: ventas via movimientos_cc (junio 2026). count + ingresos +
+      // costos + ganancia + unidades por clase. Asumimos costos en USD.
+      db.query(`
+        SELECT
+          COUNT(DISTINCT m.id)::int                                          AS count,
+          COALESCE(SUM(DISTINCT m.monto_total), 0)                           AS ingresos_usd,
+          COALESCE(SUM(i.costo_unit * i.cantidad), 0)                        AS costos_usd,
+          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'celular'), 0)::int   AS celulares,
+          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'accesorio'), 0)::int AS accesorios
+        FROM movimientos_cc m
+        LEFT JOIN items_movimiento_cc i ON i.movimiento_cc_id = m.id
+        LEFT JOIN productos pr ON pr.id = i.producto_id
+        WHERE ${B2B_BASE}
+      `, p),
     ]);
 
     // Ingresos por moneda (a partir del desglose de métodos)
@@ -203,28 +228,58 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     }
 
     const t = totales.rows[0];
-    const gananciaBruta = Number(t.ganancia_bruta_usd);
+    const b = b2b.rows[0];
+    // KPIs B2B aislados — para que el frontend pueda mostrarlos discriminados.
+    const b2bCount        = Number(b.count) || 0;
+    const b2bIngresosUsd  = Number(b.ingresos_usd) || 0;
+    const b2bCostosUsd    = Number(b.costos_usd) || 0;
+    const b2bGananciaUsd  = round2(b2bIngresosUsd - b2bCostosUsd);
+
+    const gananciaBrutaRetail = Number(t.ganancia_bruta_usd);
+    const ingresosVentasRetail = Number(t.ingresos_usd);
+    const costosRetailUsd = Number(unidades.rows[0].costos_usd);
     const egresosUsd = Number(egresos.rows[0].egresos_usd);
+
+    // KPIs combinados (retail + B2B). El frontend que ya consumía estos campos
+    // ahora ve el total. Si necesita solo retail, le agregamos `.retail` / `.b2b` aparte.
+    const ingresosVentas = ingresosVentasRetail + b2bIngresosUsd;
+    const gananciaBruta = gananciaBrutaRetail + b2bGananciaUsd;
     const gananciaNeta = round2(gananciaBruta - egresosUsd);
-    const ingresosVentas = Number(t.ingresos_usd);
     const margenPct = ingresosVentas > 0 ? round2((gananciaNeta / ingresosVentas) * 100) : 0;
 
     res.json({
       periodo: { desde, hasta },
-      ventas_count: parseInt(t.count),
+      ventas_count: parseInt(t.count) + b2bCount,
       ingresos: {
         usd: round2(ingresos_por_moneda.USD),
         ars: round2(ingresos_por_moneda.ARS),
         usdt: round2(ingresos_por_moneda.USDT),
-        total_usd_equiv: round2(ingresos_usd_equiv),
+        total_usd_equiv: round2(ingresos_usd_equiv + b2bIngresosUsd),
         ventas_total_usd: round2(ingresosVentas),
       },
-      unidades: { celulares: parseInt(unidades.rows[0].celulares), accesorios: parseInt(unidades.rows[0].accesorios) },
+      unidades: {
+        celulares: parseInt(unidades.rows[0].celulares) + parseInt(b.celulares),
+        accesorios: parseInt(unidades.rows[0].accesorios) + parseInt(b.accesorios),
+      },
       ganancia_bruta_usd: round2(gananciaBruta),
       egresos_usd: round2(egresosUsd),
       ganancia_neta_usd: gananciaNeta,
       margen_pct: margenPct,
-      costos_usd: round2(Number(unidades.rows[0].costos_usd)),
+      costos_usd: round2(costosRetailUsd + b2bCostosUsd),
+      // Desglose retail vs B2B para que el frontend pueda discriminar.
+      retail: {
+        count: parseInt(t.count),
+        ingresos_usd: round2(ingresosVentasRetail),
+        ganancia_bruta_usd: round2(gananciaBrutaRetail),
+        costos_usd: round2(costosRetailUsd),
+      },
+      b2b: {
+        count: b2bCount,
+        ingresos_usd: round2(b2bIngresosUsd),
+        ganancia_bruta_usd: b2bGananciaUsd,
+        costos_usd: round2(b2bCostosUsd),
+        unidades: { celulares: parseInt(b.celulares), accesorios: parseInt(b.accesorios) },
+      },
       inversion_canjes_usd: round2(Number(canjes.rows[0].canjes_usd)),
       metodos_pago: pagos.rows.map(r => ({ metodo_nombre: r.metodo_nombre, moneda: r.moneda, total: round2(Number(r.total)), total_usd: round2(Number(r.total_usd)), n: parseInt(r.n) })),
       diferencias: { sobrepagos: round2(Number(dif.rows[0].sobrepagos)), faltantes: round2(Number(dif.rows[0].faltantes)), neto: round2(Number(dif.rows[0].sobrepagos) - Number(dif.rows[0].faltantes)) },
