@@ -208,9 +208,18 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
   function saveRow(i) {
     const row = rows[i];
     if (parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
-      setErrs(e => ({ ...e, [i]: 'Ingresá el tipo de cambio' })); return;
+      setErrs(e => ({ ...e, [i]: 'Ingresá el tipo de cambio' }));
+      // Destildar visualmente el check para que vuelva a estar disponible.
+      if (row._confirming) upd(i, '_confirming', false);
+      return;
     }
-    if (!row.monto || Number(row.monto) <= 0) return;
+    if (!row.monto || Number(row.monto) <= 0) {
+      // Bug 2026-06-09: antes era un return silencioso — el operador marcaba
+      // el check con fila vacía y "no pasaba nada". Ahora avisamos.
+      setErrs(e => ({ ...e, [i]: 'Ingresá el monto en USD (o ARS + TC)' }));
+      if (row._confirming) upd(i, '_confirming', false);
+      return;
+    }
 
     const tempId  = `_tmp_${Date.now()}_${i}`;
 
@@ -342,11 +351,25 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                 {parseFloat(row.ars) > 0 && <TcWarning tc={row.tc} />}
               </td>
 
-            {/* Verificado */}
+            {/* Confirmar fila — el check dispara saveRow al marcarse.
+                Bug reportado 2026-06-09 (testing pre-salida): antes solo
+                seteaba `row.verificado` (campo interno sin uso); el operador
+                marcaba el check esperando guardar y no pasaba nada. Ahora el
+                click guarda y, si saveRow tiene éxito, la fila se resetea y
+                el check vuelve a falso por consecuencia. */}
             <td style={{ padding: '4px 8px', textAlign: 'center' }}>
               <input type="checkbox"
-                checked={row.verificado}
-                onChange={e => upd(i, 'verificado', e.target.checked)}
+                aria-label="Confirmar y guardar fila"
+                title="Confirmar pago y guardar"
+                checked={!!row._confirming}
+                onChange={e => {
+                  if (e.target.checked) {
+                    upd(i, '_confirming', true);
+                    saveRow(i);
+                  } else {
+                    upd(i, '_confirming', false);
+                  }
+                }}
                 onKeyDown={e => handleLastKey(e, i)}
               />
             </td>
