@@ -243,6 +243,61 @@ describe('GET /api/ventas', () => {
     const found = res.body.data.find(v => v.origen === 'b2b');
     expect(found).toBeDefined();
   });
+
+  // 2026-06-09 — items B2B devueltos se restan del total_usd y ganancia_usd
+  // de la fila B2B en la grilla unificada, y dejan de contar en KPIs del
+  // dashboard. Una venta multi-item con 1 devolución se ve con el monto NETO.
+  it('items devueltos se restan del total/ganancia de la fila B2B y del dashboard', async () => {
+    // Setup: cliente + categoría + 2 productos en stock.
+    const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+      .send({ nombre: 'Cli devo dash', categoria: 'A+' });
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Cat devo dash' });
+    const p1 = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'iPhone devoA', imei: '359111111111111',
+        costo: 500, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
+      });
+    const p2 = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'iPhone devoB', imei: '359222222222222',
+        costo: 700, costo_moneda: 'USD', precio_venta: 1500, precio_moneda: 'USD', cantidad: 1,
+      });
+    // Venta multi-item por USD 2500
+    const venta = await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 2500,
+        items: [
+          { producto_id: p1.body.id, producto: 'iPhone devoA', imei_serial: '359111111111111', cantidad: 1, valor: 1000 },
+          { producto_id: p2.body.id, producto: 'iPhone devoB', imei_serial: '359222222222222', cantidad: 1, valor: 1500 },
+        ],
+      });
+    expect(venta.status).toBe(201);
+
+    // Antes de devolver: grilla muestra total=2500.
+    const r1 = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}&buscar=359111111111111`).set(auth());
+    const filaPre = r1.body.data.find(v => v.origen === 'b2b' && v._b2b_mov_id === venta.body.id);
+    expect(Number(filaPre.total_usd)).toBe(2500);
+
+    // Devolver el item p1 ($1000).
+    const itemP1 = (await request(app).get(`/api/cuentas/clientes/${cli.body.id}/movimientos`).set(auth()))
+      .body.data.find(m => m.id === venta.body.id).items.find(it => it.producto_id === p1.body.id);
+    const devo = await request(app)
+      .post(`/api/cuentas/movimientos/${venta.body.id}/items/${itemP1.id}/devolver`)
+      .set(auth());
+    expect(devo.status).toBe(200);
+
+    // Después de devolver: la grilla muestra total=1500 (solo lo NO devuelto).
+    const r2 = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}&buscar=359222222222222`).set(auth());
+    const filaPost = r2.body.data.find(v => v.origen === 'b2b' && v._b2b_mov_id === venta.body.id);
+    expect(Number(filaPost.total_usd)).toBe(1500);
+    // El item devuelto sigue en el array (frontend lo necesita para tachar)
+    // con devuelto_at != null.
+    const itemDevuelto = filaPost.items.find(i => i.producto_id === p1.body.id);
+    expect(itemDevuelto.devuelto_at).not.toBeNull();
+  });
 });
 
 describe('DELETE /api/ventas/:id repone stock', () => {

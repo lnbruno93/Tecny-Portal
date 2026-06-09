@@ -1356,6 +1356,48 @@ describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(r2.status).toBe(404);
   });
+
+  // 2026-06-09 — eliminar el movimiento de devolución debe destachar el item
+  // original (devuelto_at = NULL). Sin esto, el item queda visualmente tachado
+  // pero con stock vendido — inconsistencia.
+  it('eliminar el mov de devolución → destacha el item original (devuelto_at NULL)', async () => {
+    // Crear venta + devolver 1 item → item queda con devuelto_at != NULL.
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cli destacha', categoria: 'A+' });
+    const cat = await request(app).post('/api/inventario/categorias').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cat destacha' });
+    const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'iPhone destacha', imei: '359000000000777',
+        costo: 500, costo_moneda: 'USD',
+        precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
+      });
+    const venta = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: '2026-06-09', tipo: 'compra', monto_total: 1000,
+        items: [{ producto_id: prod.body.id, producto: 'iPhone destacha', imei_serial: '359000000000777', cantidad: 1, valor: 1000 }],
+      });
+    const items = await pool.query('SELECT id FROM items_movimiento_cc WHERE movimiento_cc_id = $1', [venta.body.id]);
+    const itemId = items.rows[0].id;
+    const devo = await request(app)
+      .post(`/api/cuentas/movimientos/${venta.body.id}/items/${itemId}/devolver`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(devo.status).toBe(200);
+
+    const pre = await pool.query('SELECT devuelto_at, devolucion_mov_id FROM items_movimiento_cc WHERE id = $1', [itemId]);
+    expect(pre.rows[0].devuelto_at).not.toBeNull();
+
+    // Borrar la devolución.
+    const del = await request(app).delete(`/api/cuentas/movimientos/${devo.body.devolucion_mov_id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+
+    // El item original ya no debería estar tachado.
+    const post = await pool.query('SELECT devuelto_at, devolucion_mov_id FROM items_movimiento_cc WHERE id = $1', [itemId]);
+    expect(post.rows[0].devuelto_at).toBeNull();
+    expect(post.rows[0].devolucion_mov_id).toBeNull();
+  });
 });
 
 // ─── #T-05: schemas .strict() rechazan campos extra ──────────────────

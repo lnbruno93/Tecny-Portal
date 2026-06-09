@@ -22,7 +22,9 @@ function todayISO() { return new Date().toLocaleDateString('sv'); }
 const TIPO_DISPLAY = {
   compra:             { label: 'Compra',        tone: 'pos',  signo: +1 },
   pago:               { label: 'Pago',          tone: 'neg',  signo: -1 },
-  devolucion:         { label: 'Devolución',     tone: 'pos',  signo: -1 },
+  // tone='neg' (rojo) — la devolución reduce la venta original, visualmente
+  // es una "salida". signo=-1 sigue indicando que RESTA del saldo del cliente.
+  devolucion:         { label: 'Devolución',     tone: 'neg',  signo: -1 },
   parte_de_pago:      { label: 'Parte pago',     tone: 'neg',  signo: -1 },
   entrega_mercaderia: { label: 'Entrega',        tone: 'info', signo: -1 },
 };

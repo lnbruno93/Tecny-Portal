@@ -122,14 +122,39 @@ async function cancelMovimientoCC(client, { movimientoId, userId, origen = 'manu
     }
   }
 
-  // 5. Audit: incluye `_origen` para distinguir manual / cascada / cleanup.
+  // 5. Si el mov es una devolución inline (junio 2026), destachar los items
+  //    originales que apuntaban a este mov via devolucion_mov_id. Sin esto,
+  //    al borrar la devolución el stock vuelve a vendido (paso 4 ya lo hizo
+  //    con sign=-1) pero el item original sigue marcado devuelto_at != NULL
+  //    y se muestra tachado en el desglose — inconsistencia visual.
+  //    NOOP para devoluciones manuales (sin devolucion_mov_id apuntando).
+  let itemsDestachados = 0;
+  if (mov.tipo === 'devolucion') {
+    const { rowCount } = await client.query(
+      `UPDATE items_movimiento_cc
+          SET devuelto_at = NULL,
+              devolucion_mov_id = NULL,
+              devolucion_user_id = NULL
+        WHERE devolucion_mov_id = $1`,
+      [movimientoId]
+    );
+    itemsDestachados = rowCount;
+  }
+
+  // 6. Audit: incluye `_origen` para distinguir manual / cascada / cleanup.
   await audit(client, 'movimientos_cc', 'DELETE', movimientoId, {
     antes: mov,
     user_id: userId,
     _origen: origen,
+    _items_destachados: itemsDestachados,
   });
 
-  return { movimiento: mov, productos_restaurados: productosRestaurados, caja_revertida: true };
+  return {
+    movimiento: mov,
+    productos_restaurados: productosRestaurados,
+    caja_revertida: true,
+    items_destachados: itemsDestachados,
+  };
 }
 
 module.exports = { cancelMovimientoCC };
