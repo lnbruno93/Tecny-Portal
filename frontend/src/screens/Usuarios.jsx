@@ -11,7 +11,7 @@ const TOOL_LABELS = {
   financiera: 'Financiera',
   cajas:      'Cajas',
   envios:     'Envíos',
-  cuentas:    'Cuentas CC',
+  cuentas:    'Venta & Gestión B2B',
   usados:     'Usados',
   usuarios:   'Usuarios',
   inventario: 'Inventario',
