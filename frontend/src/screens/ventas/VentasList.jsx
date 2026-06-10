@@ -36,16 +36,46 @@ export default function VentasList({
         </thead>
         <tbody>
           {lista.map(v => {
-            // 2026-06-09: ahora la grilla incluye ventas B2B (movimientos_cc).
-            // Difieren en: no tienen estado editable inline (siempre 'pendiente'
-            // en esta vista — el saldo es por cliente, no por mov), no aplican
-            // comprobantes, "Editar" abre el cliente en CuentasCC en vez del
-            // modal de venta retail. Distinguimos con el origen y un badge.
+            // 2026-06-09/10: grilla unificada retail + B2B con estado editable
+            // inline en el badge de la izquierda (no select extra a la derecha).
+            // El select se estiliza como badge y cambia de color al variar:
+            //   acreditado → verde · pendiente → amarillo · cancelado → rojo
+            // B2B solo tiene 2 opciones (acreditado/pendiente); retail tiene 3.
             const esB2B = v.origen === 'b2b';
+            const estadoTone = { acreditado: 'pos', pendiente: 'warn', cancelado: 'neg' }[v.estado] || 'default';
+            // Mismos colores que usa el componente Badge — replicamos inline
+            // para que el <select> herede el look pero siga siendo nativo.
+            const estadoColors = {
+              pos:     { bg: 'rgba(34,197,94,0.12)',  fg: 'var(--pos)',  bd: 'rgba(34,197,94,0.45)' },
+              warn:    { bg: 'rgba(245,158,11,0.14)', fg: 'var(--warn, #f59e0b)', bd: 'rgba(245,158,11,0.45)' },
+              neg:     { bg: 'rgba(220,38,38,0.12)',  fg: 'var(--neg)',  bd: 'rgba(220,38,38,0.45)' },
+              default: { bg: 'var(--surface-2)',      fg: 'var(--text-muted)', bd: 'var(--border)' },
+            }[estadoTone];
             return (
             <tr key={v.id}>
               <td>
-                {estadoBadge(v.estado)}
+                <select
+                  value={v.estado}
+                  onChange={e => changeEstado(v, e.target.value)}
+                  title="Cambiar estado"
+                  style={{
+                    appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+                    background: estadoColors.bg, color: estadoColors.fg,
+                    border: `1px solid ${estadoColors.bd}`,
+                    borderRadius: 12, padding: '2px 22px 2px 9px',
+                    fontSize: 11, fontWeight: 600, lineHeight: 1.4,
+                    cursor: 'pointer', outline: 'none',
+                    // Flechita custom para que se vea claramente que es editable.
+                    backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'3\'><polyline points=\'6 9 12 15 18 9\'/></svg>")',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 6px center',
+                    backgroundSize: '10px 10px',
+                  }}
+                >
+                  <option value="acreditado">Acreditado</option>
+                  <option value="pendiente">Pendiente</option>
+                  {!esB2B && <option value="cancelado">Cancelado</option>}
+                </select>
                 <div className="muted tiny mono" style={{ marginTop: 3 }}>{v.order_id}</div>
                 {esB2B && (
                   <div style={{ marginTop: 4 }}>
@@ -116,18 +146,8 @@ export default function VentasList({
               <td className="mono pos" style={{ fontWeight: 600 }}>u$s{fmt(v.ganancia_usd)}</td>
               <td className="mono" style={{ fontWeight: 600 }}>u$s{fmt(v.total_usd)}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {/* 2026-06-10: B2B también tiene selector con 2 opciones
-                    (Acreditado | Pendiente). 'cancelado' es exclusivo de retail. */}
-                <select
-                  className="input"
-                  style={{ width: 'auto', display: 'inline-block', padding: '4px 6px', fontSize: 11 }}
-                  value={v.estado}
-                  onChange={e => changeEstado(v, e.target.value)}
-                >
-                  <option value="acreditado">Acreditado</option>
-                  <option value="pendiente">Pendiente</option>
-                  {!esB2B && <option value="cancelado">Cancelado</option>}
-                </select>{' '}
+                {/* 2026-06-10: select de estado movido al badge de la izquierda.
+                    Esta celda solo tiene íconos de acción ahora. */}
                 <button className="icon-btn" title={esB2B ? 'Ir al cliente B2B' : 'Editar venta'} onClick={() => openEdit(v)}>
                   <Icons.Edit size={14} />
                 </button>
