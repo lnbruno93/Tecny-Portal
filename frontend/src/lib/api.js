@@ -189,6 +189,12 @@ export const cajas = {
   deleteInversion: (id) => api(`/api/cajas/inversiones/${id}`, 'DELETE'),
   // Config Cajas (cuentas de dinero = metodos_pago): nombre, moneda, activo, orden, saldo_inicial
   listCajas: () => api('/api/cajas/cajas'),
+  // Lista lite de métodos de pago (cajas activas) SIN saldos ni datos
+  // sensibles. Accesible por cualquier usuario logueado (sin permiso
+  // 'cajas'). Usar en selectores de medio de cobro en Envíos, Ventas,
+  // B2B, etc. — 2026-06-10, bug Envíos donde quien no tenía permiso de
+  // cajas no podía cobrar.
+  listMetodosPago: () => api('/api/metodos-pago'),
   createCaja: (data) => api('/api/cajas/cajas', 'POST', data),
   updateCaja: (id, data) => api(`/api/cajas/cajas/${id}`, 'PUT', data),
   deleteCaja: (id) => api(`/api/cajas/cajas/${id}`, 'DELETE'),

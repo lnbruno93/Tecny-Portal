@@ -84,8 +84,12 @@ export default function Envios() {
   const prodReq   = useRef(0);
 
   useEffect(() => {
-    cajasApi.listCajas()
-      .then(list => setCajasPago((list || []).filter(c => c.activo !== false)))
+    // 2026-06-10: usar el endpoint lite (sin permiso 'cajas') así un operador
+    // que solo tiene 'envios' puede cobrar. Antes usábamos listCajas() que
+    // requería permiso 'cajas' y devolvía 403 → lista vacía → solo aparecía
+    // "Cuenta corriente" en el select.
+    cajasApi.listMetodosPago()
+      .then(list => setCajasPago(Array.isArray(list) ? list : []))
       .catch(console.error);
     cuentasApi.clientes({ limit: 200 })
       .then(list => setClientesCc(Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : [])))
@@ -938,7 +942,10 @@ export default function Envios() {
                               {cajasPago.map(c => (
                                 <option key={c.id} value={c.id}>{c.nombre}</option>
                               ))}
-                              <option value="__CC__">Cuenta corriente (deuda)</option>
+                              {/* 2026-06-10: Cuenta corriente removida del modal de Envíos
+                                  por pedido de Lucas — no se vende a consumidor final con CC.
+                                  La lógica detrás (es_cuenta_corriente) queda por compatibilidad
+                                  con envíos legacy, pero no se ofrece como opción nueva. */}
                             </select>
                             <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto"
                                    value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
