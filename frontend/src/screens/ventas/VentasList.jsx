@@ -23,6 +23,7 @@ export default function VentasList({
   comprobantePDF,
   openComprob,
   deleteVenta,
+  confirmarEntrega,
 }) {
   return (
     <div className="card card-flush">
@@ -148,6 +149,20 @@ export default function VentasList({
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 {/* 2026-06-10: select de estado movido al badge de la izquierda.
                     Esta celda solo tiene íconos de acción ahora. */}
+                {/* "Confirmar entrega": solo cuando la venta nació de un envío
+                    todavía no entregado ni cancelado. En 1 click marca envío
+                    como 'Entregado' y la venta pasa a 'acreditado' (entra al
+                    neto del día). */}
+                {confirmarEntrega && v.envio?.id && v.envio.estado !== 'Entregado' && v.envio.estado !== 'Cancelado' && (
+                  <button
+                    className="btn btn-sm"
+                    style={{ marginRight: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}
+                    title="Confirmar entrega del envío y acreditar la venta"
+                    onClick={() => confirmarEntrega(v)}
+                  >
+                    ✓ Confirmar entrega
+                  </button>
+                )}
                 <button className="icon-btn" title={esB2B ? 'Ir al cliente B2B' : 'Editar venta'} onClick={() => openEdit(v)}>
                   <Icons.Edit size={14} />
                 </button>

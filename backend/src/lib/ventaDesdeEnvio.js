@@ -71,10 +71,19 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
   }
   const gananciaUsd = round2(totalUsd - costoUsd);
 
+  // 2026-06-10 — La venta nace 'pendiente' hasta que el envío se marca como
+  // 'Entregado'. Mientras está pendiente, NO suma en la ganancia neta del
+  // dashboard (que filtra por estado='acreditado'). Las cajas SÍ se postean
+  // porque retieneStock() es true para 'pendiente' — la plata ya entró cuando
+  // se registró el envío, sólo el reconocimiento contable de la ganancia
+  // espera la entrega. Cuando se crea un envío directamente como 'Entregado'
+  // (alta retroactiva), la venta nace acreditada para no obligar a un paso
+  // extra de confirmación.
+  const estadoVenta = envio.estado === 'Entregado' ? 'acreditado' : 'pendiente';
   const { rows } = await client.query(
     `INSERT INTO ventas (order_id, fecha, cliente_nombre, cliente_cc_id, estado, total_usd, ganancia_usd, tc_venta, notas, user_id)
-     VALUES ($1,$2,$3,$4,'acreditado',$5,$6,$7,$8,$9) RETURNING *`,
-    [genOrderId(), envio.fecha, envio.cliente, envio.cliente_cc_id ?? null, totalUsd, gananciaUsd, envio.tc ?? null, 'Generada automáticamente desde un envío', userId]
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [genOrderId(), envio.fecha, envio.cliente, envio.cliente_cc_id ?? null, estadoVenta, totalUsd, gananciaUsd, envio.tc ?? null, 'Generada automáticamente desde un envío', userId]
   );
   const venta = rows[0];
 

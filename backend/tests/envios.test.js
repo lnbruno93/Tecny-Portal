@@ -254,6 +254,101 @@ describe('Envío → Venta (registrar_venta)', () => {
     expect(pRestored.estado).toBe('disponible');
   });
 
+  it('la venta nace en estado pendiente si el envío no está Entregado', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Pend', direccion: 'Calle P', registrar_venta: true,
+      items: [{ tipo: 'producto', descripcion: 'Item P', monto: 100000 }, { tipo: 'pago', monto: 100000, metodo_pago_id: cajaArs }],
+    });
+    expect(env.status).toBe(201);
+    expect(env.body.estado).toBe('Pendiente'); // default del schema
+    const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('pendiente');
+    // El listado de ventas expone envio.id y envio.estado en la fila retail.
+    expect(v.envio).toBeTruthy();
+    expect(v.envio.id).toBe(env.body.id);
+    expect(v.envio.estado).toBe('Pendiente');
+  });
+
+  it('la venta nace acreditada si el envío se crea directamente como Entregado', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Entregado', direccion: 'Calle E', registrar_venta: true, estado: 'Entregado',
+      items: [{ tipo: 'producto', descripcion: 'Item E', monto: 50000 }, { tipo: 'pago', monto: 50000, metodo_pago_id: cajaArs }],
+    });
+    expect(env.status).toBe(201);
+    expect(env.body.estado).toBe('Entregado');
+    const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('acreditado');
+  });
+
+  it('POST /envios/:id/confirmar-entrega marca envío Entregado y venta acreditada en una sola TX', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Conf', direccion: 'Calle C', registrar_venta: true,
+      items: [{ tipo: 'producto', descripcion: 'Item C', monto: 80000 }, { tipo: 'pago', monto: 80000, metodo_pago_id: cajaArs }],
+    });
+    expect(env.body.estado).toBe('Pendiente');
+    // Confirmar entrega
+    const res = await request(app).post(`/api/envios/${env.body.id}/confirmar-entrega`).set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.envio.estado).toBe('Entregado');
+    expect(res.body.venta.estado).toBe('acreditado');
+    // Verificar persistencia
+    const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('acreditado');
+    expect(v.envio.estado).toBe('Entregado');
+  });
+
+  it('confirmar-entrega es idempotente: 200 aunque el envío ya esté Entregado', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Idem', direccion: 'Calle I', registrar_venta: true, estado: 'Entregado',
+      items: [{ tipo: 'producto', descripcion: 'Item I', monto: 10000 }, { tipo: 'pago', monto: 10000, metodo_pago_id: cajaArs }],
+    });
+    const res = await request(app).post(`/api/envios/${env.body.id}/confirmar-entrega`).set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.envio.estado).toBe('Entregado');
+    // La venta ya estaba acreditada, el endpoint no rompe
+    const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('acreditado');
+  });
+
+  it('confirmar-entrega rechaza 400 si el envío está Cancelado', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Cncl', direccion: 'Calle X', registrar_venta: true,
+      items: [{ tipo: 'producto', descripcion: 'Item X', monto: 30000 }, { tipo: 'pago', monto: 30000, metodo_pago_id: cajaArs }],
+    });
+    await request(app).put(`/api/envios/${env.body.id}`).set(auth()).send({ estado: 'Cancelado' });
+    const res = await request(app).post(`/api/envios/${env.body.id}/confirmar-entrega`).set(auth());
+    expect(res.status).toBe(400);
+  });
+
+  it('confirmar-entrega funciona en envíos sin venta asociada (registrar_venta=false)', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente SinVenta', direccion: 'Calle SV',
+      items: [{ tipo: 'pago', monto: 20000, metodo_pago_id: cajaArs }],
+    });
+    expect(env.body.venta_id).toBeFalsy();
+    const res = await request(app).post(`/api/envios/${env.body.id}/confirmar-entrega`).set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.envio.estado).toBe('Entregado');
+    expect(res.body.venta).toBeNull();
+  });
+
+  it('PUT que cambia el envío a Entregado también sincroniza la venta a acreditado', async () => {
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Sync', direccion: 'Calle S', registrar_venta: true,
+      items: [{ tipo: 'producto', descripcion: 'Item S', monto: 70000 }, { tipo: 'pago', monto: 70000, metodo_pago_id: cajaArs }],
+    });
+    let v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('pendiente');
+    // PUT cambia estado del envío a Entregado
+    await request(app).put(`/api/envios/${env.body.id}`).set(auth()).send({ estado: 'Entregado' });
+    v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('acreditado');
+    // Y al revés: volver a Pendiente devuelve la venta a pendiente
+    await request(app).put(`/api/envios/${env.body.id}`).set(auth()).send({ estado: 'Pendiente' });
+    v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(v.estado).toBe('pendiente');
+  });
+
   it('cancelar el envío revierte los efectos de la venta y la marca cancelada', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
       nombre: 'iPhone Cancel', clase: 'celular', tipo_carga: 'unitario', categoria_id: catBase,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi } from '../lib/api';
+import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -486,6 +486,25 @@ export default function Ventas() {
       await Promise.all([loadLista(), loadDash()]);
     } catch (e) { toast.error(e.message); }
   }
+
+  // 2026-06-10 — Confirmar entrega de un envío desde la grilla. En el backend
+  // pasa el envío a 'Entregado' y la venta asociada de 'pendiente' a
+  // 'acreditado' en una sola TX. Sólo se muestra cuando v.envio?.estado no es
+  // 'Entregado' ni 'Cancelado'.
+  async function confirmarEntrega(v) {
+    if (!v?.envio?.id) return;
+    const ok = await confirm({
+      title: 'Confirmar entrega',
+      message: 'Se marca el envío como entregado y la venta como acreditada en el dashboard.',
+      confirmLabel: 'Confirmar entrega',
+    });
+    if (!ok) return;
+    try {
+      await enviosApi.confirmarEntrega(v.envio.id);
+      toast.success('Entrega confirmada.');
+      await Promise.all([loadLista(), loadDash()]);
+    } catch (e) { toast.error(e.message); }
+  }
   async function deleteVenta(v) {
     // Si la fila es B2B (origen='b2b'), el endpoint correcto es el de
     // movimientos_cc (que cascadea: revierte caja + restaura stock + audit).
@@ -770,6 +789,7 @@ export default function Ventas() {
           comprobantePDF={comprobantePDF}
           openComprob={openComprob}
           deleteVenta={deleteVenta}
+          confirmarEntrega={confirmarEntrega}
         />
       )}
 
