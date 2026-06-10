@@ -73,24 +73,44 @@ function UpdateBanner() {
 
 // Navigation structure — perm: key en user.perms, adminOnly: solo role=admin
 // null perm = siempre visible
-// `group` agrupa visualmente el menú (separador entre grupos distintos).
+// `group` agrupa visualmente el menú; cada grupo se renderiza con su título
+// (NAV_GROUPS) arriba del primer ítem visible del grupo.
+//
+// 2026-06-10: agrupación pedida por Lucas — etiquetas visibles para que el
+// menú se sienta más organizado y la navegación sea predecible.
+const NAV_GROUPS = {
+  1: 'Comercial',
+  2: 'Cajas y Proveedores',
+  3: 'Opciones Financieras',
+  4: 'Otras herramientas',
+  5: 'Logística',
+  6: 'Proyectos',
+};
 const NAV_MAIN = [
+  // Comercial
   { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null,          group: 1 },
   { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  perm: 'financiera',  group: 1 },
   { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas',      group: 1 },
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
+  // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas',       group: 2 },
   { id: 'conciliacion', path: '/conciliacion', label: 'Conciliación bancaria', icon: 'Refresh', perm: 'cajas', group: 2 },
   { id: 'egresos',    path: '/egresos',    label: 'Egresos',    icon: 'ArrowDownRight', perm: 'cajas',   group: 2 },
   { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario',  group: 2 },
   { id: 'proveedores',path: '/proveedores',label: 'Proveedores | Compras',icon: 'Building',   perm: 'proveedores', group: 2 },
-  { id: 'financiera', path: '/financiera', label: 'Financiera', icon: 'Trend',      perm: 'financiera',  group: 3 },
+  // Opciones Financieras  (la ruta /financiera y el permiso siguen siendo
+  // `financiera` para no romper enlaces ni audit trail; solo cambia el label
+  // visible a "Transferencias", 2026-06-10.)
+  { id: 'financiera', path: '/financiera', label: 'Transferencias', icon: 'Trend',  perm: 'financiera',  group: 3 },
   { id: 'cambios',    path: '/cambios',    label: 'Cambios de Divisa', icon: 'Dollar', perm: 'cambios',  group: 3 },
   { id: 'tarjetas',   path: '/tarjetas',   label: 'Tarjetas de Crédito', icon: 'CreditCard', perm: 'tarjetas', group: 3 },
+  // Otras herramientas
   { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 4 },
-  { id: 'usados',     path: '/usados',     label: 'Usados | Cotizador',            icon: 'Phone',      perm: 'usados',      group: 4 },
+  { id: 'usados',     path: '/usados',     label: 'Usados y Cotizador',            icon: 'Phone',      perm: 'usados',      group: 4 },
+  // Logística
   { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios',      group: 5 },
+  // Proyectos
   { id: 'proyectos',  path: '/proyectos',  label: 'Proyectos',  icon: 'Calendar',   perm: 'proyectos',   group: 6 },
 ];
 
@@ -100,12 +120,13 @@ const NAV_SYS = [
   { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings', perm: 'financiera'  },
 ];
 
-// Map path segment → display label for breadcrumb
+// Map path segment → display label for breadcrumb. 2026-06-10: actualizado a
+// "Transferencias" y "Usados y Cotizador" en paralelo con NAV_MAIN.
 const SCREEN_LABELS = {
   inicio:     'Inicio',
   resumen:    'Resumen del mes',
   cotizador:  'Cotizador',
-  financiera: 'Financiera',
+  financiera: 'Transferencias',
   cambios:    'Cambios de Divisa',
   tarjetas:   'Tarjetas de Crédito',
   cajas:      'Cajas',
@@ -116,7 +137,7 @@ const SCREEN_LABELS = {
   cuentas:    'Venta & Gestión B2B',
   contactos:  'Contactos',
   proveedores: 'Proveedores | Compras',
-  usados:     'Usados | Cotizador',
+  usados:     'Usados y Cotizador',
   inventario: 'Inventario',
   proyectos:  'Proyectos',
   ventas:     'Ventas',
@@ -166,15 +187,29 @@ function Sidebar({ badges = {}, open, onClose }) {
         </div>
 
         <div className="sidebar-scroll">
+        {/* "Herramientas" es el título general. Los sub-títulos vienen de
+            NAV_GROUPS y se muestran arriba del primer item visible de cada
+            grupo (sin separador horizontal — el título mismo marca el corte).
+            2026-06-10. */}
         <div className="nav-section">Herramientas</div>
         {visibleMain.map((n, i) => {
           const I = Icons[n.icon];
-          // Separador entre grupos (no antes del primer ítem visible)
           const prev = visibleMain[i - 1];
-          const divider = prev && prev.group !== n.group;
+          // Mostrar header de grupo cuando cambia (también para el primer item).
+          const showGroupHeader = !prev || prev.group !== n.group;
+          const groupLabel = NAV_GROUPS[n.group];
           return (
             <div key={n.id}>
-              {divider && <div className="nav-divider" />}
+              {showGroupHeader && groupLabel && (
+                <div className="nav-subsection" style={{
+                  padding: '14px 16px 4px',
+                  fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                  textTransform: 'uppercase', color: 'var(--text-muted)',
+                  opacity: 0.65,
+                }}>
+                  {groupLabel}
+                </div>
+              )}
               <NavLink
                 to={n.path}
                 className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}

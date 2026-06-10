@@ -8,11 +8,14 @@ import { fmt } from '../lib/format';
 
 const TOOL_LABELS = {
   cotizador:  'Cotizador',
-  financiera: 'Financiera',
+  // 2026-06-10: el módulo "financiera" se renombró visualmente a
+  // "Transferencias" (sidebar + breadcrumb + título de pantalla). El key
+  // interno sigue siendo `financiera` para no migrar permisos/audit.
+  financiera: 'Transferencias',
   cajas:      'Cajas',
   envios:     'Envíos',
   cuentas:    'Venta & Gestión B2B',
-  usados:     'Usados',
+  usados:     'Usados y Cotizador',
   usuarios:   'Usuarios',
   inventario: 'Inventario',
   ventas:     'Ventas',

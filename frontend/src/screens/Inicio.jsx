@@ -99,7 +99,7 @@ export default function Inicio() {
     { id: 'egresos',     name: 'Egresos',              desc: 'Gastos por categoría · recurrentes', icon: 'ArrowDownRight', tint: 'amber',  meta: 'Salidas de dinero' },
     { id: 'inventario',  name: 'Inventario',           desc: 'Stock · costos · valorizado',         icon: 'Box',         tint: 'green',  meta: 'Equipos y accesorios' },
     { id: 'proveedores', name: 'Proveedores | Compras',desc: 'Compras y cuenta corriente',          icon: 'Building',    tint: 'cyan',   meta: 'Cta. cte. con proveedores' },
-    { id: 'financiera',  name: 'Financiera',           desc: 'Comprobantes, pagos y OCR',           icon: 'Trend',       tint: 'blue',   meta: 'Comprobantes y pagos' },
+    { id: 'financiera',  name: 'Transferencias',       desc: 'Comprobantes, pagos y OCR',           icon: 'Trend',       tint: 'blue',   meta: 'Comprobantes y pagos' },
     { id: 'cambios',     name: 'Cambios de Divisa',    desc: 'Conversión USD ↔ ARS ↔ USDT',         icon: 'Dollar',      tint: 'pink',   meta: 'Operaciones de cambio' },
     { id: 'tarjetas',    name: 'Tarjetas de Crédito',  desc: 'Cobros y liquidaciones',              icon: 'CreditCard',  tint: 'purple', meta: 'Por método de pago' },
     { id: 'cotizador',   name: 'Cotizador',            desc: 'Precios con cuotas y USD → ARS',      icon: 'Calculator',  tint: 'amber',  meta: 'Cotizar a clientes' },

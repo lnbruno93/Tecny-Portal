@@ -675,7 +675,7 @@ export default function Financiera() {
       {/* Page head */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">Financiera</h1>
+          <h1 className="page-title">Transferencias</h1>
           <div className="page-sub">
             Comprobantes, pagos y OCR · retención al {pct.toFixed(1)}%
           </div>
