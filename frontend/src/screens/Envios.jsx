@@ -16,9 +16,13 @@ const EMPTY_FORM = {
   fecha: new Date().toLocaleDateString('sv'),
   cliente: '', telefono: '', direccion: '', barrio: '',
   horario: '', operador: '', notas: '',
-  prioridad: '', estado: 'Pendiente', registrar_venta: false,
-  tc: '', // TC del envío (requerido cuando registrar_venta y hay items 'producto')
-  cliente_cc_id: '', // requerido si algún pago es CC
+  prioridad: '', estado: 'Pendiente',
+  // 2026-06-10 — Todo envío genera una venta asociada (estado='pendiente'
+  // al crearse, 'acreditado' al confirmar entrega). El operador no decide
+  // esto: cuadra con la regla "envío = venta minorista al consumidor".
+  // Antes era un checkbox opcional y era footgun (Lucas creó un envío
+  // sin tickearlo y la venta nunca apareció en el dashboard).
+  tc: '', // TC del envío (opcional, solo necesario si hay items en ARS)
 };
 // Default USD: los productos del inventario son típicamente USD y los precios
 // del envío "tipo Ventas" se manejan en USD. El usuario puede cambiar a ARS/USDT.
@@ -244,9 +248,11 @@ export default function Envios() {
         prioridad: form.prioridad || null,
         estado: form.estado || 'Pendiente',
         costo_envio: 0,
-        registrar_venta: !!form.registrar_venta,
-        tc: (form.registrar_venta && form.tc) ? Number(form.tc) : null,
-        cliente_cc_id: form.cliente_cc_id ? Number(form.cliente_cc_id) : null,
+        // Siempre registramos como venta — la regla del flujo es "envío =
+        // venta minorista" y el operador no opta in/out (ver comentario en EMPTY_FORM).
+        registrar_venta: true,
+        tc: form.tc ? Number(form.tc) : null,
+        cliente_cc_id: null, // CC ya no se permite como medio de pago en Envíos
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
           // tipo 'producto' SIEMPRE va linkeado (no se permite texto libre); 'pago' va siempre.
@@ -1075,30 +1081,16 @@ export default function Envios() {
                     </div>
                   </div>
 
-                  <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                    <input type="checkbox" checked={form.registrar_venta} onChange={e => setForm(f => ({ ...f, registrar_venta: e.target.checked }))} style={{ accentColor: 'var(--accent)' }} />
-                    <span style={{ fontSize: 13 }}>Registrar como venta <span className="muted tiny">(requerido para Cuenta corriente / Financiera / Tarjeta)</span></span>
-                  </label>
-                  {form.registrar_venta && (
-                    <>
-                      <div className="field" style={{ marginBottom: 0 }}>
-                        <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">para items ARS</span></label>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
-                               value={form.tc} onChange={e => setF('tc', e.target.value)} />
-                      </div>
-                      {items.some(i => i.tipo === 'pago' && i.es_cuenta_corriente) && (
-                        <div className="field" style={{ marginBottom: 0 }}>
-                          <label className="field-label">Cliente de cuenta corriente <span style={{ color: 'var(--neg)' }}>*</span></label>
-                          <select className="input" value={form.cliente_cc_id} onChange={e => setF('cliente_cc_id', e.target.value)}>
-                            <option value="">— Seleccionar —</option>
-                            {clientesCc.map(c => (
-                              <option key={c.id} value={c.id}>{c.nombre}{c.apellido ? ' ' + c.apellido : ''}{c.categoria ? ` (${c.categoria})` : ''}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  {/* 2026-06-10 — Sacamos el checkbox "Registrar como venta": todo
+                      envío genera una venta asociada (estado='pendiente' al crear,
+                      'acreditado' al confirmar entrega). Antes era opcional y era
+                      footgun: si el operador no lo tickeaba, el envío nunca aparecía
+                      en el dashboard de ventas. */}
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">opcional · necesario si hay items en ARS</span></label>
+                    <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
+                           value={form.tc} onChange={e => setF('tc', e.target.value)} />
+                  </div>
 
                   {createError && (
                     <div style={{ color: 'var(--neg)', fontSize: 13 }}>{createError}</div>

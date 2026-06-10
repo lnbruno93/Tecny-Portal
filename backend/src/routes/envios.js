@@ -145,12 +145,22 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       // Si NO hay registrar_venta, el envío postea directo a caja (solo cajas regulares).
       // Si SÍ hay registrar_venta, la venta auto-creada maneja TODA la sincronización
       // financiera (caja, CC, financiera, tarjeta), así no duplicamos ingresos.
+      //
+      // 2026-06-10 — Edge case: registrar_venta=true pero items sin productos
+      // linkeados (solo pagos). crearVentaDesdeEnvio devuelve null porque la
+      // venta exige al menos un 'producto'. Antes, los pagos quedaban
+      // huérfanos (ni venta ni caja). Ahora caemos al syncEnvioCaja para no
+      // perder el ingreso del cobro. Pasa típicamente con envíos "de cobro
+      // suelto" cuando el frontend pasó a forzar siempre registrar_venta=true.
       let ventaCreada = null;
       if (registrar_venta) {
         ventaCreada = await crearVentaDesdeEnvio(client, envio, items, req.user.id);
         if (ventaCreada) {
           await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [ventaCreada.id, envio.id]);
           envio.venta_id = ventaCreada.id;
+        } else {
+          // No se creó venta (sin productos linkeados) — postear pagos a caja directo.
+          await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
         }
       } else {
         await syncEnvioCaja(client, envio.id, envio.fecha, envio.estado, req.user.id);
