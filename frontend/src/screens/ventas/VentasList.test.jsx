@@ -97,10 +97,15 @@ describe('VentasList — render', () => {
     expect(vip.length).toBe(1);
   });
 
-  it('renderiza estado vía estadoBadge() (callback)', () => {
-    const { getByTestId } = renderList();
-    expect(getByTestId('badge-acreditado')).toBeTruthy();
-    expect(getByTestId('badge-pendiente')).toBeTruthy();
+  it('renderiza estado como select clickeable (no badge legacy)', () => {
+    // 2026-06-10: el estado pasó de ser un <Badge> a un <select> estilizado
+    // en el mismo lugar — clickeable in-place para cambiar acreditado/pendiente.
+    // Se confirma con la presencia de selects con el value correcto.
+    const { container } = renderList();
+    const selects = container.querySelectorAll('select');
+    const valores = Array.from(selects).map(s => s.value);
+    expect(valores).toContain('acreditado');
+    expect(valores).toContain('pendiente');
   });
 
   it('fallback "—" cuando cliente_nombre es null', () => {
