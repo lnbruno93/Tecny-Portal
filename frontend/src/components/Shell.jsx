@@ -201,14 +201,7 @@ function Sidebar({ badges = {}, open, onClose }) {
           return (
             <div key={n.id}>
               {showGroupHeader && groupLabel && (
-                <div className="nav-subsection" style={{
-                  padding: '14px 16px 4px',
-                  fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
-                  textTransform: 'uppercase', color: 'var(--text-muted)',
-                  opacity: 0.65,
-                }}>
-                  {groupLabel}
-                </div>
+                <div className="nav-subsection">{groupLabel}</div>
               )}
               <NavLink
                 to={n.path}
