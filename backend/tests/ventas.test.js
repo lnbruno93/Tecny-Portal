@@ -223,7 +223,9 @@ describe('GET /api/ventas', () => {
     expect(b2bRow).toBeDefined();
     expect(b2bRow.order_id).toMatch(/^B2B-/);
     expect(b2bRow.cliente_nombre).toContain('Cliente Grilla');
-    expect(b2bRow.estado).toBe('pendiente');
+    // 2026-06-10: las B2B nuevas nacen como 'acreditado' por default
+    // (antes era 'pendiente' hardcoded). El operador puede alternar via PATCH.
+    expect(b2bRow.estado).toBe('acreditado');
     expect(b2bRow.etiqueta_nombre).toBe('B2B');
     expect(Number(b2bRow.total_usd)).toBe(1000);
     expect(b2bRow.items).toHaveLength(1);
@@ -231,8 +233,16 @@ describe('GET /api/ventas', () => {
     expect(b2bRow.pagos).toEqual([]);
   });
 
-  it('filtro estado=acreditado descarta B2B (siempre pendiente en esta vista)', async () => {
+  // 2026-06-10: B2B ahora soporta 'acreditado' y 'pendiente'. El filtro
+  // de estado los respeta. Filtros que no aplican a B2B (ej. 'cancelado')
+  // sí descartan las filas B2B.
+  it('filtro estado=acreditado SÍ trae B2B (las nuevas nacen acreditadas)', async () => {
     const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}&estado=acreditado`).set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.data.some(v => v.origen === 'b2b')).toBe(true);
+  });
+  it('filtro estado=cancelado descarta B2B (B2B no tiene ese estado)', async () => {
+    const res = await request(app).get(`/api/ventas?desde=${hoy}&hasta=${hoy}&estado=cancelado`).set(auth());
     expect(res.status).toBe(200);
     expect(res.body.data.every(v => v.origen !== 'b2b')).toBe(true);
   });

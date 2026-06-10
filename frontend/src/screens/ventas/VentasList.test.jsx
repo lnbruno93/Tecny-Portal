@@ -111,11 +111,17 @@ describe('VentasList — render', () => {
 });
 
 describe('VentasList — acciones', () => {
-  it('cambio de estado en select llama changeEstado(id, nuevoEstado)', () => {
+  it('cambio de estado en select llama changeEstado(venta, nuevoEstado)', () => {
+    // 2026-06-10: changeEstado ahora recibe la fila completa (no solo el id)
+    // para que el padre pueda discriminar entre retail y B2B y llamar al
+    // endpoint correcto.
     const { container, props } = renderList();
     const select = container.querySelectorAll('select')[0];
     fireEvent.change(select, { target: { value: 'cancelado' } });
-    expect(props.changeEstado).toHaveBeenCalledWith(1, 'cancelado');
+    expect(props.changeEstado).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      'cancelado'
+    );
   });
 
   it('click en Editar llama openEdit con la venta completa', () => {
