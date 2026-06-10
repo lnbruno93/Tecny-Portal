@@ -22,7 +22,10 @@ const EMPTY_FORM = {
 };
 // Default USD: los productos del inventario son típicamente USD y los precios
 // del envío "tipo Ventas" se manejan en USD. El usuario puede cambiar a ARS/USDT.
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false };
+// Los campos con prefijo `_` son solo para mostrar en la UI — no se envían al
+// backend. Los seteamos al pickear un producto del inventario para que el
+// operador vea modelo/capacidad/color/IMEI/costo sin tener que abrir Inventario.
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false, _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '' };
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -142,6 +145,12 @@ export default function Envios() {
   }, [items, form.tc]);
   const cubierto = Math.abs(summary.diferenciaUsd) < 0.01;
 
+  // Heurística: si lo tipeado parece un IMEI completo (12+ dígitos seguidos),
+  // y la búsqueda devuelve EXACTAMENTE un match cuyo p.imei coincide, lo
+  // seleccionamos solo. Lucas usa lector / escribe el IMEI directo de la caja
+  // y no quiere tener que clickear el resultado.
+  const looksLikeImei = (s) => /^\d{12,17}$/.test((s || '').trim());
+
   // Búsqueda asincrónica de productos: debounce 300ms, backend filtra por nombre/IMEI/color/gb.
   function searchProductos(itemIdx, q) {
     setProdSearch(s => ({ ...s, itemIdx, q, loading: q.trim().length >= 2 }));
@@ -151,7 +160,16 @@ export default function Envios() {
     prodTimer.current = setTimeout(async () => {
       try {
         const res = await inventario.productos({ solo_stock: 'true', limit: 8, buscar: q.trim() });
-        if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: res?.data || [], loading: false }));
+        if (reqId !== prodReq.current) return;
+        const results = res?.data || [];
+        // Auto-pick por IMEI: si el query es un IMEI y hay UN único match
+        // con ese IMEI exacto, lo seleccionamos sin esperar el click.
+        const qTrim = q.trim();
+        if (looksLikeImei(qTrim) && results.length === 1 && String(results[0].imei || '').trim() === qTrim) {
+          pickProducto(itemIdx, results[0]);
+          return;
+        }
+        setProdSearch(s => ({ ...s, results, loading: false }));
       } catch (_) { if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: [], loading: false })); }
     }, 300);
   }
@@ -162,12 +180,21 @@ export default function Envios() {
       descripcion: [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · '),
       monto: String(p.precio_venta || ''),
       moneda: p.precio_moneda || 'USD',  // heredada del producto del inventario (típicamente USD)
-      _imei: p.imei || '', // solo para mostrar en la UI, no se envía
+      // _campos: solo para mostrar (modelo/capacidad/color/IMEI/costo), no se envían.
+      _nombre: p.nombre || '',
+      _gb: p.gb || '',
+      _color: p.color || '',
+      _imei: p.imei || '',
+      _costo: p.costo != null ? String(p.costo) : '',
+      _costo_moneda: p.costo_moneda || 'USD',
     })));
     setProdSearch({ itemIdx: null, q: '', results: [], loading: false });
   }
   function unpickProducto(idx) {
-    setItems(i => i.map((it, j) => j !== idx ? it : ({ ...it, producto_id: '', descripcion: '', monto: '', _imei: '' })));
+    setItems(i => i.map((it, j) => j !== idx ? it : ({
+      ...it, producto_id: '', descripcion: '', monto: '',
+      _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '',
+    })));
   }
   // Setea el método del pago: caja del catálogo o "Cuenta corriente" (__CC__).
   // La moneda se infiere de la caja (debe coincidir con el grupo de la caja).
@@ -902,17 +929,32 @@ export default function Envios() {
                             ) : (
                               <div className="field" style={{ marginBottom: 0 }}>
                                 <label className="field-label">Producto seleccionado</label>
-                                <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 10px' }}>
-                                  <div style={{ overflow: 'hidden' }}>
-                                    <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{it.descripcion}</div>
+                                {/* Display con TODO el detalle relevante del producto:
+                                    modelo, capacidad (GB), color, IMEI y costo
+                                    (read-only). Solo el precio venta queda
+                                    editable a la derecha. Lucas: "que me levante
+                                    el modelo, la capacidad, el color, el costo y
+                                    me deje editar el precio de venta". */}
+                                <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '8px 10px' }}>
+                                  <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                                      {it._nombre || it.descripcion}
+                                      {it._gb && <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>· {it._gb}GB</span>}
+                                      {it._color && <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>· {it._color}</span>}
+                                    </div>
                                     {it._imei && <div className="muted tiny mono">IMEI {it._imei}</div>}
+                                    {it._costo && (
+                                      <div className="muted tiny">
+                                        Costo {it._costo_moneda === 'ARS' ? '$' : 'u$s'}{fmt(Number(it._costo))}
+                                      </div>
+                                    )}
                                   </div>
                                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
                                 </div>
                               </div>
                             )}
                             <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Monto</label>
+                              <label className="field-label">{it.producto_id ? 'Precio venta' : 'Monto'}</label>
                               <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
                                 value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                             </div>
