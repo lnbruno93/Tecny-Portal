@@ -105,8 +105,15 @@ export default function Envios() {
       .catch(() => {});
   }, []);
 
-  // ── Create modal ──
-  const [showCreate, setShowCreate] = useState(false);
+  // ── Create/Edit modal ──
+  // 2026-06-10 — Antes solo había modal de "Nuevo envío". Ahora el mismo
+  // modal sirve para editar: el `modalMode` discrimina ('create' | 'edit') y
+  // el handler de submit elige POST vs PUT. `editingId` guarda qué envío se
+  // está editando (null cuando es create).
+  const [modalMode, setModalMode] = useState(null); // null | 'create' | 'edit'
+  const showCreate = modalMode !== null; // mantiene el nombre original donde se usa
+  const [editingId, setEditingId] = useState(null);
+  const setShowCreate = (open) => { if (!open) { setModalMode(null); setEditingId(null); } };
   const [form, setForm] = useState(EMPTY_FORM);
   const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
   const [creating, setCreating] = useState(false);
@@ -218,10 +225,51 @@ export default function Envios() {
     setForm(EMPTY_FORM);
     setItems([{ ...EMPTY_ITEM }]);
     setCreateError('');
-    setShowCreate(true);
+    setEditingId(null);
+    setModalMode('create');
   }
 
-  async function handleCreate(e) {
+  // Precarga el modal con los datos del envío y abre en modo edit. Para items
+  // tipo 'producto' linkeados, mapeamos lo que viene del backend (descripcion,
+  // monto, producto_id, moneda) a la forma que espera el form. Los meta-fields
+  // del producto (_nombre, _gb, etc.) quedan vacíos en el load inicial: el
+  // operador ve la descripción plana y, si quiere los chips de detalle, hace
+  // click en "Cambiar" para volver a pickear desde el inventario.
+  function openEdit(envio) {
+    if (!envio) return;
+    setForm({
+      fecha:        envio.fecha || new Date().toLocaleDateString('sv'),
+      cliente:      envio.cliente || '',
+      telefono:     envio.telefono || '',
+      direccion:    envio.direccion || '',
+      barrio:       envio.barrio || '',
+      horario:      envio.horario || '',
+      operador:     envio.operador || '',
+      notas:        envio.notas || '',
+      prioridad:    envio.prioridad || '',
+      estado:       envio.estado || 'Pendiente',
+      tc:           envio.tc != null ? String(envio.tc) : '',
+    });
+    const mappedItems = (envio.items || []).map(i => ({
+      tipo: i.tipo,
+      descripcion: i.descripcion || '',
+      monto: i.monto != null ? String(i.monto) : '',
+      metodo_pago: i.metodo_pago || '',
+      metodo_pago_id: i.metodo_pago_id || '',
+      producto_id: i.producto_id || '',
+      moneda: i.moneda || 'USD',
+      tc: i.tc != null ? String(i.tc) : '',
+      es_cuenta_corriente: !!i.es_cuenta_corriente,
+      // Meta solo para UI — vacío al cargar; se llena solo si hacen "Cambiar".
+      _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '',
+    }));
+    setItems(mappedItems.length ? mappedItems : [{ ...EMPTY_ITEM }]);
+    setCreateError('');
+    setEditingId(envio.id);
+    setModalMode('edit');
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.cliente.trim()) { setCreateError('El cliente es obligatorio.'); return; }
     if (!form.direccion.trim()) { setCreateError('La dirección es obligatoria.'); return; }
@@ -240,20 +288,16 @@ export default function Envios() {
         prioridad: form.prioridad || null,
         estado: form.estado || 'Pendiente',
         costo_envio: 0,
-        // Siempre registramos como venta — la regla del flujo es "envío =
-        // venta minorista" y el operador no opta in/out (ver comentario en EMPTY_FORM).
-        registrar_venta: true,
         tc: form.tc ? Number(form.tc) : null,
-        cliente_cc_id: null, // CC ya no se permite como medio de pago en Envíos
         total_cobrado: items.filter(i => i.tipo === 'pago').reduce((s, i) => s + (Number(i.monto) || 0), 0),
         items: items
           // tipo 'producto' SIEMPRE va linkeado (no se permite texto libre); 'pago' va siempre.
           .filter(i => i.tipo === 'pago' || (i.tipo === 'producto' && i.producto_id))
           .map(i => ({
             tipo: i.tipo,
-            descripcion: i.descripcion.trim() || null,
+            descripcion: (i.descripcion || '').trim() || null,
             monto: Number(i.monto) || 0,
-            metodo_pago: i.metodo_pago.trim() || null,
+            metodo_pago: (i.metodo_pago || '').trim() || null,
             metodo_pago_id: (i.tipo === 'pago' && !i.es_cuenta_corriente && i.metodo_pago_id) ? Number(i.metodo_pago_id) : null,
             producto_id: (i.tipo === 'producto' && i.producto_id) ? Number(i.producto_id) : null,
             moneda: i.moneda || 'ARS',
@@ -261,9 +305,19 @@ export default function Envios() {
             es_cuenta_corriente: i.tipo === 'pago' ? !!i.es_cuenta_corriente : false,
           })),
       };
-      const nuevo = await envios.create(payload);
-      setEnviosList(prev => [{ ...nuevo, items: payload.items }, ...prev]);
-      setSelectedId(nuevo.id);
+      if (modalMode === 'edit' && editingId) {
+        // PUT: el backend resincroniza venta_items + venta_pagos + caja
+        // automáticamente desde actualizarVentaDesdeEnvio. cliente_cc_id no
+        // se manda — ya no se usa CC en Envíos y el backend mantiene el viejo.
+        const actualizado = await envios.update(editingId, payload);
+        setEnviosList(prev => prev.map(x => x.id === editingId ? { ...actualizado, items: payload.items } : x));
+        setSelectedId(editingId);
+      } else {
+        // POST: siempre registrar como venta (regla del flujo).
+        const nuevo = await envios.create({ ...payload, registrar_venta: true, cliente_cc_id: null });
+        setEnviosList(prev => [{ ...nuevo, items: payload.items }, ...prev]);
+        setSelectedId(nuevo.id);
+      }
       setShowCreate(false);
     } catch (err) {
       setCreateError(err.message);
@@ -771,6 +825,13 @@ export default function Envios() {
                 )}
                 <button
                   className="btn btn-sm"
+                  onClick={() => openEdit(selected)}
+                  title="Editar este envío"
+                >
+                  <Icons.Edit size={13} /> Editar
+                </button>
+                <button
+                  className="btn btn-sm"
                   style={{ marginLeft: 'auto', color: 'var(--neg)' }}
                   disabled={deletingId === selected.id}
                   onClick={() => handleDelete(selected.id)}
@@ -808,12 +869,12 @@ export default function Envios() {
               Moneda + ✕. Con 600px se cortaba "MONEDA" y el botón ✕. */}
           <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Nuevo envío</h3>
+              <h3>{modalMode === 'edit' ? `Editar envío #${editingId}` : 'Nuevo envío'}</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCreate(false)} disabled={creating} aria-label="Cerrar" title="Cerrar">
                 <Icons.X size={16} />
               </button>
             </div>
-            <form onSubmit={handleCreate}>
+            <form onSubmit={handleSubmit}>
               <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                 <div className="stack" style={{ gap: 16 }}>
 
@@ -1101,7 +1162,7 @@ export default function Envios() {
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={creating}>
-                  {creating ? 'Guardando…' : 'Crear envío'}
+                  {creating ? 'Guardando…' : (modalMode === 'edit' ? 'Guardar cambios' : 'Crear envío')}
                 </button>
               </div>
             </form>
