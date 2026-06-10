@@ -958,8 +958,9 @@ export default function Envios() {
                             </div>
                           ) : (
                             <>
-                              {/* HERO: título grande del modelo + chips de variantes + costo destacado */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                              {/* HERO: solo título + Cambiar. Los chips, IMEI y controles
+                                  bajan a una única fila debajo (variante V2 elegida por Lucas). */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
                                     Producto seleccionado
@@ -967,36 +968,36 @@ export default function Envios() {
                                   <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: -0.2, color: 'var(--text)' }}>
                                     {it._nombre || it.descripcion}
                                   </div>
-                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                                    {it._gb && (
-                                      <span className="badge">
-                                        {/* Algunos productos del inventario tienen "128GB"
-                                            guardado; otros solo "128". Evitamos el "128GBGB". */}
-                                        {/GB\s*$/i.test(String(it._gb)) ? it._gb : `${it._gb}GB`}
-                                      </span>
-                                    )}
-                                    {it._color && <span className="badge">{it._color}</span>}
-                                    {it._costo && (
-                                      <span className="badge badge-pos">
-                                        Costo {it._costo_moneda === 'ARS' ? '$' : 'u$s'}{fmt(Number(it._costo))}
-                                      </span>
-                                    )}
-                                  </div>
                                 </div>
                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
                               </div>
-                              {/* Fila inferior: IMEI a la izquierda + controles a la derecha,
-                                  separados por un hairline. Antes IMEI y controles vivían en
-                                  dos filas distintas y quedaba mucho aire muerto entre ambos. */}
+                              {/* Fila única: chips + IMEI a la izquierda, Precio + Moneda + ✕ a la
+                                  derecha. Los chips quedan baseline-alineados con los inputs
+                                  gracias al paddingBottom que compensa la altura del label. */}
                               <div style={{
-                                marginTop: 12, paddingTop: 10,
-                                borderTop: '1px solid var(--hairline)',
                                 display: 'grid',
                                 gridTemplateColumns: '1fr 140px 90px auto',
                                 gap: 10, alignItems: 'end',
                               }}>
-                                <div className="mono" style={{ color: 'var(--text-muted)', fontSize: 11.5, paddingBottom: 8 }}>
-                                  {it._imei ? `IMEI ${it._imei}` : ''}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingBottom: 7 }}>
+                                  {it._gb && (
+                                    <span className="badge">
+                                      {/* Algunos productos del inventario tienen "128GB"
+                                          guardado; otros solo "128". Evitamos el "128GBGB". */}
+                                      {/GB\s*$/i.test(String(it._gb)) ? it._gb : `${it._gb}GB`}
+                                    </span>
+                                  )}
+                                  {it._color && <span className="badge">{it._color}</span>}
+                                  {it._costo && (
+                                    <span className="badge badge-pos">
+                                      Costo {it._costo_moneda === 'ARS' ? '$' : 'u$s'}{fmt(Number(it._costo))}
+                                    </span>
+                                  )}
+                                  {it._imei && (
+                                    <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 11.5, marginLeft: 2 }}>
+                                      IMEI {it._imei}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="field" style={{ marginBottom: 0 }}>
                                   <label className="field-label">Precio venta</label>
