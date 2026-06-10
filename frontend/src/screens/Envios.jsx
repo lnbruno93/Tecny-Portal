@@ -7,6 +7,7 @@ import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
+import BarrioCombobox from '../components/BarrioCombobox';
 import useModal from '../lib/useModal';
 
 
@@ -831,8 +832,14 @@ export default function Envios() {
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Barrio</label>
-                      <input className="input" placeholder="ej. Centro"
-                        value={form.barrio} onChange={e => setF('barrio', e.target.value)} />
+                      {/* 2026-06-10 — Combobox con autocomplete agrupado por
+                          zona (CABA/Norte/Oeste/Sur/Este). Permite tipear libre
+                          si el barrio no está en la lista curada. */}
+                      <BarrioCombobox
+                        value={form.barrio}
+                        onChange={(v) => setF('barrio', v)}
+                        placeholder="Buscar barrio o localidad…"
+                      />
                     </div>
                   </div>
 
