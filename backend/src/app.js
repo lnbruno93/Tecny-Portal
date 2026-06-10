@@ -369,6 +369,10 @@ app.use('/api/contactos',     requireAuth, contactosRoutes);
 
 // Cajas — requiere permiso "cajas"
 app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRoutes);
+// Métodos de pago lite — sin permiso "cajas". 2026-06-10: bug de Envíos
+// donde un operador sin permiso de cajas no podía cobrar. Ver
+// src/routes/metodos-pago.js para el rationale completo.
+app.use('/api/metodos-pago',  requireAuth, require('./routes/metodos-pago'));
 app.use('/api/egresos',       requireAuth, requirePermission('cajas'), egresosRoutes);
 app.use('/api/cambios',       requireAuth, requirePermission('cambios'), cambiosRoutes);
 app.use('/api/tarjetas',      requireAuth, requirePermission('tarjetas'), tarjetasRoutes);
