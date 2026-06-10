@@ -962,7 +962,13 @@ export default function Envios() {
                                     {it._nombre || it.descripcion}
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                                    {it._gb && <span className="badge">{it._gb}GB</span>}
+                                    {it._gb && (
+                                      <span className="badge">
+                                        {/* Algunos productos del inventario tienen "128GB"
+                                            guardado; otros solo "128". Evitamos el "128GBGB". */}
+                                        {/GB\s*$/i.test(String(it._gb)) ? it._gb : `${it._gb}GB`}
+                                      </span>
+                                    )}
                                     {it._color && <span className="badge">{it._color}</span>}
                                     {it._costo && (
                                       <span className="badge badge-pos">
@@ -973,19 +979,19 @@ export default function Envios() {
                                 </div>
                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
                               </div>
-                              {/* IMEI tenue, en una línea aparte separada por hairline */}
-                              {it._imei && (
-                                <div className="mono" style={{
-                                  marginTop: 12, paddingTop: 10,
-                                  borderTop: '1px solid var(--hairline)',
-                                  color: 'var(--text-muted)', fontSize: 11.5,
-                                }}>
-                                  IMEI {it._imei}
+                              {/* Fila inferior: IMEI a la izquierda + controles a la derecha,
+                                  separados por un hairline. Antes IMEI y controles vivían en
+                                  dos filas distintas y quedaba mucho aire muerto entre ambos. */}
+                              <div style={{
+                                marginTop: 12, paddingTop: 10,
+                                borderTop: '1px solid var(--hairline)',
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 140px 90px auto',
+                                gap: 10, alignItems: 'end',
+                              }}>
+                                <div className="mono" style={{ color: 'var(--text-muted)', fontSize: 11.5, paddingBottom: 8 }}>
+                                  {it._imei ? `IMEI ${it._imei}` : ''}
                                 </div>
-                              )}
-                              {/* Fila de controles: precio venta + moneda + ✕ */}
-                              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 140px 90px auto', gap: 10, alignItems: 'end' }}>
-                                <div />
                                 <div className="field" style={{ marginBottom: 0 }}>
                                   <label className="field-label">Precio venta</label>
                                   <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
