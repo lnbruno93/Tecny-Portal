@@ -152,8 +152,17 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     const B2B_BASE = `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.fecha >= $1 AND m.fecha <= $2`;
 
     const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await Promise.all([
-      // Totales de ventas
-      db.query(`SELECT COUNT(*) AS count, COALESCE(SUM(total_usd),0) AS ingresos_usd, COALESCE(SUM(ganancia_usd),0) AS ganancia_bruta_usd FROM ventas v WHERE ${BASE}`, p),
+      // Totales de ventas. 2026-06-10: `ganancia_acreditada_usd` agrega FILTER
+      // por estado='acreditado' — alimenta la GANANCIA NETA del dashboard, que
+      // ahora suma SOLO ventas confirmadas (las pendientes no descuentan
+      // egresos hasta que pasen a acreditadas). Total bruto (todas) queda
+      // disponible aparte en `ganancia_bruta_usd` para el desglose.
+      db.query(`SELECT
+                  COUNT(*) AS count,
+                  COALESCE(SUM(total_usd),0)                                           AS ingresos_usd,
+                  COALESCE(SUM(ganancia_usd),0)                                        AS ganancia_bruta_usd,
+                  COALESCE(SUM(ganancia_usd) FILTER (WHERE estado='acreditado'),0)     AS ganancia_acreditada_usd
+                FROM ventas v WHERE ${BASE}`, p),
       // Por método de pago (monto en moneda original + equivalente USD)
       db.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
                 FROM venta_pagos pp JOIN ventas v ON v.id = pp.venta_id WHERE ${BASE}
@@ -229,11 +238,17 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       //
       // El `count` cuenta movimientos con AL MENOS un item vivo (no devuelto).
       // Una venta con todos sus items devueltos no aparece en los totales.
+      //
+      // 2026-06-10: `ingresos_acreditado_usd` y `costos_acreditado_usd` agregan
+      // FILTER por m.estado='acreditado'. Alimentan la GANANCIA NETA del
+      // dashboard — pendientes no cuentan hasta que pasen a acreditadas.
       db.query(`
         SELECT
           COUNT(DISTINCT m.id) FILTER (WHERE i.devuelto_at IS NULL)::int                            AS count,
           COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL), 0)                AS ingresos_usd,
           COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL), 0)          AS costos_usd,
+          COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL AND m.estado = 'acreditado'), 0) AS ingresos_acreditado_usd,
+          COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL AND m.estado = 'acreditado'), 0) AS costos_acreditado_usd,
           COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'celular'   AND i.devuelto_at IS NULL), 0)::int AS celulares,
           COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'accesorio' AND i.devuelto_at IS NULL), 0)::int AS accesorios
         FROM movimientos_cc m
@@ -268,7 +283,20 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     // ahora ve el total. Si necesita solo retail, le agregamos `.retail` / `.b2b` aparte.
     const ingresosVentas = ingresosVentasRetail + b2bIngresosUsd;
     const gananciaBruta = gananciaBrutaRetail + b2bGananciaUsd;
-    const gananciaNeta = round2(gananciaBruta - egresosUsd);
+
+    // 2026-06-10: GANANCIA NETA suma SOLO ventas en estado='acreditado'.
+    // Las pendientes (ej. Lucas todavía no confirmó cobro) no impactan en
+    // este KPI hasta que el operador las marque como acreditadas. Aplica a
+    // ambos retail y B2B.
+    const gananciaAcreditadaRetail = Number(t.ganancia_acreditada_usd) || 0;
+    const b2bGananciaAcreditadaUsd = round2(
+      (Number(b.ingresos_acreditado_usd) || 0) - (Number(b.costos_acreditado_usd) || 0)
+    );
+    const gananciaBrutaAcreditada = gananciaAcreditadaRetail + b2bGananciaAcreditadaUsd;
+    const gananciaNeta = round2(gananciaBrutaAcreditada - egresosUsd);
+    // Margen sigue calculado sobre ingresos totales del período (denominador
+    // consistente con cómo se mostraba antes; cambiar a "ingresos_acreditados"
+    // si Lucas quiere más adelante).
     const margenPct = ingresosVentas > 0 ? round2((gananciaNeta / ingresosVentas) * 100) : 0;
 
     res.json({
@@ -286,6 +314,10 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
         accesorios: parseInt(unidades.rows[0].accesorios) + parseInt(b.accesorios),
       },
       ganancia_bruta_usd: round2(gananciaBruta),
+      // 2026-06-10: ganancia bruta restringida a ventas acreditadas (es la
+      // base de la ganancia neta). El total bruto sigue arriba para el
+      // desglose y comparativas.
+      ganancia_bruta_acreditada_usd: round2(gananciaBrutaAcreditada),
       egresos_usd: round2(egresosUsd),
       ganancia_neta_usd: gananciaNeta,
       margen_pct: margenPct,
