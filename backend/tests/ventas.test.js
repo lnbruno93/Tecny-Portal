@@ -626,10 +626,52 @@ describe('GET /api/ventas/dashboard', () => {
     expect(d.diferencias).toHaveProperty('faltantes');
   });
 
-  it('ganancia neta = ganancia bruta − egresos', async () => {
+  // 2026-06-10: ganancia neta = ganancia bruta DE ACREDITADAS − egresos.
+  // Las ventas pendientes/canceladas no impactan en el neto del período.
+  it('ganancia neta = ganancia bruta de acreditadas − egresos', async () => {
     const res = await request(app).get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`).set(auth());
     const d = res.body;
-    expect(d.ganancia_neta_usd).toBeCloseTo(d.ganancia_bruta_usd - d.egresos_usd, 1);
+    expect(d.ganancia_neta_usd).toBeCloseTo(d.ganancia_bruta_acreditada_usd - d.egresos_usd, 1);
+  });
+
+  // 2026-06-10: una venta B2B pendiente NO afecta ganancia neta. Cuando se
+  // pasa a acreditado, sí impacta. Cubre el flujo end-to-end del fix.
+  it('venta B2B pendiente NO suma en ganancia neta; al acreditar, suma', async () => {
+    // Fecha aislada para que solo se cuenten ventas de este test.
+    const fecha = '2026-04-20';
+    const cli = await request(app).post('/api/cuentas/clientes').set(auth())
+      .send({ nombre: 'Cli ganancia neta', categoria: 'A+' });
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Cat ganancia neta' });
+    const prod = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'iPhone ganancia', imei: '350444000000001',
+        costo: 700, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
+      });
+    // Crear venta B2B como pendiente.
+    const mov = await request(app).post('/api/cuentas/movimientos').set(auth())
+      .send({
+        cliente_cc_id: cli.body.id, fecha, tipo: 'compra', monto_total: 1000,
+        estado: 'pendiente',
+        items: [{ producto_id: prod.body.id, producto: 'iPhone ganancia', imei_serial: '350444000000001', cantidad: 1, valor: 1000 }],
+      });
+    expect(mov.status).toBe(201);
+
+    let d = (await request(app).get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`).set(auth())).body;
+    // Ingresos y count incluyen la pendiente (es venta vendida del período),
+    // pero ganancia neta y ganancia bruta acreditada NO la consideran (=0).
+    expect(d.ventas_count).toBe(1);
+    expect(Number(d.ganancia_bruta_acreditada_usd)).toBe(0);
+    expect(Number(d.ganancia_neta_usd)).toBeCloseTo(0 - d.egresos_usd, 1);
+
+    // Pasar la venta a acreditado → debería sumar 300 (1000 venta − 700 costo).
+    await request(app)
+      .patch(`/api/cuentas/movimientos/${mov.body.id}/estado`)
+      .set(auth())
+      .send({ estado: 'acreditado' });
+    d = (await request(app).get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`).set(auth())).body;
+    expect(Number(d.ganancia_bruta_acreditada_usd)).toBeCloseTo(300, 1);
   });
 
   it('diferencias (sobrepagos/faltantes) se calculan correctamente', async () => {
