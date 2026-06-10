@@ -116,22 +116,18 @@ export default function VentasList({
               <td className="mono pos" style={{ fontWeight: 600 }}>u$s{fmt(v.ganancia_usd)}</td>
               <td className="mono" style={{ fontWeight: 600 }}>u$s{fmt(v.total_usd)}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {!esB2B ? (
-                  <>
-                    <select
-                      className="input"
-                      style={{ width: 'auto', display: 'inline-block', padding: '4px 6px', fontSize: 11 }}
-                      value={v.estado}
-                      onChange={e => changeEstado(v.id, e.target.value)}
-                    >
-                      <option value="acreditado">Acreditado</option>
-                      <option value="pendiente">Pendiente</option>
-                      <option value="cancelado">Cancelado</option>
-                    </select>{' '}
-                  </>
-                ) : (
-                  <span className="muted tiny" style={{ marginRight: 6 }}>—</span>
-                )}
+                {/* 2026-06-10: B2B también tiene selector con 2 opciones
+                    (Acreditado | Pendiente). 'cancelado' es exclusivo de retail. */}
+                <select
+                  className="input"
+                  style={{ width: 'auto', display: 'inline-block', padding: '4px 6px', fontSize: 11 }}
+                  value={v.estado}
+                  onChange={e => changeEstado(v, e.target.value)}
+                >
+                  <option value="acreditado">Acreditado</option>
+                  <option value="pendiente">Pendiente</option>
+                  {!esB2B && <option value="cancelado">Cancelado</option>}
+                </select>{' '}
                 <button className="icon-btn" title={esB2B ? 'Ir al cliente B2B' : 'Editar venta'} onClick={() => openEdit(v)}>
                   <Icons.Edit size={14} />
                 </button>

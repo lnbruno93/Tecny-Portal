@@ -48,6 +48,7 @@ const {
   createClienteCCSchema,
   updateClienteCCSchema,
   createMovimientoCCSchema,
+  updateEstadoMovimientoCCSchema,
   cobranzaMasivaSchema,
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
@@ -478,6 +479,9 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     const {
       cliente_cc_id, fecha, tipo, descripcion, monto_total, notas,
       caja_id, items = [],
+      // 2026-06-10: estado por defecto 'acreditado' para venta B2B.
+      // El schema ya lo defaulta — destructuring igual por consistencia.
+      estado = 'acreditado',
     } = req.body;
 
     // #H-05 cross-module: si la venta/devolución toca stock de inventario
@@ -505,13 +509,15 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    // Insertar movimiento (con auditoría de creador para #B-07)
+    // Insertar movimiento (con auditoría de creador para #B-07).
+    // estado: solo aplica visualmente a tipo='compra' (venta B2B). El default
+    // 'acreditado' del schema cubre todos los demás (pago, devolución, etc.).
     const { rows: movRows } = await client.query(
       `INSERT INTO movimientos_cc
-         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id, estado)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
-      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null, req.user.id]
+      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null, req.user.id, estado]
     );
     const mov = movRows[0];
 
@@ -696,6 +702,39 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
   } finally {
     client.release();
   }
+});
+
+// PATCH /movimientos/:id/estado — toggle acreditado/pendiente (2026-06-10).
+// El selector del frontend en la grilla unificada de Ventas dispara esto.
+// Solo aplica a movs vivos. Ownership: cualquiera con permiso `cuentas` puede
+// cambiarlo (no hay check #B-07 acá — es solo un flag visual, no toca
+// inventario ni caja).
+router.patch('/movimientos/:id/estado', validate(updateEstadoMovimientoCCSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+    const { estado } = req.body;
+    const { rows: pre } = await db.query(
+      'SELECT estado FROM movimientos_cc WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    if (!pre[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
+    if (pre[0].estado === estado) return res.json({ ok: true, estado, sin_cambios: true });
+
+    const { rows } = await db.query(
+      `UPDATE movimientos_cc SET estado = $1 WHERE id = $2 RETURNING *`,
+      [estado, id]
+    );
+    // Audit con _origen para distinguir del UPDATE de otros campos en el futuro.
+    // Sin client → usa pool global (no estamos en TX acá).
+    await audit('movimientos_cc', 'UPDATE', id, {
+      antes: { estado: pre[0].estado },
+      despues: { estado: rows[0].estado },
+      user_id: req.user.id,
+      _origen: 'cambio_estado',
+    });
+    res.json({ ok: true, estado: rows[0].estado });
+  } catch (err) { next(err); }
 });
 
 router.delete('/movimientos/:id', async (req, res, next) => {

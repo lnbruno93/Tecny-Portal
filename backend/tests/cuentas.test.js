@@ -1357,6 +1357,48 @@ describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
     expect(r2.status).toBe(404);
   });
 
+  // 2026-06-10 — PATCH /movimientos/:id/estado: alternar acreditado/pendiente.
+  it('PATCH /movimientos/:id/estado alterna entre acreditado y pendiente', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Cli estado', categoria: 'A+' });
+    const mov = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: '2026-06-10', tipo: 'compra', monto_total: 500,
+        items: [{ producto: 'Texto libre', valor: 500 }],
+      });
+    expect(mov.status).toBe(201);
+    expect(mov.body.estado).toBe('acreditado'); // default
+
+    // Cambiar a pendiente
+    const r1 = await request(app)
+      .patch(`/api/cuentas/movimientos/${mov.body.id}/estado`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ estado: 'pendiente' });
+    expect(r1.status).toBe(200);
+    expect(r1.body.estado).toBe('pendiente');
+
+    // Mismo estado → sin_cambios
+    const r2 = await request(app)
+      .patch(`/api/cuentas/movimientos/${mov.body.id}/estado`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ estado: 'pendiente' });
+    expect(r2.body.sin_cambios).toBe(true);
+
+    // Estado inválido → 400 schema
+    const r3 = await request(app)
+      .patch(`/api/cuentas/movimientos/${mov.body.id}/estado`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ estado: 'invalido' });
+    expect(r3.status).toBe(400);
+
+    // Mov inexistente → 404
+    const r4 = await request(app)
+      .patch(`/api/cuentas/movimientos/999999/estado`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ estado: 'acreditado' });
+    expect(r4.status).toBe(404);
+  });
+
   // 2026-06-09 — eliminar el movimiento de devolución debe destachar el item
   // original (devuelto_at = NULL). Sin esto, el item queda visualmente tachado
   // pero con stock vendido — inconsistencia.

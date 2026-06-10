@@ -310,6 +310,10 @@ export const cuentas = {
   // ajusta saldo. Junio 2026 — PR del feature ↺.
   devolverItem: (movId, itemId) =>
     api(`/api/cuentas/movimientos/${movId}/items/${itemId}/devolver`, 'POST'),
+  // PATCH estado visual de un movimiento (2026-06-10): acreditado | pendiente.
+  // Usado por el selector de la grilla unificada de Ventas para B2B.
+  setEstadoMovimiento: (id, estado) =>
+    api(`/api/cuentas/movimientos/${id}/estado`, 'PATCH', { estado }),
   cobranzaMasiva:   (data) => api('/api/cuentas/cobranzas-masivas', 'POST', data),
 };
 

@@ -326,9 +326,9 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
 // Cada fila B2B trae:
 //   - `origen: 'b2b'` (retail usa 'retail') — discriminador para el frontend
 //   - `order_id: 'B2B-{id}'` — etiqueta visual
-//   - `estado: 'pendiente'` — los B2B siempre quedan pendientes en esta vista
-//     (no atamos pagos CC a ventas específicas; el saldo es por cliente, no
-//     por mov). Versión futura: 'acreditado' si saldo del cliente = 0.
+//   - `estado`: 'acreditado' (default) o 'pendiente'. El operador alterna
+//     desde la grilla con el mismo selector que usa retail; el flag es
+//     visual e independiente del saldo del cliente (2026-06-10).
 //   - `etiqueta_nombre: 'B2B'` — badge visual
 //   - `items[]` derivados de items_movimiento_cc con el mismo shape
 //   - `pagos[]` derivados del caja_movimiento asociado (si tuvo caja_id)
@@ -367,16 +367,21 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
 
     // ── Query 2: B2B (movimientos_cc tipo='compra' con su cliente) ─────────
     // Si el filtro pide etiqueta_id concreto, los B2B no la tienen → no
-    // matchean. Si pide estado != 'pendiente', tampoco (B2B siempre pendiente
-    // en esta vista). Ambos casos: skipear la query B2B para ahorrar trabajo.
+    // matchean. Si pide un estado distinto a los que B2B soporta ('acreditado'
+    // o 'pendiente'), también skipeamos. (Retail tiene 'cancelado' que B2B no.)
     const skipB2B = (etiqueta_id != null && etiqueta_id !== '') ||
-                    (estado && estado !== 'pendiente');
+                    (estado && !['acreditado', 'pendiente'].includes(estado));
     const condB = [
       `m.deleted_at IS NULL`,
       `m.tipo = 'compra'`,
       `c.deleted_at IS NULL`,
     ];
     const paramsB = [];
+    // Si filtran por estado, también lo aplicamos a la query B2B.
+    if (estado && ['acreditado', 'pendiente'].includes(estado)) {
+      paramsB.push(estado);
+      condB.push(`m.estado = $${paramsB.length}`);
+    }
     if (desde) { paramsB.push(desde); condB.push(`m.fecha >= $${paramsB.length}`); }
     if (hasta) { paramsB.push(hasta); condB.push(`m.fecha <= $${paramsB.length}`); }
     if (buscar) {
@@ -408,7 +413,7 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
         NULL::time                                                          AS hora,
         TRIM(COALESCE(c.nombre,'') || ' ' || COALESCE(c.apellido,''))       AS cliente_nombre,
         m.descripcion                                                       AS notas,
-        'pendiente'                                                         AS estado,
+        m.estado                                                            AS estado,
         ('B2B-' || LPAD(m.id::text, 6, '0'))                                AS order_id,
         ROUND(COALESCE((
           SELECT SUM(i.valor) FROM items_movimiento_cc i

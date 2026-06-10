@@ -472,9 +472,19 @@ export default function Ventas() {
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
   }
 
-  async function changeEstado(id, estado) {
-    try { await ventas.update(id, { estado }); toast.success('Estado actualizado.'); await Promise.all([loadLista(), loadDash()]); }
-    catch (e) { toast.error(e.message); }
+  async function changeEstado(v, estado) {
+    // 2026-06-10: la grilla unificada acepta cambiar estado a B2B también.
+    // Origen 'b2b' → PATCH a /api/cuentas/movimientos/:id/estado.
+    // Origen 'retail' → PUT a /api/ventas/:id (legacy, sigue igual).
+    try {
+      if (v?.origen === 'b2b') {
+        await cuentasApi.setEstadoMovimiento(v._b2b_mov_id, estado);
+      } else {
+        await ventas.update(v?.id ?? v, { estado });
+      }
+      toast.success('Estado actualizado.');
+      await Promise.all([loadLista(), loadDash()]);
+    } catch (e) { toast.error(e.message); }
   }
   async function deleteVenta(v) {
     // Si la fila es B2B (origen='b2b'), el endpoint correcto es el de
