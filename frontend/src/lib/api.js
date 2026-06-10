@@ -286,6 +286,8 @@ export const envios = {
   // updateEstado usa la ruta PUT /:id (no existe sub-ruta /estado)
   update: (id, data) => api(`/api/envios/${id}`, 'PUT', data),
   updateEstado: (id, estado) => api(`/api/envios/${id}`, 'PUT', { estado }),
+  // Confirmar entrega: marca envío como 'Entregado' y la venta asociada como 'acreditado' en una TX.
+  confirmarEntrega: (id) => api(`/api/envios/${id}/confirmar-entrega`, 'POST'),
   delete: (id) => api(`/api/envios/${id}`, 'DELETE'),
 };
 

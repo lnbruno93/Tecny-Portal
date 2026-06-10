@@ -246,11 +246,94 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
           ventaCancelada = vrows[0];
         }
       }
+
+      // 2026-06-10 — Sincronizar estado de la venta cuando cambia el del envío
+      // (sin pasar por el endpoint /confirmar-entrega): Entregado → 'acreditado',
+      // cualquier otro estado activo (Pendiente/En camino) → 'pendiente'. Cancelado
+      // ya se maneja arriba. Sólo si hay venta y no estamos en el flujo Cancelado.
+      let ventaEstadoSincronizado = null;
+      if (
+        envio.venta_id &&
+        envio.estado !== 'Cancelado' &&
+        before[0].estado !== envio.estado
+      ) {
+        const nuevoEstadoVenta = envio.estado === 'Entregado' ? 'acreditado' : 'pendiente';
+        const { rows: vrows } = await client.query(
+          `UPDATE ventas SET estado = $1
+             WHERE id = $2 AND deleted_at IS NULL AND estado <> 'cancelado' AND estado <> $1
+           RETURNING *`,
+          [nuevoEstadoVenta, envio.venta_id]
+        );
+        if (vrows[0]) ventaEstadoSincronizado = vrows[0];
+      }
+
       await audit(client, 'envios', 'UPDATE', id, { antes: before[0], despues: envio, user_id: req.user.id });
       if (ventaSincronizada) await audit(client, 'ventas', 'UPDATE', ventaSincronizada.id, { despues: ventaSincronizada, _origen: 'envio', user_id: req.user.id });
+      if (ventaEstadoSincronizado) await audit(client, 'ventas', 'UPDATE', ventaEstadoSincronizado.id, { despues: ventaEstadoSincronizado, _origen: 'envio', user_id: req.user.id });
       if (ventaCancelada)    await audit(client, 'ventas', 'UPDATE', ventaCancelada.id,    { antes: ventaCancelada, despues: { ...ventaCancelada, estado: 'cancelado' }, _origen: 'envio', user_id: req.user.id });
       await client.query('COMMIT');
       res.json(envio);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// POST /:id/confirmar-entrega — atajo desde el dashboard de ventas. En una TX:
+//   1. Pasa el envío a estado 'Entregado'.
+//   2. Si tiene venta asociada, la pasa de 'pendiente' → 'acreditado'.
+//
+// Idempotente: si el envío ya está 'Entregado' devuelve 200 con el estado actual.
+// Si el envío fue cancelado, rechaza con 400 (no hay nada que entregar).
+//
+// 2026-06-10 — Pedido por Lucas: el operador quiere un click directo desde la
+// grilla unificada de ventas para marcar la entrega de un envío y que, en el
+// mismo movimiento, la venta entre al neto del día. Antes había que abrir el
+// modal de envíos, cambiar el estado a 'Entregado' y guardar.
+router.post('/:id/confirmar-entrega', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
+    );
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Envío no encontrado' }); }
+    if (before[0].estado === 'Cancelado') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'El envío está cancelado, no se puede entregar' });
+    }
+
+    let envio = before[0];
+    let ventaActualizada = null;
+
+    if (before[0].estado !== 'Entregado') {
+      const { rows } = await client.query(
+        `UPDATE envios SET estado = 'Entregado' WHERE id = $1 RETURNING *`, [id]
+      );
+      envio = rows[0];
+      await audit(client, 'envios', 'UPDATE', id, { antes: before[0], despues: envio, user_id: req.user.id });
+    }
+
+    if (envio.venta_id) {
+      const { rows: vrows } = await client.query(
+        `UPDATE ventas SET estado = 'acreditado'
+           WHERE id = $1 AND deleted_at IS NULL AND estado <> 'cancelado' AND estado <> 'acreditado'
+         RETURNING *`,
+        [envio.venta_id]
+      );
+      if (vrows[0]) {
+        ventaActualizada = vrows[0];
+        await audit(client, 'ventas', 'UPDATE', vrows[0].id, { despues: vrows[0], _origen: 'envio', user_id: req.user.id });
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ envio, venta: ventaActualizada });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
