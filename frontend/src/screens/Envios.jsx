@@ -905,10 +905,15 @@ export default function Envios() {
                     </div>
                     <div className="stack" style={{ gap: 8 }}>
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
-                        <div key={`p-${idx}`} className="card card-tight" style={{ padding: '10px 12px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
-                            {/* Sin linkear → búsqueda. Linkeado → display con Cambiar. */}
-                            {!it.producto_id ? (
+                        <div key={`p-${idx}`} className="card card-tight" style={{ padding: '12px 14px' }}>
+                          {/* 2026-06-10 (Lucas eligió layout "Hero card con chips"):
+                              · Sin linkear → grilla compacta de 4 col: buscador + monto + moneda + ✕.
+                              · Linkeado → 2 niveles:
+                                  hero (modelo grande + chips capacidad/color/costo)
+                                  → línea IMEI tenue
+                                  → fila de controles (precio venta + moneda + ✕). */}
+                          {!it.producto_id ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
                               <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
                                 <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
                                 <input className="input" placeholder="Empezá a tipear…"
@@ -930,48 +935,74 @@ export default function Envios() {
                                   </div>
                                 )}
                               </div>
-                            ) : (
                               <div className="field" style={{ marginBottom: 0 }}>
-                                <label className="field-label">Producto seleccionado</label>
-                                {/* Display con TODO el detalle relevante del producto:
-                                    modelo, capacidad (GB), color, IMEI y costo
-                                    (read-only). Solo el precio venta queda
-                                    editable a la derecha. Lucas: "que me levante
-                                    el modelo, la capacidad, el color, el costo y
-                                    me deje editar el precio de venta". */}
-                                <div className="input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '8px 10px' }}>
-                                  <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                                      {it._nombre || it.descripcion}
-                                      {it._gb && <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>· {it._gb}GB</span>}
-                                      {it._color && <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>· {it._color}</span>}
-                                    </div>
-                                    {it._imei && <div className="muted tiny mono">IMEI {it._imei}</div>}
+                                <label className="field-label">Monto</label>
+                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
+                                  value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                              </div>
+                              <div className="field" style={{ marginBottom: 0 }}>
+                                <label className="field-label">Moneda</label>
+                                <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                                  <option>USD</option><option>ARS</option><option>USDT</option>
+                                </select>
+                              </div>
+                              <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
+                                <Icons.X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              {/* HERO: título grande del modelo + chips de variantes + costo destacado */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                                    Producto seleccionado
+                                  </div>
+                                  <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: -0.2, color: 'var(--text)' }}>
+                                    {it._nombre || it.descripcion}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                                    {it._gb && <span className="badge">{it._gb}GB</span>}
+                                    {it._color && <span className="badge">{it._color}</span>}
                                     {it._costo && (
-                                      <div className="muted tiny">
+                                      <span className="badge badge-pos">
                                         Costo {it._costo_moneda === 'ARS' ? '$' : 'u$s'}{fmt(Number(it._costo))}
-                                      </div>
+                                      </span>
                                     )}
                                   </div>
-                                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
                                 </div>
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => unpickProducto(idx)}>Cambiar</button>
                               </div>
-                            )}
-                            <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">{it.producto_id ? 'Precio venta' : 'Monto'}</label>
-                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
-                                value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
-                            </div>
-                            <div className="field" style={{ marginBottom: 0 }}>
-                              <label className="field-label">Moneda</label>
-                              <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
-                                <option>USD</option><option>ARS</option><option>USDT</option>
-                              </select>
-                            </div>
-                            <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
-                              <Icons.X size={14} />
-                            </button>
-                          </div>
+                              {/* IMEI tenue, en una línea aparte separada por hairline */}
+                              {it._imei && (
+                                <div className="mono" style={{
+                                  marginTop: 12, paddingTop: 10,
+                                  borderTop: '1px solid var(--hairline)',
+                                  color: 'var(--text-muted)', fontSize: 11.5,
+                                }}>
+                                  IMEI {it._imei}
+                                </div>
+                              )}
+                              {/* Fila de controles: precio venta + moneda + ✕ */}
+                              <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 140px 90px auto', gap: 10, alignItems: 'end' }}>
+                                <div />
+                                <div className="field" style={{ marginBottom: 0 }}>
+                                  <label className="field-label">Precio venta</label>
+                                  <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
+                                    value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
+                                </div>
+                                <div className="field" style={{ marginBottom: 0 }}>
+                                  <label className="field-label">Moneda</label>
+                                  <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
+                                    <option>USD</option><option>ARS</option><option>USDT</option>
+                                  </select>
+                                </div>
+                                <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
+                                  <Icons.X size={14} />
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
