@@ -207,6 +207,21 @@ describe('Envío → Venta (registrar_venta)', () => {
     cajaArs = c.body.id;
   });
 
+  it('si registrar_venta=true pero no hay productos, igual postea los pagos a caja', async () => {
+    // 2026-06-10 — Edge case introducido cuando el frontend pasó a forzar
+    // registrar_venta=true siempre. Si el envío llega sin productos
+    // (caso raro: cobro suelto sin item linkeado), crearVentaDesdeEnvio
+    // devuelve null y antes los pagos quedaban huérfanos.
+    const antes = await saldoCaja();
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Sin Productos', direccion: 'Calle 0', registrar_venta: true,
+      items: [{ tipo: 'pago', monto: 12345, metodo_pago_id: cajaArs }],
+    });
+    expect(env.status).toBe(201);
+    expect(env.body.venta_id).toBeFalsy(); // no se creó venta (sin productos)
+    expect(await saldoCaja()).toBe(antes + 12345); // pero la caja sí subió
+  });
+
   it('crea la venta asociada, no duplica la plata, y al borrar el envío se borra la venta', async () => {
     const antes = await saldoCaja();
     const env = await request(app).post('/api/envios').set(auth()).send({
