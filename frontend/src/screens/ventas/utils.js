@@ -7,15 +7,10 @@ export function sym(m) {
   return m === 'ARS' ? '$' : 'u$s';
 }
 
-// Convierte un monto a USD usando el TC dado. Para USD/USDT devuelve el monto
-// directo. Para ARS divide por el TC. Si el TC es inválido o cero, devuelve 0
-// (evita divisiones que rompen UI con NaN/Infinity).
-export function toUsd(monto, moneda, tc) {
-  const m = Number(monto) || 0;
-  if (moneda === 'USD' || moneda === 'USDT') return m;
-  if (moneda === 'ARS') return tc && Number(tc) > 0 ? m / Number(tc) : 0;
-  return m;
-}
+// 2026-06-10 — `toUsd` se promovió a frontend/src/lib/money.js para poder
+// reusarla desde Envíos. Re-exportamos acá para no romper imports existentes
+// del módulo Ventas.
+export { toUsd } from '../../lib/money';
 
 // Fecha de hoy en formato ISO YYYY-MM-DD (locale 'sv' devuelve siempre ese
 // formato, sin importar timezone del browser — más confiable que toISOString).

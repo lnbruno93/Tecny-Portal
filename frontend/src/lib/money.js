@@ -14,3 +14,16 @@ export function round2(x) {
   if (!Number.isFinite(n)) return 0;
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
+
+// Convierte un monto a USD usando el TC dado.
+//   · USD/USDT → devuelve el monto tal cual (no necesita TC).
+//   · ARS      → divide por el TC; si el TC es 0 o inválido, devuelve 0
+//                (evita NaN/Infinity en la UI).
+// Promovido desde frontend/src/screens/ventas/utils.js (2026-06-10) para
+// poder reusarlo desde Envíos sin un cross-module import feo.
+export function toUsd(monto, moneda, tc) {
+  const m = Number(monto) || 0;
+  if (moneda === 'USD' || moneda === 'USDT') return m;
+  if (moneda === 'ARS') return tc && Number(tc) > 0 ? m / Number(tc) : 0;
+  return m;
+}

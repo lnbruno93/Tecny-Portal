@@ -5,6 +5,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
+import { toUsd } from '../lib/money';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
 import BarrioCombobox from '../components/BarrioCombobox';
@@ -130,18 +131,9 @@ export default function Envios() {
   // Resumen del envío en USD: convierte cada monto según su moneda y el TC del item / envío.
   // USD/USDT → 1:1; ARS → divide por (item.tc || form.tc).
   const summary = useMemo(() => {
-    const toUsd = (monto, moneda, itemTc) => {
-      const m = Number(monto) || 0;
-      if (!m) return 0;
-      if (moneda === 'ARS') {
-        const tc = Number(itemTc) || Number(form.tc) || 0;
-        return tc > 0 ? m / tc : 0;
-      }
-      return m; // USD o USDT
-    };
     let totalUsd = 0, pagosUsd = 0;
     for (const it of items) {
-      const usd = toUsd(it.monto, it.moneda || 'ARS', it.tc);
+      const usd = toUsd(it.monto, it.moneda || 'ARS', it.tc || form.tc);
       if (it.tipo === 'producto') totalUsd += usd;
       else if (it.tipo === 'pago') pagosUsd += usd;
     }
@@ -354,9 +346,15 @@ export default function Envios() {
   ).length;
   const kpiEnCamino = enviosList.filter(e => e.estado === 'En camino').length;
   const kpiPendientes = enviosList.filter(e => e.estado === 'Pendiente').length;
+  // 2026-06-10 — Antes este KPI sumaba todos los `monto` sin distinguir moneda y
+  // mostraba el label hardcodeado "ARS". Resultado: un envío con pago de USD 290
+  // aparecía como "ARS 290". Ahora convertimos cada pago a USD según su moneda
+  // (ARS → divide por i.tc o e.tc como fallback; USD/USDT → directo) y mostramos
+  // u$s en el label, alineado con el resto del portal que trabaja en USD.
   const kpiCobros = enviosList.reduce(
     (s, e) =>
-      s + (e.items || []).filter(i => i.tipo === 'pago').reduce((ss, i) => ss + Number(i.monto || 0), 0),
+      s + (e.items || []).filter(i => i.tipo === 'pago').reduce((ss, i) =>
+        ss + toUsd(i.monto, i.moneda || 'ARS', i.tc || e.tc), 0),
     0
   );
 
@@ -469,7 +467,7 @@ export default function Envios() {
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Cobros en ruta</div>
           <div className="kpi-value">
-            <span className="ccy">ARS</span>
+            <span className="ccy">u$s</span>
             <span className="mono pos">{fmt(kpiCobros)}</span>
           </div>
           <div className="muted tiny" style={{ marginTop: 6 }}>items tipo "pago"</div>
