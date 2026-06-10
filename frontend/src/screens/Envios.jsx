@@ -666,7 +666,11 @@ export default function Envios() {
                       <div className="flex-row" style={{ gap: 5, fontSize: 12 }}>
                         <Icons.Dollar size={13} style={{ color: 'var(--pos)' }} />
                         <span className="pos mono" style={{ fontWeight: 600 }}>
-                          ARS {fmt(pagos.reduce((s, p) => s + Number(p.monto || 0), 0))}
+                          {/* 2026-06-10: la moneda salía hardcodeada "ARS". Ahora
+                              usa la del primer pago (caso 99%: todos los pagos del
+                              envío comparten moneda). Si hay mixto, muestra la del
+                              primero — suficiente como hint en la card lateral. */}
+                          {pagos[0]?.moneda || 'ARS'} {fmt(pagos.reduce((s, p) => s + Number(p.monto || 0), 0))}
                         </span>
                       </div>
                     )}
@@ -805,7 +809,9 @@ export default function Envios() {
                       </div>
                       {it.tipo === 'pago' && (
                         <span className="mono pos" style={{ fontWeight: 700, fontSize: 13 }}>
-                          ARS {fmt(it.monto)}
+                          {/* 2026-06-10: antes hardcodeaba "ARS" en el detalle aunque
+                              el pago fuera USD. Ahora usa la moneda real del item. */}
+                          {it.moneda || 'ARS'} {fmt(it.monto)}
                         </span>
                       )}
                     </div>
