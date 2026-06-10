@@ -130,7 +130,10 @@ export default function Envios() {
   const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
   const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM }]);
   const addProducto = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'producto' }]);
-  const addPago = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'pago', moneda: 'ARS' }]);
+  // 2026-06-10 — Default del pago pasa a USD (era ARS). Footgun: si el operador
+  // no cambiaba el dropdown, el pago quedaba como ARS aunque la venta fuera USD.
+  // USD es la moneda predominante del negocio (iPhones, accesorios premium).
+  const addPago = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'pago', moneda: 'USD' }]);
   const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
@@ -176,11 +179,19 @@ export default function Envios() {
       } catch (_) { if (reqId === prodReq.current) setProdSearch(s => ({ ...s, results: [], loading: false })); }
     }, 300);
   }
+  // Helper: agrega "GB" al final si no lo tiene ya. Evita "128GBGB" cuando el
+  // inventario tiene "128GB" guardado en p.gb (algunos productos sí, otros no).
+  // Usado en la descripción que se guarda en el envío y en los resultados del picker.
+  function gbLabel(gb) {
+    if (!gb) return null;
+    const s = String(gb);
+    return /GB\s*$/i.test(s) ? s : `${s}GB`;
+  }
   function pickProducto(idx, p) {
     setItems(i => i.map((it, j) => j !== idx ? it : ({
       ...it,
       producto_id: p.id,
-      descripcion: [p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · '),
+      descripcion: [p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · '),
       monto: String(p.precio_venta || ''),
       moneda: p.precio_moneda || 'USD',  // heredada del producto del inventario (típicamente USD)
       // _campos: solo para mostrar (modelo/capacidad/color/IMEI/costo), no se envían.
@@ -993,7 +1004,7 @@ export default function Envios() {
                                       <button type="button" key={p.id}
                                               onClick={() => pickProducto(idx, p)}
                                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderBottom: '1px solid var(--hairline)', color: 'var(--text)' }}>
-                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{[p.nombre, p.gb && p.gb + 'GB', p.color].filter(Boolean).join(' · ')}</div>
+                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}</div>
                                         <div className="muted tiny mono">{p.imei ? 'IMEI ' + p.imei : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
                                       </button>
                                     ))}
@@ -1039,13 +1050,7 @@ export default function Envios() {
                                 gap: 10, alignItems: 'end',
                               }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingBottom: 7 }}>
-                                  {it._gb && (
-                                    <span className="badge">
-                                      {/* Algunos productos del inventario tienen "128GB"
-                                          guardado; otros solo "128". Evitamos el "128GBGB". */}
-                                      {/GB\s*$/i.test(String(it._gb)) ? it._gb : `${it._gb}GB`}
-                                    </span>
-                                  )}
+                                  {it._gb && <span className="badge">{gbLabel(it._gb)}</span>}
                                   {it._color && <span className="badge">{it._color}</span>}
                                   {it._costo && (
                                     <span className="badge badge-pos">
