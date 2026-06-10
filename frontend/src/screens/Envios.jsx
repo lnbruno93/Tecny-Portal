@@ -798,7 +798,11 @@ export default function Envios() {
       {/* ── Modal: Nuevo envío ─────────────────────────────────────────── */}
       {showCreate && (
         <div ref={createModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && !creating && setShowCreate(false)}>
-          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+          {/* 2026-06-10 — maxWidth bumpeado a 760px: el modal de envíos quedó
+              chico tras agregar el display extendido del producto (modelo +
+              capacidad + color + IMEI + costo) en la misma fila que Precio +
+              Moneda + ✕. Con 600px se cortaba "MONEDA" y el botón ✕. */}
+          <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Nuevo envío</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCreate(false)} disabled={creating} aria-label="Cerrar" title="Cerrar">
@@ -902,7 +906,7 @@ export default function Envios() {
                     <div className="stack" style={{ gap: 8 }}>
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
                         <div key={`p-${idx}`} className="card card-tight" style={{ padding: '10px 12px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 70px auto', gap: 8, alignItems: 'end' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
                             {/* Sin linkear → búsqueda. Linkeado → display con Cambiar. */}
                             {!it.producto_id ? (
                               <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
