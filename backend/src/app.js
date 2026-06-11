@@ -210,6 +210,40 @@ app.use(pinoHttp({
   },
 }));
 
+// ─── API versioning (H-06 auditoría 2026-06-10) ─────────────────────────────
+//
+// Estrategia: alias transparente `/api/v1/*` → `/api/*` vía URL rewrite, ANTES
+// que cualquier `app.use('/api/...')` vea el request. Esto deja que todos los
+// routers actuales sigan montados en `/api/...` sin cambios, y permite que
+// nuevos clientes (o un cliente externo terciario) usen `/api/v1/...` desde
+// hoy. La política `/api` sin versión queda como sinónimo permanente de `v1`
+// hasta que exista `v2` con cambios incompatibles — momento en el cual los
+// routers de v1 se montarán explícitamente bajo `/api/v1/` y `/api/...` sin
+// versión seguirá apuntando a v1 por compat (no asumimos "última" como hacen
+// muchas APIs — eso es contrato implícito y se rompe sin querer).
+//
+// Header `API-Version`: lo seteamos en la response para que el cliente sepa
+// qué versión sirvió la respuesta. Útil para logs del cliente y para que
+// observabilidad (Sentry) pueda taggear errors por versión.
+//
+// Trade-off: el rewrite implica que los routes loggean `url=/api/foo` (no
+// `/api/v1/foo`) — perdemos visibilidad del path original. Si querés esa
+// info, podés leer `req.headers['x-original-url']` que también seteamos.
+// Decisión consciente: priorizar zero-duplication sobre observabilidad
+// granular del prefijo, que rara vez importa en debugging real.
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/v1/') || req.url === '/api/v1') {
+    req.headers['x-original-url'] = req.url;
+    // /api/v1 → /api    y    /api/v1/foo/bar → /api/foo/bar
+    req.url = '/api' + req.url.slice('/api/v1'.length);
+  }
+  // Header informativo. Lo seteamos para CUALQUIER /api/* (con o sin /v1).
+  if (req.url.startsWith('/api/')) {
+    res.setHeader('API-Version', 'v1');
+  }
+  next();
+});
+
 // Cache del commit SHA y el migration count — no cambian durante el runtime
 // del proceso, no tiene sentido recalcularlos en cada /health (UptimeRobot
 // pings cada 5 min × N años). Se invalidan solo en restart.
