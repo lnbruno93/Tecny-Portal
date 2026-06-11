@@ -43,7 +43,14 @@ cd backend && npm test                # Jest + supertest + DB real de tests
 # Frontend
 cd frontend && npm test -- --run      # Vitest single-run
 cd frontend && npm test               # Vitest watch
+
+# E2E (Playwright) — desde el root
+npm run e2e:install   # primera vez: descarga Chromium
+npm run e2e           # corre la suite (arranca backend+frontend automáticamente)
+npm run e2e:headed    # con browser visible (debug)
 ```
+
+Ver [`e2e/README.md`](./e2e/README.md) para setup completo del E2E (DB dedicada, variables, troubleshooting).
 
 ## Deploy
 
