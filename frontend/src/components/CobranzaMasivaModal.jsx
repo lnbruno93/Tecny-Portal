@@ -287,7 +287,11 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
                   const sobrepago = r.saldo_actual != null && subUsd > 0 && subUsd > r.saldo_actual;
                   const diferencia = sobrepago ? (subUsd - r.saldo_actual).toFixed(2) : 0;
                   return (
-                    <tr key={r._id} style={{
+                    // data-testid agregado para E2E (TANDA 5 cobranza masiva):
+                    // la planilla arranca con 8 filas vacías; el spec scopea cada
+                    // fila por índice (nth(0), nth(1)) para no acoplarse al
+                    // texto del cliente o al placeholder.
+                    <tr key={r._id} data-testid="cobranza-row" style={{
                       background: used ? 'rgba(99,102,241,0.04)' : 'transparent',
                       borderTop: '1px solid var(--hairline)',
                     }}>
@@ -381,7 +385,8 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
 
         <div className="modal-ft">
           <button className="btn btn-ghost" onClick={tryClose}>Cancelar</button>
-          <button className="btn btn-primary" disabled={saving} onClick={handleGuardar}>
+          <button className="btn btn-primary" data-testid="cobranza-submit"
+            disabled={saving} onClick={handleGuardar}>
             {saving ? 'Guardando…' : `Guardar cobranzas (${rows.filter(isUsedRow).length})`}
           </button>
         </div>
