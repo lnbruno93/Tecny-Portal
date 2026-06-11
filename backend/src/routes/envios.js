@@ -33,16 +33,34 @@ async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
 }
 
 // Inserta los items del envío (incluye producto_id, moneda, tc y es_cuenta_corriente).
+//
+// P-06 (auditoría 2026-06-10): bulk INSERT con UNNEST en 1 round-trip
+// en vez de N. Para un envío grande con productos + pagos múltiples eso
+// son varios round-trips menos por request.
 async function insertarItems(client, envioId, items) {
-  for (const item of items || []) {
-    await client.query(
-      `INSERT INTO envio_items (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id, moneda, tc, es_cuenta_corriente)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [envioId, item.tipo, item.descripcion ?? null, item.monto,
-       item.metodo_pago ?? null, item.metodo_pago_id ?? null, item.producto_id ?? null,
-       item.moneda || 'ARS', item.tc ?? null, !!item.es_cuenta_corriente]
-    );
-  }
+  if (!items || items.length === 0) return;
+  await client.query(
+    `INSERT INTO envio_items
+       (envio_id, tipo, descripcion, monto, metodo_pago, metodo_pago_id, producto_id, moneda, tc, es_cuenta_corriente)
+     SELECT $1, t, d, m, mp, mpid, pid, mo, tc, ecc
+       FROM UNNEST(
+         $2::text[], $3::text[], $4::numeric[],
+         $5::text[], $6::int[], $7::int[],
+         $8::text[], $9::numeric[], $10::boolean[]
+       ) AS u(t, d, m, mp, mpid, pid, mo, tc, ecc)`,
+    [
+      envioId,
+      items.map(i => i.tipo),
+      items.map(i => i.descripcion ?? null),
+      items.map(i => i.monto),
+      items.map(i => i.metodo_pago ?? null),
+      items.map(i => i.metodo_pago_id ?? null),
+      items.map(i => i.producto_id ?? null),
+      items.map(i => i.moneda || 'ARS'),
+      items.map(i => i.tc ?? null),
+      items.map(i => !!i.es_cuenta_corriente),
+    ]
+  );
 }
 
 // Validación de pagos: CC y financiera/tarjeta requieren registrar_venta=true

@@ -68,22 +68,63 @@ function calcularTotales(items, tc) {
 
 // Inserta items, pagos y canjes de una venta (usado por crear y editar). El stock
 // debe descontarse aparte con descontarStock(). Canjes con agregar_stock crean un producto usado.
+//
+// P-06 (auditoría 2026-06-10): items y pagos pasaron a INSERT bulk con UNNEST
+// (1 round-trip cada uno en vez de N). Para venta B2B con 50 items eso son
+// 99 round-trips menos. Canjes NO bulkificados — el conditional INSERT de
+// productos por canje + lookup del id devuelto (FK al canje) requiere lógica
+// per-row que no se mapea limpio a UNNEST. Frecuencia chica (1-2 canjes por
+// venta típica) → no vale la complejidad.
 async function insertarDetalle(client, venta, b) {
-  for (const it of b.items) {
-    const ganancia = round2((it.precio_vendido - it.costo) * it.cantidad - it.comision);
+  // Items: bulk INSERT con UNNEST.
+  if (b.items && b.items.length > 0) {
     await client.query(
-      `INSERT INTO venta_items (venta_id, producto_id, vendedor_id, descripcion, imei, cantidad, precio_vendido, precio_original, costo, moneda, comision, ganancia)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-      [venta.id, it.producto_id ?? null, it.vendedor_id ?? null, it.descripcion, it.imei ?? null, it.cantidad,
-       it.precio_vendido, it.precio_original ?? null, it.costo, it.moneda, it.comision, ganancia]
+      `INSERT INTO venta_items
+         (venta_id, producto_id, vendedor_id, descripcion, imei, cantidad,
+          precio_vendido, precio_original, costo, moneda, comision, ganancia)
+       SELECT $1, pid, vid, d, im, cant, pv, po, co, mo, cm, ga
+         FROM UNNEST(
+           $2::int[], $3::int[], $4::text[], $5::text[],
+           $6::int[], $7::numeric[], $8::numeric[], $9::numeric[],
+           $10::text[], $11::numeric[], $12::numeric[]
+         ) AS u(pid, vid, d, im, cant, pv, po, co, mo, cm, ga)`,
+      [
+        venta.id,
+        b.items.map(it => it.producto_id ?? null),
+        b.items.map(it => it.vendedor_id ?? null),
+        b.items.map(it => it.descripcion),
+        b.items.map(it => it.imei ?? null),
+        b.items.map(it => it.cantidad),
+        b.items.map(it => it.precio_vendido),
+        b.items.map(it => it.precio_original ?? null),
+        b.items.map(it => it.costo),
+        b.items.map(it => it.moneda),
+        b.items.map(it => it.comision),
+        b.items.map(it => round2((it.precio_vendido - it.costo) * it.cantidad - it.comision)),
+      ]
     );
   }
-  for (const p of (b.pagos || [])) {
-    const montoUsd = round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta));
+  // Pagos: bulk INSERT con UNNEST. monto_usd se precalcula en JS (toUsd
+  // depende del TC, no es portable a SQL puro sin replicar la lógica).
+  if (b.pagos && b.pagos.length > 0) {
     await client.query(
-      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [venta.id, p.metodo_pago_id ?? null, p.metodo_nombre, p.monto, p.moneda, p.tc ?? null, montoUsd, p.es_cuenta_corriente]
+      `INSERT INTO venta_pagos
+         (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
+       SELECT $1, mpid, mnom, m, mo, t, mu, ecc
+         FROM UNNEST(
+           $2::int[], $3::text[], $4::numeric[], $5::text[],
+           $6::numeric[], $7::numeric[], $8::boolean[]
+         ) AS u(mpid, mnom, m, mo, t, mu, ecc)`,
+      [
+        venta.id,
+        b.pagos.map(p => p.metodo_pago_id ?? null),
+        b.pagos.map(p => p.metodo_nombre),
+        b.pagos.map(p => p.monto),
+        b.pagos.map(p => p.moneda),
+        b.pagos.map(p => p.tc ?? null),
+        b.pagos.map(p => round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta))),
+        b.pagos.map(p => !!p.es_cuenta_corriente),
+      ]
     );
   }
   for (const c of (b.canjes || [])) {
