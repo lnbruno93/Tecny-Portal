@@ -52,34 +52,44 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
   }
 });
 
+// 2026-06-11 S-05: los 3 endpoints (POST/PUT/DELETE) ahora ejecutan UPDATE +
+// audit dentro de la misma TX. Antes el audit corría post-write con pool global:
+// si el proceso moría entre el INSERT/UPDATE y el audit, los cambios quedaban
+// persistidos sin trazabilidad. Patrón sistémico que cerramos incrementalmente.
 router.post('/', requirePermission('contactos'), validate(createContactoSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
+    await client.query('BEGIN');
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `INSERT INTO contactos (nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen)
        VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'cliente'),COALESCE($8,'manual')) RETURNING *`,
       [nombre, apellido ?? null, telefono ?? null, dni ?? null, (email || null),
        (fecha_nacimiento || null), tipo ?? null, origen ?? null]
     );
-    await audit('contactos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    await audit(client, 'contactos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id, req });
+    await client.query('COMMIT');
     res.status(201).json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 router.put('/:id', requirePermission('contactos'), validate(updateContactoSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows: before } = await db.query(
-      'SELECT * FROM contactos WHERE id = $1 AND deleted_at IS NULL', [id]
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM contactos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
-    if (!before[0]) return res.status(404).json({ error: 'Contacto no encontrado' });
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Contacto no encontrado' }); }
 
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
-    const { rows } = await db.query(
+    const { rows } = await client.query(
       `UPDATE contactos SET
         nombre           = COALESCE($1, nombre),
         apellido         = COALESCE($2, apellido),
@@ -93,28 +103,34 @@ router.put('/:id', requirePermission('contactos'), validate(updateContactoSchema
       [nombre, apellido, telefono, dni, (email === '' ? null : email),
        (fecha_nacimiento === '' ? null : fecha_nacimiento), tipo, origen, id]
     );
-    await audit('contactos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+    await audit(client, 'contactos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id, req });
+    await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 router.delete('/:id', requirePermission('contactos'), async (req, res, next) => {
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       'UPDATE contactos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Contacto no encontrado' });
-    await audit('contactos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    if (!rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Contacto no encontrado' }); }
+    await audit(client, 'contactos', 'DELETE', id, { antes: rows[0], user_id: req.user.id, req });
+    await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
-  }
+  } finally { client.release(); }
 });
 
 module.exports = router;

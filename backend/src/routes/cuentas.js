@@ -62,24 +62,11 @@ const { syncContactoSafe } = require('../lib/contactosSync');
 // contado (entró el dinero al instante) y NO suma deuda. Sin caja_id queda
 // como deuda del cliente (el caso clásico de venta a CC).
 //
-// Usar `m.` o sin prefijo según el contexto: `SALDO_CASE` para queries sin
-// alias, `SALDO_CASE_M` para queries con `movimientos_cc m`.
-const SALDO_CASE = `
-  CASE
-    WHEN tipo = 'saldo_inicial'                       THEN  monto_total
-    WHEN tipo = 'compra' AND caja_id IS NOT NULL      THEN  0
-    WHEN tipo = 'compra'                              THEN  monto_total
-    ELSE -monto_total
-  END
-`;
-const SALDO_CASE_M = `
-  CASE
-    WHEN m.tipo = 'saldo_inicial'                     THEN  m.monto_total
-    WHEN m.tipo = 'compra' AND m.caja_id IS NOT NULL  THEN  0
-    WHEN m.tipo = 'compra'                            THEN  m.monto_total
-    ELSE -m.monto_total
-  END
-`;
+// 2026-06-11 S-03: promovido a `src/lib/saldoCC.js` para que el dashboard
+// mensual (y futuras pantallas) usen la MISMA fórmula que el listado de
+// clientes y el detalle. Antes el dashboard tenía su propia copia con regla
+// distinta → cifras de deuda CC inconsistentes entre módulos.
+const { SALDO_CASE, SALDO_CASE_M } = require('../lib/saldoCC');
 
 // Helper: SQL para calcular saldo de un cliente (subquery reutilizable — usada solo en GET /:id)
 // Para el listado usamos un JOIN en lugar de subquery correlacionada (ver abajo).

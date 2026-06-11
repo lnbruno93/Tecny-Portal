@@ -670,11 +670,17 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
       arrays
     );
     const creados = rows.map(r => r.id);
+    // 2026-06-11 S-04: audit DENTRO de la TX, antes del COMMIT. Antes corría
+    // post-commit con `Promise.all` y pool global: si el proceso moría entre
+    // COMMIT y el bloque de audits, los productos quedaban persistidos sin
+    // trazabilidad. Ahora un único audit batch con ids + count — atómico con
+    // los inserts.
+    await audit(client, 'productos', 'INSERT', creados[0] || 0, {
+      despues: { _bulk: true, count: creados.length, ids: creados, samples: productos.slice(0, 3) },
+      user_id: req.user.id,
+      req,
+    });
     await client.query('COMMIT');
-    // Un audit por producto (registro_id != null) — así el historial filtrable por producto los muestra.
-    await Promise.all(creados.map((id, i) =>
-      audit('productos', 'INSERT', id, { despues: { ...productos[i], id, _bulk: true }, user_id: req.user.id })
-    ));
     invalidateMetricas();  // import masivo → cache definitivamente stale
     res.status(201).json({ ok: true, creados: creados.length });
   } catch (err) {
