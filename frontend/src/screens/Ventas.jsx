@@ -830,7 +830,10 @@ export default function Ventas() {
                     </div>
                     <div className="stack" style={{ gap: 6, marginTop: 8 }}>
                       {cart.map((it, i) => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
+                        // data-testid agregado para E2E (TANDA 5 venta retail) — scoping
+                        // estable de los 4 inputs por fila (descripcion/cant/precio/moneda)
+                        // sin atarse a CSS frágil del grid.
+                        <div key={i} data-testid="venta-item-row" style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
                           <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(i, 'descripcion', e.target.value)} />
                           <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)} />
                           <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(i, 'precio_vendido', e.target.value)} />
@@ -1108,7 +1111,9 @@ export default function Ventas() {
                     <div className="stack" style={{ gap: 6 }}>
                       {pagos.map((p, i) => (
                         <div key={i}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
+                          {/* data-testid agregado para E2E (TANDA 5 venta retail) — scoping
+                              de los 4 controles de un pago (metodo/monto/moneda/tc). */}
+                          <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
                             <select className="input" value={p.es_cuenta_corriente ? '__CC__' : p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
                             <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
                             <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}><option>ARS</option><option>USD</option><option>USDT</option></select>
@@ -1144,7 +1149,10 @@ export default function Ventas() {
               </div>
               <div className="modal-ft">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowVenta(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingVenta}>{savingVenta ? 'Guardando…' : 'Guardar venta'}</button>
+                {/* data-testid agregado para E2E (TANDA 5 venta retail) — el texto
+                    del botón muta a "Guardando…" durante el submit; el testid es
+                    estable contra ese cambio. */}
+                <button type="submit" className="btn btn-primary" data-testid="venta-submit" disabled={savingVenta}>{savingVenta ? 'Guardando…' : 'Guardar venta'}</button>
               </div>
             </form>
           </div>

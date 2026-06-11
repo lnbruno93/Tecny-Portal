@@ -145,7 +145,17 @@ describe('TwoFaSection — flow de regenerate recovery codes', () => {
     // Modal de código aparece — tipear código + submit.
     const input = await findByPlaceholderTextWithWait(getByPlaceholderText);
     fireEvent.change(input, { target: { value: '123456' } });
-    fireEvent.click(container.querySelector('button.btn-primary:not(:disabled)'));
+    // El botón "Confirmar" arranca disabled (valid=false) y se habilita cuando
+    // el input tiene 6 dígitos. En local React re-renderiza antes del
+    // querySelector siguiente; en CI a veces no, y querySelector devuelve
+    // null → "Unable to fire a click event". Esperamos al botón habilitado
+    // con waitFor para hacer el test determinista.
+    const submitBtn = await waitFor(() => {
+      const btn = container.querySelector('button.btn-primary:not(:disabled)');
+      if (!btn) throw new Error('submit no habilitado todavía');
+      return btn;
+    });
+    fireEvent.click(submitBtn);
     // Los nuevos codes aparecen en pantalla.
     await waitFor(() => expect(container.textContent).toContain('NEW1-AAAA-AA'));
     expect(container.textContent).toContain('NEW8-HHHH-HH');
@@ -186,7 +196,15 @@ describe('TwoFaSection — disable 2FA', () => {
     fireEvent.click(await findByText('Continuar'));
     const input = await findByPlaceholderTextWithWait(getByPlaceholderText);
     fireEvent.change(input, { target: { value: '999999' } });
-    fireEvent.click(container.querySelector('button.btn-primary:not(:disabled)'));
+    // Mismo waitFor que el test de regenerate — el botón arranca disabled y se
+    // habilita asincrónicamente cuando el input tiene 6 dígitos. En CI sin
+    // este wait, querySelector puede devolver null → "Unable to fire click".
+    const submitBtn = await waitFor(() => {
+      const btn = container.querySelector('button.btn-primary:not(:disabled)');
+      if (!btn) throw new Error('submit no habilitado todavía');
+      return btn;
+    });
+    fireEvent.click(submitBtn);
     await waitFor(() => expect(twoFa.disable).toHaveBeenCalledWith('999999'));
   });
 });
