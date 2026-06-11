@@ -1,5 +1,16 @@
 import '@testing-library/jest-dom/vitest';
 
+// ResizeObserver no existe en jsdom — lo usan ScrollFadeX y otros componentes
+// con auto-resize. Stub global mínimo: las callbacks no se disparan, alcanza
+// para que el `new ResizeObserver(...)` no tire ReferenceError al mount.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // Setup de tests — localStorage en memoria (evita el quirk de jsdom con origin opaco).
 const store = new Map();
 const localStorageMock = {
