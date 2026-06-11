@@ -372,19 +372,28 @@ router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
     );
     let productosRestaurados = 0;
     const errors = [];
+    // 2026-06-10 S-01: BUG ACTIVO. Antes el try/catch atrapaba el error pero la TX
+    // de Postgres queda en estado `aborted` al primer fallo de constraint → cada
+    // query siguiente fallaba con "current transaction is aborted" y al COMMIT
+    // hacía de hecho un ROLLBACK silencioso. El reporte mentía sobre cuántos
+    // procesó. Ahora envolvemos cada iteración en SAVEPOINT: si el cancel falla,
+    // ROLLBACK TO SAVEPOINT deja la TX limpia y el loop sigue.
     for (const m of movs) {
+      await client.query('SAVEPOINT cancel_sp');
       try {
         const r = await cancelMovimientoCC(client, {
           movimientoId: m.id,
           userId: req.user.id,
           origen: 'orphan_cleanup',
         });
+        await client.query('RELEASE SAVEPOINT cancel_sp');
         productosRestaurados += r.productos_restaurados;
       } catch (err) {
         // No tiramos abajo todo el cleanup por un mov problemático (#B-06:
         // una devolución cuya cantidad ya fue revendida). Lo loggeamos y
         // seguimos con el resto. El operador puede repetir el apply después
         // de resolver los conflictos.
+        await client.query('ROLLBACK TO SAVEPOINT cancel_sp');
         errors.push({ mov_id: m.id, error: err.message, status: err.status || 500 });
       }
     }

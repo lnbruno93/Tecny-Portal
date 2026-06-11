@@ -591,11 +591,13 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
+    // 2026-06-10 P-15: no llamamos client.release() acá — el `finally` lo hace.
+    // El doble-release tira warning en node-pg y puede botar la conexión del pool.
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
     const { rows: beforeRows } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
-    if (!beforeRows[0]) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'Venta no encontrada' }); }
+    if (!beforeRows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
     const before = beforeRows[0];
 
     const fullEdit = b.items !== undefined;
@@ -676,11 +678,12 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
+    // 2026-06-10 P-15: dejamos que el finally release. Doble-release ensucia logs.
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
     const { rows: before } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
-    if (!before[0]) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'Venta no encontrada' }); }
+    if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
 
     await revertirEfectosVenta(client, before[0]);
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);

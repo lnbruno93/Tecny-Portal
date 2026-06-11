@@ -9,11 +9,13 @@ proveedores, proyectos, tarjetas, cambios de divisa, conciliación y alertas.
 
 ## Stack
 
-- **React 19** + **Vite 6** (SWC) — build rápido, HMR.
+- **React 19** + **Vite 8** (SWC) — build rápido, HMR.
 - **React Router 7** — routing client-side.
-- **Vitest** + Testing Library — 241+ tests unitarios + de integración.
-- **ESLint** + **prettier** (vía `lint:fix`) — calidad y formato.
-- **Sentry** (`@sentry/react`) — captura de errores en producción.
+- **Vitest** + Testing Library — 268+ tests unitarios + de integración.
+- **ESLint** — calidad de código. NO usamos Prettier (decisión durable
+  — ver `ARCHITECTURE.md §8`).
+- **Sentry server-side** vía `lib/reportError.js` → `/api/client-errors`.
+  NO usamos `@sentry/react` por bundle size (decisión durable).
 - **vite-plugin-pwa** — instalable como PWA en desktop y mobile.
 
 ## Estructura
@@ -52,10 +54,9 @@ VITE_API_URL=https://api.tu-staging.com
 | `npm run dev`       | Vite dev server con HMR.                                     |
 | `npm run build`     | Build de producción a `dist/` + cleanup de sourcemaps.       |
 | `npm run preview`   | Sirve el build de `dist/` localmente.                        |
-| `npm test`          | Vitest en modo watch.                                        |
-| `npm test -- --run` | Vitest en modo run (single-shot, para CI).                   |
+| `npm test`          | Vitest en modo single-shot (`vitest run`).                   |
+| `npm test -- --watch` | Vitest en modo watch (HMR de tests).                       |
 | `npm run lint`      | ESLint sobre `src/`.                                         |
-| `npm run lint:fix`  | ESLint con autofix.                                          |
 
 ## Convenciones del proyecto
 

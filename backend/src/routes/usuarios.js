@@ -155,8 +155,16 @@ router.delete('/:id', async (req, res, next) => {
     if (id === req.user.id) {
       return res.status(400).json({ error: 'No podés eliminar tu propia cuenta' });
     }
+    // 2026-06-10 S-02: bumpeamos password_changed_at al soft-delete para invalidar
+    // de inmediato cualquier JWT vigente del usuario eliminado (auth middleware
+    // compara con `iat_ms`). Sin esto, el token sigue válido hasta 8h (default
+    // post SE-01) aunque el filtro `deleted_at IS NULL` del middleware lo bloquee.
+    // Defense-in-depth: fail-closed contra DB hiccups o réplica lag.
     const { rows } = await db.query(
-      'UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+      `UPDATE users
+          SET deleted_at = NOW(), password_changed_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING *`,
       [id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });

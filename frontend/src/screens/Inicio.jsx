@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../components/Icons';
-import { config, comprobantes, cuentas, envios, historial } from '../lib/api';
+import { config, envios, historial } from '../lib/api';
 import { fmt as fmtMagnitud } from '../lib/format';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -69,27 +69,27 @@ export default function Inicio() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const todayStr = new Date().toLocaleDateString('sv'); // YYYY-MM-DD
+    // 2026-06-10 U-04: eliminados los fetches a `comprobantes.totales()` y
+    // `cuentas.resumenGeneral()`. Las variables derivadas que dependían de ellos
+    // (`comprobantesHoy`, `montoNeto`, `totalDeuda`, `cantClientes`) estaban
+    // declaradas pero NUNCA se renderizaban — eran dead code que ralentizaba
+    // la TTI inicial sin aportar nada (uno tarda → TTI tarda, especialmente si
+    // el backend está bajo presión). Si en el futuro queremos mostrarlas, hay
+    // que re-agregarlas con su tile correspondiente.
     Promise.all([
       config.get(),
-      comprobantes.totales({ desde: todayStr, hasta: todayStr }),
-      cuentas.resumenGeneral(),
       envios.list(),
       historial.list({ per_page: 6, page: 1 }),
     ])
-      .then(([cfg, compTotales, rgData, envData, hData]) => {
-        setData({ cfg, compTotales, rgData, envData, hData });
+      .then(([cfg, envData, hData]) => {
+        setData({ cfg, envData, hData });
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
   // Derived values (only when data is available)
-  const comprobantesHoy = data ? Number(data.compTotales.count) : 0;
-  const montoNeto       = data ? Number(data.compTotales.total_neto) : 0;
-  const pctFin          = data ? Number(data.cfg.pct_financiera) : 0;
-  const totalDeuda      = data ? Number(data.rgData.total_deuda) : 0;
-  const cantClientes    = data ? Number(data.rgData.cant_clientes) : 0;
+  const pctFin = data ? Number(data.cfg.pct_financiera) : 0;
 
   const activosCount = data
     ? (data.envData.data || []).filter(e => e.estado === 'Pendiente' || e.estado === 'En camino').length

@@ -51,17 +51,15 @@ Las migraciones corren al arrancar el contenedor (`npm run migrate` en el startC
 
 ---
 
-## 4. Escala — réplica única (decisión 2026-05-25)
+## 4. Escala — multi-réplica activa (revisado 2026-06-10)
 
-**iPro corre con 1 réplica.** Es la configuración soportada hoy y todo está afinado para eso:
-- El rate-limiter (`express-rate-limit`) usa store en memoria → correcto con 1 réplica.
-- Las migraciones corren al arranque del único proceso → sin race conditions.
+**iPro está preparado para multi-réplica** y el código asume ese caso:
+- **Rate-limiter compartido**: usa `PostgresRateLimitStore` (`src/lib/postgresRateLimitStore.js`) → cualquier cantidad de réplicas comparten el mismo límite vía PG.
+- **Advisory locks** (`src/lib/withAdvisoryLock.js`): los crons nocturnos (purga audit, invariantes, rate-limit cleanup) toman lock para no duplicarse cross-réplica.
+- **Migraciones**: corren al arranque con advisory lock de `node-pg-migrate`. Las réplicas que no obtienen el lock saltean migrate y arrancan normalmente (no flapping).
+- **Caches in-memory** (`cajasCache.js`, `inventarioCache.js`, `cacheTtl.js`): TTLs cortos (15-60s); cada réplica mantiene su copia local — máximo de stale window = TTL. **Pendiente migrar a Redis** cuando se requiera consistencia sub-TTL (ver `docs/audit/2026-06-10-gran-auditoria.md` P-04).
 
-**Cuando el tráfico justifique escalar a múltiples réplicas, ANTES hay que:**
-1. **Rate-limiter compartido:** mover a `rate-limit-redis` con un Redis en Railway (si no, el límite anti-fuerza-bruta se multiplica por la cantidad de réplicas).
-2. **Migraciones como job único:** sacar `npm run migrate` del startCommand por-réplica y correrlo como release-phase/job aparte (node-pg-migrate toma advisory lock no-bloqueante: con varias réplicas arrancando juntas, las que no obtienen el lock fallan y reintentan → flapping).
-
-Hasta entonces, mantener `numReplicas: 1` en Railway.
+**Caveat conocido**: con multi-réplica, dos usuarios en réplicas distintas pueden ver datos cacheados con un delay máximo del TTL. Aceptable para el tráfico actual; revisar antes de escalar a 10+ réplicas o multi-tenant.
 
 ---
 
