@@ -61,17 +61,12 @@ async function setupTestDb() {
     ON CONFLICT (name) DO NOTHING
   `);
 
-  // P-07: re-seed del flag audit_async_enabled con default OFF. Crítico para
-  // que los 5 tests integration read-after-write (que insertan y verifican
-  // audit_logs inmediatamente) sigan viendo el path sync. Tests del async
-  // activan el flag manualmente en su describe (y limpian al final).
-  await pool.query(`
-    INSERT INTO feature_flags (name, enabled, description) VALUES
-      ('audit_async_enabled', false, 'P-07: encolar audits en audit_queue y procesar async. Default OFF en todos los entornos.')
-    ON CONFLICT (name) DO NOTHING
-  `);
-  // Tambien limpiamos la queue por si algun test previo la cargo.
-  await pool.query('TRUNCATE TABLE audit_queue RESTART IDENTITY');
+  // P-07: el flag audit_async_enabled NO se re-seedea acá. El bifurcador en
+  // audit.js usa `_testOverride` (module-local) en NODE_ENV=test, NO consulta
+  // la DB. Así NO importa que el TRUNCATE borre el flag — el path sync sigue
+  // siendo el default (override=false). Los tests del async setean el override
+  // explícito en su `beforeEach`. La tabla `audit_queue` ya está en el TRUNCATE
+  // list arriba — no necesitamos TRUNCATE adicional.
 
   // Re-seed de metodos_pago (cajas) — se truncó arriba; replica el seed de la migración 002
   // para que cada test arranque con un estado determinístico de cajas.

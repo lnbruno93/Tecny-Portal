@@ -24,18 +24,27 @@ const ASYNC_FLAG_TTL_MS = 60_000;
 let _asyncCache = null; // { value: boolean, expiresAt: number } | null
 
 async function isAsyncEnabled() {
-  if (process.env.NODE_ENV !== 'test') {
-    const now = Date.now();
-    if (_asyncCache && _asyncCache.expiresAt > now) return _asyncCache.value;
-  }
+  // En NODE_ENV=test NO consultamos la DB. Razón: audit() se llama decenas
+  // de veces por test integración (cada CRUD genera 1+ audit), y agregar
+  // un round-trip a feature_flags por cada llamada SATURA el pool de
+  // conexiones (causa flakiness sporadic: invariants.test, race-conditions,
+  // tarjetas-export fallan intermitentemente con timeouts).
+  //
+  // En su lugar, usamos un módulo-local override. El test del async lo
+  // flipea explícitamente con `_setAsyncEnabledForTest(true)`. Los demás
+  // tests (default OFF) reciben false sin tocar DB → path sync, comportamiento
+  // idéntico al pre-P-07.
+  if (process.env.NODE_ENV === 'test') return _testOverride === true;
+
+  const now = Date.now();
+  if (_asyncCache && _asyncCache.expiresAt > now) return _asyncCache.value;
+
   try {
     const { rows } = await db.query(
       `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
     );
     const enabled = rows[0]?.enabled === true;
-    if (process.env.NODE_ENV !== 'test') {
-      _asyncCache = { value: enabled, expiresAt: Date.now() + ASYNC_FLAG_TTL_MS };
-    }
+    _asyncCache = { value: enabled, expiresAt: Date.now() + ASYNC_FLAG_TTL_MS };
     return enabled;
   } catch (err) {
     // Tabla feature_flags no existe (DB pre-M-08), flag no existe, conexión rota:
@@ -44,7 +53,9 @@ async function isAsyncEnabled() {
     return false;
   }
 }
+let _testOverride = false;
 function _clearAsyncCache() { _asyncCache = null; }
+function _setAsyncEnabledForTest(value) { _testOverride = value === true; }
 
 // ──────────────────────── Redacción de PII ────────────────────────
 // Los `audit_logs` persisten `antes`/`despues` completos de las filas afectadas
@@ -252,3 +263,4 @@ module.exports.startPurgaJob = startPurgaJob;
 // P-07: exposed for the worker (auditQueueWorker.js) and tests.
 module.exports.isAsyncEnabled = isAsyncEnabled;
 module.exports._clearAsyncCache = _clearAsyncCache;
+module.exports._setAsyncEnabledForTest = _setAsyncEnabledForTest;

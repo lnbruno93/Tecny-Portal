@@ -30,16 +30,25 @@ const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 let pool, adminToken;
 
 // Helpers de control del feature flag para este suite.
+//
+// 2026-06-11: en NODE_ENV=test el bifurcador NO consulta la tabla
+// feature_flags (sería un round-trip extra por cada audit() del test, satura
+// el pool y rompe suites pesados como invariants/race-conditions). En su
+// lugar usa un override de proceso vía `_setAsyncEnabledForTest(value)`.
+// Igualmente UPDATEAMOS la tabla por completitud — los tests que verifican
+// `/api/admin/audit-queue-stats` leen el flag desde DB.
 async function setAsyncFlag(enabled) {
+  // UPSERT — setupTestDb TRUNCATEa feature_flags entre tests, así que el
+  // UPDATE-only quedaba no-op y el endpoint /api/admin/audit-queue-stats
+  // recibía async_enabled=false aunque el override module-local fuera true.
   await pool.query(
-    `UPDATE feature_flags SET enabled = $1, updated_at = NOW()
-       WHERE name = 'audit_async_enabled'`,
+    `INSERT INTO feature_flags (name, enabled, description)
+       VALUES ('audit_async_enabled', $1, 'P-07 test seed')
+     ON CONFLICT (name) DO UPDATE
+       SET enabled = EXCLUDED.enabled, updated_at = NOW()`,
     [enabled]
   );
-  // Limpiar el cache TTL del bifurcador para que el siguiente audit() vea el
-  // valor recien escrito (en NODE_ENV=test el cache esta desactivado pero
-  // llamamos por defensa, en caso de que cambien el flag de skip).
-  audit._clearAsyncCache();
+  audit._setAsyncEnabledForTest(enabled);
 }
 async function clearQueueAndLogs() {
   await pool.query('TRUNCATE audit_queue, audit_logs RESTART IDENTITY');
@@ -55,6 +64,7 @@ beforeAll(async () => {
 afterAll(async () => {
   // Defensivo: restaurar OFF para no contaminar otros suites en watch mode.
   await pool.query(`UPDATE feature_flags SET enabled = false WHERE name = 'audit_async_enabled'`);
+  audit._setAsyncEnabledForTest(false);
   audit._clearAsyncCache();
   await teardownTestDb(pool);
 });
