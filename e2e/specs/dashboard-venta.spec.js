@@ -54,22 +54,39 @@ const API_URL = 'http://localhost:3001';
 // FUTURA única para aislarnos de las ventas que otros specs dejan con fecha=hoy
 // (no hay cleanup entre tests). El dashboard filtra por rango exacto.
 //
-// 2026-06-11 fix CI flakiness: el offset NO es fijo (hoy+7). El dashboard
-// del backend usa cache TTL 30s con key `(desde, hasta)` (ventas.js:201) y
-// NO valida query params extras (queryDashboardSchema no es .strict()) — el
-// cache buster `?_=Date.now()` es invisible para el cache server-side. Si
-// Playwright retryea el test, la segunda corrida ve el resultado cacheado
-// de la primera (ventas vacías post-truncate) y los asserts revientan.
+// 2026-06-11 fix CI flakiness — dos capas de aislamiento:
 //
-// Solución: offset único por corrida del CI usando GITHUB_RUN_ID como seed
-// (fallback a Date.now() en local). Cada workflow run usa una fecha futura
-// distinta → cache miss garantizado en el primer GET. Rango grande
-// (100-5100 días futuros) para no chocar entre runs próximos.
-function fechaFutura() {
+// PROBLEMA 1: el dashboard del backend usa cache TTL 30s con key
+//   `(desde, hasta)` (ventas.js:201) y NO valida query params extras
+//   (queryDashboardSchema no es .strict()) — el cache buster `?_=Date.now()`
+//   es invisible para el cache server-side. Si dos runs distintos del test
+//   usan la misma fecha, el segundo recibe el resultado cacheado del primero.
+//
+// PROBLEMA 2: Playwright tiene retry automático en CI. Cuando un test falla
+//   y se reintenta, `globalSetup` NO se reejecuta (solo corre una vez al
+//   inicio de la suite). Por lo tanto la venta que se sembró en el intento 1
+//   sigue en la DB durante el intento 2 → la nueva venta del intento 2 se
+//   acumula → el dashboard ahora cuenta 2 ventas con esa fecha en vez de 1
+//   → el assert `ventas_count === 1` falla.
+//
+// SOLUCIÓN: la fecha incluye DOS componentes en el seed:
+//   1) `GITHUB_RUN_ID`/`GITHUB_RUN_NUMBER` o `Date.now()` — único por run.
+//      Aísla cache entre PR runs distintos.
+//   2) `test.info().retry` — único por intento dentro del mismo run.
+//      Aísla del problema 2: cada retry usa una fecha *distinta* a la del
+//      intento previo → la venta vieja queda en la DB pero NO matchea el
+//      filtro `desde/hasta` del dashboard del nuevo intento. Cache miss
+//      garantizado por la fecha nueva.
+//
+// Rango grande (100-100100 días futuros) para que el offset de retry
+// (+10000 días por retry) no choque con otros runs próximos.
+function fechaFutura(retryAttempt = 0) {
   const seed = Number(
     process.env.GITHUB_RUN_ID || process.env.GITHUB_RUN_NUMBER || Date.now()
   );
-  const offsetDias = 100 + (Math.abs(seed) % 5000);
+  const baseOffset = 100 + (Math.abs(seed) % 5000);
+  const retryShift = retryAttempt * 10_000; // 10k días = ~27 años entre retries
+  const offsetDias = baseOffset + retryShift;
   const d = new Date();
   d.setDate(d.getDate() + offsetDias);
   const y = d.getFullYear();
@@ -88,10 +105,14 @@ async function apiToken(req) {
 }
 
 test.describe('Dashboard de ventas — refleja la venta creada', () => {
-  test('happy path: venta acreditada USD se refleja en KPIs (UI + API)', async ({ page }) => {
+  test('happy path: venta acreditada USD se refleja en KPIs (UI + API)', async ({ page }, testInfo) => {
     // Fecha única para este spec — aislada de las ventas que otros specs dejan
     // con fecha=hoy. Mismo valor para ambos lados (venta + filtro dashboard).
-    const fecha = fechaFutura();
+    // Pasamos `testInfo.retry` (0, 1, 2, ...) para que cada retry use una
+    // fecha *distinta* del intento previo — globalSetup NO se reejecuta en
+    // retry, así que la venta del intento anterior queda en DB pero con
+    // OTRA fecha → no contamina el filtro del dashboard del intento actual.
+    const fecha = fechaFutura(testInfo.retry);
 
     // ── Pre-condición vía API ────────────────────────────────────────────
     // Item: descripcion única para no chocar con otros specs. Sin producto_id
