@@ -139,10 +139,16 @@ export default function TwoFaSetup({ onDone, onCancel }) {
             <div className="muted tiny" style={{ marginBottom: 6 }}>
               ¿No podés escanear? Ingresá este código manualmente:
             </div>
-            <div className="mono" style={{
-              fontSize: 13, wordBreak: 'break-all', padding: '8px 10px',
-              background: 'var(--surface)', borderRadius: 4, marginBottom: 6,
-            }}>
+            {/* data-testid agregado para E2E (TANDA 5 activar 2FA UI) — el
+                spec lo lee para generar el TOTP que verifica el setup. */}
+            <div
+              data-testid="twofa-secret"
+              className="mono"
+              style={{
+                fontSize: 13, wordBreak: 'break-all', padding: '8px 10px',
+                background: 'var(--surface)', borderRadius: 4, marginBottom: 6,
+              }}
+            >
               {setupData.secret}
             </div>
             {/* aria-live para anunciar al lector de pantalla cuando el feedback
