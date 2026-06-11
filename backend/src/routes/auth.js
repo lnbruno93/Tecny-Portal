@@ -33,7 +33,10 @@ function makeToken(user) {
   return jwt.sign(
     { id: user.id, username: user.username, email: user.email, role: user.role, iat_ms: Date.now() },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d', algorithm: JWT_ALGORITHM }
+    // 2026-06-10 SE-01: bajamos default de 7d → 8h. Token en localStorage con vida
+    // larga es vector XSS: cualquier dep transitiva compromete = sesión robada por
+    // una semana. Fix real (httpOnly cookie + refresh token) queda para TANDA 6.
+    { expiresIn: process.env.JWT_EXPIRES_IN || '8h', algorithm: JWT_ALGORITHM }
   );
 }
 

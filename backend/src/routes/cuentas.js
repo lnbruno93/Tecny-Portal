@@ -245,7 +245,9 @@ router.put('/clientes/:id', validate(updateClienteCCSchema), async (req, res, ne
   const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) { client.release(); return res.status(400).json({ error: 'ID inválido' }); }
+    // 2026-06-10 P-15: el finally release ya cubre — el doble-release tiraba
+    // warning de node-pg y podía botar la conexión.
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
     const { rows: before } = await client.query(

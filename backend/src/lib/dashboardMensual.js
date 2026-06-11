@@ -77,12 +77,15 @@ async function topVendedores(desde, hasta, limit = 5) {
 }
 
 async function pagosPorMetodo(desde, hasta) {
+  // 2026-06-10 S-19: Bug numérico. Antes el CASE solo distinguía 'USD' → cuando
+  // venía 'USDT' caía al WHEN v.tc_venta > 0 y dividía por el TC ARS, dando
+  // un monto subdimensionado por ~1000×. USDT debe tratarse 1:1 con USD.
   const { rows } = await db.query(
     `SELECT mp.nombre AS metodo, mp.moneda,
             COALESCE(SUM(vp.monto / NULLIF(
               CASE
-                WHEN vp.moneda = 'USD' THEN 1
-                WHEN v.tc_venta > 0    THEN v.tc_venta
+                WHEN vp.moneda IN ('USD','USDT') THEN 1
+                WHEN v.tc_venta > 0              THEN v.tc_venta
                 ELSE 1
               END, 0)), 0) AS total_usd
        FROM venta_pagos vp
