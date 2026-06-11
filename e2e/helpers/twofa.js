@@ -1,34 +1,49 @@
 // Helpers de 2FA para tests E2E.
 //
 // Diseño:
-//   - Activamos/desactivamos 2FA por test vía la API REST del backend, no
-//     manipulando DB directo. Eso ejercita el endpoint real (setup → enable →
-//     disable) y evita acoplar el helper al schema (si cambia user_2fa, los
-//     endpoints siguen estables).
-//   - `enable2faForUser` hace todo el flow: login normal → /setup (devuelve
-//     secret) → genera TOTP con speakeasy → /enable. Devuelve { secret } así
-//     el test puede generar más códigos cuando necesite.
-//   - `disable2faForUser` simétrico — limpia para el siguiente test.
+//   - `enable2faForUser` hace el flow vía API REST (login normal → /setup →
+//     /enable con TOTP). Eso ejercita los endpoints reales del backend.
+//   - `disable2faForUser` hace DELETE directo en DB. La razón es anti-replay:
+//     ver bloque abajo.
 //   - `generateTotp(secret)` wrapper de speakeasy para que el spec no tenga
 //     que conocer las opciones TOTP (encoding/step/digits).
 //
 // Anti-replay (decisión durable):
 //   El backend persiste `last_used_step` para impedir reusar el MISMO TOTP en
-//   la misma ventana de 30s. La estrategia que elegimos para no chocar entre
-//   tests es DESACTIVAR el 2FA en `afterAll`/`afterEach` y RE-ACTIVAR en el
-//   siguiente test. `disable2faForUser` ejecuta `DELETE FROM user_2fa WHERE
-//   user_id = $1` (vía POST /api/auth/2fa/disable, que internamente borra el
-//   row), así el próximo `enable2faForUser` genera un secret NUEVO y arranca
-//   con `last_used_step = 0` — no hay forma de colisión.
+//   la misma ventana de 30s. Esto rompía el patrón "test consume TOTP → afterAll
+//   intenta disable con TOTP" porque ambos códigos caen en el mismo step y el
+//   segundo es rechazado como replay.
+//
+//   Solución elegida: `disable2faForUser` hace `DELETE FROM user_2fa WHERE
+//   user_id = (subquery)` directamente — bypassea el endpoint /disable y por
+//   ende el verifyAndConsume. Eso es seguro porque:
+//     1. El helper es para tests E2E: no es código de producción.
+//     2. Nadie le pasa input no confiable (el caller es el spec).
+//     3. La activación SÍ pasa por la API (ejercitamos /setup + /enable).
+//   El próximo `enable2faForUser` genera secret nuevo y arranca con
+//   `last_used_step = 0`.
 //
 //   Alternativas descartadas:
 //     · `waitForTimeout(30_000)` entre tests — agrega 30s por test 2FA, lento.
-//     · Pasar `step` distinto a speakeasy — frágil, el backend sigue mirando
-//       el tiempo actual del server al verificar, no el step que pasamos.
+//     · Pasar `step` distinto a speakeasy — frágil, el backend mira el tiempo
+//       actual del server al verificar, no el step que pasamos.
+//     · Usar recovery code para el disable — funciona, pero acopla el helper
+//       a 8 ejecuciones máximo y agrega más latencia (bcrypt por code).
 
 const speakeasy = require('speakeasy');
+const { Pool } = require('pg');
 
 const DEFAULT_API_URL = 'http://localhost:3001';
+
+// Pool lazy — solo se crea si alguien llama `disable2faForUser`. Cerrarlo en
+// el afterAll del spec sería overkill; el proceso de tests termina y libera.
+let _pool;
+function getPool() {
+  if (!_pool) {
+    _pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  }
+  return _pool;
+}
 
 // Opciones TOTP — deben coincidir EXACTAMENTE con backend/src/lib/twoFa.js
 // (step=30, digits=6, encoding base32). Si el backend cambia los params,
@@ -105,49 +120,30 @@ async function enable2faForUser(username, password, { apiUrl = DEFAULT_API_URL }
 }
 
 /**
- * Desactiva 2FA. Hace login con TOTP correcto y llama /disable (que internamente
- * borra el row de user_2fa, dejando al user en estado "sin 2FA configurado").
+ * Desactiva 2FA borrando directamente el row de `user_2fa` en la DB.
  *
- * Requiere el secret actual del user — el caller suele tenerlo guardado del
- * `enable2faForUser` previo.
+ * No usamos POST /api/auth/2fa/disable porque para llamarlo necesitaríamos un
+ * JWT, y para obtenerlo tendríamos que hacer login con TOTP — pero el test
+ * recién consumió ese step, así que el siguiente TOTP cae en la misma ventana
+ * y el backend lo rechaza por anti-replay (ver bloque "Anti-replay" arriba).
  *
- * Best-effort: si el user no tiene 2FA activo (por ejemplo el test anterior ya
- * lo desactivó), absorbemos el error 400 silenciosamente. Esto hace que el
- * helper sea seguro de llamar en `afterAll` sin chequeos previos.
+ * El acceso directo a DB es seguro acá porque:
+ *   - Es código de tests, no producción.
+ *   - El identificador es el username del seed (`testadmin`), no input externo.
+ *   - La DB es la dedicada `ipro_e2e` (chequeado en globalSetup).
+ *
+ * Idempotente: si el row no existe, el DELETE devuelve rowCount=0 sin error.
+ *
+ * El parámetro `secret` se conserva en la firma por simetría con
+ * `enable2faForUser`, pero ya no se usa (no hacemos verify). Lo dejamos para
+ * que un futuro cambio que vuelva a usar /disable no rompa los callsites.
  */
-async function disable2faForUser(username, password, secret, { apiUrl = DEFAULT_API_URL } = {}) {
-  // Necesitamos un TOTP válido para autenticar /disable. Generamos uno fresco.
-  const code = generateTotp(secret);
-  let token;
-  try {
-    const r = await apiLogin({ username, password, code, apiUrl });
-    token = r.token;
-  } catch (err) {
-    // Si el login con TOTP falla porque 2FA NO está activo (caso "ya desactivado"),
-    // el backend responde 200 con la pareja sin pedir code — entonces apiLogin
-    // sin code basta. Reintento sin code.
-    if (err.status === 401 && err.body && err.body.twofa_required === undefined) {
-      // password incorrecta o algo más serio — propagar.
-      throw err;
-    }
-    // Reintento sin code (asumiendo 2FA ya no está activo).
-    try {
-      const r2 = await apiLogin({ username, password, apiUrl });
-      return r2; // no hay nada que disable, salimos.
-    } catch (err2) {
-      throw err2;
-    }
-  }
-
-  try {
-    await apiCall({
-      token, method: 'POST', path: '/api/auth/2fa/disable', body: { code }, apiUrl,
-    });
-  } catch (err) {
-    // 400 "2FA no está activado" — el row ya no existe, idempotente OK.
-    if (err.status === 400) return;
-    throw err;
-  }
+// eslint-disable-next-line no-unused-vars
+async function disable2faForUser(username, password, secret) {
+  await getPool().query(
+    'DELETE FROM user_2fa WHERE user_id = (SELECT id FROM users WHERE username = $1)',
+    [username],
+  );
 }
 
 /**
