@@ -485,3 +485,16 @@ export const alertas = {
   // data: { activa?, parametros? }
   updateConfig: (tipo, data) => api(`/api/alertas/config/${tipo}`, 'PUT', data),
 };
+
+// Feature flags (M-08 GRAN auditoría 2026-06-10).
+//   · list() lo consume el FeatureFlagsContext al mount → map { name: bool }.
+//   · adminList/Create/Update/Delete requieren role='admin' (server-side
+//     enforced — el UI todavía no existe; la API queda lista para cuando se
+//     necesite el panel admin).
+export const featureFlags = {
+  list:         () => api('/api/feature-flags'),
+  adminList:    () => api('/api/feature-flags/admin'),
+  adminCreate:  (data) => api('/api/feature-flags', 'POST', data),
+  adminUpdate:  (name, data) => api(`/api/feature-flags/${name}`, 'PATCH', data),
+  adminDelete:  (name) => api(`/api/feature-flags/${name}`, 'DELETE'),
+};

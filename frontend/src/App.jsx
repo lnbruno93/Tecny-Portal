@@ -5,6 +5,7 @@ import { PageActionsProvider } from './contexts/PageActionsContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './components/ConfirmModal';
 import { TcReferenciaProvider } from './contexts/TcReferenciaContext';
+import { FeatureFlagsProvider } from './contexts/FeatureFlagsContext';
 import Shell from './components/Shell';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './screens/Login';
@@ -97,6 +98,7 @@ export default function App() {
       <ToastProvider>
       <ConfirmProvider>
       <TcReferenciaProvider>
+      <FeatureFlagsProvider>
       <PageActionsProvider>
         <BrowserRouter>
           <RequireAuth>
@@ -238,6 +240,7 @@ export default function App() {
           </RequireAuth>
         </BrowserRouter>
       </PageActionsProvider>
+      </FeatureFlagsProvider>
       </TcReferenciaProvider>
       </ConfirmProvider>
       </ToastProvider>
