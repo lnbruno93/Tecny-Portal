@@ -869,9 +869,16 @@ export default function Envios() {
               chico tras agregar el display extendido del producto (modelo +
               capacidad + color + IMEI + costo) en la misma fila que Precio +
               Moneda + ✕. Con 600px se cortaba "MONEDA" y el botón ✕. */}
-          <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+          <div
+            className="modal"
+            style={{ maxWidth: 760 }}
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="envio-modal-title"
+          >
             <div className="modal-hd">
-              <h3>{modalMode === 'edit' ? `Editar envío #${editingId}` : 'Nuevo envío'}</h3>
+              <h3 id="envio-modal-title">{modalMode === 'edit' ? `Editar envío #${editingId}` : 'Nuevo envío'}</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCreate(false)} disabled={creating} aria-label="Cerrar" title="Cerrar">
                 <Icons.X size={16} />
               </button>

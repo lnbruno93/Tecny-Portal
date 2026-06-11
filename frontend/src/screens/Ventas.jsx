@@ -796,8 +796,15 @@ export default function Ventas() {
       {/* ── Modal Nueva venta ── */}
       {showVenta && (
         <div ref={ventaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowVenta(false)}>
-          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+          <div
+            className="modal"
+            style={{ maxWidth: 720 }}
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="venta-modal-title"
+          >
+            <div className="modal-hd"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
             <form onSubmit={handleSaveVenta}>
               <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
                 <div className="stack" style={{ gap: 14 }}>

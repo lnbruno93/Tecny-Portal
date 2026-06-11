@@ -857,9 +857,16 @@ export default function Inventario() {
       {/* ── Modal alta/edición ── */}
       {showForm && (
         <div ref={formModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
+          <div
+            className="modal"
+            style={{ maxWidth: 620 }}
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="prod-modal-title"
+          >
             <div className="modal-hd">
-              <h3>{editId ? 'Editar producto' : 'Agregar producto'}</h3>
+              <h3 id="prod-modal-title">{editId ? 'Editar producto' : 'Agregar producto'}</h3>
               <button type="button" className="icon-btn" onClick={() => setShowForm(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <form onSubmit={handleSave}>
