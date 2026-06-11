@@ -570,22 +570,31 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
         });
       }
 
-      // 1) Batch SELECT FOR UPDATE de todos los productos relevantes en una
-      //    sola query, ordenados por id para evitar deadlock.
-      //    Traemos también costo + costo_moneda para congelar el snapshot
-      //    en items_movimiento_cc (junio 2026 — desglose de venta B2B).
+      // 1) Batch SELECT de productos para (a) validar existencia con error
+      //    user-friendly (Producto #X no existe), y (b) snapshot de costo
+      //    congelado en items_movimiento_cc (junio 2026 — desglose B2B).
+      //
+      //    P-13 (auditoría 2026-06-10): se eliminó el FOR UPDATE. Antes
+      //    tomábamos row locks aquí + en el UPDATE posterior, lo que
+      //    serializaba ventas concurrentes que tocaban el mismo producto
+      //    (caso típico B2B: cliente A y cliente B compran al mismo SKU).
+      //    Ahora la atomicidad la garantiza el UPDATE condicional (paso 3),
+      //    que rechaza la venta si otro thread ya consumió el stock en el
+      //    intervalo entre SELECT y UPDATE. El pre-check de stock que sigue
+      //    es para devolver un 409 con mensaje amistoso en el caso común
+      //    (sin contención); el UPDATE es el guard real ante la race.
       let prodMap = new Map();
       if (prodIds.length > 0) {
         const { rows: prodRows } = await client.query(
           `SELECT id, nombre, cantidad, estado, costo, costo_moneda FROM productos
              WHERE id = ANY($1::int[]) AND deleted_at IS NULL
-             ORDER BY id
-             FOR UPDATE`,
+             ORDER BY id`,
           [prodIds]
         );
         prodMap = new Map(prodRows.map(p => [Number(p.id), p]));
 
-        // Validación: existencia + stock suficiente.
+        // Validación: existencia + stock suficiente (best-effort pre-check).
+        // El UPDATE condicional al final es el verdadero guard transaccional.
         for (const item of itemsConProd) {
           const p = prodMap.get(Number(item.producto_id));
           if (!p) {
@@ -640,10 +649,18 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       );
       insertedItems = itemRes.rows;
 
-      // 3) Bulk UPDATE del stock con un solo round-trip. Usa FROM (VALUES ...)
-      //    + JOIN. PostgreSQL aplica el CASE por producto.
+      // 3) Bulk UPDATE del stock con un solo round-trip. Usa FROM UNNEST + JOIN.
+      //    P-13 (auditoría 2026-06-10): para ventas (esSalida=true) la cláusula
+      //    WHERE incluye `p.cantidad >= u.cant`. Si otra venta concurrente ya
+      //    drenó el stock entre nuestro SELECT y este UPDATE, la fila NO se
+      //    actualiza → rowCount queda corto y devolvemos 409 con info. Esto
+      //    es lo que reemplaza al SELECT FOR UPDATE: la atomicidad del UPDATE
+      //    PostgreSQL serializa por fila a este nivel sin row lock previo.
+      //    Para devoluciones (esSalida=false) no hay guard de stock — siempre
+      //    se puede sumar.
       if (itemsConProd.length > 0) {
         const sign = esSalida ? '-' : '+';
+        const stockGuard = esSalida ? 'AND p.cantidad >= u.cant' : '';
         // arrays paralelos para FROM UNNEST
         const updateRes = await client.query(
           `UPDATE productos p SET
@@ -654,18 +671,29 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
                ELSE p.estado
              END
            FROM UNNEST($1::int[], $2::int[]) AS u(pid, cant)
-           WHERE p.id = u.pid`,
+           WHERE p.id = u.pid ${stockGuard}`,
           [
             itemsConProd.map(it => Number(it.producto_id)),
             itemsConProd.map(it => Number(it.cantidad || 1)),
           ]
         );
-        // Sanity check: deberíamos haber afectado N filas únicas. Si no, algo
-        // raro pasó (ej. un producto se soft-deletó entre el SELECT FOR UPDATE
-        // y este UPDATE — race window mínima). Devolvemos 500 con info para
-        // diagnosticar. Los duplicados de producto_id ya fueron filtrados arriba.
+        // Sanity check: deberíamos haber afectado N filas únicas. Si no:
+        //   · esSalida=true: race condition — otra venta concurrente drenó
+        //     stock entre SELECT y este UPDATE. Devolvemos 409 (no 500),
+        //     pidiendo reintentar. El frontend muestra "Stock insuficiente
+        //     por concurrencia, reintentá".
+        //   · esSalida=false: solo puede pasar si un producto se soft-deletó
+        //     entre SELECT y UPDATE (race extrema). 500 sigue siendo correcto.
+        // Los duplicados de producto_id ya fueron filtrados arriba.
         if (updateRes.rowCount !== itemsConProd.length) {
           await client.query('ROLLBACK');
+          if (esSalida) {
+            return res.status(409).json({
+              error: 'Stock insuficiente por concurrencia — otra venta consumió el stock al mismo tiempo. Reintentá.',
+              esperado: itemsConProd.length,
+              afectado: updateRes.rowCount,
+            });
+          }
           return res.status(500).json({
             error: 'No se pudo actualizar el stock de todos los productos. Reintentá; si persiste, contactá soporte.',
             esperado: itemsConProd.length,
