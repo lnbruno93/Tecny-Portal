@@ -24,6 +24,11 @@ Thumbs.db
 npm-debug.log*
 pino.log
 
+# ─── Playwright (E2E) ─────────────────────────────────────────────────────────
+playwright-report/
+test-results/
+/playwright/.cache/
+
 # ─── Misc ─────────────────────────────────────────────────────────────────────
 Index.html
 index_backup.html
