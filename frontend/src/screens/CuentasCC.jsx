@@ -938,6 +938,11 @@ export default function CuentasCC() {
                   <div style={{ textAlign: 'right' }}>
                     <div className="muted tiny">Saldo</div>
                     <div className={'mono ' + (Number(resumen.saldo) > 0 ? 'neg' : Number(resumen.saldo) < 0 ? 'pos' : 'muted')}
+                      // data-testid agregado para E2E (TANDA 5 B2B): después
+                      // de cargar la venta el spec assertea que el saldo del
+                      // cliente sea -650 (deuda). Múltiples nodos en la página
+                      // pueden matchear "USD 650"; el testid lo desambigüa.
+                      data-testid="b2b-cliente-saldo"
                       style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>
                       USD {fmt(resumen.saldo)}
                     </div>
