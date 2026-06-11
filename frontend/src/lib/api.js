@@ -498,3 +498,16 @@ export const featureFlags = {
   adminUpdate:  (name, data) => api(`/api/feature-flags/${name}`, 'PATCH', data),
   adminDelete:  (name) => api(`/api/feature-flags/${name}`, 'DELETE'),
 };
+
+// Búsqueda global cross-módulo (U-23 TANDA 6).
+//   · q: string min 2 chars (validado client-side antes de pegarle al backend
+//        para no hacer requests vacíos mientras el user tipea).
+//   · limit: opcional, default backend = 5, max 20.
+// Respuesta: { query, results: {clientes, productos, ventas, envios}, counts }
+export const search = {
+  global: (q, limit) => {
+    const params = new URLSearchParams({ q });
+    if (limit != null) params.set('limit', String(limit));
+    return api(`/api/search?${params.toString()}`);
+  },
+};
