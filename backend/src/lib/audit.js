@@ -2,6 +2,50 @@ const db     = require('../config/database');
 const logger = require('./logger');
 const withAdvisoryLock = require('./withAdvisoryLock');
 
+// ──────────────────────── P-07 async toggle ───────────────────────
+// `isAsyncEnabled()` lee el feature flag `audit_async_enabled` de la tabla
+// `feature_flags` con cache TTL 60s. Acoplado directamente acá (no via
+// cacheTtl.js ni feature-flags.js) para evitar dependencias circulares:
+// `feature-flags.js` ya hace `require('audit')` para auditar sus propias
+// mutations. Si audit.js requiriera feature-flags.js, formaría ciclo.
+//
+// Fail-safe: si la tabla `feature_flags` no existe o la query falla, devuelve
+// `false` y el path síncrono sigue. NO romper el audit por un error en el flag.
+//
+// Cache invalidation: TTL 60s alineado con el cache del endpoint público
+// `/api/feature-flags` (ver routes/feature-flags.js). Tradeoff conocido: al
+// cambiar el flag, las réplicas siguen su TTL natural (≤60s). Para tests
+// exportamos `_clearAsyncCache()` para forzar refresh inmediato.
+//
+// En NODE_ENV=test el cache se desactiva (cada llamada hace fetch) — los tests
+// flipean el flag y esperan ver el cambio sin TTL. La query a feature_flags es
+// barata (PK lookup por name).
+const ASYNC_FLAG_TTL_MS = 60_000;
+let _asyncCache = null; // { value: boolean, expiresAt: number } | null
+
+async function isAsyncEnabled() {
+  if (process.env.NODE_ENV !== 'test') {
+    const now = Date.now();
+    if (_asyncCache && _asyncCache.expiresAt > now) return _asyncCache.value;
+  }
+  try {
+    const { rows } = await db.query(
+      `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
+    );
+    const enabled = rows[0]?.enabled === true;
+    if (process.env.NODE_ENV !== 'test') {
+      _asyncCache = { value: enabled, expiresAt: Date.now() + ASYNC_FLAG_TTL_MS };
+    }
+    return enabled;
+  } catch (err) {
+    // Tabla feature_flags no existe (DB pre-M-08), flag no existe, conexión rota:
+    // fail-safe a path síncrono. NO contaminar el cache con el error.
+    logger.warn({ err: err?.message }, 'audit: isAsyncEnabled fallback a sync (flag no disponible)');
+    return false;
+  }
+}
+function _clearAsyncCache() { _asyncCache = null; }
+
 // ──────────────────────── Redacción de PII ────────────────────────
 // Los `audit_logs` persisten `antes`/`despues` completos de las filas afectadas
 // para trazabilidad. Sin redacción, eso incluye PII (teléfono, dirección, IMEI,
@@ -110,8 +154,22 @@ async function audit(...args) {
     userAgent,
     requestId,
   ];
-  const sql = `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
+
+  // P-07 bifurcación: si el flag `audit_async_enabled` está ON, encolamos en
+  // audit_queue (un worker en background mueve a audit_logs en batches). Sino,
+  // path sync legacy a audit_logs. Default OFF en todos los entornos hasta que
+  // un admin lo active. Los 5 tests integración existentes de read-after-write
+  // siguen viendo el path síncrono.
+  //
+  // El SAVEPOINT pattern se preserva intacto en ambos paths: si el caller hizo
+  // BEGIN y luego ROLLBACK, el audit (sea sync o async) se revierte con la tx.
+  // Esto cumple req #9 del doc — el audit NO se procesa si la tx fallo.
+  const asyncEnabled = await isAsyncEnabled();
+  const sql = asyncEnabled
+    ? `INSERT INTO audit_queue (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
+    : `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
   try {
     if (useSavepoint) {
       // SAVEPOINT aísla el INSERT: si falla, NO contamina la tx exterior.
@@ -191,3 +249,6 @@ module.exports = audit;
 module.exports.redactPII = redactPII;
 module.exports.purgarAuditLogsViejos = purgarAuditLogsViejos;
 module.exports.startPurgaJob = startPurgaJob;
+// P-07: exposed for the worker (auditQueueWorker.js) and tests.
+module.exports.isAsyncEnabled = isAsyncEnabled;
+module.exports._clearAsyncCache = _clearAsyncCache;
