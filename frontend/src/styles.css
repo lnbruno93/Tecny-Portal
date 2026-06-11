@@ -1699,3 +1699,37 @@ body.modal-open { overflow: hidden; }
 }
 .scroll-fade-rx.has-overflow-left::before  { opacity: 1; }
 .scroll-fade-rx.has-overflow-right::after  { opacity: 1; }
+
+/* ─── Tooltip (U-15 auditoría 2026-06-10) ────────────────────────────────── */
+/* Wrapper inline-block para que `position: absolute` del bubble se mida
+   contra el trigger (que es el primer child). No interrumpe el flujo. */
+.tooltip-wrap {
+  position: relative;
+  display: inline-block;
+}
+/* Bubble flotante. Aparece/desaparece via React (no display:none), así que
+   no necesitamos transición — keep it instant para no demorar al usuario. */
+.tooltip {
+  position: absolute;
+  z-index: 1000;
+  background: var(--text, #111);
+  color: var(--bg, #fff);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  max-width: 320px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  pointer-events: none; /* el bubble nunca tapa clicks del usuario */
+}
+.tooltip-bottom .tooltip {
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tooltip-top .tooltip {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
