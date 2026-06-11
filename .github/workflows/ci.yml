@@ -99,6 +99,13 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      # 2026-06-11 M-07: type-check incremental. Solo valida `.ts/.tsx` (checkJs:
+      # false en tsconfig) — los `.js/.jsx` no bloquean. A medida que se migran
+      # archivos a TS, cada uno entra al gate sin que lo legacy rompa CI.
+      - name: Type check
+        working-directory: frontend
+        run: npm run typecheck
+
       - name: Run frontend tests
         working-directory: frontend
         run: npm test
