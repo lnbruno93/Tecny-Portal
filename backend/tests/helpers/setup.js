@@ -35,7 +35,7 @@ async function setupTestDb() {
   // Limpiar todas las tablas de datos y reiniciar secuencias
   await pool.query(`
     TRUNCATE TABLE
-      audit_logs,
+      audit_logs, audit_queue,
       caja_movimientos,
       cambio_movimientos, cambio_entidades,
       tarjeta_movimientos,
@@ -60,6 +60,18 @@ async function setupTestDb() {
       ('demo_flag', false, 'Flag de demostración — borrar cuando se use el primero real')
     ON CONFLICT (name) DO NOTHING
   `);
+
+  // P-07: re-seed del flag audit_async_enabled con default OFF. Crítico para
+  // que los 5 tests integration read-after-write (que insertan y verifican
+  // audit_logs inmediatamente) sigan viendo el path sync. Tests del async
+  // activan el flag manualmente en su describe (y limpian al final).
+  await pool.query(`
+    INSERT INTO feature_flags (name, enabled, description) VALUES
+      ('audit_async_enabled', false, 'P-07: encolar audits en audit_queue y procesar async. Default OFF en todos los entornos.')
+    ON CONFLICT (name) DO NOTHING
+  `);
+  // Tambien limpiamos la queue por si algun test previo la cargo.
+  await pool.query('TRUNCATE TABLE audit_queue RESTART IDENTITY');
 
   // Re-seed de metodos_pago (cajas) — se truncó arriba; replica el seed de la migración 002
   // para que cada test arranque con un estado determinístico de cajas.
