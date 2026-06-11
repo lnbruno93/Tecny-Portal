@@ -7,6 +7,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
+const { createCachedFetcher } = require('../lib/cacheTtl');
 // postCajaMovimiento / reverseCajaMovimientos: postear/revertir cajas para una venta
 // los maneja lib/ventaSync.js; este archivo no los usa directamente, pero los dejamos
 // disponibles a través del require por si una edición futura los necesita.
@@ -67,22 +68,63 @@ function calcularTotales(items, tc) {
 
 // Inserta items, pagos y canjes de una venta (usado por crear y editar). El stock
 // debe descontarse aparte con descontarStock(). Canjes con agregar_stock crean un producto usado.
+//
+// P-06 (auditoría 2026-06-10): items y pagos pasaron a INSERT bulk con UNNEST
+// (1 round-trip cada uno en vez de N). Para venta B2B con 50 items eso son
+// 99 round-trips menos. Canjes NO bulkificados — el conditional INSERT de
+// productos por canje + lookup del id devuelto (FK al canje) requiere lógica
+// per-row que no se mapea limpio a UNNEST. Frecuencia chica (1-2 canjes por
+// venta típica) → no vale la complejidad.
 async function insertarDetalle(client, venta, b) {
-  for (const it of b.items) {
-    const ganancia = round2((it.precio_vendido - it.costo) * it.cantidad - it.comision);
+  // Items: bulk INSERT con UNNEST.
+  if (b.items && b.items.length > 0) {
     await client.query(
-      `INSERT INTO venta_items (venta_id, producto_id, vendedor_id, descripcion, imei, cantidad, precio_vendido, precio_original, costo, moneda, comision, ganancia)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-      [venta.id, it.producto_id ?? null, it.vendedor_id ?? null, it.descripcion, it.imei ?? null, it.cantidad,
-       it.precio_vendido, it.precio_original ?? null, it.costo, it.moneda, it.comision, ganancia]
+      `INSERT INTO venta_items
+         (venta_id, producto_id, vendedor_id, descripcion, imei, cantidad,
+          precio_vendido, precio_original, costo, moneda, comision, ganancia)
+       SELECT $1, pid, vid, d, im, cant, pv, po, co, mo, cm, ga
+         FROM UNNEST(
+           $2::int[], $3::int[], $4::text[], $5::text[],
+           $6::int[], $7::numeric[], $8::numeric[], $9::numeric[],
+           $10::text[], $11::numeric[], $12::numeric[]
+         ) AS u(pid, vid, d, im, cant, pv, po, co, mo, cm, ga)`,
+      [
+        venta.id,
+        b.items.map(it => it.producto_id ?? null),
+        b.items.map(it => it.vendedor_id ?? null),
+        b.items.map(it => it.descripcion),
+        b.items.map(it => it.imei ?? null),
+        b.items.map(it => it.cantidad),
+        b.items.map(it => it.precio_vendido),
+        b.items.map(it => it.precio_original ?? null),
+        b.items.map(it => it.costo),
+        b.items.map(it => it.moneda),
+        b.items.map(it => it.comision),
+        b.items.map(it => round2((it.precio_vendido - it.costo) * it.cantidad - it.comision)),
+      ]
     );
   }
-  for (const p of (b.pagos || [])) {
-    const montoUsd = round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta));
+  // Pagos: bulk INSERT con UNNEST. monto_usd se precalcula en JS (toUsd
+  // depende del TC, no es portable a SQL puro sin replicar la lógica).
+  if (b.pagos && b.pagos.length > 0) {
     await client.query(
-      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [venta.id, p.metodo_pago_id ?? null, p.metodo_nombre, p.monto, p.moneda, p.tc ?? null, montoUsd, p.es_cuenta_corriente]
+      `INSERT INTO venta_pagos
+         (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
+       SELECT $1, mpid, mnom, m, mo, t, mu, ecc
+         FROM UNNEST(
+           $2::int[], $3::text[], $4::numeric[], $5::text[],
+           $6::numeric[], $7::numeric[], $8::boolean[]
+         ) AS u(mpid, mnom, m, mo, t, mu, ecc)`,
+      [
+        venta.id,
+        b.pagos.map(p => p.metodo_pago_id ?? null),
+        b.pagos.map(p => p.metodo_nombre),
+        b.pagos.map(p => p.monto),
+        b.pagos.map(p => p.moneda),
+        b.pagos.map(p => p.tc ?? null),
+        b.pagos.map(p => round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta))),
+        b.pagos.map(p => !!p.es_cuenta_corriente),
+      ]
     );
   }
   for (const c of (b.canjes || [])) {
@@ -131,11 +173,52 @@ async function insertarDetalle(client, venta, b) {
 
 /* ═══════════════════════ DASHBOARD (agregaciones) ═══════════════════════ */
 
-router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, res, next) => {
-  try {
-    const hoy = new Date().toISOString().split('T')[0];
-    const desde = req.query.desde || hoy;
-    const hasta = req.query.hasta || hoy;
+// P-05 (auditoría 2026-06-10): cache TTL 30s por par (desde, hasta).
+//
+// El dashboard de ventas dispara 11 queries agregadas en paralelo en cada
+// request y se carga al entrar a la home → es el endpoint más caliente del
+// portal. A 30s de TTL un mismo par (desde, hasta) que reciba N requests
+// concurrentes paga UNA query bundle y los demás reutilizan el resultado.
+//
+// Trade-off de invalidación: NO invalidamos manualmente desde POST/PUT/DELETE
+// de ventas/egresos/movimientos. Razones:
+//   (a) 30s ya es un staleness aceptable para KPIs (Lucas no monitorea al seg).
+//   (b) Railway corre 2 réplicas → la invalidación process-local no cubre
+//       la otra réplica de todos modos (mismo trade-off que inventarioCache).
+//   (c) El cableado cross-route sería invasivo (8+ call sites) por un gain
+//       marginal sobre los 30s de TTL.
+// Si en el futuro Lucas pide "ver el dashboard actualizado YA después de
+// cerrar una venta", la solución de fondo es Redis pub/sub, no inflar este
+// archivo.
+//
+// LRU cap: el operador puede mover los filtros de fecha libremente; cada par
+// distinto retiene una closure con cache state. Acotamos a 100 entradas
+// (~3 meses de pares día-por-día) y evictamos la más vieja.
+const DASHBOARD_TTL_MS = 30_000;
+const DASHBOARD_MAX_FETCHERS = 100;
+const dashboardFetchers = new Map();
+function getDashboardFetcher(desde, hasta) {
+  const key = `${desde}|${hasta}`;
+  let fn = dashboardFetchers.get(key);
+  if (fn) {
+    dashboardFetchers.delete(key);
+    dashboardFetchers.set(key, fn);
+    return fn;
+  }
+  fn = createCachedFetcher(
+    `ventas:dashboard:${key}`,
+    DASHBOARD_TTL_MS,
+    () => computeDashboard(desde, hasta)
+  );
+  dashboardFetchers.set(key, fn);
+  if (dashboardFetchers.size > DASHBOARD_MAX_FETCHERS) {
+    const oldestKey = dashboardFetchers.keys().next().value;
+    dashboardFetchers.delete(oldestKey);
+  }
+  return fn;
+}
+
+async function computeDashboard(desde, hasta) {
     const p = [desde, hasta];
     // Filtro base de ventas del período (excluye canceladas y borradas)
     const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2`;
@@ -299,7 +382,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     // si Lucas quiere más adelante).
     const margenPct = ingresosVentas > 0 ? round2((gananciaNeta / ingresosVentas) * 100) : 0;
 
-    res.json({
+    return {
       periodo: { desde, hasta },
       ventas_count: parseInt(t.count) + b2bCount,
       ingresos: {
@@ -344,7 +427,16 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       ticket_promedio_usd: parseInt(t.count) > 0 ? round2(ingresosVentas / parseInt(t.count)) : 0,
       top_productos: topProd.rows.map(r => ({ descripcion: r.descripcion, unidades: r.unidades })),
       top_vendedores: topVend.rows.map(r => ({ vendedor: r.vendedor, total_usd: round2(Number(r.total_usd)), items: r.items })),
-    });
+    };
+}
+
+router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, res, next) => {
+  try {
+    const hoy = new Date().toISOString().split('T')[0];
+    const desde = req.query.desde || hoy;
+    const hasta = req.query.hasta || hoy;
+    const data = await getDashboardFetcher(desde, hasta)();
+    res.json(data);
   } catch (err) { next(err); }
 });
 
@@ -366,15 +458,32 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
 //   - `pagos[]` derivados del caja_movimiento asociado (si tuvo caja_id)
 //   - `canjes: []`, `comprobantes_count: 0` (no aplica)
 //
-// Estrategia: dos queries en paralelo, combinar+ordenar en JS, paginar al
-// final. Más legible que UNION SQL y permite mapeos custom sin acrobacias.
-// Performance ok para volúmenes típicos (un día/mes); si en el futuro hay
-// millones de filas, se puede mover el merge al SQL.
+// P-01 (auditoría 2026-06-10): paginación a nivel SQL con UNION ALL.
+//
+// Antes: dos queries cargaban TODAS las filas filtradas (retail + B2B) con
+// items/pagos/canjes en JSON aggregates, se combinaban y ordenaban en JS, y
+// recién ahí se aplicaba slice(offset, offset+limit). A 50k+ ventas eso son
+// muchos MB transferidos por request + segundos de CPU en JS para una página
+// de 50 filas.
+//
+// Ahora: 3 pasos.
+//   (1) "page IDs": SELECT id, origen, fecha de UNION ALL retail+b2b filtrado,
+//       ORDER BY fecha DESC, id DESC, LIMIT + OFFSET. Solo trae los IDs de la
+//       página. Mismo paso devuelve también el COUNT(*) total para el header.
+//   (2) Si hay IDs retail en la página → fetch detalles retail con WHERE id =
+//       ANY($1). Misma query enriquecida que antes (items/pagos/canjes JSON).
+//   (3) Si hay IDs B2B en la página → fetch detalles B2B con WHERE m.id =
+//       ANY($1). Mismo mapeo que antes.
+//
+// Pasos 2 y 3 corren en paralelo. El sort final se hace en JS, pero ahora
+// sobre N=limit filas, no sobre toda la tabla.
 router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => {
   try {
     const { desde, hasta, estado, etiqueta_id, buscar } = req.query;
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
-    // ── Query 1: ventas retail (igual que antes) ───────────────────────────
+    // ── Step 1: build the UNION ALL of (id, origen, fecha) for pagination ──
+    // Filtros retail
     const condR = ['v.deleted_at IS NULL'];
     const paramsR = [];
     if (desde)       { paramsR.push(desde);       condR.push(`v.fecha >= $${paramsR.length}`); }
@@ -387,24 +496,8 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
                    OR EXISTS (SELECT 1 FROM venta_items vi WHERE vi.venta_id = v.id AND (vi.descripcion ILIKE $${paramsR.length} OR vi.imei ILIKE $${paramsR.length})))`);
     }
     const whereR = condR.join(' AND ');
-    const retailQuery = `
-      SELECT v.*, e.nombre AS etiqueta_nombre, e.color AS etiqueta_color,
-        COALESCE((SELECT json_agg(i ORDER BY i.id) FROM venta_items i WHERE i.venta_id = v.id), '[]') AS items,
-        COALESCE((SELECT json_agg(p ORDER BY p.id) FROM venta_pagos p WHERE p.venta_id = v.id), '[]') AS pagos,
-        COALESCE((SELECT json_agg(c ORDER BY c.id) FROM canjes c WHERE c.venta_id = v.id), '[]') AS canjes,
-        COALESCE((SELECT COUNT(*) FROM venta_comprobantes vc WHERE vc.venta_id = v.id AND vc.deleted_at IS NULL), 0) AS comprobantes_count,
-        -- Si la venta nació de un envío, exponemos id y estado para que la grilla
-        -- pueda renderizar el botón "Confirmar entrega" cuando corresponda.
-        (SELECT json_build_object('id', env.id, 'estado', env.estado)
-           FROM envios env WHERE env.venta_id = v.id AND env.deleted_at IS NULL LIMIT 1) AS envio
-      FROM ventas v
-      LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
-      WHERE ${whereR}`;
 
-    // ── Query 2: B2B (movimientos_cc tipo='compra' con su cliente) ─────────
-    // Si el filtro pide etiqueta_id concreto, los B2B no la tienen → no
-    // matchean. Si pide un estado distinto a los que B2B soporta ('acreditado'
-    // o 'pendiente'), también skipeamos. (Retail tiene 'cancelado' que B2B no.)
+    // Filtros B2B. Skipea cuando filtros lo descartan.
     const skipB2B = (etiqueta_id != null && etiqueta_id !== '') ||
                     (estado && !['acreditado', 'pendiente'].includes(estado));
     const condB = [
@@ -413,7 +506,6 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
       `c.deleted_at IS NULL`,
     ];
     const paramsB = [];
-    // Si filtran por estado, también lo aplicamos a la query B2B.
     if (estado && ['acreditado', 'pendiente'].includes(estado)) {
       paramsB.push(estado);
       condB.push(`m.estado = $${paramsB.length}`);
@@ -428,20 +520,68 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
                               AND (i.producto ILIKE $${paramsB.length} OR i.imei_serial ILIKE $${paramsB.length})))`);
     }
     const whereB = condB.join(' AND ');
-    // Mapeo de items_movimiento_cc → mismo shape que venta_items:
-    // - descripcion ← producto (texto libre o copia del producto)
-    // - cantidad, costo (costo_unit), moneda (costo_moneda || 'USD'),
-    //   precio_vendido ← valor, imei ← imei_serial.
-    // ganancia_usd = monto_total - SUM(costo_unit*cantidad). Si algún item
-    // no tiene costo_unit (ventas legacy pre-migración 20260608), se asume 0
-    // y la ganancia queda inflada — aceptable: las ventas legacy no son el
-    // caso común y el operador puede editar después.
-    // 2026-06-09: total_usd y ganancia_usd ahora restan items devueltos
-    // (devuelto_at IS NOT NULL). Si una venta multi-item tuvo 1 devolución,
-    // el total mostrado en la grilla refleja el monto NETO vigente. Los items
-    // devueltos siguen viajando en el array `items` con su devuelto_at para
-    // que el frontend pueda tacharlos.
-    const b2bQuery = `
+
+    // El UNION ALL combina los parámetros: primero todos los de retail, luego
+    // los de B2B re-numerados. Se ejecutan dos veces en la misma query (count
+    // y page), pero los offsets de numeración son los mismos en ambos casos.
+    // Empaquetamos: [...paramsR, ...paramsB, limit, offset] al final.
+    const offsetB = paramsR.length;
+    const whereBOffset = whereB.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + offsetB}`);
+
+    const retailRowSql = `
+      SELECT v.id::int AS id, 'retail'::text AS origen, v.fecha::date AS fecha
+      FROM ventas v
+      WHERE ${whereR}
+    `;
+    const b2bRowSql = `
+      SELECT m.id::int AS id, 'b2b'::text AS origen, m.fecha::date AS fecha
+      FROM movimientos_cc m
+      JOIN clientes_cc c ON c.id = m.cliente_cc_id
+      WHERE ${whereBOffset}
+    `;
+    // UNION ALL (no UNION) — no hay solapamiento posible entre retail y B2B
+    // por origen, así que ahorramos el DISTINCT implícito.
+    const unionSql = skipB2B
+      ? retailRowSql
+      : `${retailRowSql}\n      UNION ALL\n      ${b2bRowSql}`;
+    const unionParams = skipB2B ? paramsR : [...paramsR, ...paramsB];
+
+    // Lanzamos count y page en paralelo.
+    const countSql = `SELECT COUNT(*)::int AS n FROM (${unionSql}) u`;
+    const pageSql = `
+      SELECT id, origen, fecha
+      FROM (${unionSql}) u
+      ORDER BY fecha DESC, id DESC
+      LIMIT $${unionParams.length + 1} OFFSET $${unionParams.length + 2}
+    `;
+    const pageParams = [...unionParams, limit, offset];
+
+    const [countRes, pageRes] = await Promise.all([
+      db.query(countSql, unionParams),
+      db.query(pageSql, pageParams),
+    ]);
+    const total = countRes.rows[0].n;
+    const pageRows = pageRes.rows; // [{ id, origen, fecha }, ...] ya ordenado
+
+    // Particionar IDs por origen para fetch en paralelo.
+    const retailIds = pageRows.filter(r => r.origen === 'retail').map(r => r.id);
+    const b2bIds    = pageRows.filter(r => r.origen === 'b2b').map(r => r.id);
+
+    // ── Step 2 + 3: fetch detalles solo para los IDs de la página ──
+    // Retail: misma estructura que la query original, pero con WHERE id = ANY.
+    const retailDetalleSql = `
+      SELECT v.*, e.nombre AS etiqueta_nombre, e.color AS etiqueta_color,
+        COALESCE((SELECT json_agg(i ORDER BY i.id) FROM venta_items i WHERE i.venta_id = v.id), '[]') AS items,
+        COALESCE((SELECT json_agg(p ORDER BY p.id) FROM venta_pagos p WHERE p.venta_id = v.id), '[]') AS pagos,
+        COALESCE((SELECT json_agg(c ORDER BY c.id) FROM canjes c WHERE c.venta_id = v.id), '[]') AS canjes,
+        COALESCE((SELECT COUNT(*) FROM venta_comprobantes vc WHERE vc.venta_id = v.id AND vc.deleted_at IS NULL), 0) AS comprobantes_count,
+        (SELECT json_build_object('id', env.id, 'estado', env.estado)
+           FROM envios env WHERE env.venta_id = v.id AND env.deleted_at IS NULL LIMIT 1) AS envio
+      FROM ventas v
+      LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
+      WHERE v.id = ANY($1::int[])
+    `;
+    const b2bDetalleSql = `
       SELECT
         ('b2b-' || m.id)                                                    AS id_str,
         m.id::int                                                           AS id_num,
@@ -487,18 +627,20 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
         ), '[]'::json)                                                      AS items
       FROM movimientos_cc m
       JOIN clientes_cc c ON c.id = m.cliente_cc_id
-      WHERE ${whereB}`;
+      WHERE m.id = ANY($1::int[])
+    `;
 
-    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
-
-    // Lanzar ambas en paralelo. Skipea B2B cuando los filtros lo descartan.
-    const [retailRes, b2bRes] = await Promise.all([
-      db.query(retailQuery, paramsR),
-      skipB2B ? Promise.resolve({ rows: [] }) : db.query(b2bQuery, paramsB),
+    const [retailDetalleRes, b2bDetalleRes] = await Promise.all([
+      retailIds.length ? db.query(retailDetalleSql, [retailIds]) : Promise.resolve({ rows: [] }),
+      b2bIds.length    ? db.query(b2bDetalleSql,    [b2bIds])    : Promise.resolve({ rows: [] }),
     ]);
 
+    // Indexar por id para hacer el "lookup" en orden de pageRows.
+    const retailById = new Map(retailDetalleRes.rows.map(v => [Number(v.id), v]));
+    const b2bById    = new Map(b2bDetalleRes.rows.map(r => [Number(r.id_num), r]));
+
     // Mapear B2B al shape unificado (mismas keys que retail).
-    const b2bMapped = b2bRes.rows.map(r => ({
+    const mapB2B = (r) => ({
       id:               r.id_str,
       origen:           'b2b',
       order_id:         r.order_id,
@@ -513,33 +655,27 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
       etiqueta_nombre:  'B2B',
       etiqueta_color:   '#6b7cff',
       items:            r.items || [],
-      pagos:            [],   // pagos CC no se atan a movs específicos (saldo es por cliente)
+      pagos:            [],
       canjes:           [],
       comprobantes_count: 0,
       notas:            r.notas,
       caja_id:          r.caja_id,
       created_by_user_id: r.created_by_user_id,
       created_at:       r.created_at,
-      _b2b_mov_id:      r.id_num,  // para que el frontend sepa qué endpoint llamar al eliminar
-    }));
-
-    // Marcar retail con origen para que el frontend distinga (default 'retail').
-    const retailMapped = retailRes.rows.map(v => ({ ...v, origen: 'retail' }));
-
-    // Combinar y ordenar por fecha DESC, id DESC. Fecha es 'YYYY-MM-DD' ya, igual
-    // que m.fecha — el orden lexicográfico de strings funciona.
-    const todas = [...retailMapped, ...b2bMapped].sort((a, b) => {
-      const fA = String(a.fecha || '');
-      const fB = String(b.fecha || '');
-      if (fA !== fB) return fA < fB ? 1 : -1;
-      // mismo día → ordenamos por id numérico (retail.id es num, b2b._b2b_mov_id es num)
-      const idA = a.origen === 'b2b' ? a._b2b_mov_id : a.id;
-      const idB = b.origen === 'b2b' ? b._b2b_mov_id : b.id;
-      return (Number(idB) || 0) - (Number(idA) || 0);
+      _b2b_mov_id:      r.id_num,
     });
 
-    const total = todas.length;
-    const data  = todas.slice(offset, offset + limit);
+    // Componer la respuesta en el orden devuelto por la query de paginación.
+    const data = pageRows
+      .map(pr => {
+        if (pr.origen === 'retail') {
+          const v = retailById.get(pr.id);
+          return v ? { ...v, origen: 'retail' } : null;
+        }
+        const r = b2bById.get(pr.id);
+        return r ? mapB2B(r) : null;
+      })
+      .filter(Boolean);
 
     res.json(paginatedResponse(data, total, { page, limit }));
   } catch (err) { next(err); }
