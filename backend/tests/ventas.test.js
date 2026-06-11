@@ -628,10 +628,43 @@ describe('GET /api/ventas/dashboard', () => {
 
   // 2026-06-10: ganancia neta = ganancia bruta DE ACREDITADAS − egresos.
   // Las ventas pendientes/canceladas no impactan en el neto del período.
-  it('ganancia neta = ganancia bruta de acreditadas − egresos', async () => {
-    const res = await request(app).get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`).set(auth());
-    const d = res.body;
-    expect(d.ganancia_neta_usd).toBeCloseTo(d.ganancia_bruta_acreditada_usd - d.egresos_usd, 1);
+  //
+  // 2026-06-11 T-09: este test era fake-green (chequeaba que el response
+  // mantuviera coherencia consigo mismo, no que los valores fueran correctos).
+  // Ahora siembra una venta acreditada con ganancia conocida + un egreso, y
+  // verifica que ganancia_neta_usd = ganancia_acreditada (= 250) − egreso (= 80) = 170.
+  // Si el backend deja de filtrar por estado='acreditado' o ignora egresos,
+  // el test SÍ falla.
+  it('ganancia neta calculada con valores sembrados (no fake-green)', async () => {
+    const fecha = '2026-11-15'; // fecha aislada del resto del beforeAll
+    // Caja USD propia del test (independiente de fixtures previos).
+    const cajaUsd = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja T-09 USD', moneda: 'USD', saldo_inicial: 0 });
+    expect(cajaUsd.status).toBe(201);
+    // Producto con costo 600 USD, precio 850 USD → ganancia 250 USD.
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Cat ganancia neta T-09' });
+    const prod = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        nombre: 'Prod T-09', clase: 'celular', tipo_carga: 'unitario',
+        categoria_id: cat.body.id, costo: 600, costo_moneda: 'USD',
+        precio_venta: 850, precio_moneda: 'USD', cantidad: 1,
+      });
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha, cliente_nombre: 'Cliente T-09', estado: 'acreditado',
+      items: [{ producto_id: prod.body.id, descripcion: 'Prod T-09',
+                cantidad: 1, precio_vendido: 850, costo: 600, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaUsd.body.id, metodo_nombre: 'Caja T-09 USD', monto: 850, moneda: 'USD' }],
+    });
+    expect(venta.status).toBe(201);
+    // Egreso conocido = 80 USD el mismo día.
+    const egr = await request(app).post('/api/egresos').set(auth())
+      .send({ fecha, concepto: 'Egreso T-09', monto: 80, moneda: 'USD', estado: 'pagado', metodo_pago_id: cajaUsd.body.id });
+    expect(egr.status).toBe(201);
+    const d = (await request(app).get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`).set(auth())).body;
+    expect(Number(d.ganancia_bruta_acreditada_usd)).toBe(250);
+    expect(Number(d.egresos_usd)).toBe(80);
+    expect(Number(d.ganancia_neta_usd)).toBe(170);
   });
 
   // 2026-06-10: una venta B2B pendiente NO afecta ganancia neta. Cuando se

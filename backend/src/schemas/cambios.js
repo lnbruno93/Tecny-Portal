@@ -1,6 +1,10 @@
 const { z } = require('zod');
+const { fechaNoFutura } = require('./_common');
 
-const fecha = z.string().date('Fecha inválida (YYYY-MM-DD)').refine(d => d >= '2000-01-01', 'Fecha anterior al año 2000');
+// 2026-06-11 S-18: reusar el helper fechaNoFutura compartido. Antes el schema
+// permitía fechas futuras (solo bloqueaba <2000), que el operador podía meter
+// por accidente y afectar KPIs proyectados/saldos cronológicos.
+const fecha = fechaNoFutura;
 
 const createEntidadSchema = z.object({
   nombre: z.string().trim().min(1, 'Nombre requerido').max(120),

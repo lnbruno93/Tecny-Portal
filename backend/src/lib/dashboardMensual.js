@@ -180,23 +180,18 @@ async function snapshotCajas(fechaCorte) {
 // ──────────────────────────────────────────────────────────────────────
 
 async function deudaCCClientes(fechaCorte) {
-  // Saldo CC reconstruido al corte. Reusa la lógica de SALDO_CASE_M
-  // simplificada (suma compras + entregas - pagos - devoluciones - parte_de_pago).
+  // 2026-06-11 S-03: usar la fórmula canónica de lib/saldoCC.js. Antes acá había
+  // un CASE distinto que (a) NO descontaba compras pagadas de contado (caja_id
+  // IS NOT NULL → contado, no genera deuda) y (b) NO sumaba `saldo_inicial`.
+  // Resultado: el "total deuda CC" del dashboard difería del del módulo
+  // operativo. Ahora ambos usan la MISMA fórmula y la cifra cuadra.
+  const { SALDO_CASE_M } = require('./saldoCC');
   const { rows } = await db.query(
-    `SELECT COALESCE(SUM(
-       CASE m.tipo
-         WHEN 'compra'             THEN m.monto_total
-         WHEN 'entrega_mercaderia' THEN m.monto_total
-         WHEN 'pago'               THEN -m.monto_total
-         WHEN 'parte_de_pago'      THEN -m.monto_total
-         WHEN 'devolucion'         THEN -m.monto_total
-         ELSE 0
-       END
-     ), 0) AS deuda_usd,
-     COUNT(DISTINCT m.cliente_cc_id)::int AS clientes_con_deuda
-     FROM movimientos_cc m
-     JOIN clientes_cc c ON c.id = m.cliente_cc_id
-    WHERE m.fecha <= $1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
+    `SELECT COALESCE(SUM(${SALDO_CASE_M}), 0) AS deuda_usd,
+            COUNT(DISTINCT m.cliente_cc_id)::int AS clientes_con_deuda
+       FROM movimientos_cc m
+       JOIN clientes_cc c ON c.id = m.cliente_cc_id
+      WHERE m.fecha <= $1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
     [fechaCorte]
   );
   return {

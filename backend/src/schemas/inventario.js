@@ -1,9 +1,10 @@
 const { z } = require('zod');
 
 // --- Catálogos simples ---
+// 2026-06-11 T-06: .strict() añadido — antes aceptaba campos extra silenciosamente.
 const nombreSchema = z.object({
   nombre: z.string().trim().min(1, 'Nombre requerido').max(120),
-});
+}).strict();
 
 // Resolve-or-create bulk de catálogos (categorías, depósitos) — usado por el
 // import de stock para no hacer N round-trips HTTP. El backend dedup + ON CONFLICT.
