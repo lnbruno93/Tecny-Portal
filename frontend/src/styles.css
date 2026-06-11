@@ -1733,3 +1733,30 @@ body.modal-open { overflow: hidden; }
   left: 50%;
   transform: translateX(-50%);
 }
+
+/* ─── Skeleton (U-12 auditoría 2026-06-10) ───────────────────────────────── */
+/* Bloque inline-block con animación shimmer — usado por <Skeleton/>,
+   <SkeletonRow/> y <SkeletonCard/>. La animación es un gradient que
+   se mueve de izquierda a derecha. Sin libs (Framer Motion overkill). */
+.skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--text, #888) 8%, transparent) 25%,
+    color-mix(in oklab, var(--text, #888) 16%, transparent) 50%,
+    color-mix(in oklab, var(--text, #888) 8%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  /* Evita seleccionar el placeholder con triple-click. */
+  user-select: none;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+/* Respeto prefers-reduced-motion: sin animación, sólo gris constante. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}

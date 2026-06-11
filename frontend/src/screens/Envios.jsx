@@ -13,6 +13,7 @@ import BarrioCombobox from '../components/BarrioCombobox';
 import useModal from '../lib/useModal';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
+import { Skeleton } from '../components/Skeleton';
 
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
@@ -581,9 +582,30 @@ export default function Envios() {
         </div>
       </div>
 
-      {/* ── Loading state ── */}
+      {/* ── Loading state ──
+          Skeletons mimicking ~5 envío cards (header + cliente + dirección)
+          en lugar de "Cargando…" plano. Reduce perceived loading time
+          (U-12 auditoría 2026-06-10). aria-busy avisa a lectores de
+          pantalla que el área está cargando. */}
       {loading && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Cargando…</div>
+        <div
+          aria-busy="true"
+          aria-live="polite"
+          aria-label="Cargando envíos"
+          className="stack"
+          style={{ gap: 8, padding: '12px 0' }}
+        >
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="card card-tight">
+              <div className="flex-between" style={{ marginBottom: 8 }}>
+                <Skeleton width={120} height={14} />
+                <Skeleton width={60} height={12} />
+              </div>
+              <Skeleton width="60%" height={16} style={{ marginBottom: 4 }} />
+              <Skeleton width="80%" height={12} />
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ── Split layout ── */}

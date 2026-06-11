@@ -16,6 +16,7 @@ import useModal from '../lib/useModal';
 import { fmt, fmtMoney } from '../lib/format';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
+import { SkeletonRow } from '../components/Skeleton';
 
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
@@ -680,7 +681,27 @@ export default function Inventario() {
 
       {/* ── Tabla ── */}
       {loading ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Cargando…</div>
+        // Skeleton de la grilla: 5 filas con la cantidad de columnas reales
+        // (15) para que el layout no salte al llegar el dato.
+        // aria-busy para lectores de pantalla. U-12 auditoría 2026-06-10.
+        <div className="card card-flush" style={{ overflowX: 'auto' }} aria-busy="true" aria-live="polite">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
+                <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
+                <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
+                <th>IMEI/Serial</th><th>Tipo</th><th>Categoría</th><th>Proveedor</th>
+                <th style={{ textAlign: 'right' }}>Stock</th><th>Estado</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <SkeletonRow key={i} columns={15} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : productos.length === 0 ? (
         <div className="empty">Sin productos</div>
       ) : (
