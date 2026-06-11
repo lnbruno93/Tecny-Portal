@@ -7,6 +7,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
+const { createCachedFetcher } = require('../lib/cacheTtl');
 // postCajaMovimiento / reverseCajaMovimientos: postear/revertir cajas para una venta
 // los maneja lib/ventaSync.js; este archivo no los usa directamente, pero los dejamos
 // disponibles a través del require por si una edición futura los necesita.
@@ -131,11 +132,52 @@ async function insertarDetalle(client, venta, b) {
 
 /* ═══════════════════════ DASHBOARD (agregaciones) ═══════════════════════ */
 
-router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, res, next) => {
-  try {
-    const hoy = new Date().toISOString().split('T')[0];
-    const desde = req.query.desde || hoy;
-    const hasta = req.query.hasta || hoy;
+// P-05 (auditoría 2026-06-10): cache TTL 30s por par (desde, hasta).
+//
+// El dashboard de ventas dispara 11 queries agregadas en paralelo en cada
+// request y se carga al entrar a la home → es el endpoint más caliente del
+// portal. A 30s de TTL un mismo par (desde, hasta) que reciba N requests
+// concurrentes paga UNA query bundle y los demás reutilizan el resultado.
+//
+// Trade-off de invalidación: NO invalidamos manualmente desde POST/PUT/DELETE
+// de ventas/egresos/movimientos. Razones:
+//   (a) 30s ya es un staleness aceptable para KPIs (Lucas no monitorea al seg).
+//   (b) Railway corre 2 réplicas → la invalidación process-local no cubre
+//       la otra réplica de todos modos (mismo trade-off que inventarioCache).
+//   (c) El cableado cross-route sería invasivo (8+ call sites) por un gain
+//       marginal sobre los 30s de TTL.
+// Si en el futuro Lucas pide "ver el dashboard actualizado YA después de
+// cerrar una venta", la solución de fondo es Redis pub/sub, no inflar este
+// archivo.
+//
+// LRU cap: el operador puede mover los filtros de fecha libremente; cada par
+// distinto retiene una closure con cache state. Acotamos a 100 entradas
+// (~3 meses de pares día-por-día) y evictamos la más vieja.
+const DASHBOARD_TTL_MS = 30_000;
+const DASHBOARD_MAX_FETCHERS = 100;
+const dashboardFetchers = new Map();
+function getDashboardFetcher(desde, hasta) {
+  const key = `${desde}|${hasta}`;
+  let fn = dashboardFetchers.get(key);
+  if (fn) {
+    dashboardFetchers.delete(key);
+    dashboardFetchers.set(key, fn);
+    return fn;
+  }
+  fn = createCachedFetcher(
+    `ventas:dashboard:${key}`,
+    DASHBOARD_TTL_MS,
+    () => computeDashboard(desde, hasta)
+  );
+  dashboardFetchers.set(key, fn);
+  if (dashboardFetchers.size > DASHBOARD_MAX_FETCHERS) {
+    const oldestKey = dashboardFetchers.keys().next().value;
+    dashboardFetchers.delete(oldestKey);
+  }
+  return fn;
+}
+
+async function computeDashboard(desde, hasta) {
     const p = [desde, hasta];
     // Filtro base de ventas del período (excluye canceladas y borradas)
     const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2`;
@@ -299,7 +341,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     // si Lucas quiere más adelante).
     const margenPct = ingresosVentas > 0 ? round2((gananciaNeta / ingresosVentas) * 100) : 0;
 
-    res.json({
+    return {
       periodo: { desde, hasta },
       ventas_count: parseInt(t.count) + b2bCount,
       ingresos: {
@@ -344,7 +386,16 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
       ticket_promedio_usd: parseInt(t.count) > 0 ? round2(ingresosVentas / parseInt(t.count)) : 0,
       top_productos: topProd.rows.map(r => ({ descripcion: r.descripcion, unidades: r.unidades })),
       top_vendedores: topVend.rows.map(r => ({ vendedor: r.vendedor, total_usd: round2(Number(r.total_usd)), items: r.items })),
-    });
+    };
+}
+
+router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, res, next) => {
+  try {
+    const hoy = new Date().toISOString().split('T')[0];
+    const desde = req.query.desde || hoy;
+    const hasta = req.query.hasta || hoy;
+    const data = await getDashboardFetcher(desde, hasta)();
+    res.json(data);
   } catch (err) { next(err); }
 });
 
