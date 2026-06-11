@@ -36,6 +36,9 @@ const SHARED_ENV = {
   PORT: process.env.PORT || '3001',
   // Silenciar pino en backend durante e2e (menos ruido en stdout de webServer).
   LOG_LEVEL: 'warn',
+  // CORS — el backend default solo permite localhost:3000/:5500. Vite corre en
+  // :5173 y :127.0.0.1 → habilitar explícitamente.
+  CORS_ORIGIN: 'http://localhost:5173,http://127.0.0.1:5173',
 };
 
 module.exports = defineConfig({
