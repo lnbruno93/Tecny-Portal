@@ -323,7 +323,13 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                   const dup = r.producto_id && dupProductoIds.has(r.producto_id);
                   const sub = (Number(r.precio_unit) || 0) * cant;
                   return (
-                    <tr key={r._id} style={{
+                    <tr key={r._id}
+                      // data-testid agregado para E2E (TANDA 5 B2B): las filas
+                      // de la planilla son dinámicas (mkRow asigna `_id`
+                      // aleatorio) y no tienen un wrapping accesible único.
+                      // Sin testid, scopear inputs por fila requiere CSS frágil.
+                      data-testid="b2b-item-row"
+                      style={{
                       background: dup ? 'rgba(220, 38, 38, 0.08)'
                                       : used ? 'rgba(99,102,241,0.04)' : 'transparent',
                       borderTop: '1px solid var(--hairline)',
@@ -445,6 +451,10 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           <button className="btn btn-ghost" onClick={tryClose}>Cancelar</button>
           <button
             className="btn btn-primary"
+            // data-testid agregado para E2E (TANDA 5 B2B): el label del botón
+            // muta a "Guardando…" durante el async, lo que rompería un
+            // selector por texto en el spec.
+            data-testid="b2b-submit"
             disabled={saving || hayDuplicados}
             onClick={handleGuardar}
             title={hayDuplicados ? 'Resolvé los duplicados antes de guardar' : ''}
