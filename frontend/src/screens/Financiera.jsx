@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
 import {
   comprobantes as compApi,
@@ -361,7 +362,7 @@ export default function Financiera() {
         setPct(parseFloat(cfg.pct_financiera) || 3);
         setVendedores(vends);
       })
-      .catch(console.error);
+      .catch(silentReport);
     return () => { mounted = false; };
   }, []);
 

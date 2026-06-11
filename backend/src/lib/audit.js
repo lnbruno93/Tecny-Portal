@@ -91,17 +91,27 @@ async function audit(...args) {
     useSavepoint = true;
   }
   const [tabla, accion, registro_id, opts = {}] = args;
-  const { antes = null, despues = null, user_id = null, ...extra } = opts;
+  const { antes = null, despues = null, user_id = null, req = null, ...extra } = opts;
   // Permitimos pasar metadata extra (ej. `_origen`) — la mergeamos en `despues` y la redactamos.
   const desp = (despues || Object.keys(extra).length) ? { ...(despues || {}), ...extra } : null;
+  // 2026-06-11 SE-05: si el caller pasa `req`, extraemos IP, User-Agent y
+  // request_id para forense + compliance (Ley 25.326 art. 9). Capacidad
+  // best-effort: si req no viene (audits programáticos desde jobs, crons),
+  // los 3 campos quedan NULL — comportamiento idéntico al previo.
+  const ip = req?.ip || null;
+  const userAgent = req?.headers?.['user-agent']?.slice(0, 512) || null;
+  const requestId = req?.id || null;
   const params = [
     tabla, accion, registro_id,
     antes ? JSON.stringify(redactPII(antes)) : null,
     desp  ? JSON.stringify(redactPII(desp))  : null,
     user_id || null,
+    ip,
+    userAgent,
+    requestId,
   ];
-  const sql = `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id)
-               VALUES ($1,$2,$3,$4,$5,$6)`;
+  const sql = `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
   try {
     if (useSavepoint) {
       // SAVEPOINT aísla el INSERT: si falla, NO contamina la tx exterior.

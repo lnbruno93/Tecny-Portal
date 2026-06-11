@@ -17,6 +17,11 @@ const loginSchema = z.object({
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Contraseña actual requerida'),
   newPassword:     passwordField(),
+  // 2026-06-11 SE-07: opcional. Si el user tiene 2FA activa, el endpoint exige
+  // el código TOTP/recovery antes de cambiar la password (defense in depth
+  // contra token robado). El frontend hace 2 requests: primero sin code (recibe
+  // twofa_required=true), segundo con code.
+  twofa_code:      z.string().trim().min(6).max(20).optional(),
 }).strict();
 
 module.exports = { loginSchema, changePasswordSchema };

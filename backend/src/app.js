@@ -189,12 +189,16 @@ app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' 
 });
 
 // Logging de requests (silencia /health para no generar ruido)
+// 2026-06-11 SE-05: genReqId con crypto.randomUUID() para que el request_id
+// sea un UUID v4 compatible con la columna audit_logs.request_id (UUID). Esto
+// permite correlacionar audit + logs + Sentry events del mismo request.
 app.use(pinoHttp({
   logger,
-  customProps: (req) => ({ userId: req.user?.id }),
+  genReqId: () => require('crypto').randomUUID(),
+  customProps: (req) => ({ userId: req.user?.id, request_id: req.id }),
   autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' },
   serializers: {
-    req: (req) => ({ method: req.method, url: req.url }),
+    req: (req) => ({ method: req.method, url: req.url, id: req.id }),
     res: (res) => ({ statusCode: res.statusCode }),
   },
 }));
@@ -317,6 +321,23 @@ const loginLimiter = rateLimit({
   ...(loginStore && { store: loginStore }),
 });
 app.use('/api/auth/login', loginLimiter);
+
+// 2026-06-11 SE-07: rate limit dedicado para /api/auth/change-password.
+// Sin esto, un token robado podía martillar el endpoint para brute-forcear el
+// currentPassword (solo limitado por el global de 300/15min). 5 intentos/15min
+// por user.id es agresivo pero no rompe el flujo legítimo (fat-fingers OK).
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de cambio de contraseña, esperá 15 minutos.' },
+  keyGenerator: (req) => req.user?.id ? String(req.user.id) : req.ip,
+  skipSuccessfulRequests: true,
+  skip: () => process.env.NODE_ENV === 'test',
+  ...(loginStore && { store: loginStore }),
+});
+app.use('/api/auth/change-password', requireAuth, changePasswordLimiter);
 
 // Auth (sin restricción de permisos)
 app.use('/api/auth',          authRoutes);

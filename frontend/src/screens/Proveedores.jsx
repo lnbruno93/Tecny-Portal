@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
 import { proveedores as provApi, cajas as cajasApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -71,7 +72,7 @@ export default function Proveedores() {
     const reqId = ++listReq.current;
     provApi.list(dSearch ? { buscar: dSearch } : {})
       .then(r => { if (reqId === listReq.current) setList(r?.data || []); })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => { if (reqId === listReq.current) setLoadingList(false); });
   }
   useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [dSearch]);
@@ -94,7 +95,7 @@ export default function Proveedores() {
     setMovs([]);
     provApi.movimientos(selectedId, { page: 1, limit: 100 })
       .then(r => { setMovs(r.data || []); setMovsPag(r.pagination || { page: 1, pages: 1, total: 0 }); })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingMovs(false));
   }, [selectedId]);
 
@@ -103,7 +104,7 @@ export default function Proveedores() {
     setLoadingMasMovs(true);
     provApi.movimientos(selectedId, { page: movsPag.page + 1, limit: 100 })
       .then(r => { setMovs(prev => [...prev, ...(r.data || [])]); setMovsPag(r.pagination || movsPag); })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingMasMovs(false));
   }
 
@@ -192,8 +193,8 @@ export default function Proveedores() {
     if (!selectedId) return;
     provApi.movimientos(selectedId, { page: 1, limit: 100 })
       .then(r => { setMovs(r.data || []); setMovsPag(r.pagination || { page: 1, pages: 1, total: 0 }); })
-      .catch(console.error);
-    provApi.list(search ? { buscar: search } : {}).then(r => setList(r?.data || [])).catch(console.error);
+      .catch(silentReport);
+    provApi.list(search ? { buscar: search } : {}).then(r => setList(r?.data || [])).catch(silentReport);
   }
 
   // ── Modal de compra (reemplaza la planilla inline) ─────────────────────

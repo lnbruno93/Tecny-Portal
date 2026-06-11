@@ -72,6 +72,28 @@ export function reportError(error, context = {}) {
   }
 }
 
+/**
+ * silentReport — para errores async que NO deben mostrar UI al usuario pero
+ * SÍ deben loggearse. Antes los handlers usaban `.catch(console.error)` que en
+ * producción se evapora (Safari/Chrome no muestran console por default ni el
+ * operador la abre). Resultado: cualquier fetch que falla "siempre" en un caso
+ * edge queda invisible meses.
+ *
+ * 2026-06-11 H-03: reemplaza el pattern `.catch(console.error)` por
+ * `.catch(err => silentReport(err, { screen: 'X', action: 'Y' }))`.
+ *
+ * En DEV: loggea a console (visible durante el desarrollo).
+ * En PROD: postea al backend → Sentry con el context.
+ */
+export function silentReport(error, context = {}) {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.error('[silentReport]', context, error);
+    return;
+  }
+  reportError(error, context);
+}
+
 export function installGlobalErrorHandlers() {
   if (typeof window === 'undefined') return;
   window.addEventListener('error', (event) => {

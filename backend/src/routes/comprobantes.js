@@ -403,6 +403,22 @@ router.get('/export-zip', exportLimiter, validate(queryComprobantesSchema, 'quer
       where += ` AND (c.cliente ILIKE $${params.length} OR c.referencia ILIKE $${params.length})`;
     }
 
+    // 2026-06-11 SE-10: cap defensivo. Antes este endpoint cargaba TODOS los
+    // comprobantes que matcheaban filtros en RAM (cada uno con su archivo_data
+    // base64 = 1-5 MB). Un filtro amplio con 1000+ comprobantes podía explotar
+    // la RAM del proceso (Railway Hobby = 512MB-1GB). Pre-count para rechazar
+    // queries demasiado amplias con un mensaje claro al operador.
+    const EXPORT_CAP = 1000;
+    const { rows: countRows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM comprobantes c LEFT JOIN vendedores v ON v.id = c.vendedor_id ${where}`,
+      params
+    );
+    if (countRows[0].n > EXPORT_CAP) {
+      return res.status(400).json({
+        error: `El filtro matchea ${countRows[0].n} comprobantes (máximo ${EXPORT_CAP}). Restringí el período o el cliente.`,
+      });
+    }
+
     const { rows } = await db.query(`
       SELECT c.id, c.fecha, c.cliente, v.nombre AS vendedor, c.referencia,
              c.monto, c.monto_financiera, c.monto_neto,

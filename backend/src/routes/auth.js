@@ -8,6 +8,7 @@ const { loginSchema, changePasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
+const { loadUserPerms } = require('../lib/permissions');
 
 // Costo de bcrypt — 12 rounds (resistencia a cracking offline; costo de CPU despreciable en login)
 const BCRYPT_ROUNDS = 12;
@@ -25,13 +26,30 @@ const JWT_ALGORITHM = 'HS256';
 const LOCKOUT_THRESHOLD = 10;
 const LOCKOUT_DURATION_MIN = 15;
 
-function makeToken(user) {
+async function makeToken(user) {
   // iat_ms: timestamp de emisión en milisegundos — permite comparación de precisión
   // sub-segundo contra password_changed_at (que tiene precisión de microsegundos en PG).
   // El jwt.iat estándar solo tiene precisión de segundos, lo que genera race conditions
   // cuando el login y el cambio de contraseña ocurren en el mismo segundo.
+  //
+  // 2026-06-11 P-02: embebemos `perms` en el JWT para evitar la query DB por
+  // request del middleware requirePermission. Admin no necesita perms en el token
+  // (el middleware ya bypassea por role). Para users con role='op', leemos las
+  // perms de DB en el login y las incluimos. Si después cambian los perms (via
+  // PUT /usuarios/:id), bumpeamos password_changed_at del afectado y el user
+  // re-loguea para refrescar el token.
+  const payload = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    iat_ms: Date.now(),
+  };
+  if (user.role !== 'admin') {
+    payload.perms = await loadUserPerms(user.id);
+  }
   return jwt.sign(
-    { id: user.id, username: user.username, email: user.email, role: user.role, iat_ms: Date.now() },
+    payload,
     process.env.JWT_SECRET,
     // 2026-06-10 SE-01: bajamos default de 7d → 8h. Token en localStorage con vida
     // larga es vector XSS: cualquier dep transitiva compromete = sesión robada por
@@ -173,7 +191,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const permissions = { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) };
 
     res.json({
-      token: makeToken(user),
+      token: await makeToken(user),
       user: { id: user.id, nombre: user.nombre, username: user.username, email: user.email, role: user.role, perms: permissions },
     });
   } catch (err) {
@@ -216,7 +234,7 @@ router.post('/logout', requireAuth, async (req, res, next) => {
 
 router.post('/change-password', requireAuth, validate(changePasswordSchema), async (req, res, next) => {
   try {
-    const { currentPassword, newPassword } = req.body;
+    const { currentPassword, newPassword, twofa_code } = req.body;
 
     const { rows } = await db.query(
       'SELECT id, password_hash FROM users WHERE id = $1 AND deleted_at IS NULL',
@@ -228,12 +246,33 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
 
+    // 2026-06-11 SE-07: re-verificar 2FA si está activa. Sin esto, un token
+    // robado podía cambiar la password sin que el atacante supiera el TOTP →
+    // account takeover persistente. Ahora, aunque tenga la password actual del
+    // user, sin el código TOTP no puede cerrar la cuenta.
+    const { load2fa, verifyAndConsume } = require('./twoFa');
+    const twoFa = await load2fa(user.id);
+    if (twoFa && twoFa.enabled_at) {
+      if (!twofa_code) {
+        return res.status(401).json({
+          error: 'Se requiere código 2FA para cambiar la contraseña.',
+          twofa_required: true,
+        });
+      }
+      const { ok } = await verifyAndConsume(user.id, String(twofa_code));
+      if (!ok) {
+        logger.warn({ user_id: user.id, ip: req.ip }, 'change-password 2FA fallido');
+        return res.status(401).json({ error: 'Código 2FA incorrecto.' });
+      }
+    }
+
     const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await db.query(
       'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
       [hash, user.id]
     );
-    await audit('users', 'UPDATE', user.id, { tipo: 'cambio_password', user_id: req.user.id });
+    // 2026-06-11 SE-05: req se propaga al audit para capturar IP/UA/request_id.
+    await audit('users', 'UPDATE', user.id, { tipo: 'cambio_password', user_id: req.user.id, req });
 
     res.json({ ok: true });
   } catch (err) {

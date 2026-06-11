@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
 import { envios, cajas as cajasApi, inventario, cuentas as cuentasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -99,7 +100,7 @@ export default function Envios() {
     // "Cuenta corriente" en el select.
     cajasApi.listMetodosPago()
       .then(list => setCajasPago(Array.isArray(list) ? list : []))
-      .catch(console.error);
+      .catch(silentReport);
     cuentasApi.clientes({ limit: 200 })
       .then(list => setClientesCc(Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : [])))
       .catch(() => {});
@@ -355,7 +356,7 @@ export default function Envios() {
         setEnviosList(list);
         if (list.length > 0) setSelectedId(list[0].id);
       })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoading(false));
   }, []);
 
@@ -496,7 +497,7 @@ export default function Envios() {
               envios.list({ limit: 100 }).then(res => {
                 const list = res.data || res || [];
                 setEnviosList(list);
-              }).catch(console.error).finally(() => setLoading(false));
+              }).catch(silentReport).finally(() => setLoading(false));
             }}
           >
             <Icons.Refresh size={14} /> Actualizar

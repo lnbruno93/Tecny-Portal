@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { silentReport } from '../lib/reportError';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cajas, contactos as contactosApi } from '../lib/api';
@@ -92,7 +93,7 @@ export default function Cajas() {
     // ambos shapes — el endpoint devuelve { data, pagination }.
     contactosApi.list({ limit: 500 })
       .then(r => setAllContacts(Array.isArray(r) ? r : (r?.data ?? [])))
-      .catch(console.error);
+      .catch(silentReport);
   }, []);
 
   // ── Crear contacto ────────────────────────────────────────────────────────
@@ -279,7 +280,7 @@ export default function Cajas() {
       setLoadingDeudas(true);
       cajas.deudas({ limit: 500 })
         .then(res => setDeudaMovs(res.data || []))
-        .catch(console.error)
+        .catch(silentReport)
         .finally(() => setLoadingDeudas(false));
 
       // Auto-select the contacto and refresh its detail
@@ -287,7 +288,7 @@ export default function Cajas() {
       setLoadingContactoMovs(true);
       cajas.deudas({ contacto_id: cid, limit: 200 })
         .then(res => setContactoMovs(res.data || []))
-        .catch(console.error)
+        .catch(silentReport)
         .finally(() => setLoadingContactoMovs(false));
     } catch (err) { setDeudaError(err.message); }
     finally { setDeudaCreating(false); }
@@ -324,7 +325,7 @@ export default function Cajas() {
       setLoadingInv(true);
       cajas.inversiones({ limit: 200 })
         .then(res => setInversiones(res.data || []))
-        .catch(console.error)
+        .catch(silentReport)
         .finally(() => setLoadingInv(false));
     } catch (err) { setInvError(err.message); }
     finally { setInvCreating(false); }
@@ -336,7 +337,7 @@ export default function Cajas() {
     setLoadingDeudas(true);
     cajas.deudas({ limit: 500 })
       .then(res => setDeudaMovs(res.data || []))
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingDeudas(false));
   }, [tab]);
 
@@ -346,7 +347,7 @@ export default function Cajas() {
     setLoadingContactoMovs(true);
     cajas.deudas({ contacto_id: selectedContactoId, limit: 200 })
       .then(res => setContactoMovs(res.data || []))
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingContactoMovs(false));
   }, [selectedContactoId]);
 
@@ -356,7 +357,7 @@ export default function Cajas() {
     setLoadingInv(true);
     cajas.inversiones({ limit: 200 })
       .then(res => setInversiones(res.data || []))
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingInv(false));
   }, [tab]);
 

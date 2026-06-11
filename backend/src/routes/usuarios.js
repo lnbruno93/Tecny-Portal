@@ -83,8 +83,31 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     );
     if (!before[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const { nombre, username, email, password, role, perms } = req.body;
+    const { nombre, username, email, password, role, perms, twofa_code } = req.body;
     const hash = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : null;
+
+    // 2026-06-11 SE-08: si el admin está cambiando password / role / perms de
+    // OTRO user (no de sí mismo), exigir re-auth 2FA del admin. Esto cierra
+    // el path de privilege escalation con token robado: aunque el atacante
+    // tenga el JWT del admin, sin su TOTP no puede cambiar perms de otros.
+    const isSensitiveChange = (hash !== null || role !== undefined || perms !== undefined);
+    const isOtherUser = id !== req.user.id;
+    if (isSensitiveChange && isOtherUser) {
+      const { load2fa, verifyAndConsume } = require('./twoFa');
+      const twoFa = await load2fa(req.user.id);
+      if (twoFa && twoFa.enabled_at) {
+        if (!twofa_code) {
+          return res.status(401).json({
+            error: 'Se requiere código 2FA para cambiar credenciales de otro usuario.',
+            twofa_required: true,
+          });
+        }
+        const { ok } = await verifyAndConsume(req.user.id, String(twofa_code));
+        if (!ok) {
+          return res.status(401).json({ error: 'Código 2FA incorrecto.' });
+        }
+      }
+    }
 
     const client = await db.connect();
     try {
@@ -95,6 +118,12 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
       // — así los tokens activos de la víctima quedan invalidados
       // inmediatamente. Sin este bump, un atacante con un JWT robado seguía
       // autenticado aunque el admin reseteara la password.
+      //
+      // 2026-06-11 P-02: también bumpeamos cuando cambian `role` o `perms` —
+      // ahora ambos viajan en el JWT (perms en el payload, role siempre estuvo)
+      // y el token cacheado en el cliente quedaría stale. Forzar re-login = el
+      // user recibe un JWT nuevo con perms actualizadas en el siguiente login.
+      const bumpPwChanged = (hash !== null) || (role !== undefined) || (perms !== undefined);
       const { rows } = await client.query(
         `UPDATE users SET
           nombre               = COALESCE($1, nombre),
@@ -102,9 +131,9 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
           email                = COALESCE($3, email),
           password_hash        = COALESCE($4, password_hash),
           role                 = COALESCE($5, role),
-          password_changed_at  = CASE WHEN $4 IS NOT NULL THEN NOW() ELSE password_changed_at END
-        WHERE id = $6 RETURNING id, nombre, username, email, role`,
-        [nombre, username, email, hash, role, id]
+          password_changed_at  = CASE WHEN $6 THEN NOW() ELSE password_changed_at END
+        WHERE id = $7 RETURNING id, nombre, username, email, role`,
+        [nombre, username, email, hash, role, bumpPwChanged, id]
       );
 
       let permsAntes = null;
