@@ -71,8 +71,15 @@ test.describe('Envíos — envío → entregado + venta acreditada', () => {
     // ── Pre-condición vía API ────────────────────────────────────────────
     // Producto USD con cantidad > 1 (tipo_carga='lote' en seedProductoForB2B
     // por default). El precio_venta=200 USD se autocompleta al pickearlo.
+    //
+    // 2026-06-11 fix flakiness en CI: nombre único por run. Antes el nombre
+    // era literal "Envío Test E2E" y otros tests de la suite (b2b, dashboard,
+    // editar-venta) podían dejar residuos que matcheaban el regex del search
+    // y rompían el strict mode del .click() del dropdown. Con sufijo único
+    // garantizamos que el resultado del search es un único botón.
+    const nombreProducto = `Envío Test E2E ${Date.now()}`;
     const producto = await seedProductoForB2B({
-      nombre: 'Envío Test E2E', cantidad: 3, costo: 100, precio: 200,
+      nombre: nombreProducto, cantidad: 3, costo: 100, precio: 200,
     });
     expect(producto.id).toBeGreaterThan(0);
 
@@ -109,12 +116,20 @@ test.describe('Envíos — envío → entregado + venta acreditada', () => {
     const productosResp = page.waitForResponse(
       r => r.url().includes('/api/inventario/productos') && r.status() === 200
     );
-    await buscarInput.fill('Envío Test E2E');
+    // Buscamos por el sufijo timestamp único — garantiza un único resultado
+    // aunque otros tests hayan dejado productos con prefijo "Envío Test E2E".
+    await buscarInput.fill(nombreProducto);
     await productosResp;
 
     // El dropdown renderea cada resultado como <button> con el nombre.
-    // El texto del producto es único en la suite (sufijo E2E).
-    await modal.getByRole('button', { name: /Envío Test E2E/ }).click();
+    // 2026-06-11 fix CI flakiness: el `waitForResponse` garantiza que la HTTP
+    // response llegó, pero NO que React re-renderizó el dropdown con los
+    // resultados. En CI con menos CPU el `.click()` se ejecutaba antes del
+    // render → strict mode violation (0 matches) o click sobre overlay.
+    // waitFor visible explícito antes del click resuelve el race.
+    const productoBtn = modal.getByRole('button', { name: nombreProducto });
+    await productoBtn.waitFor({ state: 'visible', timeout: 10_000 });
+    await productoBtn.click();
 
     // Tras pickear, el modal pasa al modo "hero card" — el precio_venta=200 USD
     // se autocompleta en el input numérico del item linkeado.
