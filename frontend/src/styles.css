@@ -1699,3 +1699,64 @@ body.modal-open { overflow: hidden; }
 }
 .scroll-fade-rx.has-overflow-left::before  { opacity: 1; }
 .scroll-fade-rx.has-overflow-right::after  { opacity: 1; }
+
+/* ─── Tooltip (U-15 auditoría 2026-06-10) ────────────────────────────────── */
+/* Wrapper inline-block para que `position: absolute` del bubble se mida
+   contra el trigger (que es el primer child). No interrumpe el flujo. */
+.tooltip-wrap {
+  position: relative;
+  display: inline-block;
+}
+/* Bubble flotante. Aparece/desaparece via React (no display:none), así que
+   no necesitamos transición — keep it instant para no demorar al usuario. */
+.tooltip {
+  position: absolute;
+  z-index: 1000;
+  background: var(--text, #111);
+  color: var(--bg, #fff);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  max-width: 320px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  pointer-events: none; /* el bubble nunca tapa clicks del usuario */
+}
+.tooltip-bottom .tooltip {
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tooltip-top .tooltip {
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* ─── Skeleton (U-12 auditoría 2026-06-10) ───────────────────────────────── */
+/* Bloque inline-block con animación shimmer — usado por <Skeleton/>,
+   <SkeletonRow/> y <SkeletonCard/>. La animación es un gradient que
+   se mueve de izquierda a derecha. Sin libs (Framer Motion overkill). */
+.skeleton {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--text, #888) 8%, transparent) 25%,
+    color-mix(in oklab, var(--text, #888) 16%, transparent) 50%,
+    color-mix(in oklab, var(--text, #888) 8%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  /* Evita seleccionar el placeholder con triple-click. */
+  user-select: none;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+/* Respeto prefers-reduced-motion: sin animación, sólo gris constante. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}

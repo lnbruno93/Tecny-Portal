@@ -19,6 +19,7 @@ import { generarComprobantesResumenPdf } from '../lib/generarComprobantesResumen
 import { generarComprobantesResumenXlsx } from '../lib/generarComprobantesResumenXlsx';
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
+import Badge from '../components/Badge';
 
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -31,10 +32,8 @@ function fmtARS(n) {
 
 
 // ─── Helper components ───────────────────────────────────────────────────────
-
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
+// Badge ahora vive en frontend/src/components/Badge.jsx (U-13 dedup,
+// auditoría 2026-06-10) — importado arriba.
 
 function Status({ tone = 'default', children }) {
   return <span className={`status s-${tone}`}>{children}</span>;

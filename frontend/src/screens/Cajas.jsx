@@ -10,6 +10,7 @@ import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
 import ContactoPickerEmbedded from '../components/ContactoPickerEmbedded';
+import Badge from '../components/Badge';
 
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -21,9 +22,8 @@ function todayISO() {
 const TIPO_TONE  = { amigo: 'info', familiar: 'accent', cliente: 'pos', inversor: 'warn', 'ipro team': 'default' };
 const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'iPro team' };
 
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
+// Badge ahora vive en frontend/src/components/Badge.jsx (U-13 dedup,
+// auditoría 2026-06-10) — importado arriba.
 function Status({ tone = 'default', children }) {
   return <span className={`status s-${tone}`}>{children}</span>;
 }

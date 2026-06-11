@@ -105,4 +105,75 @@ describe('useModal', () => {
     expect(document.activeElement).toBe(second);
     cleanup();
   });
+
+  // U-08 auditoría 2026-06-10: focus trap W3C APG Dialog.
+  // Probamos que Tab desde el último elemento cicla al primero y viceversa.
+  function TrapProbe({ open, onClose }) {
+    const overlayRef = useRef(null);
+    useModal({ open, onClose, overlayRef });
+    if (!open) return null;
+    return (
+      <div ref={overlayRef} data-testid="overlay" role="dialog" aria-modal="true">
+        <input data-testid="trap-first" />
+        <input data-testid="trap-middle" />
+        <button data-testid="trap-last">Guardar</button>
+      </div>
+    );
+  }
+
+  it('Tab desde el último elemento del modal cicla al primero (focus trap)', () => {
+    render(<TrapProbe open onClose={() => {}} />);
+    const last = screen.getByTestId('trap-last');
+    const first = screen.getByTestId('trap-first');
+    last.focus();
+    expect(document.activeElement).toBe(last);
+    // Simular Tab. fireEvent dispara el handler de keydown del document,
+    // que es donde está nuestra lógica de trap.
+    const tabEvent = fireEvent.keyDown(document, { key: 'Tab' });
+    // El handler llama preventDefault y mueve foco al primero.
+    expect(tabEvent).toBe(false); // preventDefault devuelve false
+    expect(document.activeElement).toBe(first);
+    cleanup();
+  });
+
+  it('Shift+Tab desde el primer elemento cicla al último (focus trap)', () => {
+    render(<TrapProbe open onClose={() => {}} />);
+    const first = screen.getByTestId('trap-first');
+    const last = screen.getByTestId('trap-last');
+    first.focus();
+    expect(document.activeElement).toBe(first);
+    const ev = fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(ev).toBe(false);
+    expect(document.activeElement).toBe(last);
+    cleanup();
+  });
+
+  it('restoreFocus: al cerrar devuelve foco al elemento que abrió el modal', async () => {
+    function App({ open, onClose }) {
+      const overlayRef = useRef(null);
+      useModal({ open, onClose, overlayRef });
+      return (
+        <>
+          <button data-testid="opener">Abrir</button>
+          {open && (
+            <div ref={overlayRef} data-testid="overlay">
+              <input data-testid="modal-input" />
+            </div>
+          )}
+        </>
+      );
+    }
+    const { rerender } = render(<App open={false} onClose={() => {}} />);
+    const opener = screen.getByTestId('opener');
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+    rerender(<App open onClose={() => {}} />);
+    // Esperamos al foco inicial automático.
+    await new Promise(r => setTimeout(r, 70));
+    // Cerramos.
+    rerender(<App open={false} onClose={() => {}} />);
+    // El cleanup del useEffect debería haber restaurado el foco al opener.
+    expect(document.activeElement).toBe(opener);
+    cleanup();
+  });
 });

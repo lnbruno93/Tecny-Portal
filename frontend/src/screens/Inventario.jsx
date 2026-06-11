@@ -13,16 +13,17 @@ import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
-import { fmt } from '../lib/format';
+import { fmt, fmtMoney } from '../lib/format';
+import Badge from '../components/Badge';
+import Seg from '../components/Seg';
+import { SkeletonRow } from '../components/Skeleton';
 
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
-// `fmt` viene de '../lib/format' (Hygiene H2 auditoría 2026-06-06). Wrapper
-// `money` con prefijo según moneda — local porque solo Inventario lo usa así.
-function money(n, moneda) {
-  const sym = moneda === 'ARS' ? '$' : 'u$s';
-  return sym + fmt(n);
-}
+// `fmt` y `fmtMoney` vienen de '../lib/format' (Hygiene H2 + U-05 auditoría
+// 2026-06-10). Alias local para no tocar todos los callsites — `money` se
+// resuelve a `fmtMoney` y comparte la convención ARS=$ / USD=u$s / USDT.
+const money = fmtMoney;
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const EMPTY_PRODUCTO = {
@@ -86,23 +87,9 @@ function parseCsv(text) {
   return rows;
 }
 
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
-function Seg({ value, options, onChange }) {
-  return (
-    <div className="seg">
-      {options.map(o => (
-        <button key={o.value} className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── Pantalla ──────────────────────────────────────────────────────────────────
+// Badge y Seg ahora viven en frontend/src/components/ (U-13 dedup, auditoría
+// 2026-06-10) — importados arriba.
 export default function Inventario() {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -694,7 +681,27 @@ export default function Inventario() {
 
       {/* ── Tabla ── */}
       {loading ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Cargando…</div>
+        // Skeleton de la grilla: 5 filas con la cantidad de columnas reales
+        // (15) para que el layout no salte al llegar el dato.
+        // aria-busy para lectores de pantalla. U-12 auditoría 2026-06-10.
+        <div className="card card-flush" style={{ overflowX: 'auto' }} aria-busy="true" aria-live="polite">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
+                <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
+                <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
+                <th>IMEI/Serial</th><th>Tipo</th><th>Categoría</th><th>Proveedor</th>
+                <th style={{ textAlign: 'right' }}>Stock</th><th>Estado</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <SkeletonRow key={i} columns={15} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : productos.length === 0 ? (
         <div className="empty">Sin productos</div>
       ) : (
@@ -871,9 +878,16 @@ export default function Inventario() {
       {/* ── Modal alta/edición ── */}
       {showForm && (
         <div ref={formModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
+          <div
+            className="modal"
+            style={{ maxWidth: 620 }}
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="prod-modal-title"
+          >
             <div className="modal-hd">
-              <h3>{editId ? 'Editar producto' : 'Agregar producto'}</h3>
+              <h3 id="prod-modal-title">{editId ? 'Editar producto' : 'Agregar producto'}</h3>
               <button type="button" className="icon-btn" onClick={() => setShowForm(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <form onSubmit={handleSave}>

@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { TOOLS } from '../lib/tools';
 import { fmt } from '../lib/format';
+import Badge from '../components/Badge';
 
 const TOOL_LABELS = {
   cotizador:  'Cotizador',
@@ -30,9 +31,8 @@ function initials(nombre) {
   return ((nombre || '').split(' ').slice(0, 2).map(w => w[0]).join('') || '??').toUpperCase();
 }
 
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
+// Badge ahora vive en frontend/src/components/Badge.jsx (U-13 dedup,
+// auditoría 2026-06-10) — importado arriba.
 
 export default function Usuarios() {
   const { toast } = useToast();

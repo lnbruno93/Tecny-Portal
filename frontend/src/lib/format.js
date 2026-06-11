@@ -28,3 +28,21 @@ export function fmtFecha(iso) {
   if (isNaN(d)) return '—';
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
+
+// Monto con prefijo de moneda — DRY de los wrappers `money(n, moneda)` que
+// vivían duplicados en Inventario.jsx y Desglose360.jsx (U-05 auditoría
+// 2026-06-10). Convención visual del portal:
+//   · ARS  → "$"
+//   · USD  → "u$s"
+//   · USDT → "USDT "  (con espacio para que no quede pegado al número)
+// Cualquier moneda distinta cae al símbolo USD ("u$s") por compatibilidad
+// histórica con los wrappers locales que se reemplazan acá.
+// Magnitud completa (sin abreviar miles), sin signo: el signo se maneja
+// aparte (fmtSigned o clases CSS .pos/.neg) — misma política que `fmt`.
+export function fmtMoney(n, moneda) {
+  let prefix;
+  if (moneda === 'ARS') prefix = '$';
+  else if (moneda === 'USDT') prefix = 'USDT ';
+  else prefix = 'u$s'; // USD y default
+  return prefix + fmt(n);
+}

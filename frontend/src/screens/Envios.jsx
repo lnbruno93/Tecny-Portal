@@ -11,6 +11,9 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
 import BarrioCombobox from '../components/BarrioCombobox';
 import useModal from '../lib/useModal';
+import Badge from '../components/Badge';
+import Seg from '../components/Seg';
+import { Skeleton } from '../components/Skeleton';
 
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
@@ -48,26 +51,8 @@ const PRIO_DISPLAY = {
   'Baja':  { label: 'Baja',  tone: 'default' },
 };
 
-// ─── Helper components ────────────────────────────────────────────────────────
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
-function Seg({ value, options, onChange }) {
-  return (
-    <div className="seg">
-      {options.map(o => (
-        <button
-          key={o.value}
-          className={value === o.value ? 'on' : ''}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+// Badge y Seg ahora viven en frontend/src/components/ (U-13 dedup, auditoría
+// 2026-06-10) — importados arriba.
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function Envios() {
@@ -597,9 +582,30 @@ export default function Envios() {
         </div>
       </div>
 
-      {/* ── Loading state ── */}
+      {/* ── Loading state ──
+          Skeletons mimicking ~5 envío cards (header + cliente + dirección)
+          en lugar de "Cargando…" plano. Reduce perceived loading time
+          (U-12 auditoría 2026-06-10). aria-busy avisa a lectores de
+          pantalla que el área está cargando. */}
       {loading && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Cargando…</div>
+        <div
+          aria-busy="true"
+          aria-live="polite"
+          aria-label="Cargando envíos"
+          className="stack"
+          style={{ gap: 8, padding: '12px 0' }}
+        >
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="card card-tight">
+              <div className="flex-between" style={{ marginBottom: 8 }}>
+                <Skeleton width={120} height={14} />
+                <Skeleton width={60} height={12} />
+              </div>
+              <Skeleton width="60%" height={16} style={{ marginBottom: 4 }} />
+              <Skeleton width="80%" height={12} />
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ── Split layout ── */}
@@ -885,9 +891,16 @@ export default function Envios() {
               chico tras agregar el display extendido del producto (modelo +
               capacidad + color + IMEI + costo) en la misma fila que Precio +
               Moneda + ✕. Con 600px se cortaba "MONEDA" y el botón ✕. */}
-          <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+          <div
+            className="modal"
+            style={{ maxWidth: 760 }}
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="envio-modal-title"
+          >
             <div className="modal-hd">
-              <h3>{modalMode === 'edit' ? `Editar envío #${editingId}` : 'Nuevo envío'}</h3>
+              <h3 id="envio-modal-title">{modalMode === 'edit' ? `Editar envío #${editingId}` : 'Nuevo envío'}</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCreate(false)} disabled={creating} aria-label="Cerrar" title="Cerrar">
                 <Icons.X size={16} />
               </button>

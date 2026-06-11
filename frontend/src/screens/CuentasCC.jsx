@@ -12,6 +12,8 @@ import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
+import Badge from '../components/Badge';
+import Seg from '../components/Seg';
 
 
 
@@ -31,22 +33,10 @@ const TIPO_DISPLAY = {
 };
 const CAT_TONE = { 'VIP': 'accent', 'A+': 'pos', 'A-': 'default' };
 
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
+// Badge y Seg ahora viven en frontend/src/components/ (U-13 dedup,
+// auditoría 2026-06-10) — importados arriba.
 function Status({ tone = 'default', children }) {
   return <span className={`status s-${tone}`}>{children}</span>;
-}
-function Seg({ value, options, onChange }) {
-  return (
-    <div className="seg">
-      {options.map(o => (
-        <button key={o.value} className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 // ─── EDITAR CLIENTE MODAL ─────────────────────────────────────────────────────
