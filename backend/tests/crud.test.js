@@ -302,9 +302,18 @@ describe('POST /api/contactos', () => {
        ON CONFLICT (user_id, tool) DO UPDATE SET enabled = true`,
       [opId]
     );
+    // 2026-06-11 P-02: los perms van embebidos en el JWT al login. Después de
+    // modificar user_permissions en DB, hay que re-loguear para que el JWT
+    // refleje el nuevo permiso. En producción, el flujo es: admin cambia perms
+    // → PUT /usuarios bumpea password_changed_at → user re-loguea al siguiente
+    // request. Acá simulamos el re-login manualmente.
+    const reLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'opuser', password: 'op_pass_123' });
+    const newOpToken = reLogin.body.token;
     const res = await request(app)
       .post('/api/contactos')
-      .set('Authorization', `Bearer ${opToken}`)
+      .set('Authorization', `Bearer ${newOpToken}`)
       .send({ nombre: 'Test op', tipo: 'cliente' });
     expect(res.status).toBe(201);
     // Limpieza: dejar el opuser como estaba para no contaminar otros tests.

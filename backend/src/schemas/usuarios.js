@@ -30,8 +30,12 @@ const updateUsuarioSchema = z.object({
   password: passwordField().optional(),
   role:     z.enum(['admin','op']).optional(),
   perms:    permsUpdateSchema.optional(),  // opcional y SIN default de nivel superior
+  // 2026-06-11 SE-08: opcional. Si el admin tiene 2FA activa y está cambiando
+  // password/role/perms de OTRO user, el endpoint exige TOTP del admin antes
+  // de aceptar el cambio (defense in depth contra token de admin robado).
+  twofa_code: z.string().trim().min(6).max(20).optional(),
 }).strict().refine(
-  d => Object.values(d).some(v => v !== undefined),
+  d => Object.values(d).some(v => v !== undefined && v !== null),
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 

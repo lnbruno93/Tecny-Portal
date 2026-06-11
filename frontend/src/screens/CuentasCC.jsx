@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { silentReport } from '../lib/reportError';
 import { useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cuentas, cajas as cajasApi } from '../lib/api';
@@ -444,7 +445,7 @@ export default function CuentasCC() {
   useEffect(() => {
     cajasApi.listCajas()
       .then(list => setCajasUsd((list || []).filter(c => c.activo !== false && (c.moneda === 'USD' || c.moneda === 'USDT'))))
-      .catch(console.error);
+      .catch(silentReport);
   }, []);
 
   // ── Cargar lista (paginada con "ver más") ──
@@ -458,7 +459,7 @@ export default function CuentasCC() {
         setClientes(prev => append ? [...prev, ...data] : data);
         setClientesPag(r.pagination || { page: 1, pages: 1, total: data.length });
       })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingClientes(false));
   }
   useEffect(() => { loadClientes(1, false); /* eslint-disable-next-line */ }, [catFilter]);
@@ -477,7 +478,7 @@ export default function CuentasCC() {
         setClienteDetail({ resumen, movimientos: movsResp.data || [] });
         setMovsPag(movsResp.pagination || { page: 1, pages: 1, total: 0 });
       })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingDetail(false));
   }, [selectedId]);
 
@@ -490,13 +491,13 @@ export default function CuentasCC() {
         setClienteDetail(prev => prev ? { ...prev, movimientos: [...prev.movimientos, ...(r.data || [])] } : prev);
         setMovsPag(r.pagination || movsPag);
       })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingMasMovs(false));
   }
 
   useEffect(() => {
     if (tab !== 'resumen') return;
-    cuentas.resumenGeneral().then(setRgData).catch(console.error);
+    cuentas.resumenGeneral().then(setRgData).catch(silentReport);
   }, [tab]);
 
   const filtered = useMemo(() => {
@@ -562,7 +563,7 @@ export default function CuentasCC() {
         setClienteDetail({ resumen, movimientos });
         setClientes(prev => prev.map(c => c.id === selectedId ? { ...c, saldo: resumen.saldo } : c));
       })
-      .catch(console.error)
+      .catch(silentReport)
       .finally(() => setLoadingDetail(false));
   }
 
