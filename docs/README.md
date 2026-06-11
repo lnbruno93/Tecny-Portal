@@ -19,6 +19,7 @@ corresponde a tu pregunta.
 | Setear el entorno de staging | [STAGING.md](STAGING.md) |
 | Llamar a la API directo | [API_REFERENCE.md](API_REFERENCE.md) |
 | Saber cómo se gestionan archivos | [STORAGE.md](STORAGE.md) |
+| Crear / prender / apagar un feature flag | [FEATURE_FLAGS.md](FEATURE_FLAGS.md) |
 
 ---
 

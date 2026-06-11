@@ -54,6 +54,7 @@ const dashboardRoutes    = require('./routes/dashboard');
 const conciliacionRoutes = require('./routes/conciliacion');
 const alertasRoutes      = require('./routes/alertas');
 const adminRoutes        = require('./routes/admin');
+const featureFlagsRoutes = require('./routes/feature-flags');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -478,6 +479,13 @@ app.use('/api/usuarios',      requireAuth, usuariosRoutes);
 // Admin — herramientas de operación (invariantes, etc.). adminOnly enforced
 // dentro del router. Acceso solo via JWT con role='admin'.
 app.use('/api/admin',         requireAuth, adminRoutes);
+
+// Feature flags (M-08 GRAN auditoría 2026-06-10). Sistema minimalista on/off
+// global. GET / es accesible a cualquier user logueado (lo lee el frontend
+// al mount); GET /admin + POST/PATCH/DELETE son admin-only — el guard está
+// dentro del router porque NO TODO el router es admin (a diferencia de
+// /api/admin). Ver routes/feature-flags.js para el rationale.
+app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
 
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');

@@ -47,8 +47,18 @@ async function setupTestDb() {
       envio_items, envios,
       movimientos_inversiones, movimientos_deudas, contactos,
       comprobantes, pagos, vendedores,
+      feature_flags,
       user_permissions, users
     RESTART IDENTITY CASCADE
+  `);
+
+  // M-08 feature flags: re-seed del demo_flag para que los tests que asumen
+  // ese row preexistente (replicando el estado post-migración en prod) tengan
+  // un estado determinístico aún después del TRUNCATE.
+  await pool.query(`
+    INSERT INTO feature_flags (name, enabled, description) VALUES
+      ('demo_flag', false, 'Flag de demostración — borrar cuando se use el primero real')
+    ON CONFLICT (name) DO NOTHING
   `);
 
   // Re-seed de metodos_pago (cajas) — se truncó arriba; replica el seed de la migración 002

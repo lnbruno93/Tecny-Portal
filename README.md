@@ -71,6 +71,7 @@ Ver [`e2e/README.md`](./e2e/README.md) para setup completo del E2E (DB dedicada,
 - [`docs/API_REFERENCE.md`](./docs/API_REFERENCE.md) — endpoints.
 - [`docs/STAGING.md`](./docs/STAGING.md) — flujo de staging.
 - [`docs/STORAGE.md`](./docs/STORAGE.md) — política de archivos / blobs.
+- [`docs/FEATURE_FLAGS.md`](./docs/FEATURE_FLAGS.md) — sistema on/off de flags + lifecycle.
 - [`ONBOARDING.md`](./ONBOARDING.md) — guía técnica histórica (parcial; ARCHITECTURE es el nuevo punto de entrada).
 
 ## Módulos en producción
