@@ -46,6 +46,7 @@ const logger = require('./src/lib/logger');
 const db     = require('./src/config/database');
 const { startPurgaJob } = require('./src/lib/audit');
 const { startInvariantsJob } = require('./src/jobs/invariantsJob');
+const { startAuditPartitionsJob } = require('./src/jobs/auditPartitionsJob');
 const withAdvisoryLock = require('./src/lib/withAdvisoryLock');
 const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
@@ -66,6 +67,13 @@ const server = app.listen(PORT, () => {
   // runOnStartup deshabilitado en prod — el primer check corre 24h después
   // del deploy, lo cual es preferible (evita ruido en cada redeploy).
   startInvariantsJob({ intervalHours: 24 });
+
+  // P-19 GRAN auditoría 2026-06-10: mantenimiento de particiones de audit_logs.
+  //   · Cada 24h: pre-crea partition del próximo mes (idempotente).
+  //   · Día 1 del mes (UTC) ~04 AM: dropea partitions > AUDIT_RETENCION_MESES.
+  // Ambas tareas con advisory lock — solo una réplica las corre.
+  const retencionMeses = Number(process.env.AUDIT_RETENCION_MESES) || 12;
+  startAuditPartitionsJob({ retentionMonths: retencionMeses, intervalHours: 24 });
 
   // P1 auditoría 2026-06: cleanup periódico de rate_limit_entries expiradas.
   // El store nunca borra automáticamente — las filas con expires_at < NOW()
