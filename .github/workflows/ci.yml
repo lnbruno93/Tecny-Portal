@@ -106,3 +106,93 @@ jobs:
       - name: Build (smoke test)
         working-directory: frontend
         run: npm run build
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    # 2026-06-11 TANDA 5 Playwright: este job es la primera iteración del E2E.
+    # Lo dejamos en continue-on-error mientras estabilizamos timings y selectores
+    # en CI (puede ser distinto de local). Cuando 3 corridas consecutivas pasen
+    # verde, sacar el continue-on-error y marcarlo required en branch protection.
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ipro
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: ipro_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Cacheamos node_modules de los 3 lugares (root para Playwright, backend
+      # para el server, frontend para Vite). Sin esto cada run baja ~250MB.
+      - name: Install root deps (Playwright)
+        run: npm ci
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      # Cache de browsers de Playwright — pesado (~150MB). La key incluye la
+      # versión exacta de @playwright/test para que un bump invalide el cache.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (always — fast no-op if cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run E2E suite
+        env:
+          DATABASE_URL: postgresql://ipro:testpass@localhost:5432/ipro_e2e
+          JWT_SECRET: ci-e2e-test-jwt-secret-not-for-production-min-32
+          TWOFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          NODE_ENV: test
+          CI: 'true'
+        run: npm run e2e
+
+      # Artifacts en failure: trace, screenshots, video, HTML report.
+      # Necesario para diagnosticar fallos remotos que no se reproducen local.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload test-results (traces + screenshots + videos)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7
