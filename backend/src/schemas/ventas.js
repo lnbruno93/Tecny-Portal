@@ -77,6 +77,11 @@ const updateVentaSchema = z.object({
   cliente_nombre: z.string().trim().max(200).optional().nullable(),
   notas:          z.string().trim().max(1000).optional().nullable(),
   // Edición completa (opcional): si se envían items, se recalculan totales y stock.
+  // `fecha` también se acepta porque el modal Editar venta del frontend siempre
+  // re-envía la fecha original (no la cambia, pero la incluye en el payload).
+  // Sin esto el `.strict()` rechaza el PUT con "Unrecognized key: fecha" y el
+  // edit queda roto silenciosamente (descubierto vía E2E en flow 8).
+  fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD').optional(),
   hora:           z.string().regex(HORA_RE, 'Hora inválida').optional().nullable(),
   tc_venta:       z.coerce.number().positive().optional().nullable(),
   items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto').optional(),
