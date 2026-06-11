@@ -13,16 +13,16 @@ import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
-import { fmt } from '../lib/format';
+import { fmt, fmtMoney } from '../lib/format';
+import Badge from '../components/Badge';
+import Seg from '../components/Seg';
 
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
-// `fmt` viene de '../lib/format' (Hygiene H2 auditoría 2026-06-06). Wrapper
-// `money` con prefijo según moneda — local porque solo Inventario lo usa así.
-function money(n, moneda) {
-  const sym = moneda === 'ARS' ? '$' : 'u$s';
-  return sym + fmt(n);
-}
+// `fmt` y `fmtMoney` vienen de '../lib/format' (Hygiene H2 + U-05 auditoría
+// 2026-06-10). Alias local para no tocar todos los callsites — `money` se
+// resuelve a `fmtMoney` y comparte la convención ARS=$ / USD=u$s / USDT.
+const money = fmtMoney;
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const EMPTY_PRODUCTO = {
@@ -86,23 +86,9 @@ function parseCsv(text) {
   return rows;
 }
 
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
-function Seg({ value, options, onChange }) {
-  return (
-    <div className="seg">
-      {options.map(o => (
-        <button key={o.value} className={value === o.value ? 'on' : ''} onClick={() => onChange(o.value)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── Pantalla ──────────────────────────────────────────────────────────────────
+// Badge y Seg ahora viven en frontend/src/components/ (U-13 dedup, auditoría
+// 2026-06-10) — importados arriba.
 export default function Inventario() {
   const { toast } = useToast();
   const confirm = useConfirm();

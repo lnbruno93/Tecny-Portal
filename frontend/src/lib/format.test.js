@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmt, fmtSigned, fmtFecha } from './format';
+import { fmt, fmtSigned, fmtFecha, fmtMoney } from './format';
 
 describe('format', () => {
   it('fmt: monto completo en magnitud, sin abreviar', () => {
@@ -23,5 +23,15 @@ describe('format', () => {
     expect(fmtFecha('2026-05-26T03:00:00.000Z')).toMatch(/^\d{2}\/\d{2}\/26$/);
     expect(fmtFecha(null)).toBe('—');
     expect(fmtFecha('basura')).toBe('—');
+  });
+
+  it('fmtMoney: prefijo según moneda', () => {
+    expect(fmtMoney(45000, 'ARS')).toBe('$45.000');
+    expect(fmtMoney(950, 'USD')).toBe('u$s950');
+    expect(fmtMoney(100, 'USDT')).toBe('USDT 100');
+    expect(fmtMoney(0, 'ARS')).toBe('$0');
+    expect(fmtMoney(null, 'USD')).toBe('u$s0');
+    // Moneda desconocida → cae al símbolo USD por compat con wrappers locales viejos.
+    expect(fmtMoney(50, 'EUR')).toBe('u$s50');
   });
 });

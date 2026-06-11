@@ -11,6 +11,8 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
 import BarrioCombobox from '../components/BarrioCombobox';
 import useModal from '../lib/useModal';
+import Badge from '../components/Badge';
+import Seg from '../components/Seg';
 
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
@@ -48,26 +50,8 @@ const PRIO_DISPLAY = {
   'Baja':  { label: 'Baja',  tone: 'default' },
 };
 
-// ─── Helper components ────────────────────────────────────────────────────────
-function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
-function Seg({ value, options, onChange }) {
-  return (
-    <div className="seg">
-      {options.map(o => (
-        <button
-          key={o.value}
-          className={value === o.value ? 'on' : ''}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+// Badge y Seg ahora viven en frontend/src/components/ (U-13 dedup, auditoría
+// 2026-06-10) — importados arriba.
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function Envios() {

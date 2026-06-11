@@ -18,12 +18,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
-import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
+import { fmt, fmtMoney } from '../lib/format'; // Hygiene H2 + U-05 auditoría 2026-06-10
 
-function money(n, moneda) {
-  const sym = moneda === 'ARS' ? '$' : 'u$s';
-  return sym + fmt(n);
-}
+// Alias local para no tocar todos los callsites — `money` se resuelve al
+// helper compartido `fmtMoney` (DRY de wrappers duplicados en Inventario+Desglose360).
+const money = fmtMoney;
 
 const DIMENSIONES = [
   { value: 'categoria', label: 'Categoría' },

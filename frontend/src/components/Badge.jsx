@@ -4,11 +4,15 @@
 //
 // Uso:
 //   <Badge tone="pos">Acreditado</Badge>
+//   <Badge tone="info" style={{ fontSize: 11 }}>Etiqueta chica</Badge>
 //
-// Históricamente este componente vivía duplicado en cada screen (~7
-// duplicaciones cuando se extrajo). Centralizado acá para que un fix
-// visual sea único. Los screens que aún tienen su Badge local son
-// candidatos a migrar gradualmente.
-export default function Badge({ tone = 'default', children }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
+// Históricamente este componente vivía duplicado en cada screen. En U-13
+// (auditoría 2026-06-10) se centralizó y se migraron Inventario, Envíos,
+// Cajas, Usuarios y Financiera al import único. `style`/`className` se
+// pasan para permitir override puntual (ej. tamaño reducido en chips de
+// permisos en Usuarios.jsx). `className` se concatena con `badge badge-{tone}`,
+// no lo reemplaza.
+export default function Badge({ tone = 'default', children, style, className }) {
+  const cls = `badge badge-${tone}${className ? ` ${className}` : ''}`;
+  return <span className={cls} style={style}>{children}</span>;
 }
