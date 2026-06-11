@@ -51,10 +51,25 @@ const { TEST_USER } = require('../helpers/globalSetup');
 const API_URL = 'http://localhost:3001';
 
 // fecha YYYY-MM-DD en TZ local del runner. Para este spec usamos una fecha
-// FUTURA única (hoy + 7 días) para aislarnos de las ventas que otros specs
-// dejan con fecha=hoy (no hay cleanup entre tests). El dashboard filtra por
-// rango exacto, así que sólo nuestra venta cae en este día.
-function fechaFutura(offsetDias = 7) {
+// FUTURA única para aislarnos de las ventas que otros specs dejan con fecha=hoy
+// (no hay cleanup entre tests). El dashboard filtra por rango exacto.
+//
+// 2026-06-11 fix CI flakiness: el offset NO es fijo (hoy+7). El dashboard
+// del backend usa cache TTL 30s con key `(desde, hasta)` (ventas.js:201) y
+// NO valida query params extras (queryDashboardSchema no es .strict()) — el
+// cache buster `?_=Date.now()` es invisible para el cache server-side. Si
+// Playwright retryea el test, la segunda corrida ve el resultado cacheado
+// de la primera (ventas vacías post-truncate) y los asserts revientan.
+//
+// Solución: offset único por corrida del CI usando GITHUB_RUN_ID como seed
+// (fallback a Date.now() en local). Cada workflow run usa una fecha futura
+// distinta → cache miss garantizado en el primer GET. Rango grande
+// (100-5100 días futuros) para no chocar entre runs próximos.
+function fechaFutura() {
+  const seed = Number(
+    process.env.GITHUB_RUN_ID || process.env.GITHUB_RUN_NUMBER || Date.now()
+  );
+  const offsetDias = 100 + (Math.abs(seed) % 5000);
   const d = new Date();
   d.setDate(d.getDate() + offsetDias);
   const y = d.getFullYear();
@@ -76,7 +91,7 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
   test('happy path: venta acreditada USD se refleja en KPIs (UI + API)', async ({ page }) => {
     // Fecha única para este spec — aislada de las ventas que otros specs dejan
     // con fecha=hoy. Mismo valor para ambos lados (venta + filtro dashboard).
-    const fecha = fechaFutura(7);
+    const fecha = fechaFutura();
 
     // ── Pre-condición vía API ────────────────────────────────────────────
     // Item: descripcion única para no chocar con otros specs. Sin producto_id
