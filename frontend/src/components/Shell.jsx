@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
+import SearchGlobal from './SearchGlobal';
 import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
@@ -304,9 +305,17 @@ function Topbar({ onMenuClick, onSearchClick }) {
         <span className="cur">{label}</span>
       </div>
       <div className="topbar-spacer" />
-      <div className="search" onClick={onSearchClick} style={{ cursor: 'pointer' }}>
+      <div
+        className="search"
+        onClick={onSearchClick}
+        style={{ cursor: 'pointer' }}
+        role="button"
+        tabIndex={0}
+        aria-label="Buscar clientes, productos, ventas, envíos (Cmd+K)"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSearchClick(); } }}
+      >
         <Icons.Search size={14} />
-        <span>Buscar comprobantes, clientes, IMEIs…</span>
+        <span>Buscar clientes, productos, ventas, envíos…</span>
         <kbd>⌘K</kbd>
       </div>
       {/* "Notificaciones" oculto hasta que tenga feature real. La auditoría
@@ -333,16 +342,28 @@ function Topbar({ onMenuClick, onSearchClick }) {
 
 export default function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // 2 modales overlay: SearchGlobal (datos cross-módulo, U-23 TANDA 6) y
+  // CommandPalette (navegación entre pantallas). ⌘K abre SearchGlobal,
+  // ⌘⇧K abre CommandPalette. Decisión: la búsqueda de datos es lo que
+  // Lucas usa todo el día; navegar entre 19 pantallas es un atajo de
+  // power-user secundario.
+  const [searchOpen,  setSearchOpen]  = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [badges, setBadges] = useState({});
   const { user } = useAuth();
 
-  // Global ⌘K / Ctrl+K shortcut to open the command palette
+  // Global ⌘K / Ctrl+K shortcut → búsqueda global de datos.
+  // ⌘⇧K / Ctrl+⇧K → command palette de navegación (atajo legacy).
+  // preventDefault evita chocar con el "abrir bookmarks" del browser.
   useEffect(() => {
     function handleKeydown(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
+      const isK = e.key === 'k' || e.key === 'K';
+      if (!isK || !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      if (e.shiftKey) {
         setPaletteOpen(prev => !prev);
+      } else {
+        setSearchOpen(prev => !prev);
       }
     }
     window.addEventListener('keydown', handleKeydown);
@@ -378,13 +399,14 @@ export default function Shell() {
       <div className="main">
         <Topbar
           onMenuClick={() => setSidebarOpen(s => !s)}
-          onSearchClick={() => setPaletteOpen(true)}
+          onSearchClick={() => setSearchOpen(true)}
         />
         <UpdateBanner />
         <div className="content">
           <Outlet />
         </div>
       </div>
+      <SearchGlobal open={searchOpen} onClose={() => setSearchOpen(false)} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );

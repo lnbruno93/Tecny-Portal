@@ -487,6 +487,13 @@ app.use('/api/admin',         requireAuth, adminRoutes);
 // /api/admin). Ver routes/feature-flags.js para el rationale.
 app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
 
+// Búsqueda global (U-23 TANDA 6) — un solo endpoint que reemplaza "ir a
+// cada módulo y buscar". Solo `requireAuth`: el filtrado por permisos se
+// hace dentro del handler, así un user sin permiso de inventario sigue
+// pudiendo buscar clientes/ventas/envíos en vez de comerse un 403 que
+// rompería la búsqueda completa. Ver routes/search.js.
+app.use('/api/search', requireAuth, require('./routes/search'));
+
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');
 if (process.env.SENTRY_DSN) {
