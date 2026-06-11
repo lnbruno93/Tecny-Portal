@@ -2,7 +2,14 @@ const express     = require('express');
 const compression = require('compression');
 const cors        = require('cors');
 const helmet      = require('helmet');
-const rateLimit   = require('express-rate-limit');
+// 2026-06-11 S-IPv6: importamos `ipKeyGenerator` además del default rateLimit.
+// Sin el helper, los `keyGenerator` custom que combinan `req.ip` con user.id
+// dejan un agujero IPv6: un atacante puede rotar el sufijo de host dentro del
+// mismo /64 y obtener una IP "distinta" en cada request → bypass del límite.
+// `ipKeyGenerator` normaliza colapsando IPv6 al prefijo /64 (block) y deja
+// IPv4 intacto. Es el patrón canónico documentado en
+// https://express-rate-limit.github.io/ERR_ERL_KEY_GEN_IPV6/.
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const pinoHttp    = require('pino-http');
 const logger      = require('./lib/logger');
 const db = require('./config/database');
@@ -332,7 +339,10 @@ const changePasswordLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de cambio de contraseña, esperá 15 minutos.' },
-  keyGenerator: (req) => req.user?.id ? String(req.user.id) : req.ip,
+  // S-IPv6: si hay user.id usamos eso (misma semántica que antes); si no, IP
+  // normalizada por `ipKeyGenerator` (colapsa IPv6 al /64 — evita bypass por
+  // rotación de sufijo).
+  keyGenerator: (req) => req.user?.id ? String(req.user.id) : ipKeyGenerator(req),
   skipSuccessfulRequests: true,
   skip: () => process.env.NODE_ENV === 'test',
   ...(loginStore && { store: loginStore }),
@@ -361,7 +371,8 @@ const twoFaLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de 2FA, esperá 15 minutos.' },
-  keyGenerator: (req) => req.user?.id ? String(req.user.id) : req.ip,
+  // S-IPv6: ver comentario en changePasswordLimiter. Mismo patrón.
+  keyGenerator: (req) => req.user?.id ? String(req.user.id) : ipKeyGenerator(req),
   // Solo contar fallos (status >= 400). Los success (200) no degradan el límite,
   // así que el legítimo no se auto-bloquea por uso normal.
   skipSuccessfulRequests: true,
