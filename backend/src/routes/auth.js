@@ -220,11 +220,23 @@ router.get('/me', requireAuth, async (req, res, next) => {
 
 // Logout — bump password_changed_at invalida TODOS los tokens activos (todos los dispositivos).
 // Solución stateless: no requiere blocklist ni Redis. El middleware ya verifica iat_ms < changedAt.
+//
+// 2026-06-12: bumpeamos por +1ms (no NOW() pelado) para evitar una race condition
+// pre-existente. El JWT iat_ms tiene precisión de milisegundos (Date.now() en login).
+// PG NOW() tiene precisión de microsegundos pero al convertirse a JS Date en el
+// middleware (`new Date(pgTimestamp).getTime()`) pierde los sub-ms. Si login y
+// logout ocurren en el MISMO ms (caso típico: test que loguea + invoca logout
+// in-process), el middleware ve `iat_ms === changedAtMs` y el check `iat_ms <
+// changedAtMs` da FALSE → el token sigue siendo válido. Causa flake intermitente
+// (~3% rate) en historial.test.js que valida el flow de logout y cascada en 7
+// tests siguientes que usan el mismo token. El +1 garantiza changedAt > iat_ms
+// en TODOS los casos sin romper el flow de change-password (cuyo login posterior
+// ocurre con varios ms de latencia HTTP).
 router.post('/logout', requireAuth, async (req, res, next) => {
   try {
     await db.query(
-      'UPDATE users SET password_changed_at = NOW() WHERE id = $1',
-      [req.user.id]
+      `UPDATE users SET password_changed_at = to_timestamp(($1::bigint + 1) / 1000.0) WHERE id = $2`,
+      [Date.now(), req.user.id]
     );
     res.json({ ok: true });
   } catch (err) {
