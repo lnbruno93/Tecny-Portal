@@ -31,6 +31,7 @@ const router = require('express').Router();
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
+const logger = require('../lib/logger');
 const { createCachedFetcher } = require('../lib/cacheTtl');
 const { createFlagSchema, updateFlagSchema, NAME_REGEX, NAME_MAX } = require('../schemas/featureFlags');
 
@@ -163,7 +164,7 @@ router.patch('/:name', requireAdmin, validate(updateFlagSchema), async (req, res
     // 60s — el flag tarda hasta 1 min en propagar. Con esto, <100ms para todas.
     // El invalidate es await porque puede llamar redis.del (es async).
     if (name === 'audit_async_enabled' && req.body.enabled !== undefined) {
-      try { await require('../lib/audit')._clearAsyncCache(); }
+      try { await audit._clearAsyncCache(); }
       catch (err) { logger.warn({ err: err.message }, 'audit cache invalidate falló (best-effort)'); }
     }
     res.json(after[0]);
