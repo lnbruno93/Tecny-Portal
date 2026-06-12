@@ -32,10 +32,26 @@ async function setupTestDb() {
     stdio: 'pipe', // silenciar output en tests
   });
 
+  // 2026-06-12 fix(flake): el TRUNCATE de abajo toma AccessExclusiveLock sobre
+  // audit_logs particionado (cascade a todas las partitions). Si quedó vivo en
+  // PG cualquier backend ajeno con un INSERT recién hecho sobre la partition
+  // del mes corriente — el child process de `npm run migrate` que acaba de
+  // salir, una corrida previa de Jest matada bruscamente, etc. — el orden de
+  // adquisición de locks de partitioned tables genera deadlock determinístico
+  // (https://www.postgresql.org/docs/current/sql-truncate.html). Cortarlos
+  // ANTES del TRUNCATE elimina la race; no afecta al pool del propio test
+  // (pg_backend_pid() es el current). No-op cuando no hay zombies.
+  await pool.query(`
+    SELECT pg_terminate_backend(pid)
+      FROM pg_stat_activity
+     WHERE datname = current_database()
+       AND pid <> pg_backend_pid()
+  `);
+
   // Limpiar todas las tablas de datos y reiniciar secuencias
   await pool.query(`
     TRUNCATE TABLE
-      audit_logs,
+      audit_logs, audit_queue,
       caja_movimientos,
       cambio_movimientos, cambio_entidades,
       tarjeta_movimientos,
@@ -60,6 +76,13 @@ async function setupTestDb() {
       ('demo_flag', false, 'Flag de demostración — borrar cuando se use el primero real')
     ON CONFLICT (name) DO NOTHING
   `);
+
+  // P-07: el flag audit_async_enabled NO se re-seedea acá. El bifurcador en
+  // audit.js usa `_testOverride` (module-local) en NODE_ENV=test, NO consulta
+  // la DB. Así NO importa que el TRUNCATE borre el flag — el path sync sigue
+  // siendo el default (override=false). Los tests del async setean el override
+  // explícito en su `beforeEach`. La tabla `audit_queue` ya está en el TRUNCATE
+  // list arriba — no necesitamos TRUNCATE adicional.
 
   // Re-seed de metodos_pago (cajas) — se truncó arriba; replica el seed de la migración 002
   // para que cada test arranque con un estado determinístico de cajas.

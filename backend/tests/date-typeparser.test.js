@@ -25,8 +25,17 @@ beforeAll(async () => {
   pool = await setupTestDb();
   const res = await request(app).post('/api/auth/login').send({ username: TEST_USER.username, password: TEST_USER.password });
   token = res.body.token;
-  cajaArs = (await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja TZ', moneda: 'ARS', saldo_inicial: 0 })).body.id;
-  tarjeta = (await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'TC TZ', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 })).body.id;
+  // Crear cajas con assert explícito: si POST /cajas falla (409 por nombre duplicado
+  // de una corrida anterior que no limpió, o cualquier 4xx/5xx), `body.id` queda
+  // undefined y los tests fallan después con un 400 críptico ("metodo_pago_id" inválido
+  // o caja_id faltante en /liquidaciones). Detectarlo acá da un error inmediato
+  // y debuggeable en vez de una flake silenciosa downstream.
+  const cajaRes = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'Caja TZ', moneda: 'ARS', saldo_inicial: 0 });
+  if (cajaRes.status !== 201) throw new Error(`setup: POST /cajas Caja TZ devolvió ${cajaRes.status} ${JSON.stringify(cajaRes.body)}`);
+  cajaArs = cajaRes.body.id;
+  const tarjetaRes = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'TC TZ', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 });
+  if (tarjetaRes.status !== 201) throw new Error(`setup: POST /cajas TC TZ devolvió ${tarjetaRes.status} ${JSON.stringify(tarjetaRes.body)}`);
+  tarjeta = tarjetaRes.body.id;
 });
 afterAll(async () => { await teardownTestDb(pool); });
 

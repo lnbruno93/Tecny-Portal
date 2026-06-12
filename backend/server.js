@@ -47,6 +47,7 @@ const db     = require('./src/config/database');
 const { startPurgaJob } = require('./src/lib/audit');
 const { startInvariantsJob } = require('./src/jobs/invariantsJob');
 const { startAuditPartitionsJob } = require('./src/jobs/auditPartitionsJob');
+const { startAuditQueueWorker } = require('./src/jobs/auditQueueWorker');
 const withAdvisoryLock = require('./src/lib/withAdvisoryLock');
 const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
@@ -74,6 +75,14 @@ const server = app.listen(PORT, () => {
   // Ambas tareas con advisory lock — solo una réplica las corre.
   const retencionMeses = Number(process.env.AUDIT_RETENCION_MESES) || 12;
   startAuditPartitionsJob({ retentionMonths: retencionMeses, intervalHours: 24 });
+
+  // P-07: worker async para audit_queue. No-op cuando el flag
+  // `audit_async_enabled` esta OFF (que es el default — no hay encolado, queue
+  // queda vacia, el tick es un round-trip barato a la DB). Cuando un admin
+  // active el flag via PATCH /api/feature-flags, los audits empiezan a encolar
+  // y este worker los persiste a audit_logs cada 2s. Multi-instance safe via
+  // advisory lock + SKIP LOCKED. Drain on SIGTERM con timeout 8s.
+  startAuditQueueWorker({ batchSize: 100, intervalMs: 2000 });
 
   // P1 auditoría 2026-06: cleanup periódico de rate_limit_entries expiradas.
   // El store nunca borra automáticamente — las filas con expires_at < NOW()

@@ -174,13 +174,21 @@ router.post('/setup', async (req, res, next) => {
     const otpUri = buildOtpAuthUri(secret, req.user.username);
 
     await client.query(
+      // Re-setup (ON CONFLICT): reseteamos TODO el estado de uso previo del 2FA.
+      // `last_used_step = 0` es crítico — sin esto, si el user ya había consumido
+      // un step (via login con TOTP) en el setup anterior, el nuevo secret hereda
+      // ese step y `verifyAndConsume` rechaza el PRIMER código del nuevo flujo
+      // (porque current_step <= last_used_step stale). Síntoma: disable da 400
+      // "Código incorrecto" inmediatamente después de enable, sin razón aparente.
+      // Mismo principio que `last_used_at = NULL`: re-setup es "empezar de cero".
       `INSERT INTO user_2fa (user_id, secret_encrypted, recovery_codes, enabled_at)
        VALUES ($1, $2, $3, NULL)
        ON CONFLICT (user_id) DO UPDATE
          SET secret_encrypted = EXCLUDED.secret_encrypted,
              recovery_codes   = EXCLUDED.recovery_codes,
              enabled_at       = NULL,
-             last_used_at     = NULL`,
+             last_used_at     = NULL,
+             last_used_step   = 0`,
       [req.user.id, secretEnc, recoveryHashed]
     );
     // Audit log SIN secret ni recovery — solo el evento.

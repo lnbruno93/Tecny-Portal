@@ -413,4 +413,49 @@ router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
   }
 });
 
+// ─── P-07: Audit queue stats ─────────────────────────────────────────────────
+//
+// GET /api/admin/audit-queue-stats — telemetria del async audit pipeline.
+//
+// Devuelve:
+//   { queue_depth, oldest_enqueued_at, newest_enqueued_at, rows_with_errors,
+//     async_enabled }
+//
+// Se sirve incluso si async_enabled=false — util para verificar que no haya
+// rows colgadas tras un rollback del flag. La query es 1 round-trip a
+// audit_queue (depth tipicamente chica en steady state, full scan ok).
+//
+// Alertas operacionales (off-band): queue_depth > 1000 = warning, > 10000 =
+// critical, oldest > 5min = critical. Hoy se chequean manualmente; cuando
+// llegue un Sentry/cron externo, leer este endpoint.
+router.get('/audit-queue-stats', async (_req, res, next) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT
+         COUNT(*)::int                                          AS queue_depth,
+         MIN(enqueued_at)                                       AS oldest_enqueued_at,
+         MAX(enqueued_at)                                       AS newest_enqueued_at,
+         COUNT(*) FILTER (WHERE last_error IS NOT NULL)::int    AS rows_with_errors
+       FROM audit_queue`
+    );
+    // Leemos el flag con bypass del cache de audit.js: queremos el valor real
+    // de la DB, no el cacheado (un admin que acaba de cambiar el flag espera
+    // ver el reflejo inmediato en este endpoint). Query barata: PK lookup.
+    let async_enabled = false;
+    try {
+      const { rows: f } = await db.query(
+        `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
+      );
+      async_enabled = f[0]?.enabled === true;
+    } catch { /* fallback false si la tabla no existe */ }
+    res.json({
+      queue_depth:        rows[0].queue_depth,
+      oldest_enqueued_at: rows[0].oldest_enqueued_at,
+      newest_enqueued_at: rows[0].newest_enqueued_at,
+      rows_with_errors:   rows[0].rows_with_errors,
+      async_enabled,
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
