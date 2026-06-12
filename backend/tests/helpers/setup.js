@@ -32,6 +32,22 @@ async function setupTestDb() {
     stdio: 'pipe', // silenciar output en tests
   });
 
+  // 2026-06-12 fix(flake): el TRUNCATE de abajo toma AccessExclusiveLock sobre
+  // audit_logs particionado (cascade a todas las partitions). Si quedó vivo en
+  // PG cualquier backend ajeno con un INSERT recién hecho sobre la partition
+  // del mes corriente — el child process de `npm run migrate` que acaba de
+  // salir, una corrida previa de Jest matada bruscamente, etc. — el orden de
+  // adquisición de locks de partitioned tables genera deadlock determinístico
+  // (https://www.postgresql.org/docs/current/sql-truncate.html). Cortarlos
+  // ANTES del TRUNCATE elimina la race; no afecta al pool del propio test
+  // (pg_backend_pid() es el current). No-op cuando no hay zombies.
+  await pool.query(`
+    SELECT pg_terminate_backend(pid)
+      FROM pg_stat_activity
+     WHERE datname = current_database()
+       AND pid <> pg_backend_pid()
+  `);
+
   // Limpiar todas las tablas de datos y reiniciar secuencias
   await pool.query(`
     TRUNCATE TABLE
