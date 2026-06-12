@@ -289,6 +289,19 @@ app.get('/health', async (_req, res) => {
     dbError = err.message;
   }
 
+  // P-04: Redis health-check. NO bloquea el status global si falla — Redis
+  // es cache opcional con fallback graceful. Si está enabled pero no responde,
+  // status queda 'ok' (DB sigue funcionando, solo perdemos cache cross-instance).
+  // Si está disabled (REDIS_URL no configurada), simplemente reportamos `disabled`.
+  let redisStatus = 'disabled';
+  let redisLatency = null;
+  if (require('./lib/redisClient').isEnabled()) {
+    const redisStart = Date.now();
+    const ok = await require('./lib/redisClient').ping();
+    redisLatency = Date.now() - redisStart;
+    redisStatus = ok ? 'ok' : 'unreachable';
+  }
+
   const mem = process.memoryUsage();
   const status = dbStatus === 'ok' ? 'ok' : 'degraded';
   const migrationCount = await getMigrationCount();
@@ -316,6 +329,10 @@ app.get('/health', async (_req, res) => {
       },
       // Error interno solo visible fuera de producción — evita filtrar detalles de DB
       ...(dbError && process.env.NODE_ENV !== 'production' && { error: dbError }),
+    },
+    redis: {
+      status:     redisStatus,
+      latency_ms: redisLatency,
     },
     memory: {
       rss_mb:        Math.round(mem.rss        / 1024 / 1024),
