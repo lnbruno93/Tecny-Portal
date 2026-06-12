@@ -31,6 +31,7 @@ const router = require('express').Router();
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
+const logger = require('../lib/logger');
 const { createCachedFetcher } = require('../lib/cacheTtl');
 const { createFlagSchema, updateFlagSchema, NAME_REGEX, NAME_MAX } = require('../schemas/featureFlags');
 
@@ -158,6 +159,14 @@ router.patch('/:name', requireAdmin, validate(updateFlagSchema), async (req, res
     });
     await client.query('COMMIT');
     fetchFlagsMap.invalidate();
+    // P-04 Fase 3.1: si cambió `audit_async_enabled`, invalidamos cross-instance
+    // el cache de audit.js. Sin esto las 2 réplicas siguen sus TTL natural de
+    // 60s — el flag tarda hasta 1 min en propagar. Con esto, <100ms para todas.
+    // El invalidate es await porque puede llamar redis.del (es async).
+    if (name === 'audit_async_enabled' && req.body.enabled !== undefined) {
+      try { await audit._clearAsyncCache(); }
+      catch (err) { logger.warn({ err: err.message }, 'audit cache invalidate falló (best-effort)'); }
+    }
     res.json(after[0]);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

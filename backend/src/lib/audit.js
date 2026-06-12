@@ -1,60 +1,68 @@
 const db     = require('../config/database');
 const logger = require('./logger');
 const withAdvisoryLock = require('./withAdvisoryLock');
+const { createCachedFetcherRedis } = require('./cacheTtl');
 
 // ──────────────────────── P-07 async toggle ───────────────────────
 // `isAsyncEnabled()` lee el feature flag `audit_async_enabled` de la tabla
-// `feature_flags` con cache TTL 60s. Acoplado directamente acá (no via
-// cacheTtl.js ni feature-flags.js) para evitar dependencias circulares:
-// `feature-flags.js` ya hace `require('audit')` para auditar sus propias
-// mutations. Si audit.js requiriera feature-flags.js, formaría ciclo.
+// `feature_flags`. Acoplado directamente acá (no via feature-flags.js) para
+// evitar dependencia circular: `feature-flags.js` hace `require('audit')`
+// para auditar sus propias mutations. Si audit.js requiriera feature-flags.js,
+// formaría ciclo.
 //
-// Fail-safe: si la tabla `feature_flags` no existe o la query falla, devuelve
-// `false` y el path síncrono sigue. NO romper el audit por un error en el flag.
+// 2026-06-12 P-04 Fase 3: el cache pasó de in-memory (60s TTL local) a Redis
+// cross-instance. Cuando admin cambia el flag via PATCH /api/feature-flags/:name,
+// el endpoint llama `audit._clearAsyncCache()` que ahora hace `redis.del(key)`
+// — las 2+ réplicas ven el cambio en <100ms en lugar de hasta 60s TTL natural.
+// Si Redis está down, el wrapper hace fetch directo a Postgres cada vez (sin
+// cachear) — preserva consistency cross-instance a costo de throughput.
 //
-// Cache invalidation: TTL 60s alineado con el cache del endpoint público
-// `/api/feature-flags` (ver routes/feature-flags.js). Tradeoff conocido: al
-// cambiar el flag, las réplicas siguen su TTL natural (≤60s). Para tests
-// exportamos `_clearAsyncCache()` para forzar refresh inmediato.
+// Fail-safe: si la tabla `feature_flags` no existe o la query falla, el
+// fetcher devuelve false (path síncrono sigue). NO se cachea ese false con
+// error — la próxima call vuelve a intentar.
 //
-// En NODE_ENV=test el cache se desactiva (cada llamada hace fetch) — los tests
-// flipean el flag y esperan ver el cambio sin TTL. La query a feature_flags es
-// barata (PK lookup por name).
+// En NODE_ENV=test el wrapper bypasea Redis (createCachedFetcherRedis lo
+// desactiva), pero igualmente hacemos short-circuit ANTES para evitar incluso
+// el round-trip a DB. Razón: audit() se llama decenas de veces por test
+// integración, y aún sin cache cada llamada agregaría una query a feature_flags
+// que satura el pool y genera flakiness (invariants/race-conditions/tarjetas-
+// export fallaban con timeouts).
 const ASYNC_FLAG_TTL_MS = 60_000;
-let _asyncCache = null; // { value: boolean, expiresAt: number } | null
+const ASYNC_FLAG_REDIS_KEY = 'cache:flag:audit_async_enabled';
 
-async function isAsyncEnabled() {
-  // En NODE_ENV=test NO consultamos la DB. Razón: audit() se llama decenas
-  // de veces por test integración (cada CRUD genera 1+ audit), y agregar
-  // un round-trip a feature_flags por cada llamada SATURA el pool de
-  // conexiones (causa flakiness sporadic: invariants.test, race-conditions,
-  // tarjetas-export fallan intermitentemente con timeouts).
-  //
-  // En su lugar, usamos un módulo-local override. El test del async lo
-  // flipea explícitamente con `_setAsyncEnabledForTest(true)`. Los demás
-  // tests (default OFF) reciben false sin tocar DB → path sync, comportamiento
-  // idéntico al pre-P-07.
-  if (process.env.NODE_ENV === 'test') return _testOverride === true;
-
-  const now = Date.now();
-  if (_asyncCache && _asyncCache.expiresAt > now) return _asyncCache.value;
-
+async function _fetchFlagFromDb() {
   try {
     const { rows } = await db.query(
       `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
     );
-    const enabled = rows[0]?.enabled === true;
-    _asyncCache = { value: enabled, expiresAt: Date.now() + ASYNC_FLAG_TTL_MS };
-    return enabled;
+    return rows[0]?.enabled === true;
   } catch (err) {
     // Tabla feature_flags no existe (DB pre-M-08), flag no existe, conexión rota:
-    // fail-safe a path síncrono. NO contaminar el cache con el error.
+    // fail-safe a path síncrono. NO propagar el error al wrapper (sino el
+    // cache quedaría sin populating y next call también falla).
     logger.warn({ err: err?.message }, 'audit: isAsyncEnabled fallback a sync (flag no disponible)');
     return false;
   }
 }
+
+const _getAsyncFlag = createCachedFetcherRedis(
+  ASYNC_FLAG_REDIS_KEY,
+  ASYNC_FLAG_TTL_MS,
+  _fetchFlagFromDb
+);
+
+async function isAsyncEnabled() {
+  // Test bypass: no tocar DB ni Redis. Ver razón en el header arriba.
+  if (process.env.NODE_ENV === 'test') return _testOverride === true;
+  return _getAsyncFlag();
+}
+
 let _testOverride = false;
-function _clearAsyncCache() { _asyncCache = null; }
+function _clearAsyncCache() {
+  // Wrapper devuelve una Promise (es async porque puede llamar redis.del).
+  // Caller debe await si quiere garantía de invalidación pre-response.
+  return _getAsyncFlag.invalidate();
+}
 function _setAsyncEnabledForTest(value) { _testOverride = value === true; }
 
 // ──────────────────────── Redacción de PII ────────────────────────
