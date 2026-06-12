@@ -68,35 +68,49 @@ function _getClient() {
   if (_client) return _client;
   if (_connecting) return _client; // race-safe, ioredis ya está conectando
 
+  // 2026-06-12 hotfix: el constructor de ioredis tira synchronously si la URL
+  // es malformada o el config es inválido. Sin este try, el /health crashea
+  // con 500 → Railway lo marca como deploy down. Defensa total: cualquier
+  // error en init devuelve null (caller fallback a fetch directo).
   _connecting = true;
-  _client = new Redis(REDIS_URL, {
-    // Reintento exponencial: 50ms → 100ms → 200ms ... max 2s.
-    retryStrategy: (times) => Math.min(50 * Math.pow(2, times), 2000),
-    // Máximo 10 reintentos por minuto. Después de eso, marca como down y deja
-    // que la siguiente operación dispare reconnect.
-    maxRetriesPerRequest: 3,
-    // Si no podemos conectar en el primer intento, no bloqueamos el proceso.
-    lazyConnect: false,
-    // Connection timeout — Redis no responde en 5s = timeout.
-    connectTimeout: 5_000,
-    // Comando-level timeout en cada operación. Caller usa Promise.race
-    // para timeout más agresivo (500ms), pero esto es el techo absoluto.
-    commandTimeout: 2_000,
-  });
+  try {
+    _client = new Redis(REDIS_URL, {
+      // Reintento exponencial: 50ms → 100ms → 200ms ... max 2s.
+      retryStrategy: (times) => Math.min(50 * Math.pow(2, times), 2000),
+      // Máximo 3 reintentos por comando. Después de eso, el comando devuelve
+      // error (timeout o connection refused) y el caller hace fallback.
+      maxRetriesPerRequest: 3,
+      // Si no podemos conectar en el primer intento, no bloqueamos el proceso.
+      lazyConnect: false,
+      // Connection timeout — Redis no responde en 5s = timeout.
+      connectTimeout: 5_000,
+      // Comando-level timeout en cada operación. Caller usa Promise.race
+      // para timeout más agresivo (500ms), pero esto es el techo absoluto.
+      commandTimeout: 2_000,
+    });
 
-  _client.on('connect', () => {
-    _connected = true;
-    logger.info('redis: connected');
-  });
-  _client.on('error', (err) => {
-    _connected = false;
-    logger.warn({ err: err.message }, 'redis: connection error');
-    _reportToSentry(err, { phase: 'connection' });
-  });
-  _client.on('close', () => {
-    _connected = false;
-    logger.warn('redis: connection closed');
-  });
+    _client.on('connect', () => {
+      _connected = true;
+      logger.info('redis: connected');
+    });
+    _client.on('error', (err) => {
+      _connected = false;
+      logger.warn({ err: err.message }, 'redis: connection error');
+      _reportToSentry(err, { phase: 'connection' });
+    });
+    _client.on('close', () => {
+      _connected = false;
+      logger.warn('redis: connection closed');
+    });
+  } catch (err) {
+    // Constructor falló — log + Sentry + dejamos _client null para que las
+    // operaciones devuelvan fallback. NO propagamos el error al caller.
+    logger.error({ err: err.message }, 'redis: client init failed — Redis quedará disabled');
+    _reportToSentry(err, { phase: 'init' });
+    _client = null;
+    _connecting = false;
+    return null;
+  }
 
   return _client;
 }

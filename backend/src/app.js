@@ -293,13 +293,27 @@ app.get('/health', async (_req, res) => {
   // es cache opcional con fallback graceful. Si está enabled pero no responde,
   // status queda 'ok' (DB sigue funcionando, solo perdemos cache cross-instance).
   // Si está disabled (REDIS_URL no configurada), simplemente reportamos `disabled`.
+  //
+  // 2026-06-12 hotfix: TODO el bloque está bajo try/catch absoluto. Si algo
+  // synchronously throws (ioredis constructor con URL malformed, require()
+  // tirando ENOTFOUND, etc.), reportamos 'error' y SEGUIMOS — el endpoint
+  // /health NUNCA debe crashear. Railway lo monitorea con timeout corto y
+  // un 500 acá tumba el deploy entero (causa el healthcheck failure que
+  // bloqueó PR #190).
   let redisStatus = 'disabled';
   let redisLatency = null;
-  if (require('./lib/redisClient').isEnabled()) {
-    const redisStart = Date.now();
-    const ok = await require('./lib/redisClient').ping();
-    redisLatency = Date.now() - redisStart;
-    redisStatus = ok ? 'ok' : 'unreachable';
+  let redisError = null;
+  try {
+    const redisClient = require('./lib/redisClient');
+    if (redisClient.isEnabled()) {
+      const redisStart = Date.now();
+      const ok = await redisClient.ping();
+      redisLatency = Date.now() - redisStart;
+      redisStatus = ok ? 'ok' : 'unreachable';
+    }
+  } catch (err) {
+    redisStatus = 'error';
+    redisError = err.message;
   }
 
   const mem = process.memoryUsage();
@@ -333,6 +347,9 @@ app.get('/health', async (_req, res) => {
     redis: {
       status:     redisStatus,
       latency_ms: redisLatency,
+      // Error message solo fuera de producción para no filtrar detalles
+      // (URL de Redis, hostname interno, etc.) en /health público.
+      ...(redisError && process.env.NODE_ENV !== 'production' && { error: redisError }),
     },
     memory: {
       rss_mb:        Math.round(mem.rss        / 1024 / 1024),
