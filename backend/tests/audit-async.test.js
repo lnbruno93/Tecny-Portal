@@ -11,8 +11,8 @@
  *      con created_at === enqueued_at (preservacion temporal req #3).
  *   3. In-TX rollback con flag ON: BEGIN + audit() + ROLLBACK → la fila NO
  *      queda en audit_queue. Valida que el SAVEPOINT pattern funcione async.
- *   4. Bulk processing: 250 rows + batchSize=100 → 3 batches (100/100/50)
- *      hasta drain.
+ *   4. Bulk processing: 25 rows + batchSize=10 → 3 batches (10/10/5) hasta
+ *      drain. Cuentas chicas a propósito — ver comment en el test.
  *   5. Concurrent processBatch (SKIP LOCKED): 2 procesos en paralelo no
  *      procesan los mismos rows; total final = total encolado.
  *   6. PII redaction sigue funcionando async: campos sensibles enmascarados
@@ -134,29 +134,32 @@ describe('P-07 async audit', () => {
     expect(logs).toHaveLength(0);
   });
 
-  test('bulk: 250 rows + batchSize=100 → 3 batches (100/100/50)', async () => {
+  test('bulk: 25 rows + batchSize=10 → 3 batches (10/10/5)', async () => {
     await setAsyncFlag(true);
 
-    // Encolamos 250 rows en paralelo.
-    await Promise.all(
-      Array.from({ length: 250 }, (_, i) =>
-        audit('bulk_test', 'INSERT', i + 1, { despues: { id: i + 1 } })
-      )
-    );
+    // 25 rows encolados secuencialmente para no estresar el pool global de
+    // conexiones (db.max=20). 250 concurrent INSERTs probaron ser un origen de
+    // flake en la suite completa: la próxima beforeAll (migrate via execSync)
+    // races con conexiones leftover y timeoutea — cascada en 20+ tests
+    // downstream. Con 25 secuenciales validamos la misma semántica de
+    // batching (3 batches, último mas chico) sin saturar el pool.
+    for (let i = 0; i < 25; i++) {
+      await audit('bulk_test', 'INSERT', i + 1, { despues: { id: i + 1 } });
+    }
 
     const { rows: q0 } = await pool.query('SELECT COUNT(*)::int AS n FROM audit_queue');
-    expect(q0[0].n).toBe(250);
+    expect(q0[0].n).toBe(25);
 
-    const b1 = await processBatch({ batchSize: 100 });
-    expect(b1.processed).toBe(100);
+    const b1 = await processBatch({ batchSize: 10 });
+    expect(b1.processed).toBe(10);
     expect(b1.drained).toBe(false);
 
-    const b2 = await processBatch({ batchSize: 100 });
-    expect(b2.processed).toBe(100);
+    const b2 = await processBatch({ batchSize: 10 });
+    expect(b2.processed).toBe(10);
     expect(b2.drained).toBe(false);
 
-    const b3 = await processBatch({ batchSize: 100 });
-    expect(b3.processed).toBe(50);
+    const b3 = await processBatch({ batchSize: 10 });
+    expect(b3.processed).toBe(5);
     expect(b3.drained).toBe(true);
 
     const { rows: qF } = await pool.query('SELECT COUNT(*)::int AS n FROM audit_queue');
@@ -164,26 +167,26 @@ describe('P-07 async audit', () => {
       `SELECT COUNT(*)::int AS n FROM audit_logs WHERE tabla = 'bulk_test'`
     );
     expect(qF[0].n).toBe(0);
-    expect(lF[0].n).toBe(250);
+    expect(lF[0].n).toBe(25);
   });
 
   test('SKIP LOCKED: dos processBatch en paralelo NO procesan los mismos rows', async () => {
     await setAsyncFlag(true);
 
-    // 50 rows encolados.
-    await Promise.all(
-      Array.from({ length: 50 }, (_, i) =>
-        audit('skip_test', 'INSERT', i + 1, { despues: { id: i + 1 } })
-      )
-    );
+    // 10 rows encolados secuencialmente. El test prueba que SKIP LOCKED hace
+    // su trabajo con 2 procesos concurrentes — la cantidad no importa, lo
+    // que importa es que la suma sea exacta y no haya duplicados.
+    for (let i = 0; i < 10; i++) {
+      await audit('skip_test', 'INSERT', i + 1, { despues: { id: i + 1 } });
+    }
 
-    // 2 batches en paralelo, batchSize=25 cada uno (total 50, exacto).
+    // 2 batches en paralelo, batchSize=5 cada uno (total 10, exacto).
     const [r1, r2] = await Promise.all([
-      processBatch({ batchSize: 25 }),
-      processBatch({ batchSize: 25 }),
+      processBatch({ batchSize: 5 }),
+      processBatch({ batchSize: 5 }),
     ]);
-    // La suma debe ser exactamente 50 (cada row procesado 1 vez sola).
-    expect(r1.processed + r2.processed).toBe(50);
+    // La suma debe ser exactamente 10 (cada row procesado 1 vez sola).
+    expect(r1.processed + r2.processed).toBe(10);
 
     const { rows: qF } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM audit_queue WHERE tabla = 'skip_test'`
@@ -192,7 +195,7 @@ describe('P-07 async audit', () => {
       `SELECT COUNT(*)::int AS n FROM audit_logs WHERE tabla = 'skip_test'`
     );
     expect(qF[0].n).toBe(0);
-    expect(lF[0].n).toBe(50); // sin duplicados
+    expect(lF[0].n).toBe(10); // sin duplicados
   });
 
   test('PII redaction funciona en path async (campos sensibles enmascarados al encolar)', async () => {
