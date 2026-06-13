@@ -9,6 +9,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const fileStore = require('../lib/fileStore');
+const storageFlags = require('../lib/storageFlags');
 const {
   etiquetaSchema, garantiaSchema, updateGarantiaSchema, comprobanteVentaSchema,
   createVentaRapidaSchema, updateVentaRapidaSchema,
@@ -147,20 +148,41 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
     const venta = ventaRes.rows[0];
 
     const { archivo_data, archivo_nombre, archivo_tipo } = req.body;
-    // P-03 Fase 1: el upload pasa por fileStore. Driver db es passthrough
-    // del base64. Driver r2 (Fase 2+) subirá al bucket bajo
-    // `venta-comprobantes/venta-<id>/...` y dejará archivo_data=null.
-    const file = await fileStore.put({
-      dataBase64: archivo_data ?? null,
-      filename: archivo_nombre ?? null,
-      mime: archivo_tipo ?? null,
-      entity: 'venta-comprobantes',
-      subpath: `venta-${id}`,
-    });
+    // P-03 Fase 5: bifurcación de upload por feature flag (mismo patrón que
+    // comprobantes Financiera en Fase 3 y productos.foto en Fase 4).
+    //   Flag ON + STORAGE_DRIVER=r2 → fileStore.put sube el blob a R2 y devuelve
+    //     `{ data: null, key: '...' }`. INSERT guarda key+size, archivo_data NULL.
+    //   Flag OFF o driver=db → bypass al path legacy (base64 directo a
+    //     archivo_data). Preserva el comportamiento pre-fase-5 exacto.
+    // Reads (GET /comprobantes/:cid) usan fileStore.get con fallback automático.
+    const useR2 = fileStore._DRIVER === 'r2'
+               && await storageFlags.isEnabled('storage_r2_ventas_comprobantes');
+
+    let file;
+    if (useR2) {
+      file = await fileStore.put({
+        dataBase64: archivo_data ?? null,
+        filename: archivo_nombre ?? null,
+        mime: archivo_tipo ?? null,
+        entity: 'venta-comprobantes',
+        subpath: `venta-${id}`,
+      });
+    } else {
+      file = {
+        data: archivo_data ?? null,
+        key: null,
+        size: null,
+        nombre: archivo_nombre ?? null,
+        tipo: archivo_tipo ?? null,
+      };
+    }
+
     const { rows } = await client.query(
-      `INSERT INTO venta_comprobantes (venta_id, archivo_data, archivo_nombre, archivo_tipo)
-       VALUES ($1,$2,$3,$4) RETURNING id, archivo_nombre, archivo_tipo, created_at`,
-      [id, file.data, file.nombre, file.tipo]
+      `INSERT INTO venta_comprobantes
+        (venta_id, archivo_data, archivo_nombre, archivo_tipo, archivo_key, archivo_size)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, archivo_nombre, archivo_tipo, created_at`,
+      [id, file.data, file.nombre, file.tipo, file.key, file.size]
     );
 
     // Reconciliar el comprobante de Financiera (única fuente de verdad): si la venta
@@ -205,10 +227,14 @@ router.get('/comprobantes/:cid', async (req, res, next) => {
   try {
     const cid = parseId(req.params.cid);
     if (!cid) return res.status(400).json({ error: 'ID inválido' });
-    // P-03 Fase 1: la lectura pasa por fileStore. Shape del response
-    // { archivo_data, archivo_nombre, archivo_tipo } NO cambia — frontend intacto.
+    // P-03 Fase 5: la lectura pasa por fileStore. Driver db lee archivo_data
+    // directo. Driver r2 chequea primero archivo_key (baja de R2) y hace
+    // fallback a archivo_data para filas legacy. Shape del response
+    // { archivo_data, archivo_nombre, archivo_tipo } NO cambia — frontend
+    // intacto. archivo_key se incluye en el SELECT para que el driver r2
+    // pueda decidir el path.
     const { rows } = await db.query(
-      `SELECT vc.archivo_data, vc.archivo_nombre, vc.archivo_tipo
+      `SELECT vc.archivo_data, vc.archivo_key, vc.archivo_nombre, vc.archivo_tipo
          FROM venta_comprobantes vc
          JOIN ventas v ON v.id = vc.venta_id AND v.deleted_at IS NULL
         WHERE vc.id = $1 AND vc.deleted_at IS NULL`, [cid]
