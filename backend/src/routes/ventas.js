@@ -7,7 +7,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
-const { createCachedFetcher } = require('../lib/cacheTtl');
+const { createCachedFetcherRedis } = require('../lib/cacheTtl');
 // postCajaMovimiento / reverseCajaMovimientos: postear/revertir cajas para una venta
 // los maneja lib/ventaSync.js; este archivo no los usa directamente, pero los dejamos
 // disponibles a través del require por si una edición futura los necesita.
@@ -180,16 +180,21 @@ async function insertarDetalle(client, venta, b) {
 // portal. A 30s de TTL un mismo par (desde, hasta) que reciba N requests
 // concurrentes paga UNA query bundle y los demás reutilizan el resultado.
 //
-// Trade-off de invalidación: NO invalidamos manualmente desde POST/PUT/DELETE
-// de ventas/egresos/movimientos. Razones:
-//   (a) 30s ya es un staleness aceptable para KPIs (Lucas no monitorea al seg).
-//   (b) Railway corre 2 réplicas → la invalidación process-local no cubre
-//       la otra réplica de todos modos (mismo trade-off que inventarioCache).
-//   (c) El cableado cross-route sería invasivo (8+ call sites) por un gain
+// 2026-06-12 P-04 Fase 3.5: cache movido de in-memory local a Redis cross-
+// instance. Cuando un usuario hit la réplica A y otro hit la réplica B con
+// los mismos filtros, AHORA reusan el mismo resultado cacheado en Redis.
+// La key Redis usa el mismo formato `cache:ventas:dashboard:{desde}|{hasta}`.
+//
+// Trade-off de invalidación (sin cambios respecto a la versión local): NO
+// invalidamos manualmente desde POST/PUT/DELETE. Razones:
+//   (a) 30s es staleness aceptable para KPIs de dashboard (Lucas no monitorea
+//       al seg, mira para reporting).
+//   (b) El cableado cross-route sería invasivo (8+ call sites) por un gain
 //       marginal sobre los 30s de TTL.
-// Si en el futuro Lucas pide "ver el dashboard actualizado YA después de
-// cerrar una venta", la solución de fondo es Redis pub/sub, no inflar este
-// archivo.
+// Si en el futuro se quiere "ver dashboard actualizado YA después de cerrar
+// venta", agregar invalidación post-COMMIT en los 8 callsites (POST/PUT/
+// DELETE ventas + egresos + movimientos). Con Redis ya migrado, la
+// invalidación cross-instance es 1 línea.
 //
 // LRU cap: el operador puede mover los filtros de fecha libremente; cada par
 // distinto retiene una closure con cache state. Acotamos a 100 entradas
@@ -205,8 +210,8 @@ function getDashboardFetcher(desde, hasta) {
     dashboardFetchers.set(key, fn);
     return fn;
   }
-  fn = createCachedFetcher(
-    `ventas:dashboard:${key}`,
+  fn = createCachedFetcherRedis(
+    `cache:ventas:dashboard:${key}`,
     DASHBOARD_TTL_MS,
     () => computeDashboard(desde, hasta)
   );
