@@ -187,27 +187,26 @@ describe('fileStore — driver db (Fase 1)', () => {
 });
 
 describe('fileStore — STORAGE_DRIVER inválido', () => {
-  // Este test reinicia el module cache para forzar el throw inicial. No usa
-  // la instancia singleton — la importa fresca con env mockeado.
-  test('throwea fatal si STORAGE_DRIVER no es "db"', () => {
-    const original = process.env.STORAGE_DRIVER;
-    process.env.STORAGE_DRIVER = 'r2';  // r2 no existe en Fase 1
-    jest.resetModules();
-    expect(() => require('../src/lib/fileStore')).toThrow(
-      /STORAGE_DRIVER='r2'.+no está soportado/i,
-    );
-    // Restaurar para no contaminar tests siguientes
-    if (original === undefined) delete process.env.STORAGE_DRIVER;
-    else process.env.STORAGE_DRIVER = original;
-    jest.resetModules();
-  });
-
+  // Reinicia module cache para forzar el throw inicial. Fase 2: 'db' y 'r2'
+  // son válidos; cualquier otro valor tira fatal.
   test('throwea fatal si STORAGE_DRIVER es un valor random', () => {
     const original = process.env.STORAGE_DRIVER;
     process.env.STORAGE_DRIVER = 'foobar';
     jest.resetModules();
     expect(() => require('../src/lib/fileStore')).toThrow(
-      /STORAGE_DRIVER='foobar'/i,
+      /STORAGE_DRIVER='foobar'.+no es soportado/i,
+    );
+    if (original === undefined) delete process.env.STORAGE_DRIVER;
+    else process.env.STORAGE_DRIVER = original;
+    jest.resetModules();
+  });
+
+  test('throwea fatal con string vacío explícito que no matchea db/r2', () => {
+    const original = process.env.STORAGE_DRIVER;
+    process.env.STORAGE_DRIVER = 's3';   // s3 NO es alias de r2, requiere driver propio
+    jest.resetModules();
+    expect(() => require('../src/lib/fileStore')).toThrow(
+      /STORAGE_DRIVER='s3'/i,
     );
     if (original === undefined) delete process.env.STORAGE_DRIVER;
     else process.env.STORAGE_DRIVER = original;
