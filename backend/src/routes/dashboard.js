@@ -9,9 +9,17 @@
 //
 // Cacheado con TTL 60s por par de períodos (los datos mensuales no cambian
 // al segundo; 60s da buen tradeoff de freshness vs costo de queries).
+//
+// 2026-06-12 P-04 Fase 3.4: cache movido de in-memory local a Redis cross-
+// instance. Sin invalidación explícita (los datos mensuales solo cambian al
+// crear ventas/movimientos del MES actual, y 60s de stale es invisible para
+// el usuario humano del dashboard). La Map `fetchers` local se preserva: el
+// wrapper Redis tiene dedup intra-réplica (pending promise) y la Map asegura
+// que múltiples requests a la misma key dentro de la misma réplica reusen
+// el mismo wrapper (evita crear N closures por minuto).
 
 const router = require('express').Router();
-const { createCachedFetcher } = require('../lib/cacheTtl');
+const { createCachedFetcherRedis } = require('../lib/cacheTtl');
 const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensual');
 
 // Caché de funciones por par (periodo, comparado). Cada llamada al endpoint
@@ -34,8 +42,8 @@ function getFetcher(periodoActual, periodoComparado) {
     fetchers.set(key, fn);
     return fn;
   }
-  fn = createCachedFetcher(
-    `dashboard:resumen:${key}`,
+  fn = createCachedFetcherRedis(
+    `cache:dashboard:resumen:${key}`,
     60_000,
     async () => {
       const { desde: dA, hasta: hA } = rangoMes(periodoActual);
