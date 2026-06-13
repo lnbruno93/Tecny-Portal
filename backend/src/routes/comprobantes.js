@@ -10,6 +10,7 @@ const parseId = require('../lib/parseId');
 const { computeNeto } = require('../lib/money');
 const { postCajaMovimientoFinanciera } = require('../lib/financiera');
 const { reverseCajaMovimientos } = require('../lib/cajaLedger');
+const fileStore = require('../lib/fileStore');
 const {
   createComprobanteSchema, queryComprobantesSchema,
   createManualComprobanteSchema, updateManualComprobanteSchema,
@@ -135,11 +136,22 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
     const { fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo } = req.body;
     await client.query('BEGIN');
 
+    // P-03 Fase 1: el upload pasa por fileStore. Driver db (Fase 1) es passthrough
+    // del base64 a la columna. Driver r2 (Fase 2+) subirá al bucket y devolverá
+    // `{ data: null, key: '...' }` — el INSERT no cambia, pero la columna que
+    // recibe valor pasa a ser `archivo_key` (Fase 2 agregará esa columna).
+    const file = await fileStore.put({
+      dataBase64: archivo_data ?? null,
+      filename: archivo_nombre ?? null,
+      mime: archivo_tipo ?? null,
+      entity: 'comprobantes',
+    });
+
     const { rows } = await client.query(
       `INSERT INTO comprobantes (fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [fecha, cliente, vendedor_id ?? null, monto, monto_financiera, monto_neto ?? monto, referencia ?? null,
-       archivo_data ?? null, archivo_nombre ?? null, archivo_tipo ?? null]
+       file.data, file.nombre, file.tipo]
     );
     const compId = rows[0].id;
     const netoMov = Number(monto_neto ?? monto);
@@ -360,12 +372,18 @@ router.get('/:id/archivo', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
+    // P-03 Fase 1: la lectura pasa por fileStore. Driver db (Fase 1) lee la
+    // columna archivo_data directo. Driver r2 (Fase 2+) chequeará primero
+    // archivo_key y hará fallback a archivo_data para filas legacy. El shape
+    // del response { data, nombre, tipo } no cambia — frontend intacto.
     const { rows } = await db.query(
       'SELECT archivo_data, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
-    if (!rows[0]?.archivo_data) return res.status(404).json({ error: 'Archivo no encontrado' });
-    res.json({ data: rows[0].archivo_data, nombre: rows[0].archivo_nombre, tipo: rows[0].archivo_tipo });
+    if (!rows[0]) return res.status(404).json({ error: 'Archivo no encontrado' });
+    const file = await fileStore.get(rows[0], { prefix: 'archivo' });
+    if (!file) return res.status(404).json({ error: 'Archivo no encontrado' });
+    res.json(file);
   } catch (err) {
     next(err);
   }
@@ -480,8 +498,12 @@ router.get('/export-zip', exportLimiter, validate(queryComprobantesSchema, 'quer
         }
         usedNames.add(candidato);
         nombreArchivo = candidato;
-        const buf = Buffer.from(c.archivo_data, 'base64');
-        archive.append(buf, { name: candidato });
+        // P-03 Fase 1: stream en lugar de Buffer. Driver db wrappea el base64
+        // en un Readable de un solo chunk (footprint similar al buffer). Driver
+        // r2 (Fase 2+) devolverá el stream del GetObjectResponse directo, lo
+        // que va a reducir picos de RAM en exports grandes.
+        const stream = await fileStore.stream(c, { prefix: 'archivo' });
+        archive.append(stream, { name: candidato });
       }
       // CSV row — escape mínimo (comillas dobles cuando hay comas o quotes).
       csvLines.push([
