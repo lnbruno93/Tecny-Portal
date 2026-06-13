@@ -1,6 +1,12 @@
 # Archivos (comprobantes y fotos) — estado actual y camino a storage externo
 
-## Hoy: base64 en PostgreSQL
+> **Actualización 2026-06-13** — P-03 implementado. Las 3 entities pueden
+> migrarse a Cloudflare R2 vía feature flags. Ver `docs/design/p03-r2-storage.md`
+> y `docs/OPERATIONS.md` §7 (RUNBOOK) para el detalle operacional. Este
+> archivo se mantiene como referencia histórica + descripción del estado
+> "default OFF" (donde las flags siguen apagadas).
+
+## Hoy (con flag OFF): base64 en PostgreSQL
 
 Los archivos se guardan como base64 en columnas `TEXT`:
 - `comprobantes.archivo_data` (Financiera)
@@ -15,18 +21,25 @@ Los archivos se guardan como base64 en columnas `TEXT`:
 
 Esto es suficiente para miles de registros sin degradar las listas.
 
-## Mañana: storage externo (S3 / Cloudflare R2)
+## Hoy (con flag ON): Cloudflare R2
 
-A gran escala (decenas de miles de archivos, o archivos grandes), conviene mover los blobs a object storage. **Requiere infraestructura tuya** (bucket + credenciales) y es un cambio que también toca Financiera.
+Implementado en 2026-06-13 (P-03). Cuando el feature flag de la entity está ON
+**Y** `STORAGE_DRIVER=r2`, los uploads van a Cloudflare R2 — guardan `*_key`
+en la columna y `*_data` queda NULL. Reads tienen fallback automático: si la
+fila tiene `*_key` → R2, sino → `*_data` legacy.
 
-Plan sugerido (sin reescribir los call sites):
-1. Crear bucket (S3 o R2) y credenciales; agregar env vars (`STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_REGION`, `S3_KEY`, `S3_SECRET`, `S3_ENDPOINT` para R2).
-2. Crear `backend/src/lib/fileStore.js` con dos drivers:
-   - `db` (actual): guarda/lee base64 en la columna.
-   - `s3`: sube el archivo y guarda solo la **key/URL** en la columna (`archivo_data` pasa a guardar la key, o se agrega `archivo_url`).
-   - El driver se elige por `STORAGE_DRIVER`.
-3. Endpoints de subida/lectura usan `fileStore.put()/get()` en vez de tocar la columna directo.
-4. Migración opcional para mover los blobs existentes al bucket (script de backfill).
-5. Servir los archivos vía URL firmada (no proxyear el binario por el backend).
+Para detalle operacional ver:
+- `docs/design/p03-r2-storage.md` — diseño completo (motivación, arquitectura, fases).
+- `docs/OPERATIONS.md` §7 — RUNBOOK (activación, failover, backfill, rotación de credenciales).
+- `backend/src/lib/fileStore.js` — abstracción de drivers.
+- `backend/scripts/r2-backfill.js` — script para mover blobs legacy a R2.
+- `backend/scripts/r2-smoke.js` — smoke test de conectividad.
 
-Mientras `STORAGE_DRIVER` no esté seteado, todo sigue funcionando con el driver `db` actual — el cambio es transparente y reversible.
+Drivers disponibles (env var `STORAGE_DRIVER`):
+- `db` (default): guarda/lee base64 en columna TEXT — estado pre-P-03.
+- `r2`: sube/baja a Cloudflare R2 con S3-compatible API.
+
+Out of scope (TANDA futura):
+- Signed URLs para que el cliente baje directo de R2 (hoy proxy mode).
+- Image resizing automático (thumbnails).
+- Lifecycle rules de R2 (auto-delete archivos viejos).
