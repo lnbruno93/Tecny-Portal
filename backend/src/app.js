@@ -551,15 +551,29 @@ app.use((err, req, res, _next) => {
   // puede filtrar nombres de tablas/columnas/constraints. Ya queda logueado server-side.
   // Errores <500 (validación/negocio): el mensaje es intencional y seguro de mostrar.
   //
-  // 2026-06-13 — En NON-PROD, los admins reciben además el detalle del error en
-  // el response (mensaje + stack truncado + code SQL si lo hay). Esto permite
-  // debuggear bugs de staging sin pelear con logs de Railway. En prod siempre
-  // se devuelve el mensaje genérico para no filtrar nombres de tablas/constraints
-  // a clientes finales.
+  // 2026-06-13 — En staging/dev, los admins reciben además el detalle del error
+  // en el response (mensaje + stack truncado + code SQL si lo hay). Esto permite
+  // debuggear bugs de staging sin pelear con logs de Railway.
+  //
+  // Detección: NODE_ENV != 'production' Ó el host contiene 'staging'/'localhost'.
+  // El check de host cubre el caso Railway: por default Railway setea
+  // NODE_ENV=production en TODOS los environments (staging y prod), así que el
+  // check basado solo en NODE_ENV no distingue entre ambos. El host sí
+  // (ipro-backend-staging.up.railway.app vs ipro-backend-production.up.railway.app).
+  //
+  // Seguridad: el detalle solo se expone si (a) el caller es admin, (b) el host
+  // NO es production. En el host de producción real siempre se devuelve el
+  // mensaje genérico, sin importar NODE_ENV. Defensa en profundidad: aunque
+  // alguien cambie NODE_ENV en prod, el host gatekeeps.
   const body = { error: status >= 500 ? 'Error interno' : (err.message || 'Error') };
-  if (status >= 500
-      && req.user?.role === 'admin'
-      && process.env.NODE_ENV !== 'production') {
+  const host = req.headers?.host || '';
+  const isNonProdHost = host.includes('staging')
+                     || host.includes('localhost')
+                     || host.startsWith('127.');
+  const exposeDebug = status >= 500
+                   && req.user?.role === 'admin'
+                   && (isNonProdHost || process.env.NODE_ENV !== 'production');
+  if (exposeDebug) {
     body._debug = {
       message: err.message,
       code: err.code,
