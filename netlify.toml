@@ -19,6 +19,19 @@
   to     = "/manifest.webmanifest"
   status = 200
 
+# Source maps: 404 directo, no SPA fallback. Vite genera los .map en build y
+# el plugin Sentry los sube al proyecto Sentry (release tracking + stacktraces
+# legibles para errors de producción), pero NO los publicamos en Netlify
+# (evita que cualquiera con DevTools lea el código fuente original). Sin esta
+# regla, el SPA fallback de abajo devolvería /index.html (HTML) cuando DevTools
+# pide un .map, generando "JSON Parse error: Unrecognized token '<'" en la
+# consola — molesto sin función rota. Con el 404 directo, DevTools recibe el
+# status correcto y deja de quejarse.
+[[redirects]]
+  from   = "/assets/*.map"
+  to     = "/404.html"
+  status = 404
+
 # SPA fallback — must come last
 [[redirects]]
   from   = "/*"
