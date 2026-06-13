@@ -11,6 +11,7 @@ const { computeNeto } = require('../lib/money');
 const { postCajaMovimientoFinanciera } = require('../lib/financiera');
 const { reverseCajaMovimientos } = require('../lib/cajaLedger');
 const fileStore = require('../lib/fileStore');
+const storageFlags = require('../lib/storageFlags');
 const {
   createComprobanteSchema, queryComprobantesSchema,
   createManualComprobanteSchema, updateManualComprobanteSchema,
@@ -105,10 +106,12 @@ router.get('/', validate(queryComprobantesSchema, 'query'), async (req, res, nex
       db.query(`SELECT COUNT(*) ${baseQuery}`, params),
       db.query(
         // Columnas explícitas SIN archivo_data (base64): no debe viajar en el listado.
-        // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay adjunto.
+        // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay
+        // adjunto en CUALQUIERA de los dos backends — archivo_data (legacy) o
+        // archivo_key (R2, P-03 Fase 3+).
         `SELECT c.id, c.fecha, c.cliente, c.vendedor_id, c.monto, c.monto_financiera, c.monto_neto,
                 c.referencia, c.archivo_nombre, c.archivo_tipo, c.venta_id, c.created_at,
-                (c.archivo_data IS NOT NULL) AS tiene_archivo,
+                (c.archivo_data IS NOT NULL OR c.archivo_key IS NOT NULL) AS tiene_archivo,
                 v.nombre AS vendedor_nombre
          ${baseQuery}
          ORDER BY c.fecha DESC, c.id DESC
@@ -136,22 +139,50 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
     const { fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo } = req.body;
     await client.query('BEGIN');
 
-    // P-03 Fase 1: el upload pasa por fileStore. Driver db (Fase 1) es passthrough
-    // del base64 a la columna. Driver r2 (Fase 2+) subirá al bucket y devolverá
-    // `{ data: null, key: '...' }` — el INSERT no cambia, pero la columna que
-    // recibe valor pasa a ser `archivo_key` (Fase 2 agregará esa columna).
-    const file = await fileStore.put({
-      dataBase64: archivo_data ?? null,
-      filename: archivo_nombre ?? null,
-      mime: archivo_tipo ?? null,
-      entity: 'comprobantes',
-    });
+    // P-03 Fase 3: bifurcación de upload por feature flag.
+    //   Si flag `storage_r2_comprobantes` ON + STORAGE_DRIVER=r2 → fileStore.put
+    //   sube el blob a R2 y devuelve `{ data: null, key: '...' }`. El INSERT
+    //   guarda key+size en las columnas nuevas y `archivo_data` queda NULL.
+    //
+    //   Si flag OFF o driver=db → bypass al path legacy: el base64 va directo
+    //   a la columna `archivo_data` sin tocar R2 (preserva el comportamiento
+    //   pre-fase-3 exacto). Eso permite que el deploy con flag OFF no cambie
+    //   nada en producción hasta que el admin lo prenda explícitamente.
+    //
+    // Reads (GET /:id/archivo y GET /export-zip) usan fileStore.get/stream que
+    // tienen fallback automático: si la fila tiene archivo_key → R2, sino
+    // → archivo_data. Por eso flippear el flag NO rompe el acceso a uploads
+    // anteriores.
+    const useR2 = fileStore._DRIVER === 'r2'
+               && await storageFlags.isEnabled('storage_r2_comprobantes');
+
+    let file;
+    if (useR2) {
+      file = await fileStore.put({
+        dataBase64: archivo_data ?? null,
+        filename: archivo_nombre ?? null,
+        mime: archivo_tipo ?? null,
+        entity: 'comprobantes',
+      });
+    } else {
+      // Path legacy — sin fileStore para evitar overhead. Mismo shape de
+      // resultado para que el INSERT sea idéntico abajo.
+      file = {
+        data: archivo_data ?? null,
+        key: null,
+        size: null,
+        nombre: archivo_nombre ?? null,
+        tipo: archivo_tipo ?? null,
+      };
+    }
 
     const { rows } = await client.query(
-      `INSERT INTO comprobantes (fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO comprobantes
+        (fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia,
+         archivo_data, archivo_nombre, archivo_tipo, archivo_key, archivo_size)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [fecha, cliente, vendedor_id ?? null, monto, monto_financiera, monto_neto ?? monto, referencia ?? null,
-       file.data, file.nombre, file.tipo]
+       file.data, file.nombre, file.tipo, file.key, file.size]
     );
     const compId = rows[0].id;
     const netoMov = Number(monto_neto ?? monto);
@@ -372,12 +403,13 @@ router.get('/:id/archivo', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    // P-03 Fase 1: la lectura pasa por fileStore. Driver db (Fase 1) lee la
-    // columna archivo_data directo. Driver r2 (Fase 2+) chequeará primero
-    // archivo_key y hará fallback a archivo_data para filas legacy. El shape
-    // del response { data, nombre, tipo } no cambia — frontend intacto.
+    // P-03 Fase 3: la lectura pasa por fileStore. Driver db lee archivo_data
+    // directo. Driver r2 chequea primero archivo_key (baja de R2 si existe)
+    // y hace fallback a archivo_data para filas legacy. El shape del response
+    // { data, nombre, tipo } no cambia — frontend intacto. archivo_key se
+    // incluye en el SELECT para que el driver r2 pueda decidir el path.
     const { rows } = await db.query(
-      'SELECT archivo_data, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT archivo_data, archivo_key, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1 AND deleted_at IS NULL',
       [id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Archivo no encontrado' });
@@ -437,10 +469,14 @@ router.get('/export-zip', exportLimiter, validate(queryComprobantesSchema, 'quer
       });
     }
 
+    // P-03 Fase 3: incluir archivo_key para que fileStore.stream pueda decidir
+    // entre R2 (si key existe) y legacy (archivo_data). Con driver r2 y filas
+    // migradas, el stream sale directo del GetObjectResponse sin materializar
+    // el blob a memoria del proceso (mejora picos de RAM en exports grandes).
     const { rows } = await db.query(`
       SELECT c.id, c.fecha, c.cliente, v.nombre AS vendedor, c.referencia,
              c.monto, c.monto_financiera, c.monto_neto,
-             c.archivo_data, c.archivo_nombre, c.archivo_tipo
+             c.archivo_data, c.archivo_key, c.archivo_nombre, c.archivo_tipo
       FROM comprobantes c
       LEFT JOIN vendedores v ON v.id = c.vendedor_id
       ${where}

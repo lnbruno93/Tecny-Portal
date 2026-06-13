@@ -33,6 +33,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { createCachedFetcher } = require('../lib/cacheTtl');
+const storageFlags = require('../lib/storageFlags');
 const { createFlagSchema, updateFlagSchema, NAME_REGEX, NAME_MAX } = require('../schemas/featureFlags');
 
 // Guard inline (no usamos el middleware adminOnly global porque el GET /
@@ -166,6 +167,14 @@ router.patch('/:name', requireAdmin, validate(updateFlagSchema), async (req, res
     if (name === 'audit_async_enabled' && req.body.enabled !== undefined) {
       try { await audit._clearAsyncCache(); }
       catch (err) { logger.warn({ err: err.message }, 'audit cache invalidate falló (best-effort)'); }
+    }
+    // P-03 Fase 3+: si cambió un flag `storage_r2_*`, invalidamos cross-instance
+    // el cache del wrapper en lib/storageFlags.js. Sin esto, las réplicas que
+    // sirven uploads siguen el TTL natural de 60s — el flag tarda hasta 1 min
+    // en propagar. Con esto, <100ms (Redis del cross-instance).
+    if (storageFlags.FLAGS.includes(name) && req.body.enabled !== undefined) {
+      try { await storageFlags.invalidate(name); }
+      catch (err) { logger.warn({ err: err.message, flag: name }, 'storageFlags invalidate falló (best-effort)'); }
     }
     res.json(after[0]);
   } catch (err) {
