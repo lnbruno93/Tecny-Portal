@@ -111,10 +111,16 @@ function _getS3Client() {
     // eslint-disable-next-line global-require
     const { S3Client } = require('@aws-sdk/client-s3');
 
-    const endpoint = process.env.R2_ENDPOINT;
-    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-    const bucket = process.env.R2_BUCKET;
+    // Trim defensivo: cuando se pegan env vars en la UI de Railway desde un
+    // dashboard que tiene word-wrap, a veces se cuela un \n al final del valor.
+    // El AWS SDK rechaza una URL con whitespace y tira TypeError: Invalid URL,
+    // que era el bug que pinchó el primer smoke test en staging (2026-06-13).
+    // Trimear acá vale para los 4 valores — ninguno debería tener whitespace
+    // legítimo (endpoint = URL, key IDs y secret = strings opacos, bucket = nombre).
+    const endpoint = (process.env.R2_ENDPOINT || '').trim();
+    const accessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
+    const secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || '').trim();
+    const bucket = (process.env.R2_BUCKET || '').trim();
 
     if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) {
       throw new Error(
@@ -139,7 +145,7 @@ function _getS3Client() {
 }
 
 function _getBucket() {
-  const b = process.env.R2_BUCKET;
+  const b = (process.env.R2_BUCKET || '').trim();
   if (!b) throw new Error('[fileStore.r2] R2_BUCKET no está seteado');
   return b;
 }
