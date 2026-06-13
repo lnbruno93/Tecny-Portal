@@ -24,11 +24,13 @@
 //   · DELETE /movimientos/:id (revertir venta B2B)
 //   · POST/PUT/DELETE /ventas (ventas retail descontan/devuelven stock)
 //
-// Multi-instance (Railway 2 réplicas): la invalidación es process-local.
-// Si la réplica A escribe, la B sigue su TTL natural — máximo 20s de stale.
-// Tradeoff aceptable; si se vuelve un problema, mover a Redis con pub/sub.
+// 2026-06-12 P-04 Fase 3.3: cache movido de in-memory local a Redis cross-
+// instance. Las 9 invalidaciones desde ventas.js / cuentas.js / inventario.js
+// propagan a las 2 réplicas Railway en <100ms en lugar del max 20s de TTL
+// natural. Elimina el bug de "valor stale post-bulk-import" que confundía
+// operadores durante el testing pre-salida.
 
-const { createCachedFetcher } = require('./cacheTtl');
+const { createCachedFetcherRedis } = require('./cacheTtl');
 const db = require('../config/database');
 
 // Query idéntica a la del routes/inventario.js original. Mantener sincronizada.
@@ -48,12 +50,14 @@ const METRICAS_SQL = `
   WHERE deleted_at IS NULL
 `;
 
-const fetchMetricas = createCachedFetcher('inv:metricas', 20_000, async () => {
+const fetchMetricas = createCachedFetcherRedis('cache:inv:metricas', 20_000, async () => {
   const { rows } = await db.query(METRICAS_SQL);
   return rows[0];
 });
 
 module.exports = {
   fetchMetricas,
+  // Async (Promise<void>). Callers la usan fire-and-forget — el response del
+  // POST/PATCH/DELETE no espera la invalidación, mejor latencia para usuarios.
   invalidateMetricas: () => fetchMetricas.invalidate(),
 };
