@@ -1,9 +1,22 @@
 # P-04 — Redis cross-instance caching
 
-**Estado:** propuesta de diseño (pendiente aprobación PO).
+**Estado:** ✅ **IMPLEMENTADO** (Fases 1-3 mergeadas y validadas en prod + staging
+el 2026-06-12). Operaciones documentadas en
+[docs/OPERATIONS.md sección 6](../OPERATIONS.md#6-redis-cache-cross-instance--agregado-2026-06-12-p-04).
 **Origen:** GRAN auditoría 2026-06-10 — item #6 del top 10 hiper-prioritarios.
 **Autor:** Claude + Lucas, 2026-06-12.
 **Predecesor:** P-07 async audit (mergeado, PR #189).
+
+## PRs
+
+- PR #190 — Fase 2: librería ioredis + wrapper `createCachedFetcherRedis`
+- PR #191 — hotfix `/health` fault-tolerant tras Railway healthcheck failure
+- PR #192 — Fase 3.1: flag `audit_async_enabled` (validado cross-instance con 20 GETs)
+- PR #193 — Fase 3.2: `cajasCache` (lista de cajas, 15s)
+- PR #194 — Fase 3.3: `inventarioCache` (métricas dashboard, 20s)
+- PR #195 — Fase 3.4: dashboard mensual (60s, key por par período)
+- PR #196 — Fase 3.5: dashboard ventas (30s, key por par fecha)
+- PR ??? — Fase 4: RUNBOOK operacional (este commit)
 
 ---
 
