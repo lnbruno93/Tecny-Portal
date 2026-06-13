@@ -7,16 +7,18 @@
 // días). En staging con ~30k movimientos ya se siente; en prod con años de
 // histórico va a ser un cuello.
 //
-// Solución: TTL corto (15s) + invalidación explícita post-write desde
-// cajaLedger.js (helper central de movimientos) y desde las rutas que tocan
-// metodos_pago o caja_movimientos directamente (cajas.js).
+// 2026-06-12 P-04 Fase 3.2: cache movido de in-memory local a Redis cross-
+// instance. La invalidación post-write (5 callsites en cajas.js) ahora
+// propaga a las 2 réplicas Railway en <100ms en lugar del max 15s de TTL
+// natural. Significa que cuando admin crea/edita/elimina una caja o
+// agrega un movimiento, AMBAS réplicas ven el cambio inmediato.
 //
-// Multi-instance (Railway 2 réplicas): la invalidación es process-local.
-// Si la réplica A escribe, la B sigue su TTL natural — máximo 15s de stale.
-// Tradeoff aceptable a este TTL; si se vuelve un problema, mover a Redis
-// con pub/sub para invalidación cross-instance.
+// Fire-and-forget en callers: `invalidateCajas()` ahora devuelve Promise,
+// pero los callers no la await — la invalidación es best-effort, no crítica
+// para el response. Si Redis cae, el wrapper hace fetch directo a Postgres
+// sin cachear (consistency preservada a costo de throughput durante outage).
 
-const { createCachedFetcher } = require('./cacheTtl');
+const { createCachedFetcherRedis } = require('./cacheTtl');
 const db = require('../config/database');
 
 // Query idéntica a la GET /cajas original (cajas.js). Mantener sincronizada
@@ -32,12 +34,18 @@ const CAJAS_SQL = `
    GROUP BY mp.id
    ORDER BY mp.orden, mp.nombre`;
 
-const getCajasList = createCachedFetcher('cajas:list', 15_000, async () => {
+const getCajasList = createCachedFetcherRedis('cache:cajas:list', 15_000, async () => {
   const { rows } = await db.query(CAJAS_SQL);
   return rows;
 });
 
 module.exports = {
   getCajasList,
+  // Async (Promise<void>) — el caller puede await si quiere garantía de
+  // invalidación pre-response, o fire-and-forget para latencia mínima.
+  // En cajas.js se usa fire-and-forget: el response del POST/PATCH/DELETE
+  // sale en paralelo, y la invalidación se completa en <100ms (Railway
+  // internal Redis). Race de visibilidad cross-instance ≤100ms es invisible
+  // para usuarios humanos.
   invalidateCajas: () => getCajasList.invalidate(),
 };
