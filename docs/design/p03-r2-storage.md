@@ -1,9 +1,22 @@
 # P-03 — Storage externo (Cloudflare R2)
 
-**Estado**: 📝 PROPUESTA (esperando respuesta a preguntas abiertas)
+**Estado**: ✅ IMPLEMENTADO (2026-06-13)
 **Auditoría origen**: 2026-06-10, finding P-03 (BLOCKER de performance/escalabilidad)
 **Effort estimado**: 16-24h, partido en 6 fases
 **Fecha**: 2026-06-12
+
+**PRs mergeados** (en orden):
+- #198 — Doc de diseño (este archivo, propuesta original)
+- #199 — Fase 1: abstracción `fileStore.js` + driver `db` + refactor de 6 endpoints
+- #200 — Fase 2: driver `r2` + migration de columnas + smoke test
+- #201 — Fase 3: comprobantes Financiera con feature flag `storage_r2_comprobantes`
+- #202 — Fase 4: productos.foto_data con feature flag `storage_r2_productos`
+- #203 — Fase 5: venta_comprobantes con feature flag `storage_r2_ventas_comprobantes`
+- #204 (este PR) — Fase 6: script de backfill histórico + RUNBOOK operacional
+
+**RUNBOOK**: ver `docs/OPERATIONS.md` sección 7 — Cloudflare R2 (operación, failover, rotación de credenciales, alerting).
+
+**Activación**: las 3 feature flags arrancan en `enabled=false`. Para activar una entity en prod, seguir el procedimiento del RUNBOOK (PATCH al flag → smoke test → 24h observación → siguiente entity).
 
 ---
 
