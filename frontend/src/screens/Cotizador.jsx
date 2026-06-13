@@ -6,14 +6,50 @@ import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-// Coeficientes de financiación
-const COEFS = {
-  contado: 1.0,
-  transf:  1.03,
-  c1:      1.11,
-  c3:      1.235,
-  c6:      1.28,
+// 2026-06-13: bug del cotizador detectado en prueba interna del PO.
+//
+// Antes los COEFS estaban como multiplicadores aditivos (1.11 para 1 cuota
+// con 11% de comisión). Eso es matemáticamente INCORRECTO si querés que la
+// tarjeta te liquide el contado limpio: la tarjeta descuenta el 11% sobre
+// lo que el cliente paga, NO sobre el contado. Resultado con el código viejo:
+//   - Cliente pagaba: contado × 1.11
+//   - Tarjeta liquidaba: contado × 1.11 × 0.89 = contado × 0.9879
+//   - Comercio perdía ~1.21% en cada venta con tarjeta (más en cuotas largas).
+//
+// Para que la tarjeta te liquide el contado neto, hay que pasarle el costo
+// al cliente con la fórmula 1/(1−c), no 1+c. Verificación:
+//   - 1 cuota (11%): factor = 1/0.89 = 1.1236 → cliente paga contado×1.1236
+//   - Tarjeta liquida: 1.1236 × 0.89 = 1.0 → comercio recibe contado limpio ✅
+//
+// Expresamos los costos como COMISIONES (la comisión PURA que cobra cada
+// método, no la suma final) y derivamos el COEFS automáticamente. Así el
+// día que cambie la comisión real, se actualiza un solo lugar y el factor
+// se recalcula.
+const COMISIONES = {
+  contado: 0,        // 0% — efectivo, sin recargo
+  transf:  0.03,     // 3% — transferencia bancaria
+  c1:      0.11,     // 11% — tarjeta de crédito 1 pago
+  c3:      0.235,    // 23.5% — tarjeta 3 cuotas
+  c6:      0.28,     // 28% — tarjeta 6 cuotas
 };
+
+// Factor por el que hay que MULTIPLICAR el precio contado para pasarle el
+// costo de la comisión al cliente sin perder margen.
+const factor = (c) => 1 / (1 - c);
+
+// Coeficientes derivados. Cambiar siempre COMISIONES, nunca acá.
+const COEFS = {
+  contado: factor(COMISIONES.contado),   // 1.0
+  transf:  factor(COMISIONES.transf),    // 1.0309…
+  c1:      factor(COMISIONES.c1),        // 1.1236…
+  c3:      factor(COMISIONES.c3),        // 1.3072…
+  c6:      factor(COMISIONES.c6),        // 1.3889…
+};
+
+// Helper para mostrar el porcentaje EFECTIVO en los labels — el % real que
+// el cliente paga arriba del contado, no la comisión cruda. Para 11% de
+// comisión, el cliente paga 12.36% más que el contado, no 11%.
+const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(c >= 0.1 ? 2 : 2);
 
 // ─── Tab: Tarjetas de crédito ────────────────────────────────────────────────
 
@@ -188,24 +224,24 @@ function TabTarjetas() {
               <span className="val mono pos" style={{ fontWeight: 600 }}>${fmt(contado)}</span>
             </div>
             <div className="quote-line">
-              <span className="lbl">Transferencia (+3%)</span>
+              <span className="lbl">Transferencia (+{pctEfectivo(COMISIONES.transf)}%)</span>
               <span className="val mono pos" style={{ fontWeight: 600 }}>${fmt(transf)}</span>
             </div>
             <div className="quote-line" style={{ marginTop: 6 }}>
-              <span className="lbl">💳 1 cuota (+11%)</span>
+              <span className="lbl">💳 1 cuota (+{pctEfectivo(COMISIONES.c1)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
                 ${fmt(c1)}
               </span>
             </div>
             <div className="quote-line">
-              <span className="lbl">💳 3 cuotas (+23.5%)</span>
+              <span className="lbl">💳 3 cuotas (+{pctEfectivo(COMISIONES.c3)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
                 ${fmt(c3)}{' '}
                 <small className="muted">· ${fmt(Math.round(c3 / 3))}/c</small>
               </span>
             </div>
             <div className="quote-line">
-              <span className="lbl">💳 6 cuotas (+28%)</span>
+              <span className="lbl">💳 6 cuotas (+{pctEfectivo(COMISIONES.c6)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
                 ${fmt(c6)}{' '}
                 <small className="muted">· ${fmt(Math.round(c6 / 6))}/c</small>
@@ -265,8 +301,10 @@ function TabUsd() {
     const u = parseFloat(usdIn) || 0;
     return {
       ef:   Math.round(u * tc),
-      tars: Math.round(u * tc * 1.03),
-      tusd: (u * 1.03).toFixed(2),
+      // 2026-06-13: usar COEFS.transf (1/(1-comisión)) para que la
+      // transferencia liquide el contado limpio. Antes era × 1.03 hardcodeado.
+      tars: Math.round(u * tc * COEFS.transf),
+      tusd: (u * COEFS.transf).toFixed(2),
     };
   }, [usdIn, tc]);
 
@@ -295,14 +333,14 @@ function TabUsd() {
       key: 'tars',
       val: optTars,
       set: setOptTars,
-      label: 'Transferencia ARS (+3%)',
+      label: `Transferencia ARS (+${pctEfectivo(COMISIONES.transf)}%)`,
       sub: 'Cobro en pesos con recargo',
     },
     {
       key: 'tusd',
       val: optTusd,
       set: setOptTusd,
-      label: 'Transferencia USD (+3%)',
+      label: `Transferencia USD (+${pctEfectivo(COMISIONES.transf)}%)`,
       sub: 'Cobro en dólares con recargo',
     },
   ];
@@ -408,13 +446,13 @@ function TabUsd() {
             )}
             {optTars && (
               <div className="quote-line">
-                <span className="lbl">Transferencia ARS (+3%)</span>
+                <span className="lbl">Transferencia ARS (+{pctEfectivo(COMISIONES.transf)}%)</span>
                 <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(usdCalc.tars)}</span>
               </div>
             )}
             {optTusd && (
               <div className="quote-line">
-                <span className="lbl">Transferencia USD (+3%)</span>
+                <span className="lbl">Transferencia USD (+{pctEfectivo(COMISIONES.transf)}%)</span>
                 <span
                   className="val mono"
                   style={{ fontWeight: 700, color: 'var(--accent)' }}
