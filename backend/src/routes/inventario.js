@@ -7,6 +7,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const fileStore = require('../lib/fileStore');
+const storageFlags = require('../lib/storageFlags');
 
 // Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
 // (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
@@ -394,7 +395,7 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
              p.categoria_id, p.deposito_id, p.proveedor, p.costo, p.costo_moneda,
              p.precio_venta, p.precio_moneda, p.trackear_stock, p.cantidad, p.estado,
              p.observaciones, p.condicion, p.oculto, p.created_at,
-             (p.foto_data IS NOT NULL) AS tiene_foto, p.foto_nombre, p.foto_tipo,
+             (p.foto_data IS NOT NULL OR p.foto_key IS NOT NULL) AS tiene_foto, p.foto_nombre, p.foto_tipo,
              c.nombre AS categoria_nombre, d.nombre AS deposito_nombre
       FROM productos p
       LEFT JOIN categorias c ON c.id = p.categoria_id
@@ -417,12 +418,13 @@ router.get('/productos/:id/foto', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    // P-03 Fase 1: la lectura pasa por fileStore. Driver db (Fase 1) lee
-    // foto_data directo. Driver r2 (Fase 2+) chequeará primero foto_key y
-    // hará fallback a foto_data para filas legacy. Shape del response
-    // { foto_data, foto_nombre, foto_tipo } NO cambia — frontend intacto.
+    // P-03 Fase 4: la lectura pasa por fileStore. Driver db lee foto_data
+    // directo. Driver r2 chequea primero foto_key (baja de R2) y hace fallback
+    // a foto_data para filas legacy. Shape del response { foto_data, foto_nombre,
+    // foto_tipo } NO cambia — frontend intacto. foto_key incluida en el SELECT
+    // para que el driver r2 pueda decidir el path.
     const { rows } = await db.query(
-      'SELECT foto_data, foto_nombre, foto_tipo FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
+      'SELECT foto_data, foto_key, foto_nombre, foto_tipo FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Sin foto' });
     const file = await fileStore.get(rows[0], { prefix: 'foto' });
@@ -431,12 +433,16 @@ router.get('/productos/:id/foto', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// P-03 Fase 4: foto_key + foto_size se agregan al array. Cuando el upload
+// va a R2 (flag ON + driver r2), foto_data queda NULL y la referencia vive
+// en foto_key. Cuando va a path legacy (flag OFF o driver db), foto_key y
+// foto_size quedan NULL y la columna legacy foto_data conserva el base64.
 const PRODUCTO_COLS = [
   'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
   'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
   'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
-  'foto_data', 'foto_nombre', 'foto_tipo', 'observaciones',
-  'condicion', 'oculto',
+  'foto_data', 'foto_nombre', 'foto_tipo', 'foto_key', 'foto_size',
+  'observaciones', 'condicion', 'oculto',
 ];
 
 router.post('/productos', validate(createProductoSchema), async (req, res, next) => {
@@ -450,18 +456,39 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
       condicion: req.body.condicion ?? 'nuevo',
       oculto:    req.body.oculto    ?? false,
     };
-    // P-03 Fase 1: el upload de foto pasa por fileStore. Driver db es
-    // passthrough; driver r2 (Fase 2+) subirá el blob al bucket y dejará
-    // foto_data=null + foto_key='...'. Mantiene PRODUCTO_COLS intacto.
-    const fotoFile = await fileStore.put({
-      dataBase64: b.foto_data ?? null,
-      filename: b.foto_nombre ?? null,
-      mime: b.foto_tipo ?? null,
-      entity: 'productos',
-    });
+    // P-03 Fase 4: bifurcación de upload por feature flag (mismo patrón que
+    // comprobantes en Fase 3).
+    //   Flag ON + STORAGE_DRIVER=r2 → fileStore.put sube a R2 y devuelve
+    //     `{ data: null, key: '...' }`. INSERT guarda key+size, foto_data NULL.
+    //   Flag OFF o driver=db → bypass: foto_data preserva el base64, key+size
+    //     quedan NULL. Comportamiento idéntico al pre-fase-4.
+    // Reads (GET /productos/:id/foto, listado tiene_foto) usan fileStore.get
+    // con fallback automático — flippear el flag no rompe acceso a fotos
+    // anteriores.
+    const useR2 = fileStore._DRIVER === 'r2'
+               && await storageFlags.isEnabled('storage_r2_productos');
+    let fotoFile;
+    if (useR2) {
+      fotoFile = await fileStore.put({
+        dataBase64: b.foto_data ?? null,
+        filename: b.foto_nombre ?? null,
+        mime: b.foto_tipo ?? null,
+        entity: 'productos',
+      });
+    } else {
+      fotoFile = {
+        data: b.foto_data ?? null,
+        key: null,
+        size: null,
+        nombre: b.foto_nombre ?? null,
+        tipo: b.foto_tipo ?? null,
+      };
+    }
     b.foto_data   = fotoFile.data;
     b.foto_nombre = fotoFile.nombre;
     b.foto_tipo   = fotoFile.tipo;
+    b.foto_key    = fotoFile.key;
+    b.foto_size   = fotoFile.size;
     const values = PRODUCTO_COLS.map(c => b[c] ?? null);
     const placeholders = PRODUCTO_COLS.map((_, i) => `$${i + 1}`).join(',');
     const { rows } = await db.query(
@@ -484,25 +511,67 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
     );
     if (!before[0]) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    // P-03 Fase 1: si vino una foto nueva en el body, procesarla por fileStore
-    // antes del UPDATE. Solo se toca si el cliente realmente envió `foto_data`
-    // — preservamos la semántica COALESCE: omitir el campo = no tocar la columna.
-    if ('foto_data' in req.body) {
-      const fotoFile = await fileStore.put({
-        dataBase64: req.body.foto_data,
-        filename: req.body.foto_nombre,
-        mime: req.body.foto_tipo,
-        entity: 'productos',
-        subpath: `producto-${id}`,
-      });
+    // P-03 Fase 4: si vino una foto nueva en el body, bifurcar por flag y
+    // procesar. Preserva la semántica COALESCE para el resto de columnas: si
+    // el cliente NO envió un campo, no se toca.
+    //
+    // Cuando se cambia la foto y el flag está ON + driver r2: se sube a R2,
+    // foto_key se setea con la key nueva y foto_data se nullifica. Cuando
+    // el flag está OFF: foto_data preserva el base64, foto_key se nullifica.
+    // La key anterior (si existía) en R2 queda huérfana — el cleanup es Fase 6
+    // (purge cron).
+    //
+    // Los 5 campos foto_* requieren SET explícito (sin COALESCE) cuando se
+    // actualizan, porque COALESCE($N, foto_data) preserva foto_data si pasamos
+    // NULL — exactamente lo que queremos EVITAR en el path R2.
+    const fotoUpdated = ('foto_data' in req.body);
+    const FOTO_FIELDS = new Set(['foto_data', 'foto_nombre', 'foto_tipo', 'foto_key', 'foto_size']);
+
+    if (fotoUpdated) {
+      const useR2 = fileStore._DRIVER === 'r2'
+                 && await storageFlags.isEnabled('storage_r2_productos');
+      let fotoFile;
+      if (useR2) {
+        fotoFile = await fileStore.put({
+          dataBase64: req.body.foto_data,
+          filename: req.body.foto_nombre,
+          mime: req.body.foto_tipo,
+          entity: 'productos',
+          subpath: `producto-${id}`,
+        });
+      } else {
+        fotoFile = {
+          data: req.body.foto_data,
+          key: null,
+          size: null,
+          nombre: req.body.foto_nombre ?? null,
+          tipo: req.body.foto_tipo ?? null,
+        };
+      }
       req.body.foto_data   = fotoFile.data;
       req.body.foto_nombre = fotoFile.nombre;
       req.body.foto_tipo   = fotoFile.tipo;
+      req.body.foto_key    = fotoFile.key;
+      req.body.foto_size   = fotoFile.size;
     }
 
-    // COALESCE por columna: solo actualiza lo que vino en el body
-    const sets = PRODUCTO_COLS.map((c, i) => `${c} = COALESCE($${i + 1}, ${c})`).join(', ');
-    const values = PRODUCTO_COLS.map(c => (c in req.body ? req.body[c] : null));
+    // SET dinámico: COALESCE para columnas no-foto (preserva valor viejo si
+    // el caller no envió el campo); asignación directa para los 5 campos foto_*
+    // cuando se está actualizando la foto (permite nullificar foto_data en R2,
+    // o nullificar foto_key en path legacy).
+    const sets = PRODUCTO_COLS.map((c, i) => {
+      if (FOTO_FIELDS.has(c) && fotoUpdated) {
+        return `${c} = $${i + 1}`;
+      }
+      return `${c} = COALESCE($${i + 1}, ${c})`;
+    }).join(', ');
+    const values = PRODUCTO_COLS.map(c => {
+      if (FOTO_FIELDS.has(c) && fotoUpdated) {
+        // Path foto-updated: tomamos el valor procesado (puede ser null).
+        return req.body[c] ?? null;
+      }
+      return c in req.body ? req.body[c] : null;
+    });
     const { rows } = await db.query(
       `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} RETURNING *`,
       [...values, id]
