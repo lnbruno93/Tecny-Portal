@@ -8,6 +8,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { syncFinancieraComprobante } = require('../lib/financiera');
+const fileStore = require('../lib/fileStore');
 const {
   etiquetaSchema, garantiaSchema, updateGarantiaSchema, comprobanteVentaSchema,
   createVentaRapidaSchema, updateVentaRapidaSchema,
@@ -146,10 +147,20 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
     const venta = ventaRes.rows[0];
 
     const { archivo_data, archivo_nombre, archivo_tipo } = req.body;
+    // P-03 Fase 1: el upload pasa por fileStore. Driver db es passthrough
+    // del base64. Driver r2 (Fase 2+) subirá al bucket bajo
+    // `venta-comprobantes/venta-<id>/...` y dejará archivo_data=null.
+    const file = await fileStore.put({
+      dataBase64: archivo_data ?? null,
+      filename: archivo_nombre ?? null,
+      mime: archivo_tipo ?? null,
+      entity: 'venta-comprobantes',
+      subpath: `venta-${id}`,
+    });
     const { rows } = await client.query(
       `INSERT INTO venta_comprobantes (venta_id, archivo_data, archivo_nombre, archivo_tipo)
        VALUES ($1,$2,$3,$4) RETURNING id, archivo_nombre, archivo_tipo, created_at`,
-      [id, archivo_data, archivo_nombre ?? null, archivo_tipo ?? null]
+      [id, file.data, file.nombre, file.tipo]
     );
 
     // Reconciliar el comprobante de Financiera (única fuente de verdad): si la venta
@@ -194,6 +205,8 @@ router.get('/comprobantes/:cid', async (req, res, next) => {
   try {
     const cid = parseId(req.params.cid);
     if (!cid) return res.status(400).json({ error: 'ID inválido' });
+    // P-03 Fase 1: la lectura pasa por fileStore. Shape del response
+    // { archivo_data, archivo_nombre, archivo_tipo } NO cambia — frontend intacto.
     const { rows } = await db.query(
       `SELECT vc.archivo_data, vc.archivo_nombre, vc.archivo_tipo
          FROM venta_comprobantes vc
@@ -201,7 +214,9 @@ router.get('/comprobantes/:cid', async (req, res, next) => {
         WHERE vc.id = $1 AND vc.deleted_at IS NULL`, [cid]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Comprobante no encontrado' });
-    res.json(rows[0]);
+    const file = await fileStore.get(rows[0], { prefix: 'archivo' });
+    if (!file) return res.status(404).json({ error: 'Comprobante no encontrado' });
+    res.json({ archivo_data: file.data, archivo_nombre: file.nombre, archivo_tipo: file.tipo });
   } catch (err) { next(err); }
 });
 

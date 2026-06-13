@@ -6,6 +6,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
+const fileStore = require('../lib/fileStore');
 
 // Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
 // (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
@@ -416,11 +417,17 @@ router.get('/productos/:id/foto', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
+    // P-03 Fase 1: la lectura pasa por fileStore. Driver db (Fase 1) lee
+    // foto_data directo. Driver r2 (Fase 2+) chequeará primero foto_key y
+    // hará fallback a foto_data para filas legacy. Shape del response
+    // { foto_data, foto_nombre, foto_tipo } NO cambia — frontend intacto.
     const { rows } = await db.query(
       'SELECT foto_data, foto_nombre, foto_tipo FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
     );
-    if (!rows[0] || !rows[0].foto_data) return res.status(404).json({ error: 'Sin foto' });
-    res.json(rows[0]);
+    if (!rows[0]) return res.status(404).json({ error: 'Sin foto' });
+    const file = await fileStore.get(rows[0], { prefix: 'foto' });
+    if (!file) return res.status(404).json({ error: 'Sin foto' });
+    res.json({ foto_data: file.data, foto_nombre: file.nombre, foto_tipo: file.tipo });
   } catch (err) { next(err); }
 });
 
@@ -443,6 +450,18 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
       condicion: req.body.condicion ?? 'nuevo',
       oculto:    req.body.oculto    ?? false,
     };
+    // P-03 Fase 1: el upload de foto pasa por fileStore. Driver db es
+    // passthrough; driver r2 (Fase 2+) subirá el blob al bucket y dejará
+    // foto_data=null + foto_key='...'. Mantiene PRODUCTO_COLS intacto.
+    const fotoFile = await fileStore.put({
+      dataBase64: b.foto_data ?? null,
+      filename: b.foto_nombre ?? null,
+      mime: b.foto_tipo ?? null,
+      entity: 'productos',
+    });
+    b.foto_data   = fotoFile.data;
+    b.foto_nombre = fotoFile.nombre;
+    b.foto_tipo   = fotoFile.tipo;
     const values = PRODUCTO_COLS.map(c => b[c] ?? null);
     const placeholders = PRODUCTO_COLS.map((_, i) => `$${i + 1}`).join(',');
     const { rows } = await db.query(
@@ -464,6 +483,22 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       'SELECT * FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
     );
     if (!before[0]) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    // P-03 Fase 1: si vino una foto nueva en el body, procesarla por fileStore
+    // antes del UPDATE. Solo se toca si el cliente realmente envió `foto_data`
+    // — preservamos la semántica COALESCE: omitir el campo = no tocar la columna.
+    if ('foto_data' in req.body) {
+      const fotoFile = await fileStore.put({
+        dataBase64: req.body.foto_data,
+        filename: req.body.foto_nombre,
+        mime: req.body.foto_tipo,
+        entity: 'productos',
+        subpath: `producto-${id}`,
+      });
+      req.body.foto_data   = fotoFile.data;
+      req.body.foto_nombre = fotoFile.nombre;
+      req.body.foto_tipo   = fotoFile.tipo;
+    }
 
     // COALESCE por columna: solo actualiza lo que vino en el body
     const sets = PRODUCTO_COLS.map((c, i) => `${c} = COALESCE($${i + 1}, ${c})`).join(', ');
