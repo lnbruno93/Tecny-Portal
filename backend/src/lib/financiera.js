@@ -22,8 +22,13 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
         WHERE vp.venta_id = $1 AND mp.es_financiera = true AND mp.deleted_at IS NULL
         LIMIT 1`, [ventaId]
     );
+    // P-03 Fase 5 (2026-06-13): el SELECT tiene que traer también archivo_key
+    // y archivo_size — desde la activación del flag storage_r2_ventas_comprobantes
+    // los uploads nuevos van a R2 y archivo_data queda NULL. Sin estos dos
+    // campos, syncFinancieraComprobante copiaba data=NULL al comprobantes table
+    // y el dashboard de Transferencias se quedaba sin el archivo.
     const f = await client.query(
-      `SELECT archivo_data, archivo_nombre, archivo_tipo
+      `SELECT archivo_data, archivo_key, archivo_size, archivo_nombre, archivo_tipo
          FROM venta_comprobantes
         WHERE venta_id = $1 AND deleted_at IS NULL
         ORDER BY id LIMIT 1`, [ventaId]
@@ -53,24 +58,37 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
   // archivo desincronizado de los montos. Riesgo de auditoría con terceros.
   const existing = await client.query('SELECT id FROM comprobantes WHERE venta_id = $1 ORDER BY id LIMIT 1', [ventaId]);
   if (existing.rows[0]) {
+    // P-03 Fase 5: copiar también archivo_key + archivo_size. Si la fila origen
+    // tiene archivo_data poblado (legacy), se copia tal cual. Si tiene archivo_key
+    // (R2), se copia la key — el objeto en R2 queda referenciado por dos filas
+    // distintas (venta_comprobantes + comprobantes), pero apunta al mismo blob:
+    // cuando ambas filas pasen a soft-delete, el cron de purga futuro deberá
+    // chequear que ninguna fila activa referencia la key antes de borrar el
+    // objeto R2 (TODO P-03 cleanup cron).
     const { rows } = await client.query(
       `UPDATE comprobantes
           SET deleted_at = NULL, monto = $2, monto_financiera = $3, monto_neto = $4,
-              archivo_data = $5, archivo_nombre = $6, archivo_tipo = $7
+              archivo_data = $5, archivo_nombre = $6, archivo_tipo = $7,
+              archivo_key = $8, archivo_size = $9
         WHERE venta_id = $1
        RETURNING id, monto, monto_financiera, monto_neto`,
       [ventaId, monto, monto_financiera, monto_neto,
-       file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null]
+       file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null,
+       file.archivo_key ?? null, file.archivo_size ?? null]
     );
     return rows[0];
   }
 
   const { rows: v } = await client.query('SELECT fecha, cliente_nombre, order_id FROM ventas WHERE id = $1', [ventaId]);
   const { rows } = await client.query(
-    `INSERT INTO comprobantes (fecha, cliente, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo, venta_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, monto, monto_financiera, monto_neto`,
+    `INSERT INTO comprobantes
+      (fecha, cliente, monto, monto_financiera, monto_neto, referencia,
+       archivo_data, archivo_nombre, archivo_tipo, archivo_key, archivo_size, venta_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     RETURNING id, monto, monto_financiera, monto_neto`,
     [v[0].fecha, v[0].cliente_nombre ?? null, monto, monto_financiera, monto_neto, v[0].order_id,
-     file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null, ventaId]
+     file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null,
+     file.archivo_key ?? null, file.archivo_size ?? null, ventaId]
   );
   return rows[0];
 }

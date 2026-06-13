@@ -144,7 +144,15 @@ export default defineConfig({
     // tampoco se publican — Netlify solo sirve lo que está en dist/ después
     // del build, y en ese caso no se borran. Para evitar exposición en local
     // builds, configurar netlify.toml o el .gitignore para no publicar .map.
-    sourcemap: SENTRY_TOKEN ? true : false,
+    //
+    // 'hidden' (no true): Vite genera los .map igual (Sentry los sigue
+    // subiendo) PERO no agrega el comment "//# sourceMappingURL=..." en los
+    // .js minificados. Sin ese comment, DevTools no sabe que existen los
+    // maps y no intenta descargarlos → no aparecen los warnings de
+    // "Unrecognized token '<'" en la consola que se generan cuando los
+    // .map fueron borrados post-upload a Sentry. Sentry sigue funcionando
+    // porque trabaja con los .map directamente, no necesita el comment.
+    sourcemap: SENTRY_TOKEN ? 'hidden' : false,
     rollupOptions: {
       output: {
         // Vite 8 (rolldown) requiere manualChunks como función

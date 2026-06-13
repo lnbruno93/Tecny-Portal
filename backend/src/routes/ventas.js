@@ -16,6 +16,10 @@ const { syncFinancieraComprobante } = require('../lib/financiera');
 const { syncTarjetaCobros } = require('../lib/tarjetas');
 const { revertirEfectosVenta } = require('../lib/cancelarVenta');
 const { syncVentaCaja, sincronizarCuentaCorriente } = require('../lib/ventaSync');
+// Tema C (2026-06-13): denormalizamos `ventas.comision_total_metodos` para
+// descontar el costo financiero (tarjeta + financiera) de la ganancia bruta.
+// El sync DEBE correr después de syncTarjetaCobros + syncFinancieraComprobante.
+const { syncComisionTotalMetodos } = require('../lib/comisionesMetodos');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
 } = require('../schemas/ventas');
@@ -714,6 +718,10 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     await syncVentaCaja(client, venta, req.user.id);
     // Cobros de tarjeta por los pagos con método tarjeta
     await syncTarjetaCobros(client, venta.id, venta.estado);
+    // Tema C: denormalizar el costo financiero total (tarjeta + transf) en
+    // ventas.comision_total_metodos. DEBE ir DESPUÉS de los 2 syncs anteriores
+    // porque lee de tarjeta_movimientos + comprobantes ya escritos.
+    venta.comision_total_metodos = await syncComisionTotalMetodos(client, venta.id);
 
     await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
@@ -775,6 +783,8 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       // Re-derivar el comprobante de Financiera (cancelación, o quitar/agregar el pago financiera)
       await syncFinancieraComprobante(client, id, vrows[0].estado);
       await syncTarjetaCobros(client, id, vrows[0].estado);
+      // Tema C: re-derivar comision_total_metodos a partir del estado post-syncs.
+      vrows[0].comision_total_metodos = await syncComisionTotalMetodos(client, id);
       await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
       invalidateMetricas();  // edición completa pudo tocar stock
@@ -803,6 +813,9 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     // Re-derivar el comprobante de Financiera (cancelar / reactivar)
     await syncFinancieraComprobante(client, id, rows[0].estado);
     await syncTarjetaCobros(client, id, rows[0].estado);
+    // Tema C: re-derivar comision_total_metodos (cancelar la venta vacía la
+    // columna porque revertirEfectosVenta soft-deletea las filas fuente).
+    rows[0].comision_total_metodos = await syncComisionTotalMetodos(client, id);
     await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     invalidateMetricas();
@@ -827,6 +840,11 @@ router.delete('/:id', async (req, res, next) => {
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
 
     await revertirEfectosVenta(client, before[0]);
+    // Tema C: vaciar comision_total_metodos (las filas fuente quedaron soft-
+    // deleted). La fila ventas se soft-deletea acto seguido, pero mantener el
+    // invariante (columna = 0 cuando no hay filas fuente activas) ayuda al
+    // backfill y a cualquier auditoría futura sobre la columna.
+    await syncComisionTotalMetodos(client, id);
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await audit(client, 'ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
