@@ -550,8 +550,26 @@ app.use((err, req, res, _next) => {
   // Errores 5xx: mensaje genérico al cliente — el detalle (err.message de pg, etc.)
   // puede filtrar nombres de tablas/columnas/constraints. Ya queda logueado server-side.
   // Errores <500 (validación/negocio): el mensaje es intencional y seguro de mostrar.
-  const clientError = status >= 500 ? 'Error interno' : (err.message || 'Error');
-  res.status(status).json({ error: clientError });
+  //
+  // 2026-06-13 — En NON-PROD, los admins reciben además el detalle del error en
+  // el response (mensaje + stack truncado + code SQL si lo hay). Esto permite
+  // debuggear bugs de staging sin pelear con logs de Railway. En prod siempre
+  // se devuelve el mensaje genérico para no filtrar nombres de tablas/constraints
+  // a clientes finales.
+  const body = { error: status >= 500 ? 'Error interno' : (err.message || 'Error') };
+  if (status >= 500
+      && req.user?.role === 'admin'
+      && process.env.NODE_ENV !== 'production') {
+    body._debug = {
+      message: err.message,
+      code: err.code,
+      name: err.name,
+      stack: typeof err.stack === 'string'
+        ? err.stack.split('\n').slice(0, 8).join('\n')
+        : undefined,
+    };
+  }
+  res.status(status).json(body);
 });
 
 module.exports = app;
