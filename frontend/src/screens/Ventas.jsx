@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi } from '../lib/api';
+import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi, config as configApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -74,6 +74,11 @@ export default function Ventas() {
   // para que un equipo tomado entre directo en su categoría correcta.
   const [categoriasInv, setCategoriasInv] = useState([]);
   const [metodos, setMetodos] = useState([]);
+  // Tema C en-vivo (2026-06-13): porcentaje global de Financiera (`config.pct_financiera`).
+  // Lo usamos en el preview de ganancia real para descontar comisión de pagos por
+  // transferencia. Cargado en loadCatalogos, no se refetcha durante la sesión —
+  // si Lucas lo cambia en Config, se actualiza al re-entrar a Ventas.
+  const [pctFinanciera, setPctFinanciera] = useState(0);
   const [garantias, setGarantias] = useState([]);
   const [clientesCC, setClientesCC] = useState([]);
   const [contactos, setContactos] = useState([]);
@@ -129,9 +134,14 @@ export default function Ventas() {
 
   const loadCatalogos = useCallback(async () => {
     const safe = (p) => p.then(r => r).catch(() => []);
-    const [v, e, m, g, cc, ct, cats] = await Promise.all([
+    // `configApi.get()` falla con array vacío → defensivo: si no es un objeto
+    // con pct_financiera, lo tratamos como 0 y el preview de ganancia real
+    // simplemente no descuenta Financiera (igual que pre-Tema C).
+    const safeCfg = (p) => p.then(r => r).catch(() => ({}));
+    const [v, e, m, g, cc, ct, cats, cfg] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
       safe(inventario.categorias()), // categorías para el picker del canje (junio 2026)
+      safeCfg(configApi.get()),      // pct_financiera para el preview Tema C
     ]);
     // Los endpoints paginados devuelven { data, pagination }. Usamos un
     // unwrap defensivo: si vino array (endpoint no-paginado o vacío), tomar
@@ -141,6 +151,7 @@ export default function Ventas() {
     const ctArr = unwrap(ct); // post-audit: contactos ahora paginado
     setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ctArr);
     setCategoriasInv(unwrap(cats));
+    setPctFinanciera(Number(cfg?.pct_financiera) || 0);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
@@ -279,13 +290,48 @@ export default function Ventas() {
 
   const totales = useMemo(() => {
     const tc = Number(vForm.tc_venta) || null;
-    let items = 0; cart.forEach(it => { items += toUsd((Number(it.precio_vendido) || 0) * (Number(it.cantidad) || 0), it.moneda, tc); });
-    let pg = 0; pagos.forEach(p => { pg += toUsd(p.monto, p.moneda, p.tc || tc); });
+    let items = 0;
+    // Tema C en-vivo: ganancia bruta = Σ (precio − costo) × cantidad, en USD.
+    // El backend la calcula igual (ver insertarDetalle → ganancia_usd) — esto
+    // es solo un preview para el operador antes de guardar.
+    let bruta = 0;
+    cart.forEach(it => {
+      const qty = Number(it.cantidad) || 0;
+      const precio = Number(it.precio_vendido) || 0;
+      const costo = Number(it.costo) || 0;
+      items += toUsd(precio * qty, it.moneda, tc);
+      bruta += toUsd((precio - costo) * qty, it.moneda, tc);
+    });
+    let pg = 0;
+    // Tema C en-vivo: costo financiero = comisión retenida por tarjeta o
+    // transferencia. Estimamos lo MISMO que el backend va a calcular en el
+    // POST de la venta (libs/tarjetas.js + libs/financiera.js):
+    //   - método con es_tarjeta: monto_usd × comision_pct / 100
+    //   - método con es_financiera: monto_usd × pct_financiera (config) / 100
+    // El método CC y los efectivo/USD no tienen costo financiero (skip).
+    let costoFin = 0;
+    pagos.forEach(p => {
+      const montoUsd = toUsd(p.monto, p.moneda, p.tc || tc);
+      pg += montoUsd;
+      if (p.es_cuenta_corriente || !p.metodo_pago_id) return;
+      const m = metodos.find(x => x.id === p.metodo_pago_id);
+      if (!m) return;
+      if (m.es_tarjeta && Number(m.comision_pct) > 0) {
+        costoFin += montoUsd * Number(m.comision_pct) / 100;
+      } else if (m.es_financiera && pctFinanciera > 0) {
+        // El backend solo retiene cuando hay comprobante adjunto, pero el form
+        // valida que se cargue al guardar — la estimación es la misma.
+        costoFin += montoUsd * pctFinanciera / 100;
+      }
+    });
     // Suma de TODOS los valor_toma de canjes (asumimos USD — el form solo permite USD por canje).
     const canjeTotal = (vForm.canjes || []).reduce((acc, c) => acc + (Number(c.valor_toma) || 0), 0);
     const cubierto = pg + canjeTotal;
-    return { items, cubierto, dif: cubierto - items, canjeTotal };
-  }, [cart, pagos, vForm.tc_venta, vForm.canjes]);
+    return {
+      items, cubierto, dif: cubierto - items, canjeTotal,
+      bruta, costoFin, real: bruta - costoFin,
+    };
+  }, [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera]);
 
   // ── Helpers para manipular el array de canjes (junio 2026) ─────────────
   const addCanje = () => setVForm(f => ({ ...f, canjes: [...(f.canjes || []), { ...EMPTY_CANJE }] }));
@@ -1134,6 +1180,36 @@ export default function Ventas() {
                     <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Diferencia</span>
                       <span>{Math.abs(totales.dif) < 0.01 ? <span className="pos">Cubierto ✓</span> : totales.dif < 0 ? <span className="neg">Falta u$s{fmt(-totales.dif)}</span> : <span className="warn">Sobra u$s{fmt(totales.dif)}</span>}</span>
                     </div>
+                    {/*
+                      Tema C en-vivo (2026-06-13): preview de ganancia real. El
+                      operador ve en vivo cuánto le va a quedar después de
+                      descontar la comisión del método de pago elegido — clave
+                      para decidir si renegociar precio antes de cerrar la venta.
+                      Solo aparece cuando hay items cargados (sino sería 0/0).
+                    */}
+                    {cart.length > 0 && (
+                      <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
+                        <div className="flex-between" style={{ fontSize: 13 }}>
+                          <span className="muted">Ganancia bruta</span>
+                          <span className="mono">u$s{fmt(totales.bruta)}</span>
+                        </div>
+                        {totales.costoFin > 0 && (
+                          <div className="flex-between" style={{ fontSize: 13 }}>
+                            <span
+                              className="muted"
+                              title="Comisión retenida por tarjeta de crédito y/o transferencia, según el método de pago elegido"
+                            >
+                              − Costo financiero
+                            </span>
+                            <span className="mono neg">u$s{fmt(totales.costoFin)}</span>
+                          </div>
+                        )}
+                        <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+                          <span style={{ fontWeight: 600 }}>Ganancia real</span>
+                          <span className="mono pos" style={{ fontWeight: 700 }}>u$s{fmt(totales.real)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Comprobantes */}
