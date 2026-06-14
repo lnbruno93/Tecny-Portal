@@ -89,13 +89,14 @@ test.describe('Edición de venta retail', () => {
     // → setItem → setCart con Number(175).
     await numericInputs.nth(1).fill('175');
 
-    // ── Ajustar monto del pago a 175 ─────────────────────────────────────
+    // ── Ajustar USD del pago a 175 ───────────────────────────────────────
     // Para retiene-stock (acreditado) el backend exige que la suma de pagos
     // cierre con el total. Si dejamos el pago en 100, validarTc() rechaza.
-    // El pago ya viene poblado del create — modificamos el monto in-place.
+    // Tema C rev5 (2026-06-14): el form ahora pide USD (no monto ARS bruto).
+    // El input está marcado con data-testid="venta-pago-usd".
     const pagoRow = modal.getByTestId('venta-pago-row').first();
     await expect(pagoRow).toBeVisible();
-    await pagoRow.getByPlaceholder('Monto').fill('175');
+    await pagoRow.getByTestId('venta-pago-usd').fill('175');
 
     // ── Submit ───────────────────────────────────────────────────────────
     await modal.getByTestId('venta-submit').click();

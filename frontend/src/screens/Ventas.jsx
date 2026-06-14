@@ -1326,6 +1326,22 @@ export default function Ventas() {
                           );
                         }
                         // Tarjeta / Transferencia / Efectivo USD — input USD + TC opcional.
+                        // En modo EDIT, `usd_input` puede venir vacío (al cargar la
+                        // venta) y `monto` ya está poblado. Derivamos USD desde monto
+                        // para que el input arranque con el valor correcto. Apenas el
+                        // operador tipea algo, usd_input pasa a ser autoritativo.
+                        const tcEff = Number(p.tc) || Number(vForm.tc_venta) || null;
+                        const pctEff = pctMetodo(m);
+                        const factorEff = pctEff > 0 ? 1 / (1 - pctEff / 100) : 1;
+                        const montoNum = Number(p.monto) || 0;
+                        let derivedUsd = p.usd_input;
+                        if ((derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
+                          if (p.moneda === 'USD' || p.moneda === 'USDT') {
+                            derivedUsd = String(Math.round(montoNum / factorEff * 100) / 100);
+                          } else if (p.moneda === 'ARS' && tcEff > 0) {
+                            derivedUsd = String(Math.round(montoNum / factorEff / tcEff * 100) / 100);
+                          }
+                        }
                         return (
                           <div key={i}>
                             <div
@@ -1345,8 +1361,9 @@ export default function Ventas() {
                                 <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>USD</span>
                                 <input
                                   type="number" onKeyDown={blockInvalidNumberKeys}
+                                  data-testid="venta-pago-usd"
                                   className="input mono" placeholder="500"
-                                  value={p.usd_input}
+                                  value={derivedUsd}
                                   onChange={e => setPagoUsd(i, e.target.value)}
                                   style={{ paddingLeft: 36 }}
                                 />
