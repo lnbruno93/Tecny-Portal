@@ -667,6 +667,58 @@ describe('GET /api/ventas/dashboard', () => {
     expect(Number(d.ganancia_neta_usd)).toBe(170);
   });
 
+  // Tema C.3 (2026-06-13): el costo financiero (comisión de tarjeta/transf)
+  // se descuenta de la ganancia neta. Antes del fix, la ganancia bruta seguía
+  // contando esa retención como margen → ganancia inflada.
+  //
+  // Sembrado:
+  //   - producto USD 100 con costo USD 60 → ganancia bruta de mercadería = 40 USD
+  //   - venta acreditada cobrada con tarjeta 10% → comision = 10 USD
+  //   - egreso 5 USD
+  // Esperado: ganancia_neta_usd = 40 (bruta) − 10 (costo financiero) − 5 (egresos) = 25
+  it('ganancia neta descuenta el costo financiero del método de pago', async () => {
+    const fecha = '2026-11-16';
+    const tarjeta10 = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC Dashboard 10%', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 });
+    expect(tarjeta10.status).toBe(201);
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Cat C.3 ' + Date.now() });
+    const prod = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        nombre: 'Prod C.3', clase: 'celular', tipo_carga: 'unitario',
+        categoria_id: cat.body.id, costo: 60, costo_moneda: 'USD',
+        precio_venta: 100, precio_moneda: 'USD', cantidad: 1,
+      });
+    // 100000 ARS / TC 1000 = 100 USD; comisión 10% = 10000 ARS = 10 USD.
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha, cliente_nombre: 'C.3 Test', estado: 'acreditado', tc_venta: 1000,
+      items: [{ producto_id: prod.body.id, descripcion: 'Prod C.3',
+                cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: tarjeta10.body.id, metodo_nombre: 'TC Dashboard 10%', monto: 100000, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(venta.status).toBe(201);
+    expect(Number(venta.body.comision_total_metodos)).toBeCloseTo(10, 2);
+
+    // Caja USD propia (no podemos egresar USD desde la caja-tarjeta ARS:
+    // postCajaMovimiento valida grupo de moneda y rebota 400).
+    const cajaEgr = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja C.3 egresos USD', moneda: 'USD', saldo_inicial: 100 });
+    expect(cajaEgr.status).toBe(201);
+    const egr = await request(app).post('/api/egresos').set(auth())
+      .send({ fecha, concepto: 'Egreso C.3', monto: 5, moneda: 'USD', estado: 'pagado', metodo_pago_id: cajaEgr.body.id });
+    expect(egr.status).toBe(201);
+
+    const d = (await request(app).get(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`).set(auth())).body;
+    expect(Number(d.ganancia_bruta_acreditada_usd)).toBeCloseTo(40, 2);
+    expect(Number(d.costo_financiero_acreditado_usd)).toBeCloseTo(10, 2);
+    expect(Number(d.costo_financiero_usd)).toBeCloseTo(10, 2);  // total (todas las ventas) = igual porque hay 1 sola
+    expect(Number(d.egresos_usd)).toBe(5);
+    // Cascada: 40 − 10 − 5 = 25
+    expect(Number(d.ganancia_neta_usd)).toBeCloseTo(25, 2);
+    // Desglose retail también expone la columna
+    expect(Number(d.retail.costo_financiero_usd)).toBeCloseTo(10, 2);
+  });
+
   // 2026-06-10: una venta B2B pendiente NO afecta ganancia neta. Cuando se
   // pasa a acreditado, sí impacta. Cubre el flujo end-to-end del fix.
   it('venta B2B pendiente NO suma en ganancia neta; al acreditar, suma', async () => {

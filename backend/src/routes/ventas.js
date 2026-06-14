@@ -249,11 +249,19 @@ async function computeDashboard(desde, hasta) {
       // ahora suma SOLO ventas confirmadas (las pendientes no descuentan
       // egresos hasta que pasen a acreditadas). Total bruto (todas) queda
       // disponible aparte en `ganancia_bruta_usd` para el desglose.
+      //
+      // Tema C.3 (2026-06-13): sumamos también `comision_total_metodos`
+      // (denormalizada en C.1, backfill en C.2). Es el costo financiero retenido
+      // por el método de pago (tarjeta + transferencia) que antes inflaba la
+      // ganancia bruta — la cascada del KPI ahora es:
+      //     bruta_acreditada − costo_financiero_acreditado − egresos = neta
       db.query(`SELECT
                   COUNT(*) AS count,
-                  COALESCE(SUM(total_usd),0)                                           AS ingresos_usd,
-                  COALESCE(SUM(ganancia_usd),0)                                        AS ganancia_bruta_usd,
-                  COALESCE(SUM(ganancia_usd) FILTER (WHERE estado='acreditado'),0)     AS ganancia_acreditada_usd
+                  COALESCE(SUM(total_usd),0)                                                AS ingresos_usd,
+                  COALESCE(SUM(ganancia_usd),0)                                             AS ganancia_bruta_usd,
+                  COALESCE(SUM(ganancia_usd) FILTER (WHERE estado='acreditado'),0)          AS ganancia_acreditada_usd,
+                  COALESCE(SUM(comision_total_metodos),0)                                   AS costo_financiero_usd,
+                  COALESCE(SUM(comision_total_metodos) FILTER (WHERE estado='acreditado'),0) AS costo_financiero_acreditado_usd
                 FROM ventas v WHERE ${BASE}`, p),
       // Por método de pago (monto en moneda original + equivalente USD)
       db.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
@@ -385,7 +393,25 @@ async function computeDashboard(desde, hasta) {
       (Number(b.ingresos_acreditado_usd) || 0) - (Number(b.costos_acreditado_usd) || 0)
     );
     const gananciaBrutaAcreditada = gananciaAcreditadaRetail + b2bGananciaAcreditadaUsd;
-    const gananciaNeta = round2(gananciaBrutaAcreditada - egresosUsd);
+
+    // Tema C.3 (2026-06-13): costo financiero retenido por método de pago.
+    // Solo afecta retail — las ventas B2B cobran en CC y no usan tarjetas/transf
+    // con comisión (si en el futuro un cliente B2B paga con tarjeta, el modelo
+    // hay que extenderlo a movimientos_cc, pero hoy no aplica).
+    //
+    // El total (todas las ventas) alimenta el desglose visual. El acreditado
+    // alimenta la cascada de ganancia neta — mismo principio que la ganancia:
+    // las pendientes no impactan KPI hasta confirmarse.
+    const costoFinancieroRetail            = Number(t.costo_financiero_usd) || 0;
+    const costoFinancieroAcreditadoRetail  = Number(t.costo_financiero_acreditado_usd) || 0;
+    const costoFinanciero                  = costoFinancieroRetail;  // alias por simetría con el resto de KPIs
+    const costoFinancieroAcreditado        = costoFinancieroAcreditadoRetail;
+
+    // Cascada GANANCIA NETA (2026-06-13):
+    //     bruta_acreditada − costo_financiero_acreditado − egresos
+    // El costo financiero (comisión de tarjetas y transferencias) NO estaba
+    // descontado antes — la "ganancia neta" salía inflada. Tema C lo cierra.
+    const gananciaNeta = round2(gananciaBrutaAcreditada - costoFinancieroAcreditado - egresosUsd);
     // Margen sigue calculado sobre ingresos totales del período (denominador
     // consistente con cómo se mostraba antes; cambiar a "ingresos_acreditados"
     // si Lucas quiere más adelante).
@@ -410,6 +436,12 @@ async function computeDashboard(desde, hasta) {
       // base de la ganancia neta). El total bruto sigue arriba para el
       // desglose y comparativas.
       ganancia_bruta_acreditada_usd: round2(gananciaBrutaAcreditada),
+      // Tema C.3 (2026-06-13): costo financiero retenido por método de pago
+      // (tarjeta + transferencia). Se descuenta de la ganancia neta. El total
+      // (todas las ventas) alimenta el desglose visual; el acreditado alimenta
+      // la cascada del KPI.
+      costo_financiero_usd: round2(costoFinanciero),
+      costo_financiero_acreditado_usd: round2(costoFinancieroAcreditado),
       egresos_usd: round2(egresosUsd),
       ganancia_neta_usd: gananciaNeta,
       margen_pct: margenPct,
@@ -419,6 +451,7 @@ async function computeDashboard(desde, hasta) {
         count: parseInt(t.count),
         ingresos_usd: round2(ingresosVentasRetail),
         ganancia_bruta_usd: round2(gananciaBrutaRetail),
+        costo_financiero_usd: round2(costoFinancieroRetail),
         costos_usd: round2(costosRetailUsd),
       },
       b2b: {
