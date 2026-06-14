@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { inventario, proveedores as proveedoresApi } from '../lib/api';
+import { inventario, proveedores as proveedoresApi, cajas as cajasApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
-import { mapStockRows, extractNewCatalogos } from '../lib/importStock';
+import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload } from '../lib/importStock';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -150,6 +150,14 @@ export default function Inventario() {
   const [importRows, setImportRows] = useState([]);
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
+  // Multi-proveedor (2026-06-14): después de mapear las filas, agrupamos por
+  // proveedor para generar una compra por grupo. importGroups guarda la
+  // config (proveedor seleccionado, monto, moneda, TC, caja) por grupo.
+  // Espejo del modal "Cargar compra" en Proveedores.jsx — un grupo = un movimiento.
+  const [importGroups, setImportGroups] = useState([]);
+  // Cajas (métodos de pago) — para el selector de cada grupo. Lista lite sin
+  // saldos. Cargada una vez en loadCatalogos.
+  const [cajasList, setCajasList] = useState([]);
 
   // Modal catálogos (categorías + depósitos)
   const [showCatalogos, setShowCatalogos] = useState(false);
@@ -208,7 +216,7 @@ export default function Inventario() {
 
   const loadCatalogos = useCallback(async () => {
     try {
-      const [c, d, prov, provCat] = await Promise.all([
+      const [c, d, prov, provCat, cajas] = await Promise.all([
         inventario.categorias(),
         inventario.depositos(),
         inventario.proveedoresList().catch(() => []),
@@ -216,10 +224,15 @@ export default function Inventario() {
         // porque típicamente Lucas tiene <100 proveedores y necesitamos toda la lista
         // para el match del auto-create.
         proveedoresApi.list({ limit: 500 }).catch(() => ({ data: [] })),
+        // Cajas (lite, sin saldos) para el selector del modal multi-proveedor
+        // de import. Si falla → array vacío (el selector quedará deshabilitado
+        // con un mensaje claro).
+        cajasApi.listMetodosPago().catch(() => []),
       ]);
       setCategorias(c); setDepositos(d); setProveedoresList(prov || []);
       // El endpoint paginado devuelve { data, pagination }; unwrap defensivo.
       setProveedoresCatalogo(Array.isArray(provCat) ? provCat : (provCat?.data || []));
+      setCajasList(Array.isArray(cajas) ? cajas : []);
     } catch (_) {}
   }, []);
 
@@ -391,7 +404,43 @@ export default function Inventario() {
     exportCsv('plantilla_stock.csv', rowsToObjects(PLANTILLA_EJEMPLO), plantillaCols());
   }
 
-  function openImport() { setImportRows([]); setImportError(''); setShowImport(true); }
+  function openImport() {
+    setImportRows([]); setImportGroups([]); setImportError(''); setShowImport(true);
+  }
+
+  // Construye el estado inicial de los grupos a partir de filas válidas mapeadas.
+  // Un grupo = un proveedor distinto detectado en el XLSX = una compra a generar.
+  // Si el proveedor existe en el catálogo (auto-match por nombre case-insensitive),
+  // se preselecciona; sino queda vacío y el usuario lo elige (con opción de crear nuevo).
+  function buildImportGroups(mapped) {
+    const groups = groupRowsByProveedor(mapped);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    return groups.map((g, i) => {
+      const match = g.proveedor
+        ? proveedoresCatalogo.find(p => p.nombre.trim().toLowerCase() === g.proveedor.toLowerCase())
+        : null;
+      // Sugerencia de monto: suma de costos USD de las filas del grupo. Lucas
+      // puede editar (puede haber flete, dto extra, etc.) pero arranca con un
+      // valor razonable y no en 0.
+      const sugerido = g.rows.reduce((acc, r) => {
+        const m = r.body?.costo_moneda;
+        // Sólo sumamos USD — si hay ARS necesitaríamos TC, no asumimos.
+        return acc + (m === 'USD' ? Number(r.body?.costo || 0) * (r.body?.cantidad || 1) : 0);
+      }, 0);
+      return {
+        key: `g_${i}`,
+        proveedor_label: g.proveedor || '— Sin proveedor en XLSX —',
+        proveedor_id: match?.id ?? '',
+        proveedor_nuevo: !match && g.proveedor ? g.proveedor : '',  // si no matchea, sugerir crear
+        fecha: todayIso,
+        monto: sugerido > 0 ? String(Math.round(sugerido * 100) / 100) : '',
+        moneda: 'USD',
+        tc: '',
+        caja_id: '',
+        rows: g.rows,
+      };
+    });
+  }
 
   async function onImportFile(e) {
     setImportError('');
@@ -415,6 +464,11 @@ export default function Inventario() {
       const mapped = mapStockRows(rows, { categorias, depositos, proveedores: proveedoresCatalogo });
       if (mapped.length === 0) { setImportError('No se encontraron filas con datos.'); return; }
       setImportRows(mapped);
+      // Multi-proveedor: agrupa las filas válidas por proveedor → un movimiento
+      // (compra) por grupo. El usuario ajusta monto/caja/etc por grupo antes
+      // de confirmar. Si todas las filas tienen el mismo proveedor (o ninguno),
+      // queda un solo grupo — el flow se siente igual que antes para ese caso.
+      setImportGroups(buildImportGroups(mapped));
     } catch (err) {
       setImportError(isXlsx
         ? 'No se pudo leer el Excel. ¿Es un .xlsx válido?'
@@ -424,21 +478,44 @@ export default function Inventario() {
     }
   }
 
+  // Valida que cada grupo tenga los campos requeridos antes de submit.
+  // Devuelve string vacío si OK, o un mensaje de error con qué grupo falla.
+  function validateImportGroups() {
+    if (!importGroups.length) return 'No hay grupos para importar.';
+    for (let i = 0; i < importGroups.length; i++) {
+      const g = importGroups[i];
+      const label = g.proveedor_label;
+      // Proveedor: o un id existente o un nombre nuevo a crear.
+      if (!g.proveedor_id && !g.proveedor_nuevo.trim()) {
+        return `Grupo "${label}": elegí un proveedor existente o creá uno nuevo.`;
+      }
+      // Monto: requerido > 0 (la compra crea productos en Inventario → backend
+      // exige monto > 0, lo replicamos en frontend para feedback inmediato).
+      const monto = Number(g.monto);
+      if (!(monto > 0)) return `Grupo "${label}": ingresá un monto válido (> 0).`;
+      // TC requerido si moneda no es USD
+      if (g.moneda !== 'USD' && !(Number(g.tc) > 0)) {
+        return `Grupo "${label}": para ${g.moneda} necesitás el tipo de cambio (TC).`;
+      }
+      // Caja: opcional. Si no eligen, el backend NO genera caja_movimiento
+      // (queda como deuda con el proveedor sin tocar caja). Es válido.
+    }
+    return '';
+  }
+
   async function confirmImport() {
     const validRows = importRows.filter(r => !r.error);
     if (!validRows.length) return;
+    const err = validateImportGroups();
+    if (err) { setImportError(err); return; }
     setImporting(true);
     setImportError('');
     try {
-      // ── Paso 1: bulk resolve-or-create de catálogos en 2 round-trips ─────
-      // Antes hacía N+M round-trips secuenciales (uno por cada categoría +
-      // uno por cada proveedor nuevo). Con 60 cats + 80 provs eran 140 RTTs
-      // de ~150ms = 21s antes del bulk de productos. Ahora: 2 RTTs (cats + provs).
-      // Beneficio adicional: ON CONFLICT en backend elimina race conditions
-      // entre imports concurrentes.
-      const { categorias: catsNuevas, proveedores: provsNuevos } = extractNewCatalogos(validRows);
-      const newCatByName = new Map(); // lowercase nombre → id recién creado/existente
-
+      // ── Paso 1: bulk resolve-or-create de catálogos ──────────────────────
+      // Categorías: necesario porque el body de producto exige categoria_id.
+      // Lo hacemos como antes (un solo bulk) para minimizar RTTs.
+      const { categorias: catsNuevas } = extractNewCatalogos(validRows);
+      const newCatByName = new Map();
       if (catsNuevas.length > 0) {
         try {
           const { map } = await inventario.bulkCategorias(catsNuevas);
@@ -448,48 +525,67 @@ export default function Inventario() {
         }
       }
 
-      // ── Paso 2: bulk resolve-or-create de proveedores ─────────────────
-      // Idempotente: si ya existían, no duplica. Best-effort: si falla, sigue.
-      if (provsNuevos.length > 0) {
+      // ── Paso 2: resolve-or-create de proveedores marcados como nuevos ─────
+      // El usuario puede haber escrito un nombre en `proveedor_nuevo` de un
+      // grupo (auto-suggest o manual). Los creamos en bulk para obtener su id.
+      // Idempotente backend: si ya existe, lo devuelve.
+      const nombresProvNuevos = importGroups
+        .filter(g => !g.proveedor_id && g.proveedor_nuevo.trim())
+        .map(g => g.proveedor_nuevo.trim());
+      const provIdByName = new Map(); // lowercase nombre → id
+      if (nombresProvNuevos.length > 0) {
         try {
-          await proveedoresApi.bulk(provsNuevos);
-        } catch (_e) {
-          // Mismo criterio que antes: el bulk de productos sigue, solo perdemos
-          // el seeding del catálogo (no rompe nada porque proveedor es string).
+          // El endpoint /api/proveedores/bulk devuelve { proveedores: [{id,nombre},...] }
+          // (igual que /api/proveedores/list, idempotente). Lo reaprovechamos
+          // para obtener los ids de los recién creados.
+          const res = await proveedoresApi.bulk(nombresProvNuevos);
+          const arr = res?.proveedores || res?.data || [];
+          for (const p of arr) provIdByName.set(p.nombre.trim().toLowerCase(), p.id);
+        } catch (e) {
+          throw new Error(`No se pudieron crear los proveedores nuevos: ${e.message}`);
         }
       }
 
-      // ── Paso 3: reconciliar bodies — reemplazar nombre por id para las nuevas ─
-      const bodies = validRows.map(r => {
-        if (r._categoriaNueva && !r.body.categoria_id) {
-          const id = newCatByName.get(r._categoriaNueva.toLowerCase());
-          return { ...r.body, categoria_id: id || null };
-        }
-        return r.body;
+      // ── Paso 3: armar el payload bulk multi-movimiento ───────────────────
+      // Un movimiento (tipo='compra') por grupo. Lógica pura extraída a
+      // buildBulkMovimientosPayload (importStock.js) para poder testarla
+      // aislada — el backend crea el producto en Inventario en la misma tx,
+      // con proveedor auto-asignado al nombre del proveedor del movimiento.
+      const movimientos = buildBulkMovimientosPayload({
+        groups: importGroups,
+        newCatByName,
+        provIdByName,
       });
 
-      // ── Paso 4: bulk de productos ───────────────────────────────────────
-      let creados = 0;
-      for (let i = 0; i < bodies.length; i += 500) {
-        const res = await inventario.bulkProductos(bodies.slice(i, i + 500));
-        creados += res.creados;
-      }
+      // ── Paso 4: bulk multi-movimiento (transacción atómica server-side) ──
+      const res = await proveedoresApi.createMovimientosBulk(movimientos);
+      const compras = res?.count || movimientos.length;
+      const productos = res?.movimientos?.reduce((acc, m) => acc + (m.items_creados || m.items?.length || 0), 0)
+        || validRows.length;
 
-      // Toast contextual con resumen de creaciones de catálogos.
+      // Toast contextual.
       const extras = [];
       if (catsNuevas.length) extras.push(`${catsNuevas.length} categoría${catsNuevas.length === 1 ? '' : 's'}`);
-      if (provsNuevos.length) extras.push(`${provsNuevos.length} proveedor${provsNuevos.length === 1 ? '' : 'es'}`);
+      if (nombresProvNuevos.length) extras.push(`${nombresProvNuevos.length} proveedor${nombresProvNuevos.length === 1 ? '' : 'es'}`);
       const suffix = extras.length ? ` (+ ${extras.join(' y ')} nueva${extras.length === 1 ? '' : 's'})` : '';
-      toast.success(`${creados} producto${creados === 1 ? '' : 's'} importado${creados === 1 ? '' : 's'}${suffix}.`);
+      toast.success(
+        `${productos} producto${productos === 1 ? '' : 's'} importado${productos === 1 ? '' : 's'} en ${compras} compra${compras === 1 ? '' : 's'}${suffix}.`
+      );
       setShowImport(false);
       // Refresh todo: productos, métricas, y catálogos (las nuevas categorías
-      // tienen que aparecer en filtros y selects).
+      // tienen que aparecer en filtros y selects). Proveedores también puede
+      // tener nuevos.
       await Promise.all([loadProductos(), loadMetricas(), loadCatalogos()]);
     } catch (e) {
       setImportError(e.message);
     } finally {
       setImporting(false);
     }
+  }
+
+  // Actualiza un campo de un grupo del import por key. Helper para los inputs.
+  function updateImportGroup(key, patch) {
+    setImportGroups(gs => gs.map(g => g.key === key ? { ...g, ...patch } : g));
   }
 
   // ── Bulk delete de stock disponible ────────────────────────────────────────
@@ -985,16 +1081,25 @@ export default function Inventario() {
       )}
 
       {/* ── Modal import ── */}
+      {/* Refactor 2026-06-14 #multi-proveedor:
+          - Antes: una sola sección "validar filas + Importar" que generaba productos en Inventario.
+          - Ahora: tras subir el XLSX se agrupa por columna `proveedor` y se muestra
+            una card por grupo para configurar la compra (proveedor, monto, moneda, TC, caja).
+            Al confirmar, el backend genera N movimientos de compra en una sola transacción
+            atómica vía POST /api/proveedores/movimientos/bulk — los productos quedan
+            trazables a su compra de origen. */}
       {showImport && (
         <div ref={importModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && !importing && setShowImport(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Importar stock desde planilla</h3>
               <button type="button" className="icon-btn" onClick={() => setShowImport(false)} disabled={importing} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
-            <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong>. Se detecta cada columna por su nombre (tolera aclaraciones como “(solo iph)”). Accesorio si trae STOCK, celular si trae IMEI. <strong>Categorías y proveedores que no existan se crean automáticamente.</strong> El depósito se vincula por su ID.
+                Subí un <strong>.xlsx</strong> o <strong>.csv</strong>. La columna <strong>proveedor</strong> define el agrupamiento:
+                cada proveedor distinto se vuelve <strong>una compra</strong> en su CC, con sus productos como ítems trazables.
+                Las categorías que no existan se crean automáticamente.
               </p>
               <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
                 <button className="btn btn-sm" onClick={descargarPlantillaXlsx}><Icons.Download size={13} /> Plantilla .xlsx</button>
@@ -1006,54 +1111,140 @@ export default function Inventario() {
               </div>
               {importRows.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>
+                  <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
                     <span className="pos">{importValidos.length} válidos</span> · <span className="neg">{importErrores.length} con error</span> · {importRows.length} filas
+                    {importGroups.length > 0 && (
+                      <> · <strong>{importGroups.length} compra{importGroups.length === 1 ? '' : 's'}</strong> a generar</>
+                    )}
                   </div>
-                  {/* Preview informativo de auto-create de catálogos.
-                      Las categorías/proveedores nuevos se van a CREAR al importar
-                      (no son error). Mostramos la lista para que el user vea si
-                      hay typos antes de confirmar. Solo informativo — no bloquea. */}
-                  {(() => {
-                    const { categorias: catsNuevas, proveedores: provsNuevos } =
-                      extractNewCatalogos(importValidos);
-                    if (!catsNuevas.length && !provsNuevos.length) return null;
-                    return (
-                      <div style={{
-                        fontSize: 12, lineHeight: 1.5,
-                        padding: '8px 12px', marginBottom: 8, borderRadius: 6,
-                        background: 'rgba(122, 169, 255, 0.08)',
-                        border: '1px solid rgba(122, 169, 255, 0.2)',
-                        color: 'var(--text)',
-                      }}>
-                        <strong style={{ color: 'var(--info)' }}>ℹ Auto-create al importar:</strong>
-                        {catsNuevas.length > 0 && (
-                          <div style={{ marginTop: 4 }}>
-                            <strong>{catsNuevas.length}</strong> categoría{catsNuevas.length === 1 ? '' : 's'} nueva{catsNuevas.length === 1 ? '' : 's'}:{' '}
-                            <span className="muted">{catsNuevas.slice(0, 10).join(', ')}{catsNuevas.length > 10 ? `, +${catsNuevas.length - 10} más` : ''}</span>
-                          </div>
-                        )}
-                        {provsNuevos.length > 0 && (
-                          <div style={{ marginTop: 4 }}>
-                            <strong>{provsNuevos.length}</strong> proveedor{provsNuevos.length === 1 ? '' : 'es'} nuevo{provsNuevos.length === 1 ? '' : 's'}:{' '}
-                            <span className="muted">{provsNuevos.slice(0, 10).join(', ')}{provsNuevos.length > 10 ? `, +${provsNuevos.length - 10} más` : ''}</span>
-                          </div>
-                        )}
-                        <div className="muted tiny" style={{ marginTop: 6, fontStyle: 'italic' }}>
-                          Si ves typos, cancelá, corregí la planilla y volvé a subirla.
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {/* Errores: si los hay, se mostrarán pero NO bloquean. Las filas
+                      con error simplemente no entran a ningún grupo (el agrupador
+                      las ignora). El usuario decide si seguir o corregir la planilla. */}
                   {importErrores.length > 0 && (
-                    <div style={{ fontSize: 11, color: 'var(--neg)', maxHeight: 80, overflowY: 'auto', marginBottom: 8 }}>
-                      {importErrores.slice(0, 20).map((r, i) => <div key={i}>Fila {i + 1} ({r.body.nombre || 'sin nombre'}): {r.error}</div>)}
+                    <div style={{
+                      fontSize: 11, color: 'var(--neg)', maxHeight: 80, overflowY: 'auto',
+                      marginBottom: 10, padding: '6px 10px',
+                      background: 'rgba(239, 68, 68, 0.06)',
+                      border: '1px solid rgba(239, 68, 68, 0.18)',
+                      borderRadius: 6,
+                    }}>
+                      <strong>Filas con error (se omiten):</strong>
+                      {importErrores.slice(0, 20).map((r, i) => (
+                        <div key={i}>· {r.body.nombre || 'sin nombre'}: {r.error}</div>
+                      ))}
+                      {importErrores.length > 20 && <div className="muted">+ {importErrores.length - 20} más…</div>}
                     </div>
                   )}
-                  {importValidos.length > 0 && (
-                    <table className="table" style={{ fontSize: 12 }}>
-                      <thead><tr><th>Nombre</th><th>Clase</th><th>Cant.</th><th>Proveedor</th></tr></thead>
-                      <tbody>{importValidos.slice(0, 6).map((r, i) => <tr key={i}><td>{r.body.nombre}</td><td>{r.body.clase}</td><td>{r.body.cantidad}</td><td className="muted">{r.body.proveedor || '—'}</td></tr>)}</tbody>
-                    </table>
+
+                  {/* ── Cards de compras a generar (una por proveedor) ── */}
+                  {importGroups.length > 0 && (
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{
+                        fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+                        color: 'var(--text-muted)', marginBottom: 8,
+                      }}>
+                        COMPRAS A GENERAR ({importGroups.length})
+                      </div>
+                      {importGroups.map(g => {
+                        const monedaSel = g.moneda;
+                        const provExistente = !!g.proveedor_id;
+                        return (
+                          <div key={g.key} style={{
+                            border: '1px solid var(--border)', borderRadius: 8,
+                            padding: 12, marginBottom: 10,
+                            background: 'var(--surface-2, rgba(255,255,255,0.02))',
+                          }}>
+                            <div style={{
+                              fontSize: 12, fontWeight: 700,
+                              color: 'var(--accent)', marginBottom: 6,
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                            }}>
+                              <span>📦 {g.proveedor_label}</span>
+                              <span className="muted tiny" style={{ fontWeight: 500 }}>
+                                {g.rows.length} producto{g.rows.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+
+                            <div className="row">
+                              <div className="field" style={{ flex: 2 }}>
+                                <label className="field-label">
+                                  Proveedor <span style={{ color: 'var(--neg)' }}>*</span>
+                                </label>
+                                <select className="input" value={g.proveedor_id}
+                                  onChange={e => updateImportGroup(g.key, {
+                                    proveedor_id: e.target.value ? Number(e.target.value) : '',
+                                    // Si elige uno existente, limpiamos el "nuevo".
+                                    proveedor_nuevo: e.target.value ? '' : g.proveedor_nuevo,
+                                  })}>
+                                  <option value="">— Elegir existente o crear nuevo —</option>
+                                  {proveedoresCatalogo.map(p => (
+                                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                                  ))}
+                                </select>
+                                {/* Quick-add: solo si NO eligió uno existente.
+                                    Auto-rellena con el nombre del XLSX si no había match. */}
+                                {!provExistente && (
+                                  <input className="input" style={{ marginTop: 6 }}
+                                    placeholder="O escribí el nombre del nuevo proveedor"
+                                    value={g.proveedor_nuevo}
+                                    onChange={e => updateImportGroup(g.key, { proveedor_nuevo: e.target.value })} />
+                                )}
+                              </div>
+                              <div className="field" style={{ flex: '0 0 130px' }}>
+                                <label className="field-label">Fecha</label>
+                                <input type="date" className="input" value={g.fecha}
+                                  onChange={e => updateImportGroup(g.key, { fecha: e.target.value })} />
+                              </div>
+                            </div>
+
+                            <div className="row">
+                              <div className="field" style={{ flex: 1 }}>
+                                <label className="field-label">
+                                  Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span>
+                                </label>
+                                <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                                  className="input mono" placeholder="0"
+                                  value={g.monto}
+                                  onChange={e => updateImportGroup(g.key, { monto: e.target.value })} />
+                              </div>
+                              <div className="field" style={{ flex: '0 0 100px' }}>
+                                <label className="field-label">Moneda</label>
+                                <select className="input" value={g.moneda}
+                                  onChange={e => updateImportGroup(g.key, { moneda: e.target.value, tc: e.target.value === 'USD' ? '' : g.tc })}>
+                                  <option value="USD">USD</option>
+                                  <option value="ARS">ARS</option>
+                                  <option value="USDT">USDT</option>
+                                </select>
+                              </div>
+                              {monedaSel !== 'USD' && (
+                                <div className="field" style={{ flex: '0 0 130px' }}>
+                                  <label className="field-label">
+                                    TC {monedaSel}→USD <span style={{ color: 'var(--neg)' }}>*</span>
+                                  </label>
+                                  <input type="number" onKeyDown={blockInvalidNumberKeys}
+                                    min="0" step="0.01" className="input mono"
+                                    placeholder="1000" value={g.tc}
+                                    onChange={e => updateImportGroup(g.key, { tc: e.target.value })} />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="field">
+                              <label className="field-label">
+                                Caja (opcional — si se carga, registra el egreso)
+                              </label>
+                              <select className="input" value={g.caja_id}
+                                onChange={e => updateImportGroup(g.key, { caja_id: e.target.value })}>
+                                <option value="">Sin caja (queda como deuda al proveedor)</option>
+                                {cajasList.map(c => (
+                                  <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               )}
@@ -1061,7 +1252,15 @@ export default function Inventario() {
             </div>
             <div className="modal-ft">
               <button className="btn btn-ghost" onClick={() => setShowImport(false)}>Cancelar</button>
-              <button className="btn btn-primary" disabled={importing || importValidos.length === 0} onClick={confirmImport}>{importing ? 'Importando…' : 'Importar'}</button>
+              <button className="btn btn-primary"
+                disabled={importing || importValidos.length === 0 || importGroups.length === 0}
+                onClick={confirmImport}>
+                {importing
+                  ? 'Importando…'
+                  : importGroups.length > 0
+                    ? `Importar ${importGroups.length} compra${importGroups.length === 1 ? '' : 's'}`
+                    : 'Importar'}
+              </button>
             </div>
           </div>
         </div>

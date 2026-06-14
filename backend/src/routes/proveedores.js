@@ -114,7 +114,7 @@ router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, ne
     const inputDedup = [...new Map(
       req.body.nombres.map(n => [String(n).trim().toLowerCase(), String(n).trim()])
     ).values()].filter(Boolean);
-    if (inputDedup.length === 0) return res.json({ creados: 0 });
+    if (inputDedup.length === 0) return res.json({ creados: 0, proveedores: [] });
 
     await client.query('BEGIN');
     const lowers = inputDedup.map(n => n.toLowerCase());
@@ -126,20 +126,28 @@ router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, ne
     );
     const setExist = new Set(existentes.map(r => r.k));
     const aCrear = inputDedup.filter(n => !setExist.has(n.toLowerCase()));
-    if (aCrear.length === 0) {
-      await client.query('COMMIT');
-      return res.json({ creados: 0 });
+    if (aCrear.length > 0) {
+      // INSERT en bloque solo los faltantes.
+      await client.query(
+        `INSERT INTO proveedores (nombre) SELECT unnest($1::text[])`,
+        [aCrear]
+      );
+      await audit(client, 'proveedores', 'INSERT', 0, {
+        tipo: 'bulk_resolve_or_create_proveedores', nombres: aCrear, user_id: req.user.id,
+      });
     }
-    // INSERT en bloque solo los faltantes.
-    await client.query(
-      `INSERT INTO proveedores (nombre) SELECT unnest($1::text[])`,
-      [aCrear]
+    // Resolve-or-create: devolvemos id+nombre de TODOS los pedidos (existentes
+    // + recién creados). Permite al frontend del import XLSX (2026-06-14)
+    // construir movimientos referenciando proveedor_id sin un RTT extra para
+    // resolver los ids. Backward compatible: `creados` sigue presente con la
+    // misma semántica (cantidad de filas insertadas).
+    const { rows: proveedores } = await client.query(
+      `SELECT id, nombre FROM proveedores
+        WHERE LOWER(nombre) = ANY($1::text[]) AND deleted_at IS NULL`,
+      [lowers]
     );
-    await audit(client, 'proveedores', 'INSERT', 0, {
-      tipo: 'bulk_resolve_or_create_proveedores', nombres: aCrear, user_id: req.user.id,
-    });
     await client.query('COMMIT');
-    res.json({ creados: aCrear.length });
+    res.json({ creados: aCrear.length, proveedores });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
