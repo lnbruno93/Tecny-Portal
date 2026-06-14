@@ -29,9 +29,51 @@ const MAX_REPORTS_PER_SESSION = 5;
 let lastReportAt = 0;
 const MIN_INTERVAL_MS = 2000;
 
+/**
+ * Patrones de mensajes que NO son bugs y no deben llegar a Sentry.
+ *
+ * Detectado 2026-06-14 mirando issue Sentry NODE-F: 14 eventos agrupados bajo
+ * "Sin conexión con el servidor. Verificá tu red e intentá de nuevo." con 0
+ * users mapeados. Ese texto sale de `api.js` cuando un fetch() falla por red
+ * — es el mensaje que mostramos AL USUARIO, no la causa raíz. Si la promesa
+ * cae en `unhandledrejection`, el handler global lo postea a /api/client-errors
+ * → backend → Sentry, ensuciando la cola con ruido transient sin contexto del
+ * endpoint que falló.
+ *
+ * Estos mensajes se silencian PORQUE:
+ *   1. Son transient (wifi del usuario, no un bug del código).
+ *   2. Ya los manejamos correctamente (mostramos al usuario, ofrecemos retry).
+ *   3. Agrupados son inútiles para diagnosticar — perdemos info del endpoint.
+ *
+ * Si en el futuro queremos OBSERVABILIDAD de estos errores (ej. detectar
+ * Railway tirado), mejor hacer un endpoint de health que mida latencia, NO
+ * apilar mensajes de UI en Sentry.
+ */
+const NOISE_PATTERNS = [
+  /Sin conexi[óo]n con el servidor/i,           // api.js fetch network failure
+  /La solicitud tard[óo] demasiado/i,           // api.js AbortError (timeout)
+  /^NO_AUTH$/,                                  // api.js 401 (sesión expirada — handled via event)
+  /No ten[ée]s permiso/i,                       // api.js 403 (mostrado al usuario)
+  /Failed to fetch/i,                           // browser network failure genérico
+  /NetworkError when attempting to fetch/i,     // Firefox
+  /Load failed/i,                               // Safari
+  /Network request failed/i,                    // misc
+  /The operation was aborted/i,                 // user navegó/cerró
+  /AbortError/i,                                // user navegó/cerró
+];
+
+function isNoise(error) {
+  const msg = error?.message || String(error || '');
+  return NOISE_PATTERNS.some(p => p.test(msg));
+}
+
 export function reportError(error, context = {}) {
   // Solo en producción — en dev preferimos ver el error en consola.
   if (import.meta.env.DEV) return;
+
+  // Filtrar ruido conocido (errores transient de red, etc.) — ver
+  // NOISE_PATTERNS para el porqué.
+  if (isNoise(error)) return;
 
   // Throttle
   if (reportsSent >= MAX_REPORTS_PER_SESSION) return;
