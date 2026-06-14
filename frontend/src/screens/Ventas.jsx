@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi } from '../lib/api';
+import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi, config as configApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -74,6 +74,11 @@ export default function Ventas() {
   // para que un equipo tomado entre directo en su categoría correcta.
   const [categoriasInv, setCategoriasInv] = useState([]);
   const [metodos, setMetodos] = useState([]);
+  // Tema C en-vivo (2026-06-13): porcentaje global de Financiera (`config.pct_financiera`).
+  // Lo usamos en el preview de ganancia real para descontar comisión de pagos por
+  // transferencia. Cargado en loadCatalogos, no se refetcha durante la sesión —
+  // si Lucas lo cambia en Config, se actualiza al re-entrar a Ventas.
+  const [pctFinanciera, setPctFinanciera] = useState(0);
   const [garantias, setGarantias] = useState([]);
   const [clientesCC, setClientesCC] = useState([]);
   const [contactos, setContactos] = useState([]);
@@ -129,9 +134,14 @@ export default function Ventas() {
 
   const loadCatalogos = useCallback(async () => {
     const safe = (p) => p.then(r => r).catch(() => []);
-    const [v, e, m, g, cc, ct, cats] = await Promise.all([
+    // `configApi.get()` falla con array vacío → defensivo: si no es un objeto
+    // con pct_financiera, lo tratamos como 0 y el preview de ganancia real
+    // simplemente no descuenta Financiera (igual que pre-Tema C).
+    const safeCfg = (p) => p.then(r => r).catch(() => ({}));
+    const [v, e, m, g, cc, ct, cats, cfg] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
       safe(inventario.categorias()), // categorías para el picker del canje (junio 2026)
+      safeCfg(configApi.get()),      // pct_financiera para el preview Tema C
     ]);
     // Los endpoints paginados devuelven { data, pagination }. Usamos un
     // unwrap defensivo: si vino array (endpoint no-paginado o vacío), tomar
@@ -141,6 +151,7 @@ export default function Ventas() {
     const ctArr = unwrap(ct); // post-audit: contactos ahora paginado
     setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ctArr);
     setCategoriasInv(unwrap(cats));
+    setPctFinanciera(Number(cfg?.pct_financiera) || 0);
   }, []);
 
   useEffect(() => { loadCatalogos(); }, [loadCatalogos]);
@@ -202,7 +213,16 @@ export default function Ventas() {
       })),
     });
     setCart((v.items || []).map(it => ({ producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
-    setPagos((v.pagos || []).map(p => ({ metodo_pago_id: p.metodo_pago_id ?? null, metodo_nombre: p.metodo_nombre, monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '', es_cuenta_corriente: !!p.es_cuenta_corriente })));
+    setPagos((v.pagos || []).map(p => ({
+      metodo_pago_id: p.metodo_pago_id ?? null, metodo_nombre: p.metodo_nombre,
+      monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '',
+      es_cuenta_corriente: !!p.es_cuenta_corriente,
+      // rev5: usd_input es el valor primario; al cargar venta existente lo
+      // derivamos de monto (bruto) descontando la comisión. Se popula completo
+      // recién cuando los metodos están cargados — si la edición abre antes,
+      // queda '' y el USD se muestra calculado por el componente.
+      usd_input: '', neto_input: '',
+    })));
     setShowVenta(true);
   }
 
@@ -250,16 +270,138 @@ export default function Ventas() {
   const setItem = (i, k, v) => setCart(c => c.map((it, j) => j === i ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
   const rmItem = (i) => setCart(c => c.filter((_, j) => j !== i));
 
-  const addPago = () => setPagos(p => [...p, { metodo_pago_id: null, metodo_nombre: '', monto: '', moneda: 'ARS', tc: '', es_cuenta_corriente: false }]);
+  // Tema C en-vivo rev5 (2026-06-14): nuevo modelo de pago — el operador
+  // tipea USD (su mental model), el sistema arma el bruto ARS según el
+  // método elegido. Cada pago tiene:
+  //   · usd_input  — valor "primario" tipeado por el operador
+  //   · neto_input — opcional, si edita "Entra a tu caja" directamente
+  //                  (caso "cliente ya transfirió $X")
+  //   · monto      — bruto en moneda (SOURCE OF TRUTH para el backend)
+  //   · moneda, tc — derivados del método (excepto CC)
+  // Cuando cambia usd_input/tc/método, monto se recalcula con la fórmula
+  // bruto = usd × tc / (1 − pct/100). El backend recibe monto como siempre,
+  // sin cambios server-side.
+  const addPago = () => setPagos(p => [...p, {
+    metodo_pago_id: null, metodo_nombre: '', monto: '', moneda: 'ARS', tc: '',
+    usd_input: '', neto_input: '', es_cuenta_corriente: false,
+  }]);
   const setPago = (i, k, v) => setPagos(p => p.map((pg, j) => j === i ? { ...pg, [k]: v } : pg));
   const rmPago = (i) => setPagos(p => p.filter((_, j) => j !== i));
+
+  // Helpers de fórmula (rev5)
+  function pctMetodo(m) {
+    if (!m) return 0;
+    if (m.es_tarjeta && Number(m.comision_pct) > 0) return Number(m.comision_pct);
+    if (m.es_financiera && pctFinanciera > 0)        return pctFinanciera;
+    return 0;
+  }
+  function brutoFromUsdInput(usd, moneda, tc, pct) {
+    const u = Number(usd) || 0;
+    if (u <= 0) return '';
+    const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
+    if (moneda === 'USD' || moneda === 'USDT') return Math.round(u * factor * 100) / 100;
+    const t = Number(tc);
+    if (moneda === 'ARS' && t > 0)              return Math.round(u * t * factor * 100) / 100;
+    return '';
+  }
+  function brutoFromNetoInput(neto, pct) {
+    const n = Number(neto) || 0;
+    if (n <= 0) return '';
+    return Math.round(n / (1 - pct / 100) * 100) / 100;
+  }
+  // Faltante USD = total venta − otros pagos − canjes. Usado para auto-llenar
+  // el USD al elegir un método nuevo (si el operador no había tipeado nada).
+  function faltanteUsd(indexExcluir, prevPagos) {
+    const tc = Number(vForm.tc_venta) || null;
+    let totalUsd = 0;
+    cart.forEach(it => {
+      const qty = Number(it.cantidad) || 0;
+      const precio = Number(it.precio_vendido) || 0;
+      totalUsd += toUsd(precio * qty, it.moneda, tc);
+    });
+    if (totalUsd <= 0) return 0;
+    let otrosUsd = 0;
+    prevPagos.forEach((pg, k) => {
+      if (k === indexExcluir) return;
+      otrosUsd += toUsd(pg.monto, pg.moneda, pg.tc || tc);
+    });
+    const canjeUsd = (vForm.canjes || []).reduce((acc, c) => acc + (Number(c.valor_toma) || 0), 0);
+    return Math.max(0, totalUsd - otrosUsd - canjeUsd);
+  }
+
+  // Setter para el input USD (lo que el operador tipea).
+  function setPagoUsd(i, value) {
+    setPagos(p => p.map((pg, j) => {
+      if (j !== i) return pg;
+      const m = metodos.find(x => x.id === pg.metodo_pago_id);
+      const pct = pctMetodo(m);
+      const tc = pg.tc || vForm.tc_venta;
+      const bruto = brutoFromUsdInput(value, pg.moneda, tc, pct);
+      return { ...pg, usd_input: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // Setter para el input Neto (caso "cliente ya transfirió X").
+  function setPagoNeto(i, value) {
+    setPagos(p => p.map((pg, j) => {
+      if (j !== i) return pg;
+      const m = metodos.find(x => x.id === pg.metodo_pago_id);
+      const pct = pctMetodo(m);
+      const bruto = brutoFromNetoInput(value, pct);
+      // El usd_input ahora deja de ser autoritativo; lo derivamos del neto.
+      const tc = Number(pg.tc) || Number(vForm.tc_venta) || null;
+      let usd = '';
+      const n = Number(value) || 0;
+      if (n > 0) {
+        if (pg.moneda === 'ARS' && tc > 0) usd = Math.round(n / tc * 100) / 100;
+        else                                usd = n;
+      }
+      return { ...pg, usd_input: usd !== '' ? String(usd) : '', neto_input: value, monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // Setter del TC (recalcula el bruto desde el USD tipeado).
+  function setPagoTc(i, value) {
+    setPagos(p => p.map((pg, j) => {
+      if (j !== i) return pg;
+      const m = metodos.find(x => x.id === pg.metodo_pago_id);
+      const pct = pctMetodo(m);
+      const bruto = brutoFromUsdInput(pg.usd_input, pg.moneda, value, pct);
+      return { ...pg, tc: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
   function setPagoMetodo(i, value) {
     if (value === '__CC__') {
-      setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_pago_id: null, metodo_nombre: 'Cuenta corriente', es_cuenta_corriente: true, moneda: pg.moneda || 'USD' } : pg));
+      setPagos(p => p.map((pg, j) => j === i ? {
+        ...pg, metodo_pago_id: null, metodo_nombre: 'Cuenta corriente',
+        es_cuenta_corriente: true, moneda: pg.moneda || 'USD',
+      } : pg));
       return;
     }
     const m = metodos.find(x => x.nombre === value);
-    setPagos(p => p.map((pg, j) => j === i ? { ...pg, metodo_pago_id: m ? m.id : null, metodo_nombre: value, es_cuenta_corriente: false, moneda: m ? m.moneda : pg.moneda } : pg));
+    setPagos(p => {
+      const newMoneda = m ? m.moneda : null;
+      const pct = pctMetodo(m);
+      return p.map((pg, j) => {
+        if (j !== i) return pg;
+        // Si el operador ya tipeó USD, preservar; si no, auto-llenar con el faltante.
+        let usd = pg.usd_input;
+        if (!usd || Number(usd) <= 0) {
+          const falt = faltanteUsd(i, p);
+          if (falt > 0) usd = String(Math.round(falt * 100) / 100);
+        }
+        const tcUse = pg.tc || vForm.tc_venta;
+        const bruto = brutoFromUsdInput(usd, newMoneda || pg.moneda, tcUse, pct);
+        return {
+          ...pg,
+          metodo_pago_id: m ? m.id : null,
+          metodo_nombre: value,
+          es_cuenta_corriente: false,
+          moneda: newMoneda || pg.moneda,
+          usd_input: usd,
+          neto_input: '', // reset override al cambiar método
+          monto: bruto !== '' ? String(bruto) : '',
+        };
+      });
+    });
   }
 
   function onComprobFiles(e) {
@@ -279,13 +421,62 @@ export default function Ventas() {
 
   const totales = useMemo(() => {
     const tc = Number(vForm.tc_venta) || null;
-    let items = 0; cart.forEach(it => { items += toUsd((Number(it.precio_vendido) || 0) * (Number(it.cantidad) || 0), it.moneda, tc); });
-    let pg = 0; pagos.forEach(p => { pg += toUsd(p.monto, p.moneda, p.tc || tc); });
+    let items = 0;     // Total venta (USD) — precio × cantidad
+    let costosUsd = 0; // Costos de mercadería (USD) — costo × cantidad
+    cart.forEach(it => {
+      const qty = Number(it.cantidad) || 0;
+      const precio = Number(it.precio_vendido) || 0;
+      const costo = Number(it.costo) || 0;
+      items += toUsd(precio * qty, it.moneda, tc);
+      costosUsd += toUsd(costo * qty, it.moneda, tc);
+    });
+
+    // Tema C en-vivo (2026-06-14): el operador carga el monto BRUTO que cobra al
+    // cliente. El sistema desglosa por pago:
+    //   bruto cliente − costo financiero (retiene la financiera/procesadora) = neto a caja
+    // El "Cubierto ✓" se evalúa contra la suma de NETOS (no brutos) — el cliente
+    // tiene que pagar lo suficiente para que después de la retención el monto
+    // efectivamente percibido cubra el precio del producto.
+    let netoTotalUsd  = 0;
+    let costoFinTotal = 0;
+    const pagosDetalle = pagos.map(p => {
+      const brutoUsd = toUsd(p.monto, p.moneda, p.tc || tc);
+      const brutoOrig = Number(p.monto) || 0;
+      let pct = 0;
+      if (!p.es_cuenta_corriente && p.metodo_pago_id) {
+        const m = metodos.find(x => x.id === p.metodo_pago_id);
+        if (m) {
+          if (m.es_tarjeta && Number(m.comision_pct) > 0) pct = Number(m.comision_pct);
+          else if (m.es_financiera && pctFinanciera > 0)  pct = pctFinanciera;
+        }
+      }
+      // El backend (lib/tarjetas.js + lib/financiera.js) calcula la comisión
+      // como % del MONTO BRUTO. Misma cuenta acá para preview fiel.
+      const costoFinOrig = brutoOrig * pct / 100;
+      const costoFinUsd  = brutoUsd  * pct / 100;
+      const netoUsd      = brutoUsd  - costoFinUsd;
+      const netoOrig     = brutoOrig - costoFinOrig;
+      netoTotalUsd  += netoUsd;
+      costoFinTotal += costoFinUsd;
+      return { pct, brutoOrig, brutoUsd, costoFinOrig, costoFinUsd, netoOrig, netoUsd };
+    });
+
     // Suma de TODOS los valor_toma de canjes (asumimos USD — el form solo permite USD por canje).
     const canjeTotal = (vForm.canjes || []).reduce((acc, c) => acc + (Number(c.valor_toma) || 0), 0);
-    const cubierto = pg + canjeTotal;
-    return { items, cubierto, dif: cubierto - items, canjeTotal };
-  }, [cart, pagos, vForm.tc_venta, vForm.canjes]);
+    // Cubierto = lo que efectivamente recibimos (netos + canjes). Si el operador
+    // pasó bien el recargo al cliente, neto = precio y queda Cubierto ✓.
+    const cubierto = netoTotalUsd + canjeTotal;
+    // Ganancia bruta natural (precio − costo) — la del operador antes de cualquier descuento.
+    const bruta = items - costosUsd;
+    // Ganancia REAL = "el neto que se descuenta contra el costo" (Lucas, 2026-06-14).
+    // = (lo efectivamente percibido + canjes) − costos. Si el cliente cubrió el
+    // recargo, real ≡ bruta. Si no, real < bruta por la parte que come la financiera.
+    const real = cubierto - costosUsd;
+    return {
+      items, cubierto, dif: cubierto - items, canjeTotal,
+      bruta, costoFin: costoFinTotal, real, pagosDetalle,
+    };
+  }, [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera]);
 
   // ── Helpers para manipular el array de canjes (junio 2026) ─────────────
   const addCanje = () => setVForm(f => ({ ...f, canjes: [...(f.canjes || []), { ...EMPTY_CANJE }] }));
@@ -1109,20 +1300,125 @@ export default function Ventas() {
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Pagos</div>
                     <div className="stack" style={{ gap: 6 }}>
-                      {pagos.map((p, i) => (
-                        <div key={i}>
-                          {/* data-testid agregado para E2E (TANDA 5 venta retail) — scoping
-                              de los 4 controles de un pago (metodo/monto/moneda/tc). */}
-                          <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
-                            <select className="input" value={p.es_cuenta_corriente ? '__CC__' : p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
-                            <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}><option>ARS</option><option>USD</option><option>USDT</option></select>
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />
-                            <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
+                      {pagos.map((p, i) => {
+                        // Tema C rev5 (2026-06-14): el operador tipea USD (su mental
+                        // model), el sistema arma el bruto ARS según el método. CC
+                        // usa el flujo viejo (input monto directo). Cuando hay
+                        // comisión, debajo aparece el desglose en 3 columnas con
+                        // neto EDITABLE (caso "cliente ya transfirió $X").
+                        const det = totales.pagosDetalle[i];
+                        const m = metodos.find(x => x.id === p.metodo_pago_id);
+                        const showDesglose = det && det.pct > 0 && p.moneda === 'ARS';
+                        const showTc = !p.es_cuenta_corriente && p.moneda === 'ARS';
+                        // CC = flujo viejo (monto + moneda, sin desglose, sin auto-fill).
+                        if (p.es_cuenta_corriente) {
+                          return (
+                            <div key={i}>
+                              <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
+                                <select className="input" value="__CC__" onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
+                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
+                                <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}><option>ARS</option><option>USD</option><option>USDT</option></select>
+                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />
+                                <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
+                              </div>
+                              <TcWarning tc={p.tc} />
+                            </div>
+                          );
+                        }
+                        // Tarjeta / Transferencia / Efectivo USD — input USD + TC opcional.
+                        // En modo EDIT, `usd_input` puede venir vacío (al cargar la
+                        // venta) y `monto` ya está poblado. Derivamos USD desde monto
+                        // para que el input arranque con el valor correcto. Apenas el
+                        // operador tipea algo, usd_input pasa a ser autoritativo.
+                        const tcEff = Number(p.tc) || Number(vForm.tc_venta) || null;
+                        const pctEff = pctMetodo(m);
+                        const factorEff = pctEff > 0 ? 1 / (1 - pctEff / 100) : 1;
+                        const montoNum = Number(p.monto) || 0;
+                        let derivedUsd = p.usd_input;
+                        if ((derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
+                          if (p.moneda === 'USD' || p.moneda === 'USDT') {
+                            derivedUsd = String(Math.round(montoNum / factorEff * 100) / 100);
+                          } else if (p.moneda === 'ARS' && tcEff > 0) {
+                            derivedUsd = String(Math.round(montoNum / factorEff / tcEff * 100) / 100);
+                          }
+                        }
+                        return (
+                          <div key={i}>
+                            <div
+                              data-testid="venta-pago-row"
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: showTc ? '1fr 110px 90px auto' : '1fr 110px auto',
+                                gap: 6, alignItems: 'center',
+                              }}
+                            >
+                              <select className="input" value={p.metodo_nombre} onChange={e => setPagoMetodo(i, e.target.value)}>
+                                <option value="">Método…</option>
+                                {metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}
+                                <option value="__CC__">Cuenta corriente (deuda)</option>
+                              </select>
+                              <div style={{ position: 'relative' }}>
+                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>USD</span>
+                                <input
+                                  type="number" onKeyDown={blockInvalidNumberKeys}
+                                  data-testid="venta-pago-usd"
+                                  className="input mono" placeholder="500"
+                                  value={derivedUsd}
+                                  onChange={e => setPagoUsd(i, e.target.value)}
+                                  style={{ paddingLeft: 36 }}
+                                />
+                              </div>
+                              {showTc && (
+                                <div style={{ position: 'relative' }}>
+                                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
+                                  <input
+                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    className="input mono" placeholder="1460"
+                                    value={p.tc}
+                                    onChange={e => setPagoTc(i, e.target.value)}
+                                    style={{ paddingLeft: 30 }}
+                                  />
+                                </div>
+                              )}
+                              <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
+                            </div>
+                            {showDesglose && (
+                              <div
+                                data-testid="venta-pago-desglose"
+                                style={{
+                                  marginTop: 8, display: 'grid',
+                                  gridTemplateColumns: '1fr 1fr 1fr',
+                                  gap: 10, fontSize: 12, alignItems: 'start',
+                                  paddingLeft: 2,
+                                }}
+                              >
+                                <div>
+                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Le cobrás al cliente</div>
+                                  <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(p.moneda)}{fmt(det.brutoOrig)}</div>
+                                </div>
+                                <div>
+                                  <div className="muted tiny" style={{ marginBottom: 2 }} title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
+                                  <div className="mono neg" style={{ fontWeight: 600, fontSize: 13 }}>−{sym(p.moneda)}{fmt(det.costoFinOrig)}</div>
+                                </div>
+                                <div>
+                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                    <input
+                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      className="input mono"
+                                      value={p.neto_input || Math.round(det.netoOrig * 100) / 100}
+                                      onChange={e => setPagoNeto(i, e.target.value)}
+                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                    />
+                                    <span className="mono pos" style={{ fontWeight: 600, fontSize: 12 }}>= u$s{fmt(det.netoUsd)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            <TcWarning tc={p.tc} />
                           </div>
-                          <TcWarning tc={p.tc} />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <button type="button" className="btn btn-sm" style={{ marginTop: 6 }} onClick={addPago}><Icons.Plus size={13} /> Agregar método</button>
                   </div>
@@ -1130,10 +1426,43 @@ export default function Ventas() {
                   {/* Totales */}
                   <div className="card card-tight" style={{ padding: '10px 14px' }}>
                     <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Total venta</span><span className="mono" style={{ fontWeight: 700 }}>u$s{fmt(totales.items)}</span></div>
-                    <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Pagos{(vForm.canjes || []).length > 0 ? ` + ${vForm.canjes.length} canje${vForm.canjes.length > 1 ? 's' : ''}` : ''}</span><span className="mono">u$s{fmt(totales.cubierto)}</span></div>
+                    <div className="flex-between" style={{ fontSize: 13 }}>
+                      <span
+                        className="muted"
+                        title={
+                          totales.costoFin > 0
+                            ? 'Suma de los NETOS percibidos (después de descontar comisión financiera) + canjes. Es el monto que efectivamente entra a tu caja.'
+                            : 'Suma de los pagos + canjes'
+                        }
+                      >
+                        Pagos {totales.costoFin > 0 ? 'neto' : ''}
+                        {(vForm.canjes || []).length > 0 ? ` + ${vForm.canjes.length} canje${vForm.canjes.length > 1 ? 's' : ''}` : ''}
+                      </span>
+                      <span className="mono">u$s{fmt(totales.cubierto)}</span>
+                    </div>
                     <div className="flex-between" style={{ fontSize: 13 }}><span className="muted">Diferencia</span>
                       <span>{Math.abs(totales.dif) < 0.01 ? <span className="pos">Cubierto ✓</span> : totales.dif < 0 ? <span className="neg">Falta u$s{fmt(-totales.dif)}</span> : <span className="warn">Sobra u$s{fmt(totales.dif)}</span>}</span>
                     </div>
+                    {/*
+                      Tema C en-vivo (2026-06-14, rev2): preview de ganancia.
+                      Modelo nuevo (alineado con Lucas): ganancia real = lo que
+                      EFECTIVAMENTE percibimos (cubierto) − costos. Si el operador
+                      pasó el recargo al cliente, el neto cubre el precio y la
+                      ganancia real ≡ bruta. Si no lo pasó, la ganancia real cae
+                      por la comisión que se come la financiera/procesadora.
+                    */}
+                    {cart.length > 0 && (
+                      <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
+                        <div className="flex-between" style={{ fontSize: 13 }}>
+                          <span className="muted">Ganancia bruta</span>
+                          <span className="mono">u$s{fmt(totales.bruta)}</span>
+                        </div>
+                        <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+                          <span style={{ fontWeight: 600 }}>Ganancia real</span>
+                          <span className="mono pos" style={{ fontWeight: 700 }}>u$s{fmt(totales.real)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Comprobantes */}

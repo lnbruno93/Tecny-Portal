@@ -71,12 +71,11 @@ test.describe('Venta retail — alta', () => {
     await expect(pagoRow.locator('select').first().locator('option', { hasText: 'USD | Efectivo' }))
       .toHaveCount(1, { timeout: 5_000 });
 
-    // Método (primer select del row), monto (input "Monto"), moneda (segundo select).
+    // Tema C rev5 (2026-06-14): el form ahora pide USD (no monto ARS bruto).
+    // El método "USD | Efectivo" no tiene comisión → solo se ve [Método] [USD] [✕].
+    // El dropdown "Moneda" desapareció (la moneda la dicta el método).
     await pagoRow.locator('select').first().selectOption({ label: 'USD | Efectivo' });
-    await pagoRow.getByPlaceholder('Monto').fill('100');
-    // setPagoMetodo() ya setea moneda a USD cuando el método tiene moneda=USD,
-    // pero confirmamos para que el test sea explícito.
-    await expect(pagoRow.locator('select').nth(1)).toHaveValue('USD');
+    await pagoRow.getByTestId('venta-pago-usd').fill('100');
 
     // Submit — el botón tiene data-testid estable (texto muta a "Guardando…").
     await modal.getByTestId('venta-submit').click();
