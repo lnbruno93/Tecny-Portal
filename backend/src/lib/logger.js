@@ -3,9 +3,16 @@ const pino = require('pino');
 /**
  * Logger centralizado — Pino
  *
- * - En local (TTY detectado): usa pino-pretty para output legible
- * - En Railway/CI (no TTY):   JSON estructurado, listo para indexar
- * - En tests:                 nivel "warn" para no ensuciar el output
+ * - En dev local (TTY + NODE_ENV != production): pino-pretty para output legible
+ * - En Railway/CI (no TTY) o cualquier prod:    JSON estructurado, listo para indexar
+ * - En tests:                                    nivel "warn" para no ensuciar el output
+ *
+ * El check de pretty exige TTY *y* NODE_ENV != 'production'. Solo TTY no alcanza:
+ * la Console interactiva de Railway en prod/staging tiene stdout como TTY, pero
+ * `pino-pretty` vive en devDependencies y los deploys de prod las saltean. Si
+ * activáramos pretty ahí, pino throwearía al cargar el transport
+ * ("unable to determine transport target for 'pino-pretty'"). Detectado
+ * 2026-06-13 corriendo el backfill Tema C.2 desde la Console de staging.
  */
 const logger = pino({
   level: process.env.LOG_LEVEL ||
@@ -45,8 +52,9 @@ const logger = pino({
     censor: '[REDACTED]',
   },
 
-  // Auto-format en local, JSON en producción
-  transport: process.stdout.isTTY
+  // Auto-format en local, JSON en producción. Ver razón del doble check
+  // (TTY && !production) en el JSDoc de arriba.
+  transport: (process.stdout.isTTY && process.env.NODE_ENV !== 'production')
     ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:HH:MM:ss' } }
     : undefined,
 });
