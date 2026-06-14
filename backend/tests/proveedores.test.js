@@ -427,6 +427,30 @@ describe('POST /api/proveedores/bulk', () => {
       .send({ nombres: ['BulkMezcla1', 'BulkMezcla2', 'BulkMezcla3'] });
     expect(r.body.creados).toBe(2);
   });
+
+  // 2026-06-14: el endpoint ahora devuelve también la lista resolve-or-create
+  // (id+nombre) para que el frontend del import XLSX pueda referenciar
+  // proveedor_id sin un RTT extra. Backward compat: `creados` sigue presente.
+  it('devuelve proveedores: [{id, nombre}] de TODOS los pedidos (existentes + creados)', async () => {
+    // 1ro creamos uno para tener un "existente"
+    const r1 = await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkResolve_Existente'] });
+    expect(r1.body.creados).toBe(1);
+    expect(Array.isArray(r1.body.proveedores)).toBe(true);
+    expect(r1.body.proveedores).toHaveLength(1);
+    expect(r1.body.proveedores[0]).toMatchObject({ nombre: 'BulkResolve_Existente' });
+    expect(typeof r1.body.proveedores[0].id).toBe('number');
+
+    // 2da: mezcla del existente + uno nuevo
+    const r2 = await request(app).post('/api/proveedores/bulk').set(auth())
+      .send({ nombres: ['BulkResolve_Existente', 'BulkResolve_Nuevo'] });
+    expect(r2.body.creados).toBe(1);
+    expect(r2.body.proveedores).toHaveLength(2);
+    const nombres = r2.body.proveedores.map(p => p.nombre).sort();
+    expect(nombres).toEqual(['BulkResolve_Existente', 'BulkResolve_Nuevo']);
+    // Todos tienen id numérico
+    expect(r2.body.proveedores.every(p => typeof p.id === 'number')).toBe(true);
+  });
 });
 
 // Tests del endpoint /api/proveedores/movimientos/bulk (2026-06-14):

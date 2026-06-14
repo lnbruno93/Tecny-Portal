@@ -337,6 +337,11 @@ export const proveedores = {
   delete: (id) => api(`/api/proveedores/${id}`, 'DELETE'),
   movimientos: (id, params = {}) => api(`/api/proveedores/${id}/movimientos?` + new URLSearchParams(params)),
   createMovimiento: (data) => api('/api/proveedores/movimientos', 'POST', data),
+  // Bulk multi-proveedor — usado por el import XLSX cuando una planilla trae
+  // productos de varios proveedores. Transacción atómica server-side: o se
+  // crean TODOS los movimientos o ninguno. Ver backend/src/routes/proveedores.js
+  // (POST /movimientos/bulk).
+  createMovimientosBulk: (movimientos) => api('/api/proveedores/movimientos/bulk', 'POST', { movimientos }),
   deleteMovimiento: (id) => api(`/api/proveedores/movimientos/${id}`, 'DELETE'),
   saldos: () => api('/api/proveedores/resumen/saldos'),
 };

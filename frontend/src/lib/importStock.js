@@ -172,6 +172,97 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
     });
 }
 
+// Agrupa el resultado de mapStockRows por proveedor (case-insensitive,
+// preservando la primera capitalización vista) para el flujo multi-proveedor
+// del import XLSX. Una sola planilla puede traer productos de varios proveedores
+// (columna "proveedor"); cada grupo se vuelve una "compra" trazable.
+//
+// Reglas:
+//   - Solo se agrupan filas SIN error (las inválidas no entran en compras).
+//   - Filas sin proveedor van al grupo especial `__sin_proveedor__` (clave
+//     reservada) — la UI las muestra con un selector requerido antes de
+//     poder importar (no aceptamos compras anónimas: rompe trazabilidad).
+//   - Orden preservado: el primer proveedor visto aparece primero.
+//
+// Devuelve: [{ proveedor: string | null, rows: [...] }]
+//   - proveedor === null para el grupo sin proveedor en la planilla.
+//   - rows mantiene la referencia a los objetos originales de mapped.
+export function groupRowsByProveedor(mapped) {
+  if (!Array.isArray(mapped) || mapped.length === 0) return [];
+  // Map preserva orden de inserción — útil para que la UI muestre los grupos
+  // en el orden en que aparecen en el XLSX.
+  const groups = new Map(); // key: lowercase | null (sin proveedor)
+  for (const r of mapped) {
+    if (r.error) continue;
+    const raw = (r.body?.proveedor || '').trim();
+    const key = raw ? raw.toLowerCase() : '__sin_proveedor__';
+    if (!groups.has(key)) {
+      groups.set(key, { proveedor: raw || null, rows: [] });
+    }
+    groups.get(key).rows.push(r);
+  }
+  return [...groups.values()];
+}
+
+// Arma el payload del endpoint POST /api/proveedores/movimientos/bulk a partir
+// de los grupos del modal de import. Función pura para poder testarla aislada
+// (la sincronización con la UI/loadCatalogos vive en el caller).
+//
+// Argumentos:
+//   - groups: el state importGroups del modal (output de buildImportGroups,
+//     posiblemente editado por el usuario).
+//   - newCatByName: Map<lowercase nombre, id> de categorías recién creadas
+//     (output del bulk de categorías en confirmImport).
+//   - provIdByName: Map<lowercase nombre, id> de proveedores resueltos
+//     (output del bulk de proveedores resolve-or-create).
+//
+// Devuelve: array de movimientos listos para enviar al endpoint.
+// Throws si un grupo no resuelve a un proveedor_id válido (defensa para evitar
+// mandar payloads que el backend rechazaría con un 400 menos informativo).
+export function buildBulkMovimientosPayload({ groups, newCatByName = new Map(), provIdByName = new Map() } = {}) {
+  if (!Array.isArray(groups) || groups.length === 0) return [];
+  return groups.map(g => {
+    const provId = g.proveedor_id || provIdByName.get((g.proveedor_nuevo || '').trim().toLowerCase());
+    if (!provId) {
+      throw new Error(`No se pudo resolver el proveedor para el grupo "${g.proveedor_label}".`);
+    }
+    const items = g.rows.map(r => {
+      const body = { ...r.body };
+      // Reconcilia categoria_id si era una categoría nueva (caso ya manejado
+      // upstream en el caso normal, pero defensivo por si llega sin id).
+      if (r._categoriaNueva && !body.categoria_id) {
+        body.categoria_id = newCatByName.get(r._categoriaNueva.toLowerCase()) || null;
+      }
+      // El backend (#H-06) rellena producto.proveedor con el nombre del
+      // proveedor del movimiento. Quitamos el campo del producto_stock para
+      // que NO genere conflicto si vienen distintos en distintas filas.
+      delete body.proveedor;
+      const cantidad = body.cantidad || 1;
+      return {
+        producto:    body.nombre || null,
+        modelo:      body.nombre || null,
+        tamano:      body.gb || null,
+        color:       body.color || null,
+        imei_serial: body.imei || null,
+        // Valor del item solo si el costo está en USD (no asumimos TC).
+        valor:       body.costo_moneda === 'USD' ? Number(body.costo || 0) * cantidad : null,
+        producto_stock: body,
+      };
+    });
+    return {
+      proveedor_id: provId,
+      fecha: g.fecha,
+      tipo: 'compra',
+      descripcion: `Import XLSX · ${items.length} producto${items.length === 1 ? '' : 's'}`,
+      monto: Number(g.monto),
+      moneda: g.moneda,
+      tc: g.moneda !== 'USD' ? Number(g.tc) : null,
+      caja_id: g.caja_id ? Number(g.caja_id) : null,
+      items,
+    };
+  });
+}
+
 // Helper: dado el resultado de mapStockRows, devuelve los nombres únicos
 // (case-insensitive) de categorías y proveedores nuevos a crear. Útil para
 // mostrar en el preview "Se crearán N categorías nuevas: [lista]".
