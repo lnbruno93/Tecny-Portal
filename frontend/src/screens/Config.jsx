@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { config as configApi } from '../lib/api';
+import { config as configApi, cajas as cajasApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { fmt } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
@@ -32,8 +32,14 @@ export default function Config() {
                     : (location.hash === '#mantenimiento' && isAdmin) ? 'mantenimiento'
                     : 'general';
   const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad' | 'mantenimiento'
+  // Sección unificada "Comisiones de métodos de pago" (2026-06-14, pedido Lucas):
+  //   · `pct` / `inputVal`     — Financiera (= config.pct_financiera)
+  //   · `tarjetas`             — métodos es_tarjeta=true con su comision_pct.
+  //     Cada uno guarda `_original` para detectar dirty-state granular y solo
+  //     pegar al endpoint los que realmente cambiaron.
   const [pct, setPct]           = useState(3);
   const [inputVal, setInputVal] = useState('3');
+  const [tarjetas, setTarjetas] = useState([]); // [{id, nombre, pct_input, _original}]
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState('');
@@ -61,11 +67,27 @@ export default function Config() {
   }
 
   useEffect(() => {
-    configApi.get()
-      .then(data => {
-        const v = Number(data?.pct_financiera ?? 3);
+    // Carga paralela: config (pct_financiera) + lista de cajas (para extraer
+    // las tarjetas). Si una falla, defaults razonables y mostramos error.
+    Promise.all([
+      configApi.get().catch(e => { throw e; }),
+      cajasApi.listCajas().catch(() => []),
+    ])
+      .then(([cfg, cajasList]) => {
+        const v = Number(cfg?.pct_financiera ?? 3);
         setPct(v);
         setInputVal(String(v));
+        // Solo cajas con es_tarjeta=true. listCajas() ya filtra deleted_at,
+        // ordenamos por orden + nombre para que el listado sea estable.
+        const tcs = (cajasList || [])
+          .filter(c => c.es_tarjeta)
+          .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.nombre).localeCompare(String(b.nombre)))
+          .map(c => ({
+            id: c.id, nombre: c.nombre,
+            pct_input: String(Number(c.comision_pct ?? 0)),
+            _original: Number(c.comision_pct ?? 0),
+          }));
+        setTarjetas(tcs);
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -77,20 +99,49 @@ export default function Config() {
   const simRet  = simBase * (simPct / 100);
   const simNeto = simBase - simRet;
 
-  const dirty = parseFloat(inputVal) !== pct;
+  // Dirty global: Financiera cambió o cualquier tarjeta tiene pct distinto al original.
+  const finDirty = parseFloat(inputVal) !== pct;
+  const tarjetasDirty = tarjetas.some(t => parseFloat(t.pct_input) !== t._original);
+  const dirty = finDirty || tarjetasDirty;
+
+  function setTarjetaPct(id, value) {
+    setTarjetas(ts => ts.map(t => t.id === id ? { ...t, pct_input: value } : t));
+    setSaved(false);
+    setError('');
+  }
 
   async function handleSave() {
-    const val = parseFloat(inputVal);
-    if (isNaN(val) || val < 0 || val > 100) {
-      setError('Valor inválido. Ingresá un número entre 0 y 100.');
+    // Validación: todos los valores en [0, 100].
+    const valFin = parseFloat(inputVal);
+    if (isNaN(valFin) || valFin < 0 || valFin > 100) {
+      setError('Financiera: valor inválido. Ingresá un número entre 0 y 100.');
       return;
+    }
+    for (const t of tarjetas) {
+      const v = parseFloat(t.pct_input);
+      if (isNaN(v) || v < 0 || v > 100) {
+        setError(`${t.nombre}: valor inválido. Ingresá un número entre 0 y 100.`);
+        return;
+      }
     }
     setSaving(true);
     setError('');
     setSaved(false);
     try {
-      await configApi.update({ pct_financiera: val });
-      setPct(val);
+      // Pegamos en paralelo solo lo que cambió. Si un endpoint falla, los demás
+      // pueden haber persistido — refrescamos local state desde lo que sí guardó
+      // (los que pasaron) y dejamos el error visible.
+      const updates = [];
+      if (finDirty) updates.push(['fin', configApi.update({ pct_financiera: valFin })]);
+      tarjetas.forEach(t => {
+        if (parseFloat(t.pct_input) !== t._original) {
+          updates.push(['tar:' + t.id, cajasApi.updateCaja(t.id, { comision_pct: parseFloat(t.pct_input) })]);
+        }
+      });
+      await Promise.all(updates.map(([, p]) => p));
+      // Sync state: lo persistido pasa a ser el nuevo "original".
+      if (finDirty) setPct(valFin);
+      setTarjetas(ts => ts.map(t => ({ ...t, _original: parseFloat(t.pct_input) })));
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
@@ -102,6 +153,7 @@ export default function Config() {
 
   function handleCancel() {
     setInputVal(String(pct));
+    setTarjetas(ts => ts.map(t => ({ ...t, pct_input: String(t._original) })));
     setError('');
     setSaved(false);
   }
@@ -168,41 +220,85 @@ export default function Config() {
         gap: 16,
         marginBottom: 16,
       }}>
-        {/* Left: editable % */}
+        {/* Left: Comisiones de métodos de pago (2026-06-14, pedido Lucas).
+            Unifica el % de Financiera con el % de cada tarjeta es_tarjeta=true.
+            Antes había que editar las tarjetas por separado en Cajas → Config —
+            ahora todo el costo financiero del negocio se ajusta acá. */}
         <div className="card">
           <div className="card-hd">
-            <div style={{ fontWeight: 600, fontSize: 15 }}>Retención de la financiera</div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>Comisiones de métodos de pago</div>
             <div className="muted tiny" style={{ marginTop: 2 }}>
-              Se aplica automáticamente a cada comprobante registrado
+              Se aplican al cobrar con cada método (Tema C — descontado de la ganancia)
             </div>
           </div>
 
           <div style={{ padding: '0 0 16px' }}>
-            <div className="field" style={{ marginBottom: 14 }}>
-              <div className="field-label">Porcentaje de retención</div>
-              <div className="input-group" style={{ maxWidth: 200 }}>
-                <input
-                  type="number" onKeyDown={blockInvalidNumberKeys}
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  className="input mono"
-                  style={{ fontWeight: 700, fontSize: 18 }}
-                  value={inputVal}
-                  onChange={e => {
-                    setInputVal(e.target.value);
-                    setSaved(false);
-                    setError('');
-                  }}
-                />
-                <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
-              </div>
-              <div className="muted tiny" style={{ marginTop: 6 }}>
-                Guardado: <span className="mono" style={{ fontWeight: 700 }}>{pct.toFixed(1)}%</span>
+            {/* Fila Transferencia (= pct_financiera) */}
+            <div className="field" style={{ marginBottom: 16 }}>
+              <div className="field-label">Transferencias <span className="muted">(Financiera)</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="input-group" style={{ maxWidth: 160 }}>
+                  <input
+                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    step="0.1" min="0" max="100"
+                    className="input mono"
+                    style={{ fontWeight: 700, fontSize: 16 }}
+                    data-testid="config-pct-financiera"
+                    value={inputVal}
+                    onChange={e => {
+                      setInputVal(e.target.value);
+                      setSaved(false);
+                      setError('');
+                    }}
+                  />
+                  <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
+                </div>
+                <span className="muted tiny">
+                  Guardado: <span className="mono" style={{ fontWeight: 700 }}>{pct.toFixed(1)}%</span>
+                </span>
               </div>
             </div>
 
-            {/* Live simulation */}
+            {/* Filas Tarjetas de Crédito */}
+            <div style={{ marginBottom: 16 }}>
+              <div className="field-label" style={{ marginBottom: 8 }}>Tarjetas de crédito</div>
+              {tarjetas.length === 0 ? (
+                <div className="muted tiny" style={{ padding: '6px 0' }}>
+                  No hay tarjetas configuradas. Creá una en Cajas → Config marcándola como tarjeta.
+                </div>
+              ) : (
+                <div className="stack" style={{ gap: 8 }}>
+                  {tarjetas.map(t => {
+                    const tDirty = parseFloat(t.pct_input) !== t._original;
+                    return (
+                      <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 110px', gap: 10, alignItems: 'center' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{t.nombre}</div>
+                        <div className="input-group">
+                          <input
+                            type="number" onKeyDown={blockInvalidNumberKeys}
+                            step="0.1" min="0" max="100"
+                            className="input mono"
+                            style={{ fontWeight: 700, fontSize: 15 }}
+                            data-testid={`config-pct-tarjeta-${t.id}`}
+                            value={t.pct_input}
+                            onChange={e => setTarjetaPct(t.id, e.target.value)}
+                          />
+                          <span className="addon" style={{ fontWeight: 700, color: 'var(--accent)' }}>%</span>
+                        </div>
+                        <span className="muted tiny" style={{ textAlign: 'right' }}>
+                          {tDirty
+                            ? <>Guardado: <span className="mono">{t._original.toFixed(1)}%</span></>
+                            : <span className="mono">{t._original.toFixed(1)}%</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Simulación (solo para Financiera — las tarjetas el operador
+                ya entiende el % de cada cuota) */}
             <div style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
@@ -216,7 +312,7 @@ export default function Config() {
                 textTransform: 'uppercase',
                 marginBottom: 10,
               }}>
-                Simulación con ARS 1.000.000
+                Simulación Financiera con ARS 1.000.000
               </div>
               <div className="stack" style={{ gap: 6 }}>
                 <div className="flex-between">
@@ -273,6 +369,7 @@ export default function Config() {
                 className="btn btn-primary"
                 onClick={handleSave}
                 disabled={saving || !dirty}
+                data-testid="config-comisiones-save"
               >
                 <Icons.Check size={15} />
                 {saving ? 'Guardando…' : dirty ? 'Guardar cambios' : 'Sin cambios'}

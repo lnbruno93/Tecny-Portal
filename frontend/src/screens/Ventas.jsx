@@ -368,6 +368,14 @@ export default function Ventas() {
       return { ...pg, tc: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
     }));
   }
+  // Setter directo en moneda nativa para EFECTIVO ARS (sin comisión). El operador
+  // a veces piensa "cliente me dio $X en efectivo" — más natural que pensar en USD.
+  // El TC sigue siendo necesario para que el total cubierto se calcule en USD.
+  function setPagoArsAmount(i, value) {
+    setPagos(p => p.map((pg, j) => j === i ? {
+      ...pg, monto: value, usd_input: '', neto_input: '',
+    } : pg));
+  }
   function setPagoMetodo(i, value) {
     if (value === '__CC__') {
       setPagos(p => p.map((pg, j) => j === i ? {
@@ -380,15 +388,36 @@ export default function Ventas() {
     setPagos(p => {
       const newMoneda = m ? m.moneda : null;
       const pct = pctMetodo(m);
+      // Caso EFECTIVO ARS (sin comisión, ARS): el operador trabaja en ARS directo.
+      // Autollenar el monto = faltante_usd × tc, NO calcular USD intermedio.
+      const arsDirect = pct === 0 && newMoneda === 'ARS';
       return p.map((pg, j) => {
         if (j !== i) return pg;
-        // Si el operador ya tipeó USD, preservar; si no, auto-llenar con el faltante.
+        const tcUse = pg.tc || vForm.tc_venta;
+        if (arsDirect) {
+          // Si ya había monto y el operador no quiere perderlo, preservar; sino auto-llenar.
+          let monto = pg.monto;
+          if (!monto || Number(monto) <= 0) {
+            const falt = faltanteUsd(i, p);
+            const tcN = Number(tcUse);
+            if (falt > 0 && tcN > 0) monto = String(Math.round(falt * tcN * 100) / 100);
+          }
+          return {
+            ...pg,
+            metodo_pago_id: m ? m.id : null,
+            metodo_nombre: value,
+            es_cuenta_corriente: false,
+            moneda: 'ARS',
+            usd_input: '', neto_input: '',
+            monto: monto || '',
+          };
+        }
+        // Resto de los métodos: input en USD (rev5 flow original).
         let usd = pg.usd_input;
         if (!usd || Number(usd) <= 0) {
           const falt = faltanteUsd(i, p);
           if (falt > 0) usd = String(Math.round(falt * 100) / 100);
         }
-        const tcUse = pg.tc || vForm.tc_venta;
         const bruto = brutoFromUsdInput(usd, newMoneda || pg.moneda, tcUse, pct);
         return {
           ...pg,
@@ -397,7 +426,7 @@ export default function Ventas() {
           es_cuenta_corriente: false,
           moneda: newMoneda || pg.moneda,
           usd_input: usd,
-          neto_input: '', // reset override al cambiar método
+          neto_input: '',
           monto: bruto !== '' ? String(bruto) : '',
         };
       });
@@ -1325,17 +1354,17 @@ export default function Ventas() {
                             </div>
                           );
                         }
-                        // Tarjeta / Transferencia / Efectivo USD — input USD + TC opcional.
-                        // En modo EDIT, `usd_input` puede venir vacío (al cargar la
-                        // venta) y `monto` ya está poblado. Derivamos USD desde monto
-                        // para que el input arranque con el valor correcto. Apenas el
-                        // operador tipea algo, usd_input pasa a ser autoritativo.
+                        // Determinar modo del input:
+                        //   · arsDirect: EFECTIVO ARS (sin comisión, ARS) → input ARS directo
+                        //   · resto: USD + TC (Tarjeta, Transferencia, Efectivo USD)
                         const tcEff = Number(p.tc) || Number(vForm.tc_venta) || null;
                         const pctEff = pctMetodo(m);
                         const factorEff = pctEff > 0 ? 1 / (1 - pctEff / 100) : 1;
+                        const arsDirect = pctEff === 0 && p.moneda === 'ARS';
                         const montoNum = Number(p.monto) || 0;
                         let derivedUsd = p.usd_input;
-                        if ((derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
+                        if (!arsDirect && (derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
+                          // Derivar USD desde monto al cargar venta existente para edición.
                           if (p.moneda === 'USD' || p.moneda === 'USDT') {
                             derivedUsd = String(Math.round(montoNum / factorEff * 100) / 100);
                           } else if (p.moneda === 'ARS' && tcEff > 0) {
@@ -1358,15 +1387,28 @@ export default function Ventas() {
                                 <option value="__CC__">Cuenta corriente (deuda)</option>
                               </select>
                               <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>USD</span>
-                                <input
-                                  type="number" onKeyDown={blockInvalidNumberKeys}
-                                  data-testid="venta-pago-usd"
-                                  className="input mono" placeholder="500"
-                                  value={derivedUsd}
-                                  onChange={e => setPagoUsd(i, e.target.value)}
-                                  style={{ paddingLeft: 36 }}
-                                />
+                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
+                                  {arsDirect ? '$' : 'USD'}
+                                </span>
+                                {arsDirect ? (
+                                  <input
+                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    data-testid="venta-pago-ars"
+                                    className="input mono" placeholder="730.000"
+                                    value={p.monto}
+                                    onChange={e => setPagoArsAmount(i, e.target.value)}
+                                    style={{ paddingLeft: arsDirect ? 22 : 36 }}
+                                  />
+                                ) : (
+                                  <input
+                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    data-testid="venta-pago-usd"
+                                    className="input mono" placeholder="500"
+                                    value={derivedUsd}
+                                    onChange={e => setPagoUsd(i, e.target.value)}
+                                    style={{ paddingLeft: 36 }}
+                                  />
+                                )}
                               </div>
                               {showTc && (
                                 <div style={{ position: 'relative' }}>
