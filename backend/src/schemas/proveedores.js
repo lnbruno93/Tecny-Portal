@@ -89,9 +89,28 @@ const nombresBulkProveedoresSchema = z.object({
   nombres: z.array(z.string().trim().min(1).max(200)).max(500, 'Máximo 500 nombres por lote'),
 }).strict();
 
+// Bulk multi-proveedor (2026-06-14) — usado por el import XLSX cuando el archivo
+// trae productos de distintos proveedores en una sola carga.
+//
+// Cada elemento del array es un movimiento completo (mismo shape que el POST
+// single). El backend procesa TODOS en una sola transacción: si cualquiera
+// falla (IMEI duplicado, monto inválido, proveedor inexistente, etc.), NINGUNO
+// se persiste. Esto evita estados intermedios donde unos productos quedaron
+// cargados y otros no.
+//
+// El límite (50 movimientos × 200 items c/u = 10K items) cubre cómodamente
+// cualquier import realista de un solo XLSX. Si llega a hacer falta más, ver
+// performance del UNNEST + memoria de la transacción antes de subirlo.
+const bulkCreateMovimientosProveedorSchema = z.object({
+  movimientos: z.array(createMovimientoProveedorSchema)
+    .min(1, 'Al menos 1 movimiento es requerido')
+    .max(50, 'Máximo 50 movimientos por bulk (uno por proveedor en el XLSX)'),
+}).strict();
+
 module.exports = {
   createProveedorSchema,
   updateProveedorSchema,
   createMovimientoProveedorSchema,
+  bulkCreateMovimientosProveedorSchema,
   nombresBulkProveedoresSchema,
 };
