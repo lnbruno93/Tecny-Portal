@@ -102,8 +102,10 @@ const NAV_MAIN = [
   // Opciones Financieras  (la ruta /financiera y el permiso siguen siendo
   // `financiera` para no romper enlaces ni audit trail; solo cambia el label
   // visible a "Transferencias", 2026-06-10.)
-  { id: 'financiera', path: '/financiera', label: 'Transferencias', icon: 'Trend',  perm: 'financiera',  group: 3 },
+  // Orden definido por Lucas 2026-06-14 — Cambios primero (flujo de obtener
+  // ARS), después Transferencias (cobrar), después Tarjetas (cobrar con crédito).
   { id: 'cambios',    path: '/cambios',    label: 'Cambios de Divisa', icon: 'Dollar', perm: 'cambios',  group: 3 },
+  { id: 'financiera', path: '/financiera', label: 'Transferencias', icon: 'Trend',  perm: 'financiera',  group: 3 },
   { id: 'tarjetas',   path: '/tarjetas',   label: 'Tarjetas de Crédito', icon: 'CreditCard', perm: 'tarjetas', group: 3 },
   // Otras herramientas
   { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 4 },
