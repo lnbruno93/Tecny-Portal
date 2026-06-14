@@ -35,6 +35,8 @@ vi.mock('../lib/api', () => {
     vendedores: { list: vi.fn().mockResolvedValue([]) },
     cuentas: { clientes: vi.fn().mockResolvedValue(paginated) },
     contactos: { list: vi.fn().mockResolvedValue([]), create: vi.fn() },
+    // Tema C en-vivo: pct_financiera para el preview de ganancia real.
+    config: { get: vi.fn().mockResolvedValue({ pct_financiera: 5 }) },
   };
 });
 

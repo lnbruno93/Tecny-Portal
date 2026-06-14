@@ -47,8 +47,32 @@ export default function Dashboard({ d }) {
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Ganancia neta</div>
           <div className="kpi-value mono pos" style={{ fontSize: 17 }}>u$s{fmt(d.ganancia_neta_usd)}</div>
+          {/*
+            Tema C.4 (2026-06-13): desglose de la cascada que llega a la neta.
+            Lucas pidió aprobar "B" — ver bruta + costo financiero + neta para que
+            quede claro cuánto retiene el método de pago vs cuánto egreso operativo
+            descuenta. Mostramos la cuenta sobre ACREDITADAS (es la base del KPI
+            neto). Si el backend trae 0 en costo_financiero, no agregamos esa
+            línea para no ruidar (ej. periodos sin ventas con tarjeta).
+          */}
           <div className="muted tiny" style={{ marginTop: 4 }}>
-            {d.margen_pct}% · egresos u$s{fmt(d.egresos_usd)}
+            Bruta <span className="mono">u$s{fmt(d.ganancia_bruta_acreditada_usd)}</span>
+            {Number(d.costo_financiero_acreditado_usd) > 0 && (
+              <>
+                {' · '}
+                <span
+                  className="neg"
+                  title="Comisión retenida por tarjeta de crédito y transferencias del período"
+                >
+                  −fin <span className="mono">u$s{fmt(d.costo_financiero_acreditado_usd)}</span>
+                </span>
+              </>
+            )}
+            {' · '}
+            <span className="neg">−egr <span className="mono">u$s{fmt(d.egresos_usd)}</span></span>
+          </div>
+          <div className="muted tiny" style={{ marginTop: 2 }}>
+            {d.margen_pct}% margen
           </div>
         </div>
         <div className="card card-tight" style={{ flex: 1 }}>
