@@ -28,20 +28,26 @@ async function postEgresoLedger(client, e) {
 }
 
 // ─── CATEGORÍAS ──────────────────────────────────────────────────────────────
-router.get('/categorias', async (_req, res, next) => {
+router.get('/categorias', async (req, res, next) => {
   try {
-    const { rows } = await db.query('SELECT * FROM egreso_categorias WHERE deleted_at IS NULL ORDER BY nombre');
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query('SELECT * FROM egreso_categorias WHERE deleted_at IS NULL ORDER BY nombre');
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
 
 router.post('/categorias', validate(createCategoriaSchema), async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      'INSERT INTO egreso_categorias (nombre) VALUES ($1) RETURNING *', [req.body.nombre]
-    );
-    await audit('egreso_categorias', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'INSERT INTO egreso_categorias (nombre) VALUES ($1) RETURNING *', [req.body.nombre]
+      );
+      await audit(client, 'egreso_categorias', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    res.status(201).json(row);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una categoría con ese nombre' });
     next(err);
@@ -52,13 +58,17 @@ router.put('/categorias/:id', validate(updateCategoriaSchema), async (req, res, 
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE egreso_categorias SET nombre = COALESCE($1, nombre) WHERE id = $2 AND deleted_at IS NULL RETURNING *',
-      [req.body.nombre ?? null, id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Categoría no encontrada' });
-    await audit('egreso_categorias', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });
-    res.json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE egreso_categorias SET nombre = COALESCE($1, nombre) WHERE id = $2 AND deleted_at IS NULL RETURNING *',
+        [req.body.nombre ?? null, id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'egreso_categorias', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Categoría no encontrada' });
+    res.json(row);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una categoría con ese nombre' });
     next(err);
@@ -69,25 +79,32 @@ router.delete('/categorias/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE egreso_categorias SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Categoría no encontrada' });
-    await audit('egreso_categorias', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE egreso_categorias SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'egreso_categorias', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Categoría no encontrada' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
 // ─── RECURRENTES (plantillas) ────────────────────────────────────────────────
-router.get('/recurrentes', async (_req, res, next) => {
+router.get('/recurrentes', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT r.*, c.nombre AS categoria_nombre, mp.nombre AS caja_nombre
-         FROM egresos_recurrentes r
-         LEFT JOIN egreso_categorias c ON c.id = r.categoria_id
-         LEFT JOIN metodos_pago mp ON mp.id = r.metodo_pago_id
-        WHERE r.deleted_at IS NULL ORDER BY r.concepto`
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT r.*, c.nombre AS categoria_nombre, mp.nombre AS caja_nombre
+           FROM egresos_recurrentes r
+           LEFT JOIN egreso_categorias c ON c.id = r.categoria_id
+           LEFT JOIN metodos_pago mp ON mp.id = r.metodo_pago_id
+          WHERE r.deleted_at IS NULL ORDER BY r.concepto`
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -95,13 +112,16 @@ router.get('/recurrentes', async (_req, res, next) => {
 router.post('/recurrentes', validate(createRecurrenteSchema), async (req, res, next) => {
   try {
     const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
-    const { rows } = await db.query(
-      `INSERT INTO egresos_recurrentes (concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [concepto, categoria_id ?? null, monto, moneda, tc ?? null, metodo_pago_id ?? null, dia_del_mes, activo]
-    );
-    await audit('egresos_recurrentes', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO egresos_recurrentes (concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [concepto, categoria_id ?? null, monto, moneda, tc ?? null, metodo_pago_id ?? null, dia_del_mes, activo]
+      );
+      await audit(client, 'egresos_recurrentes', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    res.status(201).json(row);
   } catch (err) { next(err); }
 });
 
@@ -110,23 +130,27 @@ router.put('/recurrentes/:id', validate(updateRecurrenteSchema), async (req, res
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
-    const { rows } = await db.query(
-      `UPDATE egresos_recurrentes SET
-         concepto       = COALESCE($1, concepto),
-         categoria_id   = COALESCE($2, categoria_id),
-         monto          = COALESCE($3, monto),
-         moneda         = COALESCE($4, moneda),
-         tc             = COALESCE($5, tc),
-         metodo_pago_id = COALESCE($6, metodo_pago_id),
-         dia_del_mes    = COALESCE($7, dia_del_mes),
-         activo         = COALESCE($8, activo)
-       WHERE id = $9 AND deleted_at IS NULL RETURNING *`,
-      [concepto ?? null, categoria_id ?? null, monto ?? null, moneda ?? null, tc ?? null,
-       metodo_pago_id ?? null, dia_del_mes ?? null, activo ?? null, id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Recurrente no encontrado' });
-    await audit('egresos_recurrentes', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });
-    res.json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `UPDATE egresos_recurrentes SET
+           concepto       = COALESCE($1, concepto),
+           categoria_id   = COALESCE($2, categoria_id),
+           monto          = COALESCE($3, monto),
+           moneda         = COALESCE($4, moneda),
+           tc             = COALESCE($5, tc),
+           metodo_pago_id = COALESCE($6, metodo_pago_id),
+           dia_del_mes    = COALESCE($7, dia_del_mes),
+           activo         = COALESCE($8, activo)
+         WHERE id = $9 AND deleted_at IS NULL RETURNING *`,
+        [concepto ?? null, categoria_id ?? null, monto ?? null, moneda ?? null, tc ?? null,
+         metodo_pago_id ?? null, dia_del_mes ?? null, activo ?? null, id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'egresos_recurrentes', 'UPDATE', id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Recurrente no encontrado' });
+    res.json(row);
   } catch (err) { next(err); }
 });
 
@@ -134,11 +158,15 @@ router.delete('/recurrentes/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE egresos_recurrentes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Recurrente no encontrado' });
-    await audit('egresos_recurrentes', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE egresos_recurrentes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'egresos_recurrentes', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Recurrente no encontrado' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -150,21 +178,27 @@ router.post('/generar', validate(generarPeriodoSchema), async (req, res, next) =
     const { periodo } = req.body;
     const [y, m] = periodo.split('-').map(Number);
     const lastDay = new Date(y, m, 0).getDate();
-    const { rows: recs } = await db.query('SELECT * FROM egresos_recurrentes WHERE activo = true AND deleted_at IS NULL');
-    let generados = 0;
-    for (const r of recs) {
-      const dia = Math.min(r.dia_del_mes, lastDay);
-      const fecha = `${periodo}-${String(dia).padStart(2, '0')}`;
-      const monto_usd = round2(toUsd(Number(r.monto), r.moneda, r.tc));
-      const { rows } = await db.query(
-        `INSERT INTO egresos (fecha, concepto, monto, moneda, tc, monto_usd, metodo_pago_id, categoria_id, estado, recurrente_id, periodo, user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pendiente',$9,$10,$11)
-         ON CONFLICT (recurrente_id, periodo) WHERE recurrente_id IS NOT NULL AND deleted_at IS NULL
-         DO NOTHING RETURNING id`,
-        [fecha, r.concepto, r.monto, r.moneda, r.tc ?? null, monto_usd, r.metodo_pago_id, r.categoria_id, r.id, periodo, req.user.id]
-      );
-      if (rows[0]) generados++;
-    }
+    // 2026-06-15 multi-tenant (PR 4.8): el SELECT de recurrentes + los N
+    // INSERTs en egresos van bajo el mismo SET LOCAL para que RLS filtre y
+    // los INSERTs hereden tenant_id consistente.
+    const generados = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: recs } = await client.query('SELECT * FROM egresos_recurrentes WHERE activo = true AND deleted_at IS NULL');
+      let n = 0;
+      for (const r of recs) {
+        const dia = Math.min(r.dia_del_mes, lastDay);
+        const fecha = `${periodo}-${String(dia).padStart(2, '0')}`;
+        const monto_usd = round2(toUsd(Number(r.monto), r.moneda, r.tc));
+        const { rows } = await client.query(
+          `INSERT INTO egresos (fecha, concepto, monto, moneda, tc, monto_usd, metodo_pago_id, categoria_id, estado, recurrente_id, periodo, user_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pendiente',$9,$10,$11)
+           ON CONFLICT (recurrente_id, periodo) WHERE recurrente_id IS NOT NULL AND deleted_at IS NULL
+           DO NOTHING RETURNING id`,
+          [fecha, r.concepto, r.monto, r.moneda, r.tc ?? null, monto_usd, r.metodo_pago_id, r.categoria_id, r.id, periodo, req.user.id]
+        );
+        if (rows[0]) n++;
+      }
+      return n;
+    });
     res.json({ ok: true, generados, periodo });
   } catch (err) { next(err); }
 });
@@ -181,20 +215,23 @@ router.get('/', validate(queryEgresosSchema, 'query'), async (req, res, next) =>
     if (categoria_id) { params.push(categoria_id); conditions.push(`e.categoria_id = $${params.length}`); }
     const where = conditions.join(' AND ');
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM egresos e WHERE ${where}`, params),
-      db.query(
-        `SELECT e.*, c.nombre AS categoria_nombre, mp.nombre AS caja_nombre
-           FROM egresos e
-           LEFT JOIN egreso_categorias c ON c.id = e.categoria_id
-           LEFT JOIN metodos_pago mp ON mp.id = e.metodo_pago_id
-          WHERE ${where}
-          ORDER BY e.fecha DESC, e.id DESC
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) FROM egresos e WHERE ${where}`, params),
+        client.query(
+          `SELECT e.*, c.nombre AS categoria_nombre, mp.nombre AS caja_nombre
+             FROM egresos e
+             LEFT JOIN egreso_categorias c ON c.id = e.categoria_id
+             LEFT JOIN metodos_pago mp ON mp.id = e.metodo_pago_id
+            WHERE ${where}
+            ORDER BY e.fecha DESC, e.id DESC
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -204,6 +241,8 @@ router.post('/', validate(createEgresoSchema), async (req, res, next) => {
     const { fecha, concepto, categoria_id, monto, moneda, tc, metodo_pago_id, estado, notas } = req.body;
     const monto_usd = round2(toUsd(Number(monto), moneda, tc));
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       `INSERT INTO egresos (fecha, concepto, categoria_id, monto, moneda, tc, monto_usd, metodo_pago_id, estado, notas, user_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
@@ -225,6 +264,8 @@ router.put('/:id', validate(updateEgresoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query('SELECT * FROM egresos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Egreso no encontrado' }); }
 
@@ -270,6 +311,8 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       'UPDATE egresos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
