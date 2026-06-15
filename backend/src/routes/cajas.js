@@ -7,7 +7,6 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { createCachedFetcher } = require('../lib/cacheTtl');
 const { getCajasList, invalidateCajas } = require('../lib/cajasCache');
-const withTx = require('../lib/withTx');
 const { postCajaMovimiento } = require('../lib/cajaLedger');
 const {
   createDeudaSchema, queryDeudasSchema,
@@ -33,21 +32,24 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
       ${where}
     `;
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) ${baseQuery}`, params),
-      db.query(
-        `SELECT m.id, m.fecha, m.contacto_id, m.tipo AS mov_tipo,
-                m.monto_ars, m.monto_usd, m.concepto, m.created_at,
-                c.nombre, c.apellido, c.tipo AS contacto_tipo
-         ${baseQuery}
-         ORDER BY m.fecha DESC, m.id DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
+    // 2026-06-15 multi-tenant (PR 4.5): count + data en una sola withTenant.
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) ${baseQuery}`, params),
+        client.query(
+          `SELECT m.id, m.fecha, m.contacto_id, m.tipo AS mov_tipo,
+                  m.monto_ars, m.monto_usd, m.concepto, m.created_at,
+                  c.nombre, c.apellido, c.tipo AS contacto_tipo
+           ${baseQuery}
+           ORDER BY m.fecha DESC, m.id DESC
+           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
 
-    const total = parseInt(countRes.rows[0].count);
-    res.json(paginatedResponse(dataRes.rows, total, { page, limit }));
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) {
     next(err);
   }
@@ -62,6 +64,8 @@ router.post('/deudas', validate(createDeudaSchema), async (req, res, next) => {
   try {
     const { fecha, contacto_id, contacto_nuevo, tipo, monto_ars, monto_usd, concepto } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // Resolver contacto: usar el id existente, o crear uno nuevo en la misma tx.
     let cid = contacto_id;
@@ -95,12 +99,16 @@ router.delete('/deudas/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query(
-      'UPDATE movimientos_deudas SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
-      [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Movimiento no encontrado' });
-    await audit('movimientos_deudas', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE movimientos_deudas SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+        [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'movimientos_deudas', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Movimiento no encontrado' });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -124,20 +132,22 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
       ${where}
     `;
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) ${baseQuery}`, params),
-      db.query(
-        `SELECT m.id, m.fecha, m.contacto_id, m.monto, m.tasa, m.created_at,
-                c.nombre, c.apellido, c.tipo AS contacto_tipo
-         ${baseQuery}
-         ORDER BY m.fecha DESC, m.id DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) ${baseQuery}`, params),
+        client.query(
+          `SELECT m.id, m.fecha, m.contacto_id, m.monto, m.tasa, m.created_at,
+                  c.nombre, c.apellido, c.tipo AS contacto_tipo
+           ${baseQuery}
+           ORDER BY m.fecha DESC, m.id DESC
+           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
 
-    const total = parseInt(countRes.rows[0].count);
-    res.json(paginatedResponse(dataRes.rows, total, { page, limit }));
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) {
     next(err);
   }
@@ -149,6 +159,8 @@ router.post('/inversiones', validate(createInversionSchema), async (req, res, ne
   try {
     const { fecha, contacto_id, contacto_nuevo, monto, tasa } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     let cid = contacto_id;
     if (contacto_nuevo) {
@@ -181,12 +193,16 @@ router.delete('/inversiones/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows } = await db.query(
-      'UPDATE movimientos_inversiones SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
-      [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Inversión no encontrada' });
-    await audit('movimientos_inversiones', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE movimientos_inversiones SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
+        [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'movimientos_inversiones', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Inversión no encontrada' });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -203,6 +219,11 @@ router.get('/cajas', async (_req, res, next) => {
   // y se llama mucho desde dropdowns de pago en varios módulos. Invalidación
   // explícita en escrituras a metodos_pago / caja_movimientos. Ver
   // backend/src/lib/cajasCache.js para detalles del trade-off multi-instance.
+  //
+  // TODO multi-tenant PR 4.9 cleanup: el cache de getCajasList es global
+  // (key sin tenant_id). Mientras estamos en single-tenant es correcto.
+  // Cuando entren tenants reales, refactorar para key por tenant. Mismo
+  // pattern documentado en inventarioCache.js.
   try {
     res.json(await getCajasList());
   } catch (err) { next(err); }
@@ -211,18 +232,21 @@ router.get('/cajas', async (_req, res, next) => {
 // Reporte de cajas con saldo negativo — útil para regularizar datos viejos
 // antes de que el lock de "no negativo" empezara a aplicarse en POST.
 // Devuelve lista plana: { id, nombre, moneda, saldo_actual }.
-router.get('/cajas/negativas', async (_req, res, next) => {
+router.get('/cajas/negativas', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT mp.id, mp.nombre, mp.moneda,
-              mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo_actual
-         FROM metodos_pago mp
-         LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id AND cm.deleted_at IS NULL
-        WHERE mp.deleted_at IS NULL
-        GROUP BY mp.id
-       HAVING mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) < 0
-        ORDER BY (mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0)) ASC`
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT mp.id, mp.nombre, mp.moneda,
+                mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) AS saldo_actual
+           FROM metodos_pago mp
+           LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id AND cm.deleted_at IS NULL
+          WHERE mp.deleted_at IS NULL
+          GROUP BY mp.id
+         HAVING mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0) < 0
+          ORDER BY (mp.saldo_inicial + COALESCE(SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END), 0)) ASC`
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -232,6 +256,8 @@ router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
   try {
     const { nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     if (es_financiera) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true');
     const { rows } = await client.query(
       `INSERT INTO metodos_pago (nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct)
@@ -260,6 +286,8 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const before = await client.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Caja no encontrada' }); }
 
@@ -300,23 +328,33 @@ router.delete('/cajas/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows: caja } = await db.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!caja[0]) return res.status(404).json({ error: 'Caja no encontrada' });
-    // No permitir borrar una caja en uso: perdería trazabilidad de dinero ya registrado.
-    if (caja[0].es_financiera) return res.status(409).json({ error: 'No se puede borrar: es la caja Financiera. Desmarcala primero.' });
-    if (caja[0].es_tarjeta)    return res.status(409).json({ error: 'No se puede borrar: es un método tarjeta. Desmarcá "Es tarjeta" primero.' });
-    const [{ rows: mov }, { rows: egr }] = await Promise.all([
-      db.query('SELECT 1 FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL LIMIT 1', [id]),
-      db.query("SELECT 1 FROM egresos WHERE metodo_pago_id = $1 AND estado = 'pendiente' AND deleted_at IS NULL LIMIT 1", [id]),
-    ]);
-    if (mov[0]) return res.status(409).json({ error: 'No se puede borrar: tiene movimientos registrados. Desactivala en su lugar.' });
-    if (egr[0]) return res.status(409).json({ error: 'No se puede borrar: tiene egresos pendientes asociados.' });
 
-    const { rows } = await db.query(
-      'UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
-    await audit('metodos_pago', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    // 2026-06-15 multi-tenant (PR 4.5): toda la cadena (lookup + checks +
+    // UPDATE + audit) en una sola withTenant para que comparta el SET LOCAL
+    // y el audit corra in-tx (antes audit('metodos_pago', ...) sin client
+    // iba con el pool global, sin tenant context).
+    const result = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: caja } = await client.query('SELECT * FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [id]);
+      if (!caja[0]) return { notFound: true };
+      // No permitir borrar una caja en uso: perdería trazabilidad de dinero ya registrado.
+      if (caja[0].es_financiera) return { conflict: 'No se puede borrar: es la caja Financiera. Desmarcala primero.' };
+      if (caja[0].es_tarjeta)    return { conflict: 'No se puede borrar: es un método tarjeta. Desmarcá "Es tarjeta" primero.' };
+      const [{ rows: mov }, { rows: egr }] = await Promise.all([
+        client.query('SELECT 1 FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL LIMIT 1', [id]),
+        client.query("SELECT 1 FROM egresos WHERE metodo_pago_id = $1 AND estado = 'pendiente' AND deleted_at IS NULL LIMIT 1", [id]),
+      ]);
+      if (mov[0]) return { conflict: 'No se puede borrar: tiene movimientos registrados. Desactivala en su lugar.' };
+      if (egr[0]) return { conflict: 'No se puede borrar: tiene egresos pendientes asociados.' };
+
+      const { rows } = await client.query(
+        'UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return { notFound: true };
+      await audit(client, 'metodos_pago', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return { ok: true };
+    });
+    if (result.notFound) return res.status(404).json({ error: 'Caja no encontrada' });
+    if (result.conflict) return res.status(409).json({ error: result.conflict });
     invalidateCajas();  // Perf H3: caja soft-deleted desaparece del listado
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -341,28 +379,35 @@ router.get('/movimientos', validate(queryLedgerSchema, 'query'), async (req, res
     const where = conditions.join(' AND ');
     const baseFrom = `FROM caja_movimientos cm JOIN metodos_pago mp ON mp.id = cm.caja_id WHERE ${where}`;
 
-    const [countRes, totRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) ${baseFrom}`, params),
-      db.query(
-        `SELECT
-           COALESCE(SUM(CASE WHEN cm.tipo = 'ingreso' THEN cm.monto_usd ELSE 0 END), 0) AS ingresos_usd,
-           COALESCE(SUM(CASE WHEN cm.tipo = 'egreso'  THEN cm.monto_usd ELSE 0 END), 0) AS egresos_usd
-         ${baseFrom}`, params),
-      db.query(
-        `SELECT cm.id, cm.fecha, cm.caja_id, mp.nombre AS caja_nombre, mp.moneda,
-                cm.tipo, cm.monto, cm.monto_usd, cm.origen, cm.ref_tabla, cm.ref_id, cm.concepto, cm.created_at
-         ${baseFrom}
-         ORDER BY cm.fecha DESC, cm.id DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]),
-    ]);
+    const { count, ingresos_usd_raw, egresos_usd_raw, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, totRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) ${baseFrom}`, params),
+        client.query(
+          `SELECT
+             COALESCE(SUM(CASE WHEN cm.tipo = 'ingreso' THEN cm.monto_usd ELSE 0 END), 0) AS ingresos_usd,
+             COALESCE(SUM(CASE WHEN cm.tipo = 'egreso'  THEN cm.monto_usd ELSE 0 END), 0) AS egresos_usd
+           ${baseFrom}`, params),
+        client.query(
+          `SELECT cm.id, cm.fecha, cm.caja_id, mp.nombre AS caja_nombre, mp.moneda,
+                  cm.tipo, cm.monto, cm.monto_usd, cm.origen, cm.ref_tabla, cm.ref_id, cm.concepto, cm.created_at
+           ${baseFrom}
+           ORDER BY cm.fecha DESC, cm.id DESC
+           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]),
+      ]);
+      return {
+        count: parseInt(countRes.rows[0].count),
+        ingresos_usd_raw: totRes.rows[0].ingresos_usd,
+        egresos_usd_raw: totRes.rows[0].egresos_usd,
+        dataRows: dataRes.rows,
+      };
+    });
 
-    const total = parseInt(countRes.rows[0].count);
-    const ingresos_usd = round2(Number(totRes.rows[0].ingresos_usd));
-    const egresos_usd  = round2(Number(totRes.rows[0].egresos_usd));
+    const ingresos_usd = round2(Number(ingresos_usd_raw));
+    const egresos_usd  = round2(Number(egresos_usd_raw));
     res.json({
-      ...paginatedResponse(dataRes.rows, total, { page, limit }),
-      totales: { ingresos_usd, egresos_usd, neto_usd: round2(ingresos_usd - egresos_usd), count: total },
+      ...paginatedResponse(dataRows, count, { page, limit }),
+      totales: { ingresos_usd, egresos_usd, neto_usd: round2(ingresos_usd - egresos_usd), count },
     });
   } catch (err) { next(err); }
 });
@@ -373,18 +418,21 @@ router.get('/cajas/:id/movimientos', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
-    const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL', [id]),
-      db.query(
-        `SELECT id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, created_at
-           FROM caja_movimientos
-          WHERE caja_id = $1 AND deleted_at IS NULL
-          ORDER BY fecha DESC, id DESC
-          LIMIT $2 OFFSET $3`,
-        [id, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query('SELECT COUNT(*) FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL', [id]),
+        client.query(
+          `SELECT id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, created_at
+             FROM caja_movimientos
+            WHERE caja_id = $1 AND deleted_at IS NULL
+            ORDER BY fecha DESC, id DESC
+            LIMIT $2 OFFSET $3`,
+          [id, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -400,22 +448,29 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    // Pre-check de existencia y obtención de moneda (sin lock — el lock real
-    // lo hace postCajaMovimiento dentro de la tx).
-    const caja = await db.query(
-      'SELECT id, moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL',
-      [id]
-    );
-    if (!caja.rows[0]) return res.status(404).json({ error: 'Caja no encontrada' });
-
+    // 2026-06-15 multi-tenant (PR 4.5): pre-check + tx en una sola withTenant.
+    // Antes el pre-check usaba db.query (sin tenant context) y la tx usaba
+    // withTx (que no setea SET LOCAL). Ahora todo bajo el mismo SET LOCAL —
+    // RLS bloquea el pre-check si la caja es de otro tenant.
+    //
+    // Nota: usamos db.withTenant en lugar de withTx para tener BEGIN+SET LOCAL
+    // automáticos. La validación 400 de moneda ARS sin TC sigue ANTES del
+    // withTenant para que un error de input no abra una tx innecesaria.
     const { fecha, tipo, monto, tc, concepto } = req.body;
-    const moneda = caja.rows[0].moneda;
-    if (moneda === 'ARS' && !(tc && tc > 0)) {
-      return res.status(400).json({ error: 'Para una caja en ARS se requiere el tipo de cambio (tc)' });
-    }
 
     try {
-      const row = await withTx(db, async (client) => {
+      const result = await db.withTenant(req.tenantId, async (client) => {
+        const { rows: cajaRows } = await client.query(
+          'SELECT id, moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL',
+          [id]
+        );
+        if (!cajaRows[0]) return { notFound: true };
+
+        const moneda = cajaRows[0].moneda;
+        if (moneda === 'ARS' && !(tc && tc > 0)) {
+          return { badRequest: 'Para una caja en ARS se requiere el tipo de cambio (tc)' };
+        }
+
         const mov = await postCajaMovimiento(client, {
           caja_id: id,
           fecha,
@@ -435,11 +490,13 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
             despues: mov, user_id: req.user.id,
           });
         }
-        return mov;
+        return { mov };
       });
-      if (!row) return res.status(400).json({ error: 'No se pudo crear el movimiento.' });
+      if (result.notFound)   return res.status(404).json({ error: 'Caja no encontrada' });
+      if (result.badRequest) return res.status(400).json({ error: result.badRequest });
+      if (!result.mov)       return res.status(400).json({ error: 'No se pudo crear el movimiento.' });
       invalidateCajas();  // Perf H3: nuevo movimiento mueve saldo_actual
-      res.status(201).json(row);
+      res.status(201).json(result.mov);
     } catch (err) {
       // postCajaMovimiento usa err.status (400 para saldo insuficiente,
       // moneda mal, etc.). Si trae status, devolverlo; sino propagar.
@@ -454,12 +511,16 @@ router.delete('/cajas/movimientos/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      `UPDATE caja_movimientos SET deleted_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL AND origen = 'ajuste' RETURNING *`, [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Movimiento de ajuste no encontrado' });
-    await audit('caja_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `UPDATE caja_movimientos SET deleted_at = NOW()
+          WHERE id = $1 AND deleted_at IS NULL AND origen = 'ajuste' RETURNING *`, [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'caja_movimientos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Movimiento de ajuste no encontrado' });
     invalidateCajas();  // Perf H3: reversión recalcula saldo_actual
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -470,6 +531,12 @@ router.delete('/cajas/movimientos/:id', async (req, res, next) => {
 // Resumen agregado por contacto. Cacheado 20s — la vista Capital lo recarga al
 // montar y los saldos no cambian al segundo. Ventana corta para reflejar
 // movimientos nuevos sin sentir lag.
+//
+// TODO multi-tenant PR 4.9 cleanup: cache es global (key sin tenant_id).
+// Mientras estemos en single-tenant es correcto. Cuando entren tenants
+// reales, refactorar a key por tenant (mismo pattern que getCajasList y
+// fetchMetricas en inventarioCache.js). Por ahora las queries no setean
+// app.current_tenant — RLS bypassea via la cláusula `IS NULL OR = ''`.
 const fetchResumenCajas = createCachedFetcher('cajas:resumen', 20_000, async () => {
   const [{ rows: deudas }, { rows: inv }] = await Promise.all([
     db.query(`
