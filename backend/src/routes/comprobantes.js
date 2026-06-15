@@ -159,6 +159,7 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
     let file;
     if (useR2) {
       file = await fileStore.put({
+        tenantId: req.tenantId,  // PR 5 multi-tenant: prefix t{tenantId}/ en la key R2
         dataBase64: archivo_data ?? null,
         filename: archivo_nombre ?? null,
         mime: archivo_tipo ?? null,

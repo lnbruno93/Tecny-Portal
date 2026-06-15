@@ -19,8 +19,19 @@ describe('fileStore — driver db (Fase 1)', () => {
   });
 
   describe('put()', () => {
+    // PR 5 multi-tenant: put() requiere tenantId aun en driver db, para
+    // simetría de API con driver r2 (cambiar de driver no debe romper
+    // llamadas). Los tests pasan tenantId=1 para preservar la semántica
+    // pre-PR-5 (single-tenant). El test "sin tenantId" abajo valida que
+    // la validación corre upfront, antes incluso del early-return por null.
+    test('sin tenantId tira error (validación upfront, antes del early return)', async () => {
+      await expect(fileStore.put({})).rejects.toThrow(/tenantId requerido/);
+      await expect(fileStore.put({ dataBase64: null })).rejects.toThrow(/tenantId requerido/);
+      await expect(fileStore.put({ tenantId: 0, dataBase64: 'x' })).rejects.toThrow(/tenantId requerido/);
+    });
+
     test('sin dataBase64 devuelve todos los campos en null', async () => {
-      const result = await fileStore.put({});
+      const result = await fileStore.put({ tenantId: 1 });
       expect(result).toEqual({
         data: null, key: null, nombre: null, tipo: null, size: null,
       });
@@ -28,6 +39,7 @@ describe('fileStore — driver db (Fase 1)', () => {
 
     test('dataBase64=null se trata como sin archivo', async () => {
       const result = await fileStore.put({
+        tenantId: 1,
         dataBase64: null,
         filename: 'algo.jpg',
         mime: 'image/jpeg',
@@ -40,6 +52,7 @@ describe('fileStore — driver db (Fase 1)', () => {
     test('con dataBase64 es passthrough al campo `data` (driver db)', async () => {
       const blob = Buffer.from('hola mundo').toString('base64'); // "aG9sYSBtdW5kbw=="
       const result = await fileStore.put({
+        tenantId: 1,
         dataBase64: blob,
         filename: 'saludo.txt',
         mime: 'text/plain',
@@ -54,7 +67,7 @@ describe('fileStore — driver db (Fase 1)', () => {
     test('calcula size correctamente desde base64 con padding "=="', async () => {
       // "hola mundo" tiene 10 bytes → base64 "aG9sYSBtdW5kbw==" (16 chars, padding ==)
       const blob = Buffer.from('hola mundo').toString('base64');
-      const result = await fileStore.put({ dataBase64: blob });
+      const result = await fileStore.put({ tenantId: 1, dataBase64: blob });
       expect(result.size).toBe(10);
     });
 
@@ -63,7 +76,7 @@ describe('fileStore — driver db (Fase 1)', () => {
       // Probemos uno con 1 padding: "hola mun" = 8 bytes → "aG9sYSBtdW4=" (12 chars, padding =)
       const blob = Buffer.from('hola mun').toString('base64');
       expect(blob.endsWith('=')).toBe(true);
-      const result = await fileStore.put({ dataBase64: blob });
+      const result = await fileStore.put({ tenantId: 1, dataBase64: blob });
       expect(result.size).toBe(8);
     });
 
@@ -71,12 +84,12 @@ describe('fileStore — driver db (Fase 1)', () => {
       // "hola mu" = 7 bytes... probemos uno que dé múltiplo de 3 → sin padding
       const blob = Buffer.from('hol').toString('base64'); // "aG9s"
       expect(blob).toBe('aG9s');
-      const result = await fileStore.put({ dataBase64: blob });
+      const result = await fileStore.put({ tenantId: 1, dataBase64: blob });
       expect(result.size).toBe(3);
     });
 
     test('size devuelve null si dataBase64 no es string', async () => {
-      const result = await fileStore.put({ dataBase64: 12345 });
+      const result = await fileStore.put({ tenantId: 1, dataBase64: 12345 });
       // dataBase64 numérico → !dataBase64 es false (12345 truthy) pero no es string → size null
       // Pero la lib usa typeof check en _sizeFromBase64 — verificamos
       expect(result.size).toBeNull();
@@ -84,7 +97,7 @@ describe('fileStore — driver db (Fase 1)', () => {
 
     test('campos faltantes (filename, mime) defaultean a null', async () => {
       const blob = Buffer.from('x').toString('base64');
-      const result = await fileStore.put({ dataBase64: blob });
+      const result = await fileStore.put({ tenantId: 1, dataBase64: blob });
       expect(result.nombre).toBeNull();
       expect(result.tipo).toBeNull();
       expect(result.data).toBe(blob);
