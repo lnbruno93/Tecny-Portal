@@ -562,6 +562,8 @@ body {
 .tbl .num, .table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .tbl .muted, .table .muted { color: var(--text-muted); }
 .tbl tr.tbl-row-click, .table tr.tbl-row-click { cursor: pointer; }
+/* Utility: forzar no-wrap en celdas (Inventario IMEI/Proveedor 2026-06-15). */
+.tbl .nowrap, .table .nowrap { white-space: nowrap; }
 
 /* ── EditableCell: feedback de hover para celdas editables ──
    Indica visualmente que la celda es clickeable para editar in-place. */

@@ -810,15 +810,28 @@ export default function Inventario() {
         <div className="card card-flush" style={{ overflowX: 'auto' }} aria-busy="true" aria-live="polite">
           <table className="table">
             <thead>
+              {/* Widths ajustados 2026-06-15: la columna IMEI/Serial se estiraba
+                  desproporcionadamente y "Proveedor" wrappeaba en 2 líneas con
+                  nombres largos (ej. "Francisco de la Torre"). minWidth fija un
+                  piso por columna; el resto del ancho se reparte entre las que
+                  más lo necesitan (Nombre, Categoría, Proveedor). */}
               <tr>
-                {/* Columna histórial: botón ícono → modal Detalle/Historial.
-                    Sin label, ancho mínimo para no consumir espacio visual. */}
                 <th style={{ width: 32 }} aria-label="Historial"></th>
-                <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
-                <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
-                <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
-                <th>IMEI/Serial</th><th>Tipo</th><th>Categoría</th><th>Proveedor</th>
-                <th style={{ textAlign: 'right' }}>Stock</th><th>Estado</th><th></th>
+                <th style={{ minWidth: 180 }}>Nombre</th>
+                <th style={{ width: 56 }}>GB</th>
+                <th style={{ width: 70 }}>Batería</th>
+                <th style={{ width: 96 }}>Color</th>
+                <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
+                <th style={{ width: 68 }}>Mon. Costo</th>
+                <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
+                <th style={{ width: 72 }}>Mon. Venta</th>
+                <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
+                <th style={{ width: 84 }}>Tipo</th>
+                <th style={{ minWidth: 130 }}>Categoría</th>
+                <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
+                <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
+                <th style={{ width: 110 }}>Estado</th>
+                <th style={{ width: 110 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -834,15 +847,28 @@ export default function Inventario() {
         <div className="card card-flush" style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
+              {/* Widths ajustados 2026-06-15: la columna IMEI/Serial se estiraba
+                  desproporcionadamente y "Proveedor" wrappeaba en 2 líneas con
+                  nombres largos (ej. "Francisco de la Torre"). minWidth fija un
+                  piso por columna; el resto del ancho se reparte entre las que
+                  más lo necesitan (Nombre, Categoría, Proveedor). */}
               <tr>
-                {/* Columna histórial: botón ícono → modal Detalle/Historial.
-                    Sin label, ancho mínimo para no consumir espacio visual. */}
                 <th style={{ width: 32 }} aria-label="Historial"></th>
-                <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
-                <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
-                <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
-                <th>IMEI/Serial</th><th>Tipo</th><th>Categoría</th><th>Proveedor</th>
-                <th style={{ textAlign: 'right' }}>Stock</th><th>Estado</th><th></th>
+                <th style={{ minWidth: 180 }}>Nombre</th>
+                <th style={{ width: 56 }}>GB</th>
+                <th style={{ width: 70 }}>Batería</th>
+                <th style={{ width: 96 }}>Color</th>
+                <th style={{ width: 84, textAlign: 'right' }}>Costo</th>
+                <th style={{ width: 68 }}>Mon. Costo</th>
+                <th style={{ width: 96, textAlign: 'right' }}>Precio Venta</th>
+                <th style={{ width: 72 }}>Mon. Venta</th>
+                <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
+                <th style={{ width: 84 }}>Tipo</th>
+                <th style={{ minWidth: 130 }}>Categoría</th>
+                <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
+                <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
+                <th style={{ width: 110 }}>Estado</th>
+                <th style={{ width: 110 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -941,7 +967,7 @@ export default function Inventario() {
                       value={p.imei || ''}
                       type="text"
                       align="left"
-                      className="mono tiny"
+                      className="mono tiny nowrap"
                       onSave={save('imei')}
                       inputProps={{ maxLength: 50 }}
                     />
@@ -966,6 +992,7 @@ export default function Inventario() {
                       display={<span className="muted">{p.proveedor || '—'}</span>}
                       type="combo"
                       options={provOptions}
+                      className="nowrap"
                       onSave={save('proveedor')}
                       inputProps={{ maxLength: 200 }}
                     />
