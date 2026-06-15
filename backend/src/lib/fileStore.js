@@ -150,9 +150,21 @@ function _getBucket() {
   return b;
 }
 
-// Genera el object key para un upload nuevo. Layout (del doc de diseño):
-//   ipro/<env>/<entity>/<subpath o YYYY/MM/DD>/<uuid>.<ext>
-function _generateKey({ entity, subpath, mime }) {
+// Genera el object key para un upload nuevo. Layout:
+//   ipro/<env>/t<tenantId>/<entity>/<subpath o YYYY/MM/DD>/<uuid>.<ext>
+//
+// PR 5 multi-tenant (2026-06-15): el tenant_id va PRIMERO en la jerarquía
+// (después de env). Esta posición permite:
+//   - Listing eficiente "todos los archivos del tenant X" (un solo Prefix=`ipro/<env>/t<X>/`).
+//   - Si en el futuro Cloudflare R2 ofrece IAM por path prefix, podemos dar
+//     credenciales scoped por tenant sin reorganizar nada.
+//   - Razonamiento mental directo: la primera carpeta es "de quién es".
+//
+// Las keys legacy (sin t<tenantId>/) siguen siendo válidas para reads —
+// son objetos R2 reales que la fila apunta tal cual. fileStore.get usa
+// row[`${prefix}_key`] sin modificarlo. No requieren backfill: en single-
+// tenant todo es de tenant 1, no hay riesgo de cross-tenant.
+function _generateKey({ tenantId, entity, subpath, mime }) {
   const ext = _extFromMime(mime);
   const uuid = crypto.randomUUID();
   let path;
@@ -167,19 +179,30 @@ function _generateKey({ entity, subpath, mime }) {
     const dd = String(d.getUTCDate()).padStart(2, '0');
     path = `${yyyy}/${mm}/${dd}`;
   }
-  return `ipro/${ENV}/${entity}/${path}/${uuid}.${ext}`;
+  return `ipro/${ENV}/t${tenantId}/${entity}/${path}/${uuid}.${ext}`;
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
 
 // Prepara los valores para INSERT/UPDATE basado en el upload entrante.
 //
-// Driver db: passthrough del base64 a la columna `*_data`.
-// Driver r2: sube al bucket y devuelve `{ data: null, key: '...' }`. El caller
-//   hace el mismo INSERT pero la columna `*_data` queda NULL y `*_key` guarda
-//   la referencia.
+// PR 5 multi-tenant (2026-06-15): tenantId es REQUERIDO. Se inyecta en la
+// key como prefix `t{tenantId}/` para aislar archivos por tenant a nivel
+// storage. Aplica solo a driver r2 (el driver db es passthrough — los blobs
+// viven en columnas, RLS los aísla automático).
+//
+// Driver db: passthrough del base64 a la columna `*_data`. tenantId se
+//   valida igual para mantener simetría con r2 (el caller siempre debe
+//   pasarlo; si en el futuro cambiamos driver, no rompemos llamadas).
+// Driver r2: sube al bucket con key `ipro/<env>/t<tenantId>/<entity>/...`
+//   y devuelve `{ data: null, key: '...' }`. El caller hace el mismo INSERT
+//   pero la columna `*_data` queda NULL y `*_key` guarda la referencia.
 async function put(input = {}) {
-  const { dataBase64, filename, mime, entity, subpath } = input;
+  const { tenantId, dataBase64, filename, mime, entity, subpath } = input;
+
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error(`[fileStore.put] tenantId requerido (entero positivo). Recibido: ${tenantId}`);
+  }
 
   if (!dataBase64) {
     return { data: null, key: null, nombre: null, tipo: null, size: null };
@@ -201,7 +224,7 @@ async function put(input = {}) {
   // eslint-disable-next-line global-require
   const { PutObjectCommand } = require('@aws-sdk/client-s3');
   const client = _getS3Client();
-  const key = _generateKey({ entity: entity || 'misc', subpath, mime });
+  const key = _generateKey({ tenantId, entity: entity || 'misc', subpath, mime });
   const Body = Buffer.from(dataBase64, 'base64');
 
   await client.send(new PutObjectCommand({

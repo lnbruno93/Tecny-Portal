@@ -56,8 +56,25 @@ describe('fileStore — driver r2', () => {
   });
 
   describe('put()', () => {
+    // PR 5 multi-tenant: todos los put() requieren tenantId (entero positivo).
+    // Los tests existentes pasan tenantId=1 para preservar la semántica
+    // pre-PR-5 (single-tenant). El test de cross-tenant abajo valida que
+    // tenants distintos generan keys con prefijos distintos.
+    test('sin tenantId tira error (validación upfront)', async () => {
+      const blob = Buffer.from('x').toString('base64');
+      await expect(fileStore.put({ dataBase64: blob, entity: 'comprobantes' }))
+        .rejects.toThrow(/tenantId requerido/);
+      await expect(fileStore.put({ tenantId: 0, dataBase64: blob, entity: 'comprobantes' }))
+        .rejects.toThrow(/tenantId requerido/);
+      await expect(fileStore.put({ tenantId: -1, dataBase64: blob, entity: 'comprobantes' }))
+        .rejects.toThrow(/tenantId requerido/);
+      await expect(fileStore.put({ tenantId: 'abc', dataBase64: blob, entity: 'comprobantes' }))
+        .rejects.toThrow(/tenantId requerido/);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
     test('sin dataBase64 devuelve nulls y NO llama a S3', async () => {
-      const result = await fileStore.put({ entity: 'comprobantes' });
+      const result = await fileStore.put({ tenantId: 1, entity: 'comprobantes' });
       expect(result).toEqual({ data: null, key: null, nombre: null, tipo: null, size: null });
       expect(mockSend).not.toHaveBeenCalled();
     });
@@ -67,6 +84,7 @@ describe('fileStore — driver r2', () => {
       const blob = Buffer.from('hola mundo').toString('base64');
 
       const result = await fileStore.put({
+        tenantId: 1,
         dataBase64: blob,
         filename: 'saludo.txt',
         mime: 'text/plain',
@@ -83,9 +101,9 @@ describe('fileStore — driver r2', () => {
       expect(sentCommand.input.ContentType).toBe('text/plain');
       expect(sentCommand.input.Metadata['original-name']).toBe('saludo.txt');
 
-      // Key debe tener el layout esperado: ipro/<env>/<entity>/<YYYY/MM/DD>/<uuid>.<ext>
+      // Key con prefix tenant: ipro/<env>/t<tenantId>/<entity>/<YYYY/MM/DD>/<uuid>.<ext>
       expect(sentCommand.input.Key).toMatch(
-        /^ipro\/test\/comprobantes\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f-]{36}\.txt$/
+        /^ipro\/test\/t1\/comprobantes\/\d{4}\/\d{2}\/\d{2}\/[0-9a-f-]{36}\.txt$/
       );
 
       // El return debe tener key (no data) — el caller guarda key en columna
@@ -101,6 +119,7 @@ describe('fileStore — driver r2', () => {
       const blob = Buffer.from('x').toString('base64');
 
       await fileStore.put({
+        tenantId: 1,
         dataBase64: blob,
         mime: 'image/jpeg',
         entity: 'productos',
@@ -109,7 +128,7 @@ describe('fileStore — driver r2', () => {
 
       const sentCommand = mockSend.mock.calls[0][0];
       expect(sentCommand.input.Key).toMatch(
-        /^ipro\/test\/productos\/producto-42\/[0-9a-f-]{36}\.jpg$/
+        /^ipro\/test\/t1\/productos\/producto-42\/[0-9a-f-]{36}\.jpg$/
       );
     });
 
@@ -127,7 +146,7 @@ describe('fileStore — driver r2', () => {
       ];
       for (const { mime, ext } of cases) {
         mockSend.mockClear();
-        await fileStore.put({ dataBase64: blob, mime, entity: 'comprobantes' });
+        await fileStore.put({ tenantId: 1, dataBase64: blob, mime, entity: 'comprobantes' });
         const key = mockSend.mock.calls[0][0].input.Key;
         expect(key.endsWith('.' + ext)).toBe(true);
       }
@@ -137,6 +156,7 @@ describe('fileStore — driver r2', () => {
       mockSend.mockResolvedValue({});
       const blob = Buffer.from('x').toString('base64');
       await fileStore.put({
+        tenantId: 1,
         dataBase64: blob,
         filename: 'fotó-café.jpg',  // caracteres con acento
         mime: 'image/jpeg',
@@ -155,10 +175,49 @@ describe('fileStore — driver r2', () => {
       const blob = Buffer.from('x').toString('base64');
 
       await expect(fileStore.put({
+        tenantId: 1,
         dataBase64: blob,
         mime: 'image/jpeg',
         entity: 'comprobantes',
       })).rejects.toThrow('S3 down');
+    });
+
+    // ── PR 5 multi-tenant: aislamiento de keys por tenant ──
+    test('PR 5: tenants distintos generan keys con prefijos distintos (aislamiento)', async () => {
+      mockSend.mockResolvedValue({});
+      const blob = Buffer.from('archivo del tenant').toString('base64');
+
+      // Tenant A
+      await fileStore.put({
+        tenantId: 100,
+        dataBase64: blob,
+        mime: 'application/pdf',
+        entity: 'comprobantes',
+        subpath: 'mismo-subpath',
+      });
+      const keyA = mockSend.mock.calls[0][0].input.Key;
+
+      // Tenant B (mismos entity + subpath para forzar el mejor caso de colisión)
+      mockSend.mockClear();
+      await fileStore.put({
+        tenantId: 200,
+        dataBase64: blob,
+        mime: 'application/pdf',
+        entity: 'comprobantes',
+        subpath: 'mismo-subpath',
+      });
+      const keyB = mockSend.mock.calls[0][0].input.Key;
+
+      // Cada key tiene el prefix correcto del tenant.
+      expect(keyA).toMatch(/^ipro\/test\/t100\/comprobantes\/mismo-subpath\/[0-9a-f-]{36}\.pdf$/);
+      expect(keyB).toMatch(/^ipro\/test\/t200\/comprobantes\/mismo-subpath\/[0-9a-f-]{36}\.pdf$/);
+
+      // Las keys NO se solapan: comparten el sufijo entity+subpath pero el
+      // prefix tenant las separa irreductiblemente. Esto es el invariante
+      // operativo — el bucket queda particionado por tenant a nivel path.
+      expect(keyA.startsWith('ipro/test/t100/')).toBe(true);
+      expect(keyB.startsWith('ipro/test/t200/')).toBe(true);
+      expect(keyA).not.toEqual(keyB);
     });
   });
 
@@ -351,6 +410,7 @@ describe('fileStore — driver r2 sin env vars', () => {
     // El throw se materializa al intentar la PRIMERA operación con driver r2,
     // no en el require — eso es intencional (test bypass + flag-off path).
     return expect(fs.put({
+      tenantId: 1,  // PR 5: tenantId requerido — el test mide el throw de lazy init de R2
       dataBase64: Buffer.from('x').toString('base64'),
       mime: 'image/jpeg',
       entity: 'productos',

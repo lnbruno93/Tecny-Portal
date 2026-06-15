@@ -629,6 +629,7 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
     let fotoFile;
     if (useR2) {
       fotoFile = await fileStore.put({
+        tenantId: req.tenantId,  // PR 5 multi-tenant: prefix t{tenantId}/ en la key R2
         dataBase64: b.foto_data ?? null,
         filename: b.foto_nombre ?? null,
         mime: b.foto_tipo ?? null,
@@ -698,6 +699,7 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       let fotoFile;
       if (useR2) {
         fotoFile = await fileStore.put({
+          tenantId: req.tenantId,  // PR 5 multi-tenant: prefix t{tenantId}/ en la key R2
           dataBase64: req.body.foto_data,
           filename: req.body.foto_nombre,
           mime: req.body.foto_tipo,
