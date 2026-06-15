@@ -29,4 +29,55 @@ pool.on('error', (err) => {
   logger.error({ err }, 'PostgreSQL pool error');
 });
 
+/**
+ * 2026-06-15 multi-tenant PR 3 — helper para queries con contexto de tenant.
+ *
+ * Saca un client del pool, abre una tx implícita, setea `app.current_tenant`
+ * vía `SET LOCAL`, ejecuta el callback, commitea (o rollback si throw), y
+ * libera el client. `SET LOCAL` solo aplica dentro de la tx — al commitear,
+ * el client vuelve al pool con `app.current_tenant` reseteado, evitando que
+ * otro request herede el contexto (issue clásico con connection pooling + RLS).
+ *
+ * Mientras Postgres tiene RLS activo (PR 2), las queries dentro del callback
+ * filtran automáticamente al tenant especificado. Los endpoints actuales NO
+ * usan este helper todavía (siguen vía db.query con RLS allow-all). PR 4
+ * refactorea endpoints para usar withTenant.
+ *
+ * Uso:
+ *   const ventas = await db.withTenant(req.tenantId, async (client) => {
+ *     const { rows } = await client.query('SELECT * FROM ventas WHERE id = $1', [id]);
+ *     return rows;
+ *   });
+ *
+ * @param {number} tenantId — id del tenant de la sesión actual
+ * @param {function(client): Promise<*>} callback — recibe el client tx-scoped
+ * @returns {Promise<*>} — lo que devuelva el callback
+ * @throws {Error} si el callback lanza (la tx se rollbackea antes de propagar)
+ */
+pool.withTenant = async function withTenant(tenantId, callback) {
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error(`withTenant: tenantId inválido (${tenantId})`);
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // SET LOCAL: válido SOLO dentro de la tx en curso. Al COMMIT, la setting
+    // se descarta — el client vuelve al pool limpio. Crítico para evitar leak
+    // de contexto entre requests.
+    //
+    // Nota: Postgres NO acepta bind parameters en SET. Interpolamos `tenantId`
+    // directo en el SQL. Seguro porque arriba validamos que es Number.isInteger
+    // > 0 (Number to string es trivial, sin SQL injection posible).
+    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* swallow — propaga el error original */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = pool;
