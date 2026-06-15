@@ -26,6 +26,24 @@ const JWT_ALGORITHM = 'HS256';
 const LOCKOUT_THRESHOLD = 10;
 const LOCKOUT_DURATION_MIN = 15;
 
+// 2026-06-15 multi-tenant PR 3: resuelve el tenant del user al hacer login.
+// Mientras estamos en single-tenant, todo user nuevo se vincula al tenant 1
+// vía la migration de PR 1, así que esta query siempre devuelve algo. Cuando
+// arranque el SaaS, el user puede pertenecer a varios tenants — por ahora
+// elegimos el primero (ordered por id). UI futura permitirá switch entre
+// tenants y refrescará el JWT.
+async function resolveDefaultTenant(userId) {
+  const { rows } = await db.query(
+    `SELECT tenant_id, rol FROM tenant_users
+      WHERE user_id = $1
+      ORDER BY tenant_id ASC LIMIT 1`,
+    [userId]
+  );
+  // Fallback defensivo: si el user no tiene tenant (caso edge, no debería
+  // pasar post-PR1 backfill), lo asignamos al tenant 1.
+  return rows[0] || { tenant_id: 1, rol: 'member' };
+}
+
 async function makeToken(user) {
   // iat_ms: timestamp de emisión en milisegundos — permite comparación de precisión
   // sub-segundo contra password_changed_at (que tiene precisión de microsegundos en PG).
@@ -38,11 +56,20 @@ async function makeToken(user) {
   // perms de DB en el login y las incluimos. Si después cambian los perms (via
   // PUT /usuarios/:id), bumpeamos password_changed_at del afectado y el user
   // re-loguea para refrescar el token.
+  //
+  // 2026-06-15 multi-tenant PR 3: sumamos `tenant_id` y `tenant_rol` al payload.
+  // El middleware requireAuth los decora a `req.tenantId` y `req.tenantRol`. Los
+  // endpoints (refactor en PR 4) lo usarán para queries multi-tenant aware.
+  // RLS de PR 2 ya está activo — cuando `app.current_tenant` se setee al inicio
+  // del request, Postgres filtra automáticamente.
+  const tenant = await resolveDefaultTenant(user.id);
   const payload = {
     id: user.id,
     username: user.username,
     email: user.email,
     role: user.role,
+    tenant_id: tenant.tenant_id,
+    tenant_rol: tenant.rol,
     iat_ms: Date.now(),
   };
   if (user.role !== 'admin') {
