@@ -288,33 +288,72 @@ function TabTarjetas() {
 }
 
 // ─── Tab: USD → ARS ─────────────────────────────────────────────────────────
+// 2026-06-15: refactor para soportar lista de productos (espejo del tab Tarjetas).
+// Antes era 1 sólo "Monto USD a cotizar" sin nombre — ahora cotizás N items con
+// nombre + precio USD c/u, y el mensaje al cliente sale enumerado.
 
 function TabUsd() {
   const [tc, setTc]         = useState(1400);
-  const [usdIn, setUsdIn]   = useState('');
+  const [prods, setProds]   = useState([
+    { id: 1, nom: '', usd: 0 },
+  ]);
   const [optEf, setOptEf]   = useState(true);
   const [optTars, setOptTars] = useState(false);
   const [optTusd, setOptTusd] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
-  const usdCalc = useMemo(() => {
-    const u = parseFloat(usdIn) || 0;
-    return {
-      ef:   Math.round(u * tc),
-      // 2026-06-13: usar COEFS.transf (1/(1-comisión)) para que la
-      // transferencia liquide el contado limpio. Antes era × 1.03 hardcodeado.
-      tars: Math.round(u * tc * COEFS.transf),
-      tusd: (u * COEFS.transf).toFixed(2),
-    };
-  }, [usdIn, tc]);
+  const addProd = () =>
+    setProds([...prods, { id: Date.now(), nom: '', usd: 0 }]);
+  const rmProd = (id) =>
+    prods.length > 1 && setProds(prods.filter(p => p.id !== id));
+  const setProd = (id, field, val) =>
+    setProds(prods.map(p => p.id === id ? { ...p, [field]: val } : p));
+
+  const calculo = useMemo(() => {
+    const lines = prods.map(p => {
+      const u = parseFloat(p.usd) || 0;
+      return {
+        p,
+        usdRaw: u,
+        // 2026-06-13: COEFS.transf (1/(1-comisión)) para que la transferencia
+        // liquide el contado limpio.
+        ef:   Math.round(u * tc),
+        tars: Math.round(u * tc * COEFS.transf),
+        tusd: u * COEFS.transf, // numérico → fmtearlo cuando se renderiza
+      };
+    });
+    const tots = lines.reduce(
+      (a, l) => ({
+        ef:     a.ef     + l.ef,
+        tars:   a.tars   + l.tars,
+        tusd:   a.tusd   + l.tusd,
+        usdRaw: a.usdRaw + l.usdRaw,
+      }),
+      { ef: 0, tars: 0, tusd: 0, usdRaw: 0 }
+    );
+    return { lines, tots };
+  }, [prods, tc]);
+
+  const tieneMonto = calculo.tots.usdRaw > 0;
 
   const copyUsd = () => {
-    const u = parseFloat(usdIn) || 0;
-    if (!u) return;
-    let m = `Te comparto la cotización que me solicitaste:\n\nDe acuerdo al último tipo de cambio (TC $${fmt(tc)}):\n\n`;
-    if (optEf)   m += `- Efectivo / Contado: $${fmt(usdCalc.ef)}\n`;
-    if (optTars) m += `- Transferencia ARS: $${fmt(usdCalc.tars)}\n`;
-    if (optTusd) m += `- Transferencia USD: u$s ${usdCalc.tusd}\n`;
+    if (!tieneMonto) return;
+    let m = `Te comparto la cotización que me solicitaste:\n\nDe acuerdo al último tipo de cambio (TC $${fmt(tc)}):\n`;
+    calculo.lines.forEach(({ p, ef, tars, tusd, usdRaw }) => {
+      if (usdRaw <= 0) return;  // omitimos productos sin precio cargado
+      m += `\n- ${p.nom || 'Producto'} (USD ${fmt(p.usd)})\n`;
+      if (optEf)   m += `  Efectivo / Contado: $${fmt(ef)}\n`;
+      if (optTars) m += `  Transferencia ARS: $${fmt(tars)}\n`;
+      if (optTusd) m += `  Transferencia USD: u$s ${tusd.toFixed(2)}\n`;
+    });
+    // Totales solo si hay más de un producto con precio.
+    const validas = calculo.lines.filter(l => l.usdRaw > 0);
+    if (validas.length > 1) {
+      m += `\n━━━━━━━━━━━━━━━\n`;
+      if (optEf)   m += `TOTAL Efectivo / Contado: $${fmt(calculo.tots.ef)}\n`;
+      if (optTars) m += `TOTAL Transferencia ARS: $${fmt(calculo.tots.tars)}\n`;
+      if (optTusd) m += `TOTAL Transferencia USD: u$s ${calculo.tots.tusd.toFixed(2)}\n`;
+    }
     m += `\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.`;
     navigator.clipboard?.writeText(m);
     setCopiado(true);
@@ -349,35 +388,72 @@ function TabUsd() {
     <div className="quote-grid">
       {/* ── Left: inputs ── */}
       <div>
-        <div className="card card-tight">
-          <div className="row" style={{ marginBottom: 18 }}>
-            <div className="field" style={{ flex: 1 }}>
-              <div className="field-label">Tipo de cambio (USD → ARS)</div>
-              <div className="input-group">
-                <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
-                <input
-                  type="number" onKeyDown={blockInvalidNumberKeys}
-                  className="input mono"
-                  value={tc}
-                  onChange={e => setTc(parseFloat(e.target.value) || 0)}
-                />
-              </div>
-            </div>
-            <div className="field" style={{ flex: 1 }}>
-              <div className="field-label">Monto USD a cotizar</div>
-              <div className="input-group">
-                <span className="addon addon-l" style={{ color: 'var(--accent)' }}>USD</span>
-                <input
-                  type="number" onKeyDown={blockInvalidNumberKeys}
-                  className="input mono"
-                  placeholder="0"
-                  value={usdIn}
-                  onChange={e => setUsdIn(e.target.value)}
-                />
-              </div>
+        {/* TC card */}
+        <div className="card card-tight" style={{ marginBottom: 14 }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <div className="field-label">Tipo de cambio (USD → ARS)</div>
+            <div className="input-group" style={{ maxWidth: 240 }}>
+              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+              <input
+                type="number" onKeyDown={blockInvalidNumberKeys}
+                className="input mono"
+                value={tc}
+                onChange={e => setTc(parseFloat(e.target.value) || 0)}
+              />
             </div>
           </div>
+        </div>
 
+        {/* Products header */}
+        <div className="flex-between" style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Productos a cotizar</div>
+          <button className="btn btn-sm" onClick={addProd}>
+            <span className="ico"><Icons.Plus size={13} /></span>
+            Agregar producto
+          </button>
+        </div>
+
+        {/* Product rows — mismo shape que TabTarjetas para consistencia visual. */}
+        <div className="stack" style={{ gap: 10, marginBottom: 16 }}>
+          {prods.map((p, i) => (
+            <div key={p.id} className="card card-tight">
+              <div className="flex-between" style={{ marginBottom: 10 }}>
+                <div className="muted tiny" style={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Producto {i + 1}
+                </div>
+                {prods.length > 1 && (
+                  <button className="icon-btn" onClick={() => rmProd(p.id)}>
+                    <Icons.X size={14} />
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
+                <div className="field">
+                  <div className="field-label">Producto &amp; Detalle</div>
+                  <input
+                    className="input"
+                    placeholder="ej. iPhone 16 Pro 256GB Natural Titanium"
+                    value={p.nom}
+                    onChange={e => setProd(p.id, 'nom', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <div className="field-label">Precio USD</div>
+                  <input
+                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    className="input mono"
+                    placeholder="0"
+                    value={p.usd}
+                    onChange={e => setProd(p.id, 'usd', e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Formas de pago — mismo widget que antes, ahora abajo de la lista. */}
+        <div className="card card-tight">
           <div className="field-label" style={{ marginBottom: 10 }}>
             Formas de pago a incluir en el mensaje
           </div>
@@ -420,7 +496,7 @@ function TabUsd() {
           <button
             className="btn btn-sm btn-primary"
             onClick={copyUsd}
-            disabled={!usdIn || parseFloat(usdIn) <= 0}
+            disabled={!tieneMonto}
           >
             <span className="ico">
               {copiado ? <Icons.Check size={13} /> : <Icons.Share size={13} />}
@@ -429,7 +505,7 @@ function TabUsd() {
           </button>
         </div>
 
-        {!usdIn || parseFloat(usdIn) <= 0 ? (
+        {!tieneMonto ? (
           <div
             className="muted tiny"
             style={{ padding: '24px 0', textAlign: 'center' }}
@@ -438,34 +514,72 @@ function TabUsd() {
           </div>
         ) : (
           <>
-            {optEf && (
-              <div className="quote-line">
-                <span className="lbl">Efectivo / Contado</span>
-                <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(usdCalc.ef)}</span>
+            {/* Líneas por producto */}
+            {calculo.lines.filter(l => l.usdRaw > 0).map(({ p, ef, tars, tusd }, i, arr) => (
+              <div key={p.id} style={{
+                paddingBottom: 12,
+                marginBottom: 12,
+                borderBottom: i < arr.length - 1 ? '1px solid var(--hairline)' : 0,
+              }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 8 }}>
+                  {p.nom || 'Producto'}{' '}
+                  <span className="muted tiny mono" style={{ fontWeight: 500 }}>
+                    · USD {fmt(p.usd)}
+                  </span>
+                </div>
+                {optEf && (
+                  <div className="quote-line">
+                    <span className="lbl">Efectivo / Contado</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(ef)}</span>
+                  </div>
+                )}
+                {optTars && (
+                  <div className="quote-line">
+                    <span className="lbl">Transferencia ARS (+{pctEfectivo(COMISIONES.transf)}%)</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(tars)}</span>
+                  </div>
+                )}
+                {optTusd && (
+                  <div className="quote-line">
+                    <span className="lbl">Transferencia USD (+{pctEfectivo(COMISIONES.transf)}%)</span>
+                    <span className="val mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                      USD {tusd.toFixed(2)}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-            {optTars && (
-              <div className="quote-line">
-                <span className="lbl">Transferencia ARS (+{pctEfectivo(COMISIONES.transf)}%)</span>
-                <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(usdCalc.tars)}</span>
-              </div>
-            )}
-            {optTusd && (
-              <div className="quote-line">
-                <span className="lbl">Transferencia USD (+{pctEfectivo(COMISIONES.transf)}%)</span>
-                <span
-                  className="val mono"
-                  style={{ fontWeight: 700, color: 'var(--accent)' }}
-                >
-                  USD {usdCalc.tusd}
-                </span>
-              </div>
+            ))}
+
+            {/* Totales si hay más de 1 producto con precio. */}
+            {calculo.lines.filter(l => l.usdRaw > 0).length > 1 && (
+              <>
+                {optEf && (
+                  <div className="quote-line">
+                    <span className="lbl">Total Efectivo / Contado</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(calculo.tots.ef)}</span>
+                  </div>
+                )}
+                {optTars && (
+                  <div className="quote-line">
+                    <span className="lbl">Total Transferencia ARS</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(calculo.tots.tars)}</span>
+                  </div>
+                )}
+                {optTusd && (
+                  <div className="quote-line">
+                    <span className="lbl">Total Transferencia USD</span>
+                    <span className="val mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                      USD {calculo.tots.tusd.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
 
             <hr className="h-rule" />
 
             <div className="muted tiny mono" style={{ marginBottom: 8 }}>
-              USD {fmt(usdIn)} × TC ${fmt(tc)}
+              Total USD {fmt(calculo.tots.usdRaw)} × TC ${fmt(tc)}
             </div>
             <div
               className="muted tiny"
