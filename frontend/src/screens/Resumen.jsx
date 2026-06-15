@@ -20,6 +20,32 @@ function mesAnteriorISO(mes) {
   if (m === 1) return `${y - 1}-12`;
   return `${y}-${String(m - 1).padStart(2, '0')}`;
 }
+// Suma/resta n meses a un mes ISO (YYYY-MM). n puede ser negativo.
+function mesOffsetISO(mes, n) {
+  const [y, m] = mes.split('-').map(Number);
+  const total = y * 12 + (m - 1) + n;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, '0')}`;
+}
+// Presets de período — espejo del estilo Hoy/Mes/Custom de Tarjetas y
+// Transferencias (2026-06-15), pero a granularidad mes porque el endpoint
+// del Resumen sigue siendo `?periodo=YYYY-MM`.
+const MES_PRESETS = [
+  { v: 'este',     l: 'Este mes' },
+  { v: 'pasado',   l: 'Mes pasado' },
+  { v: 'hace2',    l: 'Hace 2 meses' },
+  { v: 'custom',   l: 'Personalizado' },
+];
+// Dado un periodo ISO actual, deduce qué preset corresponde (o 'custom' si
+// no coincide con ninguno).
+function presetParaMes(mes) {
+  const hoy = mesActualISO();
+  if (mes === hoy) return 'este';
+  if (mes === mesOffsetISO(hoy, -1)) return 'pasado';
+  if (mes === mesOffsetISO(hoy, -2)) return 'hace2';
+  return 'custom';
+}
 function labelMes(mes) {
   if (!/^\d{4}-\d{2}$/.test(mes)) return mes;
   const [y, m] = mes.split('-').map(Number);
@@ -134,29 +160,49 @@ export default function Resumen() {
         <div className="muted tiny">Comparativo de período + KPIs operativos consolidados.</div>
       </div>
 
-      {/* Selectores de período */}
+      {/* Selectores de período (2026-06-15): presets de mes en lugar de un
+          <input type=month> pelado. Mismo estilo visual que Tarjetas y
+          Transferencias para consistencia entre módulos. El comparativo
+          queda siempre visible (auto-rellena al mes anterior, editable). */}
       <div className="card card-tight" style={{ marginBottom: 16 }}>
-        <div className="row" style={{ gap: 12, alignItems: 'flex-end' }}>
-          <div className="field" style={{ width: 200 }}>
-            <label className="field-label">Período</label>
+        <div className="flex-row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="muted tiny" style={{ marginRight: 4 }}>Período:</span>
+          {MES_PRESETS.map(p => {
+            const activo = presetParaMes(periodoActual) === p.v;
+            return (
+              <button key={p.v}
+                className={'btn btn-sm ' + (activo ? 'btn-primary' : 'btn-ghost')}
+                onClick={() => {
+                  const hoy = mesActualISO();
+                  if (p.v === 'este')     handleCambioPeriodo(hoy);
+                  else if (p.v === 'pasado') handleCambioPeriodo(mesOffsetISO(hoy, -1));
+                  else if (p.v === 'hace2')  handleCambioPeriodo(mesOffsetISO(hoy, -2));
+                  // 'custom' no cambia el mes — solo muestra el input.
+                }}>
+                {p.l}
+              </button>
+            );
+          })}
+          {presetParaMes(periodoActual) === 'custom' && (
             <input
               type="month" className="input mono"
+              style={{ width: 160, marginLeft: 6 }}
               value={periodoActual}
               onChange={e => handleCambioPeriodo(e.target.value)}
               max={mesActualISO()}
             />
-            <div className="muted tiny" style={{ marginTop: 2 }}>{labelMes(periodoActual)}</div>
-          </div>
-          <div className="field" style={{ width: 200 }}>
-            <label className="field-label">Comparar con</label>
-            <input
-              type="month" className="input mono"
-              value={periodoComp}
-              onChange={e => setPeriodoComp(e.target.value)}
-              max={periodoActual}
-            />
-            <div className="muted tiny" style={{ marginTop: 2 }}>{labelMes(periodoComp)}</div>
-          </div>
+          )}
+          <span className="muted tiny" style={{ marginLeft: 8 }}>vs</span>
+          <input
+            type="month" className="input mono" style={{ width: 160 }}
+            value={periodoComp}
+            onChange={e => setPeriodoComp(e.target.value)}
+            max={periodoActual}
+            title="Comparar con"
+          />
+          <span className="muted tiny">
+            {labelMes(periodoActual)} <span className="dim">vs</span> {labelMes(periodoComp)}
+          </span>
           {data?.generado_en && (
             <div className="muted tiny" style={{ marginLeft: 'auto' }}>
               Actualizado: {fmtFecha(data.generado_en.slice(0, 10))}
