@@ -414,6 +414,120 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
 });
 
 // Foto on-demand: el blob NO viaja en el listado (evita transferir base64 en cada query)
+/**
+ * GET /api/inventario/productos/:id/historial — Trazabilidad de un producto.
+ *
+ * Devuelve la compra de origen y la venta (si ya se vendió) para mostrar en el
+ * modal de Inventario. Diseño 2026-06-15 para cerrar el loop de trazabilidad
+ * (Fase 1 dejó la trazabilidad forward: import XLSX → compras en Proveedores;
+ * Fase 2 cierra con el reverse: producto → compra + venta).
+ *
+ * Joins:
+ *   - Compra: match por imei_serial contra proveedor_movimiento_items
+ *     (no hay FK directa porque el match histórico se hizo a posteriori en
+ *     compras pre-Fase-1). Solo aplica si el producto tiene IMEI.
+ *   - Venta retail: venta_items.producto_id (FK directa).
+ *   - Venta B2B: items_movimiento_cc.producto_id (FK directa).
+ *
+ * Si un producto fue vendido por dos canales (caso edge, no debería pasar pero
+ * datos malos pueden hacerlo), se prioriza la más reciente por fecha.
+ *
+ * Response shape:
+ *   { compra: {...} | null, venta: {...} | null }
+ */
+router.get('/productos/:id/historial', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    // Producto base (necesitamos el IMEI para el match de compra).
+    const { rows: prodRows } = await db.query(
+      `SELECT id, imei FROM productos WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (!prodRows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
+    const imei = (prodRows[0].imei || '').trim();
+
+    // Compra de origen — solo si tiene IMEI. Tomamos la más reciente del item
+    // que matchee (defensivo: si un IMEI fue reused entre compras, la última
+    // gana — caso teórico, en producción no debería pasar).
+    let compra = null;
+    if (imei) {
+      const { rows } = await db.query(`
+        SELECT pm.id          AS movimiento_id,
+               pm.fecha       AS fecha,
+               pm.proveedor_id,
+               pr.nombre      AS proveedor_nombre,
+               pm.monto       AS monto,
+               pm.moneda      AS moneda,
+               pm.monto_usd   AS monto_usd,
+               pm.descripcion AS descripcion,
+               pmi.valor      AS valor_item
+          FROM proveedor_movimiento_items pmi
+          JOIN proveedor_movimientos pm ON pm.id = pmi.proveedor_movimiento_id
+          JOIN proveedores           pr ON pr.id = pm.proveedor_id
+         WHERE pmi.imei_serial = $1
+           AND pm.tipo = 'compra'
+           AND pm.deleted_at IS NULL
+           AND pr.deleted_at IS NULL
+         ORDER BY pm.fecha DESC, pm.id DESC
+         LIMIT 1
+      `, [imei]);
+      compra = rows[0] || null;
+    }
+
+    // Venta retail (FK producto_id directa).
+    const { rows: ventaRetail } = await db.query(`
+      SELECT v.id             AS venta_id,
+             v.fecha          AS fecha,
+             v.cliente_id     AS cliente_id,
+             COALESCE(c.nombre, v.cliente_nombre) AS cliente_nombre,
+             vi.precio_vendido AS precio_vendido,
+             vi.moneda        AS moneda,
+             v.ganancia_usd   AS ganancia_usd,
+             v.estado         AS estado
+        FROM venta_items vi
+        JOIN ventas v     ON v.id = vi.venta_id
+        LEFT JOIN contactos c ON c.id = v.cliente_id
+       WHERE vi.producto_id = $1
+         AND v.deleted_at IS NULL
+       ORDER BY v.fecha DESC, v.id DESC
+       LIMIT 1
+    `, [id]);
+
+    // Venta B2B (FK producto_id en items_movimiento_cc; tipo='compra' del lado
+    // del cliente = nosotros le vendimos).
+    const { rows: ventaB2B } = await db.query(`
+      SELECT mc.id           AS venta_id,
+             mc.fecha        AS fecha,
+             mc.cliente_cc_id AS cliente_id,
+             cc.nombre       AS cliente_nombre,
+             ic.valor        AS precio_vendido,
+             'USD'           AS moneda
+        FROM items_movimiento_cc ic
+        JOIN movimientos_cc mc ON mc.id = ic.movimiento_cc_id
+        JOIN clientes_cc    cc ON cc.id = mc.cliente_cc_id
+       WHERE ic.producto_id = $1
+         AND mc.tipo = 'compra'
+         AND mc.deleted_at IS NULL
+       ORDER BY mc.fecha DESC, mc.id DESC
+       LIMIT 1
+    `, [id]);
+
+    // Si hay venta por ambos canales (no debería), la más reciente gana.
+    let venta = null;
+    const cand = [];
+    if (ventaRetail[0]) cand.push({ ...ventaRetail[0], tipo: 'retail' });
+    if (ventaB2B[0])    cand.push({ ...ventaB2B[0],    tipo: 'b2b' });
+    if (cand.length > 0) {
+      cand.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+      venta = cand[0];
+    }
+
+    res.json({ compra, venta });
+  } catch (err) { next(err); }
+});
+
 router.get('/productos/:id/foto', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
