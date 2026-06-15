@@ -13,7 +13,7 @@ const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedge
 const { syncContactoSafe } = require('../lib/contactosSync');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
-  nombresBulkProveedoresSchema,
+  bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
 } = require('../schemas/proveedores');
 
 // Mapeo de columnas de productos a su tipo PostgreSQL para UNNEST batched
@@ -114,7 +114,7 @@ router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, ne
     const inputDedup = [...new Map(
       req.body.nombres.map(n => [String(n).trim().toLowerCase(), String(n).trim()])
     ).values()].filter(Boolean);
-    if (inputDedup.length === 0) return res.json({ creados: 0 });
+    if (inputDedup.length === 0) return res.json({ creados: 0, proveedores: [] });
 
     await client.query('BEGIN');
     const lowers = inputDedup.map(n => n.toLowerCase());
@@ -126,20 +126,28 @@ router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, ne
     );
     const setExist = new Set(existentes.map(r => r.k));
     const aCrear = inputDedup.filter(n => !setExist.has(n.toLowerCase()));
-    if (aCrear.length === 0) {
-      await client.query('COMMIT');
-      return res.json({ creados: 0 });
+    if (aCrear.length > 0) {
+      // INSERT en bloque solo los faltantes.
+      await client.query(
+        `INSERT INTO proveedores (nombre) SELECT unnest($1::text[])`,
+        [aCrear]
+      );
+      await audit(client, 'proveedores', 'INSERT', 0, {
+        tipo: 'bulk_resolve_or_create_proveedores', nombres: aCrear, user_id: req.user.id,
+      });
     }
-    // INSERT en bloque solo los faltantes.
-    await client.query(
-      `INSERT INTO proveedores (nombre) SELECT unnest($1::text[])`,
-      [aCrear]
+    // Resolve-or-create: devolvemos id+nombre de TODOS los pedidos (existentes
+    // + recién creados). Permite al frontend del import XLSX (2026-06-14)
+    // construir movimientos referenciando proveedor_id sin un RTT extra para
+    // resolver los ids. Backward compatible: `creados` sigue presente con la
+    // misma semántica (cantidad de filas insertadas).
+    const { rows: proveedores } = await client.query(
+      `SELECT id, nombre FROM proveedores
+        WHERE LOWER(nombre) = ANY($1::text[]) AND deleted_at IS NULL`,
+      [lowers]
     );
-    await audit(client, 'proveedores', 'INSERT', 0, {
-      tipo: 'bulk_resolve_or_create_proveedores', nombres: aCrear, user_id: req.user.id,
-    });
     await client.query('COMMIT');
-    res.json({ creados: aCrear.length });
+    res.json({ creados: aCrear.length, proveedores });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -450,6 +458,196 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     res.status(201).json({ ...mov, items: insertedItems, productos_creados: productosCreados });
   } catch (err) {
     await client.query('ROLLBACK');
+    next(err);
+  } finally { client.release(); }
+});
+
+// Bulk multi-proveedor (2026-06-14) — usado por el import XLSX de Inventario
+// cuando el archivo tiene productos de distintos proveedores. Procesa N
+// movimientos en UNA sola transacción: si cualquiera falla, ninguno se persiste.
+//
+// La lógica de cada movimiento es idéntica al POST single — replicada inline
+// para mantener el endpoint single funcionando tal cual (mismo path, mismo
+// cliente, mismo audit trail). Un refactor a helper compartida queda como
+// follow-up cuando los 2 endpoints se estabilicen.
+router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMovimientosProveedorSchema), async (req, res, next) => {
+  const { movimientos } = req.body;
+  const client = await db.connect();
+  try {
+    // ── Pre-validación cross-movimiento: IMEIs duplicados ────────────────
+    // Recolectamos TODOS los IMEIs de todos los items con producto_stock
+    // a través de TODOS los movimientos. Si hay duplicados (mismo IMEI en
+    // 2 movimientos distintos, o en el mismo movimiento dos veces) →
+    // rechazo ANTES de empezar la tx. Por qué acá y no por movimiento
+    // individual: un IMEI duplicado entre proveedores distintos solo se
+    // detecta acá.
+    const todosImeis = [];
+    for (const mov of movimientos) {
+      if (mov.tipo !== 'compra') continue;
+      for (const it of (mov.items || [])) {
+        if (it.producto_stock?.imei) {
+          todosImeis.push(String(it.producto_stock.imei).trim());
+        }
+      }
+    }
+    if (todosImeis.length > 0) {
+      // Dup interno
+      const seen = new Set();
+      for (const i of todosImeis) {
+        if (seen.has(i)) {
+          return res.status(409).json({
+            error: `IMEI duplicado dentro del bulk: ${i}`,
+            imei: i,
+          });
+        }
+        seen.add(i);
+      }
+    }
+
+    // ── Permiso inventario para CUALQUIER movimiento que cree stock ──────
+    const algunoCreaStock = movimientos.some(m =>
+      m.tipo === 'compra' && (m.items || []).some(it => it.producto_stock)
+    );
+    if (algunoCreaStock) {
+      const { hasPermission } = require('../middleware/requirePermission');
+      const ok = await hasPermission(req.user, 'inventario');
+      if (!ok) {
+        return res.status(403).json({
+          error: 'Para registrar compras que crean productos necesitás también permiso de Inventario.',
+        });
+      }
+    }
+
+    await client.query('BEGIN');
+
+    // Choque con stock existente (1 sola query global para todos los IMEIs)
+    if (todosImeis.length > 0) {
+      // Lock por IMEI (#H-04). Hashes ordenados para evitar deadlocks.
+      const hashes = [...new Set(todosImeis)].sort();
+      for (const imei of hashes) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [imei]);
+      }
+      const { rows: existing } = await client.query(
+        `SELECT imei FROM productos WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
+        [todosImeis]
+      );
+      if (existing.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `IMEI${existing.length > 1 ? 's' : ''} ya existe${existing.length > 1 ? 'n' : ''} en Inventario: ${existing.map(r => r.imei).join(', ')}`,
+          imeis_existentes: existing.map(r => r.imei),
+        });
+      }
+    }
+
+    const resultados = [];
+    for (const movData of movimientos) {
+      const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = movData;
+
+      const prov = await client.query(
+        'SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+        [proveedor_id]
+      );
+      if (!prov.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: `Proveedor ${proveedor_id} no encontrado` });
+      }
+
+      const monto_usd = round2(toUsd(monto, moneda, tc));
+      const { rows } = await client.query(
+        `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd, caja_id, notas, created_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [proveedor_id, fecha, tipo, descripcion ?? null, monto, moneda, tc ?? null, monto_usd, caja_id ?? null, notas ?? null, req.user.id]
+      );
+      const mov = rows[0];
+
+      let insertedItems = [];
+      let productosCreados = [];
+      if (tipo === 'compra' && items.length > 0) {
+        const itemRes = await client.query(
+          `INSERT INTO proveedor_movimiento_items
+             (proveedor_movimiento_id, producto, modelo, tamano, color, imei_serial, valor, verificado, notas)
+           SELECT $1, p, m, t, c, i, v, vf, n
+             FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                        $7::numeric[], $8::boolean[], $9::text[])
+                  AS u(p, m, t, c, i, v, vf, n)
+           RETURNING *`,
+          [
+            mov.id,
+            items.map(it => it.producto ?? null),
+            items.map(it => it.modelo ?? null),
+            items.map(it => it.tamano ?? null),
+            items.map(it => it.color ?? null),
+            items.map(it => it.imei_serial ?? null),
+            items.map(it => it.valor ?? null),
+            items.map(it => it.verificado ?? false),
+            items.map(it => it.notas ?? null),
+          ]
+        );
+        insertedItems = itemRes.rows;
+
+        const stockItems = items.filter(it => it.producto_stock);
+        if (stockItems.length > 0) {
+          const STOCK_COLS = [
+            'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
+            'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
+            'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
+            'observaciones', 'condicion', 'oculto', 'proveedor_movimiento_id',
+          ];
+          const params = STOCK_COLS.map((col, i) => `$${i + 1}::${pgArrayType(col)}[]`).join(', ');
+          const colsAlias = STOCK_COLS.map((_, i) => `c${i + 1}`).join(', ');
+          const insertCols = STOCK_COLS.join(', ');
+          const arrays = STOCK_COLS.map(col => stockItems.map(it => {
+            const ps = it.producto_stock;
+            if (col === 'proveedor')               return prov.rows[0].nombre;
+            if (col === 'condicion')               return ps.condicion ?? 'nuevo';
+            if (col === 'oculto')                  return ps.oculto    ?? false;
+            if (col === 'proveedor_movimiento_id') return mov.id;
+            return ps[col] ?? null;
+          }));
+          const prodRes = await client.query(
+            `INSERT INTO productos (${insertCols})
+               SELECT ${colsAlias} FROM UNNEST(${params}) AS u(${colsAlias})
+               RETURNING *`,
+            arrays
+          );
+          productosCreados = prodRes.rows;
+
+          await audit(client, 'productos', 'INSERT', productosCreados[0]?.id || mov.id, {
+            despues: {
+              _bulk: true,
+              _origen: 'compra_proveedor_bulk',
+              proveedor_movimiento_id: mov.id,
+              ids: productosCreados.map(p => p.id),
+              count: productosCreados.length,
+            },
+            user_id: req.user.id,
+          });
+        }
+      }
+
+      // Caja: egreso si caja_id elegida (mismo flujo que el single).
+      if (caja_id && (tipo === 'pago' || tipo === 'compra')) {
+        await postCajaMovimiento(client, {
+          caja_id, fecha, tipo: 'egreso', monto, moneda, tc,
+          origen: 'proveedor', ref_tabla: 'proveedor_movimientos', ref_id: mov.id,
+          concepto: tipo === 'pago' ? 'Pago a proveedor' : 'Compra a proveedor (contado)',
+          user_id: req.user.id,
+        });
+      }
+
+      await audit(client, 'proveedor_movimientos', 'INSERT', mov.id, {
+        despues: { ...mov, items: insertedItems, _bulk: true },
+        user_id: req.user.id,
+      });
+
+      resultados.push({ ...mov, items: insertedItems, productos_creados: productosCreados });
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ movimientos: resultados, count: resultados.length });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
   } finally { client.release(); }
 });

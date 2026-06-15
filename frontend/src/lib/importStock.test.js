@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapStockRows, normHeader, parseNum, extractNewCatalogos } from './importStock';
+import { mapStockRows, normHeader, parseNum, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload } from './importStock';
 
 // Encabezados reales del negocio (con aclaraciones entre paréntesis).
 const HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
@@ -168,5 +168,190 @@ describe('extractNewCatalogos', () => {
       { _categoriaNueva: null, _proveedorNuevo: null },
     ];
     expect(extractNewCatalogos(mapped)).toEqual({ categorias: [], proveedores: [] });
+  });
+});
+
+describe('groupRowsByProveedor', () => {
+  // Helper para crear una "fila mapeada" de forma compacta en los tests.
+  const row = (proveedor, nombre = 'item', error = null) => ({
+    body: { proveedor, nombre },
+    error,
+  });
+
+  it('agrupa filas por proveedor preservando el orden de primera aparición', () => {
+    const mapped = [
+      row('Distri A', 'iPhone 1'),
+      row('Distri B', 'Samsung 1'),
+      row('Distri A', 'iPhone 2'),
+      row('Distri C', 'Xiaomi 1'),
+      row('Distri B', 'Samsung 2'),
+    ];
+    const groups = groupRowsByProveedor(mapped);
+    expect(groups.map(g => g.proveedor)).toEqual(['Distri A', 'Distri B', 'Distri C']);
+    expect(groups[0].rows.map(r => r.body.nombre)).toEqual(['iPhone 1', 'iPhone 2']);
+    expect(groups[1].rows.map(r => r.body.nombre)).toEqual(['Samsung 1', 'Samsung 2']);
+    expect(groups[2].rows.map(r => r.body.nombre)).toEqual(['Xiaomi 1']);
+  });
+
+  it('agrupa case-insensitive (preserva la primera capitalización vista)', () => {
+    const mapped = [
+      row('Distri A', '1'),
+      row('DISTRI A', '2'),
+      row('  distri a  ', '3'),  // espacios extra: se trimean
+    ];
+    const groups = groupRowsByProveedor(mapped);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].proveedor).toBe('Distri A');
+    expect(groups[0].rows).toHaveLength(3);
+  });
+
+  it('ignora filas con error (no entran en ningún grupo)', () => {
+    const mapped = [
+      row('Distri A', 'ok'),
+      row('Distri A', 'malo', 'Costo en 0'),
+      row('Distri B', 'ok2'),
+    ];
+    const groups = groupRowsByProveedor(mapped);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].rows).toHaveLength(1);
+    expect(groups[0].rows[0].body.nombre).toBe('ok');
+  });
+
+  it('filas sin proveedor van al grupo especial (proveedor=null)', () => {
+    const mapped = [
+      row('Distri A', '1'),
+      row('', 'sin_prov_1'),
+      row(null, 'sin_prov_2'),
+      row(undefined, 'sin_prov_3'),
+    ];
+    const groups = groupRowsByProveedor(mapped);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].proveedor).toBe('Distri A');
+    expect(groups[1].proveedor).toBeNull();
+    expect(groups[1].rows).toHaveLength(3);
+  });
+
+  it('devuelve [] para input vacío o no-array', () => {
+    expect(groupRowsByProveedor([])).toEqual([]);
+    expect(groupRowsByProveedor(null)).toEqual([]);
+    expect(groupRowsByProveedor(undefined)).toEqual([]);
+  });
+});
+
+describe('buildBulkMovimientosPayload', () => {
+  // Factory de un grupo "razonable" para los tests.
+  const mkGroup = (over = {}) => ({
+    key: 'g_0',
+    proveedor_label: 'Distri A',
+    proveedor_id: 42,
+    proveedor_nuevo: '',
+    fecha: '2026-06-14',
+    monto: '1450',
+    moneda: 'USD',
+    tc: '',
+    caja_id: '',
+    rows: [{
+      body: {
+        nombre: 'iPhone 15 Pro',
+        clase: 'celular', tipo_carga: 'unitario', estado: 'disponible',
+        imei: '356789012345671', gb: '256', color: 'Titanio Natural',
+        categoria_id: 11, deposito_id: null, proveedor: 'Distri A',
+        costo: 1450, costo_moneda: 'USD',
+        precio_venta: 1650, precio_moneda: 'USD',
+        cantidad: 1,
+      },
+      error: null, _categoriaNueva: null, _proveedorNuevo: null,
+    }],
+    ...over,
+  });
+
+  it('happy path: grupo único USD → 1 movimiento con item correcto', () => {
+    const movs = buildBulkMovimientosPayload({ groups: [mkGroup()] });
+    expect(movs).toHaveLength(1);
+    const m = movs[0];
+    expect(m).toMatchObject({
+      proveedor_id: 42, fecha: '2026-06-14', tipo: 'compra',
+      monto: 1450, moneda: 'USD', tc: null, caja_id: null,
+    });
+    expect(m.items).toHaveLength(1);
+    const it = m.items[0];
+    expect(it.imei_serial).toBe('356789012345671');
+    expect(it.tamano).toBe('256');
+    expect(it.color).toBe('Titanio Natural');
+    expect(it.valor).toBe(1450);  // USD * cantidad 1
+    // El item embebe el producto_stock SIN el campo proveedor (lo rellena el backend #H-06)
+    expect(it.producto_stock).toBeDefined();
+    expect(it.producto_stock).not.toHaveProperty('proveedor');
+    expect(it.producto_stock.imei).toBe('356789012345671');
+  });
+
+  it('valor: cantidad>1 multiplica el costo USD; ARS deja valor en null', () => {
+    const usdMulti = mkGroup({
+      rows: [{ body: {
+        nombre: 'Funda', clase: 'accesorio', tipo_carga: 'lote',
+        costo: 5, costo_moneda: 'USD', cantidad: 100, categoria_id: 12,
+      }, error: null, _categoriaNueva: null }],
+    });
+    const ars = mkGroup({
+      rows: [{ body: {
+        nombre: 'Cargador', clase: 'accesorio', tipo_carga: 'lote',
+        costo: 8000, costo_moneda: 'ARS', cantidad: 50, categoria_id: 12,
+      }, error: null, _categoriaNueva: null }],
+    });
+    const [mUsd] = buildBulkMovimientosPayload({ groups: [usdMulti] });
+    const [mArs] = buildBulkMovimientosPayload({ groups: [ars] });
+    expect(mUsd.items[0].valor).toBe(500);   // 5 * 100
+    expect(mArs.items[0].valor).toBeNull();  // no asumimos TC
+  });
+
+  it('resuelve proveedor_id desde provIdByName si el grupo trae proveedor_nuevo', () => {
+    const g = mkGroup({
+      proveedor_id: '',                  // no preexistente
+      proveedor_nuevo: 'Distri Nueva',   // se va a crear
+    });
+    const provIdByName = new Map([['distri nueva', 999]]);
+    const [m] = buildBulkMovimientosPayload({ groups: [g], provIdByName });
+    expect(m.proveedor_id).toBe(999);
+  });
+
+  it('reconcilia categoria_id si la categoría era nueva (newCatByName)', () => {
+    const g = mkGroup({
+      rows: [{
+        body: { nombre: 'X', categoria_id: null, costo: 100, costo_moneda: 'USD', cantidad: 1 },
+        error: null,
+        _categoriaNueva: 'Accesorios Especiales',
+      }],
+    });
+    const newCatByName = new Map([['accesorios especiales', 777]]);
+    const [m] = buildBulkMovimientosPayload({ groups: [g], newCatByName });
+    expect(m.items[0].producto_stock.categoria_id).toBe(777);
+  });
+
+  it('moneda ARS: TC se incluye, caja_id se castea a number', () => {
+    const g = mkGroup({
+      monto: '2000000', moneda: 'ARS', tc: '1000', caja_id: '7',
+    });
+    const [m] = buildBulkMovimientosPayload({ groups: [g] });
+    expect(m.moneda).toBe('ARS');
+    expect(m.tc).toBe(1000);
+    expect(m.caja_id).toBe(7);
+  });
+
+  it('throws con mensaje claro si un grupo no tiene proveedor_id ni nuevo resoluble', () => {
+    const g = mkGroup({ proveedor_id: '', proveedor_nuevo: '', proveedor_label: 'Distri Huerfana' });
+    expect(() => buildBulkMovimientosPayload({ groups: [g] }))
+      .toThrow(/Distri Huerfana/);
+  });
+
+  it('multi-proveedor: arma un movimiento por grupo', () => {
+    const g1 = mkGroup({ key: 'g_0', proveedor_id: 1, proveedor_label: 'A' });
+    const g2 = mkGroup({ key: 'g_1', proveedor_id: 2, proveedor_label: 'B' });
+    const movs = buildBulkMovimientosPayload({ groups: [g1, g2] });
+    expect(movs.map(m => m.proveedor_id)).toEqual([1, 2]);
+  });
+
+  it('devuelve [] si groups es vacío/no-array', () => {
+    expect(buildBulkMovimientosPayload({ groups: [] })).toEqual([]);
+    expect(buildBulkMovimientosPayload({})).toEqual([]);
   });
 });
