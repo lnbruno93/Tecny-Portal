@@ -126,12 +126,16 @@ router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => 
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(countQuery, params),
-      db.query(dataQuery,  [...params, limit, offset]),
-    ]);
-    const total = parseInt(countRes.rows[0].count) || 0;
-    res.json(paginatedResponse(dataRes.rows.map(r => ({ ...r, items: r.items || [] })), total, { page, limit }));
+    // 2026-06-15 multi-tenant (PR 4.7): count + data en una sola withTenant.
+    // RLS filtra envios + envio_items (JOIN agregado en items JSON).
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(countQuery, params),
+        client.query(dataQuery,  [...params, limit, offset]),
+      ]);
+      return { count: parseInt(countRes.rows[0].count) || 0, dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows.map(r => ({ ...r, items: r.items || [] })), count, { page, limit }));
   } catch (err) {
     next(err);
   }
@@ -147,6 +151,8 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
       // Validar combinaciones avanzadas de pagos ANTES de tocar nada.
       await validarPagosAvanzados(client, items, registrar_venta, cliente_cc_id);
 
@@ -210,6 +216,8 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     // Lock de la fila dentro de la tx para serializar ediciones concurrentes
     const { rows: before } = await client.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
@@ -327,6 +335,8 @@ router.post('/:id/confirmar-entrega', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
@@ -377,6 +387,8 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT * FROM envios WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
