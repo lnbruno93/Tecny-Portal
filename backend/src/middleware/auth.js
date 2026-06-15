@@ -39,6 +39,17 @@ module.exports = async function requireAuth(req, res, next) {
 
   req.user = decoded;
 
+  // 2026-06-15 multi-tenant PR 3: decorar req.tenantId / req.tenantRol.
+  // - JWTs emitidos post-PR3 incluyen tenant_id (resuelto al login vía
+  //   tenant_users del user).
+  // - JWTs viejos (pre-PR3, en cache de browser de users actuales) NO los
+  //   tienen → default a tenant 1 (Lucas/iPro Original) hasta el próximo
+  //   login que regenera el JWT con el nuevo formato.
+  // - PR 4 usará estos campos en endpoints; PR 6 agrega tests de aislamiento
+  //   exhaustivos.
+  req.tenantId  = decoded.tenant_id ?? 1;
+  req.tenantRol = decoded.tenant_rol ?? 'member';
+
   // Asociar el usuario autenticado al scope de Sentry para este request.
   // Así todos los errores capturados incluyen quién los triggereó.
   if (process.env.SENTRY_DSN) {
