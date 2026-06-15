@@ -145,6 +145,12 @@ export default function Inventario() {
   const [formError, setFormError] = useState('');
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Modal historial (Fase 2 trazabilidad, 2026-06-15)
+  const [historialProductoId, setHistorialProductoId] = useState(null);
+  const [historialData, setHistorialData] = useState(null);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState('');
+  const historialModalRef = useRef(null);
   // Modal import
   const [showImport, setShowImport] = useState(false);
   const [importRows, setImportRows] = useState([]);
@@ -174,6 +180,27 @@ export default function Inventario() {
   useModal({ open: showForm, onClose: () => setShowForm(false), overlayRef: formModalRef });
   useModal({ open: showImport, onClose: () => !importing && setShowImport(false), overlayRef: importModalRef });
   useModal({ open: showCatalogos, onClose: () => setShowCatalogos(false), overlayRef: catalogosModalRef });
+  useModal({
+    open: historialProductoId != null,
+    onClose: () => { setHistorialProductoId(null); setHistorialData(null); setHistorialError(''); },
+    overlayRef: historialModalRef,
+  });
+
+  // Fetch del historial cuando el modal se abre. Si el user cambia de producto
+  // sin cerrar (caso teórico, no soportamos navegación entre productos hoy),
+  // dispara un nuevo fetch.
+  useEffect(() => {
+    if (historialProductoId == null) return;
+    let cancelled = false;
+    setHistorialLoading(true);
+    setHistorialError('');
+    setHistorialData(null);
+    inventario.historial(historialProductoId)
+      .then(d => { if (!cancelled) setHistorialData(d); })
+      .catch(e => { if (!cancelled) setHistorialError(e?.message || 'No se pudo cargar el historial'); })
+      .finally(() => { if (!cancelled) setHistorialLoading(false); });
+    return () => { cancelled = true; };
+  }, [historialProductoId]);
 
   // ── Carga de datos ──
   const loadProductos = useCallback(async () => {
@@ -784,6 +811,9 @@ export default function Inventario() {
           <table className="table">
             <thead>
               <tr>
+                {/* Columna histórial: botón ícono → modal Detalle/Historial.
+                    Sin label, ancho mínimo para no consumir espacio visual. */}
+                <th style={{ width: 32 }} aria-label="Historial"></th>
                 <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
                 <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
                 <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
@@ -793,7 +823,7 @@ export default function Inventario() {
             </thead>
             <tbody>
               {Array.from({ length: 5 }).map((_, i) => (
-                <SkeletonRow key={i} columns={15} />
+                <SkeletonRow key={i} columns={16} />
               ))}
             </tbody>
           </table>
@@ -805,6 +835,9 @@ export default function Inventario() {
           <table className="table">
             <thead>
               <tr>
+                {/* Columna histórial: botón ícono → modal Detalle/Historial.
+                    Sin label, ancho mínimo para no consumir espacio visual. */}
+                <th style={{ width: 32 }} aria-label="Historial"></th>
                 <th>Nombre</th><th>GB</th><th>Batería</th><th>Color</th>
                 <th style={{ textAlign: 'right' }}>Costo</th><th>Moneda Costo</th>
                 <th style={{ textAlign: 'right' }}>Precio Venta</th><th>Moneda Precio Venta</th>
@@ -821,6 +854,17 @@ export default function Inventario() {
                 // sin agregar una columna nueva en una tabla que ya es ancha.
                 return (
                   <tr key={p.id} style={p.oculto ? { opacity: 0.55 } : undefined}>
+                    {/* Botón Historial — ÚNICA forma de abrir el modal (decisión
+                        UX 2026-06-15): toda la grilla son EditableCells, así que
+                        click en fila chocaría con edit-inline. Una columna
+                        dedicada con ícono es discoverable + 0 conflicto. */}
+                    <td style={{ width: 32, padding: '4px 8px' }}>
+                      <button className="icon-btn"
+                        title="Ver detalle e historial del producto"
+                        onClick={() => setHistorialProductoId(p.id)}>
+                        <Icons.FileText size={14} />
+                      </button>
+                    </td>
                     <EditableCell
                       value={p.nombre}
                       type="text"
@@ -1324,6 +1368,191 @@ export default function Inventario() {
           </div>
         </div>
       )}
+
+      {/* ── Modal Historial del producto (Fase 2 trazabilidad, 2026-06-15) ── */}
+      {/* Tabs Detalle / Historial:
+            Detalle: campos clave del producto seleccionado en la grilla.
+            Historial: compra de origen (match por IMEI en proveedor_movimiento_items)
+                       + venta (FK producto_id en venta_items / items_movimiento_cc).
+          El producto base viene del state productos (no necesita otro request) —
+          solo el historial se fetchea on-demand. */}
+      {historialProductoId != null && (() => {
+        const producto = productos.find(p => p.id === historialProductoId);
+        return (
+          <div ref={historialModalRef} className="modal-overlay"
+            onClick={e => e.target === e.currentTarget && setHistorialProductoId(null)}>
+            <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-hd">
+                <h3>
+                  {producto?.nombre || 'Producto'}
+                  {producto?.imei && (
+                    <span className="mono muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 10 }}>
+                      {producto.imei}
+                    </span>
+                  )}
+                </h3>
+                <button type="button" className="icon-btn"
+                  onClick={() => setHistorialProductoId(null)}
+                  aria-label="Cerrar" title="Cerrar">
+                  <Icons.X size={16} />
+                </button>
+              </div>
+              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                {/* Tabs simples (Detalle | Historial) usando el componente Seg. */}
+                <HistorialModalContent
+                  producto={producto}
+                  data={historialData}
+                  loading={historialLoading}
+                  error={historialError}
+                  categorias={categorias}
+                  depositos={depositos}
+                />
+              </div>
+              <div className="modal-ft">
+                <button className="btn btn-primary" onClick={() => setHistorialProductoId(null)}>Cerrar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// Sub-componente del modal Historial. Aislado para tener su propio state de tab
+// activo sin polucionar el componente principal de Inventario.
+//
+// Diseñado para que el Detalle muestre los campos clave del producto sin
+// duplicar info que el usuario ya ve en la grilla; el Historial muestra la
+// trazabilidad cross-módulo (compra de origen + venta).
+function HistorialModalContent({ producto, data, loading, error, categorias, depositos }) {
+  const [tab, setTab] = useState('detalle');
+  if (!producto) return <div className="muted">Producto no encontrado.</div>;
+
+  const cat = categorias.find(c => c.id === producto.categoria_id);
+  const dep = depositos.find(d => d.id === producto.deposito_id);
+  const fmtUSD = n => n != null ? `USD ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—';
+  const fmtFecha = f => f ? new Date(f).toLocaleDateString('es-AR') : '—';
+
+  return (
+    <>
+      <Seg
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'detalle',   label: 'Detalle' },
+          { value: 'historial', label: 'Historial' },
+        ]}
+      />
+
+      {tab === 'detalle' && (
+        <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <DetalleField label="Clase" value={producto.clase} />
+          <DetalleField label="Estado" value={producto.estado} />
+          <DetalleField label="Condición" value={producto.condicion || 'nuevo'} />
+          <DetalleField label="Categoría" value={cat?.nombre || '—'} />
+          <DetalleField label="Depósito" value={dep?.nombre || '—'} />
+          <DetalleField label="Proveedor" value={producto.proveedor || '—'} />
+          {producto.imei && <DetalleField label="IMEI/Serial" value={producto.imei} mono />}
+          {producto.gb && <DetalleField label="GB" value={producto.gb} />}
+          {producto.color && <DetalleField label="Color" value={producto.color} />}
+          {producto.bateria != null && <DetalleField label="Batería" value={`${producto.bateria}%`} />}
+          <DetalleField label="Costo"
+            value={`${Number(producto.costo).toLocaleString('es-AR')} ${producto.costo_moneda}`} mono />
+          <DetalleField label="Precio venta"
+            value={`${Number(producto.precio_venta).toLocaleString('es-AR')} ${producto.precio_moneda}`} mono />
+          <DetalleField label="Cantidad" value={producto.cantidad} />
+          {producto.observaciones && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <DetalleField label="Observaciones" value={producto.observaciones} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'historial' && (
+        <div style={{ marginTop: 14 }}>
+          {loading && <div className="muted">Cargando historial…</div>}
+          {error && <div className="neg">Error: {error}</div>}
+          {!loading && !error && data && (
+            <>
+              {/* ── Compra de origen ── */}
+              <div style={{
+                border: '1px solid var(--border)', borderRadius: 8,
+                padding: 14, marginBottom: 12,
+              }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
+                  color: 'var(--text-muted)', marginBottom: 10,
+                }}>
+                  📦 COMPRA DE ORIGEN
+                </div>
+                {data.compra ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <DetalleField label="Fecha" value={fmtFecha(data.compra.fecha)} />
+                    <DetalleField label="Proveedor" value={data.compra.proveedor_nombre} />
+                    <DetalleField label="Valor del ítem" value={fmtUSD(data.compra.valor_item)} mono />
+                    <DetalleField label="Total compra" value={fmtUSD(data.compra.monto_usd)} mono />
+                    {data.compra.descripcion && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <DetalleField label="Descripción" value={data.compra.descripcion} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="muted tiny">
+                    {producto.imei
+                      ? 'No se encontró compra de origen para este IMEI (puede ser anterior al sistema de trazabilidad).'
+                      : 'Sin trazabilidad de compra (producto sin IMEI individual).'}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Venta ── */}
+              <div style={{
+                border: '1px solid var(--border)', borderRadius: 8, padding: 14,
+              }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
+                  color: 'var(--text-muted)', marginBottom: 10,
+                }}>
+                  🏷 VENTA
+                </div>
+                {data.venta ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <DetalleField label="Fecha" value={fmtFecha(data.venta.fecha)} />
+                    <DetalleField label="Cliente" value={data.venta.cliente_nombre || '—'} />
+                    <DetalleField label="Precio cobrado"
+                      value={`${Number(data.venta.precio_vendido).toLocaleString('es-AR')} ${data.venta.moneda}`} mono />
+                    <DetalleField label="Canal"
+                      value={data.venta.tipo === 'b2b' ? 'B2B (cuenta corriente)' : 'Retail'} />
+                    {data.venta.ganancia_usd != null && (
+                      <DetalleField label="Ganancia (venta)" value={fmtUSD(data.venta.ganancia_usd)} mono />
+                    )}
+                    {data.venta.estado && (
+                      <DetalleField label="Estado" value={data.venta.estado} />
+                    )}
+                  </div>
+                ) : (
+                  <div className="muted tiny">
+                    Sin ventas registradas. El producto sigue en stock.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// Mini-componente helper para mostrar pares label/value uniformes en Detalle/Historial.
+function DetalleField({ label, value, mono = false }) {
+  return (
+    <div>
+      <div className="muted tiny" style={{ marginBottom: 2 }}>{label}</div>
+      <div className={mono ? 'mono' : ''} style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
     </div>
   );
 }

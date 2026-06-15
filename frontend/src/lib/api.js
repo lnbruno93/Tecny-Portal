@@ -377,6 +377,9 @@ export const inventario = {
   proveedoresList: () => api('/api/inventario/productos/proveedores'),
   desglose:        (params = {}) => api('/api/inventario/desglose?' + new URLSearchParams(params)),
   foto:            (id) => api(`/api/inventario/productos/${id}/foto`),
+  // Fase 2 trazabilidad (2026-06-15): historial de compra+venta de un producto.
+  // Usado por el modal Detalle/Historial que abre con click en una fila.
+  historial:       (id) => api(`/api/inventario/productos/${id}/historial`),
   createProducto:  (data) => api('/api/inventario/productos', 'POST', data),
   updateProducto:  (id, data) => api(`/api/inventario/productos/${id}`, 'PUT', data),
   deleteProducto:  (id) => api(`/api/inventario/productos/${id}`, 'DELETE'),
