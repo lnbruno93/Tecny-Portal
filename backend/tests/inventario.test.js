@@ -682,3 +682,114 @@ describe('POST /api/inventario/categorias/bulk', () => {
     expect(r.status).toBe(400);
   });
 });
+
+// Tests del endpoint /productos/:id/historial (2026-06-15, Fase 2 trazabilidad).
+// Cierra el loop: dado un producto, devuelve quién se lo vendió (compra) y
+// quién se lo compró (venta) — tanto retail como B2B.
+describe('GET /api/inventario/productos/:id/historial', () => {
+  let provId;
+  let catHist;
+  let productoBase;
+
+  beforeAll(async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone Historial' });
+    catHist = cat.body.id;
+    const prov = await request(app).post('/api/proveedores').set(auth())
+      .send({ nombre: 'Distri Historial' });
+    provId = prov.body.id;
+  });
+
+  it('404 si el producto no existe', async () => {
+    const r = await request(app).get('/api/inventario/productos/99999999/historial').set(auth());
+    expect(r.status).toBe(404);
+  });
+
+  it('400 si el id es inválido', async () => {
+    const r = await request(app).get('/api/inventario/productos/abc/historial').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('producto sin IMEI ni venta → { compra: null, venta: null }', async () => {
+    // Accesorio sin imei: no hay match posible en compras (no es bug, es señal).
+    const p = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Funda Historial', clase: 'accesorio', tipo_carga: 'lote',
+      categoria_id: catHist, costo: 5, costo_moneda: 'USD',
+      precio_venta: 10, precio_moneda: 'USD', cantidad: 50,
+    });
+    const r = await request(app).get(`/api/inventario/productos/${p.body.id}/historial`).set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ compra: null, venta: null });
+  });
+
+  it('producto con IMEI → compra de origen (creada vía /movimientos POST con producto_stock)', async () => {
+    // Creamos compra con producto_stock → genera el producto en la misma tx
+    // (flujo real del import XLSX).
+    const imei = '356789012345700';
+    const mov = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: provId,
+      fecha: '2026-06-15',
+      tipo: 'compra',
+      monto: 1450,
+      moneda: 'USD',
+      descripcion: 'Compra trazable',
+      items: [{
+        producto: 'iPhone Test Hist',
+        imei_serial: imei,
+        valor: 1450,
+        producto_stock: {
+          nombre: 'iPhone Test Hist', clase: 'celular', tipo_carga: 'unitario',
+          imei, categoria_id: catHist, costo: 1450, costo_moneda: 'USD',
+          precio_venta: 1650, precio_moneda: 'USD', cantidad: 1,
+        },
+      }],
+    });
+    expect(mov.status).toBe(201);
+    // Buscamos el producto recién creado por su IMEI.
+    const list = await request(app).get(`/api/inventario/productos?search=${imei}`).set(auth());
+    productoBase = list.body.data.find(p => p.imei === imei);
+    expect(productoBase).toBeDefined();
+
+    const r = await request(app).get(`/api/inventario/productos/${productoBase.id}/historial`).set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.compra).toBeTruthy();
+    expect(r.body.compra.proveedor_id).toBe(provId);
+    expect(r.body.compra.proveedor_nombre).toBe('Distri Historial');
+    expect(Number(r.body.compra.valor_item)).toBe(1450);
+    expect(r.body.venta).toBeNull();
+  });
+
+  // Nota: cubrimos sólo el path retail directo (insertando filas) y no el flujo
+  // completo de venta porque las pre-condiciones (vendedor, cliente, etc) ya
+  // están testeadas en ventas.test.js. Acá importa el JOIN.
+  it('producto vendido (retail) → venta presente con cliente y precio', async () => {
+    // Reutilizamos productoBase del test anterior. Insertamos directo en DB
+    // para no acoplar este test al flow completo de POST /ventas.
+    const pool = require('../src/config/database');
+    const { rows: contRows } = await pool.query(
+      `INSERT INTO contactos (nombre) VALUES ('Cliente Historial') RETURNING id`
+    );
+    const clienteId = contRows[0].id;
+    const { rows: ventaRows } = await pool.query(`
+      INSERT INTO ventas (order_id, fecha, cliente_id, estado, total_usd, ganancia_usd)
+      VALUES ('TEST-HIST-1', '2026-06-15', $1, 'acreditado', 1650, 200)
+      RETURNING id
+    `, [clienteId]);
+    const ventaId = ventaRows[0].id;
+    await pool.query(`
+      INSERT INTO venta_items (venta_id, producto_id, descripcion, cantidad, precio_vendido, moneda)
+      VALUES ($1, $2, 'iPhone Test Hist', 1, 1650, 'USD')
+    `, [ventaId, productoBase.id]);
+
+    const r = await request(app).get(`/api/inventario/productos/${productoBase.id}/historial`).set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.compra).toBeTruthy();  // sigue ahí
+    expect(r.body.venta).toBeTruthy();
+    expect(r.body.venta.tipo).toBe('retail');
+    expect(r.body.venta.cliente_id).toBe(clienteId);
+    expect(r.body.venta.cliente_nombre).toBe('Cliente Historial');
+    expect(Number(r.body.venta.precio_vendido)).toBe(1650);
+    expect(r.body.venta.moneda).toBe('USD');
+    expect(r.body.venta.estado).toBe('acreditado');
+  });
+});
