@@ -319,7 +319,9 @@ function TabUsd() {
         // liquide el contado limpio.
         ef:   Math.round(u * tc),
         tars: Math.round(u * tc * COEFS.transf),
-        tusd: u * COEFS.transf, // numérico → fmtearlo cuando se renderiza
+        // 2026-06-15: redondear a entero (consistente con ef/tars en ARS).
+        // En USD también cotizamos en montos redondos (USD 928 en vez de 927.84).
+        tusd: Math.round(u * COEFS.transf),
       };
     });
     const tots = lines.reduce(
@@ -344,7 +346,7 @@ function TabUsd() {
       m += `\n- ${p.nom || 'Producto'} (USD ${fmt(p.usd)})\n`;
       if (optEf)   m += `  Efectivo / Contado: $${fmt(ef)}\n`;
       if (optTars) m += `  Transferencia ARS: $${fmt(tars)}\n`;
-      if (optTusd) m += `  Transferencia USD: u$s ${tusd.toFixed(2)}\n`;
+      if (optTusd) m += `  Transferencia USD: u$s ${fmt(tusd)}\n`;
     });
     // Totales solo si hay más de un producto con precio.
     const validas = calculo.lines.filter(l => l.usdRaw > 0);
@@ -352,7 +354,7 @@ function TabUsd() {
       m += `\n━━━━━━━━━━━━━━━\n`;
       if (optEf)   m += `TOTAL Efectivo / Contado: $${fmt(calculo.tots.ef)}\n`;
       if (optTars) m += `TOTAL Transferencia ARS: $${fmt(calculo.tots.tars)}\n`;
-      if (optTusd) m += `TOTAL Transferencia USD: u$s ${calculo.tots.tusd.toFixed(2)}\n`;
+      if (optTusd) m += `TOTAL Transferencia USD: u$s ${fmt(calculo.tots.tusd)}\n`;
     }
     m += `\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.`;
     navigator.clipboard?.writeText(m);
@@ -543,7 +545,7 @@ function TabUsd() {
                   <div className="quote-line">
                     <span className="lbl">Transferencia USD (+{pctEfectivo(COMISIONES.transf)}%)</span>
                     <span className="val mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                      USD {tusd.toFixed(2)}
+                      USD {fmt(tusd)}
                     </span>
                   </div>
                 )}
@@ -569,7 +571,7 @@ function TabUsd() {
                   <div className="quote-line">
                     <span className="lbl">Total Transferencia USD</span>
                     <span className="val mono" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                      USD {calculo.tots.tusd.toFixed(2)}
+                      USD {fmt(calculo.tots.tusd)}
                     </span>
                   </div>
                 )}
