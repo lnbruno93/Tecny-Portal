@@ -202,13 +202,10 @@ router.delete('/depositos/:id', async (req, res, next) => {
 // modifican productos (cuentas.js para venta B2B, ventas.js para retail, etc).
 const { fetchMetricas, invalidateMetricas } = require('../lib/inventarioCache');
 
-router.get('/productos/metricas', async (_req, res, next) => {
-  // TODO multi-tenant PR 4.9 cleanup: el cache de fetchMetricas es global
-  // (key sin tenant_id). Mientras estamos en single-tenant es correcto
-  // (todos ven los mismos datos). Cuando entren tenants reales, refactorar
-  // fetchMetricas para que la key del cache incluya tenant_id. Ver
-  // inventarioCache.js.
-  try { res.json(await fetchMetricas()); } catch (err) { next(err); }
+router.get('/productos/metricas', async (req, res, next) => {
+  // PR 4.9 (2026-06-15): cache per-tenant — fetchMetricas(req.tenantId).
+  // Ver lib/inventarioCache.js.
+  try { res.json(await fetchMetricas(req.tenantId)); } catch (err) { next(err); }
 });
 
 // Proveedores únicos vistos en productos vivos. Insumo del combo de edición
@@ -661,7 +658,7 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
       await audit(client, 'productos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
       return rows[0];
     });
-    invalidateMetricas();  // junio 2026: cache stale era fuente de bugs de baseline
+    invalidateMetricas(req.tenantId);  // junio 2026: cache stale era fuente de bugs de baseline
     res.status(201).json(row);
   } catch (err) { next(err); }
 });
@@ -748,7 +745,7 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       await audit(client, 'productos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
       return rows[0];
     });
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json(row);
   } catch (err) { next(err); }
 });
@@ -766,7 +763,7 @@ router.delete('/productos/:id', async (req, res, next) => {
       return rows[0];
     });
     if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -854,7 +851,7 @@ router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, 
       });
     }
     await client.query('COMMIT');
-    invalidateMetricas();  // vaciado masivo → cache definitivamente stale
+    invalidateMetricas(req.tenantId);  // vaciado masivo → cache definitivamente stale
     res.json({ borrados });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -969,7 +966,7 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
       req,
     });
     await client.query('COMMIT');
-    invalidateMetricas();  // import masivo → cache definitivamente stale
+    invalidateMetricas(req.tenantId);  // import masivo → cache definitivamente stale
     res.status(201).json({ ok: true, creados: creados.length });
   } catch (err) {
     await client.query('ROLLBACK');

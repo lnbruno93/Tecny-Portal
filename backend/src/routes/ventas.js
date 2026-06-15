@@ -780,7 +780,7 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
 
     await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateMetricas();  // venta retail descontó stock
+    invalidateMetricas(req.tenantId);  // venta retail descontó stock
     res.status(201).json(venta);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -844,7 +844,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       vrows[0].comision_total_metodos = await syncComisionTotalMetodos(client, id);
       await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
-      invalidateMetricas();  // edición completa pudo tocar stock
+      invalidateMetricas(req.tenantId);  // edición completa pudo tocar stock
       return res.json(vrows[0]);
     }
 
@@ -875,7 +875,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     rows[0].comision_total_metodos = await syncComisionTotalMetodos(client, id);
     await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -907,7 +907,7 @@ router.delete('/:id', async (req, res, next) => {
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await audit(client, 'ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateMetricas();  // DELETE repuso stock
+    invalidateMetricas(req.tenantId);  // DELETE repuso stock
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

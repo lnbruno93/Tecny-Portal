@@ -213,19 +213,16 @@ router.delete('/inversiones/:id', async (req, res, next) => {
 // Gestión central de las cajas donde caen los pagos. La lista de ventas
 // (GET /api/ventas/metodos-pago) lee solo las activas; acá se administran todas.
 
-router.get('/cajas', async (_req, res, next) => {
+router.get('/cajas', async (req, res, next) => {
   // Perf H3 auditoría 2026-06-06: lectura cacheada (15s TTL) — la query
   // hace LEFT JOIN + GROUP BY sobre caja_movimientos (saldo_actual), pesada
   // y se llama mucho desde dropdowns de pago en varios módulos. Invalidación
   // explícita en escrituras a metodos_pago / caja_movimientos. Ver
   // backend/src/lib/cajasCache.js para detalles del trade-off multi-instance.
   //
-  // TODO multi-tenant PR 4.9 cleanup: el cache de getCajasList es global
-  // (key sin tenant_id). Mientras estamos en single-tenant es correcto.
-  // Cuando entren tenants reales, refactorar para key por tenant. Mismo
-  // pattern documentado en inventarioCache.js.
+  // PR 4.9 (2026-06-15): cache ahora es per-tenant — getCajasList(req.tenantId).
   try {
-    res.json(await getCajasList());
+    res.json(await getCajasList(req.tenantId));
   } catch (err) { next(err); }
 });
 
@@ -271,7 +268,7 @@ router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
     // cambios.js, egresos.js, cuentas.js, proveedores.js y tarjetas.js (Ola 3).
     await audit(client, 'metodos_pago', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateCajas();  // Perf H3: forzar refresh del cache tras crear caja
+    invalidateCajas(req.tenantId);  // Perf H3: forzar refresh del cache tras crear caja
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -315,7 +312,7 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
     );
     await audit(client, 'metodos_pago', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateCajas();  // Perf H3: refresh cache (cambió nombre/saldo_inicial/flags)
+    invalidateCajas(req.tenantId);  // Perf H3: refresh cache (cambió nombre/saldo_inicial/flags)
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -355,7 +352,7 @@ router.delete('/cajas/:id', async (req, res, next) => {
     });
     if (result.notFound) return res.status(404).json({ error: 'Caja no encontrada' });
     if (result.conflict) return res.status(409).json({ error: result.conflict });
-    invalidateCajas();  // Perf H3: caja soft-deleted desaparece del listado
+    invalidateCajas(req.tenantId);  // Perf H3: caja soft-deleted desaparece del listado
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -495,7 +492,7 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
       if (result.notFound)   return res.status(404).json({ error: 'Caja no encontrada' });
       if (result.badRequest) return res.status(400).json({ error: result.badRequest });
       if (!result.mov)       return res.status(400).json({ error: 'No se pudo crear el movimiento.' });
-      invalidateCajas();  // Perf H3: nuevo movimiento mueve saldo_actual
+      invalidateCajas(req.tenantId);  // Perf H3: nuevo movimiento mueve saldo_actual
       res.status(201).json(result.mov);
     } catch (err) {
       // postCajaMovimiento usa err.status (400 para saldo insuficiente,
@@ -521,7 +518,7 @@ router.delete('/cajas/movimientos/:id', async (req, res, next) => {
       return rows[0];
     });
     if (!row) return res.status(404).json({ error: 'Movimiento de ajuste no encontrado' });
-    invalidateCajas();  // Perf H3: reversión recalcula saldo_actual
+    invalidateCajas(req.tenantId);  // Perf H3: reversión recalcula saldo_actual
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -532,49 +529,66 @@ router.delete('/cajas/movimientos/:id', async (req, res, next) => {
 // montar y los saldos no cambian al segundo. Ventana corta para reflejar
 // movimientos nuevos sin sentir lag.
 //
-// TODO multi-tenant PR 4.9 cleanup: cache es global (key sin tenant_id).
-// Mientras estemos en single-tenant es correcto. Cuando entren tenants
-// reales, refactorar a key por tenant (mismo pattern que getCajasList y
-// fetchMetricas en inventarioCache.js). Por ahora las queries no setean
-// app.current_tenant — RLS bypassea via la cláusula `IS NULL OR = ''`.
-const fetchResumenCajas = createCachedFetcher('cajas:resumen', 20_000, async () => {
-  const [{ rows: deudas }, { rows: inv }] = await Promise.all([
-    db.query(`
-      SELECT m.contacto_id,
-        SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END) AS saldo_ars,
-        SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END) AS saldo_usd,
-        COUNT(*) AS movimientos
-      FROM movimientos_deudas m
-      JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
-      WHERE m.deleted_at IS NULL
-      GROUP BY m.contacto_id
-      HAVING ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END))
-           + ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END)) > 0
-    `),
-    db.query(`
-      WITH ultima_tasa AS (
-        SELECT DISTINCT ON (contacto_id)
-          contacto_id, tasa
-        FROM movimientos_inversiones
-        WHERE tasa IS NOT NULL AND deleted_at IS NULL
-        ORDER BY contacto_id, fecha DESC, id DESC
-      )
-      SELECT m.contacto_id,
-        SUM(m.monto) AS total_invertido,
-        COUNT(*) AS movimientos,
-        ut.tasa AS ultima_tasa
-      FROM movimientos_inversiones m
-      JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
-      LEFT JOIN ultima_tasa ut ON ut.contacto_id = m.contacto_id
-      WHERE m.deleted_at IS NULL
-      GROUP BY m.contacto_id, ut.tasa
-    `),
-  ]);
-  return { deudas, inversiones: inv };
-});
+// PR 4.9 (2026-06-15): cache per-tenant. Mismo pattern que getCajasList y
+// fetchMetricas en lib/{cajas,inventario}Cache.js. Cada tenant tiene su
+// propio fetcher memoizado; query corre bajo db.withTenant(tenantId, ...).
+const RESUMEN_DEUDAS_SQL = `
+  SELECT m.contacto_id,
+    SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END) AS saldo_ars,
+    SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END) AS saldo_usd,
+    COUNT(*) AS movimientos
+  FROM movimientos_deudas m
+  JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+  WHERE m.deleted_at IS NULL
+  GROUP BY m.contacto_id
+  HAVING ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_ars ELSE -m.monto_ars END))
+       + ABS(SUM(CASE WHEN m.tipo='debe' THEN m.monto_usd ELSE -m.monto_usd END)) > 0
+`;
+const RESUMEN_INV_SQL = `
+  WITH ultima_tasa AS (
+    SELECT DISTINCT ON (contacto_id)
+      contacto_id, tasa
+    FROM movimientos_inversiones
+    WHERE tasa IS NOT NULL AND deleted_at IS NULL
+    ORDER BY contacto_id, fecha DESC, id DESC
+  )
+  SELECT m.contacto_id,
+    SUM(m.monto) AS total_invertido,
+    COUNT(*) AS movimientos,
+    ut.tasa AS ultima_tasa
+  FROM movimientos_inversiones m
+  JOIN contactos c ON c.id = m.contacto_id AND c.deleted_at IS NULL
+  LEFT JOIN ultima_tasa ut ON ut.contacto_id = m.contacto_id
+  WHERE m.deleted_at IS NULL
+  GROUP BY m.contacto_id, ut.tasa
+`;
+const RESUMEN_MAX_FETCHERS = 256;
+const resumenFetchers = new Map();
+function getResumenFetcher(tenantId) {
+  let fn = resumenFetchers.get(tenantId);
+  if (fn) {
+    resumenFetchers.delete(tenantId);
+    resumenFetchers.set(tenantId, fn);
+    return fn;
+  }
+  fn = createCachedFetcher(`cajas:resumen:t${tenantId}`, 20_000, async () =>
+    db.withTenant(tenantId, async (client) => {
+      const [{ rows: deudas }, { rows: inv }] = await Promise.all([
+        client.query(RESUMEN_DEUDAS_SQL),
+        client.query(RESUMEN_INV_SQL),
+      ]);
+      return { deudas, inversiones: inv };
+    })
+  );
+  resumenFetchers.set(tenantId, fn);
+  if (resumenFetchers.size > RESUMEN_MAX_FETCHERS) {
+    resumenFetchers.delete(resumenFetchers.keys().next().value);
+  }
+  return fn;
+}
 
-router.get('/resumen', async (_req, res, next) => {
-  try { res.json(await fetchResumenCajas()); } catch (err) { next(err); }
+router.get('/resumen', async (req, res, next) => {
+  try { res.json(await getResumenFetcher(req.tenantId)()); } catch (err) { next(err); }
 });
 
 module.exports = router;
