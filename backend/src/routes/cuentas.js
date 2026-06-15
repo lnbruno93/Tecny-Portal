@@ -419,7 +419,7 @@ router.delete('/clientes/:id', async (req, res, next) => {
     });
 
     await client.query('COMMIT');
-    if (productosRestaurados > 0) invalidateMetricas();
+    if (productosRestaurados > 0) invalidateMetricas(req.tenantId);
     res.json({
       ok: true,
       cascade: {
@@ -752,7 +752,7 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     await client.query('COMMIT');
     // Venta B2B descontó stock — invalidar el cache de métricas para que el
     // dashboard de Inventario refleje el nuevo total en el próximo refresh.
-    if (insertedItems.length > 0) invalidateMetricas();
+    if (insertedItems.length > 0) invalidateMetricas(req.tenantId);
 
     res.status(201).json({ ...mov, items: insertedItems });
   } catch (err) {
@@ -839,7 +839,7 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     await client.query('COMMIT');
     // DELETE de venta B2B repuso stock — invalidar cache para que el dashboard
     // refleje el nuevo total inmediatamente.
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -987,7 +987,7 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
     });
 
     await client.query('COMMIT');
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json({
       ok: true,
       item_id: itemId,

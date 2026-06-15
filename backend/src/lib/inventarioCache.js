@@ -29,9 +29,16 @@
 // propagan a las 2 réplicas Railway en <100ms en lugar del max 20s de TTL
 // natural. Elimina el bug de "valor stale post-bulk-import" que confundía
 // operadores durante el testing pre-salida.
+//
+// 2026-06-15 PR 4.9 multi-tenant cleanup: cache ahora es POR TENANT —
+// mismo patrón que cajasCache.js. La key Redis incluye tenant_id, hay un
+// fetcher memoizado por tenant en `fetchers` (Map), y el fetcher corre la
+// query bajo `db.withTenant(tenantId, ...)` para que RLS filtre productos
+// del tenant correcto.
 
 const { createCachedFetcherRedis } = require('./cacheTtl');
 const db = require('../config/database');
+const logger = require('./logger');
 
 // Query idéntica a la del routes/inventario.js original. Mantener sincronizada.
 const METRICAS_SQL = `
@@ -50,14 +57,52 @@ const METRICAS_SQL = `
   WHERE deleted_at IS NULL
 `;
 
-const fetchMetricas = createCachedFetcherRedis('cache:inv:metricas', 20_000, async () => {
-  const { rows } = await db.query(METRICAS_SQL);
-  return rows[0];
-});
+const MAX_FETCHERS = 256;
+const fetchers = new Map();
+
+function getFetcherForTenant(tenantId) {
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error(`fetchMetricas: tenantId inválido (${tenantId})`);
+  }
+  let fn = fetchers.get(tenantId);
+  if (fn) {
+    fetchers.delete(tenantId);
+    fetchers.set(tenantId, fn);
+    return fn;
+  }
+  fn = createCachedFetcherRedis(
+    `cache:inv:metricas:t${tenantId}`,
+    20_000,
+    async () => db.withTenant(tenantId, async (client) => {
+      const { rows } = await client.query(METRICAS_SQL);
+      return rows[0];
+    })
+  );
+  fetchers.set(tenantId, fn);
+  if (fetchers.size > MAX_FETCHERS) {
+    const oldestKey = fetchers.keys().next().value;
+    fetchers.delete(oldestKey);
+  }
+  return fn;
+}
+
+// Devuelve las métricas del tenant especificado, cacheadas 20s.
+async function fetchMetricas(tenantId) {
+  return getFetcherForTenant(tenantId)();
+}
+
+// Invalida el cache de un tenant. Async, fire-and-forget en callers.
+// Sin tenantId → no-op + warning (admin scripts sin contexto multi-tenant).
+async function invalidateMetricas(tenantId) {
+  if (tenantId == null) {
+    logger.warn('invalidateMetricas() sin tenantId — no-op. Path probable: script admin sin contexto multi-tenant.');
+    return;
+  }
+  const fn = fetchers.get(tenantId);
+  if (fn) await fn.invalidate();
+}
 
 module.exports = {
   fetchMetricas,
-  // Async (Promise<void>). Callers la usan fire-and-forget — el response del
-  // POST/PATCH/DELETE no espera la invalidación, mejor latencia para usuarios.
-  invalidateMetricas: () => fetchMetricas.invalidate(),
+  invalidateMetricas,
 };
