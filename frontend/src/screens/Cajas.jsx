@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
@@ -378,6 +378,45 @@ export default function Cajas() {
   const totalInvUSD       = useMemo(() => inversiones.reduce((s, m) => s + (parseFloat(m.monto) || 0), 0), [inversiones]);
   const inversoresActivos = useMemo(() => new Set(inversiones.map(m => m.contacto_id)).size, [inversiones]);
 
+  // Agrupado por inversor (2026-06-15): un mismo contacto puede tener N inversiones.
+  // Antes se mostraban como N filas separadas; ahora se muestran como 1 fila resumen
+  // (total acumulado, último ingreso, cantidad) con sub-filas expandibles para el
+  // desglose de cada movimiento individual.
+  const inversionesAgrupadas = useMemo(() => {
+    const grupos = new Map(); // contacto_id → { nombre, contacto_tipo, items, totalUsd, tasas }
+    for (const m of inversiones) {
+      const key = m.contacto_id ?? `__sin_${m.id}`; // defensivo: fila sin contacto (caso edge)
+      if (!grupos.has(key)) {
+        grupos.set(key, {
+          contacto_id: m.contacto_id,
+          nombre: `${m.nombre || ''} ${m.apellido || ''}`.trim() || '—',
+          contacto_tipo: m.contacto_tipo,
+          items: [],
+          totalUsd: 0,
+          tasasDistintas: new Set(),  // si todos comparten tasa, mostramos 1 sola; sino "varias"
+          ultimaFecha: null,
+        });
+      }
+      const g = grupos.get(key);
+      g.items.push(m);
+      g.totalUsd += parseFloat(m.monto) || 0;
+      if (m.tasa) g.tasasDistintas.add(String(m.tasa).trim());
+      if (!g.ultimaFecha || new Date(m.fecha) > new Date(g.ultimaFecha)) g.ultimaFecha = m.fecha;
+    }
+    // Orden: el grupo cuyo último ingreso es más reciente primero (matchea la
+    // sensación de "qué pasó recién" — igual que la vista plana original).
+    return [...grupos.values()].sort((a, b) => new Date(b.ultimaFecha) - new Date(a.ultimaFecha));
+  }, [inversiones]);
+
+  // State de grupos expandidos. Set<contacto_id> — un click en el chevron
+  // toggle. Por default todos colapsados (mostramos el resumen).
+  const [inversoresExpandidos, setInversoresExpandidos] = useState(() => new Set());
+  const toggleInversor = (key) => setInversoresExpandidos(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   // Delete handlers
   async function handleDeleteDeuda(id) {
     const ok = await confirm({ title: 'Eliminar movimiento', message: 'Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', danger: true });
@@ -696,33 +735,96 @@ export default function Cajas() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Fecha</th>
+                    <th style={{ width: 32 }} aria-label="Expandir"></th>
+                    <th>Último ingreso</th>
                     <th>Inversor</th>
                     <th>Tipo</th>
                     <th>Tasa</th>
-                    <th className="num">Monto USD</th>
+                    <th className="num">Total USD</th>
+                    <th className="num" style={{ width: 90 }}>Movs</th>
                     <th style={{ width: 40 }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {inversiones.map(m => (
-                    <tr key={m.id}>
-                      <td className="muted mono tiny">{fmtFecha(m.fecha)}</td>
-                      <td style={{ fontWeight: 600 }}>{m.nombre} {m.apellido || ''}</td>
-                      <td><Badge tone={TIPO_TONE[m.contacto_tipo] || 'default'}>{TIPO_LABEL[m.contacto_tipo] || m.contacto_tipo}</Badge></td>
-                      <td>
-                        {m.tasa
-                          ? <span className="badge badge-info" style={{ fontSize: 11 }}>{m.tasa}</span>
-                          : <span className="dim">—</span>}
-                      </td>
-                      <td className="num mono" style={{ fontWeight: 600 }}>u$s {fmt(m.monto)}</td>
-                      <td>
-                        <button className="icon-btn" onClick={() => handleDeleteInversion(m.id)}>
-                          <Icons.Trash size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {/* Agrupado por inversor (2026-06-15): una fila resumen por
+                      contacto + sub-filas expandibles con los movimientos
+                      individuales. Permite ver al toque cuánto invirtió cada
+                      uno en total, y profundizar si se necesita detalle. */}
+                  {inversionesAgrupadas.map(g => {
+                    const key = g.contacto_id ?? g.nombre;  // key estable
+                    const expandido = inversoresExpandidos.has(key);
+                    const tasaResumen = g.tasasDistintas.size === 0
+                      ? null
+                      : g.tasasDistintas.size === 1
+                        ? [...g.tasasDistintas][0]
+                        : 'varias';
+                    return (
+                      <Fragment key={key}>
+                        {/* Fila resumen del inversor — click en cualquier parte
+                            (excepto el botón de borrar) toggle el expand. */}
+                        <tr
+                          onClick={() => g.items.length > 1 && toggleInversor(key)}
+                          style={{ cursor: g.items.length > 1 ? 'pointer' : 'default' }}
+                        >
+                          <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                            {g.items.length > 1 && (
+                              <span style={{ fontSize: 11, fontWeight: 700 }}>
+                                {expandido ? '▾' : '▸'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="muted mono tiny">{fmtFecha(g.ultimaFecha)}</td>
+                          <td style={{ fontWeight: 600 }}>{g.nombre}</td>
+                          <td><Badge tone={TIPO_TONE[g.contacto_tipo] || 'default'}>{TIPO_LABEL[g.contacto_tipo] || g.contacto_tipo}</Badge></td>
+                          <td>
+                            {tasaResumen
+                              ? tasaResumen === 'varias'
+                                ? <span className="muted tiny" style={{ fontStyle: 'italic' }}>varias</span>
+                                : <span className="badge badge-info" style={{ fontSize: 11 }}>{tasaResumen}</span>
+                              : <span className="dim">—</span>}
+                          </td>
+                          <td className="num mono" style={{ fontWeight: 700 }}>u$s {fmt(g.totalUsd)}</td>
+                          <td className="num muted tiny">{g.items.length}</td>
+                          <td>
+                            {/* Si hay 1 sola inversión, mostramos delete acá
+                                directo (no hay desglose útil). Si hay varias,
+                                el delete vive en cada sub-fila. */}
+                            {g.items.length === 1 && (
+                              <button className="icon-btn"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteInversion(g.items[0].id); }}>
+                                <Icons.Trash size={13} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* Sub-filas: solo si está expandido y hay >1 movs */}
+                        {expandido && g.items.length > 1 && g.items.map(m => (
+                          <tr key={m.id} style={{ background: 'var(--surface-2)' }}>
+                            <td></td>
+                            <td className="muted mono tiny" style={{ paddingLeft: 24 }}>
+                              └ {fmtFecha(m.fecha)}
+                            </td>
+                            <td colSpan={2} className="muted tiny">
+                              {m.notas || <span className="dim">— sin nota —</span>}
+                            </td>
+                            <td>
+                              {m.tasa
+                                ? <span className="badge badge-info" style={{ fontSize: 11 }}>{m.tasa}</span>
+                                : <span className="dim">—</span>}
+                            </td>
+                            <td className="num mono" style={{ fontWeight: 500 }}>u$s {fmt(m.monto)}</td>
+                            <td></td>
+                            <td>
+                              <button className="icon-btn" onClick={() => handleDeleteInversion(m.id)}>
+                                <Icons.Trash size={13} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
