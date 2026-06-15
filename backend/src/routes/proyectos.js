@@ -37,21 +37,24 @@ router.get('/', async (req, res, next) => {
     const params = [];
     const filters = ['p.deleted_at IS NULL'];
     if (buscar) { params.push(`%${buscar}%`); filters.push(`(p.nombre ILIKE $${params.length} OR p.objetivo ILIKE $${params.length})`); }
-    const { rows } = await db.query(
-      `SELECT p.*,
-              COALESCE(m.total_ars, 0) AS total_ars,
-              COALESCE(m.total_usd, 0) AS total_usd,
-              COALESCE(m.cant, 0)      AS cant_movimientos
-       FROM proyectos p
-       LEFT JOIN (
-         SELECT proyecto_id, SUM(monto) AS total_ars, SUM(monto_usd) AS total_usd, COUNT(*) AS cant,
-                MIN(fecha) AS desde, MAX(fecha) AS hasta
-         FROM proyecto_movimientos WHERE deleted_at IS NULL GROUP BY proyecto_id
-       ) m ON m.proyecto_id = p.id
-       WHERE ${filters.join(' AND ')}
-       ORDER BY p.fecha_creacion DESC, p.id DESC`,
-      params
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT p.*,
+                COALESCE(m.total_ars, 0) AS total_ars,
+                COALESCE(m.total_usd, 0) AS total_usd,
+                COALESCE(m.cant, 0)      AS cant_movimientos
+         FROM proyectos p
+         LEFT JOIN (
+           SELECT proyecto_id, SUM(monto) AS total_ars, SUM(monto_usd) AS total_usd, COUNT(*) AS cant,
+                  MIN(fecha) AS desde, MAX(fecha) AS hasta
+           FROM proyecto_movimientos WHERE deleted_at IS NULL GROUP BY proyecto_id
+         ) m ON m.proyecto_id = p.id
+         WHERE ${filters.join(' AND ')}
+         ORDER BY p.fecha_creacion DESC, p.id DESC`,
+        params
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -61,22 +64,26 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows: p } = await db.query('SELECT * FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [id]);
-    if (!p[0]) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    const data = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: p } = await client.query('SELECT * FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [id]);
+      if (!p[0]) return { notFound: true };
 
-    const [{ rows: parts }, { rows: tot }] = await Promise.all([
-      db.query(
-        `SELECT c.id, c.nombre, c.apellido FROM proyecto_participantes pp
-           JOIN contactos c ON c.id = pp.contacto_id
-          WHERE pp.proyecto_id = $1 ORDER BY c.nombre, c.apellido`, [id]
-      ),
-      db.query(
-        `SELECT COALESCE(SUM(monto), 0) AS total_ars, COALESCE(SUM(monto_usd), 0) AS total_usd,
-                COUNT(*) AS cant_movimientos, MIN(fecha) AS desde, MAX(fecha) AS hasta
-           FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL`, [id]
-      ),
-    ]);
-    res.json({ ...p[0], participantes: parts, resumen: tot[0] });
+      const [{ rows: parts }, { rows: tot }] = await Promise.all([
+        client.query(
+          `SELECT c.id, c.nombre, c.apellido FROM proyecto_participantes pp
+             JOIN contactos c ON c.id = pp.contacto_id
+            WHERE pp.proyecto_id = $1 ORDER BY c.nombre, c.apellido`, [id]
+        ),
+        client.query(
+          `SELECT COALESCE(SUM(monto), 0) AS total_ars, COALESCE(SUM(monto_usd), 0) AS total_usd,
+                  COUNT(*) AS cant_movimientos, MIN(fecha) AS desde, MAX(fecha) AS hasta
+             FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL`, [id]
+        ),
+      ]);
+      return { proyecto: p[0], parts, tot: tot[0] };
+    });
+    if (data.notFound) return res.status(404).json({ error: 'Proyecto no encontrado' });
+    res.json({ ...data.proyecto, participantes: data.parts, resumen: data.tot });
   } catch (err) { next(err); }
 });
 
@@ -85,6 +92,8 @@ router.post('/', validate(createProyectoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       `INSERT INTO proyectos (nombre, objetivo, fecha_creacion)
        VALUES ($1, $2, COALESCE($3, CURRENT_DATE)) RETURNING *`,
@@ -109,6 +118,8 @@ router.put('/:id', validate(updateProyectoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       `UPDATE proyectos SET
          nombre = COALESCE($1, nombre), objetivo = COALESCE($2, objetivo),
@@ -137,6 +148,8 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       'UPDATE proyectos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
     );
@@ -161,37 +174,52 @@ router.get('/:id/movimientos', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
-    const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL', [id]),
-      db.query(
-        `SELECT m.*,
-                (c.nombre || COALESCE(' ' || c.apellido, '')) AS inversor_nombre,
-                mp.nombre AS caja_nombre,
-                mp.moneda AS caja_moneda
-           FROM proyecto_movimientos m
-           LEFT JOIN contactos c       ON c.id  = m.inversor_contacto_id
-           LEFT JOIN metodos_pago mp   ON mp.id = m.caja_id
-          WHERE m.proyecto_id = $1 AND m.deleted_at IS NULL
-          ORDER BY m.fecha DESC, m.id DESC
-          LIMIT $2 OFFSET $3`,
-        [id, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query('SELECT COUNT(*) FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL', [id]),
+        client.query(
+          `SELECT m.*,
+                  (c.nombre || COALESCE(' ' || c.apellido, '')) AS inversor_nombre,
+                  mp.nombre AS caja_nombre,
+                  mp.moneda AS caja_moneda
+             FROM proyecto_movimientos m
+             LEFT JOIN contactos c       ON c.id  = m.inversor_contacto_id
+             LEFT JOIN metodos_pago mp   ON mp.id = m.caja_id
+            WHERE m.proyecto_id = $1 AND m.deleted_at IS NULL
+            ORDER BY m.fecha DESC, m.id DESC
+            LIMIT $2 OFFSET $3`,
+          [id, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
 router.post('/movimientos', validate(createMovimientoProyectoSchema), async (req, res, next) => {
   const { proyecto_id, fecha, detalle, categoria, monto, tc, monto_usd,
           inversor_contacto_id, comentarios, caja_id, tipo } = req.body;
-  // Validación previa fuera de TX: proyecto existe.
-  const { rows: p } = await db.query('SELECT id FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [proyecto_id]);
-  if (!p[0]) return res.status(404).json({ error: 'Proyecto no encontrado' });
   const usd = calcUsd({ monto, tc, monto_usd });
 
+  // 2026-06-15 multi-tenant (PR 4.8): la validación previa "proyecto existe"
+  // se movió DENTRO de la tx para que RLS aplique con el SET LOCAL. Antes
+  // estaba antes del db.connect() usando el pool global (sin contexto de
+  // tenant) — habría leído el proyecto incluso si pertenecía a otro tenant.
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // Validación: proyecto existe (con RLS aplicada via SET LOCAL).
+    const { rows: p } = await client.query(
+      'SELECT id FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [proyecto_id]
+    );
+    if (!p[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
 
     // Si vino caja_id, leer la moneda de la caja para validar coherencia y
     // decidir qué monto postear al ledger. La moneda del ledger se debe
@@ -275,6 +303,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT * FROM proyecto_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
