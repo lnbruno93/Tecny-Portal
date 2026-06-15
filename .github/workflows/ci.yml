@@ -43,7 +43,11 @@ jobs:
 
       - name: Audit dependencies
         working-directory: backend
-        run: npm audit --audit-level=moderate
+        # --omit=dev: las devDependencies (jest, babel, supertest, etc.) NO van
+        # a runtime de producción, por lo tanto sus vulns transitivas no son
+        # explotables en el server vivo. Auditamos solo runtime deps. Las
+        # vulns en dev se chequean manualmente y se accionan con upgrades.
+        run: npm audit --audit-level=moderate --omit=dev
 
       - name: Lint
         working-directory: backend
