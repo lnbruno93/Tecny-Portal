@@ -16,9 +16,16 @@ async function syncContactoDesde(exec, { origen, ref_tabla, ref_id, nombre, apel
 
   // No tocamos deleted_at: si el usuario borró la ficha a propósito, una
   // re-sincronización actualiza datos pero la mantiene fuera de la agenda.
+  //
+  // 2026-06-15 multi-tenant (PR 4.3): seteamos tenant_id EXPLÍCITAMENTE
+  // leyendo app.current_tenant. Sin esto la columna toma DEFAULT 1 (legacy
+  // compat) y la policy RLS WITH CHECK bloquea el INSERT cuando el caller
+  // está dentro de un withTenant con un tenant != 1. El COALESCE preserva
+  // el comportamiento legacy: llamadas sin SET LOCAL siguen yendo al tenant 1.
   const { rows } = await exec.query(
-    `INSERT INTO contactos (nombre, apellido, telefono, email, dni, tipo, origen, origen_ref_tabla, origen_ref_id)
-     VALUES ($1,$2,$3,$4,$5,'cliente',$6,$7,$8)
+    `INSERT INTO contactos (nombre, apellido, telefono, email, dni, tipo, origen, origen_ref_tabla, origen_ref_id, tenant_id)
+     VALUES ($1,$2,$3,$4,$5,'cliente',$6,$7,$8,
+             COALESCE(NULLIF(current_setting('app.current_tenant', true), '')::int, 1))
      ON CONFLICT (origen_ref_tabla, origen_ref_id) WHERE origen_ref_id IS NOT NULL
      DO UPDATE SET
        nombre   = EXCLUDED.nombre,
