@@ -67,11 +67,14 @@ router.get('/categorias', async (req, res, next) => {
 
 router.post('/categorias', validate(nombreSchema), async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      'INSERT INTO categorias (nombre) VALUES ($1) RETURNING *', [req.body.nombre]
-    );
-    await audit('categorias', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'INSERT INTO categorias (nombre) VALUES ($1) RETURNING *', [req.body.nombre]
+      );
+      await audit(client, 'categorias', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    res.status(201).json(row);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una categoría con ese nombre' });
     next(err);
@@ -93,6 +96,9 @@ router.post('/categorias/bulk', validate(nombresBulkSchema), async (req, res, ne
     if (inputDedup.length === 0) return res.json({ map: {} });
 
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL después del BEGIN para que la tx
+    // respete RLS. Aplica solo a esta tx — el client vuelve al pool limpio.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     // ON CONFLICT con el índice parcial idx_categorias_nombre (LOWER(nombre) WHERE
     // deleted_at IS NULL). Para evitar el límite de la inferencia con predicado
     // — algunas versiones requieren WHERE — usamos el constraint inference por
@@ -129,33 +135,43 @@ router.delete('/categorias/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE categorias SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Categoría no encontrada' });
-    await audit('categorias', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE categorias SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'categorias', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Categoría no encontrada' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
 /* ───────────────────────── Catálogos: depósitos ───────────────────────── */
 
-router.get('/depositos', async (_req, res, next) => {
+router.get('/depositos', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      'SELECT * FROM depositos WHERE deleted_at IS NULL ORDER BY nombre'
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'SELECT * FROM depositos WHERE deleted_at IS NULL ORDER BY nombre'
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
 
 router.post('/depositos', validate(nombreSchema), async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      'INSERT INTO depositos (nombre) VALUES ($1) RETURNING *', [req.body.nombre]
-    );
-    await audit('depositos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
-    res.status(201).json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'INSERT INTO depositos (nombre) VALUES ($1) RETURNING *', [req.body.nombre]
+      );
+      await audit(client, 'depositos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    res.status(201).json(row);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe un depósito con ese nombre' });
     next(err);
@@ -166,11 +182,15 @@ router.delete('/depositos/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE depositos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Depósito no encontrado' });
-    await audit('depositos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE depositos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'depositos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Depósito no encontrado' });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -183,6 +203,11 @@ router.delete('/depositos/:id', async (req, res, next) => {
 const { fetchMetricas, invalidateMetricas } = require('../lib/inventarioCache');
 
 router.get('/productos/metricas', async (_req, res, next) => {
+  // TODO multi-tenant PR 4.9 cleanup: el cache de fetchMetricas es global
+  // (key sin tenant_id). Mientras estamos en single-tenant es correcto
+  // (todos ven los mismos datos). Cuando entren tenants reales, refactorar
+  // fetchMetricas para que la key del cache incluya tenant_id. Ver
+  // inventarioCache.js.
   try { res.json(await fetchMetricas()); } catch (err) { next(err); }
 });
 
@@ -190,16 +215,19 @@ router.get('/productos/metricas', async (_req, res, next) => {
 // inline (Inventario): no tenemos tabla de proveedores como FK, así que esto
 // es la mejor fuente de verdad para autocompletar. DISTINCT chico (≤cientos
 // en cualquier escenario realista) → query sin paginación.
-router.get('/productos/proveedores', async (_req, res, next) => {
+router.get('/productos/proveedores', async (req, res, next) => {
   try {
-    const { rows } = await db.query(`
-      SELECT DISTINCT TRIM(proveedor) AS proveedor
-        FROM productos
-       WHERE deleted_at IS NULL
-         AND proveedor IS NOT NULL
-         AND TRIM(proveedor) <> ''
-       ORDER BY proveedor
-    `);
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(`
+        SELECT DISTINCT TRIM(proveedor) AS proveedor
+          FROM productos
+         WHERE deleted_at IS NULL
+           AND proveedor IS NOT NULL
+           AND TRIM(proveedor) <> ''
+         ORDER BY proveedor
+      `);
+      return rows;
+    });
     res.json(rows.map(r => r.proveedor));
   } catch (err) { next(err); }
 });
@@ -314,10 +342,15 @@ router.get('/desglose', validate(queryDesgloseSchema, 'query'), async (req, res,
        WHERE ${where}
     `;
 
-    const [filasRes, totalRes] = await Promise.all([
-      db.query(filasQuery, params),
-      db.query(totalQuery, params),
-    ]);
+    // 2 queries en paralelo dentro de una sola tx con el tenant context.
+    // withTenant envuelve el callback en BEGIN/COMMIT — las 2 queries comparten
+    // tx y RLS aplica a ambas.
+    const [filasRes, totalRes] = await db.withTenant(req.tenantId, async (client) => {
+      return Promise.all([
+        client.query(filasQuery, params),
+        client.query(totalQuery, params),
+      ]);
+    });
 
     const tot = totalRes.rows[0] || {};
     res.json({
@@ -413,10 +446,12 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(countQuery, params),
-      db.query(dataQuery, [...params, limit, offset]),
-    ]);
+    const [countRes, dataRes] = await db.withTenant(req.tenantId, async (client) => {
+      return Promise.all([
+        client.query(countQuery, params),
+        client.query(dataQuery, [...params, limit, offset]),
+      ]);
+    });
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
@@ -448,79 +483,81 @@ router.get('/productos/:id/historial', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    // Producto base (necesitamos el IMEI para el match de compra).
-    const { rows: prodRows } = await db.query(
-      `SELECT id, imei FROM productos WHERE id = $1 AND deleted_at IS NULL`,
-      [id]
-    );
-    if (!prodRows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
-    const imei = (prodRows[0].imei || '').trim();
+    // Las 3 queries (producto base + compra de origen + venta retail/B2B)
+    // van dentro de la misma tx con tenant context. Más eficiente y RLS
+    // aplica a las 3 consistentemente.
+    const { prodRows, compra, ventaRetail, ventaB2B } = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: prodRows } = await client.query(
+        `SELECT id, imei FROM productos WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (!prodRows[0]) return { prodRows, compra: null, ventaRetail: [], ventaB2B: [] };
+      const imei = (prodRows[0].imei || '').trim();
 
-    // Compra de origen — solo si tiene IMEI. Tomamos la más reciente del item
-    // que matchee (defensivo: si un IMEI fue reused entre compras, la última
-    // gana — caso teórico, en producción no debería pasar).
-    let compra = null;
-    if (imei) {
-      const { rows } = await db.query(`
-        SELECT pm.id          AS movimiento_id,
-               pm.fecha       AS fecha,
-               pm.proveedor_id,
-               pr.nombre      AS proveedor_nombre,
-               pm.monto       AS monto,
-               pm.moneda      AS moneda,
-               pm.monto_usd   AS monto_usd,
-               pm.descripcion AS descripcion,
-               pmi.valor      AS valor_item
-          FROM proveedor_movimiento_items pmi
-          JOIN proveedor_movimientos pm ON pm.id = pmi.proveedor_movimiento_id
-          JOIN proveedores           pr ON pr.id = pm.proveedor_id
-         WHERE pmi.imei_serial = $1
-           AND pm.tipo = 'compra'
-           AND pm.deleted_at IS NULL
-           AND pr.deleted_at IS NULL
-         ORDER BY pm.fecha DESC, pm.id DESC
+      let compra = null;
+      if (imei) {
+        const { rows } = await client.query(`
+          SELECT pm.id          AS movimiento_id,
+                 pm.fecha       AS fecha,
+                 pm.proveedor_id,
+                 pr.nombre      AS proveedor_nombre,
+                 pm.monto       AS monto,
+                 pm.moneda      AS moneda,
+                 pm.monto_usd   AS monto_usd,
+                 pm.descripcion AS descripcion,
+                 pmi.valor      AS valor_item
+            FROM proveedor_movimiento_items pmi
+            JOIN proveedor_movimientos pm ON pm.id = pmi.proveedor_movimiento_id
+            JOIN proveedores           pr ON pr.id = pm.proveedor_id
+           WHERE pmi.imei_serial = $1
+             AND pm.tipo = 'compra'
+             AND pm.deleted_at IS NULL
+             AND pr.deleted_at IS NULL
+           ORDER BY pm.fecha DESC, pm.id DESC
+           LIMIT 1
+        `, [imei]);
+        compra = rows[0] || null;
+      }
+
+      const { rows: ventaRetail } = await client.query(`
+        SELECT v.id             AS venta_id,
+               v.fecha          AS fecha,
+               v.cliente_id     AS cliente_id,
+               COALESCE(c.nombre, v.cliente_nombre) AS cliente_nombre,
+               vi.precio_vendido AS precio_vendido,
+               vi.moneda        AS moneda,
+               v.ganancia_usd   AS ganancia_usd,
+               v.estado         AS estado
+          FROM venta_items vi
+          JOIN ventas v     ON v.id = vi.venta_id
+          LEFT JOIN contactos c ON c.id = v.cliente_id
+         WHERE vi.producto_id = $1
+           AND v.deleted_at IS NULL
+         ORDER BY v.fecha DESC, v.id DESC
          LIMIT 1
-      `, [imei]);
-      compra = rows[0] || null;
-    }
+      `, [id]);
 
-    // Venta retail (FK producto_id directa).
-    const { rows: ventaRetail } = await db.query(`
-      SELECT v.id             AS venta_id,
-             v.fecha          AS fecha,
-             v.cliente_id     AS cliente_id,
-             COALESCE(c.nombre, v.cliente_nombre) AS cliente_nombre,
-             vi.precio_vendido AS precio_vendido,
-             vi.moneda        AS moneda,
-             v.ganancia_usd   AS ganancia_usd,
-             v.estado         AS estado
-        FROM venta_items vi
-        JOIN ventas v     ON v.id = vi.venta_id
-        LEFT JOIN contactos c ON c.id = v.cliente_id
-       WHERE vi.producto_id = $1
-         AND v.deleted_at IS NULL
-       ORDER BY v.fecha DESC, v.id DESC
-       LIMIT 1
-    `, [id]);
+      const { rows: ventaB2B } = await client.query(`
+        SELECT mc.id           AS venta_id,
+               mc.fecha        AS fecha,
+               mc.cliente_cc_id AS cliente_id,
+               cc.nombre       AS cliente_nombre,
+               ic.valor        AS precio_vendido,
+               'USD'           AS moneda
+          FROM items_movimiento_cc ic
+          JOIN movimientos_cc mc ON mc.id = ic.movimiento_cc_id
+          JOIN clientes_cc    cc ON cc.id = mc.cliente_cc_id
+         WHERE ic.producto_id = $1
+           AND mc.tipo = 'compra'
+           AND mc.deleted_at IS NULL
+         ORDER BY mc.fecha DESC, mc.id DESC
+         LIMIT 1
+      `, [id]);
 
-    // Venta B2B (FK producto_id en items_movimiento_cc; tipo='compra' del lado
-    // del cliente = nosotros le vendimos).
-    const { rows: ventaB2B } = await db.query(`
-      SELECT mc.id           AS venta_id,
-             mc.fecha        AS fecha,
-             mc.cliente_cc_id AS cliente_id,
-             cc.nombre       AS cliente_nombre,
-             ic.valor        AS precio_vendido,
-             'USD'           AS moneda
-        FROM items_movimiento_cc ic
-        JOIN movimientos_cc mc ON mc.id = ic.movimiento_cc_id
-        JOIN clientes_cc    cc ON cc.id = mc.cliente_cc_id
-       WHERE ic.producto_id = $1
-         AND mc.tipo = 'compra'
-         AND mc.deleted_at IS NULL
-       ORDER BY mc.fecha DESC, mc.id DESC
-       LIMIT 1
-    `, [id]);
+      return { prodRows, compra, ventaRetail, ventaB2B };
+    });
+
+    if (!prodRows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
 
     // Si hay venta por ambos canales (no debería), la más reciente gana.
     let venta = null;
@@ -545,11 +582,14 @@ router.get('/productos/:id/foto', async (req, res, next) => {
     // a foto_data para filas legacy. Shape del response { foto_data, foto_nombre,
     // foto_tipo } NO cambia — frontend intacto. foto_key incluida en el SELECT
     // para que el driver r2 pueda decidir el path.
-    const { rows } = await db.query(
-      'SELECT foto_data, foto_key, foto_nombre, foto_tipo FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Sin foto' });
-    const file = await fileStore.get(rows[0], { prefix: 'foto' });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'SELECT foto_data, foto_key, foto_nombre, foto_tipo FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
+      );
+      return rows[0] || null;
+    });
+    if (!row) return res.status(404).json({ error: 'Sin foto' });
+    const file = await fileStore.get(row, { prefix: 'foto' });
     if (!file) return res.status(404).json({ error: 'Sin foto' });
     res.json({ foto_data: file.data, foto_nombre: file.nombre, foto_tipo: file.tipo });
   } catch (err) { next(err); }
@@ -613,13 +653,16 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
     b.foto_size   = fotoFile.size;
     const values = PRODUCTO_COLS.map(c => b[c] ?? null);
     const placeholders = PRODUCTO_COLS.map((_, i) => `$${i + 1}`).join(',');
-    const { rows } = await db.query(
-      `INSERT INTO productos (${PRODUCTO_COLS.join(',')}) VALUES (${placeholders}) RETURNING *`,
-      values
-    );
-    await audit('productos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO productos (${PRODUCTO_COLS.join(',')}) VALUES (${placeholders}) RETURNING *`,
+        values
+      );
+      await audit(client, 'productos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
     invalidateMetricas();  // junio 2026: cache stale era fuente de bugs de baseline
-    res.status(201).json(rows[0]);
+    res.status(201).json(row);
   } catch (err) { next(err); }
 });
 
@@ -628,9 +671,12 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows: before } = await db.query(
-      'SELECT * FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
-    );
+    const before = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'SELECT * FROM productos WHERE id = $1 AND deleted_at IS NULL', [id]
+      );
+      return rows;
+    });
     if (!before[0]) return res.status(404).json({ error: 'Producto no encontrado' });
 
     // P-03 Fase 4: si vino una foto nueva en el body, bifurcar por flag y
@@ -694,13 +740,16 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       }
       return c in req.body ? req.body[c] : null;
     });
-    const { rows } = await db.query(
-      `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} RETURNING *`,
-      [...values, id]
-    );
-    await audit('productos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} RETURNING *`,
+        [...values, id]
+      );
+      await audit(client, 'productos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
     invalidateMetricas();
-    res.json(rows[0]);
+    res.json(row);
   } catch (err) { next(err); }
 });
 
@@ -708,11 +757,15 @@ router.delete('/productos/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE productos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Producto no encontrado' });
-    await audit('productos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE productos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'productos', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
     invalidateMetricas();
     res.json({ ok: true });
   } catch (err) { next(err); }
@@ -755,6 +808,8 @@ router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, 
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // Validación: ¿hay envíos en curso apuntando a productos disponibles?
     // Estados 'Entregado' y 'Cancelado' son terminales — borrar el producto no
@@ -815,10 +870,12 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
   // y un ROLLBACK que tira las 499 filas válidas. Una sola query por catálogo.
   const catIds = [...new Set(productos.map(p => p.categoria_id).filter(Boolean))];
   const depIds = [...new Set(productos.map(p => p.deposito_id).filter(Boolean))];
-  const [catValid, depValid] = await Promise.all([
-    catIds.length ? db.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [catIds]) : { rows: [] },
-    depIds.length ? db.query('SELECT id FROM depositos  WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [depIds]) : { rows: [] },
-  ]);
+  const [catValid, depValid] = await db.withTenant(req.tenantId, async (client) => {
+    return Promise.all([
+      catIds.length ? client.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [catIds]) : { rows: [] },
+      depIds.length ? client.query('SELECT id FROM depositos  WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [depIds]) : { rows: [] },
+    ]);
+  });
   const okCats = new Set(catValid.rows.map(r => r.id));
   const okDeps = new Set(depValid.rows.map(r => r.id));
   const filasInvalidas = [];
@@ -834,11 +891,14 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
   // con ANY($1::text[]) — barata gracias al índice idx_productos_imei.
   const imeisDelLote = productos.map(p => (p.imei || '').trim()).filter(Boolean);
   if (imeisDelLote.length) {
-    const { rows: yaExisten } = await db.query(
-      `SELECT imei FROM productos
-        WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
-      [imeisDelLote]
-    );
+    const yaExisten = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT imei FROM productos
+          WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
+        [imeisDelLote]
+      );
+      return rows;
+    });
     if (yaExisten.length) {
       return res.status(409).json({
         error: 'Hay IMEIs que ya existen en inventario',
@@ -850,6 +910,8 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const cols = PRODUCTO_COLS.filter(c => !c.startsWith('foto_'));
 
     // Mismo default explícito que en el POST simple: columnas NOT NULL nuevas.
