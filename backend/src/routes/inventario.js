@@ -41,18 +41,26 @@ router.use(requireAuth);
 // Útil para el panel de catálogos (visualizar distribución del inventario)
 // y como insumo del Data Science a futuro. LEFT JOIN para incluir
 // categorías recién creadas que aún no tienen productos (count = 0).
-router.get('/categorias', async (_req, res, next) => {
+//
+// 2026-06-15 multi-tenant PR 4.0: PRIMER endpoint refactoreado para usar
+// db.withTenant. Establece el patrón canonical que se replicará en todos los
+// endpoints en PRs siguientes. La policy RLS de PR 2 garantiza que aunque la
+// query no tenga WHERE tenant_id explícito, Postgres filtra automáticamente.
+router.get('/categorias', async (req, res, next) => {
   try {
-    const { rows } = await db.query(`
-      SELECT c.*,
-             COUNT(p.id) FILTER (WHERE p.deleted_at IS NULL)::int AS productos_count,
-             COALESCE(SUM(p.cantidad) FILTER (WHERE p.deleted_at IS NULL AND p.estado = 'disponible'), 0)::int AS stock_disponible
-        FROM categorias c
-        LEFT JOIN productos p ON p.categoria_id = c.id
-       WHERE c.deleted_at IS NULL
-       GROUP BY c.id
-       ORDER BY c.nombre
-    `);
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(`
+        SELECT c.*,
+               COUNT(p.id) FILTER (WHERE p.deleted_at IS NULL)::int AS productos_count,
+               COALESCE(SUM(p.cantidad) FILTER (WHERE p.deleted_at IS NULL AND p.estado = 'disponible'), 0)::int AS stock_disponible
+          FROM categorias c
+          LEFT JOIN productos p ON p.categoria_id = c.id
+         WHERE c.deleted_at IS NULL
+         GROUP BY c.id
+         ORDER BY c.nombre
+      `);
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
