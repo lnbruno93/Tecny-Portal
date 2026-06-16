@@ -60,7 +60,7 @@ async function processBatch({ batchSize = 100 } = {}) {
             FOR UPDATE SKIP LOCKED
          )
          RETURNING tabla, accion, registro_id, datos_antes, datos_despues,
-                   user_id, ip, user_agent, request_id, enqueued_at`,
+                   user_id, ip, user_agent, request_id, enqueued_at, tenant_id`,
       [batchSize]
     );
 
@@ -84,21 +84,22 @@ async function processBatch({ batchSize = 100 } = {}) {
     const uaArr      = rows.map(r => r.user_agent);
     const reqIdArr   = rows.map(r => r.request_id);
     const enqAtArr   = rows.map(r => r.enqueued_at);
+    const tenantArr  = rows.map(r => r.tenant_id);
 
     await client.query(
       `INSERT INTO audit_logs
          (tabla, accion, registro_id, datos_antes, datos_despues,
-          user_id, ip, user_agent, request_id, created_at)
+          user_id, ip, user_agent, request_id, created_at, tenant_id)
        SELECT * FROM UNNEST(
          $1::text[], $2::text[], $3::int[],
          $4::jsonb[], $5::jsonb[],
          $6::int[], $7::inet[], $8::text[], $9::uuid[],
-         $10::timestamptz[]
+         $10::timestamptz[], $11::int[]
        )`,
       [tablaArr, accionArr, registroId,
        antesArr, despuesArr,
        userIdArr, ipArr, uaArr, reqIdArr,
-       enqAtArr]
+       enqAtArr, tenantArr]
     );
 
     await client.query('COMMIT');
