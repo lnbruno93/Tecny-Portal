@@ -94,7 +94,10 @@ function parseCsv(text) {
 export default function Inventario() {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { user } = useAuth();
+  // Safe destructure: useAuth() puede devolver null en tests que renderean
+  // el componente sin AuthProvider. En prod siempre hay user (RequireAuth
+  // gate-keep arriba en App.jsx).
+  const { user } = useAuth() || {};
   const isAdmin = user?.role === 'admin';
   const { setPrimaryAction } = usePageActions();
 
