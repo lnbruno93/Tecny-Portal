@@ -58,12 +58,12 @@ beforeAll(async () => {
   const hashA = await bcrypt.hash(USER_A.password, 4);
   const hashB = await bcrypt.hash(USER_B.password, 4);
   const { rows: ra } = await pool.query(
-    `INSERT INTO users (nombre, username, password_hash, role) VALUES ('User A', $1, $2, 'admin') RETURNING id`,
-    [USER_A.username, hashA]
+    `INSERT INTO users (nombre, username, email, password_hash, role) VALUES ('User A', $1, $2, $3, 'admin') RETURNING id`,
+    [USER_A.username, `${USER_A.username}@test.local`, hashA]
   );
   const { rows: rb } = await pool.query(
-    `INSERT INTO users (nombre, username, password_hash, role) VALUES ('User B', $1, $2, 'admin') RETURNING id`,
-    [USER_B.username, hashB]
+    `INSERT INTO users (nombre, username, email, password_hash, role) VALUES ('User B', $1, $2, $3, 'admin') RETURNING id`,
+    [USER_B.username, `${USER_B.username}@test.local`, hashB]
   );
   USER_A.id = ra[0].id;
   USER_B.id = rb[0].id;

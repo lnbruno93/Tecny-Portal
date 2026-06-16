@@ -90,7 +90,7 @@ describe('GET /api/admin/backfill-caja-financiera (dry-run)', () => {
     const bcrypt = require('bcrypt');
     const hash = await bcrypt.hash('op123', 10);
     const { rows } = await pool.query(
-      `INSERT INTO users (nombre, username, password_hash, role) VALUES ('Op', 'opbackfill', $1, 'op') RETURNING id`,
+      `INSERT INTO users (nombre, username, email, password_hash, role) VALUES ('Op', 'opbackfill', 'opbackfill@test.local', $1, 'op') RETURNING id`,
       [hash]
     );
     const opLogin = await request(app).post('/api/auth/login').send({ username: 'opbackfill', password: 'op123' });

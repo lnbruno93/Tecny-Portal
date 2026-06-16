@@ -31,8 +31,8 @@ beforeAll(async () => {
   const bcrypt = require('bcrypt');
   const hash = await bcrypt.hash('op_orph_pass', 10);
   await pool.query(
-    'INSERT INTO users (nombre, username, password_hash, role) VALUES ($1,$2,$3,$4)',
-    ['Op Orph', 'oporph', hash, 'op']
+    'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5)',
+    ['Op Orph', 'oporph', 'oporph@test.local', hash, 'op']
   );
   const o = await request(app).post('/api/auth/login')
     .send({ username: 'oporph', password: 'op_orph_pass' });

@@ -91,23 +91,37 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const field = username ? 'username' : 'email';
     const value = username || email;
 
+    // 2026-06-16 TANDA 1: lookup case-insensitive cuando el field es email. La
+    // DB tiene un índice único sobre LOWER(email) (migration 20260616000003),
+    // así que `Lucas@x.com` y `lucas@x.com` resuelven al mismo user. El schema
+    // ya normaliza `email` a minúsculas pero usamos LOWER() en ambos lados
+    // como defense in depth.
+    const filter = field === 'email' ? 'LOWER(email) = LOWER($1)' : `${field} = $1`;
     const { rows } = await db.query(
       `SELECT id, nombre, username, email, role, password_hash, password_changed_at,
               failed_login_count, lockout_until
-       FROM users WHERE ${field} = $1 AND deleted_at IS NULL`,
+       FROM users WHERE ${filter} AND deleted_at IS NULL`,
       [value]
     );
     const user = rows[0];
 
     // Lockout per-user: si el usuario está bloqueado, rechazamos antes de chequear
-    // la password. NO revelamos al cliente si el usuario existe (mensaje genérico).
-    // Usamos 423 Locked para que el frontend pueda mostrar un mensaje diferenciado
-    // si quiere; el body sigue genérico para que un atacante no enumere usuarios.
+    // la password. NO revelamos al cliente si el usuario existe.
+    //
+    // 2026-06-16 TANDA 1 anti-enumeration: respuesta idéntica a "usuario no
+    // existe" o "password incorrecta" — 401 con el mismo mensaje genérico.
+    // Antes devolvíamos 423 con mensaje "bloqueada", pero eso permitía a un
+    // atacante enumerar emails registrados (probar X → si tira 423, X existe).
+    // Trade-off UX: un usuario legítimo bloqueado ahora ve "credenciales
+    // inválidas" en vez de "bloqueada por X minutos". Aceptado: el lockout
+    // solo dispara con 10 fallos consecutivos (caso edge), y el upside de
+    // anti-enum es permanente (especialmente con /signup público en TANDA 2).
+    // El admin sigue distinguiendo el caso en logs / audit / Sentry.
     if (user && user.lockout_until && new Date(user.lockout_until) > new Date()) {
       logger.warn({ user_id: user.id, ip: req.ip, lockout_until: user.lockout_until }, 'login bloqueado por lockout');
       // Igual ejecutamos bcrypt para que el tiempo de respuesta sea constante.
       await bcrypt.compare(password, DUMMY_HASH);
-      return res.status(423).json({ error: 'Cuenta temporalmente bloqueada por intentos fallidos. Probá más tarde.' });
+      return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
 
     // Siempre ejecutar bcrypt.compare (tiempo constante) para no revelar si el usuario existe

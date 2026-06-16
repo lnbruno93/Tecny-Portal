@@ -18,6 +18,9 @@ const { TOOLS } = require('../../src/lib/tools');
 const TEST_USER = {
   nombre:   'Test Admin',
   username: 'testadmin',
+  // 2026-06-16 TANDA 1: email obligatorio (NOT NULL). Cualquier valor único
+  // sirve para tests; usamos `@test.local` para no chocar con dominios reales.
+  email:    'testadmin@test.local',
   password: 'testpass123',
   role:     'admin',
 };
@@ -109,8 +112,8 @@ async function setupTestDb() {
   // Crear usuario admin de prueba
   const hash = await bcrypt.hash(TEST_USER.password, 10);
   const { rows } = await pool.query(
-    'INSERT INTO users (nombre, username, password_hash, role) VALUES ($1,$2,$3,$4) RETURNING id',
-    [TEST_USER.nombre, TEST_USER.username, hash, TEST_USER.role]
+    'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [TEST_USER.nombre, TEST_USER.username, TEST_USER.email, hash, TEST_USER.role]
   );
   const userId = rows[0].id;
   // Vincular al tenant 1 (default desde migration PR 1) con rol='admin'. El
