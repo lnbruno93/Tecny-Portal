@@ -174,7 +174,7 @@ router.get('/diagnose-producto', async (req, res, next) => {
       return res.status(400).json({ error: 'Pasá imei o producto_id como query param' });
     }
     const { productos, trail } = await db.withTenant(req.tenantId, async (client) => {
-      let productos = [];
+      let productos;
       if (producto_id) {
         const id = parseId(producto_id);
         const r = await client.query('SELECT * FROM productos WHERE id = $1', [id]);
