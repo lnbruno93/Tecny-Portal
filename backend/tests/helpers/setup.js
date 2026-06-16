@@ -113,6 +113,16 @@ async function setupTestDb() {
     [TEST_USER.nombre, TEST_USER.username, hash, TEST_USER.role]
   );
   const userId = rows[0].id;
+  // Vincular al tenant 1 (default desde migration PR 1) con rol='admin'. El
+  // TRUNCATE de `users` con CASCADE borró el row de tenant_users que la
+  // migration había backfilleado. Sin esto, login emite JWT con
+  // tenant_rol='member' (fallback) y los endpoints adminOnly (validados por
+  // tenant_rol post 2026-06-16) fallan con 403.
+  await pool.query(
+    `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES (1, $1, 'admin')
+       ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'admin'`,
+    [userId]
+  );
 
   for (const tool of TOOLS) {
     await pool.query(
