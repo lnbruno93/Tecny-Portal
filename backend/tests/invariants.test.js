@@ -156,8 +156,8 @@ describe('checkInvariants — endpoint admin', () => {
     // No hay UNIQUE en username; limpiamos previo por las dudas.
     await pool.query(`DELETE FROM users WHERE username = 'testuser_inv'`);
     await pool.query(
-      `INSERT INTO users (nombre, username, password_hash, role)
-       VALUES ('Test User', 'testuser_inv', $1, 'op')`,
+      `INSERT INTO users (nombre, username, email, password_hash, role)
+       VALUES ('Test User', 'testuser_inv', 'testuser_inv@test.local', $1, 'op')`,
       [hash]
     );
     const login = await request(app).post('/api/auth/login')

@@ -3,7 +3,12 @@ const { passwordField } = require('../lib/password');
 
 const loginSchema = z.object({
   username: z.string().trim().min(1).optional(),
-  email:    z.string().trim().email('Email inválido').optional(),
+  // 2026-06-16 TANDA 1: email se normaliza a minúsculas. La DB tiene un índice
+  // único sobre LOWER(email) (migration 20260616000003), y el login query
+  // usa LOWER(email) = LOWER($1) — así `Lucas@x.com` y `lucas@x.com` son
+  // equivalentes para login. Normalizar acá garantiza consistency cuando se
+  // crean / leen users desde otros endpoints.
+  email:    z.string().trim().toLowerCase().email('Email inválido').optional(),
   password: z.string().min(1, 'Password requerido'),
   // 2FA: si el user tiene 2FA enabled, después del password OK pedimos el código.
   // El frontend hace 2 requests: el primero sin code (recibe twofa_required=true),

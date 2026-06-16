@@ -32,8 +32,8 @@ beforeAll(async () => {
   // válidos en el schema son 'admin' y 'op' — usamos 'op'.
   const hash = await bcrypt.hash('userpass123', 10);
   await pool.query(
-    `INSERT INTO users (nombre, username, password_hash, role)
-     VALUES ('Test User', 'testuser', $1, 'op')`,
+    `INSERT INTO users (nombre, username, email, password_hash, role)
+     VALUES ('Test User', 'testuser', 'testuser@test.local', $1, 'op')`,
     [hash]
   );
   const r2 = await request(app).post('/api/auth/login')

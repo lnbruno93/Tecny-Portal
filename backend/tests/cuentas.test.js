@@ -40,8 +40,8 @@ beforeAll(async () => {
   // Crear usuario op sin permisos para testear 403
   const hash = await bcrypt.hash('op_cc_pass123', 10);
   await pool.query(
-    'INSERT INTO users (nombre, username, password_hash, role) VALUES ($1,$2,$3,$4)',
-    ['Op CC', 'opcc', hash, 'op']
+    'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5)',
+    ['Op CC', 'opcc', 'opcc@test.local', hash, 'op']
   );
   const r2 = await request(app)
     .post('/api/auth/login')
