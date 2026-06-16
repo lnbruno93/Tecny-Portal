@@ -22,6 +22,12 @@ vi.mock('../lib/api', () => {
     inventario: {
       productos: vi.fn().mockResolvedValue(paginated),
     },
+    ventas: {
+      uploadComprobante: vi.fn().mockResolvedValue({}),
+    },
+    config: {
+      get: vi.fn().mockResolvedValue({ pct_financiera: 0 }),
+    },
   };
 });
 

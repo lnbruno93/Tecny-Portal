@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
-import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi } from '../lib/api';
+import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi, config as configApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -34,7 +34,12 @@ const EMPTY_FORM = {
 // Los campos con prefijo `_` son solo para mostrar en la UI — no se envían al
 // backend. Los seteamos al pickear un producto del inventario para que el
 // operador vea modelo/capacidad/color/IMEI/costo sin tener que abrir Inventario.
-const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false, _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '' };
+// Tema C rev5 (paridad con Ventas): los items tipo 'pago' tienen además
+// `usd_input` (valor primario que tipea el operador) y `neto_input` (si
+// edita "Entra a tu caja" directamente). `monto` sigue siendo el bruto en
+// la moneda nativa — única fuente de verdad para el backend.
+const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false, usd_input: '', neto_input: '', _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '' };
+const sym = (m) => m === 'ARS' ? '$' : 'u$s';
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
 // Backend values are capitalized with spaces: 'Pendiente', 'En camino', 'Entregado', 'Cancelado'
@@ -71,6 +76,8 @@ export default function Envios() {
   // financiera/tarjeta y la opción CC requieren "Registrar como venta" — el
   // frontend lo marca con un disabled/warning cuando aplica.
   const [cajasPago, setCajasPago] = useState([]);
+  // Tema C rev5 (paridad con Ventas): pct global de Financiera para preview.
+  const [pctFinanciera, setPctFinanciera] = useState(0);
   const [clientesCc, setClientesCc] = useState([]); // para asignar CC al envío
   // Búsqueda de productos para linkear: igual que en Ventas — debounce + backend search.
   // Un solo "search activo a la vez" (itemIdx identifica qué item del form está buscando).
@@ -88,6 +95,10 @@ export default function Envios() {
       .catch(silentReport);
     cuentasApi.clientes({ limit: 200 })
       .then(list => setClientesCc(Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : [])))
+      .catch(() => {});
+    // pct_financiera para el desglose en-vivo (paridad con Ventas).
+    configApi.get()
+      .then(cfg => setPctFinanciera(Number(cfg?.pct_financiera) || 0))
       .catch(() => {});
   }, []);
 
@@ -128,17 +139,45 @@ export default function Envios() {
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
 
-  // Resumen del envío en USD: convierte cada monto según su moneda y el TC del item / envío.
-  // USD/USDT → 1:1; ARS → divide por (item.tc || form.tc).
+  // Resumen del envío en USD + desglose por pago (paridad con Ventas Tema C rev5).
+  // - totalUsd: suma de productos en USD.
+  // - pagosUsd: suma de los BRUTOS de pagos en USD (lo que cobra el cliente).
+  // - netoUsd: suma de los NETOS percibidos (después de comisión financiera).
+  // - pagosDetalle[i]: { pct, brutoOrig, brutoUsd, costoFinOrig, costoFinUsd,
+  //                     netoOrig, netoUsd } — usado por el render del desglose.
+  // - cubierto: NETO + canjes >= total de productos (tolerancia 0.01).
+  //   Si el cliente cubre el recargo, neto = precio y queda cubierto ✓.
   const summary = useMemo(() => {
-    let totalUsd = 0, pagosUsd = 0;
-    for (const it of items) {
-      const usd = toUsd(it.monto, it.moneda || 'ARS', it.tc || form.tc);
-      if (it.tipo === 'producto') totalUsd += usd;
-      else if (it.tipo === 'pago') pagosUsd += usd;
-    }
-    return { totalUsd, pagosUsd, diferenciaUsd: totalUsd - pagosUsd };
-  }, [items, form.tc]);
+    const tcEnv = Number(form.tc) || null;
+    let totalUsd = 0, pagosUsd = 0, netoUsd = 0;
+    const pagosDetalle = items.map(it => {
+      if (it.tipo !== 'pago') return null;
+      const brutoOrig = Number(it.monto) || 0;
+      const brutoUsd = toUsd(it.monto, it.moneda || 'ARS', it.tc || tcEnv);
+      let pct = 0;
+      if (!it.es_cuenta_corriente && it.metodo_pago_id) {
+        const m = cajasPago.find(c => Number(c.id) === Number(it.metodo_pago_id));
+        if (m) pct = pctMetodo(m);
+      }
+      const costoFinOrig = brutoOrig * pct / 100;
+      const costoFinUsd  = brutoUsd  * pct / 100;
+      const netoOrigVal  = brutoOrig - costoFinOrig;
+      const netoUsdVal   = brutoUsd  - costoFinUsd;
+      return { pct, brutoOrig, brutoUsd, costoFinOrig, costoFinUsd, netoOrig: netoOrigVal, netoUsd: netoUsdVal };
+    });
+    items.forEach((it, i) => {
+      if (it.tipo === 'producto') {
+        totalUsd += toUsd(it.monto, it.moneda || 'USD', it.tc || tcEnv);
+      } else if (it.tipo === 'pago') {
+        const d = pagosDetalle[i];
+        if (d) { pagosUsd += d.brutoUsd; netoUsd += d.netoUsd; }
+      }
+    });
+    // Diferencia se evalúa contra NETO (no bruto): el cliente debe cubrir lo
+    // suficiente para que después del descuento queden los USD del producto.
+    return { totalUsd, pagosUsd, netoUsd, diferenciaUsd: totalUsd - netoUsd, pagosDetalle };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, form.tc, cajasPago, pctFinanciera]);
   const cubierto = Math.abs(summary.diferenciaUsd) < 0.01;
 
   // Heurística: si lo tipeado parece un IMEI completo (12+ dígitos seguidos),
@@ -200,26 +239,154 @@ export default function Envios() {
       _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '',
     })));
   }
+  // ── Tema C rev5 (paridad con Ventas) ──────────────────────────────────────
+  // Helpers de fórmula: el operador tipea USD y el sistema arma el bruto en
+  // moneda nativa según el % del método. Si edita "Entra a tu caja" (neto),
+  // derivamos el bruto al revés. Fórmulas idénticas a Ventas.jsx:298-310.
+  function pctMetodo(m) {
+    if (!m) return 0;
+    if (m.es_tarjeta && Number(m.comision_pct) > 0) return Number(m.comision_pct);
+    if (m.es_financiera && pctFinanciera > 0)        return pctFinanciera;
+    return 0;
+  }
+  function brutoFromUsdInput(usd, moneda, tc, pct) {
+    const u = Number(usd) || 0;
+    if (u <= 0) return '';
+    const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
+    if (moneda === 'USD' || moneda === 'USDT') return Math.round(u * factor * 100) / 100;
+    const t = Number(tc);
+    if (moneda === 'ARS' && t > 0)              return Math.round(u * t * factor * 100) / 100;
+    return '';
+  }
+  function brutoFromNetoInput(neto, pct) {
+    const n = Number(neto) || 0;
+    if (n <= 0) return '';
+    return Math.round(n / (1 - pct / 100) * 100) / 100;
+  }
+  // Faltante USD = total productos − otros pagos. Usado para auto-llenar el
+  // USD al elegir un método nuevo (si el operador no había tipeado nada).
+  function faltanteUsd(indexExcluir, prevItems) {
+    const tcEnv = Number(form.tc) || null;
+    let totalUsd = 0;
+    prevItems.forEach(it => {
+      if (it.tipo !== 'producto') return;
+      totalUsd += toUsd(it.monto, it.moneda || 'USD', it.tc || tcEnv);
+    });
+    if (totalUsd <= 0) return 0;
+    let otrosUsd = 0;
+    prevItems.forEach((it, k) => {
+      if (k === indexExcluir) return;
+      if (it.tipo !== 'pago') return;
+      otrosUsd += toUsd(it.monto, it.moneda || 'ARS', it.tc || tcEnv);
+    });
+    return Math.max(0, totalUsd - otrosUsd);
+  }
+
+  // Setter del USD tipeado por el operador. Recalcula bruto en moneda nativa.
+  function setPagoUsd(idx, value) {
+    setItems(arr => arr.map((it, j) => {
+      if (j !== idx) return it;
+      const m = cajasPago.find(x => Number(x.id) === Number(it.metodo_pago_id));
+      const pct = pctMetodo(m);
+      const tcUse = it.tc || form.tc;
+      const bruto = brutoFromUsdInput(value, it.moneda, tcUse, pct);
+      return { ...it, usd_input: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // Setter del Neto editable ("entra a tu caja"). Caso "cliente ya transfirió X".
+  function setPagoNeto(idx, value) {
+    setItems(arr => arr.map((it, j) => {
+      if (j !== idx) return it;
+      const m = cajasPago.find(x => Number(x.id) === Number(it.metodo_pago_id));
+      const pct = pctMetodo(m);
+      const bruto = brutoFromNetoInput(value, pct);
+      const tc = Number(it.tc) || Number(form.tc) || null;
+      let usd = '';
+      const n = Number(value) || 0;
+      if (n > 0) {
+        if (it.moneda === 'ARS' && tc > 0) usd = Math.round(n / tc * 100) / 100;
+        else                                 usd = n;
+      }
+      return { ...it, usd_input: usd !== '' ? String(usd) : '', neto_input: value, monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // Setter del TC del pago (recalcula bruto desde el USD tipeado).
+  function setPagoTc(idx, value) {
+    setItems(arr => arr.map((it, j) => {
+      if (j !== idx) return it;
+      const m = cajasPago.find(x => Number(x.id) === Number(it.metodo_pago_id));
+      const pct = pctMetodo(m);
+      const bruto = brutoFromUsdInput(it.usd_input, it.moneda, value, pct);
+      return { ...it, tc: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // Setter directo en moneda nativa para EFECTIVO ARS (sin comisión). El operador
+  // a veces piensa "cliente me dio $X en efectivo" — más natural que pensar en USD.
+  function setPagoArsAmount(idx, value) {
+    setItems(arr => arr.map((it, j) => j !== idx ? it : ({
+      ...it, monto: value, usd_input: '', neto_input: '',
+    })));
+  }
+
   // Setea el método del pago: caja del catálogo o "Cuenta corriente" (__CC__).
-  // La moneda se infiere de la caja (debe coincidir con el grupo de la caja).
-  // Para CC, default a USD (es la moneda de movimientos_cc).
+  // Con auto-fill: si el operador no había tipeado USD, autocompletamos con el
+  // faltante (paridad con Ventas). Para EFECTIVO ARS, autocompletamos el monto
+  // en ARS directamente (sin pasar por USD).
   function pickCajaPago(idx, value) {
     if (value === '__CC__') {
-      setItems(i => i.map((it, j) => j !== idx ? it : ({
+      setItems(arr => arr.map((it, j) => j !== idx ? it : ({
         ...it,
         metodo_pago_id: '', es_cuenta_corriente: true,
         moneda: it.moneda && it.moneda !== 'ARS' ? it.moneda : 'USD',
-        tc: '',
+        tc: '', usd_input: '', neto_input: '',
       })));
       return;
     }
     const c = cajasPago.find(x => String(x.id) === String(value));
-    setItems(i => i.map((it, j) => j !== idx ? it : ({
-      ...it,
-      metodo_pago_id: value, es_cuenta_corriente: false,
-      moneda: c ? c.moneda : (it.moneda || 'ARS'),
-      tc: c && c.moneda !== 'ARS' ? '' : it.tc,
-    })));
+    setItems(arr => {
+      const newMoneda = c ? c.moneda : null;
+      const pct = pctMetodo(c);
+      const arsDirect = pct === 0 && newMoneda === 'ARS';
+      return arr.map((it, j) => {
+        if (j !== idx) return it;
+        const tcUse = it.tc || form.tc;
+        if (arsDirect) {
+          // Auto-fill en ARS (cliente paga efectivo).
+          let monto = it.monto;
+          if (!monto || Number(monto) <= 0) {
+            const falt = faltanteUsd(idx, arr);
+            const tcN = Number(tcUse);
+            if (falt > 0 && tcN > 0) monto = String(Math.round(falt * tcN * 100) / 100);
+          }
+          return {
+            ...it,
+            metodo_pago_id: value,
+            es_cuenta_corriente: false,
+            moneda: 'ARS',
+            usd_input: '', neto_input: '',
+            monto: monto || '',
+            tc: it.tc || '',
+          };
+        }
+        // Resto: input en USD (Tarjeta, Transferencia, Efectivo USD, etc.).
+        let usd = it.usd_input;
+        if (!usd || Number(usd) <= 0) {
+          const falt = faltanteUsd(idx, arr);
+          if (falt > 0) usd = String(Math.round(falt * 100) / 100);
+        }
+        const bruto = brutoFromUsdInput(usd, newMoneda || it.moneda, tcUse, pct);
+        return {
+          ...it,
+          metodo_pago_id: value,
+          es_cuenta_corriente: false,
+          moneda: newMoneda || it.moneda || 'USD',
+          tc: c && c.moneda !== 'ARS' ? '' : it.tc,
+          usd_input: usd,
+          neto_input: '',
+          monto: bruto !== '' ? String(bruto) : '',
+        };
+      });
+    });
   }
 
   function openCreate() {
@@ -1163,49 +1330,120 @@ export default function Envios() {
                       </button>
                     </div>
                     <div className="stack" style={{ gap: 6 }}>
-                      {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'pago').map(({ it, idx }) => (
-                        <div key={`pg-${idx}`}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 90px 100px auto', gap: 6, alignItems: 'center' }}>
-                            <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
-                                    onChange={e => pickCajaPago(idx, e.target.value)}>
-                              <option value="">Método…</option>
-                              {cajasPago.map(c => (
-                                <option key={c.id} value={c.id}>{c.nombre}</option>
-                              ))}
-                              {/* 2026-06-10: Cuenta corriente removida del modal de Envíos
-                                  por pedido de Lucas — no se vende a consumidor final con CC.
-                                  La lógica detrás (es_cuenta_corriente) queda por compatibilidad
-                                  con envíos legacy, pero no se ofrece como opción nueva. */}
-                            </select>
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto"
-                                   value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
-                            <select className="input" value={it.moneda || 'ARS'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
-                              <option>ARS</option><option>USD</option><option>USDT</option>
-                            </select>
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC"
-                                   value={it.tc} onChange={e => setItem(idx, 'tc', e.target.value)} />
-                            <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
-                              <Icons.X size={14} />
-                            </button>
-                          </div>
-                          <TcWarning tc={it.tc} />
-                          {/* Paridad con Ventas: cuando el método es Tarjeta, mostrar
-                              comisión y neto que va a impactar en módulo Tarjetas. */}
-                          {(() => {
-                            const m = cajasPago.find(c => Number(c.id) === Number(it.metodo_pago_id));
-                            if (!m?.es_tarjeta || !Number(m.comision_pct)) return null;
-                            const monto = Number(it.monto) || 0;
-                            const pct = Number(m.comision_pct);
-                            const com = +(monto * pct / 100).toFixed(2);
-                            const neto = +(monto - com).toFixed(2);
-                            return (
-                              <div className="muted tiny" style={{ marginTop: 2 }}>
-                                Tarjeta · comisión {pct}% = {com} {it.moneda || 'ARS'} · neto {neto} {it.moneda || 'ARS'}
+                      {/* Paridad con Ventas Tema C rev5: operador tipea USD (mental
+                          model), el sistema arma el bruto en moneda nativa. Si hay
+                          comisión, debajo aparece el desglose "Le cobrás / Financiera
+                          (%) / Entra a tu caja (editable)". Para EFECTIVO ARS (sin
+                          comisión), el input es ARS directo. */}
+                      {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'pago').map(({ it, idx }) => {
+                        const det = summary.pagosDetalle[idx];
+                        const m = cajasPago.find(c => Number(c.id) === Number(it.metodo_pago_id));
+                        const tcEff = Number(it.tc) || Number(form.tc) || null;
+                        const pctEff = pctMetodo(m);
+                        const factorEff = pctEff > 0 ? 1 / (1 - pctEff / 100) : 1;
+                        const arsDirect = pctEff === 0 && it.moneda === 'ARS';
+                        const showTc = !it.es_cuenta_corriente && it.moneda === 'ARS';
+                        const showDesglose = det && det.pct > 0 && it.moneda === 'ARS';
+                        const montoNum = Number(it.monto) || 0;
+                        let derivedUsd = it.usd_input;
+                        if (!arsDirect && (derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
+                          // Editing envíos viejos: derivar el USD del monto bruto.
+                          if (it.moneda === 'USD' || it.moneda === 'USDT') {
+                            derivedUsd = String(Math.round(montoNum / factorEff * 100) / 100);
+                          } else if (it.moneda === 'ARS' && tcEff > 0) {
+                            derivedUsd = String(Math.round(montoNum / factorEff / tcEff * 100) / 100);
+                          }
+                        }
+                        return (
+                          <div key={`pg-${idx}`}>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: showTc ? '1fr 110px 90px auto' : '1fr 110px auto',
+                              gap: 6, alignItems: 'center',
+                            }}>
+                              <select className="input" value={it.es_cuenta_corriente ? '__CC__' : it.metodo_pago_id}
+                                      onChange={e => pickCajaPago(idx, e.target.value)}>
+                                <option value="">Método…</option>
+                                {cajasPago.map(c => (
+                                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                                ))}
+                                {/* 2026-06-10: Cuenta corriente removida del modal de
+                                    Envíos por pedido de Lucas — no se vende a consumidor
+                                    final con CC. La lógica detrás (es_cuenta_corriente)
+                                    queda por compatibilidad con envíos legacy. */}
+                              </select>
+                              <div style={{ position: 'relative' }}>
+                                <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
+                                  {arsDirect ? '$' : 'USD'}
+                                </span>
+                                {arsDirect ? (
+                                  <input
+                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    className="input mono" placeholder="730.000"
+                                    value={it.monto}
+                                    onChange={e => setPagoArsAmount(idx, e.target.value)}
+                                    style={{ paddingLeft: 22 }}
+                                  />
+                                ) : (
+                                  <input
+                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    className="input mono" placeholder="500"
+                                    value={derivedUsd}
+                                    onChange={e => setPagoUsd(idx, e.target.value)}
+                                    style={{ paddingLeft: 36 }}
+                                  />
+                                )}
                               </div>
-                            );
-                          })()}
-                        </div>
-                      ))}
+                              {showTc && (
+                                <div style={{ position: 'relative' }}>
+                                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
+                                  <input
+                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    className="input mono" placeholder="1460"
+                                    value={it.tc}
+                                    onChange={e => setPagoTc(idx, e.target.value)}
+                                    style={{ paddingLeft: 30 }}
+                                  />
+                                </div>
+                              )}
+                              <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
+                                <Icons.X size={14} />
+                              </button>
+                            </div>
+                            {showDesglose && (
+                              <div style={{
+                                marginTop: 8, display: 'grid',
+                                gridTemplateColumns: '1fr 1fr 1fr',
+                                gap: 10, fontSize: 12, alignItems: 'start',
+                                paddingLeft: 2,
+                              }}>
+                                <div>
+                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Le cobrás al cliente</div>
+                                  <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(it.moneda)}{fmt(det.brutoOrig)}</div>
+                                </div>
+                                <div>
+                                  <div className="muted tiny" style={{ marginBottom: 2 }} title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
+                                  <div className="mono neg" style={{ fontWeight: 600, fontSize: 13 }}>−{sym(it.moneda)}{fmt(det.costoFinOrig)}</div>
+                                </div>
+                                <div>
+                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                    <input
+                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      className="input mono"
+                                      value={it.neto_input || Math.round(det.netoOrig * 100) / 100}
+                                      onChange={e => setPagoNeto(idx, e.target.value)}
+                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                    />
+                                    <span className="mono pos" style={{ fontWeight: 600, fontSize: 12 }}>= u$s{fmt(det.netoUsd)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            <TcWarning tc={it.tc} />
+                          </div>
+                        );
+                      })}
                       {items.filter(i => i.tipo === 'pago').length === 0 && (
                         <div className="muted tiny" style={{ padding: '4px 0' }}>Sin pagos cargados. Sumá un método con "Agregar método".</div>
                       )}
