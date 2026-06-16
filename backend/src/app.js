@@ -10,6 +10,7 @@ const helmet      = require('helmet');
 // IPv4 intacto. Es el patrón canónico documentado en
 // https://express-rate-limit.github.io/ERR_ERL_KEY_GEN_IPV6/.
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const jwt         = require('jsonwebtoken');
 const pinoHttp    = require('pino-http');
 const logger      = require('./lib/logger');
 const db = require('./config/database');
@@ -115,18 +116,54 @@ app.use(cors({
 // y bloquearlos genera falsos negativos de monitoring. Tampoco son endpoints que
 // expongan datos sensibles ni que tengan costo computacional alto.
 const GLOBAL_RATE_LIMIT_MAX = Number(process.env.GLOBAL_RATE_LIMIT_MAX) || 300;
+
+// 2026-06-15: skip del global limiter para requests con JWT firmado válido.
+// Motivo: el global limiter protege contra abuso anónimo (scrapers, brute force
+// pre-login, bots). Una vez que el cliente trae un JWT firmado con nuestro
+// secret, sabemos que pasó por el flujo de login (que tiene su propio limiter
+// por IP) y los rate-limiters específicos por endpoint (OCR, export, compras,
+// backfill, etc.) siguen activos para operaciones costosas. Aplicar el global
+// a usuarios autenticados producía lock-outs cuando un admin hacía operaciones
+// CRUD legítimas en tandas grandes (ej. borrar 50 categorías de a una) — el
+// bucket de 300 se agotaba y bloqueaba hasta el propio /login, dejándolo
+// afuera de su portal.
+//
+// Solo verificamos signature (CPU-bound, ~1ms, sin DB). La verificación
+// completa (revocación post-cambio-password, user activo) la hace el middleware
+// requireAuth de cada route. Si el token es inválido acá, el request cae al
+// global limit (como antes) — esto preserva la defensa contra abuso anónimo
+// que mande basura como Bearer header esperando bypass.
+function hasValidSignedJwt(req) {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return false;
+  const token = header.slice(7);
+  if (!token || !process.env.JWT_SECRET) return false;
+  try {
+    jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: GLOBAL_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, intentá de nuevo en 15 minutos' },
-  // En tests skipeamos COMPLETO: 1) /health|/ready siempre (probes externos
-  // de monitoring); 2) si NODE_ENV=test — el smoke test + suites combinadas
-  // disparan >300 requests, lo que con el PG store (T3) deja el contador
-  // pinchado entre runs (la tabla rate_limit_entries persiste) generando
-  // 429s cascada en suites posteriores. Mismo patrón que login/2FA.
-  skip: (req) => req.path === '/health' || req.path === '/ready' || isTestEnv,
+  // Skips:
+  //  1) /health|/ready siempre (probes externos de monitoring).
+  //  2) NODE_ENV=test — el smoke test + suites combinadas disparan >300
+  //     requests, lo que con el PG store (T3) deja el contador pinchado entre
+  //     runs (la tabla rate_limit_entries persiste) generando 429s cascada
+  //     en suites posteriores. Mismo patrón que login/2FA.
+  //  3) Requests con JWT firmado válido — ver comentario arriba.
+  skip: (req) =>
+    req.path === '/health' ||
+    req.path === '/ready' ||
+    isTestEnv ||
+    hasValidSignedJwt(req),
   ...(globalStore && { store: globalStore }),
 }));
 logger.info({ globalRateLimit: GLOBAL_RATE_LIMIT_MAX }, 'rate-limit global configurado');
