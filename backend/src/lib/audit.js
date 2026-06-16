@@ -164,6 +164,30 @@ async function audit(...args) {
   const ip = req?.ip || null;
   const userAgent = req?.headers?.['user-agent']?.slice(0, 512) || null;
   const requestId = req?.id || null;
+  // 2026-06-16 TANDA 0a hardening multi-tenant: hasta hoy `audit_logs.tenant_id`
+  // se quedaba siempre NULL (la columna existía desde PR 1 pero el INSERT no la
+  // pasaba), y la policy RLS los hacía visibles solo gracias al fallback
+  // permisivo "OR current_setting IS NULL". Eso significa que cualquier endpoint
+  // que listara audit_logs (ej. /api/historial) leía audits cross-tenant.
+  //
+  // Estrategia de resolución del tenant (orden):
+  //   1. `opts.tenant_id` explícito (mejor performance, sin query extra).
+  //   2. `req.tenantId` decorado por el middleware requireAuth (próximo en perf).
+  //   3. SHOW app.current_tenant del client — fallback robusto para audits
+  //      programáticos sin req (jobs, crons, lib internos). Si el client
+  //      hizo SET LOCAL en su tx, retorna el tenant correcto. Si no, retorna
+  //      '' y dejamos tenant_id NULL — apropiado para audits de sistema.
+  let tenantId = opts.tenant_id ?? req?.tenantId ?? null;
+  if (tenantId == null) {
+    try {
+      // current_setting(name, missing_ok=true) retorna NULL si la GUC nunca
+      // se seteó, en vez de lanzar error (que abortaría la tx exterior).
+      // SHOW no acepta missing_ok, por eso usamos current_setting().
+      const r = await client.query("SELECT current_setting('app.current_tenant', true) AS t");
+      const n = Number(r.rows[0]?.t);
+      if (Number.isFinite(n) && n > 0) tenantId = n;
+    } catch { /* defensive: dejamos NULL — audit del sistema */ }
+  }
   const params = [
     tabla, accion, registro_id,
     antes ? JSON.stringify(redactPII(antes)) : null,
@@ -172,6 +196,7 @@ async function audit(...args) {
     ip,
     userAgent,
     requestId,
+    tenantId,
   ];
 
   // P-07 bifurcación: si el flag `audit_async_enabled` está ON, encolamos en
@@ -185,10 +210,10 @@ async function audit(...args) {
   // Esto cumple req #9 del doc — el audit NO se procesa si la tx fallo.
   const asyncEnabled = await isAsyncEnabled();
   const sql = asyncEnabled
-    ? `INSERT INTO audit_queue (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
-    : `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
+    ? `INSERT INTO audit_queue (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+    : `INSERT INTO audit_logs (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`;
   try {
     if (useSavepoint) {
       // SAVEPOINT aísla el INSERT: si falla, NO contamina la tx exterior.
