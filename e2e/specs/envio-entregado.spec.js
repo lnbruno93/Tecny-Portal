@@ -157,10 +157,13 @@ test.describe('Envíos — envío → entregado + venta acreditada', () => {
       .toHaveCount(1, { timeout: 5_000 });
     await metodoSelect.selectOption({ label: 'USD | Efectivo' });
 
-    // Monto del pago. El placeholder "Monto" lo identifica unívocamente
-    // dentro del row de pagos (los inputs del item linkeado usan "Precio venta"
-    // como label, no placeholder).
-    await modal.getByPlaceholder('Monto').fill('200');
+    // Monto del pago. 2026-06-16: con la paridad Ventas (Tema C rev5), el
+    // placeholder del input ya no es "Monto" — depende del modo:
+    //   · USD/USDT o ARS con comisión: placeholder "500" (input USD)
+    //   · EFECTIVO ARS sin comisión: placeholder "730.000" (input ARS directo)
+    // Para no acoplar el test al modo, usamos data-testid="envio-pago-monto"
+    // que está en ambos branches del condicional.
+    await modal.getByTestId('envio-pago-monto').fill('200');
 
     // Resumen: cubierto ✓ (total venta 200 = pagos 200).
     await expect(modal.getByText(/Cubierto/)).toBeVisible();
