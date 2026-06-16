@@ -296,7 +296,11 @@ export default function Proveedores() {
       }}>
 
         {/* ── Sidebar ── */}
-        <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        {/* minHeight: 0 = clásico fix para que un flex column con un hijo
+            scrolleable respete los bounds del parent en vez de crecer. Sin
+            esto, el listado de proveedores empuja el grid hacia abajo y no
+            aparece scrollbar interno (bug 2026-06-15 reportado por Lucas). */}
+        <div style={{ borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--border)' }}>
             <div className="input-group">
               <span className="addon addon-l"><Icons.Search size={13} /></span>
@@ -304,7 +308,7 @@ export default function Proveedores() {
                 onChange={e => setSearch(e.target.value)} />
             </div>
           </div>
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             {loadingList ? (
               <div className="empty">Cargando…</div>
             ) : filtered.length === 0 ? (
