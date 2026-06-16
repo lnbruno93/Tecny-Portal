@@ -845,9 +845,11 @@ export default function Financiera() {
                         {fmt(c.monto)}
                       </td>
                       <td className="num mono" style={{ color: 'var(--accent)' }}>
+                        <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
                         {fmt(c.monto_financiera)}
                       </td>
                       <td className="num mono pos" style={{ fontWeight: 600 }}>
+                        <span className="muted" style={{ fontWeight: 500 }}>ARS </span>
                         {fmt(c.monto_neto)}
                       </td>
                       <td>
