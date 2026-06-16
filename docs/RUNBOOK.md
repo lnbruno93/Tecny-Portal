@@ -176,3 +176,81 @@ Cuando se sume:
 - Sentry detecta el mismo error en >50 usuarios distintos en <10 min.
 - Cron de invariantes (TANDA B) reporta drift en saldo de cajas.
 - Algún usuario reporta dato perdido / borrado sin explicación.
+
+---
+
+## Multi-tenant: activar role NOSUPERUSER en prod (TANDA 0c)
+
+### Contexto
+
+PostgreSQL bypassea RLS para los roles SUPERUSER **incluso con FORCE ROW
+LEVEL SECURITY**. El role default de Railway (`postgres`) es superuser →
+toda la red multi-tenant es decorativa hasta que la app corra con un role
+no-superuser. Después de TANDA 0c (migration `rls_fail_closed`), la
+policy RLS quedó fail-closed; el último paso es cambiar el role.
+
+### Procedimiento (Railway, ~10 minutos)
+
+1. **Generar password fuerte** localmente:
+   ```bash
+   openssl rand -base64 24
+   ```
+   Copialo a un lugar seguro (1Password / bitwarden) — vas a usarlo en
+   los pasos 2 y 5.
+
+2. **Editar `backend/scripts/setup-app-role.sql`** — reemplazar
+   `PASSWORD_SEGURO_AQUI` por la password generada. NO commitear con la
+   password real; revertí el archivo después de correr (o usá el editor
+   inline del query console de Railway sin tocar el archivo).
+
+3. **Correr el script en Railway**:
+   - Railway dashboard → proyecto iPro → Postgres add-on → **Connect** →
+     **Query** (consola SQL embebida).
+   - Pegar el contenido del script con la password reemplazada.
+   - Run. Debe terminar con la SELECT mostrando `ipro_app | f | t | f | f`.
+
+4. **Construir la nueva `DATABASE_URL`**. Buscar la URL actual en la env
+   var del backend (ej. `postgresql://postgres:PASS@host:port/db`).
+   Reemplazar `postgres:PASS` por `ipro_app:LA_NUEVA_PASSWORD`. Otros
+   campos quedan igual.
+
+5. **Cambiar la env var en Railway**:
+   - Railway → ipro-backend (servicio) → **Variables** → `DATABASE_URL`.
+   - Pegar la nueva URL. Railway redeploya automáticamente al guardar
+     (2-3 minutos).
+
+6. **Verificar el deploy**:
+   - Logs del nuevo pod: buscar errores `permission denied for table` o
+     `must be owner of table`. Si aparece alguno, agregar el GRANT que
+     falta vía la query console (típicamente alguna tabla nueva post-PR1
+     que no tenía el grant default).
+   - `curl /health` → debe responder 200.
+   - Probar manualmente: login + listar inventario / crear venta de
+     prueba. Si todo OK → DONE.
+
+7. **(Opcional) Verificar que RLS efectivamente filtra**:
+   - Crear un segundo tenant de prueba en DB (manual via query console):
+     `INSERT INTO tenants (nombre, slug, plan) VALUES ('Tenant Test',
+     'test', 'free'); INSERT INTO tenant_users (tenant_id, user_id, rol)
+     SELECT id, 1, 'admin' FROM tenants WHERE slug='test';`
+   - Loguear con un user vinculado a ese tenant, listar inventario →
+     debe ver 0 productos (porque el tenant nuevo está vacío). Si ve
+     productos del tenant original = RLS NO está filtrando, revisar.
+
+### Rollback de emergencia
+
+Si el deploy se cae con errores RLS imposibles de debuggear en vivo:
+
+1. Railway → ipro-backend → **Variables** → revertir `DATABASE_URL` a la
+   string con `postgres` (la vieja). Redeploy automático.
+2. El role `ipro_app` queda en la DB sin uso. No lo borres todavía — lo
+   podés necesitar cuando vuelvas a intentar.
+3. Investigar los errores de permission denied con calma, agregar grants
+   faltantes, y reintentar paso 5.
+
+### Después de TANDA 0c
+
+Una vez verificado, ese rollback ya no debería ser necesario.
+**Documentar la password de `ipro_app`** en un secret manager (1Password
+"ipro / db / app-role"). Es el único acceso de la app a la DB; si se
+pierde, recovery requiere crear otro role.
