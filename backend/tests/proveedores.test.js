@@ -603,3 +603,92 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
     expect(r.status).toBe(201);
   });
 });
+
+// ─── POST /api/proveedores/bulk-delete-all (admin-only) ─────────────────────
+describe('Proveedores — bulk-delete-all (admin)', () => {
+  it('borra todos los proveedores + compras + revierte cajas (caso vacío)', async () => {
+    // En un tenant sin proveedores vivos, devuelve ok con 0 todo.
+    // Garantizamos estado vacío borrando lo que pudiera haber quedado.
+    await pool.query(`UPDATE proveedores SET deleted_at = NOW() WHERE deleted_at IS NULL`);
+    const r = await request(app).post('/api/proveedores/bulk-delete-all').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.proveedores_borrados).toBe(0);
+    expect(r.body.movimientos_borrados).toBe(0);
+  });
+
+  it('caso completo: proveedor + compra al contado + producto disponible → borra todo y revierte caja', async () => {
+    // Setup: caja USD para que la compra al contado tenga de dónde restar.
+    const caja = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: `Caja BulkDelTest ${Date.now()}`, moneda: 'USD', saldo_inicial: 1000 });
+    expect(caja.status).toBe(201);
+    const cajaId = caja.body.id;
+    const saldoInicial = 1000;
+
+    // Categoría para el producto.
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `CatBulkDel ${Date.now()}` });
+
+    // Proveedor.
+    const prov = await crearProveedor({ nombre: `ProvBulkDel ${Date.now()}` });
+
+    // Compra al contado con producto en stock.
+    const compra = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 300, moneda: 'USD',
+      caja_id: cajaId,
+      items: [{ valor: 300, producto_stock: {
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'TelBulkDel', imei: '350099999999999', cantidad: 1,
+        costo: 300, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD',
+      } }],
+    });
+    expect(compra.status).toBe(201);
+
+    // Bulk delete.
+    const r = await request(app).post('/api/proveedores/bulk-delete-all').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.proveedores_borrados).toBeGreaterThanOrEqual(1);
+    expect(r.body.movimientos_borrados).toBeGreaterThanOrEqual(1);
+    expect(r.body.productos_borrados).toBeGreaterThanOrEqual(1);
+
+    // Caja vuelve al saldo inicial (egreso revertido).
+    const cajas = await request(app).get('/api/cajas/cajas').set(auth());
+    const cajaPost = cajas.body.find(c => c.id === cajaId);
+    expect(Number(cajaPost.saldo_actual)).toBe(saldoInicial);
+
+    // Cleanup: borrar la caja para no contaminar tests siguientes.
+    await pool.query(`UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1`, [cajaId]);
+  });
+
+  it('bloquea con 409 si hay un producto vendido en compras', async () => {
+    // Setup: proveedor → compra (sin caja, crédito) → producto → venta del producto.
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `CatBulkDelVendido ${Date.now()}` });
+    const prov = await crearProveedor({ nombre: `ProvBulkVendido ${Date.now()}` });
+    const compra = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 200, moneda: 'USD',
+      items: [{ valor: 200, producto_stock: {
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: 'TelVendido', imei: '350088888888888', cantidad: 1,
+        costo: 200, costo_moneda: 'USD', precio_venta: 350, precio_moneda: 'USD',
+      } }],
+    });
+    expect(compra.status).toBe(201);
+    const prodId = compra.body.productos_creados[0].id;
+
+    // Marcamos el producto como vendido (vía DB para evitar todo el flow de venta).
+    await pool.query(`UPDATE productos SET estado = 'vendido' WHERE id = $1`, [prodId]);
+
+    const r = await request(app).post('/api/proveedores/bulk-delete-all').set(auth());
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/se vendieron/i);
+    expect(Array.isArray(r.body.productos_vendidos)).toBe(true);
+
+    // El proveedor sigue vivo (no se tocó nada por el rollback).
+    const list = await request(app).get('/api/proveedores').set(auth());
+    expect(list.body.data.some(p => p.id === prov.id)).toBe(true);
+
+    // Cleanup.
+    await pool.query(`UPDATE productos SET deleted_at = NOW() WHERE id = $1`, [prodId]);
+    await pool.query(`UPDATE proveedores SET deleted_at = NOW() WHERE id = $1`, [prov.id]);
+  });
+});

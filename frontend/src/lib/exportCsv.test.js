@@ -29,4 +29,15 @@ describe('exportCsv()', () => {
     const text = await captured.blob.text();
     expect(text).toContain('"di""jo"');
   });
+
+  // 2026-06-15: hint `sep=,` para que Excel ES abra el CSV con columnas
+  // separadas. Antes, abrir el archivo descargado en Excel mostraba todo
+  // apretado en la columna A porque el locale ES espera `;`.
+  it('incluye el hint `sep=,` en la primera línea (después del BOM)', async () => {
+    exportCsv('r.csv', [{ a: 'x' }], [{ key: 'a', label: 'A' }]);
+    const text = await captured.blob.text();
+    // Removemos el BOM (U+FEFF) antes de assertar.
+    const noBom = text.replace(/^\uFEFF/, '');
+    expect(noBom.startsWith('sep=,\n')).toBe(true);
+  });
 });

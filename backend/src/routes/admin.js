@@ -118,7 +118,7 @@ router.post('/backfill-caja-financiera/apply', backfillLimiter, async (req, res,
     // B1 cache invalidation: cacheCajas tiene TTL 15s — sin esto, el siguiente
     // GET /cajas devuelve saldos viejos. invalidateCajas es process-local
     // (en multi-instance la otra réplica se entera al expirar el TTL — ok).
-    invalidateCajas();
+    invalidateCajas(req.tenantId);
     res.json(result);
   } catch (err) {
     handleBackfillError(err, res, next);
@@ -142,7 +142,7 @@ router.get('/backfill-caja-tarjetas', backfillLimiter, async (_req, res, next) =
 router.post('/backfill-caja-tarjetas/apply', backfillLimiter, async (req, res, next) => {
   try {
     const result = await runBackfillTarjetas({ apply: true, silent: true, userId: req.user?.id ?? null });
-    invalidateCajas();  // B1: ver comentario en /backfill-caja-financiera/apply
+    invalidateCajas(req.tenantId);  // B1: ver comentario en /backfill-caja-financiera/apply
     res.json(result);
   } catch (err) {
     handleBackfillError(err, res, next);
@@ -293,7 +293,7 @@ router.post('/restore-producto', async (req, res, next) => {
       _reason: reason.trim(),
     });
     await client.query('COMMIT');
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json({ ok: true, producto: post[0] });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -398,7 +398,7 @@ router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
       }
     }
     await client.query('COMMIT');
-    if (productosRestaurados > 0) invalidateMetricas();
+    if (productosRestaurados > 0) invalidateMetricas(req.tenantId);
     res.json({
       apply: true,
       movs_procesados: movs.length - errors.length,

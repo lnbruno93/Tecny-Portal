@@ -11,6 +11,9 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
+const adminOnly = require('../middleware/adminOnly');
+const { invalidateMetricas } = require('../lib/inventarioCache');
+const { invalidateCajas } = require('../lib/cajasCache');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
@@ -65,29 +68,35 @@ router.get('/', async (req, res, next) => {
     //   - 'compra' con caja_id → contado, no genera deuda (se descuenta al instante)
     //   - 'compra' sin caja_id → a crédito, suma como deuda
     //   - 'saldo_inicial'      → suma (deuda heredada)
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM proveedores p ${where}`, params),
-      db.query(
-        `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
-                COALESCE(SUM(
-                  CASE
-                    WHEN m.tipo='pago'                                  THEN -m.monto_usd
-                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
-                    ELSE m.monto_usd
-                  END
-                ), 0) AS saldo_usd,
-                COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
-                COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
-           FROM proveedores p
-           LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
-           ${where}
-          GROUP BY p.id
-          ORDER BY p.nombre
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    //
+    // 2026-06-15 multi-tenant (PR 4.4): count + data en una sola withTenant
+    // → comparten SET LOCAL. RLS filtra proveedores y proveedor_movimientos.
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) FROM proveedores p ${where}`, params),
+        client.query(
+          `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
+                  COALESCE(SUM(
+                    CASE
+                      WHEN m.tipo='pago'                                  THEN -m.monto_usd
+                      WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
+                      ELSE m.monto_usd
+                    END
+                  ), 0) AS saldo_usd,
+                  COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
+                  COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
+             FROM proveedores p
+             LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
+             ${where}
+            GROUP BY p.id
+            ORDER BY p.nombre
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -95,11 +104,14 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Proveedor no encontrado' });
-    res.json(rows[0]);
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]
+      );
+      return rows[0] || null;
+    });
+    if (!row) return res.status(404).json({ error: 'Proveedor no encontrado' });
+    res.json(row);
   } catch (err) { next(err); }
 });
 
@@ -117,6 +129,8 @@ router.post('/bulk', validate(nombresBulkProveedoresSchema), async (req, res, ne
     if (inputDedup.length === 0) return res.json({ creados: 0, proveedores: [] });
 
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const lowers = inputDedup.map(n => n.toLowerCase());
     // Filtrar nombres que YA existen (case-insensitive).
     const { rows: existentes } = await client.query(
@@ -159,6 +173,8 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
   try {
     const { nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas, saldo_inicial } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       `INSERT INTO proveedores (nombre, contacto_nombre, contacto_apellido, whatsapp, ubicacion, notas)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
@@ -178,11 +194,13 @@ router.post('/', validate(createProveedorSchema), async (req, res, next) => {
 
     await audit(client, 'proveedores', 'INSERT', prov.id, { despues: { ...prov, saldo_inicial: ini }, user_id: req.user.id });
     await client.query('COMMIT');
-    // Agenda central (best-effort, fuera de la transacción)
-    await syncContactoSafe(db, {
+    // Agenda central (best-effort, fuera de la TX principal).
+    // 2026-06-15 multi-tenant: dentro de withTenant para que el INSERT en
+    // contactos respete el tenant correcto (la lib lee app.current_tenant).
+    await db.withTenant(req.tenantId, async (c) => syncContactoSafe(c, {
       origen: 'proveedores', ref_tabla: 'proveedores', ref_id: prov.id,
       nombre: prov.contacto_nombre || prov.nombre, apellido: prov.contacto_apellido, telefono: prov.whatsapp,
-    });
+    }));
     res.status(201).json({ ...prov, saldo_usd: ini, movimientos: ini > 0 ? 1 : 0 });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -196,6 +214,8 @@ router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const before = await client.query('SELECT * FROM proveedores WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
 
@@ -233,11 +253,12 @@ router.put('/:id', validate(updateProveedorSchema), async (req, res, next) => {
 
     await audit(client, 'proveedores', 'UPDATE', id, { antes: before.rows[0], despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    // Agenda central (best-effort, fuera de la transacción)
-    await syncContactoSafe(db, {
+    // Agenda central (best-effort, fuera de la TX principal).
+    // 2026-06-15 multi-tenant: ver comentario en POST /.
+    await db.withTenant(req.tenantId, async (c) => syncContactoSafe(c, {
       origen: 'proveedores', ref_tabla: 'proveedores', ref_id: rows[0].id,
       nombre: rows[0].contacto_nombre || rows[0].nombre, apellido: rows[0].contacto_apellido, telefono: rows[0].whatsapp,
-    });
+    }));
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -249,13 +270,148 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      'UPDATE proveedores SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Proveedor no encontrado' });
-    await audit('proveedores', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+    // 2026-06-15 multi-tenant (PR 4.4): UPDATE + audit in-tx (antes el audit
+    // corría con pool global, sin contexto de tenant).
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'UPDATE proveedores SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [id]
+      );
+      if (!rows[0]) return null;
+      await audit(client, 'proveedores', 'DELETE', id, { antes: rows[0], user_id: req.user.id });
+      return rows[0];
+    });
+    if (!row) return res.status(404).json({ error: 'Proveedor no encontrado' });
     res.json({ ok: true });
   } catch (err) { next(err); }
+});
+
+// ─── BULK DELETE: TODOS LOS PROVEEDORES ────────────────────────────────────
+//
+// Borrado masivo en cascada — pedido por Lucas 2026-06-15. Único caller
+// previsto: botón admin "Eliminar todos los proveedores" en la pantalla.
+// Operación destructiva → adminOnly + tx única atómica.
+//
+// Cascada:
+//   1. Lockea TODOS los proveedor_movimientos vivos del tenant + sus productos.
+//   2. Si algún producto está vendido → 409 (no rompemos historial de ventas).
+//   3. Soft-delete productos creados por las compras → inventario refleja.
+//   4. Soft-delete proveedor_movimientos (compras + pagos) en bloque.
+//   5. Para cada movimiento: reverseCajaMovimientos — revierte egresos de
+//      compras-contado y de pagos. Si alguna caja queda en negativo, la lib
+//      tira 409 → la tx hace ROLLBACK y se preserva el estado original.
+//   6. Soft-delete proveedores.
+//   7. Invalida caches (inventarioCache + cajasCache) — los saldos cambiaron.
+//   8. Audit-lote (no audit por proveedor — 1 entry con conteo y user_id).
+//
+// Compras con productos PARCIALMENTE vendidos: por decisión de Lucas, NO se
+// tocan (el endpoint 409 antes de borrar nada si DETECTA esa situación).
+// Para limpiar el resto sin afectar el historial vendido, el operador puede
+// borrar manualmente compra por compra o usar el flow de "Vaciar stock +
+// compras" en Inventario que sí tolera parciales.
+router.post('/bulk-delete-all', adminOnly, async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // 1. Lockear movimientos vivos del tenant.
+    const { rows: movs } = await client.query(
+      `SELECT id, proveedor_id FROM proveedor_movimientos
+        WHERE deleted_at IS NULL
+        ORDER BY id FOR UPDATE`
+    );
+
+    // 2. Lockear productos vivos creados por esos movimientos.
+    let prods = [];
+    if (movs.length > 0) {
+      const movIds = movs.map(m => m.id);
+      const { rows } = await client.query(
+        `SELECT id, nombre, estado, proveedor_movimiento_id
+           FROM productos
+          WHERE proveedor_movimiento_id = ANY($1::int[]) AND deleted_at IS NULL
+          ORDER BY id FOR UPDATE`,
+        [movIds]
+      );
+      prods = rows;
+      const vendidos = prods.filter(p => p.estado === 'vendido');
+      if (vendidos.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `No se puede borrar: ${vendidos.length} producto(s) de compras a proveedores ya se vendieron: ${vendidos.map(p => p.nombre).slice(0, 3).join(', ')}${vendidos.length > 3 ? '…' : ''}. Resolvé/borrá esas compras a mano primero.`,
+          productos_vendidos: vendidos.map(p => p.id),
+        });
+      }
+    }
+
+    // 3. Lockear proveedores vivos (el lock evita races con altas/edits concurrentes).
+    const { rows: provs } = await client.query(
+      `SELECT id FROM proveedores
+        WHERE deleted_at IS NULL
+        ORDER BY id FOR UPDATE`
+    );
+
+    if (provs.length === 0) {
+      await client.query('ROLLBACK');
+      return res.json({ ok: true, proveedores_borrados: 0, movimientos_borrados: 0, productos_borrados: 0 });
+    }
+
+    // 4. Soft-delete productos.
+    if (prods.length > 0) {
+      await client.query(
+        `UPDATE productos SET deleted_at = NOW()
+           WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+        [prods.map(p => p.id)]
+      );
+    }
+
+    // 5. Soft-delete movimientos.
+    if (movs.length > 0) {
+      await client.query(
+        `UPDATE proveedor_movimientos SET deleted_at = NOW()
+           WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+        [movs.map(m => m.id)]
+      );
+      // 6. Revertir caja por cada movimiento (uno por uno porque
+      //    reverseCajaMovimientos opera por ref puntual). Si alguno deja la
+      //    caja en negativo, throw → ROLLBACK total → tenant queda intacto.
+      for (const m of movs) {
+        await reverseCajaMovimientos(client, 'proveedor_movimientos', m.id);
+      }
+    }
+
+    // 7. Soft-delete proveedores.
+    await client.query(
+      `UPDATE proveedores SET deleted_at = NOW()
+         WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+      [provs.map(p => p.id)]
+    );
+
+    // 8. Audit-lote (1 entry, no N).
+    await audit(client, 'proveedores', 'DELETE', 0, {
+      tipo: 'bulk_delete_all_proveedores',
+      proveedores: provs.length,
+      movimientos: movs.length,
+      productos: prods.length,
+      user_id: req.user.id,
+    });
+
+    await client.query('COMMIT');
+    invalidateMetricas(req.tenantId);
+    invalidateCajas(req.tenantId);
+    res.json({
+      ok: true,
+      proveedores_borrados: provs.length,
+      movimientos_borrados: movs.length,
+      productos_borrados: prods.length,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // reverseCajaMovimientos puede tirar err.status (409 saldo insuficiente).
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // ─── MOVIMIENTOS (compras y pagos) ──────────────────────────
@@ -265,24 +421,27 @@ router.get('/:id/movimientos', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
-    const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM proveedor_movimientos WHERE proveedor_id = $1 AND deleted_at IS NULL', [id]),
-      db.query(
-        `SELECT m.*, mp.nombre AS caja_nombre,
-                COALESCE(
-                  (SELECT json_agg(i.* ORDER BY i.id)
-                     FROM proveedor_movimiento_items i
-                    WHERE i.proveedor_movimiento_id = m.id), '[]'
-                ) AS items
-           FROM proveedor_movimientos m
-           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-          WHERE m.proveedor_id = $1 AND m.deleted_at IS NULL
-          ORDER BY m.fecha DESC, m.id DESC
-          LIMIT $2 OFFSET $3`,
-        [id, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query('SELECT COUNT(*) FROM proveedor_movimientos WHERE proveedor_id = $1 AND deleted_at IS NULL', [id]),
+        client.query(
+          `SELECT m.*, mp.nombre AS caja_nombre,
+                  COALESCE(
+                    (SELECT json_agg(i.* ORDER BY i.id)
+                       FROM proveedor_movimiento_items i
+                      WHERE i.proveedor_movimiento_id = m.id), '[]'
+                  ) AS items
+             FROM proveedor_movimientos m
+             LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+            WHERE m.proveedor_id = $1 AND m.deleted_at IS NULL
+            ORDER BY m.fecha DESC, m.id DESC
+            LIMIT $2 OFFSET $3`,
+          [id, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -309,6 +468,8 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     }
 
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
     if (!prov.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
 
@@ -519,6 +680,8 @@ router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMov
     }
 
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // Choque con stock existente (1 sola query global para todos los IMEIs)
     if (todosImeis.length > 0) {
@@ -658,6 +821,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     // Ownership check (auditoría #B-07)
     const { rows: pre } = await client.query(
       'SELECT id, created_by_user_id FROM proveedor_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
@@ -723,7 +888,7 @@ router.delete('/movimientos/:id', async (req, res, next) => {
 
 // ─── RESUMEN (saldos por proveedor) ─────────────────────────
 
-router.get('/resumen/saldos', async (_req, res, next) => {
+router.get('/resumen/saldos', async (req, res, next) => {
   try {
     // Misma regla que el listado: compras con caja_id son contado, no deuda.
     const SALDO_EXPR = `
@@ -733,16 +898,19 @@ router.get('/resumen/saldos', async (_req, res, next) => {
         ELSE m.monto_usd
       END
     `;
-    const { rows } = await db.query(
-      `SELECT p.id, p.nombre,
-              COALESCE(SUM(${SALDO_EXPR}), 0) AS saldo_usd
-         FROM proveedores p
-         LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
-        WHERE p.deleted_at IS NULL
-        GROUP BY p.id
-       HAVING COALESCE(SUM(${SALDO_EXPR}), 0) <> 0
-        ORDER BY saldo_usd DESC`
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT p.id, p.nombre,
+                COALESCE(SUM(${SALDO_EXPR}), 0) AS saldo_usd
+           FROM proveedores p
+           LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
+          WHERE p.deleted_at IS NULL
+          GROUP BY p.id
+         HAVING COALESCE(SUM(${SALDO_EXPR}), 0) <> 0
+          ORDER BY saldo_usd DESC`
+      );
+      return rows;
+    });
     const total_deuda_usd = round2(rows.reduce((s, r) => s + Number(r.saldo_usd), 0));
     res.json({ proveedores: rows, total_deuda_usd });
   } catch (err) { next(err); }

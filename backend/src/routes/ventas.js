@@ -203,11 +203,16 @@ async function insertarDetalle(client, venta, b) {
 // LRU cap: el operador puede mover los filtros de fecha libremente; cada par
 // distinto retiene una closure con cache state. Acotamos a 100 entradas
 // (~3 meses de pares día-por-día) y evictamos la más vieja.
+//
+// 2026-06-15 multi-tenant (PR 4.2): la key del cache pasa a ser
+// `{tenantId}|{desde}|{hasta}` — DEBE incluir el tenant para que datos de
+// distintos clientes NO crossan. Si dos tenants miran el mismo rango de
+// fecha, cada uno tiene su propia entrada en Redis + Map local.
 const DASHBOARD_TTL_MS = 30_000;
 const DASHBOARD_MAX_FETCHERS = 100;
 const dashboardFetchers = new Map();
-function getDashboardFetcher(desde, hasta) {
-  const key = `${desde}|${hasta}`;
+function getDashboardFetcher(tenantId, desde, hasta) {
+  const key = `${tenantId}|${desde}|${hasta}`;
   let fn = dashboardFetchers.get(key);
   if (fn) {
     dashboardFetchers.delete(key);
@@ -217,7 +222,7 @@ function getDashboardFetcher(desde, hasta) {
   fn = createCachedFetcherRedis(
     `cache:ventas:dashboard:${key}`,
     DASHBOARD_TTL_MS,
-    () => computeDashboard(desde, hasta)
+    () => computeDashboard(tenantId, desde, hasta)
   );
   dashboardFetchers.set(key, fn);
   if (dashboardFetchers.size > DASHBOARD_MAX_FETCHERS) {
@@ -227,7 +232,7 @@ function getDashboardFetcher(desde, hasta) {
   return fn;
 }
 
-async function computeDashboard(desde, hasta) {
+async function computeDashboard(tenantId, desde, hasta) {
     const p = [desde, hasta];
     // Filtro base de ventas del período (excluye canceladas y borradas)
     const BASE = `v.deleted_at IS NULL AND v.estado <> 'cancelado' AND v.fecha >= $1 AND v.fecha <= $2`;
@@ -243,7 +248,13 @@ async function computeDashboard(desde, hasta) {
     // empieza a haber casos mixtos importantes, agregar columna tc al movimiento.
     const B2B_BASE = `m.deleted_at IS NULL AND m.tipo = 'compra' AND m.fecha >= $1 AND m.fecha <= $2`;
 
-    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await Promise.all([
+    // 2026-06-15 multi-tenant (PR 4.2): el bundle de 11 queries del dashboard
+    // corre dentro de UNA tx con app.current_tenant seteado vía withTenant.
+    // RLS filtra automáticamente cada tabla involucrada (ventas, venta_items,
+    // venta_pagos, canjes, egresos, movimientos_cc, items_movimiento_cc,
+    // productos, vendedores, etiquetas). El Promise.all sigue siendo dentro
+    // de un solo client → todas las queries comparten el mismo SET LOCAL.
+    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await db.withTenant(tenantId, async (client) => Promise.all([
       // Totales de ventas. 2026-06-10: `ganancia_acreditada_usd` agrega FILTER
       // por estado='acreditado' — alimenta la GANANCIA NETA del dashboard, que
       // ahora suma SOLO ventas confirmadas (las pendientes no descuentan
@@ -255,7 +266,7 @@ async function computeDashboard(desde, hasta) {
       // por el método de pago (tarjeta + transferencia) que antes inflaba la
       // ganancia bruta — la cascada del KPI ahora es:
       //     bruta_acreditada − costo_financiero_acreditado − egresos = neta
-      db.query(`SELECT
+      client.query(`SELECT
                   COUNT(*) AS count,
                   COALESCE(SUM(total_usd),0)                                                AS ingresos_usd,
                   COALESCE(SUM(ganancia_usd),0)                                             AS ganancia_bruta_usd,
@@ -264,22 +275,22 @@ async function computeDashboard(desde, hasta) {
                   COALESCE(SUM(comision_total_metodos) FILTER (WHERE estado='acreditado'),0) AS costo_financiero_acreditado_usd
                 FROM ventas v WHERE ${BASE}`, p),
       // Por método de pago (monto en moneda original + equivalente USD)
-      db.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
+      client.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
                 FROM venta_pagos pp JOIN ventas v ON v.id = pp.venta_id WHERE ${BASE}
                 GROUP BY pp.metodo_nombre, pp.moneda ORDER BY total_usd DESC`, p),
       // Unidades por clase + costos en USD
-      db.query(`SELECT
+      client.query(`SELECT
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'celular' OR pr.id IS NULL),0) AS celulares,
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'accesorio'),0) AS accesorios,
                   COALESCE(SUM(CASE WHEN vi.moneda = 'ARS' AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p),
       // Inversión en canjes (USD)
-      db.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda = 'ARS' AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
+      client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda = 'ARS' AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p),
       // Egresos del período (USD)
-      db.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p),
+      client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p),
       // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
-      db.query(`WITH bv AS (
+      client.query(`WITH bv AS (
                   SELECT v.id, v.total_usd, v.tc_venta FROM ventas v WHERE ${BASE}
                 ),
                 pa AS (
@@ -300,12 +311,12 @@ async function computeDashboard(desde, hasta) {
                 SELECT COALESCE(SUM(CASE WHEN cubierto-total_usd > 0 THEN cubierto-total_usd ELSE 0 END),0) AS sobrepagos,
                        COALESCE(SUM(CASE WHEN cubierto-total_usd < 0 THEN total_usd-cubierto ELSE 0 END),0) AS faltantes FROM dif`, p),
       // Ventas por hora
-      db.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p),
+      client.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p),
       // Ventas por etiqueta
-      db.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p),
+      client.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p),
       // Top productos (por unidades): UNION retail + B2B. Items B2B devueltos
       // (devuelto_at IS NOT NULL) NO cuentan — la unidad volvió al stock.
-      db.query(`
+      client.query(`
         WITH all_items AS (
           SELECT vi.descripcion, vi.cantidad
             FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
@@ -323,7 +334,7 @@ async function computeDashboard(desde, hasta) {
         LIMIT 5
       `, p),
       // Top vendedores (por total facturado en USD)
-      db.query(`SELECT ve.nombre AS vendedor,
+      client.query(`SELECT ve.nombre AS vendedor,
                        COALESCE(SUM(CASE WHEN vi.moneda='ARS' AND v.tc_venta>0 THEN vi.precio_vendido*vi.cantidad/v.tc_venta ELSE vi.precio_vendido*vi.cantidad END),0) AS total_usd,
                        COUNT(*)::int AS items
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN vendedores ve ON ve.id = vi.vendedor_id
@@ -342,7 +353,7 @@ async function computeDashboard(desde, hasta) {
       // 2026-06-10: `ingresos_acreditado_usd` y `costos_acreditado_usd` agregan
       // FILTER por m.estado='acreditado'. Alimentan la GANANCIA NETA del
       // dashboard — pendientes no cuentan hasta que pasen a acreditadas.
-      db.query(`
+      client.query(`
         SELECT
           COUNT(DISTINCT m.id) FILTER (WHERE i.devuelto_at IS NULL)::int                            AS count,
           COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL), 0)                AS ingresos_usd,
@@ -356,7 +367,7 @@ async function computeDashboard(desde, hasta) {
         LEFT JOIN productos pr ON pr.id = i.producto_id
         WHERE ${B2B_BASE}
       `, p),
-    ]);
+    ]));
 
     // Ingresos por moneda (a partir del desglose de métodos)
     const ingresos_por_moneda = { USD: 0, ARS: 0, USDT: 0 };
@@ -477,7 +488,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     const hoy = new Date().toISOString().split('T')[0];
     const desde = req.query.desde || hoy;
     const hasta = req.query.hasta || hoy;
-    const data = await getDashboardFetcher(desde, hasta)();
+    const data = await getDashboardFetcher(req.tenantId, desde, hasta)();
     res.json(data);
   } catch (err) { next(err); }
 });
@@ -598,126 +609,135 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
     `;
     const pageParams = [...unionParams, limit, offset];
 
-    const [countRes, pageRes] = await Promise.all([
-      db.query(countSql, unionParams),
-      db.query(pageSql, pageParams),
-    ]);
-    const total = countRes.rows[0].n;
-    const pageRows = pageRes.rows; // [{ id, origen, fecha }, ...] ya ordenado
+    // 2026-06-15 multi-tenant (PR 4.2): toda la lectura (count + page + detalle
+    // retail + detalle B2B) en UNA tx con app.current_tenant. Mantenemos los
+    // dos Promise.all en paralelo, ambos compartiendo el mismo client. RLS
+    // filtra ventas, movimientos_cc, items_movimiento_cc, venta_items,
+    // venta_pagos, canjes, envios y etiquetas automáticamente.
+    const { total, data } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, pageRes] = await Promise.all([
+        client.query(countSql, unionParams),
+        client.query(pageSql, pageParams),
+      ]);
+      const total = countRes.rows[0].n;
+      const pageRows = pageRes.rows; // [{ id, origen, fecha }, ...] ya ordenado
 
-    // Particionar IDs por origen para fetch en paralelo.
-    const retailIds = pageRows.filter(r => r.origen === 'retail').map(r => r.id);
-    const b2bIds    = pageRows.filter(r => r.origen === 'b2b').map(r => r.id);
+      // Particionar IDs por origen para fetch en paralelo.
+      const retailIds = pageRows.filter(r => r.origen === 'retail').map(r => r.id);
+      const b2bIds    = pageRows.filter(r => r.origen === 'b2b').map(r => r.id);
 
-    // ── Step 2 + 3: fetch detalles solo para los IDs de la página ──
-    // Retail: misma estructura que la query original, pero con WHERE id = ANY.
-    const retailDetalleSql = `
-      SELECT v.*, e.nombre AS etiqueta_nombre, e.color AS etiqueta_color,
-        COALESCE((SELECT json_agg(i ORDER BY i.id) FROM venta_items i WHERE i.venta_id = v.id), '[]') AS items,
-        COALESCE((SELECT json_agg(p ORDER BY p.id) FROM venta_pagos p WHERE p.venta_id = v.id), '[]') AS pagos,
-        COALESCE((SELECT json_agg(c ORDER BY c.id) FROM canjes c WHERE c.venta_id = v.id), '[]') AS canjes,
-        COALESCE((SELECT COUNT(*) FROM venta_comprobantes vc WHERE vc.venta_id = v.id AND vc.deleted_at IS NULL), 0) AS comprobantes_count,
-        (SELECT json_build_object('id', env.id, 'estado', env.estado)
-           FROM envios env WHERE env.venta_id = v.id AND env.deleted_at IS NULL LIMIT 1) AS envio
-      FROM ventas v
-      LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
-      WHERE v.id = ANY($1::int[])
-    `;
-    const b2bDetalleSql = `
-      SELECT
-        ('b2b-' || m.id)                                                    AS id_str,
-        m.id::int                                                           AS id_num,
-        m.fecha,
-        NULL::time                                                          AS hora,
-        TRIM(COALESCE(c.nombre,'') || ' ' || COALESCE(c.apellido,''))       AS cliente_nombre,
-        m.descripcion                                                       AS notas,
-        m.estado                                                            AS estado,
-        ('B2B-' || LPAD(m.id::text, 6, '0'))                                AS order_id,
-        ROUND(COALESCE((
-          SELECT SUM(i.valor) FROM items_movimiento_cc i
-            WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
-        ), 0)::numeric, 2)                                                  AS total_usd,
-        ROUND(
-          (COALESCE((
+      // ── Step 2 + 3: fetch detalles solo para los IDs de la página ──
+      // Retail: misma estructura que la query original, pero con WHERE id = ANY.
+      const retailDetalleSql = `
+        SELECT v.*, e.nombre AS etiqueta_nombre, e.color AS etiqueta_color,
+          COALESCE((SELECT json_agg(i ORDER BY i.id) FROM venta_items i WHERE i.venta_id = v.id), '[]') AS items,
+          COALESCE((SELECT json_agg(p ORDER BY p.id) FROM venta_pagos p WHERE p.venta_id = v.id), '[]') AS pagos,
+          COALESCE((SELECT json_agg(c ORDER BY c.id) FROM canjes c WHERE c.venta_id = v.id), '[]') AS canjes,
+          COALESCE((SELECT COUNT(*) FROM venta_comprobantes vc WHERE vc.venta_id = v.id AND vc.deleted_at IS NULL), 0) AS comprobantes_count,
+          (SELECT json_build_object('id', env.id, 'estado', env.estado)
+             FROM envios env WHERE env.venta_id = v.id AND env.deleted_at IS NULL LIMIT 1) AS envio
+        FROM ventas v
+        LEFT JOIN etiquetas e ON e.id = v.etiqueta_id
+        WHERE v.id = ANY($1::int[])
+      `;
+      const b2bDetalleSql = `
+        SELECT
+          ('b2b-' || m.id)                                                    AS id_str,
+          m.id::int                                                           AS id_num,
+          m.fecha,
+          NULL::time                                                          AS hora,
+          TRIM(COALESCE(c.nombre,'') || ' ' || COALESCE(c.apellido,''))       AS cliente_nombre,
+          m.descripcion                                                       AS notas,
+          m.estado                                                            AS estado,
+          ('B2B-' || LPAD(m.id::text, 6, '0'))                                AS order_id,
+          ROUND(COALESCE((
             SELECT SUM(i.valor) FROM items_movimiento_cc i
               WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
-          ), 0)
-          - COALESCE((
-            SELECT SUM(COALESCE(i.costo_unit,0) * COALESCE(i.cantidad,1))
-              FROM items_movimiento_cc i
-              WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
-          ), 0))::numeric, 2
-        )                                                                   AS ganancia_usd,
-        m.cliente_cc_id,
-        m.caja_id,
-        m.created_by_user_id,
-        m.created_at,
-        COALESCE((
-          SELECT json_agg(json_build_object(
-            'id',              i.id,
-            'descripcion',     COALESCE(i.producto, ''),
-            'cantidad',        COALESCE(i.cantidad, 1),
-            'imei',            i.imei_serial,
-            'producto_id',     i.producto_id,
-            'precio_vendido',  i.valor,
-            'precio_original', i.valor,
-            'costo',           i.costo_unit,
-            'moneda',          COALESCE(i.costo_moneda, 'USD'),
-            'devuelto_at',     i.devuelto_at
-          ) ORDER BY i.id)
-            FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
-        ), '[]'::json)                                                      AS items
-      FROM movimientos_cc m
-      JOIN clientes_cc c ON c.id = m.cliente_cc_id
-      WHERE m.id = ANY($1::int[])
-    `;
+          ), 0)::numeric, 2)                                                  AS total_usd,
+          ROUND(
+            (COALESCE((
+              SELECT SUM(i.valor) FROM items_movimiento_cc i
+                WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
+            ), 0)
+            - COALESCE((
+              SELECT SUM(COALESCE(i.costo_unit,0) * COALESCE(i.cantidad,1))
+                FROM items_movimiento_cc i
+                WHERE i.movimiento_cc_id = m.id AND i.devuelto_at IS NULL
+            ), 0))::numeric, 2
+          )                                                                   AS ganancia_usd,
+          m.cliente_cc_id,
+          m.caja_id,
+          m.created_by_user_id,
+          m.created_at,
+          COALESCE((
+            SELECT json_agg(json_build_object(
+              'id',              i.id,
+              'descripcion',     COALESCE(i.producto, ''),
+              'cantidad',        COALESCE(i.cantidad, 1),
+              'imei',            i.imei_serial,
+              'producto_id',     i.producto_id,
+              'precio_vendido',  i.valor,
+              'precio_original', i.valor,
+              'costo',           i.costo_unit,
+              'moneda',          COALESCE(i.costo_moneda, 'USD'),
+              'devuelto_at',     i.devuelto_at
+            ) ORDER BY i.id)
+              FROM items_movimiento_cc i WHERE i.movimiento_cc_id = m.id
+          ), '[]'::json)                                                      AS items
+        FROM movimientos_cc m
+        JOIN clientes_cc c ON c.id = m.cliente_cc_id
+        WHERE m.id = ANY($1::int[])
+      `;
 
-    const [retailDetalleRes, b2bDetalleRes] = await Promise.all([
-      retailIds.length ? db.query(retailDetalleSql, [retailIds]) : Promise.resolve({ rows: [] }),
-      b2bIds.length    ? db.query(b2bDetalleSql,    [b2bIds])    : Promise.resolve({ rows: [] }),
-    ]);
+      const [retailDetalleRes, b2bDetalleRes] = await Promise.all([
+        retailIds.length ? client.query(retailDetalleSql, [retailIds]) : Promise.resolve({ rows: [] }),
+        b2bIds.length    ? client.query(b2bDetalleSql,    [b2bIds])    : Promise.resolve({ rows: [] }),
+      ]);
 
-    // Indexar por id para hacer el "lookup" en orden de pageRows.
-    const retailById = new Map(retailDetalleRes.rows.map(v => [Number(v.id), v]));
-    const b2bById    = new Map(b2bDetalleRes.rows.map(r => [Number(r.id_num), r]));
+      // Indexar por id para hacer el "lookup" en orden de pageRows.
+      const retailById = new Map(retailDetalleRes.rows.map(v => [Number(v.id), v]));
+      const b2bById    = new Map(b2bDetalleRes.rows.map(r => [Number(r.id_num), r]));
 
-    // Mapear B2B al shape unificado (mismas keys que retail).
-    const mapB2B = (r) => ({
-      id:               r.id_str,
-      origen:           'b2b',
-      order_id:         r.order_id,
-      fecha:            r.fecha,
-      hora:             r.hora,
-      cliente_nombre:   r.cliente_nombre || '—',
-      cliente_cc_id:    r.cliente_cc_id,
-      estado:           r.estado,
-      total_usd:        Number(r.total_usd) || 0,
-      ganancia_usd:     Number(r.ganancia_usd) || 0,
-      etiqueta_id:      null,
-      etiqueta_nombre:  'B2B',
-      etiqueta_color:   '#6b7cff',
-      items:            r.items || [],
-      pagos:            [],
-      canjes:           [],
-      comprobantes_count: 0,
-      notas:            r.notas,
-      caja_id:          r.caja_id,
-      created_by_user_id: r.created_by_user_id,
-      created_at:       r.created_at,
-      _b2b_mov_id:      r.id_num,
+      // Mapear B2B al shape unificado (mismas keys que retail).
+      const mapB2B = (r) => ({
+        id:               r.id_str,
+        origen:           'b2b',
+        order_id:         r.order_id,
+        fecha:            r.fecha,
+        hora:             r.hora,
+        cliente_nombre:   r.cliente_nombre || '—',
+        cliente_cc_id:    r.cliente_cc_id,
+        estado:           r.estado,
+        total_usd:        Number(r.total_usd) || 0,
+        ganancia_usd:     Number(r.ganancia_usd) || 0,
+        etiqueta_id:      null,
+        etiqueta_nombre:  'B2B',
+        etiqueta_color:   '#6b7cff',
+        items:            r.items || [],
+        pagos:            [],
+        canjes:           [],
+        comprobantes_count: 0,
+        notas:            r.notas,
+        caja_id:          r.caja_id,
+        created_by_user_id: r.created_by_user_id,
+        created_at:       r.created_at,
+        _b2b_mov_id:      r.id_num,
+      });
+
+      // Componer la respuesta en el orden devuelto por la query de paginación.
+      const data = pageRows
+        .map(pr => {
+          if (pr.origen === 'retail') {
+            const v = retailById.get(pr.id);
+            return v ? { ...v, origen: 'retail' } : null;
+          }
+          const r = b2bById.get(pr.id);
+          return r ? mapB2B(r) : null;
+        })
+        .filter(Boolean);
+
+      return { total, data };
     });
-
-    // Componer la respuesta en el orden devuelto por la query de paginación.
-    const data = pageRows
-      .map(pr => {
-        if (pr.origen === 'retail') {
-          const v = retailById.get(pr.id);
-          return v ? { ...v, origen: 'retail' } : null;
-        }
-        const r = b2bById.get(pr.id);
-        return r ? mapB2B(r) : null;
-      })
-      .filter(Boolean);
 
     res.json(paginatedResponse(data, total, { page, limit }));
   } catch (err) { next(err); }
@@ -730,6 +750,8 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     validarTc(b.items, b.pagos, b.tc_venta);
     validarCuentaCorriente(b.pagos, b.cliente_cc_id);
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta);
 
@@ -758,7 +780,7 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
 
     await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateMetricas();  // venta retail descontó stock
+    invalidateMetricas(req.tenantId);  // venta retail descontó stock
     res.status(201).json(venta);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -778,6 +800,8 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: beforeRows } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!beforeRows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
     const before = beforeRows[0];
@@ -820,7 +844,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       vrows[0].comision_total_metodos = await syncComisionTotalMetodos(client, id);
       await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
-      invalidateMetricas();  // edición completa pudo tocar stock
+      invalidateMetricas(req.tenantId);  // edición completa pudo tocar stock
       return res.json(vrows[0]);
     }
 
@@ -851,7 +875,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     rows[0].comision_total_metodos = await syncComisionTotalMetodos(client, id);
     await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -869,6 +893,8 @@ router.delete('/:id', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query('SELECT * FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Venta no encontrada' }); }
 
@@ -881,7 +907,7 @@ router.delete('/:id', async (req, res, next) => {
     await client.query('UPDATE ventas SET deleted_at = NOW() WHERE id = $1', [id]);
     await audit(client, 'ventas', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     await client.query('COMMIT');
-    invalidateMetricas();  // DELETE repuso stock
+    invalidateMetricas(req.tenantId);  // DELETE repuso stock
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

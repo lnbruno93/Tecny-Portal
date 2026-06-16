@@ -95,15 +95,18 @@ router.get('/', async (req, res, next) => {
   try {
     const desde = req.query.desde || null;
     const hasta = req.query.hasta || null;
-    const { rows } = await db.query(
-      `SELECT mp.id, mp.nombre, mp.moneda, mp.comision_pct, mp.activo, ${resumenSql(1, 2)}
-         FROM metodos_pago mp
-         LEFT JOIN tarjeta_movimientos m ON m.metodo_pago_id = mp.id AND m.deleted_at IS NULL
-        WHERE mp.es_tarjeta = true AND mp.deleted_at IS NULL
-        GROUP BY mp.id
-        ORDER BY mp.nombre`,
-      [desde, hasta]
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT mp.id, mp.nombre, mp.moneda, mp.comision_pct, mp.activo, ${resumenSql(1, 2)}
+           FROM metodos_pago mp
+           LEFT JOIN tarjeta_movimientos m ON m.metodo_pago_id = mp.id AND m.deleted_at IS NULL
+          WHERE mp.es_tarjeta = true AND mp.deleted_at IS NULL
+          GROUP BY mp.id
+          ORDER BY mp.nombre`,
+        [desde, hasta]
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -112,28 +115,31 @@ router.get('/', async (req, res, next) => {
 // patrimonio total los netos pendientes de liquidación. Una sola query, sin
 // paginar. Agrupa USD y USDT en el mismo "grupoMoneda" porque conceptualmente
 // son equivalentes 1:1.
-router.get('/saldos-resumen', async (_req, res, next) => {
+router.get('/saldos-resumen', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT
-         COALESCE(SUM(CASE WHEN mp.moneda = 'ARS' THEN
-           CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
-         ELSE 0 END), 0) AS saldo_ars,
-         COALESCE(SUM(CASE WHEN mp.moneda IN ('USD','USDT') THEN
-           CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
-         ELSE 0 END), 0) AS saldo_usd
-       FROM tarjeta_movimientos m
-       JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
-       -- mp.es_tarjeta=true es defense-in-depth: hoy no debería haber
-       -- tarjeta_movimientos con métodos no-tarjeta, pero si alguien futuro
-       -- introduce un bug que inserta uno (ej. seed mal escrito), Capital
-       -- mentiría sumando "saldos" de cuentas que no son tarjetas.
-       WHERE m.deleted_at IS NULL AND mp.deleted_at IS NULL AND mp.es_tarjeta = true`
-    );
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN mp.moneda = 'ARS' THEN
+             CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
+           ELSE 0 END), 0) AS saldo_ars,
+           COALESCE(SUM(CASE WHEN mp.moneda IN ('USD','USDT') THEN
+             CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
+           ELSE 0 END), 0) AS saldo_usd
+         FROM tarjeta_movimientos m
+         JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
+         -- mp.es_tarjeta=true es defense-in-depth: hoy no debería haber
+         -- tarjeta_movimientos con métodos no-tarjeta, pero si alguien futuro
+         -- introduce un bug que inserta uno (ej. seed mal escrito), Capital
+         -- mentiría sumando "saldos" de cuentas que no son tarjetas.
+         WHERE m.deleted_at IS NULL AND mp.deleted_at IS NULL AND mp.es_tarjeta = true`
+      );
+      return rows[0];
+    });
     // Devolvemos números (no strings de pg) — el front suma directo sin Number().
     res.json({
-      saldo_ars: Number(rows[0].saldo_ars || 0),
-      saldo_usd: Number(rows[0].saldo_usd || 0),
+      saldo_ars: Number(row.saldo_ars || 0),
+      saldo_usd: Number(row.saldo_usd || 0),
     });
   } catch (err) { next(err); }
 });
@@ -161,29 +167,32 @@ router.get('/movimientos', async (req, res, next) => {
     let countWhere = ' WHERE deleted_at IS NULL';
     if (desde) { countParams.push(desde); countWhere += ` AND fecha >= $${countParams.length}`; }
     if (hasta) { countParams.push(hasta); countWhere += ` AND fecha <= $${countParams.length}`; }
-    const [countRes, dataRes] = await Promise.all([
-      db.query('SELECT COUNT(*) FROM tarjeta_movimientos' + countWhere, countParams),
-      db.query(
-        `WITH base AS (
-           SELECT m.id, m.metodo_pago_id, m.fecha, m.tipo, m.moneda, m.monto_bruto, m.pct,
-                  m.monto_comision, m.monto_neto, m.caja_id, m.venta_id,
-                  SUM(CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END)
-                      OVER (ORDER BY m.fecha, m.id) AS saldo_acum
-             FROM tarjeta_movimientos m
-            WHERE m.deleted_at IS NULL
-         )
-         SELECT b.*, mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
-           FROM base b
-           JOIN metodos_pago mp ON mp.id = b.metodo_pago_id
-           LEFT JOIN metodos_pago mc ON mc.id = b.caja_id
-           LEFT JOIN ventas v ON v.id = b.venta_id
-          ${whereExtra}
-          ORDER BY b.fecha DESC, b.id DESC
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query('SELECT COUNT(*) FROM tarjeta_movimientos' + countWhere, countParams),
+        client.query(
+          `WITH base AS (
+             SELECT m.id, m.metodo_pago_id, m.fecha, m.tipo, m.moneda, m.monto_bruto, m.pct,
+                    m.monto_comision, m.monto_neto, m.caja_id, m.venta_id,
+                    SUM(CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END)
+                        OVER (ORDER BY m.fecha, m.id) AS saldo_acum
+               FROM tarjeta_movimientos m
+              WHERE m.deleted_at IS NULL
+           )
+           SELECT b.*, mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
+             FROM base b
+             JOIN metodos_pago mp ON mp.id = b.metodo_pago_id
+             LEFT JOIN metodos_pago mc ON mc.id = b.caja_id
+             LEFT JOIN ventas v ON v.id = b.venta_id
+            ${whereExtra}
+            ORDER BY b.fecha DESC, b.id DESC
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -202,21 +211,24 @@ router.get('/movimientos/totales', async (req, res, next) => {
     if (desde) { params.push(desde); where += ` AND fecha >= $${params.length}`; }
     if (hasta) { params.push(hasta); where += ` AND fecha <= $${params.length}`; }
 
-    const { rows } = await db.query(
-      `SELECT
-         moneda,
-         COUNT(*) FILTER (WHERE tipo = 'cobro')                                         AS cobros_count,
-         COALESCE(SUM(monto_bruto)    FILTER (WHERE tipo = 'cobro'), 0)                 AS cobros_bruto,
-         COALESCE(SUM(monto_comision) FILTER (WHERE tipo = 'cobro'), 0)                 AS comision,
-         COALESCE(SUM(monto_neto)     FILTER (WHERE tipo = 'cobro'), 0)                 AS cobros_neto,
-         COUNT(*) FILTER (WHERE tipo = 'liquidacion')                                   AS liquidaciones_count,
-         COALESCE(SUM(monto_neto)     FILTER (WHERE tipo = 'liquidacion'), 0)           AS liquidado,
-         COUNT(*)                                                                       AS total_count
-       FROM tarjeta_movimientos
-       ${where}
-       GROUP BY moneda`,
-      params
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT
+           moneda,
+           COUNT(*) FILTER (WHERE tipo = 'cobro')                                         AS cobros_count,
+           COALESCE(SUM(monto_bruto)    FILTER (WHERE tipo = 'cobro'), 0)                 AS cobros_bruto,
+           COALESCE(SUM(monto_comision) FILTER (WHERE tipo = 'cobro'), 0)                 AS comision,
+           COALESCE(SUM(monto_neto)     FILTER (WHERE tipo = 'cobro'), 0)                 AS cobros_neto,
+           COUNT(*) FILTER (WHERE tipo = 'liquidacion')                                   AS liquidaciones_count,
+           COALESCE(SUM(monto_neto)     FILTER (WHERE tipo = 'liquidacion'), 0)           AS liquidado,
+           COUNT(*)                                                                       AS total_count
+         FROM tarjeta_movimientos
+         ${where}
+         GROUP BY moneda`,
+        params
+      );
+      return rows;
+    });
 
     // Estructura por moneda: facilita render condicional en el helper (si una
     // moneda no tiene movimientos, no aparece como sección).
@@ -251,18 +263,22 @@ router.get('/:id', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const desde = req.query.desde || null;
     const hasta = req.query.hasta || null;
-    const { rows: mp } = await db.query(
-      'SELECT id, nombre, moneda, comision_pct, activo FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL', [id]
-    );
-    if (!mp[0]) return res.status(404).json({ error: 'Tarjeta no encontrada' });
-    // $1 = id (filtro fijo). $2/$3 son las fechas del rango opcional, que
-    // el resumenSql usa para Comisión/Cobrado/Movimientos. Saldo sigue sin
-    // filtrar (es estado actual, no agregado de período).
-    const { rows: tot } = await db.query(
-      `SELECT ${resumenSql(2, 3)} FROM tarjeta_movimientos m WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL`,
-      [id, desde, hasta]
-    );
-    res.json({ ...mp[0], resumen: tot[0] });
+    const data = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: mp } = await client.query(
+        'SELECT id, nombre, moneda, comision_pct, activo FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL', [id]
+      );
+      if (!mp[0]) return { notFound: true };
+      // $1 = id (filtro fijo). $2/$3 son las fechas del rango opcional, que
+      // el resumenSql usa para Comisión/Cobrado/Movimientos. Saldo sigue sin
+      // filtrar (es estado actual, no agregado de período).
+      const { rows: tot } = await client.query(
+        `SELECT ${resumenSql(2, 3)} FROM tarjeta_movimientos m WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL`,
+        [id, desde, hasta]
+      );
+      return { tarjeta: mp[0], resumen: tot[0] };
+    });
+    if (data.notFound) return res.status(404).json({ error: 'Tarjeta no encontrada' });
+    res.json({ ...data.tarjeta, resumen: data.resumen });
   } catch (err) { next(err); }
 });
 
@@ -280,24 +296,27 @@ router.get('/:id/movimientos', async (req, res, next) => {
     if (desde) { params.push(desde); fechaClauses.push(`m.fecha >= $${params.length}`); }
     if (hasta) { params.push(hasta); fechaClauses.push(`m.fecha <= $${params.length}`); }
     const whereFecha = fechaClauses.length ? ' AND ' + fechaClauses.join(' AND ') : '';
-    const [countRes, dataRes] = await Promise.all([
-      db.query(
-        `SELECT COUNT(*) FROM tarjeta_movimientos m
-          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}`,
-        params
-      ),
-      db.query(
-        `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
-           FROM tarjeta_movimientos m
-           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-           LEFT JOIN ventas v ON v.id = m.venta_id
-          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}
-          ORDER BY m.fecha DESC, m.id DESC
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+    const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(
+          `SELECT COUNT(*) FROM tarjeta_movimientos m
+            WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}`,
+          params
+        ),
+        client.query(
+          `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
+             FROM tarjeta_movimientos m
+             LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+             LEFT JOIN ventas v ON v.id = m.venta_id
+            WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}
+            ORDER BY m.fecha DESC, m.id DESC
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
+    });
+    res.json(paginatedResponse(dataRows, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -325,6 +344,8 @@ router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req,
   try {
     const { metodo_pago_id, fecha, monto_bruto, pct, comentarios } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const mp = await client.query(
       'SELECT moneda, comision_pct FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL',
       [metodo_pago_id]
@@ -373,6 +394,8 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
   try {
     const { metodo_pago_id, fecha, monto, caja_id, comentarios } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const mp = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL', [metodo_pago_id]);
     if (!mp.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Tarjeta no encontrada' }); }
     const caja = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]);
@@ -440,6 +463,8 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
       periodo_desde, periodo_hasta,
     } = req.body;
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // 1. Validar caja destino.
     const caja = await client.query(
@@ -611,6 +636,8 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       `SELECT m.*, mp.comision_pct AS metodo_comision_pct, mp.moneda AS metodo_moneda
          FROM tarjeta_movimientos m
@@ -754,6 +781,8 @@ router.delete('/movimientos/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query('SELECT tipo, venta_id FROM tarjeta_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
     if (!before[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
     // Los cobros que provienen de una venta NO se borran a mano (desincronizaría

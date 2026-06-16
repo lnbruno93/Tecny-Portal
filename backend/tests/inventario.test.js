@@ -610,6 +610,46 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
     await request(app).delete(`/api/inventario/productos/${prod.body.id}`).set(auth());
   });
 
+  // Regresión 2026-06-15: el bulk-delete chequeaba envíos Pendiente/En camino
+  // sin filtrar por deleted_at IS NULL. Resultado: envíos soft-deleted con
+  // estado=Pendiente seguían apareciendo como bloqueantes — Lucas reportó que
+  // borró todos sus envíos pero el botón "Vaciar stock" seguía dando 409 con
+  // "hay 2 envíos en curso". Fix: AND e.deleted_at IS NULL en la query.
+  it('envíos Pendiente soft-deleted NO bloquean el vaciado', async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth()).send({ nombre: 'EnviosBorradosCat' });
+    const dep = await request(app).post('/api/inventario/depositos').set(auth()).send({ nombre: 'EnviosBorradosDep' });
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Telefono Para Borrar', categoria_id: cat.body.id, deposito_id: dep.body.id,
+      precio_venta: 100, costo: 50, estado: 'disponible',
+    });
+    expect(prod.status).toBe(201);
+
+    // Crear envío Pendiente referenciando al producto.
+    const envio = await request(app).post('/api/envios').set(auth()).send({
+      fecha: '2026-06-15', cliente: 'Cliente Fantasma', direccion: 'Calle X', estado: 'Pendiente',
+      total_cobrado: 0, items: [{ tipo: 'producto', descripcion: 'Tel', cantidad: 1, producto_id: prod.body.id }],
+    });
+    expect(envio.status).toBe(201);
+
+    // Borrar el envío (soft-delete). El estado queda 'Pendiente' en DB pero
+    // deleted_at se setea — exactamente el escenario que disparó el bug.
+    const delEnvio = await request(app).delete(`/api/envios/${envio.body.id}`).set(auth());
+    expect(delEnvio.status).toBe(200);
+
+    // Vaciar disponibles. Debe FUNCIONAR (no 409) — el envío borrado no cuenta.
+    const wipe = await request(app).post('/api/inventario/productos/bulk-delete-disponibles').set(auth());
+    expect(wipe.status).toBe(200);
+    expect(wipe.body.borrados).toBeGreaterThanOrEqual(1);
+
+    // El producto se borró.
+    const listResp = await request(app).get('/api/inventario/productos?vista=todos_ocultos&limit=200').set(auth());
+    const stillThere = (listResp.body.data || []).find(p => p.id === prod.body.id);
+    // Si aparece en la lista de "todos_ocultos", debe estar marcado como deleted.
+    // El endpoint normal no lo devolvería; usamos vista todos_ocultos sólo
+    // para confirmar que se borró sin importar si la vista lo incluye.
+    expect(stillThere == null || stillThere.deleted_at != null).toBe(true);
+  });
+
   // Auditoría TANDA 0: el audit_log se registra correctamente para la operación
   // bulk. Antes la versión guardaba `ids: [...]` (40KB de JSONB para N grande);
   // ahora solo `borrados: N` para evitar inflar audit_logs.
@@ -637,6 +677,148 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
     expect(rows[0].datos_despues.borrados).toBeGreaterThanOrEqual(1);
     // No debe contener el array de ids (cambio post-auditoría — antes lo guardaba).
     expect(rows[0].datos_despues.ids).toBeUndefined();
+  });
+});
+
+// ─── POST /productos/bulk-delete-disponibles-con-compras (admin-only) ──────
+//
+// Variante destructiva pedida por Lucas 2026-06-15: ademas de vaciar el
+// stock disponible, borra las compras de proveedor cuyos productos quedaron
+// 100% borrados (y revierte sus egresos de caja). Compras parciales (con
+// algún producto vendido) NO se tocan.
+describe('POST /api/inventario/productos/bulk-delete-disponibles-con-compras (admin)', () => {
+  it('borra la compra entera cuando TODOS sus productos eran disponibles', async () => {
+    // Setup: caja + categoría + proveedor + compra al contado.
+    const caja = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: `Caja WipeCompra ${Date.now()}`, moneda: 'USD', saldo_inicial: 500 });
+    expect(caja.status).toBe(201);
+    const cajaId = caja.body.id;
+
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `CatWipeCompra ${Date.now()}` });
+    const provR = await request(app).post('/api/proveedores').set(auth())
+      .send({ nombre: `ProvWipeCompra ${Date.now()}` });
+    expect(provR.status).toBe(201);
+
+    const compra = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: provR.body.id, fecha: '2026-06-15', tipo: 'compra',
+      monto: 200, moneda: 'USD', caja_id: cajaId,
+      items: [{ valor: 200, producto_stock: {
+        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        nombre: `WipeCompraProd ${Date.now()}`, imei: `35001${Date.now()}`.slice(0, 15),
+        cantidad: 1, costo: 200, costo_moneda: 'USD',
+        precio_venta: 300, precio_moneda: 'USD',
+      } }],
+    });
+    expect(compra.status).toBe(201);
+    const movId = compra.body.id;
+
+    const r = await request(app).post('/api/inventario/productos/bulk-delete-disponibles-con-compras').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.borrados).toBeGreaterThanOrEqual(1);
+    expect(r.body.compras_borradas).toBeGreaterThanOrEqual(1);
+
+    // La compra quedó borrada.
+    const { rows: movPost } = await pool.query(
+      `SELECT deleted_at FROM proveedor_movimientos WHERE id = $1`, [movId]
+    );
+    expect(movPost[0].deleted_at).not.toBeNull();
+
+    // La caja volvió al saldo inicial (egreso de la compra revertido).
+    const cajas = await request(app).get('/api/cajas/cajas').set(auth());
+    const cajaPost = cajas.body.find(c => c.id === cajaId);
+    expect(Number(cajaPost.saldo_actual)).toBe(500);
+
+    // Cleanup.
+    await pool.query(`UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1`, [cajaId]);
+    await pool.query(`UPDATE proveedores SET deleted_at = NOW() WHERE id = $1`, [provR.body.id]);
+  });
+
+  it('preserva compras PARCIALES (algún producto vendido sobrevive)', async () => {
+    // Setup: compra con 2 productos del mismo lote, vendemos 1, vaciamos.
+    // Esperado: el disponible se borra; el vendido + la compra quedan intactos.
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `CatParcial ${Date.now()}` });
+    const provR = await request(app).post('/api/proveedores').set(auth())
+      .send({ nombre: `ProvParcial ${Date.now()}` });
+
+    const stamp = Date.now();
+    const compra = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: provR.body.id, fecha: '2026-06-15', tipo: 'compra',
+      monto: 400, moneda: 'USD',  // sin caja_id (crédito) — más simple
+      items: [
+        { valor: 200, producto_stock: {
+          tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+          nombre: `Parcial-A-${stamp}`, imei: `35002A${stamp}`.slice(0, 15),
+          cantidad: 1, costo: 200, costo_moneda: 'USD',
+          precio_venta: 300, precio_moneda: 'USD',
+        } },
+        { valor: 200, producto_stock: {
+          tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+          nombre: `Parcial-B-${stamp}`, imei: `35002B${stamp}`.slice(0, 15),
+          cantidad: 1, costo: 200, costo_moneda: 'USD',
+          precio_venta: 300, precio_moneda: 'USD',
+        } },
+      ],
+    });
+    expect(compra.status).toBe(201);
+    const movId = compra.body.id;
+    const prodA = compra.body.productos_creados[0].id;
+    const prodB = compra.body.productos_creados[1].id;
+
+    // Marcar el producto B como vendido (vía DB para simular el end-state
+    // que dejaría una venta real — el flow de venta es complejo y no aporta
+    // valor a este test).
+    await pool.query(`UPDATE productos SET estado = 'vendido' WHERE id = $1`, [prodB]);
+
+    const r = await request(app).post('/api/inventario/productos/bulk-delete-disponibles-con-compras').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.borrados).toBeGreaterThanOrEqual(1);  // borró el A
+    // La compra NO debe haberse borrado: B sigue vivo (vendido).
+    const { rows: movPost } = await pool.query(
+      `SELECT deleted_at FROM proveedor_movimientos WHERE id = $1`, [movId]
+    );
+    expect(movPost[0].deleted_at).toBeNull();
+    // El A está borrado, el B no.
+    const { rows: prods } = await pool.query(
+      `SELECT id, deleted_at, estado FROM productos WHERE id IN ($1, $2)`,
+      [prodA, prodB]
+    );
+    const a = prods.find(p => p.id === prodA);
+    const b = prods.find(p => p.id === prodB);
+    expect(a.deleted_at).not.toBeNull();
+    expect(b.deleted_at).toBeNull();
+    expect(b.estado).toBe('vendido');
+
+    // Cleanup.
+    await pool.query(`UPDATE productos SET deleted_at = NOW() WHERE id IN ($1, $2)`, [prodA, prodB]);
+    await pool.query(`UPDATE proveedor_movimientos SET deleted_at = NOW() WHERE id = $1`, [movId]);
+    await pool.query(`UPDATE proveedores SET deleted_at = NOW() WHERE id = $1`, [provR.body.id]);
+  });
+
+  it('bloquea con 409 si hay envío Pendiente activo (misma guard que el hermano)', async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `CatConCompEnvio ${Date.now()}` });
+    const dep = await request(app).post('/api/inventario/depositos').set(auth())
+      .send({ nombre: `DepConCompEnvio ${Date.now()}` });
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: `ConCompEnvio ${Date.now()}`, categoria_id: cat.body.id, deposito_id: dep.body.id,
+      precio_venta: 100, costo: 50, estado: 'disponible',
+    });
+    expect(prod.status).toBe(201);
+    const envio = await request(app).post('/api/envios').set(auth()).send({
+      fecha: '2026-06-15', cliente: 'Cli', direccion: 'X', estado: 'Pendiente',
+      total_cobrado: 0, items: [{ tipo: 'producto', descripcion: 'T', cantidad: 1, producto_id: prod.body.id }],
+    });
+    expect(envio.status).toBe(201);
+
+    const r = await request(app).post('/api/inventario/productos/bulk-delete-disponibles-con-compras').set(auth());
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/envíos en curso/i);
+
+    // Cleanup.
+    await request(app).put(`/api/envios/${envio.body.id}`).set(auth()).send({ estado: 'Cancelado' });
+    await request(app).delete(`/api/inventario/productos/${prod.body.id}`).set(auth());
   });
 });
 

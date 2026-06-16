@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
-import { envios, cajas as cajasApi, inventario, cuentas as cuentasApi } from '../lib/api';
+import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -104,6 +104,10 @@ export default function Envios() {
   const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  // Paridad con Ventas: si un pago usa la caja Financiera, se exige adjuntar
+  // comprobante en el alta para que el backend auto-genere la entrada del
+  // dashboard de Transferencias (syncFinancieraComprobante).
+  const [comprobantes, setComprobantes] = useState([]);
   // useModal — auditoría 2026-06-06 UX B2: Esc cierra el modal de "Nuevo
   // envío", focus trap, body scroll lock.
   const createModalRef = useRef(null);
@@ -222,8 +226,24 @@ export default function Envios() {
     setForm(EMPTY_FORM);
     setItems([{ ...EMPTY_ITEM }]);
     setCreateError('');
+    setComprobantes([]);
     setEditingId(null);
     setModalMode('create');
+  }
+
+  function onComprobFiles(e) {
+    const files = [...(e.target.files || [])];
+    const MAX = 6 * 1024 * 1024;
+    const next = [];
+    let pending = files.length;
+    if (!pending) { setComprobantes([]); return; }
+    files.forEach(f => {
+      if (f.size > MAX) { pending--; return; }
+      const r = new FileReader();
+      r.onload = ev => { next.push({ nombre: f.name, tipo: f.type, data: String(ev.target.result).split(',')[1] }); pending--; if (pending === 0) setComprobantes([...next]); };
+      r.onerror = () => { pending--; if (pending === 0) setComprobantes([...next]); };
+      r.readAsDataURL(f);
+    });
   }
 
   // Precarga el modal con los datos del envío y abre en modo edit. Para items
@@ -262,6 +282,7 @@ export default function Envios() {
     }));
     setItems(mappedItems.length ? mappedItems : [{ ...EMPTY_ITEM }]);
     setCreateError('');
+    setComprobantes([]);
     setEditingId(envio.id);
     setModalMode('edit');
   }
@@ -270,6 +291,18 @@ export default function Envios() {
     e.preventDefault();
     if (!form.cliente.trim()) { setCreateError('El cliente es obligatorio.'); return; }
     if (!form.direccion.trim()) { setCreateError('La dirección es obligatoria.'); return; }
+    // Paridad con Ventas: si algún pago usa la caja Financiera, exigir el
+    // comprobante en el alta (no en edición — desde la pantalla del envío se
+    // puede adjuntar después). Sin esto, syncFinancieraComprobante corre en
+    // backend pero no tiene archivo → el dashboard de Transferencias queda
+    // vacío para envíos.
+    const finCaja = cajasPago.find(c => c.es_financiera);
+    const pagosItems = items.filter(i => i.tipo === 'pago' && !i.es_cuenta_corriente && i.metodo_pago_id);
+    const usaFinanciera = !!finCaja && pagosItems.some(p => Number(p.metodo_pago_id) === Number(finCaja.id));
+    if (modalMode === 'create' && usaFinanciera && comprobantes.length === 0) {
+      setCreateError('Este envío se cobra por Transferencia: adjuntá el comprobante antes de guardar.');
+      return;
+    }
     setCreating(true);
     setCreateError('');
     try {
@@ -302,18 +335,34 @@ export default function Envios() {
             es_cuenta_corriente: i.tipo === 'pago' ? !!i.es_cuenta_corriente : false,
           })),
       };
+      let envioGuardado;
       if (modalMode === 'edit' && editingId) {
         // PUT: el backend resincroniza venta_items + venta_pagos + caja
         // automáticamente desde actualizarVentaDesdeEnvio. cliente_cc_id no
         // se manda — ya no se usa CC en Envíos y el backend mantiene el viejo.
         const actualizado = await envios.update(editingId, payload);
+        envioGuardado = actualizado;
         setEnviosList(prev => prev.map(x => x.id === editingId ? { ...actualizado, items: payload.items } : x));
         setSelectedId(editingId);
       } else {
         // POST: siempre registrar como venta (regla del flujo).
         const nuevo = await envios.create({ ...payload, registrar_venta: true, cliente_cc_id: null });
+        envioGuardado = nuevo;
         setEnviosList(prev => [{ ...nuevo, items: payload.items }, ...prev]);
         setSelectedId(nuevo.id);
+      }
+      // Subir comprobantes a la venta auto-creada por el envío. El backend
+      // de envíos UPDATEa envios.venta_id en POST y mantiene la asociación
+      // en PUT — usamos ese venta_id para reusar /api/ventas/:id/comprobantes
+      // (mismo endpoint que Ventas → mismo syncFinancieraComprobante).
+      let uploadFalló = false;
+      const ventaId = envioGuardado?.venta_id;
+      if (comprobantes.length > 0 && ventaId) {
+        for (const c of comprobantes) {
+          try { await ventas.uploadComprobante(ventaId, { archivo_data: c.data, archivo_nombre: c.nombre, archivo_tipo: c.tipo }); }
+          catch (err) { uploadFalló = true; silentReport(err, 'envio-uploadComprobante'); }
+        }
+        if (uploadFalló) toast.error('El envío se guardó, pero el comprobante no se pudo adjuntar. Subilo de nuevo desde la venta.');
       }
       setShowCreate(false);
     } catch (err) {
@@ -1140,6 +1189,21 @@ export default function Envios() {
                             </button>
                           </div>
                           <TcWarning tc={it.tc} />
+                          {/* Paridad con Ventas: cuando el método es Tarjeta, mostrar
+                              comisión y neto que va a impactar en módulo Tarjetas. */}
+                          {(() => {
+                            const m = cajasPago.find(c => Number(c.id) === Number(it.metodo_pago_id));
+                            if (!m?.es_tarjeta || !Number(m.comision_pct)) return null;
+                            const monto = Number(it.monto) || 0;
+                            const pct = Number(m.comision_pct);
+                            const com = +(monto * pct / 100).toFixed(2);
+                            const neto = +(monto - com).toFixed(2);
+                            return (
+                              <div className="muted tiny" style={{ marginTop: 2 }}>
+                                Tarjeta · comisión {pct}% = {com} {it.moneda || 'ARS'} · neto {neto} {it.moneda || 'ARS'}
+                              </div>
+                            );
+                          })()}
                         </div>
                       ))}
                       {items.filter(i => i.tipo === 'pago').length === 0 && (
@@ -1147,6 +1211,19 @@ export default function Envios() {
                       )}
                     </div>
                   </div>
+
+                  {/* Comprobantes — paridad con Ventas. Si algún pago usa la
+                      caja Financiera, son OBLIGATORIOS en el alta (handleSubmit
+                      lo valida). Se suben a la venta auto-creada por el envío
+                      vía /api/ventas/:venta_id/comprobantes, que dispara
+                      syncFinancieraComprobante en backend. */}
+                  {modalMode === 'create' && (
+                    <div className="field">
+                      <label className="field-label">Comprobantes de pago <span className="muted tiny">(imágenes/PDF, máx 6MB c/u · requerido si cobrás por Transferencia)</span></label>
+                      <input type="file" multiple accept="image/*,application/pdf" className="input" onChange={onComprobFiles} />
+                      {comprobantes.length > 0 && <div className="muted tiny" style={{ marginTop: 4 }}>{comprobantes.length} archivo(s) listo(s)</div>}
+                    </div>
+                  )}
 
                   {/* Resumen tipo Ventas: Total venta · Pagos · Diferencia (Cubierto ✓) */}
                   <div className="card card-tight" style={{ padding: '10px 12px', background: 'var(--surface-2)' }}>

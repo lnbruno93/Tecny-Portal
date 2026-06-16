@@ -48,6 +48,19 @@ describe('parseCsv', () => {
     expect(r).toEqual([['a', 'b'], ['1', '2']]);
   });
 
+  // 2026-06-15: round-trip con archivos exportados por exportCsv() que ahora
+  // empiezan con `sep=,` para que Excel ES los abra con columnas separadas.
+  // El parser tiene que descartar esa línea para no tratarla como dato.
+  it('saltea el hint `sep=,` si está en la primera línea', () => {
+    const r = parseCsv('sep=,\na,b\n1,2');
+    expect(r).toEqual([['a', 'b'], ['1', '2']]);
+  });
+
+  it('saltea `sep=;` también (case-insensitive)', () => {
+    const r = parseCsv('SEP=;\na,b\n1,2');
+    expect(r).toEqual([['a', 'b'], ['1', '2']]);
+  });
+
   it('preserva campos vacíos entre comas', () => {
     const r = parseCsv('a,,b');
     expect(r).toEqual([['a', '', 'b']]);

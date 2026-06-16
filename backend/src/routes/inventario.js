@@ -8,6 +8,9 @@ const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const fileStore = require('../lib/fileStore');
 const storageFlags = require('../lib/storageFlags');
+const adminOnly = require('../middleware/adminOnly');
+const { reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { invalidateCajas } = require('../lib/cajasCache');
 
 // Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
 // (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
@@ -202,13 +205,10 @@ router.delete('/depositos/:id', async (req, res, next) => {
 // modifican productos (cuentas.js para venta B2B, ventas.js para retail, etc).
 const { fetchMetricas, invalidateMetricas } = require('../lib/inventarioCache');
 
-router.get('/productos/metricas', async (_req, res, next) => {
-  // TODO multi-tenant PR 4.9 cleanup: el cache de fetchMetricas es global
-  // (key sin tenant_id). Mientras estamos en single-tenant es correcto
-  // (todos ven los mismos datos). Cuando entren tenants reales, refactorar
-  // fetchMetricas para que la key del cache incluya tenant_id. Ver
-  // inventarioCache.js.
-  try { res.json(await fetchMetricas()); } catch (err) { next(err); }
+router.get('/productos/metricas', async (req, res, next) => {
+  // PR 4.9 (2026-06-15): cache per-tenant — fetchMetricas(req.tenantId).
+  // Ver lib/inventarioCache.js.
+  try { res.json(await fetchMetricas(req.tenantId)); } catch (err) { next(err); }
 });
 
 // Proveedores únicos vistos en productos vivos. Insumo del combo de edición
@@ -632,6 +632,7 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
     let fotoFile;
     if (useR2) {
       fotoFile = await fileStore.put({
+        tenantId: req.tenantId,  // PR 5 multi-tenant: prefix t{tenantId}/ en la key R2
         dataBase64: b.foto_data ?? null,
         filename: b.foto_nombre ?? null,
         mime: b.foto_tipo ?? null,
@@ -661,7 +662,7 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
       await audit(client, 'productos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
       return rows[0];
     });
-    invalidateMetricas();  // junio 2026: cache stale era fuente de bugs de baseline
+    invalidateMetricas(req.tenantId);  // junio 2026: cache stale era fuente de bugs de baseline
     res.status(201).json(row);
   } catch (err) { next(err); }
 });
@@ -701,6 +702,7 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       let fotoFile;
       if (useR2) {
         fotoFile = await fileStore.put({
+          tenantId: req.tenantId,  // PR 5 multi-tenant: prefix t{tenantId}/ en la key R2
           dataBase64: req.body.foto_data,
           filename: req.body.foto_nombre,
           mime: req.body.foto_tipo,
@@ -748,7 +750,7 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
       await audit(client, 'productos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
       return rows[0];
     });
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json(row);
   } catch (err) { next(err); }
 });
@@ -766,7 +768,7 @@ router.delete('/productos/:id', async (req, res, next) => {
       return rows[0];
     });
     if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
-    invalidateMetricas();
+    invalidateMetricas(req.tenantId);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -815,12 +817,20 @@ router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, 
     // Estados 'Entregado' y 'Cancelado' son terminales — borrar el producto no
     // afecta esos envíos (la referencia queda como "producto borrado" pero el
     // envío ya cerró). 'Pendiente'/'En camino' son los que importan.
+    //
+    // 2026-06-15 fix: agregamos `AND e.deleted_at IS NULL`. Sin esto, envíos
+    // soft-deleted con estado Pendiente/En camino seguían bloqueando el wipe
+    // — `envios.estado` no se cambia al soft-deletear (solo se setea
+    // deleted_at), así que un envío "fantasma" disparaba el 409 aunque ya no
+    // exista para el operador. Reportado por Lucas: borró todos los envíos y
+    // el botón de vaciar inventario seguía dando "hay 2 envíos en curso".
     const enUso = await client.query(
       `SELECT ei.envio_id, e.cliente, e.estado, ei.producto_id, p.nombre AS producto_nombre
          FROM envio_items ei
          JOIN envios   e ON e.id = ei.envio_id
          JOIN productos p ON p.id = ei.producto_id
         WHERE e.estado IN ('Pendiente', 'En camino')
+          AND e.deleted_at IS NULL
           AND p.estado = 'disponible'
           AND p.deleted_at IS NULL
           AND ei.producto_id IS NOT NULL
@@ -854,12 +864,134 @@ router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, 
       });
     }
     await client.query('COMMIT');
-    invalidateMetricas();  // vaciado masivo → cache definitivamente stale
+    invalidateMetricas(req.tenantId);  // vaciado masivo → cache definitivamente stale
     res.json({ borrados });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
   } finally { client.release(); }
+});
+
+// POST /productos/bulk-delete-disponibles-con-compras (admin-only)
+//
+// Variante destructiva pedida por Lucas 2026-06-15. Hace lo mismo que el
+// endpoint anterior PERO ADEMÁS borra las compras a proveedores cuyos
+// productos quedaron 100% borrados, revirtiendo sus egresos de caja.
+//
+// Política de compras PARCIALES: si una compra trajo 5 productos y 2 están
+// vendidos (no borrables), los 3 disponibles se vacían pero la compra
+// queda intacta — el historial de las 2 ventas se preserva. Sólo se borran
+// compras cuyos productos TODOS están deleted_at IS NOT NULL después del
+// vaciado.
+//
+// Mismo modelo defensivo que el endpoint hermano:
+//   - Guarda contra envíos en curso (bloquea con 409).
+//   - Audit-lote (no por producto / movimiento) para no inflar audit_logs.
+//   - Tx única atómica: si cualquier reverso de caja deja saldo negativo,
+//     ROLLBACK total y el estado del tenant queda intacto.
+router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, adminOnly, async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // 1. Guard contra envíos en curso (mismo check que el hermano).
+    const enUso = await client.query(
+      `SELECT ei.envio_id, e.cliente, e.estado, ei.producto_id, p.nombre AS producto_nombre
+         FROM envio_items ei
+         JOIN envios   e ON e.id = ei.envio_id
+         JOIN productos p ON p.id = ei.producto_id
+        WHERE e.estado IN ('Pendiente', 'En camino')
+          AND e.deleted_at IS NULL
+          AND p.estado = 'disponible'
+          AND p.deleted_at IS NULL
+          AND ei.producto_id IS NOT NULL
+        LIMIT 10`
+    );
+    if (enUso.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `No se puede vaciar: hay ${enUso.rows.length === 10 ? '10+' : enUso.rows.length} envíos en curso con productos disponibles referenciados. Resolvé esos envíos primero (marcar como Entregado o Cancelar).`,
+        envios_bloqueantes: enUso.rows,
+      });
+    }
+
+    // 2. Snapshot de qué compras quedan IMPACTADAS por el vaciado.
+    //    Capturamos los proveedor_movimiento_id de TODOS los productos
+    //    disponibles antes de borrar (puede haber compras con productos
+    //    parciales que no debemos tocar).
+    const { rows: dispProds } = await client.query(
+      `SELECT id, proveedor_movimiento_id
+         FROM productos
+        WHERE deleted_at IS NULL AND estado = 'disponible'
+        ORDER BY id FOR UPDATE`
+    );
+    const movIdsImpactados = [
+      ...new Set(dispProds.map(p => p.proveedor_movimiento_id).filter(Boolean)),
+    ];
+
+    // 3. Soft-delete los productos disponibles (paso original del endpoint hermano).
+    const { rows: borradosRows } = await client.query(
+      `UPDATE productos
+          SET deleted_at = NOW()
+        WHERE deleted_at IS NULL
+          AND estado = 'disponible'
+        RETURNING id`
+    );
+    const borrados = borradosRows.length;
+
+    // 4. Para cada compra impactada: ¿quedan productos VIVOS de esa compra?
+    //    - Si NO (todos los del mov están deleted_at IS NOT NULL): borrar
+    //      la compra + revertir caja.
+    //    - Si SÍ (parcial: algunos vendidos sobreviven): NO tocar — el
+    //      historial vendido bloquea el borrado de la compra.
+    let comprasBorradas = 0;
+    if (movIdsImpactados.length > 0) {
+      const { rows: movsSinViventes } = await client.query(
+        `SELECT m.id
+           FROM proveedor_movimientos m
+          WHERE m.id = ANY($1::int[]) AND m.deleted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM productos p
+               WHERE p.proveedor_movimiento_id = m.id AND p.deleted_at IS NULL
+            )
+          ORDER BY m.id FOR UPDATE`,
+        [movIdsImpactados]
+      );
+      if (movsSinViventes.length > 0) {
+        const movsBorrablesIds = movsSinViventes.map(m => m.id);
+        await client.query(
+          `UPDATE proveedor_movimientos SET deleted_at = NOW()
+             WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+          [movsBorrablesIds]
+        );
+        for (const id of movsBorrablesIds) {
+          await reverseCajaMovimientos(client, 'proveedor_movimientos', id);
+        }
+        comprasBorradas = movsBorrablesIds.length;
+      }
+    }
+
+    if (borrados > 0 || comprasBorradas > 0) {
+      await audit(client, 'productos', 'DELETE', 0, {
+        tipo: 'bulk_delete_disponibles_con_compras',
+        productos_borrados: borrados,
+        compras_borradas: comprasBorradas,
+        user_id: req.user.id,
+      });
+    }
+
+    await client.query('COMMIT');
+    invalidateMetricas(req.tenantId);
+    if (comprasBorradas > 0) invalidateCajas(req.tenantId);
+    res.json({ borrados, compras_borradas: comprasBorradas });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {
@@ -969,7 +1101,7 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
       req,
     });
     await client.query('COMMIT');
-    invalidateMetricas();  // import masivo → cache definitivamente stale
+    invalidateMetricas(req.tenantId);  // import masivo → cache definitivamente stale
     res.status(201).json({ ok: true, creados: creados.length });
   } catch (err) {
     await client.query('ROLLBACK');
