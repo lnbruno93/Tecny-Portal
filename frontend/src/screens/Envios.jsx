@@ -1379,6 +1379,7 @@ export default function Envios() {
                                 {arsDirect ? (
                                   <input
                                     type="number" onKeyDown={blockInvalidNumberKeys}
+                                    data-testid="envio-pago-monto"
                                     className="input mono" placeholder="730.000"
                                     value={it.monto}
                                     onChange={e => setPagoArsAmount(idx, e.target.value)}
@@ -1387,6 +1388,7 @@ export default function Envios() {
                                 ) : (
                                   <input
                                     type="number" onKeyDown={blockInvalidNumberKeys}
+                                    data-testid="envio-pago-monto"
                                     className="input mono" placeholder="500"
                                     value={derivedUsd}
                                     onChange={e => setPagoUsd(idx, e.target.value)}
