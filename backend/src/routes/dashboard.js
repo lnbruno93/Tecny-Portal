@@ -19,22 +19,28 @@
 // el mismo wrapper (evita crear N closures por minuto).
 
 const router = require('express').Router();
+const db = require('../config/database');
 const { createCachedFetcherRedis } = require('../lib/cacheTtl');
 const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensual');
 
-// Caché de funciones por par (periodo, comparado). Cada llamada al endpoint
+// Caché de funciones por (tenant, periodo, comparado). Cada llamada al endpoint
 // reusa la misma function-instance si las keys coinciden — el dedup interno
 // del cacheTtl evita rerunear queries si llegan N requests concurrentes.
+//
+// 2026-06-16 multi-tenant: la key ahora prefija el tenantId. Si dos tenants
+// pidieran el mismo par (periodo, comparado), un cache compartido devolvería
+// los KPIs del primer tenant a ambos — leak crítico. La cache pasa a ser
+// per-tenant; cada tenant tiene su propio Redis key namespace.
 //
 // LRU cap: si un cliente (o atacante) envía muchos pares distintos, el Map
 // crecería sin límite (cada entry retiene una closure con cache state).
 // Acotamos a MAX_FETCHERS — al exceder, evictamos la entry más vieja (MRU
 // detrás por reinserción en cada acceso). 100 cubre ~8 años de pares mes
-// (12 × 8), suficiente para cualquier uso humano.
+// (12 × 8) × N tenants pequeños, suficiente para cualquier uso humano.
 const MAX_FETCHERS = 100;
 const fetchers = new Map();
-function getFetcher(periodoActual, periodoComparado) {
-  const key = `${periodoActual}|${periodoComparado}`;
+function getFetcher(tenantId, periodoActual, periodoComparado) {
+  const key = `${tenantId}|${periodoActual}|${periodoComparado}`;
   let fn = fetchers.get(key);
   if (fn) {
     // touch: re-insertar para mover al final (MRU) — Map preserva orden de inserción.
@@ -48,10 +54,16 @@ function getFetcher(periodoActual, periodoComparado) {
     async () => {
       const { desde: dA, hasta: hA } = rangoMes(periodoActual);
       const { desde: dC, hasta: hC } = rangoMes(periodoComparado);
-      const [actual, comparado] = await Promise.all([
-        kpisDelPeriodo(dA, hA),
-        kpisDelPeriodo(dC, hC),
-      ]);
+      // 2026-06-16 multi-tenant: ambos kpisDelPeriodo corren en UNA sola tx
+      // con app.current_tenant seteado vía withTenant. RLS filtra por tenant
+      // todas las tablas (ventas, venta_items, caja_movimientos, etc.).
+      const { actual, comparado } = await db.withTenant(tenantId, async (client) => {
+        const [actual, comparado] = await Promise.all([
+          kpisDelPeriodo(client, dA, hA),
+          kpisDelPeriodo(client, dC, hC),
+        ]);
+        return { actual, comparado };
+      });
       return { actual, comparado, generado_en: new Date().toISOString() };
     }
   );
@@ -77,7 +89,7 @@ router.get('/resumen-mensual', async (req, res, next) => {
     // Validación temprana: rangoMes lanza si el formato es inválido.
     rangoMes(periodoActual);
     rangoMes(periodoComparado);
-    const data = await getFetcher(periodoActual, periodoComparado)();
+    const data = await getFetcher(req.tenantId, periodoActual, periodoComparado)();
     res.json(data);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });

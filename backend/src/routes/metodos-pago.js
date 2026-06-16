@@ -15,14 +15,17 @@
 const router = require('express').Router();
 const db = require('../config/database');
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT id, nombre, moneda, es_financiera, es_tarjeta, comision_pct, orden
-         FROM metodos_pago
-        WHERE deleted_at IS NULL AND activo = true
-        ORDER BY orden, nombre`
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, nombre, moneda, es_financiera, es_tarjeta, comision_pct, orden
+           FROM metodos_pago
+          WHERE deleted_at IS NULL AND activo = true
+          ORDER BY orden, nombre`
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });

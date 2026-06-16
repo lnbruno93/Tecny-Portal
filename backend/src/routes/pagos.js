@@ -13,12 +13,15 @@ const { postCajaMovimientoFinanciera } = require('../lib/financiera');
 const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
 
 // ─── Totales globales ─────────────────────────────────────────────────────────
-router.get('/totales', async (_req, res, next) => {
+router.get('/totales', async (req, res, next) => {
   try {
-    const { rows } = await db.query(`
-      SELECT COUNT(*) AS count, COALESCE(SUM(monto), 0) AS total_monto
-      FROM pagos WHERE deleted_at IS NULL
-    `);
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(`
+        SELECT COUNT(*) AS count, COALESCE(SUM(monto), 0) AS total_monto
+        FROM pagos WHERE deleted_at IS NULL
+      `);
+      return rows;
+    });
     res.json({
       count:       parseInt(rows[0].count),
       total_monto: parseFloat(rows[0].total_monto),
@@ -43,13 +46,16 @@ router.get('/', validate(queryPagosSchema, 'query'), async (req, res, next) => {
 
     const where = conditions.join(' AND ');
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM pagos WHERE ${where}`, params),
-      db.query(
-        `SELECT * FROM pagos WHERE ${where} ORDER BY fecha DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
+    const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) FROM pagos WHERE ${where}`, params),
+        client.query(
+          `SELECT * FROM pagos WHERE ${where} ORDER BY fecha DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { countRes, dataRes };
+    });
 
     const total = parseInt(countRes.rows[0].count);
     res.json(paginatedResponse(dataRes.rows, total, { page, limit }));
@@ -75,6 +81,7 @@ router.post('/', validate(createPagoSchema), async (req, res, next) => {
   try {
     const { fecha, monto, referencia, caja_id, convertir_usd, tc, monto_usd } = req.body;
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // 1. Validar caja destino (existe + no eliminada).
     const cajaRes = await client.query(
@@ -169,6 +176,7 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT * FROM pagos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );

@@ -9,16 +9,19 @@ const audit  = require('../lib/audit');
 router.get('/', validate(queryVendedoresSchema, 'query'), async (req, res, next) => {
   try {
     const { buscar } = req.query;
-    const params = [];
-    let filter = '';
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      filter = ` AND nombre ILIKE $1`;
-    }
-    const { rows } = await db.query(
-      `SELECT * FROM vendedores WHERE deleted_at IS NULL${filter} ORDER BY nombre LIMIT 500`,
-      params
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const params = [];
+      let filter = '';
+      if (buscar) {
+        params.push(`%${buscar}%`);
+        filter = ` AND nombre ILIKE $1`;
+      }
+      const { rows } = await client.query(
+        `SELECT * FROM vendedores WHERE deleted_at IS NULL${filter} ORDER BY nombre LIMIT 500`,
+        params
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) {
     next(err);
@@ -30,6 +33,7 @@ router.post('/', validate(createVendedorSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       'INSERT INTO vendedores (nombre) VALUES ($1) RETURNING *',
       [req.body.nombre]
@@ -50,6 +54,7 @@ router.delete('/:id', async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       'UPDATE vendedores SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]

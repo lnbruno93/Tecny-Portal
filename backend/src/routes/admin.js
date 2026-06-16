@@ -167,59 +167,69 @@ router.post('/backfill-caja-tarjetas/apply', backfillLimiter, async (req, res, n
 router.get('/diagnose-producto', async (req, res, next) => {
   try {
     const { imei, producto_id } = req.query;
-    let productos = [];
     if (producto_id) {
-      const id = parseId(producto_id);
-      if (!id) return res.status(400).json({ error: 'producto_id inválido' });
-      const r = await db.query('SELECT * FROM productos WHERE id = $1', [id]);
-      productos = r.rows;
-    } else if (imei && typeof imei === 'string' && imei.trim()) {
-      // Sin filtro deleted_at: queremos ver también los soft-deleted (huérfanos
-      // de vaciados + reimportaciones).
-      const r = await db.query(
-        'SELECT * FROM productos WHERE imei = $1 ORDER BY id DESC',
-        [imei.trim()]
-      );
-      productos = r.rows;
-    } else {
+      const idCheck = parseId(producto_id);
+      if (!idCheck) return res.status(400).json({ error: 'producto_id inválido' });
+    } else if (!(imei && typeof imei === 'string' && imei.trim())) {
       return res.status(400).json({ error: 'Pasá imei o producto_id como query param' });
     }
+    const { productos, trail } = await db.withTenant(req.tenantId, async (client) => {
+      let productos = [];
+      if (producto_id) {
+        const id = parseId(producto_id);
+        const r = await client.query('SELECT * FROM productos WHERE id = $1', [id]);
+        productos = r.rows;
+      } else {
+        // Sin filtro deleted_at: queremos ver también los soft-deleted (huérfanos
+        // de vaciados + reimportaciones).
+        const r = await client.query(
+          'SELECT * FROM productos WHERE imei = $1 ORDER BY id DESC',
+          [imei.trim()]
+        );
+        productos = r.rows;
+      }
+
+      if (productos.length === 0) {
+        return { productos: [], trail: [] };
+      }
+
+      // Cargar todos los items_movimiento_cc + movimiento_cc relacionados
+      // a estos producto_id en una sola query. JOIN al movimiento incluye
+      // borrados (sin filtrar deleted_at).
+      const prodIds = productos.map(p => p.id);
+      const { rows: trail } = await client.query(
+        `SELECT
+           i.id              AS item_id,
+           i.movimiento_cc_id,
+           i.producto_id,
+           i.cantidad        AS item_cantidad,
+           i.valor           AS item_valor,
+           i.producto        AS item_producto_txt,
+           i.imei_serial,
+           m.id              AS mov_id,
+           m.cliente_cc_id,
+           m.fecha           AS mov_fecha,
+           m.tipo            AS mov_tipo,
+           m.monto_total     AS mov_monto,
+           m.caja_id         AS mov_caja_id,
+           m.created_at      AS mov_created_at,
+           m.deleted_at      AS mov_deleted_at,
+           m.created_by_user_id AS mov_created_by,
+           c.nombre          AS cliente_nombre,
+           c.apellido        AS cliente_apellido
+         FROM items_movimiento_cc i
+         JOIN movimientos_cc m  ON m.id = i.movimiento_cc_id
+         LEFT JOIN clientes_cc c ON c.id = m.cliente_cc_id
+         WHERE i.producto_id = ANY($1::int[])
+         ORDER BY m.created_at DESC, i.id DESC`,
+        [prodIds]
+      );
+      return { productos, trail };
+    });
 
     if (productos.length === 0) {
       return res.json({ productos: [], movimientos_cc: [] });
     }
-
-    // Cargar todos los items_movimiento_cc + movimiento_cc relacionados
-    // a estos producto_id en una sola query. JOIN al movimiento incluye
-    // borrados (sin filtrar deleted_at).
-    const prodIds = productos.map(p => p.id);
-    const { rows: trail } = await db.query(
-      `SELECT
-         i.id              AS item_id,
-         i.movimiento_cc_id,
-         i.producto_id,
-         i.cantidad        AS item_cantidad,
-         i.valor           AS item_valor,
-         i.producto        AS item_producto_txt,
-         i.imei_serial,
-         m.id              AS mov_id,
-         m.cliente_cc_id,
-         m.fecha           AS mov_fecha,
-         m.tipo            AS mov_tipo,
-         m.monto_total     AS mov_monto,
-         m.caja_id         AS mov_caja_id,
-         m.created_at      AS mov_created_at,
-         m.deleted_at      AS mov_deleted_at,
-         m.created_by_user_id AS mov_created_by,
-         c.nombre          AS cliente_nombre,
-         c.apellido        AS cliente_apellido
-       FROM items_movimiento_cc i
-       JOIN movimientos_cc m  ON m.id = i.movimiento_cc_id
-       LEFT JOIN clientes_cc c ON c.id = m.cliente_cc_id
-       WHERE i.producto_id = ANY($1::int[])
-       ORDER BY m.created_at DESC, i.id DESC`,
-      [prodIds]
-    );
 
     res.json({
       productos: productos.map(p => ({
@@ -263,6 +273,7 @@ router.post('/restore-producto', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: pre } = await client.query(
       'SELECT * FROM productos WHERE id = $1 FOR UPDATE', [id]
     );
@@ -314,36 +325,39 @@ router.post('/restore-producto', async (req, res, next) => {
 // El fix forward (cuentas.js) hace cascada. Estos endpoints existen para
 // limpiar los huérfanos pre-existentes en producción. Dry-run primero, apply
 // confirmado por el operador.
-router.get('/orphan-movs', async (_req, res, next) => {
+router.get('/orphan-movs', async (req, res, next) => {
   try {
     // Conteo + agregados para mostrar en el dry-run.
-    const { rows: agg } = await db.query(
-      `SELECT
-         COUNT(*)::int                                                                       AS movs_count,
-         COALESCE(SUM(CASE WHEN m.tipo IN ('compra','entrega_mercaderia') THEN m.monto_total ELSE 0 END), 0)::numeric AS deuda_huerfana,
-         COALESCE((
-           SELECT COUNT(*)::int FROM caja_movimientos cm
-           JOIN movimientos_cc mm ON mm.id = cm.ref_id
-           WHERE cm.ref_tabla = 'movimientos_cc' AND cm.deleted_at IS NULL
-             AND mm.deleted_at IS NULL
-             AND mm.cliente_cc_id IN (SELECT id FROM clientes_cc WHERE deleted_at IS NOT NULL)
-         ), 0)                                                                                AS caja_movs_a_revertir
-       FROM movimientos_cc m
-       JOIN clientes_cc c ON c.id = m.cliente_cc_id
-       WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL`
-    );
-    // Muestra: primeros 10 movs con info útil para que el operador entienda
-    // antes de apretar apply.
-    const { rows: muestras } = await db.query(
-      `SELECT m.id, m.fecha, m.tipo, m.monto_total, m.cliente_cc_id,
-              c.nombre AS cliente_nombre, c.apellido AS cliente_apellido,
-              c.deleted_at AS cliente_borrado_en
+    const { agg, muestras } = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: agg } = await client.query(
+        `SELECT
+           COUNT(*)::int                                                                       AS movs_count,
+           COALESCE(SUM(CASE WHEN m.tipo IN ('compra','entrega_mercaderia') THEN m.monto_total ELSE 0 END), 0)::numeric AS deuda_huerfana,
+           COALESCE((
+             SELECT COUNT(*)::int FROM caja_movimientos cm
+             JOIN movimientos_cc mm ON mm.id = cm.ref_id
+             WHERE cm.ref_tabla = 'movimientos_cc' AND cm.deleted_at IS NULL
+               AND mm.deleted_at IS NULL
+               AND mm.cliente_cc_id IN (SELECT id FROM clientes_cc WHERE deleted_at IS NOT NULL)
+           ), 0)                                                                                AS caja_movs_a_revertir
          FROM movimientos_cc m
          JOIN clientes_cc c ON c.id = m.cliente_cc_id
-        WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL
-        ORDER BY m.created_at DESC
-        LIMIT 10`
-    );
+         WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL`
+      );
+      // Muestra: primeros 10 movs con info útil para que el operador entienda
+      // antes de apretar apply.
+      const { rows: muestras } = await client.query(
+        `SELECT m.id, m.fecha, m.tipo, m.monto_total, m.cliente_cc_id,
+                c.nombre AS cliente_nombre, c.apellido AS cliente_apellido,
+                c.deleted_at AS cliente_borrado_en
+           FROM movimientos_cc m
+           JOIN clientes_cc c ON c.id = m.cliente_cc_id
+          WHERE m.deleted_at IS NULL AND c.deleted_at IS NOT NULL
+          ORDER BY m.created_at DESC
+          LIMIT 10`
+      );
+      return { agg, muestras };
+    });
     res.json({
       apply: false,
       movs_count: agg[0].movs_count,
@@ -360,6 +374,7 @@ router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     // Lockeo + listado dentro de la TX para que nadie pueda crear nuevos
     // huérfanos mientras procesamos. Sin LIMIT — queremos cleanup completo.
     const { rows: movs } = await client.query(
@@ -428,26 +443,29 @@ router.post('/orphan-movs/apply', backfillLimiter, async (req, res, next) => {
 // Alertas operacionales (off-band): queue_depth > 1000 = warning, > 10000 =
 // critical, oldest > 5min = critical. Hoy se chequean manualmente; cuando
 // llegue un Sentry/cron externo, leer este endpoint.
-router.get('/audit-queue-stats', async (_req, res, next) => {
+router.get('/audit-queue-stats', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      `SELECT
-         COUNT(*)::int                                          AS queue_depth,
-         MIN(enqueued_at)                                       AS oldest_enqueued_at,
-         MAX(enqueued_at)                                       AS newest_enqueued_at,
-         COUNT(*) FILTER (WHERE last_error IS NOT NULL)::int    AS rows_with_errors
-       FROM audit_queue`
-    );
-    // Leemos el flag con bypass del cache de audit.js: queremos el valor real
-    // de la DB, no el cacheado (un admin que acaba de cambiar el flag espera
-    // ver el reflejo inmediato en este endpoint). Query barata: PK lookup.
-    let async_enabled = false;
-    try {
-      const { rows: f } = await db.query(
-        `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
+    const { rows, async_enabled } = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT
+           COUNT(*)::int                                          AS queue_depth,
+           MIN(enqueued_at)                                       AS oldest_enqueued_at,
+           MAX(enqueued_at)                                       AS newest_enqueued_at,
+           COUNT(*) FILTER (WHERE last_error IS NOT NULL)::int    AS rows_with_errors
+         FROM audit_queue`
       );
-      async_enabled = f[0]?.enabled === true;
-    } catch { /* fallback false si la tabla no existe */ }
+      // Leemos el flag con bypass del cache de audit.js: queremos el valor real
+      // de la DB, no el cacheado (un admin que acaba de cambiar el flag espera
+      // ver el reflejo inmediato en este endpoint). Query barata: PK lookup.
+      let async_enabled = false;
+      try {
+        const { rows: f } = await client.query(
+          `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
+        );
+        async_enabled = f[0]?.enabled === true;
+      } catch { /* fallback false si la tabla no existe */ }
+      return { rows, async_enabled };
+    });
     res.json({
       queue_depth:        rows[0].queue_depth,
       oldest_enqueued_at: rows[0].oldest_enqueued_at,
