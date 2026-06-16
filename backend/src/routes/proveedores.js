@@ -11,6 +11,9 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
+const adminOnly = require('../middleware/adminOnly');
+const { invalidateMetricas } = require('../lib/inventarioCache');
+const { invalidateCajas } = require('../lib/cajasCache');
 const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
@@ -280,6 +283,135 @@ router.delete('/:id', async (req, res, next) => {
     if (!row) return res.status(404).json({ error: 'Proveedor no encontrado' });
     res.json({ ok: true });
   } catch (err) { next(err); }
+});
+
+// ─── BULK DELETE: TODOS LOS PROVEEDORES ────────────────────────────────────
+//
+// Borrado masivo en cascada — pedido por Lucas 2026-06-15. Único caller
+// previsto: botón admin "Eliminar todos los proveedores" en la pantalla.
+// Operación destructiva → adminOnly + tx única atómica.
+//
+// Cascada:
+//   1. Lockea TODOS los proveedor_movimientos vivos del tenant + sus productos.
+//   2. Si algún producto está vendido → 409 (no rompemos historial de ventas).
+//   3. Soft-delete productos creados por las compras → inventario refleja.
+//   4. Soft-delete proveedor_movimientos (compras + pagos) en bloque.
+//   5. Para cada movimiento: reverseCajaMovimientos — revierte egresos de
+//      compras-contado y de pagos. Si alguna caja queda en negativo, la lib
+//      tira 409 → la tx hace ROLLBACK y se preserva el estado original.
+//   6. Soft-delete proveedores.
+//   7. Invalida caches (inventarioCache + cajasCache) — los saldos cambiaron.
+//   8. Audit-lote (no audit por proveedor — 1 entry con conteo y user_id).
+//
+// Compras con productos PARCIALMENTE vendidos: por decisión de Lucas, NO se
+// tocan (el endpoint 409 antes de borrar nada si DETECTA esa situación).
+// Para limpiar el resto sin afectar el historial vendido, el operador puede
+// borrar manualmente compra por compra o usar el flow de "Vaciar stock +
+// compras" en Inventario que sí tolera parciales.
+router.post('/bulk-delete-all', adminOnly, async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // 1. Lockear movimientos vivos del tenant.
+    const { rows: movs } = await client.query(
+      `SELECT id, proveedor_id FROM proveedor_movimientos
+        WHERE deleted_at IS NULL
+        ORDER BY id FOR UPDATE`
+    );
+
+    // 2. Lockear productos vivos creados por esos movimientos.
+    let prods = [];
+    if (movs.length > 0) {
+      const movIds = movs.map(m => m.id);
+      const { rows } = await client.query(
+        `SELECT id, nombre, estado, proveedor_movimiento_id
+           FROM productos
+          WHERE proveedor_movimiento_id = ANY($1::int[]) AND deleted_at IS NULL
+          ORDER BY id FOR UPDATE`,
+        [movIds]
+      );
+      prods = rows;
+      const vendidos = prods.filter(p => p.estado === 'vendido');
+      if (vendidos.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `No se puede borrar: ${vendidos.length} producto(s) de compras a proveedores ya se vendieron: ${vendidos.map(p => p.nombre).slice(0, 3).join(', ')}${vendidos.length > 3 ? '…' : ''}. Resolvé/borrá esas compras a mano primero.`,
+          productos_vendidos: vendidos.map(p => p.id),
+        });
+      }
+    }
+
+    // 3. Lockear proveedores vivos (el lock evita races con altas/edits concurrentes).
+    const { rows: provs } = await client.query(
+      `SELECT id FROM proveedores
+        WHERE deleted_at IS NULL
+        ORDER BY id FOR UPDATE`
+    );
+
+    if (provs.length === 0) {
+      await client.query('ROLLBACK');
+      return res.json({ ok: true, proveedores_borrados: 0, movimientos_borrados: 0, productos_borrados: 0 });
+    }
+
+    // 4. Soft-delete productos.
+    if (prods.length > 0) {
+      await client.query(
+        `UPDATE productos SET deleted_at = NOW()
+           WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+        [prods.map(p => p.id)]
+      );
+    }
+
+    // 5. Soft-delete movimientos.
+    if (movs.length > 0) {
+      await client.query(
+        `UPDATE proveedor_movimientos SET deleted_at = NOW()
+           WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+        [movs.map(m => m.id)]
+      );
+      // 6. Revertir caja por cada movimiento (uno por uno porque
+      //    reverseCajaMovimientos opera por ref puntual). Si alguno deja la
+      //    caja en negativo, throw → ROLLBACK total → tenant queda intacto.
+      for (const m of movs) {
+        await reverseCajaMovimientos(client, 'proveedor_movimientos', m.id);
+      }
+    }
+
+    // 7. Soft-delete proveedores.
+    await client.query(
+      `UPDATE proveedores SET deleted_at = NOW()
+         WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+      [provs.map(p => p.id)]
+    );
+
+    // 8. Audit-lote (1 entry, no N).
+    await audit(client, 'proveedores', 'DELETE', 0, {
+      tipo: 'bulk_delete_all_proveedores',
+      proveedores: provs.length,
+      movimientos: movs.length,
+      productos: prods.length,
+      user_id: req.user.id,
+    });
+
+    await client.query('COMMIT');
+    invalidateMetricas(req.tenantId);
+    invalidateCajas(req.tenantId);
+    res.json({
+      ok: true,
+      proveedores_borrados: provs.length,
+      movimientos_borrados: movs.length,
+      productos_borrados: prods.length,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    // reverseCajaMovimientos puede tirar err.status (409 saldo insuficiente).
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // ─── MOVIMIENTOS (compras y pagos) ──────────────────────────

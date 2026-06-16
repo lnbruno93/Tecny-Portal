@@ -344,6 +344,12 @@ export const proveedores = {
   createMovimientosBulk: (movimientos) => api('/api/proveedores/movimientos/bulk', 'POST', { movimientos }),
   deleteMovimiento: (id) => api(`/api/proveedores/movimientos/${id}`, 'DELETE'),
   saldos: () => api('/api/proveedores/resumen/saldos'),
+  // Bulk-delete cascade — admin only. Borra TODOS los proveedores + sus
+  // compras/pagos + revierte los egresos de caja. Si alguna caja queda
+  // en negativo o algún producto está vendido, el endpoint rechaza con
+  // 409 sin tocar nada. Devuelve { proveedores_borrados, movimientos_borrados,
+  // productos_borrados }.
+  bulkDeleteAll: () => api('/api/proveedores/bulk-delete-all', 'POST'),
 };
 
 export const proyectos = {
@@ -387,6 +393,11 @@ export const inventario = {
   // Bulk soft-delete de productos en estado 'disponible'. Mantiene vendidos,
   // en_tecnico y reservados. Devuelve { borrados: N }.
   bulkDeleteDisponibles: () => api('/api/inventario/productos/bulk-delete-disponibles', 'POST'),
+  // Variante destructiva (admin only): además del bulk-delete, borra las
+  // compras a proveedores cuyos productos quedaron 100% borrados y revierte
+  // sus egresos de caja. Compras con algún producto vendido (parciales) NO
+  // se tocan. Devuelve { borrados, compras_borradas }.
+  bulkDeleteDisponiblesConCompras: () => api('/api/inventario/productos/bulk-delete-disponibles-con-compras', 'POST'),
   categorias:      () => api('/api/inventario/categorias'),
   createCategoria: (data) => api('/api/inventario/categorias', 'POST', data),
   // Bulk resolve-or-create — devuelve { map: { lowercase_nombre: id } } para
