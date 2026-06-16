@@ -610,6 +610,46 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
     await request(app).delete(`/api/inventario/productos/${prod.body.id}`).set(auth());
   });
 
+  // Regresión 2026-06-15: el bulk-delete chequeaba envíos Pendiente/En camino
+  // sin filtrar por deleted_at IS NULL. Resultado: envíos soft-deleted con
+  // estado=Pendiente seguían apareciendo como bloqueantes — Lucas reportó que
+  // borró todos sus envíos pero el botón "Vaciar stock" seguía dando 409 con
+  // "hay 2 envíos en curso". Fix: AND e.deleted_at IS NULL en la query.
+  it('envíos Pendiente soft-deleted NO bloquean el vaciado', async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth()).send({ nombre: 'EnviosBorradosCat' });
+    const dep = await request(app).post('/api/inventario/depositos').set(auth()).send({ nombre: 'EnviosBorradosDep' });
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Telefono Para Borrar', categoria_id: cat.body.id, deposito_id: dep.body.id,
+      precio_venta: 100, costo: 50, estado: 'disponible',
+    });
+    expect(prod.status).toBe(201);
+
+    // Crear envío Pendiente referenciando al producto.
+    const envio = await request(app).post('/api/envios').set(auth()).send({
+      fecha: '2026-06-15', cliente: 'Cliente Fantasma', direccion: 'Calle X', estado: 'Pendiente',
+      total_cobrado: 0, items: [{ tipo: 'producto', descripcion: 'Tel', cantidad: 1, producto_id: prod.body.id }],
+    });
+    expect(envio.status).toBe(201);
+
+    // Borrar el envío (soft-delete). El estado queda 'Pendiente' en DB pero
+    // deleted_at se setea — exactamente el escenario que disparó el bug.
+    const delEnvio = await request(app).delete(`/api/envios/${envio.body.id}`).set(auth());
+    expect(delEnvio.status).toBe(200);
+
+    // Vaciar disponibles. Debe FUNCIONAR (no 409) — el envío borrado no cuenta.
+    const wipe = await request(app).post('/api/inventario/productos/bulk-delete-disponibles').set(auth());
+    expect(wipe.status).toBe(200);
+    expect(wipe.body.borrados).toBeGreaterThanOrEqual(1);
+
+    // El producto se borró.
+    const listResp = await request(app).get('/api/inventario/productos?vista=todos_ocultos&limit=200').set(auth());
+    const stillThere = (listResp.body.data || []).find(p => p.id === prod.body.id);
+    // Si aparece en la lista de "todos_ocultos", debe estar marcado como deleted.
+    // El endpoint normal no lo devolvería; usamos vista todos_ocultos sólo
+    // para confirmar que se borró sin importar si la vista lo incluye.
+    expect(stillThere == null || stillThere.deleted_at != null).toBe(true);
+  });
+
   // Auditoría TANDA 0: el audit_log se registra correctamente para la operación
   // bulk. Antes la versión guardaba `ids: [...]` (40KB de JSONB para N grande);
   // ahora solo `borrados: N` para evitar inflar audit_logs.
