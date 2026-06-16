@@ -814,12 +814,20 @@ router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, 
     // Estados 'Entregado' y 'Cancelado' son terminales — borrar el producto no
     // afecta esos envíos (la referencia queda como "producto borrado" pero el
     // envío ya cerró). 'Pendiente'/'En camino' son los que importan.
+    //
+    // 2026-06-15 fix: agregamos `AND e.deleted_at IS NULL`. Sin esto, envíos
+    // soft-deleted con estado Pendiente/En camino seguían bloqueando el wipe
+    // — `envios.estado` no se cambia al soft-deletear (solo se setea
+    // deleted_at), así que un envío "fantasma" disparaba el 409 aunque ya no
+    // exista para el operador. Reportado por Lucas: borró todos los envíos y
+    // el botón de vaciar inventario seguía dando "hay 2 envíos en curso".
     const enUso = await client.query(
       `SELECT ei.envio_id, e.cliente, e.estado, ei.producto_id, p.nombre AS producto_nombre
          FROM envio_items ei
          JOIN envios   e ON e.id = ei.envio_id
          JOIN productos p ON p.id = ei.producto_id
         WHERE e.estado IN ('Pendiente', 'En camino')
+          AND e.deleted_at IS NULL
           AND p.estado = 'disponible'
           AND p.deleted_at IS NULL
           AND ei.producto_id IS NOT NULL
