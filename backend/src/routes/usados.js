@@ -19,13 +19,16 @@ router.get('/', async (req, res, next) => {
       where += ` AND (equipo ILIKE $${params.length} OR capacidad ILIKE $${params.length} OR comentarios ILIKE $${params.length})`;
     }
 
-    const { rows } = await db.query(
-      `SELECT id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at
-       FROM catalogo_usados
-       ${where}
-       ORDER BY equipo ASC, capacidad ASC, pct_bateria ASC`,
-      params
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at
+         FROM catalogo_usados
+         ${where}
+         ORDER BY equipo ASC, capacidad ASC, pct_bateria ASC`,
+        params
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -35,11 +38,14 @@ router.get('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      `SELECT id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at
-       FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,
-      [id]
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at
+         FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      return rows;
+    });
     if (!rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
     res.json(rows[0]);
   } catch (err) { next(err); }
@@ -49,13 +55,16 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', validate(createUsadoSchema), async (req, res, next) => {
   try {
     const data = req.body;
-    const { rows } = await db.query(
-      `INSERT INTO catalogo_usados (equipo, capacidad, pct_bateria, precio_usd, comentarios)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
-      [data.equipo, data.capacidad ?? null, data.pct_bateria ?? null, data.precio_usd, data.comentarios ?? null]
-    );
-    await audit('catalogo_usados', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO catalogo_usados (equipo, capacidad, pct_bateria, precio_usd, comentarios)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
+        [data.equipo, data.capacidad ?? null, data.pct_bateria ?? null, data.precio_usd, data.comentarios ?? null]
+      );
+      await audit(client, 'catalogo_usados', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
+      return rows;
+    });
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -68,6 +77,7 @@ router.put('/bulk', validate(bulkUpdateUsadosSchema), async (req, res, next) => 
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
       let count = 0;
       for (const u of updates) {
         const { rowCount } = await client.query(
@@ -104,31 +114,35 @@ router.put('/:id', validate(updateUsadoSchema), async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const data = req.body;
 
-    const prev = await db.query(
-      `SELECT * FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,
-      [id]
-    );
-    if (!prev.rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
+    const result = await db.withTenant(req.tenantId, async (client) => {
+      const prev = await client.query(
+        `SELECT * FROM catalogo_usados WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (!prev.rows.length) return { notFound: true };
 
-    const fields = [];
-    const params = [];
-    const map = { equipo: 'equipo', capacidad: 'capacidad', pct_bateria: 'pct_bateria', precio_usd: 'precio_usd', comentarios: 'comentarios' };
+      const fields = [];
+      const params = [];
+      const map = { equipo: 'equipo', capacidad: 'capacidad', pct_bateria: 'pct_bateria', precio_usd: 'precio_usd', comentarios: 'comentarios' };
 
-    for (const [key, col] of Object.entries(map)) {
-      if (data[key] !== undefined) {
-        params.push(data[key]);
-        fields.push(`${col} = $${params.length}`);
+      for (const [key, col] of Object.entries(map)) {
+        if (data[key] !== undefined) {
+          params.push(data[key]);
+          fields.push(`${col} = $${params.length}`);
+        }
       }
-    }
 
-    params.push(id);
-    const { rows } = await db.query(
-      `UPDATE catalogo_usados SET ${fields.join(', ')} WHERE id = $${params.length} AND deleted_at IS NULL
-       RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
-      params
-    );
-    await audit('catalogo_usados', 'UPDATE', rows[0].id, { antes: prev.rows[0], despues: rows[0], user_id: req.user.id });
-    res.json(rows[0]);
+      params.push(id);
+      const { rows } = await client.query(
+        `UPDATE catalogo_usados SET ${fields.join(', ')} WHERE id = $${params.length} AND deleted_at IS NULL
+         RETURNING id, equipo, capacidad, pct_bateria, precio_usd, comentarios, created_at`,
+        params
+      );
+      await audit(client, 'catalogo_usados', 'UPDATE', rows[0].id, { antes: prev.rows[0], despues: rows[0], user_id: req.user.id });
+      return { rows };
+    });
+    if (result.notFound) return res.status(404).json({ error: 'Producto no encontrado' });
+    res.json(result.rows[0]);
   } catch (err) { next(err); }
 });
 
@@ -137,13 +151,18 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
-    const { rows } = await db.query(
-      `UPDATE catalogo_usados SET deleted_at = now()
-       WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
-      [id]
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `UPDATE catalogo_usados SET deleted_at = now()
+         WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+        [id]
+      );
+      if (rows.length) {
+        await audit(client, 'catalogo_usados', 'DELETE', rows[0].id, { user_id: req.user.id });
+      }
+      return rows;
+    });
     if (!rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
-    await audit('catalogo_usados', 'DELETE', rows[0].id, { user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

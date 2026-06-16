@@ -40,11 +40,14 @@ router.get('/', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/config', async (_req, res, next) => {
+router.get('/config', async (req, res, next) => {
   try {
-    const { rows } = await db.query(
-      'SELECT tipo, activa, parametros, updated_at FROM alertas_config ORDER BY tipo'
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'SELECT tipo, activa, parametros, updated_at FROM alertas_config ORDER BY tipo'
+      );
+      return rows;
+    });
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -56,6 +59,7 @@ router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res,
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT tipo, activa, parametros FROM alertas_config WHERE tipo = $1', [tipo]
     );

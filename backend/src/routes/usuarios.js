@@ -13,15 +13,18 @@ const BCRYPT_ROUNDS = 12;
 // requireAuth aplicado en app.js al montar /api/usuarios
 router.use(adminOnly);
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const { rows: users } = await db.query(
-      'SELECT id, nombre, username, email, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY nombre LIMIT 200'
-    );
-    const { rows: perms } = await db.query(
-      'SELECT user_id, tool, enabled FROM user_permissions WHERE user_id = ANY($1)',
-      [users.map(u => u.id)]
-    );
+    const { users, perms } = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: users } = await client.query(
+        'SELECT id, nombre, username, email, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY nombre LIMIT 200'
+      );
+      const { rows: perms } = await client.query(
+        'SELECT user_id, tool, enabled FROM user_permissions WHERE user_id = ANY($1)',
+        [users.map(u => u.id)]
+      );
+      return { users, perms };
+    });
     const permMap = {};
     perms.forEach(p => {
       if (!permMap[p.user_id]) permMap[p.user_id] = {};
@@ -43,6 +46,7 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
       const { rows } = await client.query(
         'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id, nombre, username, email, role',
         [nombre, username, email ?? null, hash, role]
@@ -78,9 +82,11 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
-    const { rows: before } = await db.query(
-      'SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL', [id]
-    );
+    const { rows: before } = await db.withTenant(req.tenantId, async (client) => {
+      return await client.query(
+        'SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL', [id]
+      );
+    });
     if (!before[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const { nombre, username, email, password, role, perms, twofa_code } = req.body;
@@ -112,6 +118,7 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
       // H3 auditoría 2026-06: si el admin cambia la password (`hash` no null),
       // bumpear también `password_changed_at = NOW()`. El middleware de auth
       // compara `jwt.iat_ms` con `password_changed_at` y rechaza tokens viejos
@@ -189,16 +196,21 @@ router.delete('/:id', async (req, res, next) => {
     // compara con `iat_ms`). Sin esto, el token sigue válido hasta 8h (default
     // post SE-01) aunque el filtro `deleted_at IS NULL` del middleware lo bloquee.
     // Defense-in-depth: fail-closed contra DB hiccups o réplica lag.
-    const { rows } = await db.query(
-      `UPDATE users
-          SET deleted_at = NOW(), password_changed_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
-        RETURNING *`,
-      [id]
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `UPDATE users
+            SET deleted_at = NOW(), password_changed_at = NOW()
+          WHERE id = $1 AND deleted_at IS NULL
+          RETURNING *`,
+        [id]
+      );
+      if (rows[0]) {
+        const { password_hash: _ph, ...safeUser } = rows[0];
+        await audit(client, 'users', 'DELETE', id, { antes: safeUser, user_id: req.user.id });
+      }
+      return rows;
+    });
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
-    const { password_hash: _ph, ...safeUser } = rows[0];
-    await audit('users', 'DELETE', id, { antes: safeUser, user_id: req.user.id });
     res.json({ ok: true });
   } catch (err) {
     next(err);

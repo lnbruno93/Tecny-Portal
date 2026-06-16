@@ -56,16 +56,19 @@ router.get('/totales', validate(queryComprobantesSchema, 'query'), async (req, r
       where += ` AND (c.cliente ILIKE $${params.length} OR c.referencia ILIKE $${params.length})`;
     }
 
-    const { rows } = await db.query(`
-      SELECT
-        COUNT(*)                        AS count,
-        COALESCE(SUM(c.monto),            0) AS total_monto,
-        COALESCE(SUM(c.monto_financiera), 0) AS total_financiera,
-        COALESCE(SUM(c.monto_neto),       0) AS total_neto
-      FROM comprobantes c
-      LEFT JOIN vendedores v ON v.id = c.vendedor_id
-      ${where} AND c.deleted_at IS NULL
-    `, params);
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(`
+        SELECT
+          COUNT(*)                        AS count,
+          COALESCE(SUM(c.monto),            0) AS total_monto,
+          COALESCE(SUM(c.monto_financiera), 0) AS total_financiera,
+          COALESCE(SUM(c.monto_neto),       0) AS total_neto
+        FROM comprobantes c
+        LEFT JOIN vendedores v ON v.id = c.vendedor_id
+        ${where} AND c.deleted_at IS NULL
+      `, params);
+      return rows;
+    });
 
     const r = rows[0];
     res.json({
@@ -102,23 +105,26 @@ router.get('/', validate(queryComprobantesSchema, 'query'), async (req, res, nex
       ${where} AND c.deleted_at IS NULL
     `;
 
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) ${baseQuery}`, params),
-      db.query(
-        // Columnas explícitas SIN archivo_data (base64): no debe viajar en el listado.
-        // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay
-        // adjunto en CUALQUIERA de los dos backends — archivo_data (legacy) o
-        // archivo_key (R2, P-03 Fase 3+).
-        `SELECT c.id, c.fecha, c.cliente, c.vendedor_id, c.monto, c.monto_financiera, c.monto_neto,
-                c.referencia, c.archivo_nombre, c.archivo_tipo, c.venta_id, c.created_at,
-                (c.archivo_data IS NOT NULL OR c.archivo_key IS NOT NULL) AS tiene_archivo,
-                v.nombre AS vendedor_nombre
-         ${baseQuery}
-         ORDER BY c.fecha DESC, c.id DESC
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
+    const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) ${baseQuery}`, params),
+        client.query(
+          // Columnas explícitas SIN archivo_data (base64): no debe viajar en el listado.
+          // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay
+          // adjunto en CUALQUIERA de los dos backends — archivo_data (legacy) o
+          // archivo_key (R2, P-03 Fase 3+).
+          `SELECT c.id, c.fecha, c.cliente, c.vendedor_id, c.monto, c.monto_financiera, c.monto_neto,
+                  c.referencia, c.archivo_nombre, c.archivo_tipo, c.venta_id, c.created_at,
+                  (c.archivo_data IS NOT NULL OR c.archivo_key IS NOT NULL) AS tiene_archivo,
+                  v.nombre AS vendedor_nombre
+           ${baseQuery}
+           ORDER BY c.fecha DESC, c.id DESC
+           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { countRes, dataRes };
+    });
 
     const total = parseInt(countRes.rows[0].count);
     res.json(paginatedResponse(dataRes.rows, total, { page, limit }));
@@ -138,6 +144,7 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
   try {
     const { fecha, cliente, vendedor_id, monto, monto_financiera, monto_neto, referencia, archivo_data, archivo_nombre, archivo_tipo } = req.body;
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // P-03 Fase 3: bifurcación de upload por feature flag.
     //   Si flag `storage_r2_comprobantes` ON + STORAGE_DRIVER=r2 → fileStore.put
@@ -228,6 +235,7 @@ router.post('/manuales', validate(createManualComprobanteSchema), async (req, re
   try {
     const { fecha, cliente, vendedor_id, monto_bruto, pct, referencia } = req.body;
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     const pctEfectivo = await resolverPctFinanciera(client, pct);
     const { bruto, pct: pctFinal, comision, neto } = computeNeto(monto_bruto, pctEfectivo);
@@ -274,6 +282,7 @@ router.patch('/manuales/:id', validate(updateManualComprobanteSchema), async (re
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       `SELECT id, fecha, cliente, vendedor_id, monto, monto_financiera,
               monto_neto, referencia, venta_id
@@ -369,6 +378,7 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT * FROM comprobantes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]
@@ -409,10 +419,13 @@ router.get('/:id/archivo', async (req, res, next) => {
     // y hace fallback a archivo_data para filas legacy. El shape del response
     // { data, nombre, tipo } no cambia — frontend intacto. archivo_key se
     // incluye en el SELECT para que el driver r2 pueda decidir el path.
-    const { rows } = await db.query(
-      'SELECT archivo_data, archivo_key, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1 AND deleted_at IS NULL',
-      [id]
-    );
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        'SELECT archivo_data, archivo_key, archivo_nombre, archivo_tipo FROM comprobantes WHERE id = $1 AND deleted_at IS NULL',
+        [id]
+      );
+      return rows;
+    });
     if (!rows[0]) return res.status(404).json({ error: 'Archivo no encontrado' });
     const file = await fileStore.get(rows[0], { prefix: 'archivo' });
     if (!file) return res.status(404).json({ error: 'Archivo no encontrado' });
@@ -460,29 +473,35 @@ router.get('/export-zip', exportLimiter, validate(queryComprobantesSchema, 'quer
     // la RAM del proceso (Railway Hobby = 512MB-1GB). Pre-count para rechazar
     // queries demasiado amplias con un mensaje claro al operador.
     const EXPORT_CAP = 1000;
-    const { rows: countRows } = await db.query(
-      `SELECT COUNT(*)::int AS n FROM comprobantes c LEFT JOIN vendedores v ON v.id = c.vendedor_id ${where}`,
-      params
-    );
-    if (countRows[0].n > EXPORT_CAP) {
+    const { countN, rows } = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: countRows } = await client.query(
+        `SELECT COUNT(*)::int AS n FROM comprobantes c LEFT JOIN vendedores v ON v.id = c.vendedor_id ${where}`,
+        params
+      );
+      const countN = countRows[0].n;
+      if (countN > EXPORT_CAP) {
+        return { countN, rows: null };
+      }
+      // P-03 Fase 3: incluir archivo_key para que fileStore.stream pueda decidir
+      // entre R2 (si key existe) y legacy (archivo_data). Con driver r2 y filas
+      // migradas, el stream sale directo del GetObjectResponse sin materializar
+      // el blob a memoria del proceso (mejora picos de RAM en exports grandes).
+      const { rows } = await client.query(`
+        SELECT c.id, c.fecha, c.cliente, v.nombre AS vendedor, c.referencia,
+               c.monto, c.monto_financiera, c.monto_neto,
+               c.archivo_data, c.archivo_key, c.archivo_nombre, c.archivo_tipo
+        FROM comprobantes c
+        LEFT JOIN vendedores v ON v.id = c.vendedor_id
+        ${where}
+        ORDER BY c.fecha ASC, c.id ASC
+      `, params);
+      return { countN, rows };
+    });
+    if (countN > EXPORT_CAP) {
       return res.status(400).json({
-        error: `El filtro matchea ${countRows[0].n} comprobantes (máximo ${EXPORT_CAP}). Restringí el período o el cliente.`,
+        error: `El filtro matchea ${countN} comprobantes (máximo ${EXPORT_CAP}). Restringí el período o el cliente.`,
       });
     }
-
-    // P-03 Fase 3: incluir archivo_key para que fileStore.stream pueda decidir
-    // entre R2 (si key existe) y legacy (archivo_data). Con driver r2 y filas
-    // migradas, el stream sale directo del GetObjectResponse sin materializar
-    // el blob a memoria del proceso (mejora picos de RAM en exports grandes).
-    const { rows } = await db.query(`
-      SELECT c.id, c.fecha, c.cliente, v.nombre AS vendedor, c.referencia,
-             c.monto, c.monto_financiera, c.monto_neto,
-             c.archivo_data, c.archivo_key, c.archivo_nombre, c.archivo_tipo
-      FROM comprobantes c
-      LEFT JOIN vendedores v ON v.id = c.vendedor_id
-      ${where}
-      ORDER BY c.fecha ASC, c.id ASC
-    `, params);
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'No hay comprobantes en el período seleccionado.' });

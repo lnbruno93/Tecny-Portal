@@ -1,7 +1,7 @@
 // Agregador de KPIs por período para el Dashboard de Resumen Mensual.
 //
-// Diseño: una función `kpisDelPeriodo(desde, hasta, fechaCorte)` que dispara
-// todas las queries en paralelo (Promise.all) y devuelve el bundle JSON.
+// Diseño: una función `kpisDelPeriodo(client?, desde, hasta, fechaCorte)` que
+// dispara todas las queries en paralelo (Promise.all) y devuelve el bundle JSON.
 // El endpoint la llama dos veces (período actual + período a comparar) y
 // devuelve { actual, comparado } sin calcular deltas — los calcula el front.
 //
@@ -10,18 +10,39 @@
 //   - fechaCorte: punto en el tiempo para snapshots puntuales (cajas, deudas).
 //     Habitualmente = hasta. Permite "saldo de cajas AL fin del período".
 //
-// Cache: el endpoint lo wrappea con createCachedFetcher TTL 60s por key
-// del par (periodo, comparado).
+// Multi-tenant 2026-06-16: las funciones aceptan opcionalmente un `client`
+// (PG client tx-scoped con `SET LOCAL app.current_tenant`) como PRIMER
+// argumento. Si no viene, caen al pool global `db` para compat con jobs/crons.
+// El detector de "primer arg es client" mira si tiene `.query` (duck typing).
+//
+// Cache: el endpoint lo wrappea con createCachedFetcherRedis TTL 60s por key
+// del par (tenant, periodo, comparado).
 
 const db = require('../config/database');
 const { toUsd, round2 } = require('./money');
+
+// Duck-type para distinguir un pg Client/PoolClient del pool global. Si el
+// primer arg tiene .query (es decir, parece un Client o el pool mismo) Y NO
+// es un string/Date, lo tratamos como client. Los args válidos (desde, hasta,
+// fechaCorte, limit) son strings o numbers — nunca objetos con .query.
+function _resolveExec(maybeClient, args) {
+  if (maybeClient
+      && typeof maybeClient === 'object'
+      && !(maybeClient instanceof Date)
+      && typeof maybeClient.query === 'function') {
+    return { exec: maybeClient, restArgs: args };
+  }
+  return { exec: db, restArgs: [maybeClient, ...args] };
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // VENTAS — totales del período
 // ──────────────────────────────────────────────────────────────────────
 
-async function ventasAgregadas(desde, hasta) {
-  const { rows } = await db.query(
+async function ventasAgregadas(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta] = restArgs;
+  const { rows } = await exec.query(
     `SELECT
        COUNT(*) FILTER (WHERE estado <> 'cancelado')                                                      AS cant_ventas,
        COALESCE(SUM(total_usd)    FILTER (WHERE estado <> 'cancelado'), 0)                                AS ventas_usd,
@@ -39,8 +60,10 @@ async function ventasAgregadas(desde, hasta) {
   };
 }
 
-async function topProductos(desde, hasta, limit = 5) {
-  const { rows } = await db.query(
+async function topProductos(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta, limit = 5] = restArgs;
+  const { rows } = await exec.query(
     `SELECT vi.descripcion AS producto, SUM(vi.cantidad)::int AS cantidad,
             COALESCE(SUM(vi.precio_vendido * vi.cantidad
               / NULLIF(CASE WHEN v.tc_venta > 0 THEN v.tc_venta ELSE 1 END, 0)), 0) AS total_usd
@@ -57,8 +80,10 @@ async function topProductos(desde, hasta, limit = 5) {
   return rows.map(r => ({ ...r, total_usd: round2(r.total_usd) }));
 }
 
-async function topVendedores(desde, hasta, limit = 5) {
-  const { rows } = await db.query(
+async function topVendedores(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta, limit = 5] = restArgs;
+  const { rows } = await exec.query(
     `SELECT vd.nombre AS vendedor,
             COUNT(DISTINCT v.id)::int AS ventas,
             COALESCE(SUM(vi.precio_vendido * vi.cantidad
@@ -76,11 +101,13 @@ async function topVendedores(desde, hasta, limit = 5) {
   return rows.map(r => ({ ...r, total_usd: round2(r.total_usd) }));
 }
 
-async function pagosPorMetodo(desde, hasta) {
+async function pagosPorMetodo(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta] = restArgs;
   // 2026-06-10 S-19: Bug numérico. Antes el CASE solo distinguía 'USD' → cuando
   // venía 'USDT' caía al WHEN v.tc_venta > 0 y dividía por el TC ARS, dando
   // un monto subdimensionado por ~1000×. USDT debe tratarse 1:1 con USD.
-  const { rows } = await db.query(
+  const { rows } = await exec.query(
     `SELECT mp.nombre AS metodo, mp.moneda,
             COALESCE(SUM(vp.monto / NULLIF(
               CASE
@@ -105,11 +132,13 @@ async function pagosPorMetodo(desde, hasta) {
 // CAJAS — snapshot al final del período (saldo histórico)
 // ──────────────────────────────────────────────────────────────────────
 
-async function snapshotCajas(fechaCorte) {
+async function snapshotCajas(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [fechaCorte] = restArgs;
   // Saldo de cada caja AL final del día `fechaCorte`. Se reconstruye con el
   // saldo inicial + la suma de movimientos hasta esa fecha. Permite ver
   // "cómo estaba la caja a fin del mes pasado" sin pisar el saldo actual.
-  const { rows } = await db.query(
+  const { rows } = await exec.query(
     `SELECT mp.id, mp.nombre, mp.moneda,
             mp.saldo_inicial + COALESCE(SUM(
               CASE WHEN cm.tipo = 'ingreso' THEN cm.monto ELSE -cm.monto END
@@ -139,13 +168,13 @@ async function snapshotCajas(fechaCorte) {
   // sepa que no hay base de conversión confiable. Antes era hardcoded 1000,
   // lo que ocultaba el problema y daba capital_usd irreal.
   const [{ rows: tcRowArr }, { rows: tcConfArr }] = await Promise.all([
-    db.query(
+    exec.query(
       `SELECT tc_venta FROM ventas
         WHERE tc_venta IS NOT NULL AND fecha <= $1 AND deleted_at IS NULL
         ORDER BY fecha DESC, id DESC LIMIT 1`,
       [fechaCorte]
     ),
-    db.query(
+    exec.query(
       `SELECT parametros FROM alertas_config WHERE tipo = 'tc_referencia' LIMIT 1`
     ),
   ]);
@@ -179,14 +208,16 @@ async function snapshotCajas(fechaCorte) {
 // DEUDAS — snapshot puntual al final del período
 // ──────────────────────────────────────────────────────────────────────
 
-async function deudaCCClientes(fechaCorte) {
+async function deudaCCClientes(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [fechaCorte] = restArgs;
   // 2026-06-11 S-03: usar la fórmula canónica de lib/saldoCC.js. Antes acá había
   // un CASE distinto que (a) NO descontaba compras pagadas de contado (caja_id
   // IS NOT NULL → contado, no genera deuda) y (b) NO sumaba `saldo_inicial`.
   // Resultado: el "total deuda CC" del dashboard difería del del módulo
   // operativo. Ahora ambos usan la MISMA fórmula y la cifra cuadra.
   const { SALDO_CASE_M } = require('./saldoCC');
-  const { rows } = await db.query(
+  const { rows } = await exec.query(
     `SELECT COALESCE(SUM(${SALDO_CASE_M}), 0) AS deuda_usd,
             COUNT(DISTINCT m.cliente_cc_id)::int AS clientes_con_deuda
        FROM movimientos_cc m
@@ -200,9 +231,11 @@ async function deudaCCClientes(fechaCorte) {
   };
 }
 
-async function deudaProveedores(fechaCorte) {
+async function deudaProveedores(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [fechaCorte] = restArgs;
   // Saldo proveedores: compras suman deuda, pagos la restan.
-  const { rows } = await db.query(
+  const { rows } = await exec.query(
     `SELECT COALESCE(SUM(
        CASE m.tipo
          WHEN 'compra' THEN m.monto_usd
@@ -226,8 +259,10 @@ async function deudaProveedores(fechaCorte) {
 // EGRESOS — totales del período
 // ──────────────────────────────────────────────────────────────────────
 
-async function egresosAgregados(desde, hasta) {
-  const { rows } = await db.query(
+async function egresosAgregados(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta] = restArgs;
+  const { rows } = await exec.query(
     `SELECT COUNT(*)::int AS cant_egresos,
             COALESCE(SUM(monto_usd), 0) AS total_usd
        FROM egresos
@@ -247,20 +282,27 @@ async function egresosAgregados(desde, hasta) {
 /**
  * Devuelve el bundle de KPIs para un período. Lanza todas las queries en
  * paralelo. fechaCorte por default es `hasta` (saldos al final del período).
+ *
+ * Multi-tenant 2026-06-16: acepta opcionalmente un `client` como primer arg
+ * (PG client tx-scoped con `SET LOCAL app.current_tenant`). Si el primer arg
+ * NO es un client (heurística: tiene .query y no es string), asume que ese
+ * arg es `desde` (compat con callers viejos sin tenant — jobs/crons).
  */
-async function kpisDelPeriodo(desde, hasta, fechaCorte = hasta) {
+async function kpisDelPeriodo(...allArgs) {
+  const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
+  const [desde, hasta, fechaCorte = hasta] = restArgs;
   const [
     ventas, productos, vendedores, metodos,
     cajas, deudaCC, deudaProv, egresos,
   ] = await Promise.all([
-    ventasAgregadas(desde, hasta),
-    topProductos(desde, hasta),
-    topVendedores(desde, hasta),
-    pagosPorMetodo(desde, hasta),
-    snapshotCajas(fechaCorte),
-    deudaCCClientes(fechaCorte),
-    deudaProveedores(fechaCorte),
-    egresosAgregados(desde, hasta),
+    ventasAgregadas(exec, desde, hasta),
+    topProductos(exec, desde, hasta),
+    topVendedores(exec, desde, hasta),
+    pagosPorMetodo(exec, desde, hasta),
+    snapshotCajas(exec, fechaCorte),
+    deudaCCClientes(exec, fechaCorte),
+    deudaProveedores(exec, fechaCorte),
+    egresosAgregados(exec, desde, hasta),
   ]);
 
   return {

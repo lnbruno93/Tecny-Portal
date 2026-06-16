@@ -39,13 +39,16 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
     }
 
     const where = conditions.join(' AND ');
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM contactos WHERE ${where}`, params),
-      db.query(
-        `SELECT * FROM contactos WHERE ${where} ORDER BY nombre, apellido LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
+    const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) FROM contactos WHERE ${where}`, params),
+        client.query(
+          `SELECT * FROM contactos WHERE ${where} ORDER BY nombre, apellido LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { countRes, dataRes };
+    });
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) {
     next(err);
@@ -60,6 +63,7 @@ router.post('/', requirePermission('contactos'), validate(createContactoSchema),
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen } = req.body;
     const { rows } = await client.query(
       `INSERT INTO contactos (nombre, apellido, telefono, dni, email, fecha_nacimiento, tipo, origen)
@@ -83,6 +87,7 @@ router.put('/:id', requirePermission('contactos'), validate(updateContactoSchema
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: before } = await client.query(
       'SELECT * FROM contactos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]
     );
@@ -119,6 +124,7 @@ router.delete('/:id', requirePermission('contactos'), async (req, res, next) => 
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows } = await client.query(
       'UPDATE contactos SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *',
       [id]
