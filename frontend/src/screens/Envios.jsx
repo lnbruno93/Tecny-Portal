@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
-import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi, config as configApi } from '../lib/api';
+import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi, config as configApi, ocr as ocrApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -119,6 +119,9 @@ export default function Envios() {
   // comprobante en el alta para que el backend auto-genere la entrada del
   // dashboard de Transferencias (syncFinancieraComprobante).
   const [comprobantes, setComprobantes] = useState([]);
+  // OCR del primer comprobante adjunto: mismo patrón que Ventas. Endpoint
+  // /api/ocr usa Claude Haiku 4.5 para extraer el monto del comprobante.
+  const [ocrSugerencia, setOcrSugerencia] = useState({ status: 'idle', monto: null });
   // useModal — auditoría 2026-06-06 UX B2: Esc cierra el modal de "Nuevo
   // envío", focus trap, body scroll lock.
   const createModalRef = useRef(null);
@@ -394,6 +397,7 @@ export default function Envios() {
     setItems([{ ...EMPTY_ITEM }]);
     setCreateError('');
     setComprobantes([]);
+    setOcrSugerencia({ status: 'idle', monto: null });
     setEditingId(null);
     setModalMode('create');
   }
@@ -403,14 +407,41 @@ export default function Envios() {
     const MAX = 6 * 1024 * 1024;
     const next = [];
     let pending = files.length;
+    setOcrSugerencia({ status: 'idle', monto: null });
     if (!pending) { setComprobantes([]); return; }
     files.forEach(f => {
       if (f.size > MAX) { pending--; return; }
       const r = new FileReader();
-      r.onload = ev => { next.push({ nombre: f.name, tipo: f.type, data: String(ev.target.result).split(',')[1] }); pending--; if (pending === 0) setComprobantes([...next]); };
+      r.onload = ev => { next.push({ nombre: f.name, tipo: f.type, data: String(ev.target.result).split(',')[1] }); pending--; if (pending === 0) {
+        setComprobantes([...next]);
+        // OCR del primer archivo (mismo patrón que Ventas).
+        const first = next[0];
+        if (first) {
+          setOcrSugerencia({ status: 'pending', monto: null });
+          ocrApi.extract(first.data, first.tipo)
+            .then(res => {
+              const m = Number(res?.monto);
+              if (m > 0) setOcrSugerencia({ status: 'done', monto: m });
+              else        setOcrSugerencia({ status: 'idle',  monto: null });
+            })
+            .catch(() => setOcrSugerencia({ status: 'error', monto: null }));
+        }
+      } };
       r.onerror = () => { pending--; if (pending === 0) setComprobantes([...next]); };
       r.readAsDataURL(f);
     });
+  }
+  // Aplica el monto detectado al "Entra a tu caja" del pago Financiera (o
+  // primer no-CC si no hay Financiera). Mismo modelo que Ventas Tema C rev5.
+  function aplicarOcrMonto() {
+    if (ocrSugerencia.status !== 'done' || !ocrSugerencia.monto) return;
+    const finCaja = cajasPago.find(c => c.es_financiera);
+    let idx = -1;
+    if (finCaja) idx = items.findIndex(it => it.tipo === 'pago' && !it.es_cuenta_corriente && Number(it.metodo_pago_id) === Number(finCaja.id));
+    if (idx < 0) idx = items.findIndex(it => it.tipo === 'pago' && !it.es_cuenta_corriente && it.metodo_pago_id);
+    if (idx < 0) { toast.error('Agregá un método de pago antes de aplicar el monto.'); return; }
+    setPagoNeto(idx, String(ocrSugerencia.monto));
+    setOcrSugerencia({ status: 'idle', monto: null });
   }
 
   // Precarga el modal con los datos del envío y abre en modo edit. Para items
@@ -450,6 +481,7 @@ export default function Envios() {
     setItems(mappedItems.length ? mappedItems : [{ ...EMPTY_ITEM }]);
     setCreateError('');
     setComprobantes([]);
+    setOcrSugerencia({ status: 'idle', monto: null });
     setEditingId(envio.id);
     setModalMode('edit');
   }
@@ -1462,6 +1494,21 @@ export default function Envios() {
                       <label className="field-label">Comprobantes de pago <span className="muted tiny">(imágenes/PDF, máx 6MB c/u · requerido si cobrás por Transferencia)</span></label>
                       <input type="file" multiple accept="image/*,application/pdf" className="input" onChange={onComprobFiles} />
                       {comprobantes.length > 0 && <div className="muted tiny" style={{ marginTop: 4 }}>{comprobantes.length} archivo(s) listo(s)</div>}
+                      {/* OCR del comprobante (Tema C rev5 — mismo patrón que Ventas
+                          y Financiera). Aplica al "Entra a tu caja" del pago. */}
+                      {ocrSugerencia.status === 'pending' && (
+                        <div className="muted tiny" style={{ marginTop: 4 }}>Leyendo monto del comprobante…</div>
+                      )}
+                      {ocrSugerencia.status === 'done' && ocrSugerencia.monto > 0 && (
+                        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span className="muted tiny">Detectamos en el comprobante:</span>
+                          <span className="mono" style={{ fontWeight: 600 }}>${fmt(ocrSugerencia.monto)}</span>
+                          <button type="button" className="btn btn-sm" onClick={aplicarOcrMonto}>Aplicar al pago</button>
+                        </div>
+                      )}
+                      {ocrSugerencia.status === 'error' && (
+                        <div className="muted tiny" style={{ marginTop: 4, color: 'var(--neg)' }}>No se pudo leer el monto. Cargalo a mano.</div>
+                      )}
                     </div>
                   )}
 

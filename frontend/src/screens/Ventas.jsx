@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi, config as configApi } from '../lib/api';
+import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi, config as configApi, ocr as ocrApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -172,6 +172,11 @@ export default function Ventas() {
   const [cart, setCart] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [comprobantes, setComprobantes] = useState([]);
+  // OCR del primer comprobante adjunto: se dispara automáticamente en
+  // onComprobFiles y el operador acepta la sugerencia con un click. Mismo
+  // endpoint (/api/ocr) que el módulo Financiera; backend usa Claude Haiku.
+  // Estados: 'idle' | 'pending' | 'done' | 'error'.
+  const [ocrSugerencia, setOcrSugerencia] = useState({ status: 'idle', monto: null });
   const [procRapidaId, setProcRapidaId] = useState(null);
   const [editId, setEditId] = useState(null);
   const [savingVenta, setSavingVenta] = useState(false);
@@ -191,7 +196,7 @@ export default function Ventas() {
       navigate(`/cuentas?cliente=${v.cliente_cc_id}`);
       return;
     }
-    setEditId(v.id); setProcRapidaId(null); setComprobantes([]); setVentaError(''); setProdSearch(''); setProdResults([]);
+    setEditId(v.id); setProcRapidaId(null); setComprobantes([]); setOcrSugerencia({ status: 'idle', monto: null }); setVentaError(''); setProdSearch(''); setProdResults([]);
     setVForm({
       ...EMPTY_VENTA,
       fecha: (v.fecha || '').substring(0, 10), hora: v.hora ? v.hora.substring(0, 5) : '',
@@ -228,7 +233,7 @@ export default function Ventas() {
 
   function openVenta(rapida) {
     setVForm({ ...EMPTY_VENTA, fecha: todayStr() });
-    setCart([]); setPagos([]); setComprobantes([]); setVentaError(''); setProdSearch(''); setProdResults([]);
+    setCart([]); setPagos([]); setComprobantes([]); setOcrSugerencia({ status: 'idle', monto: null }); setVentaError(''); setProdSearch(''); setProdResults([]);
     setProcRapidaId(null); setEditId(null);
     if (rapida) {
       setProcRapidaId(rapida.id);
@@ -438,14 +443,44 @@ export default function Ventas() {
     const MAX = 6 * 1024 * 1024;
     const next = [];
     let pending = files.length;
+    setOcrSugerencia({ status: 'idle', monto: null });
     if (!pending) { setComprobantes([]); return; }
     files.forEach(f => {
       if (f.size > MAX) { pending--; return; }
       const r = new FileReader();
-      r.onload = ev => { next.push({ nombre: f.name, tipo: f.type, data: String(ev.target.result).split(',')[1] }); pending--; if (pending === 0) setComprobantes([...next]); };
+      r.onload = ev => { next.push({ nombre: f.name, tipo: f.type, data: String(ev.target.result).split(',')[1] }); pending--; if (pending === 0) {
+        setComprobantes([...next]);
+        // OCR del primer archivo. Si el operador adjuntó múltiples, solo
+        // procesamos el primero — caso común es UN comprobante por venta.
+        const first = next[0];
+        if (first) {
+          setOcrSugerencia({ status: 'pending', monto: null });
+          ocrApi.extract(first.data, first.tipo)
+            .then(res => {
+              const m = Number(res?.monto);
+              if (m > 0) setOcrSugerencia({ status: 'done', monto: m });
+              else        setOcrSugerencia({ status: 'idle',  monto: null });
+            })
+            .catch(() => setOcrSugerencia({ status: 'error', monto: null }));
+        }
+      } };
       r.onerror = () => { pending--; if (pending === 0) setComprobantes([...next]); };
       r.readAsDataURL(f);
     });
+  }
+  // Aplica el monto detectado por OCR al pago Financiera (o al primer pago
+  // no-CC si no hay Financiera). Va al "Entra a tu caja" (neto_input) —
+  // ese es el campo editable de Tema C que representa "lo que el cliente
+  // ya transfirió". El setPagoNeto recalcula el bruto al revés.
+  function aplicarOcrMonto() {
+    if (ocrSugerencia.status !== 'done' || !ocrSugerencia.monto) return;
+    const finCaja = metodos.find(m => m.es_financiera);
+    let idx = -1;
+    if (finCaja) idx = pagos.findIndex(p => p.metodo_pago_id === finCaja.id);
+    if (idx < 0) idx = pagos.findIndex(p => !p.es_cuenta_corriente && p.metodo_pago_id);
+    if (idx < 0) { toast.error('Agregá un método de pago antes de aplicar el monto.'); return; }
+    setPagoNeto(idx, String(ocrSugerencia.monto));
+    setOcrSugerencia({ status: 'idle', monto: null });
   }
 
   const totales = useMemo(() => {
@@ -1512,6 +1547,22 @@ export default function Ventas() {
                     <label className="field-label">Comprobantes de pago (imágenes/PDF, máx 6MB c/u)</label>
                     <input type="file" multiple accept="image/*,application/pdf" className="input" onChange={onComprobFiles} />
                     {comprobantes.length > 0 && <div className="muted tiny" style={{ marginTop: 4 }}>{comprobantes.length} archivo(s) listo(s)</div>}
+                    {/* OCR del comprobante (Tema C rev5 — paridad con Financiera).
+                        Mismo endpoint /api/ocr que el módulo Transferencias. Aplica
+                        al "Entra a tu caja" del pago Financiera (o primer no-CC). */}
+                    {ocrSugerencia.status === 'pending' && (
+                      <div className="muted tiny" style={{ marginTop: 4 }}>Leyendo monto del comprobante…</div>
+                    )}
+                    {ocrSugerencia.status === 'done' && ocrSugerencia.monto > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span className="muted tiny">Detectamos en el comprobante:</span>
+                        <span className="mono" style={{ fontWeight: 600 }}>${fmt(ocrSugerencia.monto)}</span>
+                        <button type="button" className="btn btn-sm" onClick={aplicarOcrMonto}>Aplicar al pago</button>
+                      </div>
+                    )}
+                    {ocrSugerencia.status === 'error' && (
+                      <div className="muted tiny" style={{ marginTop: 4, color: 'var(--neg)' }}>No se pudo leer el monto. Cargalo a mano.</div>
+                    )}
                   </div>
 
                   <div className="field"><label className="field-label">Observaciones</label><input className="input" placeholder="Notas adicionales…" value={vForm.notas} onChange={e => setVF('notas', e.target.value)} /></div>

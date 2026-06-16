@@ -28,6 +28,9 @@ vi.mock('../lib/api', () => {
     config: {
       get: vi.fn().mockResolvedValue({ pct_financiera: 0 }),
     },
+    ocr: {
+      extract: vi.fn().mockResolvedValue({ monto: null }),
+    },
   };
 });
 
