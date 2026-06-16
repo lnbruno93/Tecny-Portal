@@ -12,6 +12,11 @@
 // No usa la lib `csv-parse` adrede: cero deps, se ejecuta en el browser.
 // ──────────────────────────────────────────────────────────────────────
 export function parseCsv(text) {
+  // Salteamos la primera línea si es el hint `sep=,`/`sep=;` que emite
+  // exportCsv para que Excel ES abra el archivo con columnas separadas —
+  // no es un dato. Lo strippeamos del texto antes del parse para evitar
+  // que el split lo trate como una fila.
+  text = text.replace(/^\uFEFF?sep=.\r?\n/i, '');
   const rows = [];
   let row = [], field = '', inQuotes = false;
   for (let i = 0; i < text.length; i++) {

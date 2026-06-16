@@ -66,8 +66,11 @@ const PLANTILLA_EJEMPLO = [
   ['Funda iPhone 15', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Accesorios', 'Mayorista Acc', '20', '1'],
 ];
 
-// Parser CSV mínimo (soporta comillas, comas y saltos dentro de campos)
+// Parser CSV mínimo (soporta comillas, comas y saltos dentro de campos).
+// Salteamos la primera línea si es el hint `sep=,` que emite exportCsv para
+// que Excel ES abra el archivo con columnas separadas — no es un dato.
 function parseCsv(text) {
+  text = text.replace(/^\uFEFF?sep=.\r?\n/i, '');
   const rows = [];
   let row = [], field = '', inQuotes = false;
   for (let i = 0; i < text.length; i++) {
