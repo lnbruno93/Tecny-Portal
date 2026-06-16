@@ -8,6 +8,7 @@ import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovim
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../components/ConfirmModal';
 import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
@@ -93,6 +94,8 @@ function parseCsv(text) {
 export default function Inventario() {
   const { toast } = useToast();
   const confirm = useConfirm();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { setPrimaryAction } = usePageActions();
 
   const [productos, setProductos] = useState([]);
@@ -640,6 +643,37 @@ export default function Inventario() {
     }
   }
 
+  // ── Variante destructiva pedida por Lucas 2026-06-15 (admin only) ──
+  // Vacía el stock disponible Y además borra las compras a proveedores
+  // cuyos productos quedaron 100% borrados, revirtiendo sus egresos de
+  // caja. Compras parciales (algún producto vendido) NO se tocan.
+  async function handleVaciarStockConCompras() {
+    const ok = await confirm({
+      title: 'Vaciar stock + compras a proveedores',
+      message: 'Va a eliminar TODOS los productos en estado "disponible" Y ADEMÁS las ' +
+               'compras a proveedores cuyos productos queden completamente borrados. ' +
+               'Los egresos de caja de esas compras (al contado) se REVIERTEN — el saldo de la caja vuelve. ' +
+               'Las compras con algún producto YA VENDIDO se preservan (no se tocan). ' +
+               'Si alguna caja quedaría en negativo al revertir, la operación se cancela sin tocar nada. ' +
+               '¿Continuar?',
+      confirmLabel: 'Sí, vaciar stock + compras',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await inventario.bulkDeleteDisponiblesConCompras();
+      const p = res.borrados;
+      const c = res.compras_borradas;
+      toast.success(
+        `${p} producto${p === 1 ? '' : 's'} eliminado${p === 1 ? '' : 's'} · ` +
+        `${c} compra${c === 1 ? '' : 's'} borrada${c === 1 ? '' : 's'}.`
+      );
+      await Promise.all([loadProductos(), loadMetricas()]);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo vaciar el stock + compras.');
+    }
+  }
+
   // ── Catálogos (categorías / depósitos) ──
   async function addCategoria() {
     setCatError('');
@@ -708,6 +742,19 @@ export default function Inventario() {
           <button className="btn btn-ghost" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
             <Icons.Trash size={14} /> Vaciar stock
           </button>
+          {/* Variante destructiva admin: stock + compras a proveedor. Sólo
+              visible para role=admin para que un operador no la dispare por
+              error — el backend igualmente revalida con adminOnly. */}
+          {isAdmin && (
+            <button
+              className="btn btn-ghost"
+              style={{ color: 'var(--neg)' }}
+              onClick={handleVaciarStockConCompras}
+              title="Admin · vacía stock + borra compras a proveedores asociadas + revierte cajas"
+            >
+              <Icons.Trash size={14} /> Vaciar stock + compras
+            </button>
+          )}
           <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
         </div>
       </div>

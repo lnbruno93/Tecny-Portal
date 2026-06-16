@@ -6,6 +6,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { useAuth } from '../contexts/AuthContext';
 import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
@@ -42,6 +43,8 @@ const EMPTY_PROV = () => ({
 export default function Proveedores() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  const { user }  = useAuth();
+  const isAdmin   = user?.role === 'admin';
   const { setPrimaryAction } = usePageActions();
 
   const [search, setSearch]   = useState('');
@@ -133,6 +136,40 @@ export default function Proveedores() {
   function openCreateProv() {
     setEditId(null); setProvForm(EMPTY_PROV()); setProvError(''); setShowProv(true);
   }
+
+  // Bulk delete cascade — admin only. Pedido por Lucas 2026-06-15.
+  // Borra TODOS los proveedores + sus compras/pagos + revierte cajas. El
+  // backend re-valida adminOnly y devuelve 409 si algo bloquea (producto
+  // vendido, caja en negativo al revertir).
+  async function handleBulkDeleteAll() {
+    const ok = await confirm({
+      title: 'Eliminar TODOS los proveedores',
+      message: 'Va a borrar TODOS los proveedores con su historial completo: ' +
+               'compras, pagos y productos creados por esas compras. Los egresos ' +
+               'de caja (compras al contado + pagos) se REVIERTEN — los saldos vuelven. ' +
+               'Si alguno de los productos de las compras ya se vendió, la operación ' +
+               'se cancela sin tocar nada (preservamos historial de ventas). ¿Continuar?',
+      confirmLabel: 'Sí, eliminar TODO',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await provApi.bulkDeleteAll();
+      const p = res.proveedores_borrados;
+      const m = res.movimientos_borrados;
+      const pr = res.productos_borrados;
+      toast.success(
+        `${p} proveedor${p === 1 ? '' : 'es'} eliminado${p === 1 ? '' : 's'} · ` +
+        `${m} movimiento${m === 1 ? '' : 's'} · ${pr} producto${pr === 1 ? '' : 's'}.`
+      );
+      // Recargar lista y limpiar selección.
+      setSelectedId(null);
+      await loadList();
+    } catch (e) {
+      toast.error(e.message || 'No se pudo eliminar.');
+    }
+  }
+
   function openEditProv(p) {
     setEditId(p.id);
     setProvForm({
@@ -282,6 +319,19 @@ export default function Proveedores() {
           <div className="page-sub">Cuentas por pagar · registro tipo planilla</div>
         </div>
         <div className="page-actions">
+          {/* Bulk delete cascade — admin only. Pedido por Lucas 2026-06-15.
+              Estilo destructivo (color rojo + ConfirmModal con danger:true)
+              para protección visual. Backend re-valida adminOnly. */}
+          {isAdmin && (
+            <button
+              className="btn btn-ghost"
+              style={{ color: 'var(--neg)' }}
+              onClick={handleBulkDeleteAll}
+              title="Admin · borra todos los proveedores + compras + revierte cajas"
+            >
+              <Icons.Trash size={14} /> Eliminar todos
+            </button>
+          )}
           <button className="btn btn-primary" onClick={openCreateProv}>
             <Icons.Plus size={14} /> Nuevo proveedor
           </button>
