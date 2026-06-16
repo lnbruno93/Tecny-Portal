@@ -70,7 +70,7 @@ const PLANTILLA_EJEMPLO = [
 // Salteamos la primera línea si es el hint `sep=,` que emite exportCsv para
 // que Excel ES abra el archivo con columnas separadas — no es un dato.
 function parseCsv(text) {
-  text = text.replace(/^﻿?sep=.\r?\n/i, '');
+  text = text.replace(/^\uFEFF?sep=.\r?\n/i, '');
   const rows = [];
   let row = [], field = '', inQuotes = false;
   for (let i = 0; i < text.length; i++) {

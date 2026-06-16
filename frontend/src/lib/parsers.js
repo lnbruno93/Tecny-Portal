@@ -16,7 +16,7 @@ export function parseCsv(text) {
   // exportCsv para que Excel ES abra el archivo con columnas separadas —
   // no es un dato. Lo strippeamos del texto antes del parse para evitar
   // que el split lo trate como una fila.
-  text = text.replace(/^﻿?sep=.\r?\n/i, '');
+  text = text.replace(/^\uFEFF?sep=.\r?\n/i, '');
   const rows = [];
   let row = [], field = '', inQuotes = false;
   for (let i = 0; i < text.length; i++) {

@@ -37,7 +37,7 @@ describe('exportCsv()', () => {
     exportCsv('r.csv', [{ a: 'x' }], [{ key: 'a', label: 'A' }]);
     const text = await captured.blob.text();
     // Removemos el BOM (U+FEFF) antes de assertar.
-    const noBom = text.replace(/^﻿/, '');
+    const noBom = text.replace(/^\uFEFF/, '');
     expect(noBom.startsWith('sep=,\n')).toBe(true);
   });
 });
