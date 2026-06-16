@@ -128,6 +128,7 @@ router.post('/', conciliacionPostLimiter, validate(createConciliacionSchema), as
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // Validar caja existe.
     const { rows: c } = await client.query(
@@ -228,25 +229,28 @@ router.get('/', async (req, res, next) => {
     // de crear la conciliación, no queremos que la conciliación desaparezca
     // del listado (sería confuso para auditoría). Mostramos "(caja eliminada)"
     // en su lugar.
-    const [countRes, dataRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM conciliaciones c WHERE ${where}`, params),
-      db.query(
-        `SELECT c.*,
-                COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
-                mp.moneda AS caja_moneda,
-                COUNT(cl.id)::int AS lineas_total,
-                COUNT(cl.id) FILTER (WHERE cl.matched_caja_mov_id IS NOT NULL)::int AS lineas_matched,
-                COUNT(cl.id) FILTER (WHERE cl.ignorada)::int AS lineas_ignoradas
-           FROM conciliaciones c
-           LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
-           LEFT JOIN conciliacion_lineas cl ON cl.conciliacion_id = c.id
-          WHERE ${where}
-          GROUP BY c.id, mp.nombre, mp.moneda
-          ORDER BY c.created_at DESC, c.id DESC
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
-      ),
-    ]);
+    const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
+      const [countRes, dataRes] = await Promise.all([
+        client.query(`SELECT COUNT(*) FROM conciliaciones c WHERE ${where}`, params),
+        client.query(
+          `SELECT c.*,
+                  COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
+                  mp.moneda AS caja_moneda,
+                  COUNT(cl.id)::int AS lineas_total,
+                  COUNT(cl.id) FILTER (WHERE cl.matched_caja_mov_id IS NOT NULL)::int AS lineas_matched,
+                  COUNT(cl.id) FILTER (WHERE cl.ignorada)::int AS lineas_ignoradas
+             FROM conciliaciones c
+             LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
+             LEFT JOIN conciliacion_lineas cl ON cl.conciliacion_id = c.id
+            WHERE ${where}
+            GROUP BY c.id, mp.nombre, mp.moneda
+            ORDER BY c.created_at DESC, c.id DESC
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+          [...params, limit, offset]
+        ),
+      ]);
+      return { countRes, dataRes };
+    });
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
@@ -263,44 +267,50 @@ router.get('/:id', async (req, res, next) => {
     // conciliación (con "(caja eliminada)" en nombre). Antes era INNER JOIN
     // y un delete de la caja hacía desaparecer todas las conciliaciones
     // ligadas — pérdida de visibilidad de auditoría.
-    const { rows: c } = await db.query(
-      `SELECT c.*,
-              COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
-              mp.moneda AS caja_moneda
-         FROM conciliaciones c
-         LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
-        WHERE c.id = $1 AND c.deleted_at IS NULL`,
-      [id]
-    );
-    if (!c[0]) return res.status(404).json({ error: 'Conciliación no encontrada' });
+    const result = await db.withTenant(req.tenantId, async (client) => {
+      const { rows: c } = await client.query(
+        `SELECT c.*,
+                COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
+                mp.moneda AS caja_moneda
+           FROM conciliaciones c
+           LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
+          WHERE c.id = $1 AND c.deleted_at IS NULL`,
+        [id]
+      );
+      if (!c[0]) return { notFound: true };
 
-    // Líneas con info del mov matched (si hay).
-    const { rows: lineas } = await db.query(
-      `SELECT cl.*,
-              cm.fecha AS mov_fecha, cm.tipo AS mov_tipo, cm.monto AS mov_monto,
-              cm.origen AS mov_origen, cm.concepto AS mov_concepto
-         FROM conciliacion_lineas cl
-         LEFT JOIN caja_movimientos cm ON cm.id = cl.matched_caja_mov_id
-        WHERE cl.conciliacion_id = $1
-        ORDER BY cl.fecha, cl.id`,
-      [id]
-    );
+      // Líneas con info del mov matched (si hay).
+      const { rows: lineas } = await client.query(
+        `SELECT cl.*,
+                cm.fecha AS mov_fecha, cm.tipo AS mov_tipo, cm.monto AS mov_monto,
+                cm.origen AS mov_origen, cm.concepto AS mov_concepto
+           FROM conciliacion_lineas cl
+           LEFT JOIN caja_movimientos cm ON cm.id = cl.matched_caja_mov_id
+          WHERE cl.conciliacion_id = $1
+          ORDER BY cl.fecha, cl.id`,
+        [id]
+      );
 
-    // Movimientos de la caja en el período, NO conciliados todavía o
-    // ya matcheados en esta conciliación. Tolerancia ± 7 días por ahora.
-    const { rows: movs } = await db.query(
-      `SELECT cm.id, cm.fecha, cm.tipo, cm.monto, cm.origen, cm.concepto,
-              cm.conciliado_en, cm.conciliacion_id,
-              (cm.tipo = 'ingreso')::int * 2 - 1 AS signo
-         FROM caja_movimientos cm
-        WHERE cm.caja_id = $1
-          AND cm.deleted_at IS NULL
-          AND cm.fecha BETWEEN ($2::date - INTERVAL '7 day')::date
-                           AND ($3::date + INTERVAL '7 day')::date
-          AND (cm.conciliado_en IS NULL OR cm.conciliacion_id = $4)
-        ORDER BY cm.fecha, cm.id`,
-      [c[0].caja_id, c[0].fecha_desde, c[0].fecha_hasta, id]
-    );
+      // Movimientos de la caja en el período, NO conciliados todavía o
+      // ya matcheados en esta conciliación. Tolerancia ± 7 días por ahora.
+      const { rows: movs } = await client.query(
+        `SELECT cm.id, cm.fecha, cm.tipo, cm.monto, cm.origen, cm.concepto,
+                cm.conciliado_en, cm.conciliacion_id,
+                (cm.tipo = 'ingreso')::int * 2 - 1 AS signo
+           FROM caja_movimientos cm
+          WHERE cm.caja_id = $1
+            AND cm.deleted_at IS NULL
+            AND cm.fecha BETWEEN ($2::date - INTERVAL '7 day')::date
+                             AND ($3::date + INTERVAL '7 day')::date
+            AND (cm.conciliado_en IS NULL OR cm.conciliacion_id = $4)
+          ORDER BY cm.fecha, cm.id`,
+        [c[0].caja_id, c[0].fecha_desde, c[0].fecha_hasta, id]
+      );
+
+      return { c, lineas, movs };
+    });
+    if (result.notFound) return res.status(404).json({ error: 'Conciliación no encontrada' });
+    const { c, lineas, movs } = result;
 
     res.json({ ...c[0], lineas, movimientos_disponibles: movs });
   } catch (err) { next(err); }
@@ -317,6 +327,7 @@ router.put('/:id/lineas/:lineaId', validate(updateLineaSchema), async (req, res,
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // La conciliación debe existir y no estar cerrada/borrada.
     const { rows: c } = await client.query(
@@ -418,6 +429,7 @@ router.post('/:id/cerrar', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: c } = await client.query(
       'SELECT id, cerrado_en FROM conciliaciones WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]
@@ -509,6 +521,7 @@ router.delete('/:id', async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     const { rows: c } = await client.query(
       'SELECT id FROM conciliaciones WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]
