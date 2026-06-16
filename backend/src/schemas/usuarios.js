@@ -11,7 +11,7 @@ const createUsuarioSchema = z.object({
   nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
   username: z.string().trim().min(2, 'Username mínimo 2 caracteres').max(50)
               .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo'),
-  email:    z.string().trim().email('Email inválido').optional().nullable(),
+  email:    z.string().trim().toLowerCase().email('Email inválido').optional().nullable(),
   password: passwordField(),
   role:     z.enum(['admin','op']).default('op'),
   perms:    permsSchema,
@@ -26,7 +26,7 @@ const updateUsuarioSchema = z.object({
   nombre:   z.string().trim().min(1).max(100).optional(),
   username: z.string().trim().min(2).max(50)
               .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo').optional(),
-  email:    z.string().trim().email('Email inválido').optional().nullable(),
+  email:    z.string().trim().toLowerCase().email('Email inválido').optional().nullable(),
   password: passwordField().optional(),
   role:     z.enum(['admin','op']).optional(),
   perms:    permsUpdateSchema.optional(),  // opcional y SIN default de nivel superior

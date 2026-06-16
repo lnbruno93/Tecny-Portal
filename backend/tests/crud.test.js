@@ -34,8 +34,8 @@ beforeAll(async () => {
   // Crear usuario 'op' sin permisos para testear 403
   const hash = await bcrypt.hash('op_pass_123', 10);
   const { rows } = await pool.query(
-    'INSERT INTO users (nombre, username, password_hash, role) VALUES ($1,$2,$3,$4) RETURNING id',
-    ['Op User', 'opuser', hash, 'op']
+    'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    ['Op User', 'opuser', 'opuser@test.local', hash, 'op']
   );
   opId = rows[0].id;
   // Sin filas en user_permissions → cualquier permiso dará 403

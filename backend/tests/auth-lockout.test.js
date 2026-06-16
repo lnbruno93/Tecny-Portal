@@ -1,8 +1,15 @@
 /**
  * Tests del lockout per-user (P1-1 de la auditoría ultra).
  *
- * Política: 10 fallos consecutivos → 15 min de bloqueo (423 Locked).
+ * Política: 10 fallos consecutivos → 15 min de bloqueo.
  * Login exitoso resetea el contador y libera el lockout.
+ *
+ * 2026-06-16 TANDA 1 anti-enumeration: el bloqueo devuelve 401 con mensaje
+ * genérico (antes era 423 + "Cuenta bloqueada"). Eso evita que un atacante
+ * enumere emails registrados probando combinaciones — la respuesta es
+ * idéntica entre "usuario no existe" / "password incorrecta" / "locked".
+ * El lockout sigue activo en DB (admin lo ve en logs/audit), solo cambia
+ * lo que el cliente percibe.
  */
 const request = require('supertest');
 const app     = require('../src/app');
@@ -39,12 +46,14 @@ describe('Lockout per-user (P1-1)', () => {
     expect(rows[0].lockout_until).toBeNull();
   });
 
-  it('al cumplir el threshold (10) bloquea con 423 en el siguiente intento', async () => {
+  it('al cumplir el threshold (10) bloquea — siguiente intento devuelve 401 anti-enum', async () => {
     for (let i = 0; i < 10; i++) await badLogin();
-    // El intento 11 (cualquiera, incluso con password correcta) cae en 423
+    // El intento 11 (cualquiera, incluso con password correcta) cae en 401
+    // con mensaje genérico (anti-enumeration, TANDA 1). El lockout sigue
+    // activo en DB pero el cliente no lo distingue de credenciales malas.
     const r = await goodLogin();
-    expect(r.status).toBe(423);
-    expect(r.body.error).toMatch(/bloqueada/i);
+    expect(r.status).toBe(401);
+    expect(r.body.error).toBe('Usuario o contraseña incorrectos');
     const { rows } = await pool.query('SELECT lockout_until FROM users WHERE username = $1', [TEST_USER.username]);
     expect(rows[0].lockout_until).toBeTruthy();
   });
@@ -127,18 +136,21 @@ describe('Lockout per-user con 2FA (H1)', () => {
     expect(rows[0].failed_login_count).toBe(3);
   });
 
-  it('10 fallos de 2FA bloquean la cuenta con 423 en el siguiente intento', async () => {
+  it('10 fallos de 2FA bloquean — siguiente intento devuelve 401 anti-enum', async () => {
     await enable2FaForTestUser();
     for (let i = 0; i < 10; i++) {
       await request(app).post('/api/auth/login').send({
         username: TEST_USER.username, password: TEST_USER.password, code: '000000',
       });
     }
-    // El 11vo intento — incluso con código correcto — cae en 423.
+    // El 11vo intento — incluso con código correcto — cae en 401 con mensaje
+    // genérico (TANDA 1 anti-enumeration). El lockout existe en DB pero el
+    // cliente no lo distingue de "password mal".
     const r = await request(app).post('/api/auth/login').send({
       username: TEST_USER.username, password: TEST_USER.password, code: '111111',
     });
-    expect(r.status).toBe(423);
+    expect(r.status).toBe(401);
+    expect(r.body.error).toBe('Usuario o contraseña incorrectos');
   });
 
   it('login completo OK (password + 2FA) resetea el contador', async () => {
