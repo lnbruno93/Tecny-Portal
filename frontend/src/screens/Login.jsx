@@ -22,10 +22,11 @@ import { useAuth } from '../contexts/AuthContext';
 // password en algún lado (state, cookie temporal). Pasarlo dos veces es lo
 // más simple y seguro.
 //
-// Todas las clases visuales nuevas (.lg-*) están scopeadas bajo #login-screen
-// vía CSS para NO afectar al resto de la app. .login-box / .login-btn /
-// .login-err son exclusivas del login (verificado: no se usan en ningún otro
-// archivo del repo).
+// Todas las clases visuales nuevas (.lg-*) están scopeadas bajo .auth-screen
+// vía CSS para NO afectar al resto de la app. La clase es compartida con
+// Signup.jsx y VerifyEmail.jsx (TANDA 2.2 Fase B). .login-box / .login-btn /
+// .login-err son exclusivas de auth screens (verificado: no se usan en ningún
+// otro archivo del repo).
 
 // Iconos inline (16-17px, currentColor) — se mantienen acá para no inflar
 // el componente Icons.jsx con uso de un solo lugar. svg paths del handoff.
@@ -132,7 +133,7 @@ export default function Login() {
   };
 
   return (
-    <div id="login-screen">
+    <div id="login-screen" className="auth-screen">
       {/* Panel marca (izquierda) — oculto en mobile < 900px */}
       <aside className="lg-brand">
         <div className="lg-top">

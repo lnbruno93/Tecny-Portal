@@ -1209,17 +1209,17 @@ body {
 }
 
 /* ── Login screen (rediseño split-screen, 2026-06-06) ──────────────────
-   Todas las reglas nuevas están scopeadas bajo #login-screen o en clases
+   Todas las reglas nuevas están scopeadas bajo .auth-screen o en clases
    exclusivas del login (.login-box, .login-btn, .login-err) que NO se
    usan en ningún otro lugar del repo. Verificado para evitar leak visual
    a otras pantallas. NO toca variables CSS de :root. */
-#login-screen {
+.auth-screen {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1.05fr .95fr;
 }
 /* Panel marca (izquierda) — gradiente sutil + grid pattern decorativo */
-#login-screen .lg-brand {
+.auth-screen .lg-brand {
   position: relative;
   overflow: hidden;
   background: linear-gradient(160deg, var(--bg) 0%, var(--bg-elev) 55%, var(--surface) 100%);
@@ -1228,7 +1228,7 @@ body {
   display: flex;
   flex-direction: column;
 }
-#login-screen .lg-brand::before {
+.auth-screen .lg-brand::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1237,7 +1237,7 @@ body {
     radial-gradient(ellipse 500px 400px at 5% 105%, var(--accent-soft, rgba(56,189,248,.08)), transparent 55%);
   pointer-events: none;
 }
-#login-screen .lg-brand::after {
+.auth-screen .lg-brand::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1249,14 +1249,14 @@ body {
           mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, #000 30%, transparent 75%);
   pointer-events: none;
 }
-#login-screen .lg-top {
+.auth-screen .lg-top {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
   gap: 12px;
 }
-#login-screen .lg-mark {
+.auth-screen .lg-mark {
   width: 40px;
   height: 40px;
   border-radius: 11px;
@@ -1270,26 +1270,26 @@ body {
   box-shadow: 0 8px 22px -6px var(--accent-ring, rgba(56,189,248,.6)),
               0 1px 0 rgba(255,255,255,.3) inset;
 }
-#login-screen .lg-name {
+.auth-screen .lg-name {
   font-weight: 700;
   font-size: 19px;
   letter-spacing: -.02em;
   color: var(--text);
 }
-#login-screen .lg-sub {
+.auth-screen .lg-sub {
   font-size: 10.5px;
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--text-muted);
   margin-top: 2px;
 }
-#login-screen .lg-mid {
+.auth-screen .lg-mid {
   position: relative;
   z-index: 1;
   margin: auto 0;
   padding: 48px 0;
 }
-#login-screen .lg-eyebrow {
+.auth-screen .lg-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1303,13 +1303,13 @@ body {
   margin-bottom: 28px;
   border: 1px solid var(--accent-ring, rgba(56,189,248,.25));
 }
-#login-screen .lg-eyebrow .d {
+.auth-screen .lg-eyebrow .d {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
 }
-#login-screen .lg-headline {
+.auth-screen .lg-headline {
   font-size: clamp(30px, 3.6vw, 46px);
   line-height: 1.08;
   letter-spacing: -.03em;
@@ -1318,14 +1318,14 @@ body {
   max-width: 460px;
   color: var(--text);
 }
-#login-screen .lg-headline .hl { color: var(--accent); }
-#login-screen .lg-tagline {
+.auth-screen .lg-headline .hl { color: var(--accent); }
+.auth-screen .lg-tagline {
   font-size: 16px;
   color: var(--text-2);
   max-width: 420px;
   line-height: 1.55;
 }
-#login-screen .lg-chips {
+.auth-screen .lg-chips {
   position: relative;
   z-index: 1;
   display: flex;
@@ -1333,7 +1333,7 @@ body {
   flex-wrap: wrap;
   margin-top: 40px;
 }
-#login-screen .lg-chip {
+.auth-screen .lg-chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1345,9 +1345,9 @@ body {
   padding: 7px 12px;
   border-radius: 8px;
 }
-#login-screen .lg-chip svg { color: var(--accent); }
+.auth-screen .lg-chip svg { color: var(--accent); }
 /* Form panel (derecha) */
-#login-screen .lg-form {
+.auth-screen .lg-form {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1355,7 +1355,7 @@ body {
   background: var(--bg);
 }
 /* Override de .login-box vieja: ahora es solo el wrapper del form */
-#login-screen .login-box {
+.auth-screen .login-box {
   width: 100%;
   max-width: 380px;
   padding: 0;
@@ -1364,24 +1364,24 @@ body {
   border-radius: 0;
   box-shadow: none;
 }
-#login-screen .lg-h { margin-bottom: 32px; }
-#login-screen .lg-h h1 {
+.auth-screen .lg-h { margin-bottom: 32px; }
+.auth-screen .lg-h h1 {
   font-size: 26px;
   font-weight: 700;
   letter-spacing: -.02em;
   margin: 0 0 8px;
   color: var(--text);
 }
-#login-screen .lg-h p {
+.auth-screen .lg-h p {
   font-size: 14.5px;
   color: var(--text-muted);
   margin: 0;
 }
-#login-screen .field {
+.auth-screen .field {
   display: block;
   margin-bottom: 18px;
 }
-#login-screen .field label {
+.auth-screen .field label {
   display: block;
   font-size: 12px;
   font-weight: 600;
@@ -1391,12 +1391,12 @@ body {
   margin-bottom: 8px;
 }
 /* Input wrapper con ícono leading + opcionalmente ojito */
-#login-screen .iw {
+.auth-screen .iw {
   position: relative;
   display: flex;
   align-items: center;
 }
-#login-screen .iw .lead {
+.auth-screen .iw .lead {
   position: absolute;
   left: 13px;
   color: var(--text-dim);
@@ -1404,8 +1404,8 @@ body {
   place-items: center;
   pointer-events: none;
 }
-#login-screen .iw:focus-within .lead { color: var(--accent); }
-#login-screen .field input {
+.auth-screen .iw:focus-within .lead { color: var(--accent); }
+.auth-screen .field input {
   width: 100%;
   height: 46px;
   padding: 0 14px 0 42px;
@@ -1418,15 +1418,15 @@ body {
   outline: none;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
-#login-screen .field input::placeholder { color: var(--text-dim); }
-#login-screen .field input:hover { border-color: var(--border-strong, var(--border)); }
-#login-screen .field input:focus {
+.auth-screen .field input::placeholder { color: var(--text-dim); }
+.auth-screen .field input:hover { border-color: var(--border-strong, var(--border)); }
+.auth-screen .field input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-ring, rgba(56,189,248,.35));
   background: var(--bg-elev);
 }
 /* Toggle ojito para mostrar contraseña */
-#login-screen .pw-toggle {
+.auth-screen .pw-toggle {
   position: absolute;
   right: 8px;
   width: 32px;
@@ -1440,44 +1440,44 @@ body {
   color: var(--text-dim);
   transition: color .14s, background .14s;
 }
-#login-screen .pw-toggle:hover {
+.auth-screen .pw-toggle:hover {
   color: var(--text-2);
   background: var(--surface-2);
 }
 /* Nota debajo del input 2FA (preserva flow 2FA existente) */
-#login-screen .field .field-note {
+.auth-screen .field .field-note {
   margin-top: 8px;
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--text-muted);
 }
 /* Fila "Recordarme" + link "¿Olvidaste tu contraseña?" — handoff 2026-06-17.
-   Scopeada bajo #login-screen para no chocar con otras filas/links. */
-#login-screen .lg-row {
+   Scopeada bajo .auth-screen para no chocar con otras filas/links. */
+.auth-screen .lg-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin: 6px 0 22px;
 }
-#login-screen .lg-remember {
+.auth-screen .lg-remember {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   user-select: none;
 }
-#login-screen .lg-remember input[type="checkbox"] {
+.auth-screen .lg-remember input[type="checkbox"] {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
   cursor: pointer;
   margin: 0;
 }
-#login-screen .lg-remember span {
+.auth-screen .lg-remember span {
   font-size: 13.5px;
   color: var(--text-2);
 }
-#login-screen .lg-link {
+.auth-screen .lg-link {
   font-size: 13.5px;
   color: var(--accent);
   font-weight: 500;
@@ -1487,8 +1487,8 @@ body {
   cursor: pointer;
   font-family: inherit;
 }
-#login-screen .lg-link:hover { color: var(--accent-2, var(--accent)); }
-#login-screen .lg-forgot-hint {
+.auth-screen .lg-link:hover { color: var(--accent-2, var(--accent)); }
+.auth-screen .lg-forgot-hint {
   margin: -10px 0 18px;
   padding: 10px 12px;
   font-size: 12.5px;
@@ -1525,7 +1525,7 @@ body {
 .login-btn:active { transform: translateY(1px); }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 /* Botón secundario "Volver al login" del flow 2FA */
-#login-screen .lg-link-btn {
+.auth-screen .lg-link-btn {
   width: 100%;
   margin-top: 12px;
   padding: 4px;
@@ -1537,7 +1537,7 @@ body {
   text-align: center;
   font-family: inherit;
 }
-#login-screen .lg-link-btn:hover { color: var(--text-2); }
+.auth-screen .lg-link-btn:hover { color: var(--text-2); }
 /* Error pill */
 .login-err {
   display: block;
@@ -1551,7 +1551,7 @@ body {
   text-align: left;
 }
 /* Footer del form */
-#login-screen .lg-foot {
+.auth-screen .lg-foot {
   margin-top: 28px;
   padding-top: 22px;
   border-top: 1px solid var(--hairline, rgba(255,255,255,.06));
@@ -1561,25 +1561,151 @@ body {
   align-items: center;
   gap: 8px;
 }
-#login-screen .lg-foot svg { color: var(--pos, #4ade80); flex-shrink: 0; }
+.auth-screen .lg-foot svg { color: var(--pos, #4ade80); flex-shrink: 0; }
 /* Logo mobile (visible solo cuando el panel marca se oculta) */
-#login-screen .lg-mobile { display: none; }
+.auth-screen .lg-mobile { display: none; }
 @media (max-width: 900px) {
-  #login-screen { grid-template-columns: 1fr; }
-  #login-screen .lg-brand { display: none; }
-  #login-screen .lg-form { padding: 32px 24px; }
-  #login-screen .lg-mobile {
+  .auth-screen { grid-template-columns: 1fr; }
+  .auth-screen .lg-brand { display: none; }
+  .auth-screen .lg-form { padding: 32px 24px; }
+  .auth-screen .lg-mobile {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 36px;
   }
-  #login-screen .lg-mobile .lg-mark {
+  .auth-screen .lg-mobile .lg-mark {
     width: 34px;
     height: 34px;
     font-size: 14px;
     border-radius: 9px;
   }
+}
+
+/* ── Auth card (VerifyEmail) ─────────────────────────────────────
+   Layout centrado — variante de .auth-screen sin grid split-screen.
+   El .auth-screen base es display:grid con 2 columnas; aquí lo override
+   a centered single-column. TANDA 2.2 Fase B. */
+.auth-screen--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background: var(--bg);
+}
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 40px 32px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+.auth-card h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin: 20px 0 10px;
+  color: var(--text);
+}
+.auth-card p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+  margin: 0 0 12px;
+}
+.auth-card-cta {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+.auth-card-cta a {
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+.auth-card-cta a:hover { color: var(--accent-2, var(--accent)); }
+.auth-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  margin: 0 auto;
+}
+.auth-card-icon--ok {
+  background: var(--pos-soft, rgba(74,222,128,0.12));
+  color: var(--pos, #4ade80);
+}
+.auth-card-icon--err {
+  background: var(--neg-soft, rgba(248,113,113,0.12));
+  color: var(--neg, #f87171);
+}
+.auth-card-icon--neutral {
+  background: var(--accent-soft, rgba(56,189,248,0.12));
+  color: var(--accent);
+}
+.auth-spinner {
+  animation: auth-spin 0.9s linear infinite;
+}
+@keyframes auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── UnverifiedBanner (TANDA 2.2 Fase B) ─────────────────────────
+   Banner sticky en el top del Shell para users con email_verified=false.
+   Color warning (amarillo) — comunica urgencia sin alarmar. Layout
+   horizontal: ícono ⚠ + texto + botones (Reenviar | Cerrar). */
+.unverified-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  background: var(--warn-soft, rgba(251,191,36,0.14));
+  border-bottom: 1px solid rgba(251,191,36,0.30);
+  color: var(--text);
+  font-size: 13.5px;
+  flex-wrap: wrap;
+}
+.unverified-banner-icon {
+  flex-shrink: 0;
+  color: var(--warn, #fbbf24);
+  display: grid;
+  place-items: center;
+}
+.unverified-banner-text {
+  flex: 1;
+  min-width: 200px;
+  color: var(--text-2);
+}
+.unverified-banner-text strong { color: var(--text); }
+.unverified-banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.unverified-banner-btn {
+  background: var(--warn, #fbbf24);
+  color: #1a1305;
+  border: 0;
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .14s, opacity .14s;
+}
+.unverified-banner-btn:hover { background: #fcd34d; }
+.unverified-banner-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.unverified-banner-msg {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-left: 6px;
 }
 
 /* ── Modal ────────────────────────────────────────────────────── */
