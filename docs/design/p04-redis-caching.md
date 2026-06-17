@@ -17,6 +17,8 @@ el 2026-06-12). Operaciones documentadas en
 - PR #195 — Fase 3.4: dashboard mensual (60s, key por par período)
 - PR #196 — Fase 3.5: dashboard ventas (30s, key por par fecha)
 - PR ??? — Fase 4: RUNBOOK operacional (este commit)
+- PR #274 — Fase 3.6: `userAuthCache` (`requireAuth` meta — `password_changed_at` + `email_verified_at`, 60s, key `cache:user_auth:u{id}`)
+- PR #275 — TANDA 0 hotfix BLOCKER B1: tombstone (2s TTL) en `invalidate()` para prevenir stale-write race cross-instance (afecta a TODOS los wrappers `createCachedFetcherRedis`)
 
 ---
 

@@ -92,6 +92,30 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
     expect(screen.getByRole('link', { name: /iniciar sesión/i })).toHaveAttribute('href', '/');
   });
 
+  it('TANDA 1 fix U2: CTA "Volver y crear cuenta de nuevo" resetea al form', async () => {
+    // Trade-off del anti-enum: user con typo en email no recibe error. Sin CTA
+    // queda atrapado. El botón debe reaparecer el form (con email vacío) y
+    // permitir reintentar.
+    mockSignup.mockResolvedValue({ verification_required: true });
+    renderS();
+    const user = userEvent.setup();
+
+    await user.type(getNombre(), 'Lucas');
+    await user.type(getEmail(), 'typo@gnail.com'); // typo intencional
+    await user.type(getPassword(), 'pass1234');
+    await user.type(getEmpresa(), 'Mi empresa');
+    await user.click(getSubmit());
+
+    expect(await screen.findByRole('heading', { name: /revisá tu email/i })).toBeInTheDocument();
+    // Click en CTA "Volver y crear cuenta de nuevo".
+    await user.click(screen.getByRole('button', { name: /volver y crear cuenta de nuevo/i }));
+
+    // El form reaparece y el campo email está vacío (para retipear).
+    expect(screen.getByLabelText('Tu nombre')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toHaveValue('');
+    expect(screen.queryByRole('heading', { name: /revisá tu email/i })).not.toBeInTheDocument();
+  });
+
   it('error del backend muestra mensaje sin pasar a "Revisá tu email"', async () => {
     mockSignup.mockRejectedValue(new Error('Rate limit excedido'));
     renderS();

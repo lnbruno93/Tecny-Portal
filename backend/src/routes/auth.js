@@ -302,8 +302,9 @@ router.post('/logout', requireAuth, async (req, res, next) => {
     );
     // P-04 Fase 3.6: invalidar cache de auth meta (cross-instance Redis).
     // Sin esto, otra réplica con el row cacheado seguiría aceptando el token
-    // hasta TTL de 60s.
-    invalidateUserAuth(req.user.id).catch(() => {});
+    // hasta TTL de 60s. Fire-and-forget — userAuthCache loggea fallos
+    // internamente (TANDA 1 fix H1-Sol).
+    invalidateUserAuth(req.user.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -352,7 +353,7 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     // P-04 Fase 3.6: invalidar cache de auth meta. password_changed_at cambió
     // → cualquier réplica con el row cacheado debe re-fetchar para que el
     // siguiente request vea iat < changedAt y rechace el token viejo.
-    invalidateUserAuth(user.id).catch(() => {});
+    invalidateUserAuth(user.id);
     // 2026-06-11 SE-05: req se propaga al audit para capturar IP/UA/request_id.
     await audit('users', 'UPDATE', user.id, { tipo: 'cambio_password', user_id: req.user.id, req });
 

@@ -102,25 +102,40 @@ async function getUserAuth(userId) {
 
 // Invalida el cache de un user específico. Cross-instance vía Redis DEL.
 // Async — fire-and-forget en callers (no critical path para el response).
-// Si no se pasa userId, loggea warning y no-op (protege contra misuse).
+//
+// TANDA 1 fix H1-Sol auditoría 2026-06-17: logging interno de fallos.
+// Antes los callers usaban `.catch(() => {})` y tragaban silenciosamente
+// errores de Redis (timeout, network). Una caída transitoria de Redis
+// durante un logout dejaba el token activo por 60s adicionales sin señal.
+// Ahora cualquier fallo se loggea con userId — observable en Sentry/pino.
 async function invalidateUserAuth(userId) {
   if (userId == null) {
     logger.warn('invalidateUserAuth() sin userId — no-op.');
     return;
   }
-  const fn = fetchers.get(userId);
-  if (fn) await fn.invalidate();
-  // Si no hay fetcher local (caso típico cross-instance: el UPDATE corrió
-  // en la réplica A, pero la réplica B tiene el cache de ese user), tenemos
-  // que borrar el key de Redis igual. createCachedFetcherRedis.invalidate
-  // hace redis.del(key); si nunca lo creamos local no hay fn — pero
-  // necesitamos disparar el DEL igual para que la otra réplica vea miss.
-  //
-  // Solución: crear el fetcher acá (lazy) solo para tener la handle de
-  // invalidate. Es barato — solo crea la closure, no toca Postgres.
-  if (!fn) {
+  try {
+    const fn = fetchers.get(userId);
+    if (fn) {
+      await fn.invalidate();
+      return;
+    }
+    // Si no hay fetcher local (caso típico cross-instance: el UPDATE corrió
+    // en la réplica A, pero la réplica B tiene el cache de ese user), tenemos
+    // que borrar el key de Redis igual. createCachedFetcherRedis.invalidate
+    // hace redis.del(key); si nunca lo creamos local no hay fn — pero
+    // necesitamos disparar el DEL igual para que la otra réplica vea miss.
+    //
+    // Solución: crear el fetcher acá (lazy) solo para tener la handle de
+    // invalidate. Es barato — solo crea la closure, no toca Postgres.
     const tmp = getFetcherForUser(userId);
     await tmp.invalidate();
+  } catch (err) {
+    // Cache stale hasta TTL (60s). Logueamos para observabilidad — el caller
+    // sigue sin bloqueo (fire-and-forget). Si vemos estos warns en prod
+    // significa que Redis está degradado y los logout/cambios de perms tardan
+    // hasta 60s en propagar cross-instance.
+    logger.warn({ err: err.message, userId },
+      'invalidateUserAuth falló — cache stale hasta TTL (60s)');
   }
 }
 

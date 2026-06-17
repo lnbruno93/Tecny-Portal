@@ -444,7 +444,7 @@ router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), as
     // email_verified_at cambió de null → NOW(). Sin invalidar, una réplica
     // con el row stale seguiría devolviendo email_verified=false → el
     // bloqueo blando (requireAuth) seguiría rechazando escrituras hasta TTL.
-    invalidateUserAuth(user.id).catch(() => {});
+    invalidateUserAuth(user.id);
 
     // Welcome email (best effort, no bloquea el response).
     try {
