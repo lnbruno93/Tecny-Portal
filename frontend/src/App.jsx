@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -10,6 +10,10 @@ import Shell from './components/Shell';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './screens/Login';
 import Forbidden from './screens/Forbidden';
+
+// Rutas públicas TANDA 2.2 — accesibles SIN sesión (no pasan por AuthGuard).
+const Signup = lazy(() => import('./screens/Signup'));
+const VerifyEmail = lazy(() => import('./screens/VerifyEmail'));
 
 // Lazy-load screens — Vite genera un chunk por pantalla (~40% menos bundle inicial)
 const Inicio     = lazy(() => import('./screens/Inicio'));
@@ -54,7 +58,12 @@ function PageLoader() {
 }
 
 // ── Auth gate ──────────────────────────────────────────────────────────────────
-function RequireAuth({ children }) {
+// Pattern react-router v6: layout route con <Outlet />. Si hay user → renderea
+// las rutas anidadas (Shell + permisos). Si no → renderea Login.jsx directo
+// sin /login route — el Login se monta en lugar del Shell. Funciona para
+// rutas internas (/inicio, /cotizador, etc.) y también si alguien hace
+// click en "Iniciar sesión" desde /signup (cae acá vía el catch-all interno).
+function AuthGuard() {
   const { user, loading } = useAuth();
   if (loading) return (
     <div style={{
@@ -69,7 +78,7 @@ function RequireAuth({ children }) {
     </div>
   );
   if (!user) return <Login />;
-  return children;
+  return <Outlet />;
 }
 
 // ── Permission gate ────────────────────────────────────────────────────────────
@@ -101,9 +110,18 @@ export default function App() {
       <FeatureFlagsProvider>
       <PageActionsProvider>
         <BrowserRouter>
-          <RequireAuth>
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* ── Rutas públicas (TANDA 2.2) ── */}
+              <Route path="/signup" element={
+                <ErrorBoundary><Signup /></ErrorBoundary>
+              } />
+              <Route path="/verify-email" element={
+                <ErrorBoundary><VerifyEmail /></ErrorBoundary>
+              } />
+
+              {/* ── Rutas protegidas: AuthGuard intercepta ── */}
+              <Route element={<AuthGuard />}>
                 <Route path="/" element={<Shell />}>
                   <Route index element={<Navigate to="/inicio" replace />} />
 
@@ -235,9 +253,9 @@ export default function App() {
                   {/* ── 404 catch-all ── */}
                   <Route path="*" element={<ErrorBoundary><NotFound /></ErrorBoundary>} />
                 </Route>
-              </Routes>
-            </Suspense>
-          </RequireAuth>
+              </Route>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </PageActionsProvider>
       </FeatureFlagsProvider>
