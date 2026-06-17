@@ -48,6 +48,7 @@ const { startPurgaJob } = require('./src/lib/audit');
 const { startInvariantsJob } = require('./src/jobs/invariantsJob');
 const { startAuditPartitionsJob } = require('./src/jobs/auditPartitionsJob');
 const { startAuditQueueWorker } = require('./src/jobs/auditQueueWorker');
+const { startEmailTokensCleanupJob } = require('./src/jobs/emailTokensCleanupJob');
 const withAdvisoryLock = require('./src/lib/withAdvisoryLock');
 const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
@@ -83,6 +84,12 @@ const server = app.listen(PORT, () => {
   // y este worker los persiste a audit_logs cada 2s. Multi-instance safe via
   // advisory lock + SKIP LOCKED. Drain on SIGTERM con timeout 8s.
   startAuditQueueWorker({ batchSize: 100, intervalMs: 2000 });
+
+  // TANDA 2.5 follow-up auditoría 2026-06-17: purga periódica de
+  // `email_verification_tokens` (tokens consumidos >7 días + tokens expirados
+  // >1 día). Sin este job la tabla crecía monotónicamente — cada signup +
+  // cada resend agrega una fila. Multi-instance safe via advisory lock.
+  startEmailTokensCleanupJob({ intervalHours: 24 });
 
   // P1 auditoría 2026-06: cleanup periódico de rate_limit_entries expiradas.
   // El store nunca borra automáticamente — las filas con expires_at < NOW()

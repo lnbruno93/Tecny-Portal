@@ -126,6 +126,17 @@ módulos que mueven dinero pasan por acá)
 `users`, `user_permissions`, `audit_logs`, `historial`, `contactos`,
 `config`, `alertas_config`, `movimientos_inversiones`, `movimientos_deudas`
 
+### Auth + multi-tenant (TANDA 0/1/2/2.4)
+`tenants` (entidad de cliente), `tenant_users` (link user↔tenant con rol:
+owner/admin/member), `email_verification_tokens` (single-use tokens con TTL
+24h, purgados periódicamente). El JWT trae `tenant_id` + `tenant_rol`;
+`adminOnly` middleware valida por `tenant_rol`, NO por `users.role` global.
+Signup público crea tenant + user (`role='op'`) + link como owner + seeds 3
+cajas default. Email verification es bloqueo blando: GET libre, POST/PUT/DELETE
+bloqueados hasta verificar. RLS activado en tablas de negocio (NO en `users`
+ni `tenant_users` — esas tienen filtro explícito por `tenant_id` en cada
+query). Resend SaaS para envío de emails con fallback stub si no hay API key.
+
 ---
 
 ## 5. Patrones recurrentes
