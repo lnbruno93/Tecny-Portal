@@ -7,7 +7,10 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
-const { createCachedFetcherRedis } = require('../lib/cacheTtl');
+// TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): pattern duplicado movido
+// a createTenantScopedCache.
+const { createTenantScopedCache } = require('../lib/cacheTtl');
+const { DASHBOARD_VENTAS } = require('../lib/cacheConfig');
 // postCajaMovimiento / reverseCajaMovimientos: postear/revertir cajas para una venta
 // los maneja lib/ventaSync.js; este archivo no los usa directamente, pero los dejamos
 // disponibles a través del require por si una edición futura los necesita.
@@ -208,29 +211,13 @@ async function insertarDetalle(client, venta, b) {
 // `{tenantId}|{desde}|{hasta}` — DEBE incluir el tenant para que datos de
 // distintos clientes NO crossan. Si dos tenants miran el mismo rango de
 // fecha, cada uno tiene su propia entrada en Redis + Map local.
-const DASHBOARD_TTL_MS = 30_000;
-const DASHBOARD_MAX_FETCHERS = 100;
-const dashboardFetchers = new Map();
-function getDashboardFetcher(tenantId, desde, hasta) {
-  const key = `${tenantId}|${desde}|${hasta}`;
-  let fn = dashboardFetchers.get(key);
-  if (fn) {
-    dashboardFetchers.delete(key);
-    dashboardFetchers.set(key, fn);
-    return fn;
-  }
-  fn = createCachedFetcherRedis(
-    `cache:ventas:dashboard:${key}`,
-    DASHBOARD_TTL_MS,
-    () => computeDashboard(tenantId, desde, hasta)
-  );
-  dashboardFetchers.set(key, fn);
-  if (dashboardFetchers.size > DASHBOARD_MAX_FETCHERS) {
-    const oldestKey = dashboardFetchers.keys().next().value;
-    dashboardFetchers.delete(oldestKey);
-  }
-  return fn;
-}
+const dashboardCache = createTenantScopedCache({
+  ...DASHBOARD_VENTAS,
+  fetcher: async (scopeKey) => {
+    const [tenantStr, desde, hasta] = scopeKey.split('|');
+    return computeDashboard(Number(tenantStr), desde, hasta);
+  },
+});
 
 async function computeDashboard(tenantId, desde, hasta) {
     const p = [desde, hasta];
@@ -488,7 +475,7 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     const hoy = new Date().toISOString().split('T')[0];
     const desde = req.query.desde || hoy;
     const hasta = req.query.hasta || hoy;
-    const data = await getDashboardFetcher(req.tenantId, desde, hasta)();
+    const data = await dashboardCache.get(`${req.tenantId}|${desde}|${hasta}`);
     res.json(data);
   } catch (err) { next(err); }
 });

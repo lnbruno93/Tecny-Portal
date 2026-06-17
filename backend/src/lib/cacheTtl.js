@@ -143,7 +143,22 @@ function createCachedFetcherRedis(key, ttlMs, fetcher) {
             if (tombstoned !== null) {
               logger.debug({ key }, 'cacheTtl: tombstone activo — skip SETEX (anti-stale-write)');
             } else {
-              await redis.setEx(key, ttlSec, JSON.stringify(value));
+              // TANDA 4 fix HIGH P1/H3-Sol auditoría 2026-06-17: jitter ±20%
+              // del TTL al SETEX. Sin esto, las 2 réplicas Railway escriben
+              // valores que expiran en el MISMO instante → cuando expira, AMBAS
+              // hacen MISS y disparan fetch() paralelo → 2x amplificación
+              // (cache stampede cross-instance). El single-flight `pending`
+              // dedupea per-replica pero no cross-instance. El jitter
+              // desincroniza naturalmente la expiración para que solo una
+              // réplica refetchee al boundary, la otra siga sirviendo cached
+              // por ~20% más, y al expirar la 2da, la 1ra ya cacheó valor
+              // nuevo. Reducción esperada de queries-en-borde: ~50%.
+              //
+              // Solo hacemos jitter hacia ABAJO (80-100% del TTL) para nunca
+              // exceder la garantía de freshness diseñada por el caller.
+              const jitterSec = Math.floor(ttlSec * 0.2 * Math.random());
+              const effectiveTtl = Math.max(1, ttlSec - jitterSec);
+              await redis.setEx(key, effectiveTtl, JSON.stringify(value));
             }
           } catch (err) {
             logger.debug({ err: err.message, key }, 'cacheTtl: SETEX falló — devolvemos valor sin cachear');
@@ -179,4 +194,110 @@ function createCachedFetcherRedis(key, ttlMs, fetcher) {
   return getCached;
 }
 
-module.exports = { createCachedFetcher, createCachedFetcherRedis };
+// ────────────────────────────────────────────────────────────────
+// createTenantScopedCache — factory para caches scopeados por tenant/user/etc
+// ────────────────────────────────────────────────────────────────
+//
+// TANDA 4 refactor H3/H4-Hyg auditoría 2026-06-17.
+//
+// Antes este patrón estaba copiado ~6 veces en el codebase (userAuthCache,
+// cajasCache, inventarioCache, dashboard mensual, dashboard ventas):
+//   - Map<scopeKey, fetcher> con eviction LRU
+//   - Cada miss crea un createCachedFetcherRedis nuevo con la key scopeada
+//   - Bump LRU al hit (delete + set)
+//   - Cap MAX_FETCHERS, evicción del más viejo
+//
+// Esta factory generaliza el patrón. Cada cache module concreto solo declara:
+//   - `keyPrefix` (string fijo: 'cache:user_auth:u', 'cache:cajas:list:t', etc.)
+//   - `ttlMs`
+//   - `maxFetchers` (cap del Map LRU)
+//   - `fetcher(scopeKey)` que computa el valor desde Postgres
+//
+// Devuelve un objeto con:
+//   - `get(scopeKey)` → valor cacheado o computado.
+//   - `invalidate(scopeKey)` → DEL cross-instance + tombstone (vía wrapper).
+//     Si no hay fetcher local pero la otra réplica sí, crea lazy para
+//     disparar redis.del — el fix de cross-instance del wrapper interno.
+//   - `_resetForTest()` → clear del Map (útil para tests con beforeEach).
+//
+// Key resultante: `${keyPrefix}${scopeKey}` (sin separador — el keyPrefix
+// incluye el separador final si quiere). Esto preserva exactly las keys
+// que cada cache module usaba antes del refactor.
+//
+// Validación: scopeKey debe ser string no vacío. Si pasan número, los
+// callers son responsables de toString — defensive porque las keys de
+// Redis son strings y la concatenación implícita ya estaba dando false-
+// positives en tests con `userId` int.
+function createTenantScopedCache({ keyPrefix, ttlMs, maxFetchers = 256, fetcher }) {
+  if (typeof keyPrefix !== 'string' || !keyPrefix) {
+    throw new Error('createTenantScopedCache: keyPrefix requerido');
+  }
+  if (typeof fetcher !== 'function') {
+    throw new Error('createTenantScopedCache: fetcher requerido');
+  }
+  const fetchers = new Map();
+
+  function getFetcherForScope(scopeKey) {
+    const sk = String(scopeKey);
+    if (sk === '' || sk === 'undefined' || sk === 'null') {
+      throw new Error(`createTenantScopedCache(${keyPrefix}): scopeKey inválido (${scopeKey})`);
+    }
+    let fn = fetchers.get(sk);
+    if (fn) {
+      // Bump LRU: re-insertar para que sea el más reciente.
+      fetchers.delete(sk);
+      fetchers.set(sk, fn);
+      return fn;
+    }
+    fn = createCachedFetcherRedis(
+      `${keyPrefix}${sk}`,
+      ttlMs,
+      () => fetcher(sk)
+    );
+    fetchers.set(sk, fn);
+    if (fetchers.size > maxFetchers) {
+      // LRU eviction: el más viejo es el primer key insertado.
+      const oldest = fetchers.keys().next().value;
+      fetchers.delete(oldest);
+    }
+    return fn;
+  }
+
+  return {
+    async get(scopeKey) {
+      return getFetcherForScope(scopeKey)();
+    },
+
+    // Invalida el cache de un scopeKey específico. Cross-instance vía Redis DEL
+    // + tombstone (anti-stale-write race). Loggea errores internamente para
+    // observabilidad sin propagar al caller (fire-and-forget en hot paths).
+    async invalidate(scopeKey) {
+      if (scopeKey == null) {
+        logger.warn({ keyPrefix }, 'createTenantScopedCache.invalidate() sin scopeKey — no-op.');
+        return;
+      }
+      try {
+        const sk = String(scopeKey);
+        const fn = fetchers.get(sk);
+        if (fn) {
+          await fn.invalidate();
+          return;
+        }
+        // Cross-instance: la otra réplica puede tener el row cacheado.
+        // Creamos fetcher lazy para tener handle de invalidate (redis.del).
+        const tmp = getFetcherForScope(scopeKey);
+        await tmp.invalidate();
+      } catch (err) {
+        logger.warn({ err: err.message, keyPrefix, scopeKey },
+          'createTenantScopedCache invalidate falló — cache stale hasta TTL');
+      }
+    },
+
+    // Solo para tests: limpia el Map. Las entries del wrapper interno y de
+    // Redis (si hay client real) no se tocan — necesario porque Jest comparte
+    // módulos entre describes.
+    _resetForTest() { fetchers.clear(); },
+  };
+}
+
+module.exports = { createCachedFetcher, createCachedFetcherRedis, createTenantScopedCache };
