@@ -132,4 +132,27 @@ describe('E2E multi-tenant: aislamiento de /api/inventario/categorias', () => {
     expect(payloadA.tenant_id).toBe(TENANT_A);
     expect(payloadB.tenant_id).toBe(TENANT_B);
   });
+
+  // TANDA 2.4 fix BLOCKER auditoría 2026-06-17: la tabla `users` NO está en
+  // RLS, así que el filtro de tenant en /api/usuarios DEBE ser explícito (JOIN
+  // a tenant_users con WHERE tenant_id). Antes del fix, un signupeado de A
+  // veía PII (nombre, email, username, role) de todos los users de TODOS los
+  // tenants. Este test corre con un real role no-super, por eso valida la
+  // protección REAL, no la dependencia de RLS.
+  it('TANDA 2.4 BLOCKER: GET /api/usuarios solo devuelve users del tenant del caller', async () => {
+    // El user A debe ver SOLO al user A en su /api/usuarios (no a user B ni al
+    // testadmin del setup).
+    const rA = await request(app).get('/api/usuarios').set('Authorization', `Bearer ${tokenA}`);
+    expect(rA.status).toBe(200);
+    const idsA = rA.body.map(u => u.id);
+    expect(idsA).toContain(USER_A.id);
+    expect(idsA).not.toContain(USER_B.id);
+
+    // Lo mismo para B: ve B pero no A.
+    const rB = await request(app).get('/api/usuarios').set('Authorization', `Bearer ${tokenB}`);
+    expect(rB.status).toBe(200);
+    const idsB = rB.body.map(u => u.id);
+    expect(idsB).toContain(USER_B.id);
+    expect(idsB).not.toContain(USER_A.id);
+  });
 });
