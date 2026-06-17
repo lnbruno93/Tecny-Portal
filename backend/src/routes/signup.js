@@ -164,9 +164,17 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     // (route /api/usuarios) NO especifican email_verified_at y quedan verificados
     // automáticamente. (users NO tiene RLS — no necesita tenant_id.)
     const username = await uniqueUsername(client, deriveUsername(email));
+    // TANDA 2.4 fix BLOCKER auditoría 2026-06-17: role='op' (NO 'admin').
+    // El "owner" del tenant se representa en `tenant_users.rol='owner'` (línea
+    // ~190). El users.role global YA fue deprecated para autorización en
+    // TANDA 0a (adminOnly.js usa req.tenantRol, no req.user.role) — pero
+    // signup público con role='admin' permitía a cualquier user signupeado
+    // bypassear el frontend RequirePermission y acceder a endpoints globales
+    // (vía adminOnly check de tenantRol='owner'). Ahora signup crea op +
+    // tenant_users.owner, lo correcto multi-tenant.
     const { rows: [user] } = await client.query(
       `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
-         VALUES ($1, $2, $3, $4, 'admin', NULL)
+         VALUES ($1, $2, $3, $4, 'op', NULL)
        RETURNING id, nombre, username, email, role, email_verified_at`,
       [nombre, username, email, hash]
     );
@@ -385,17 +393,41 @@ router.post('/verify-email', validate(verifyEmailSchema), async (req, res, next)
  * Rate limiter para /resend-verification — 3 intentos / hora / user.id.
  * Evita que un user spammée la app para enviarse muchos emails (o que un
  * atacante con JWT robado abuse de la cuota del provider de email).
+ *
+ * TANDA 2.4 fix BLOCKER auditoría 2026-06-17: lazy init para aceptar un
+ * PostgresRateLimitStore inyectado vía `setResendStore()`. Antes este limiter
+ * usaba MemoryStore (default) — en multi-replica, un user con JWT robado
+ * podía pegar 3× en réplica A y 3× en réplica B = 6 emails/hora (2× lo
+ * declarado). Con store compartido, el counter es global.
+ *
+ * El lazy init resuelve el chicken-and-egg: app.js puede llamar a
+ * `setResendStore(resendStore)` ANTES de montar el router, y la primera
+ * request al endpoint crea el limiter con el store correcto. Si nadie lo
+ * setea (tests), cae a MemoryStore default — comportamiento OK para tests.
  */
-const resendLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hora
-  max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Demasiados pedidos de reenvío. Esperá una hora.' },
-  keyGenerator: (req) => req.user?.id ? String(req.user.id) : ipKeyGenerator(req),
-  skipSuccessfulRequests: false,
-  skip: () => process.env.NODE_ENV === 'test',
-});
+function _buildResendLimiter(store) {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiados pedidos de reenvío. Esperá una hora.' },
+    keyGenerator: (req) => req.user?.id ? String(req.user.id) : ipKeyGenerator(req),
+    skipSuccessfulRequests: false,
+    skip: () => process.env.NODE_ENV === 'test',
+    ...(store && { store }),
+  });
+}
+
+// Init temprano al load del módulo con MemoryStore default (evita warning
+// ERR_ERL_CREATED_IN_REQUEST_HANDLER). app.js puede llamar setResendStore()
+// con un PostgresRateLimitStore para reemplazar antes del primer request.
+let _resendLimiterInstance = _buildResendLimiter(undefined);
+exports.setResendStore = (store) => {
+  _resendLimiterInstance = _buildResendLimiter(store);
+};
+
+const resendLimiter = (req, res, next) => _resendLimiterInstance(req, res, next);
 
 /**
  * POST /resend-verification — genera token nuevo + envía email.
@@ -469,3 +501,8 @@ router.post('/resend-verification', requireAuth, resendLimiter, async (req, res,
 });
 
 module.exports = router;
+// `exports.setResendStore` ya está asignado arriba (lazy init del resendLimiter).
+// El re-assignment de module.exports = router es OK — Node.js mantiene las
+// props que setteamos en `exports` mientras no reasignemos `exports = ...`.
+// Verificado: `router.setResendStore` queda disponible en app.js.
+module.exports.setResendStore = exports.setResendStore;

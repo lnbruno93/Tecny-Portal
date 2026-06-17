@@ -14,11 +14,22 @@ const BCRYPT_ROUNDS = 12;
 // requireAuth aplicado en app.js al montar /api/usuarios
 router.use(adminOnly);
 
+// TANDA 2.4 fix BLOCKER auditoría 2026-06-17: filtro explícito por tenant_id
+// vía JOIN tenant_users en TODOS los queries de este router. La tabla `users`
+// NO está en RLS (es global por diseño — un user puede tener cuentas en
+// múltiples tenants) — sin este filtro, un signup-creado-owner podía leer
+// emails/usernames/roles de TODA la base. `tenant_users` tampoco está en RLS,
+// así que el filtro debe ser explícito en el WHERE.
 router.get('/', async (req, res, next) => {
   try {
     const { users, perms } = await db.withTenant(req.tenantId, async (client) => {
       const { rows: users } = await client.query(
-        'SELECT id, nombre, username, email, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY nombre LIMIT 200'
+        `SELECT u.id, u.nombre, u.username, u.email, u.role, u.created_at
+           FROM users u
+           JOIN tenant_users tu ON tu.user_id = u.id
+          WHERE tu.tenant_id = $1 AND u.deleted_at IS NULL
+          ORDER BY u.nombre LIMIT 200`,
+        [req.tenantId]
       );
       const { rows: perms } = await client.query(
         'SELECT user_id, tool, enabled FROM user_permissions WHERE user_id = ANY($1)',
@@ -69,6 +80,16 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
         user.email = finalEmail;
       }
 
+      // TANDA 2.4 fix BLOCKER auditoría 2026-06-17: link el user nuevo al tenant
+      // actual como member. Sin esto, el user creado por admin queda huérfano
+      // (no aparece en GET /, no puede hacer login porque /api/auth/login no le
+      // resuelve tenant_id en JWT). Defaul rol 'member' — el admin que lo crea
+      // puede después promoverlo a 'admin' del tenant si corresponde.
+      await client.query(
+        `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'member')`,
+        [req.tenantId, user.id]
+      );
+
       // Un solo INSERT multi-row en lugar de 5 queries secuenciales
       const permValues = TOOLS.map((tool, i) => `($1, $${i + 2}, $${i + 2 + TOOLS.length})`).join(', ');
       await client.query(
@@ -98,9 +119,14 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
 
+    // TANDA 2.4: ownership check explícito vía tenant_users. Si el user del path
+    // NO pertenece al tenant del caller, devolvemos 404 (no revelar existencia).
     const { rows: before } = await db.withTenant(req.tenantId, async (client) => {
       return await client.query(
-        'SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL', [id]
+        `SELECT u.* FROM users u
+           JOIN tenant_users tu ON tu.user_id = u.id
+          WHERE u.id = $1 AND tu.tenant_id = $2 AND u.deleted_at IS NULL`,
+        [id, req.tenantId]
       );
     });
     if (!before[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -212,13 +238,16 @@ router.delete('/:id', async (req, res, next) => {
     // compara con `iat_ms`). Sin esto, el token sigue válido hasta 8h (default
     // post SE-01) aunque el filtro `deleted_at IS NULL` del middleware lo bloquee.
     // Defense-in-depth: fail-closed contra DB hiccups o réplica lag.
+    // TANDA 2.4: ownership check vía tenant_users antes del soft-delete. Solo
+    // permitimos borrar users que pertenecen al tenant del caller.
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `UPDATE users
             SET deleted_at = NOW(), password_changed_at = NOW()
           WHERE id = $1 AND deleted_at IS NULL
+            AND EXISTS (SELECT 1 FROM tenant_users WHERE user_id = $1 AND tenant_id = $2)
           RETURNING *`,
-        [id]
+        [id, req.tenantId]
       );
       if (rows[0]) {
         const { password_hash: _ph, ...safeUser } = rows[0];
