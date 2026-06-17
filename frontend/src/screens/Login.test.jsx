@@ -42,7 +42,10 @@ describe('Login — toggle ojito + flow 2FA', () => {
     expect(getPasswordInput()).toHaveAttribute('type', 'password');
   });
 
-  it('login básico llama a useAuth().login con username trim + lowercase', async () => {
+  it('login básico llama a useAuth().login con username trim (case preservado)', async () => {
+    // TANDA 2.5: solo lowercaseamos si el input parece email (@). Usernames
+    // preservan case porque `users.username` es case-sensitive en DB —
+    // forzar lowercase rompía users pre-existentes con nombres como "Lucas".
     mockLogin.mockResolvedValue({ user: { id: 1 } });
     renderL();
     const user = userEvent.setup();
@@ -50,7 +53,8 @@ describe('Login — toggle ojito + flow 2FA', () => {
     await user.type(getPasswordInput(), 'pass123');
     await user.click(getSubmitBtn());
     await waitFor(() => expect(mockLogin).toHaveBeenCalled());
-    expect(mockLogin).toHaveBeenCalledWith('lucas', 'pass123', undefined);
+    // Trim aplica, lowercase NO (no es email).
+    expect(mockLogin).toHaveBeenCalledWith('Lucas', 'pass123', undefined);
   });
 
   it('TANDA 2.3: login con email también funciona (trim + lowercase)', async () => {

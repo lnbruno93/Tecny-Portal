@@ -281,8 +281,20 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
   };
 
   // En dev/test, devolvemos el token para que E2E pueda verificar inline.
-  // NUNCA en producción (incluye Railway staging+prod, ambos con NODE_ENV=production).
-  if (process.env.NODE_ENV !== 'production') {
+  // NUNCA en producción.
+  //
+  // TANDA 2.5 fix HIGH#2 Seguridad auditoría 2026-06-17: gate dual NODE_ENV
+  // + flag explícito. El gate solo-NODE_ENV era frágil — staging/preview/demo
+  // deploys mal configurados (sin NODE_ENV='production') podían exponer
+  // tokens accidentalmente. Ahora:
+  //   - Tests (NODE_ENV='test'): tokens expuestos siempre (necesario para suite)
+  //   - Dev local: opt-in vía EXPOSE_VERIFICATION_TOKEN=1
+  //   - Staging/preview/prod: tokens NUNCA expuestos (NODE_ENV !== 'test' AND
+  //     el flag NO está seteado por defecto)
+  // Defensa en profundidad: doble candado en lugar de uno.
+  const exposeToken = process.env.NODE_ENV === 'test'
+    || (process.env.NODE_ENV !== 'production' && process.env.EXPOSE_VERIFICATION_TOKEN === '1');
+  if (exposeToken) {
     response._verification_token = result.token;
   }
 
