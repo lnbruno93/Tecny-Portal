@@ -51,4 +51,23 @@ async function countUsersByEmail(email) {
   return rows[0].c;
 }
 
-module.exports = { getVerificationToken, countUsersByEmail };
+// Fuerza un verification token a estar vencido. Usado para probar el flow
+// de UI cuando el user clickea un link viejo del email.
+//
+// Movemos created_at al pasado también para no violar el CHECK
+// (expires_at > created_at).
+async function expireVerificationToken(token) {
+  await getPool().query(
+    `UPDATE email_verification_tokens
+        SET created_at = NOW() - INTERVAL '2 hours',
+            expires_at = NOW() - INTERVAL '1 hour'
+      WHERE token = $1`,
+    [token]
+  );
+}
+
+module.exports = {
+  getVerificationToken,
+  countUsersByEmail,
+  expireVerificationToken,
+};

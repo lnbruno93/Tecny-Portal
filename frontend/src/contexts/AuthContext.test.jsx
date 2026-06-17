@@ -4,11 +4,15 @@
  * Métodos públicos cubiertos:
  *   - login(username, password, code)
  *   - logout()
- *   - setAuthFromSignup({ token, user })
  *   - refreshUser()
  *   - restore-on-mount: si hay token en localStorage al montar, llama
  *     authApi.me() y setea user.
  *   - listener "session-expired": limpia user.
+ *
+ * NOTA: `setAuthFromSignup` fue removido en TANDA 2 UX polish (auditoría
+ * 2026-06-17 U5) — quedó como dead code después de TANDA 2.7 anti-enum
+ * (signup ya no auto-loguea). Para tests de refreshUser que necesitan seed
+ * de user state, usamos login() — el camino real que el app sigue.
  *
  * Mockeamos lib/api para inyectar respuestas controladas. saveToken / clearToken
  * son las funciones reales — usan localStorage que el test-setup.js mockea.
@@ -161,39 +165,19 @@ describe('AuthContext', () => {
     });
   });
 
-  // ── setAuthFromSignup ─────────────────────────────────────────────
-  describe('setAuthFromSignup', () => {
-    it('persiste token + setea user (sin re-fetch de /me)', async () => {
-      const { result } = renderHook(() => useAuth(), { wrapper: wrap });
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      act(() => {
-        result.current.setAuthFromSignup({
-          token: 'tok-signup',
-          user: { id: 99, username: 'newuser', email_verified: false },
-        });
-      });
-
-      expect(saveToken).toHaveBeenCalledWith('tok-signup');
-      expect(authApi.me).not.toHaveBeenCalled(); // NO refetch
-      expect(result.current.user).toEqual(
-        expect.objectContaining({ id: 99, email_verified: false })
-      );
-    });
-  });
-
   // ── refreshUser ───────────────────────────────────────────────────
   describe('refreshUser', () => {
     it('llama a authApi.me() y actualiza el user', async () => {
-      // Arrancar con user inicial via signup.
+      // Arrancar con user inicial via login (camino real del app).
+      authApi.login.mockResolvedValueOnce({
+        token: 'tok-pre',
+        user: { id: 10, username: 'pre', email_verified: false },
+      });
       const { result } = renderHook(() => useAuth(), { wrapper: wrap });
       await waitFor(() => expect(result.current.loading).toBe(false));
 
-      act(() => {
-        result.current.setAuthFromSignup({
-          token: 'tok-signup',
-          user: { id: 10, username: 'pre', email_verified: false },
-        });
+      await act(async () => {
+        await result.current.login('pre', 'pwd');
       });
       expect(result.current.user.email_verified).toBe(false);
 
@@ -213,14 +197,15 @@ describe('AuthContext', () => {
     });
 
     it('si me() falla, no rompe — devuelve null y deja el user previo intacto', async () => {
+      authApi.login.mockResolvedValueOnce({
+        token: 'tok-pre',
+        user: { id: 11, username: 'x', email_verified: false },
+      });
       const { result } = renderHook(() => useAuth(), { wrapper: wrap });
       await waitFor(() => expect(result.current.loading).toBe(false));
 
-      act(() => {
-        result.current.setAuthFromSignup({
-          token: 'tok',
-          user: { id: 11, username: 'x', email_verified: false },
-        });
+      await act(async () => {
+        await result.current.login('x', 'pwd');
       });
 
       authApi.me.mockRejectedValueOnce(new Error('NO_AUTH'));

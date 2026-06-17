@@ -89,9 +89,19 @@ export default function VerifyEmail() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // TANDA 2 fix U6 auditoría 2026-06-17: `role` y `aria-live` dinámicos.
+  // `polite` para loading/success/already (info no urgente), `alert`+`assertive`
+  // para error (debe interrumpir al lector de pantalla). Sin esto, un user
+  // ciego que llega a un link inválido NO se entera del error a tiempo —
+  // el redirect no ocurre en error state, sigue mostrando el mensaje.
+  const isError = status === 'error';
+  const ariaProps = isError
+    ? { role: 'alert', 'aria-live': 'assertive' }
+    : { role: 'status', 'aria-live': 'polite' };
+
   return (
     <div id="verify-email-screen" className="auth-screen auth-screen--center">
-      <div className="auth-card" role="status" aria-live="polite">
+      <div className="auth-card" {...ariaProps}>
         {status === 'loading' && (
           <>
             <div className="auth-card-icon auth-card-icon--neutral">
