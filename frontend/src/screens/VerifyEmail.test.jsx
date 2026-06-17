@@ -89,6 +89,29 @@ describe('VerifyEmail — TANDA 2.2 Fase B', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('error con reason="already_used": muestra estado amistoso (✓) + redirect', async () => {
+    // Backend devuelve 400 con reason='already_used' cuando el user clickea
+    // el mismo link 2 veces. UX TANDA 2.2 Fase B: lo tratamos como info, no
+    // error — el email YA está verificado.
+    const err = new Error('Este email ya fue verificado. Podés iniciar sesión.');
+    err.responseBody = { error: err.message, reason: 'already_used' };
+    err.status = 400;
+    mockVerifyEmail.mockRejectedValue(err);
+    renderV();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /ya estaba verificado/i })).toBeInTheDocument();
+    });
+    // Tiene el ícono verde (--ok), NO el rojo (--err).
+    expect(document.querySelector('.auth-card-icon--ok')).toBeInTheDocument();
+    expect(document.querySelector('.auth-card-icon--err')).not.toBeInTheDocument();
+
+    // Igual que success: redirige a / después de 2.5s.
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(2500); });
+    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+  });
+
   it('sin token en URL: muestra error específico sin llamar al backend', async () => {
     mockToken = null;
     renderV();

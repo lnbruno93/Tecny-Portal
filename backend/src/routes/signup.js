@@ -297,17 +297,40 @@ router.post('/verify-email', validate(verifyEmailSchema), async (req, res, next)
     await client.query('BEGIN');
 
     // Lock the token row para prevenir double-spend en requests concurrentes.
+    // No filtramos used_at / expires_at en el WHERE — los chequeamos en JS para
+    // poder distinguir los 3 motivos de rechazo (inválido / ya usado / expirado)
+    // y darle al usuario un mensaje accionable. UX TANDA 2.2 Fase B.
     const { rows } = await client.query(
-      `SELECT id, user_id FROM email_verification_tokens
-         WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()
-         FOR UPDATE`,
+      `SELECT id, user_id, used_at, expires_at FROM email_verification_tokens
+         WHERE token = $1 FOR UPDATE`,
       [token]
     );
     if (rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Token inválido o expirado' });
+      return res.status(400).json({
+        error:  'Token inválido. Verificá que copiaste el link completo.',
+        reason: 'invalid',
+      });
     }
-    const { id: tokenId, user_id: userId } = rows[0];
+    const tokenRow = rows[0];
+    if (tokenRow.used_at !== null) {
+      // Caso típico: user clickea el link 2 veces (primera vez OK, segunda vez
+      // cae acá). Mensaje accionable: ya está verificado, no necesita hacer nada.
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error:  'Este email ya fue verificado. Podés iniciar sesión.',
+        reason: 'already_used',
+      });
+    }
+    if (new Date(tokenRow.expires_at) <= new Date()) {
+      // Token nunca usado pero pasó el TTL (24h). Decirle que pida uno nuevo.
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error:  'El link expiró. Iniciá sesión y pedí uno nuevo desde el banner.',
+        reason: 'expired',
+      });
+    }
+    const { id: tokenId, user_id: userId } = tokenRow;
 
     // Resolver tenant del user para setear app.current_tenant antes del UPDATE
     // de users (que está sujeto a RLS).
