@@ -28,9 +28,22 @@ const twoFaStore  = isTestEnv ? undefined : new PostgresRateLimitStore({ db, pre
 // share efectivo del límite (600/15min en lugar de 300). Mismo patrón que
 // loginStore/twoFaStore: en tests usa MemoryStore para no requerir DB.
 const globalStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'global', logger });
+// TANDA 2.4 fix BLOCKER auditoría 2026-06-17:
+//   - signupStore: antes signupLimiter compartía loginStore con prefix 'login'
+//     → un IP que falló 10 logins quedaba bloqueado para signup, y los counters
+//     se mezclaban. Prefijo dedicado 'signup'.
+//   - resendStore: antes /resend-verification usaba MemoryStore (default sin
+//     store) → en multi-replica, un user con JWT robado podía pegar 3× en
+//     réplica A y 3× en réplica B = 6 emails/hora (2× lo declarado). Prefijo
+//     dedicado 'resend'.
+const signupStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'signup', logger });
+const resendStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'resend', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
+// TANDA 2.4 fix BLOCKER: inyectar resendStore al lazy-init del rate limiter de
+// /resend-verification (defaults a MemoryStore = bypass en multi-replica).
+if (signupRoutes.setResendStore) signupRoutes.setResendStore(resendStore);
 const twoFaRoutes        = require('./routes/twoFa');
 const vendedoresRoutes   = require('./routes/vendedores');
 const comprobantesRoutes = require('./routes/comprobantes');
@@ -443,7 +456,8 @@ app.use('/api/auth/login', loginLimiter);
 // — esos tienen su propia política interna (verify-email confía en el espacio
 // de tokens de 256 bits; resend-verification tiene un per-user limiter).
 const createSignupLimiter = require('./middleware/signupLimiter');
-const signupLimiter = createSignupLimiter(loginStore);
+// TANDA 2.4 fix BLOCKER: usar signupStore (prefix dedicado), NO loginStore.
+const signupLimiter = createSignupLimiter(signupStore);
 app.use('/api/auth/signup', signupLimiter);
 
 // 2026-06-11 SE-07: rate limit dedicado para /api/auth/change-password.

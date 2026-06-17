@@ -77,6 +77,27 @@ describe('POST /api/auth/signup', () => {
     }
   });
 
+  it('TANDA 2.4 fix BLOCKER privesc: signup crea user con role=op (NO admin)', async () => {
+    // Antes: signup INSERT con role='admin' → cualquier signup público obtenía
+    // rol admin global, bypaseando RequirePermission del frontend y abriendo
+    // /api/feature-flags y otros endpoints globales. Fix: role='op' + el rol
+    // de owner del tenant se representa en tenant_users.rol='owner'.
+    const { res } = await signup({ email: `roletest_${Date.now()}@example.com` });
+    expect(res.status).toBe(201);
+    expect(res.body.user.role).toBe('op');
+
+    // Verificar también en DB.
+    const { rows } = await pool.query('SELECT role FROM users WHERE id = $1', [res.body.user.id]);
+    expect(rows[0].role).toBe('op');
+
+    // Y que el tenant_users link tiene rol='owner' (sigue siendo owner del tenant).
+    const { rows: tu } = await pool.query(
+      `SELECT rol FROM tenant_users WHERE user_id = $1 AND tenant_id = $2`,
+      [res.body.user.id, res.body.tenant.id]
+    );
+    expect(tu[0].rol).toBe('owner');
+  });
+
   it('envía verification email (stub registra en _testQueue)', async () => {
     await signup({ email: 'queuetest_' + Date.now() + '@example.com' });
     const queue = emailLib._getTestQueue();
