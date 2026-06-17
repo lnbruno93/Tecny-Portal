@@ -141,18 +141,28 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Tenant nuevo (plan trial por default).
+    // 1. Tenant nuevo (plan trial por default). `tenants` NO está en la lista
+    // RLS — se filtra indirectamente vía tenant_users.
     const slug = await uniqueSlug(client, slugify(tenant_nombre));
     const { rows: [tenant] } = await client.query(
       `INSERT INTO tenants (nombre, slug, plan) VALUES ($1, $2, 'trial') RETURNING id, nombre, slug, plan`,
       [tenant_nombre, slug]
     );
 
+    // 1.5. SET LOCAL ANTES de cualquier INSERT en tabla RLS-protegida.
+    // Tablas afectadas en este endpoint: user_permissions, metodos_pago,
+    // audit_logs (vía audit() call). La WITH CHECK del RLS exige
+    // `tenant_id = current_setting('app.current_tenant', true)::int` — sin
+    // SET LOCAL primero, el INSERT falla con "new row violates row-level
+    // security policy". También tenemos que pasar `tenant_id` explícito
+    // en cada row (la columna tiene DEFAULT 1, que no matchea el tenant nuevo).
+    await client.query(`SET LOCAL app.current_tenant = ${tenant.id}`);
+
     // 2. User — explícitamente email_verified_at = NULL para activar el bloqueo
     // blando. La columna tiene DEFAULT NOW() (ver migration 20260616000004),
     // así que el INSERT necesita el NULL explícito acá; los INSERTs de admin
     // (route /api/usuarios) NO especifican email_verified_at y quedan verificados
-    // automáticamente — esa es la diferencia entre signup público y admin create.
+    // automáticamente. (users NO tiene RLS — no necesita tenant_id.)
     const username = await uniqueUsername(client, deriveUsername(email));
     const { rows: [user] } = await client.query(
       `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
@@ -161,25 +171,25 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
       [nombre, username, email, hash]
     );
 
-    // 3. Link al tenant como owner.
+    // 3. Link al tenant como owner. tenant_users NO tiene RLS — es la bridge
+    // table que da origen al filtro de RLS para otras tablas.
     await client.query(
       `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'owner')`,
       [tenant.id, user.id]
     );
 
-    // 4. Permissions: owner tiene todos los módulos activos.
-    const permValues = TOOLS.map((_, i) => `($1, $${i + 2}, true)`).join(', ');
+    // 4. Permissions: owner tiene todos los módulos activos. user_permissions
+    // SÍ tiene RLS — pasar tenant_id explícito (el último param, reutilizado
+    // como $7 para todas las TOOLS rows).
+    const permValues = TOOLS.map((_, i) =>
+      `($1, $${i + 2}, true, $${TOOLS.length + 2})`
+    ).join(', ');
     await client.query(
-      `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ${permValues}`,
-      [user.id, ...TOOLS]
+      `INSERT INTO user_permissions (user_id, tool, enabled, tenant_id) VALUES ${permValues}`,
+      [user.id, ...TOOLS, tenant.id]
     );
 
-    // 5. Seed cajas default — explicitamos tenant_id (la columna tiene DEFAULT 1
-    // por compat con código pre-multitenant; sin esto, las cajas se asignarían
-    // al tenant 1 y la WITH CHECK del RLS las bloquearía). El SET LOCAL es
-    // defensivo para que cualquier query que LEA (no de seed) filtre por el
-    // tenant correcto.
-    await client.query(`SET LOCAL app.current_tenant = ${tenant.id}`);
+    // 5. Seed cajas default — metodos_pago SÍ tiene RLS, tenant_id explícito.
     for (const caja of DEFAULT_CAJAS) {
       await client.query(
         `INSERT INTO metodos_pago (nombre, moneda, orden, es_financiera, tenant_id)
