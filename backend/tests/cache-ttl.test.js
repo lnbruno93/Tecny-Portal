@@ -157,7 +157,10 @@ describe('createCachedFetcherRedis (Redis backend)', () => {
       const result = await get();
       expect(result).toEqual({ v: 42 });
       expect(fetcherCalls).toBe(1);
-      expect(calls.get).toBe(1);
+      // GET de la key principal + GET del tombstone (TANDA 0 hotfix B1
+      // anti-stale-write). El tombstone check garantiza que SETEX skip si
+      // alguien invalidó mientras fetchábamos.
+      expect(calls.get).toBe(2);
       expect(calls.setex).toBe(1);
       // Verificar contenido cacheado
       expect(JSON.parse(store.get('cache:test:k2'))).toEqual({ v: 42 });
@@ -189,10 +192,68 @@ describe('createCachedFetcherRedis (Redis backend)', () => {
 
       const get = createCachedFetcherRedis('cache:test:k4', 5000, async () => 'value');
       await get();
-      expect(calls.setex).toBe(1);
+      expect(calls.setex).toBe(1); // SETEX del valor
 
       await get.invalidate();
       expect(calls.del).toBe(1);
+      // TANDA 0 hotfix B1: invalidate también escribe un tombstone (2s TTL)
+      // para bloquear stale-writes de fetchers in-flight en otras réplicas.
+      expect(calls.setex).toBe(2); // 1 valor original + 1 tombstone
+    });
+  });
+
+  test('B1 anti-stale-write race: invalidate() durante fetch in-flight → SETEX skipped', async () => {
+    // Reproduce el race que el PR #274 NO arregló:
+    //   T1: requestA → MISS → fetcher in-flight (~50ms simulado)
+    //   T2: requestB hace invalidate() → tombstone + DEL
+    //   T3: requestA's fetcher resuelve → ve tombstone → NO escribe valor stale
+    await withProdEnv(async () => {
+      const { mock, store, calls } = makeMockRedis();
+      redisClient._setClientForTest(mock);
+
+      let resolveFetcher;
+      const get = createCachedFetcherRedis('cache:test:b1', 5000, async () => {
+        // El fetcher queda pending hasta que el test lo libere.
+        await new Promise((r) => { resolveFetcher = r; });
+        return { v: 'stale' };
+      });
+
+      // T1: arrancamos fetch in-flight (no await todavía).
+      const fetchPromise = get();
+      // Espera a que el fetcher haya empezado (microtask flush).
+      await new Promise((r) => setImmediate(r));
+
+      // T2: otra réplica invalida en paralelo.
+      await get.invalidate();
+      expect(store.has('cache:tombstone:cache:test:b1')).toBe(true);
+
+      // T3: liberamos el fetcher. Debería ver el tombstone y skip SETEX.
+      const setexCallsBefore = calls.setex;
+      resolveFetcher();
+      const result = await fetchPromise;
+
+      expect(result).toEqual({ v: 'stale' }); // El caller SÍ ve el valor stale
+      // Pero NO se cacheó — el siguiente get() refetcheará.
+      expect(calls.setex).toBe(setexCallsBefore); // 0 SETEX nuevos del valor
+      expect(store.has('cache:test:b1')).toBe(false);
+    });
+  });
+
+  test('B1 tombstone TTL ~2s: invalidate() setea tombstone con TTL corto', async () => {
+    await withProdEnv(async () => {
+      const { mock } = makeMockRedis();
+      redisClient._setClientForTest(mock);
+
+      const get = createCachedFetcherRedis('cache:test:b1ttl', 5000, async () => 'v');
+      await get.invalidate();
+
+      // Verificar que setex fue llamado con TTL pequeño (~2s) para el tombstone.
+      const tombstoneCall = mock.setex.mock.calls.find(
+        ([key]) => key === 'cache:tombstone:cache:test:b1ttl'
+      );
+      expect(tombstoneCall).toBeDefined();
+      expect(tombstoneCall[1]).toBeLessThanOrEqual(5); // TTL en segundos
+      expect(tombstoneCall[1]).toBeGreaterThanOrEqual(1);
     });
   });
 
