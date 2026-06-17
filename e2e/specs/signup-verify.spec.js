@@ -16,7 +16,11 @@
 // y NO crea un segundo user en DB.
 
 const { test, expect } = require('@playwright/test');
-const { getVerificationToken, countUsersByEmail } = require('../helpers/signup');
+const {
+  getVerificationToken,
+  countUsersByEmail,
+  expireVerificationToken,
+} = require('../helpers/signup');
 
 // Genera un email único por test. timestamp + random evita colisiones cuando
 // dos tests del mismo file corren back-to-back en el mismo segundo.
@@ -138,5 +142,44 @@ test.describe('Signup → verify-email → portal access', () => {
 
     // NO se creó un user nuevo: sigue habiendo 1 con ese email.
     expect(await countUsersByEmail(email)).toBe(1);
+  });
+
+  test('T6: verify-email con token expirado muestra error claro (no "verificado")', async ({ page }) => {
+    // TANDA 2 fix T6 auditoría 2026-06-17: el backend cubre reason="expired"
+    // en signup.test.js, pero el frontend renderizando ese reason no tenía
+    // E2E. Si VerifyEmail.jsx olvida renderizar el reason o lo mapea mal,
+    // el user ve mensaje confuso. Este test lockea el flow real.
+    const email = `expired_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@example.com`;
+    await fillSignupAndSubmit(page, {
+      nombre: 'Expired Token User',
+      email,
+      password: 'TestPass1234!',
+      empresa: 'Empresa Expired',
+    });
+    await expect(page.getByRole('heading', { name: /revisá tu email/i }))
+      .toBeVisible({ timeout: 10_000 });
+
+    const verifyToken = await getVerificationToken(email);
+    // Forzamos el token vencido vía DB.
+    await expireVerificationToken(verifyToken);
+
+    // Visitamos el link "viejo".
+    await page.goto(`/verify-email?token=${verifyToken}`);
+
+    // VerifyEmail.jsx debería mostrar el estado 'error' con mensaje claro.
+    await expect(page.getByRole('heading', { name: /no se pudo verificar/i }))
+      .toBeVisible({ timeout: 10_000 });
+    // El mensaje del backend (reason="expired") debe llegar al texto visible.
+    await expect(page.getByText(/expir/i)).toBeVisible();
+
+    // El CTA "Iniciá sesión" sigue ahí — el user puede recuperarse pidiendo
+    // un email nuevo desde el banner del dashboard post-login.
+    await expect(page.getByRole('link', { name: /iniciá sesión/i })).toBeVisible();
+
+    // U6 verificación a11y: el card tiene role="alert" + aria-live="assertive"
+    // (no "polite") cuando hay error → screen reader interrumpe lectura.
+    const alertCard = page.locator('[role="alert"]');
+    await expect(alertCard).toBeVisible();
+    await expect(alertCard).toHaveAttribute('aria-live', 'assertive');
   });
 });

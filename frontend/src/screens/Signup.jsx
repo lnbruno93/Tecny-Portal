@@ -161,9 +161,13 @@ export default function Signup() {
               <div className="lg-h">
                 <h1>Revisá tu email</h1>
                 <p>
-                  Si <strong>{submittedEmail}</strong> es válido, te enviamos un link
-                  de verificación. Hacé click en el link para activar tu cuenta y poder
-                  iniciar sesión.
+                  Si{' '}
+                  {/* TANDA 2 fix U4 auditoría 2026-06-17: word-break para
+                      emails largos en mobile (≤375px). Sin esto el card
+                      desborda el viewport. */}
+                  <strong style={{ wordBreak: 'break-all' }}>{submittedEmail}</strong>{' '}
+                  es válido, te enviamos un link de verificación. Hacé click en el
+                  link para activar tu cuenta y poder iniciar sesión.
                 </p>
               </div>
               <div className="field-note" style={{ marginTop: 16 }}>
