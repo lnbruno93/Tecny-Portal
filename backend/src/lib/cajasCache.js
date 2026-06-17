@@ -10,24 +10,18 @@
 // 2026-06-12 P-04 Fase 3.2: cache movido de in-memory local a Redis cross-
 // instance. La invalidación post-write (5 callsites en cajas.js) ahora
 // propaga a las 2 réplicas Railway en <100ms en lugar del max 15s de TTL
-// natural. Significa que cuando admin crea/edita/elimina una caja o
-// agrega un movimiento, AMBAS réplicas ven el cambio inmediato.
+// natural.
 //
-// Fire-and-forget en callers: `invalidateCajas()` ahora devuelve Promise,
-// pero los callers no la await — la invalidación es best-effort, no crítica
-// para el response. Si Redis cae, el wrapper hace fetch directo a Postgres
-// sin cachear (consistency preservada a costo de throughput durante outage).
+// 2026-06-15 PR 4.9 multi-tenant cleanup: cache POR TENANT con key que
+// incluye tenant_id.
 //
-// 2026-06-15 PR 4.9 multi-tenant cleanup: cache ahora es POR TENANT. La key
-// de Redis incluye el tenant_id, y cada tenant tiene su propio fetcher
-// memoizado en `fetchers` (Map). El fetcher corre la query bajo
-// `db.withTenant(tenantId, ...)` para que RLS filtre las cajas del tenant
-// correcto. Sin esto, los tenants verían el cache del primer tenant que
-// hizo el request. La invalidación también es per-tenant: `invalidateCajas
-// (tenantId)` invalida solo ese tenant. Si no se pasa tenantId, loggea
-// warning y no invalida (admin scripts sin contexto multi-tenant).
+// TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): migrado al patrón
+// `createTenantScopedCache`. La factory genérica vive en lib/cacheTtl.js y
+// reemplaza el Map<tenantId, fetcher> + LRU + factory duplicados en
+// 6 archivos del codebase.
 
-const { createCachedFetcherRedis } = require('./cacheTtl');
+const { createTenantScopedCache } = require('./cacheTtl');
+const { CAJAS_LIST } = require('./cacheConfig');
 const db = require('../config/database');
 const logger = require('./logger');
 
@@ -44,48 +38,28 @@ const CAJAS_SQL = `
    GROUP BY mp.id
    ORDER BY mp.orden, mp.nombre`;
 
-// Fetchers memoizados por tenant. Cada tenant tiene su propio
-// createCachedFetcherRedis con su propia key Redis. LRU cap simple: si
-// superamos MAX_FETCHERS, eliminamos el más viejo. Para 256 tenants
-// concurrentes activos es suficiente; si crecemos más, considerar LRU
-// library real.
-const MAX_FETCHERS = 256;
-const fetchers = new Map();
-
-function getFetcherForTenant(tenantId) {
-  if (!Number.isInteger(tenantId) || tenantId <= 0) {
-    throw new Error(`getCajasList: tenantId inválido (${tenantId})`);
-  }
-  let fn = fetchers.get(tenantId);
-  if (fn) {
-    // Bump al final (LRU-ish): re-inserta para que sea el más reciente.
-    fetchers.delete(tenantId);
-    fetchers.set(tenantId, fn);
-    return fn;
-  }
-  fn = createCachedFetcherRedis(
-    `cache:cajas:list:t${tenantId}`,
-    15_000,
-    async () => {
-      // RLS filtra metodos_pago y caja_movimientos por tenant_id gracias
-      // al SET LOCAL que pone db.withTenant.
-      return db.withTenant(tenantId, async (client) => {
-        const { rows } = await client.query(CAJAS_SQL);
-        return rows;
-      });
+const cache = createTenantScopedCache({
+  ...CAJAS_LIST,
+  fetcher: async (tenantId) => {
+    const id = Number(tenantId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error(`getCajasList: tenantId inválido (${tenantId})`);
     }
-  );
-  fetchers.set(tenantId, fn);
-  if (fetchers.size > MAX_FETCHERS) {
-    const oldestKey = fetchers.keys().next().value;
-    fetchers.delete(oldestKey);
-  }
-  return fn;
-}
+    // RLS filtra metodos_pago y caja_movimientos por tenant_id gracias
+    // al SET LOCAL que pone db.withTenant.
+    return db.withTenant(id, async (client) => {
+      const { rows } = await client.query(CAJAS_SQL);
+      return rows;
+    });
+  },
+});
 
 // Devuelve la lista de cajas del tenant especificado, cacheada 15s.
 async function getCajasList(tenantId) {
-  return getFetcherForTenant(tenantId)();
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error(`getCajasList: tenantId inválido (${tenantId})`);
+  }
+  return cache.get(tenantId);
 }
 
 // Invalida el cache de un tenant específico. Async (Promise<void>),
@@ -97,8 +71,7 @@ async function invalidateCajas(tenantId) {
     logger.warn('invalidateCajas() sin tenantId — no-op. Path probable: script admin sin contexto multi-tenant.');
     return;
   }
-  const fn = fetchers.get(tenantId);
-  if (fn) await fn.invalidate();
+  return cache.invalidate(tenantId);
 }
 
 module.exports = {

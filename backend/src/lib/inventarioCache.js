@@ -36,7 +36,11 @@
 // query bajo `db.withTenant(tenantId, ...)` para que RLS filtre productos
 // del tenant correcto.
 
-const { createCachedFetcherRedis } = require('./cacheTtl');
+// TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): migrado al patrón
+// `createTenantScopedCache`. El Map<tenantId, fetcher> + LRU + factory
+// duplicados en 6 archivos del codebase quedan en un solo lugar.
+const { createTenantScopedCache } = require('./cacheTtl');
+const { INVENTARIO_METRICAS } = require('./cacheConfig');
 const db = require('../config/database');
 const logger = require('./logger');
 
@@ -57,38 +61,26 @@ const METRICAS_SQL = `
   WHERE deleted_at IS NULL
 `;
 
-const MAX_FETCHERS = 256;
-const fetchers = new Map();
-
-function getFetcherForTenant(tenantId) {
-  if (!Number.isInteger(tenantId) || tenantId <= 0) {
-    throw new Error(`fetchMetricas: tenantId inválido (${tenantId})`);
-  }
-  let fn = fetchers.get(tenantId);
-  if (fn) {
-    fetchers.delete(tenantId);
-    fetchers.set(tenantId, fn);
-    return fn;
-  }
-  fn = createCachedFetcherRedis(
-    `cache:inv:metricas:t${tenantId}`,
-    20_000,
-    async () => db.withTenant(tenantId, async (client) => {
+const cache = createTenantScopedCache({
+  ...INVENTARIO_METRICAS,
+  fetcher: async (tenantId) => {
+    const id = Number(tenantId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error(`fetchMetricas: tenantId inválido (${tenantId})`);
+    }
+    return db.withTenant(id, async (client) => {
       const { rows } = await client.query(METRICAS_SQL);
       return rows[0];
-    })
-  );
-  fetchers.set(tenantId, fn);
-  if (fetchers.size > MAX_FETCHERS) {
-    const oldestKey = fetchers.keys().next().value;
-    fetchers.delete(oldestKey);
-  }
-  return fn;
-}
+    });
+  },
+});
 
 // Devuelve las métricas del tenant especificado, cacheadas 20s.
 async function fetchMetricas(tenantId) {
-  return getFetcherForTenant(tenantId)();
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error(`fetchMetricas: tenantId inválido (${tenantId})`);
+  }
+  return cache.get(tenantId);
 }
 
 // Invalida el cache de un tenant. Async, fire-and-forget en callers.
@@ -98,8 +90,7 @@ async function invalidateMetricas(tenantId) {
     logger.warn('invalidateMetricas() sin tenantId — no-op. Path probable: script admin sin contexto multi-tenant.');
     return;
   }
-  const fn = fetchers.get(tenantId);
-  if (fn) await fn.invalidate();
+  return cache.invalidate(tenantId);
 }
 
 module.exports = {
