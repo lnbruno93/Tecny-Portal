@@ -180,16 +180,19 @@ describe('POST /api/auth/verify-email', () => {
     expect(rows[0].email_verified_at).toBeTruthy();
   });
 
-  it('rechaza token reusado (single-shot)', async () => {
+  it('rechaza token reusado (single-shot) con reason="already_used"', async () => {
     const { res } = await signup();
     const tok = res.body._verification_token;
     const v1 = await request(app).post('/api/auth/verify-email').send({ token: tok });
     expect(v1.status).toBe(200);
     const v2 = await request(app).post('/api/auth/verify-email').send({ token: tok });
     expect(v2.status).toBe(400);
+    // UX TANDA 2.2 Fase B: mensaje accionable + reason explícito.
+    expect(v2.body.reason).toBe('already_used');
+    expect(v2.body.error).toMatch(/ya fue verificado/i);
   });
 
-  it('rechaza token expirado', async () => {
+  it('rechaza token expirado con reason="expired"', async () => {
     const { res } = await signup();
     const tok = res.body._verification_token;
     // Forzamos el token a estar vencido. Movemos también created_at al pasado
@@ -203,12 +206,15 @@ describe('POST /api/auth/verify-email', () => {
     );
     const v = await request(app).post('/api/auth/verify-email').send({ token: tok });
     expect(v.status).toBe(400);
+    expect(v.body.reason).toBe('expired');
+    expect(v.body.error).toMatch(/expir/i);
   });
 
-  it('rechaza token inválido (no existe) con 400', async () => {
+  it('rechaza token inválido (no existe) con reason="invalid"', async () => {
     const fakeToken = 'a'.repeat(64);
     const v = await request(app).post('/api/auth/verify-email').send({ token: fakeToken });
     expect(v.status).toBe(400);
+    expect(v.body.reason).toBe('invalid');
   });
 
   it('rechaza formato inválido (no-hex)', async () => {

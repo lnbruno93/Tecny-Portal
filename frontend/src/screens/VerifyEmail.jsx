@@ -46,7 +46,13 @@ export default function VerifyEmail() {
   const { refreshUser } = useAuth();
   const token = params.get('token');
 
-  const [status, setStatus] = useState('loading'); // 'loading' | 'success' | 'error'
+  // Status posibles:
+  //   'loading'      → verificando el token contra el backend.
+  //   'success'      → token válido + consumido, email recién verificado.
+  //   'already'      → token ya consumido (segundo click del mismo link); el
+  //                    email YA está verificado — tratamos como éxito amistoso.
+  //   'error'        → token inválido o expirado.
+  const [status, setStatus] = useState('loading');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -64,6 +70,17 @@ export default function VerifyEmail() {
         // Redirect a / después de 2.5s — AuthGuard decide si va a Shell o Login.
         setTimeout(() => navigate('/', { replace: true }), 2500);
       } catch (err) {
+        // El api wrapper adjunta el body parseado en err.responseBody (ver api.js).
+        // Backend devuelve reason ∈ {'invalid','already_used','expired'} para
+        // que el frontend personalice la UX. UX TANDA 2.2 Fase B.
+        const reason = err.responseBody?.reason;
+        if (reason === 'already_used') {
+          // Caso típico: el user clickea 2 veces el mismo link. El email YA
+          // está verificado, no hay error real — solo redirigimos.
+          setStatus('already');
+          setTimeout(() => navigate('/', { replace: true }), 2500);
+          return;
+        }
         setStatus('error');
         setErrorMsg(err.message || 'Token inválido o expirado.');
       }
@@ -93,6 +110,18 @@ export default function VerifyEmail() {
             <p>
               Ya podés crear ventas, comprobantes y todo lo demás.
               Te llevamos al portal…
+            </p>
+          </>
+        )}
+        {status === 'already' && (
+          <>
+            <div className="auth-card-icon auth-card-icon--ok">
+              <IconCheckCircle />
+            </div>
+            <h1>Este email ya estaba verificado</h1>
+            <p>
+              No hace falta hacer nada más. Iniciá sesión y entrá al portal.
+              Te llevamos…
             </p>
           </>
         )}
