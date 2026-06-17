@@ -17,9 +17,11 @@ module.exports = async function requireAuth(req, res, next) {
   }
 
   // Verificar que el token no fue emitido antes de un cambio de contraseña
+  // y leer el estado de verificación de email (TANDA 2.1).
+  let isEmailVerified;
   try {
     const { rows } = await db.query(
-      'SELECT password_changed_at FROM users WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT password_changed_at, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL',
       [decoded.id]
     );
     if (!rows[0]) return res.status(401).json({ error: 'Usuario no encontrado' });
@@ -33,11 +35,38 @@ module.exports = async function requireAuth(req, res, next) {
         return res.status(401).json({ error: 'Sesión expirada. Ingresá de nuevo.' });
       }
     }
+
+    // 2026-06-16 TANDA 2.1: source of truth = DB (no el JWT cacheado en cliente).
+    // Los users pre-TANDA 2.1 fueron backfilleados con email_verified_at = NOW() en
+    // la migration 20260616000004, así que para usuarios existentes esto es true.
+    // Para signups públicos nuevos, esto es null hasta que el user clickee el link
+    // de verificación → bloqueo blando de escrituras (abajo).
+    isEmailVerified = !!rows[0].email_verified_at;
   } catch (err) {
     return next(err);
   }
 
-  req.user = decoded;
+  req.user = { ...decoded, email_verified: isEmailVerified };
+
+  // 2026-06-16 TANDA 2.1 bloqueo blando: si el user NO verificó su email,
+  // bloquear escrituras (POST/PUT/PATCH/DELETE) excepto los endpoints de
+  // /api/auth/* (que incluyen verify-email, resend-verification, logout,
+  // change-password — todos deben funcionar incluso para users unverified).
+  //
+  // Lectura (GET) siempre OK: el user puede ver su dashboard / inventario,
+  // explorar la app, pero no crear ni modificar datos hasta verificar.
+  //
+  // Trade-off UX: el legítimo unverified ve el dashboard vacío pero no puede
+  // crear nada. El frontend muestra un banner persistente con CTA "verificá
+  // tu email" + opción de resend. Acepta esta UX para evitar abuse de signup.
+  const isWriteMethod = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
+  const isAuthRoute = req.originalUrl.startsWith('/api/auth/');
+  if (isWriteMethod && !isAuthRoute && !isEmailVerified) {
+    return res.status(403).json({
+      error: 'Verificá tu email para crear o modificar datos.',
+      reason: 'email_not_verified',
+    });
+  }
 
   // 2026-06-15 multi-tenant PR 3: decorar req.tenantId / req.tenantRol.
   // - JWTs emitidos post-PR3 incluyen tenant_id (resuelto al login vía
