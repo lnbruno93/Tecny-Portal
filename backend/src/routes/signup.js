@@ -125,14 +125,24 @@ function frontendUrl() {
 router.post('/signup', validate(signupSchema), async (req, res, next) => {
   const { nombre, email, password, tenant_nombre } = req.body;
 
-  // Pre-check de email (mensaje claro). DB también lo bloquea via UNIQUE
-  // case-insensitive — esto es solo para UX.
+  // TANDA 2.7 fix HIGH#1 Seguridad auditoría 2026-06-17: anti-enumeration.
+  // Antes el endpoint distinguía emails registrados (409) de no-registrados
+  // (201) → cualquiera podía probar emails masivamente y enumerar cuentas.
+  // Ahora la response es **idéntica** para ambos casos: 200 con
+  // { verification_required: true }. Cost: signup ya NO auto-loguea — el user
+  // debe verificar email antes de poder iniciar sesión. Trade-off aceptado:
+  // anti-enum perfecto + verify-before-use es el patrón estándar de SaaS.
+  //
+  // Si el email ya existe, NO creamos nada — solo respondemos genérico.
+  // (Recovery email "alguien intentó usar tu email" queda para follow-up.)
   const existing = await db.query(
     'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL',
     [email]
   );
   if (existing.rows.length > 0) {
-    return res.status(409).json({ error: 'Este email ya está registrado' });
+    logger.info({ email_hash: 'redacted', source: 'signup_dup_email' },
+      'signup duplicado — respondiendo genérico (anti-enum)');
+    return res.status(200).json({ verification_required: true });
   }
 
   const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -249,34 +259,12 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     );
   }
 
-  // 9. JWT login + response. email_verified=false → frontend muestra banner.
-  const payload = {
-    id: result.user.id,
-    username: result.user.username,
-    email: result.user.email,
-    role: result.user.role,
-    tenant_id: result.tenant.id,
-    tenant_rol: 'owner',
-    perms: Object.fromEntries(TOOLS.map(t => [t, true])),
-    iat_ms: Date.now(),
-  };
-  const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '8h',
-    algorithm: JWT_ALGORITHM,
-  });
-
+  // TANDA 2.7 anti-enum: response idéntica al caso "email duplicado" (línea ~135).
+  // NO devolvemos token/user/tenant — eso permitía distinguir signup nuevo de
+  // signup duplicado por shape de la response. Trade-off: el user debe verificar
+  // email antes de iniciar sesión (no hay auto-login). El JWT antes generado
+  // acá ya no se genera (era para auto-login).
   const response = {
-    token: jwtToken,
-    user: {
-      id: result.user.id,
-      nombre: result.user.nombre,
-      username: result.user.username,
-      email: result.user.email,
-      role: result.user.role,
-      email_verified: false,
-      perms: payload.perms,
-    },
-    tenant: result.tenant,
     verification_required: true,
   };
 
@@ -298,7 +286,8 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     response._verification_token = result.token;
   }
 
-  return res.status(201).json(response);
+  // TANDA 2.7: 200 (no 201) para matchear el response del caso "email duplicado".
+  return res.status(200).json(response);
 });
 
 /**

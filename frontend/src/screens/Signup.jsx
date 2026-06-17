@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import { auth as authApi } from '../lib/api';
 
 // Signup público (TANDA 2.2 Fase B — visual polish).
@@ -14,9 +13,12 @@ import { auth as authApi } from '../lib/api';
 //   - Heading: "Crear cuenta" en vez de "Ingresá a tu portal".
 //   - Eyebrow brand panel: "Cuenta nueva" en vez de "Portal operativo".
 //
-// Post-success: setAuthFromSignup persiste token + user (con
-// email_verified=false). Navigate a /inicio. Allí el Shell muestra el
-// UnverifiedBanner (TANDA 2.2 Fase B).
+// TANDA 2.7 anti-enum: la response del backend es **idéntica** para emails
+// nuevos vs. duplicados (200 + `{ verification_required: true }`, sin
+// token/user/tenant). El frontend NO auto-loguea — muestra una pantalla de
+// "revisá tu email" después del submit. El usuario debe clickear el link de
+// verificación para luego poder hacer login normalmente. Patrón estándar de
+// SaaS (verify-before-use) y único forma de evitar enumeración.
 
 // Iconos inline — duplico los mismos que usa Login.jsx para no acoplar
 // los componentes a un Icons.jsx compartido por solo 2 pantallas.
@@ -76,9 +78,6 @@ const IconEyeOff = () => (
 );
 
 export default function Signup() {
-  const { setAuthFromSignup } = useAuth();
-  const navigate = useNavigate();
-
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,23 +85,27 @@ export default function Signup() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // TANDA 2.7 anti-enum: en lugar de navegar a /inicio post-success (lo que
+  // requería auto-login), mostramos pantalla "revisá tu email". El email
+  // sometido se guarda en `submittedEmail` para personalizar el mensaje.
+  const [submittedEmail, setSubmittedEmail] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setLoading(true);
+    const normalizedEmail = email.trim().toLowerCase();
     try {
-      const data = await authApi.signup({
+      await authApi.signup({
         nombre: nombre.trim(),
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         password,
         tenant_nombre: tenantNombre.trim(),
       });
-      // Backend devuelve { token, user, tenant, verification_required }.
-      // setAuthFromSignup persiste token + user (email_verified=false).
-      // El Shell detecta el flag y muestra UnverifiedBanner sticky.
-      setAuthFromSignup({ token: data.token, user: data.user });
-      navigate('/inicio', { replace: true });
+      // TANDA 2.7: backend response idéntica para email nuevo vs. duplicado
+      // (anti-enum). El user no se auto-loguea — debe verificar email primero.
+      // Mostramos pantalla "revisá tu email" sin distinguir los dos casos.
+      setSubmittedEmail(normalizedEmail);
     } catch (err) {
       setError(err.message || 'No se pudo crear la cuenta.');
     } finally {
@@ -150,112 +153,138 @@ export default function Signup() {
             </div>
           </div>
 
-          <div className="lg-h">
-            <h1>Crear tu cuenta</h1>
-            <p>Empezá a usar iPro en menos de un minuto.</p>
-          </div>
-
-          <form onSubmit={handleSubmit}>
-            <div className="field">
-              <label htmlFor="signup-nombre">Tu nombre</label>
-              <div className="iw">
-                <span className="lead"><IconUser /></span>
-                <input
-                  id="signup-nombre"
-                  type="text"
-                  placeholder="Lucas Bruno"
-                  autoComplete="name"
-                  autoFocus
-                  value={nombre}
-                  onChange={e => setNombre(e.target.value)}
-                  required
-                  minLength={1}
-                  maxLength={120}
-                />
+          {submittedEmail ? (
+            // TANDA 2.7: pantalla "revisá tu email". Mensaje idéntico
+            // independientemente de si el email era nuevo o ya estaba registrado
+            // (anti-enum). No revelamos el resultado del lookup en backend.
+            <>
+              <div className="lg-h">
+                <h1>Revisá tu email</h1>
+                <p>
+                  Si <strong>{submittedEmail}</strong> es válido, te enviamos un link
+                  de verificación. Hacé click en el link para activar tu cuenta y poder
+                  iniciar sesión.
+                </p>
               </div>
-            </div>
-
-            <div className="field">
-              <label htmlFor="signup-email">Email</label>
-              <div className="iw">
-                <span className="lead"><IconMail /></span>
-                <input
-                  id="signup-email"
-                  type="email"
-                  placeholder="tu@empresa.com"
-                  autoComplete="email"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                />
+              <div className="field-note" style={{ marginTop: 16 }}>
+                ¿No lo ves? Revisá la carpeta de spam. El link expira en 24 horas.
               </div>
-            </div>
+              <div className="lg-foot" style={{ marginTop: 20 }}>
+                <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
+                  Ir a iniciar sesión →
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="lg-h">
+                <h1>Crear tu cuenta</h1>
+                <p>Empezá a usar iPro en menos de un minuto.</p>
+              </div>
 
-            <div className="field">
-              <label htmlFor="signup-password">Contraseña</label>
-              <div className="iw">
-                <span className="lead"><IconLock /></span>
-                <input
-                  id="signup-password"
-                  type={showPw ? 'text' : 'password'}
-                  placeholder="Mínimo 8 caracteres"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                />
-                <button
-                  type="button"
-                  className="pw-toggle"
-                  onClick={() => setShowPw(s => !s)}
-                  aria-label={showPw ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                >
-                  {showPw ? <IconEyeOff /> : <IconEye />}
+              <form onSubmit={handleSubmit}>
+                <div className="field">
+                  <label htmlFor="signup-nombre">Tu nombre</label>
+                  <div className="iw">
+                    <span className="lead"><IconUser /></span>
+                    <input
+                      id="signup-nombre"
+                      type="text"
+                      placeholder="Lucas Bruno"
+                      autoComplete="name"
+                      autoFocus
+                      value={nombre}
+                      onChange={e => setNombre(e.target.value)}
+                      required
+                      minLength={1}
+                      maxLength={120}
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="signup-email">Email</label>
+                  <div className="iw">
+                    <span className="lead"><IconMail /></span>
+                    <input
+                      id="signup-email"
+                      type="email"
+                      placeholder="tu@empresa.com"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="signup-password">Contraseña</label>
+                  <div className="iw">
+                    <span className="lead"><IconLock /></span>
+                    <input
+                      id="signup-password"
+                      type={showPw ? 'text' : 'password'}
+                      placeholder="Mínimo 8 caracteres"
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                    <button
+                      type="button"
+                      className="pw-toggle"
+                      onClick={() => setShowPw(s => !s)}
+                      aria-label={showPw ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showPw ? <IconEyeOff /> : <IconEye />}
+                    </button>
+                  </div>
+                  <div className="field-note">
+                    Mínimo 8 caracteres. Usá una contraseña que no uses en otros sitios.
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="signup-empresa">Nombre de tu empresa</label>
+                  <div className="iw">
+                    <span className="lead"><IconBuilding /></span>
+                    <input
+                      id="signup-empresa"
+                      type="text"
+                      placeholder="Mi empresa SA"
+                      value={tenantNombre}
+                      onChange={e => setTenantNombre(e.target.value)}
+                      required
+                      minLength={2}
+                      maxLength={120}
+                    />
+                  </div>
+                </div>
+
+                <button className="login-btn" type="submit" disabled={loading}>
+                  {loading ? 'Creando cuenta…' : 'Crear cuenta →'}
                 </button>
-              </div>
-              <div className="field-note">
-                Mínimo 8 caracteres. Usá una contraseña que no uses en otros sitios.
-              </div>
-            </div>
 
-            <div className="field">
-              <label htmlFor="signup-empresa">Nombre de tu empresa</label>
-              <div className="iw">
-                <span className="lead"><IconBuilding /></span>
-                <input
-                  id="signup-empresa"
-                  type="text"
-                  placeholder="Mi empresa SA"
-                  value={tenantNombre}
-                  onChange={e => setTenantNombre(e.target.value)}
-                  required
-                  minLength={2}
-                  maxLength={120}
-                />
+                {error && (
+                  <div className="login-err" role="alert" aria-live="assertive">
+                    {error}
+                  </div>
+                )}
+              </form>
+
+              <div className="lg-foot">
+                <span>¿Ya tenés cuenta?</span>
+                <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
+                  Iniciar sesión
+                </Link>
               </div>
-            </div>
-
-            <button className="login-btn" type="submit" disabled={loading}>
-              {loading ? 'Creando cuenta…' : 'Crear cuenta →'}
-            </button>
-
-            {error && (
-              <div className="login-err" role="alert" aria-live="assertive">
-                {error}
-              </div>
-            )}
-          </form>
-
-          <div className="lg-foot">
-            <span>¿Ya tenés cuenta?</span>
-            <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
-              Iniciar sesión
-            </Link>
-          </div>
+            </>
+          )}
         </div>
       </main>
     </div>
