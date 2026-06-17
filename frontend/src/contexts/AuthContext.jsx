@@ -44,8 +44,33 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // TANDA 2.2: setAuthFromSignup — invocado por <Signup /> después de un
+  // POST /api/auth/signup exitoso. El backend devuelve { token, user, tenant,
+  // verification_required: true } — usamos token+user igual que login() pero
+  // sin re-fetch de /me. El user trae email_verified=false; el shell muestra
+  // el UnverifiedBanner mientras no esté verificado.
+  const setAuthFromSignup = useCallback(({ token, user }) => {
+    saveToken(token);
+    setUser(user);
+  }, []);
+
+  // TANDA 2.2: refreshUser — invocado por <VerifyEmail /> después de un
+  // verify exitoso. Re-fetch GET /api/auth/me para que `user.email_verified`
+  // pase de false a true en memoria y el banner desaparezca. Si el user no
+  // estaba logueado (verificó en otro device), me() falla con NO_AUTH y
+  // lo ignoramos — el redirect al /login lo maneja el llamador.
+  const refreshUser = useCallback(async () => {
+    try {
+      const u = await authApi.me();
+      setUser(u);
+      return u;
+    } catch (_) {
+      return null;
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, setAuthFromSignup, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -110,6 +110,13 @@ export const auth = {
   me: () => api('/api/auth/me'),
   logout: () => api('/api/auth/logout', 'POST'),
   changePassword: (currentPassword, newPassword) => api('/api/auth/change-password', 'POST', { currentPassword, newPassword }),
+  // TANDA 2.2: signup público + email verification. Las dos primeras son
+  // públicas (sin auth header — el wrapper api() las manda sin token si no
+  // hay sesión, igual el backend acepta). resendVerification SÍ requiere auth
+  // (se llama desde el banner cuando el user ya está logueado pero unverified).
+  signup: (data) => api('/api/auth/signup', 'POST', data),
+  verifyEmail: (token) => api('/api/auth/verify-email', 'POST', { token }),
+  resendVerification: () => api('/api/auth/resend-verification', 'POST'),
 };
 
 // 2FA endpoints. Todos requieren JWT válido (requireAuth) — usan el wrapper api()
