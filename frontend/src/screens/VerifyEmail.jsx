@@ -1,31 +1,44 @@
-// VerifyEmail — TANDA 2.2 scaffold (UI a completar fresco).
-//
-// Flow:
-//   1. User clickea el link del email → llega a /verify-email?token=<hex>.
-//   2. Esta pantalla extrae `token` del query string al montar.
-//   3. POST /api/auth/verify-email { token } automáticamente (no requiere
-//      acción del user — solo abrir el link).
-//   4. Muestra estado:
-//        - loading: "Verificando..."
-//        - success: "✓ Email verificado. Ya podés crear ventas, etc."
-//        - error 400 (token inválido / expirado): mensaje claro + CTA
-//          "Pedir un link nuevo" → si está logueado, llama
-//          /api/auth/resend-verification. Si no, → /login.
-//
-// Diseño: pantalla simple, centered card. NO replica el split-screen de
-// Login/Signup — es transient (~5 segundos en pantalla).
-//
-// TODO TANDA 2.2:
-//   - [ ] Visual completo (card centrada con icono ✓/✗).
-//   - [ ] Si user está logueado (AuthContext), refresh del user para que
-//         email_verified pase a true en memoria (UnverifiedBanner desaparece).
-//   - [ ] Manejo de "token ya usado" vs "token expirado" — backend devuelve
-//         400 sin distinguir; tratamos ambos como "expirado" con CTA resend.
-
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth as authApi } from '../lib/api';
+
+// VerifyEmail — TANDA 2.2 Fase B (visual polish).
+//
+// Diseño: card centrada (NO split-screen — es transient, ~5 segundos en
+// pantalla normalmente). Comparte la clase .auth-screen para heredar
+// background y tipografía consistentes con Login/Signup, pero usa
+// .auth-card específico para el layout centrado.
+//
+// Flow:
+//   1. User clickea link del email → /verify-email?token=<hex>
+//   2. useEffect extrae token, POST /api/auth/verify-email automático.
+//   3. Estados visuales:
+//        - loading: spinner + "Verificando tu email…"
+//        - success: ícono ✓ verde + "Listo, ya estás verificado" + redirect 2s
+//        - error: ícono ✗ rojo + mensaje + CTA "Volver al login"
+//   4. Si user está logueado, refreshUser() para que email_verified pase a
+//      true en memoria (UnverifiedBanner del Shell desaparece).
+
+// Iconos — locales, no inflar Icons.jsx por uso de 1 pantalla.
+const IconCheckCircle = () => (
+  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M8 12.5l3 3 5.5-6.5" />
+  </svg>
+);
+const IconXCircle = () => (
+  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M9 9l6 6M15 9l-6 6" />
+  </svg>
+);
+const IconSpinner = () => (
+  // SVG spinner — animado vía CSS @keyframes auth-spin (ver styles.css).
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="auth-spinner">
+    <path d="M12 3a9 9 0 1 1-6.36 2.64" />
+  </svg>
+);
 
 export default function VerifyEmail() {
   const [params] = useSearchParams();
@@ -39,20 +52,17 @@ export default function VerifyEmail() {
   useEffect(() => {
     if (!token) {
       setStatus('error');
-      setErrorMsg('Link inválido (falta token).');
+      setErrorMsg('El link no incluye token. Revisá el email que te enviamos.');
       return;
     }
     async function verify() {
       try {
         await authApi.verifyEmail(token);
         setStatus('success');
-        // Si el user ya está logueado, refrescamos /me para que
-        // email_verified pase a true en memoria (el banner desaparece).
-        // refreshUser() es no-op silencioso si no hay sesión.
+        // Refresh /me si hay sesión activa (no-op silencioso si no).
         await refreshUser();
-        // Redirect a / después de 2s — AuthGuard decide si va a Shell
-        // (si está logueado) o a Login (si no).
-        setTimeout(() => navigate('/', { replace: true }), 2000);
+        // Redirect a / después de 2.5s — AuthGuard decide si va a Shell o Login.
+        setTimeout(() => navigate('/', { replace: true }), 2500);
       } catch (err) {
         setStatus('error');
         setErrorMsg(err.message || 'Token inválido o expirado.');
@@ -63,24 +73,43 @@ export default function VerifyEmail() {
   }, [token]);
 
   return (
-    <div id="verify-email-screen" className="auth-screen">
-      {/* TODO TANDA 2.2 Fase B: visual completo (card centrada con ícono). */}
-      {status === 'loading' && <p>Verificando tu email...</p>}
-      {status === 'success' && (
-        <div>
-          <h2>✓ Email verificado</h2>
-          <p>Ya podés usar tu cuenta sin restricciones. Redirigiendo...</p>
-        </div>
-      )}
-      {status === 'error' && (
-        <div>
-          <h2>✗ No se pudo verificar</h2>
-          <p>{errorMsg}</p>
-          <p>
-            <Link to="/">Iniciá sesión</Link> y pedí un nuevo email de verificación desde el banner del dashboard.
-          </p>
-        </div>
-      )}
+    <div id="verify-email-screen" className="auth-screen auth-screen--center">
+      <div className="auth-card" role="status" aria-live="polite">
+        {status === 'loading' && (
+          <>
+            <div className="auth-card-icon auth-card-icon--neutral">
+              <IconSpinner />
+            </div>
+            <h1>Verificando tu email…</h1>
+            <p>Un segundo. Estamos confirmando que sos vos.</p>
+          </>
+        )}
+        {status === 'success' && (
+          <>
+            <div className="auth-card-icon auth-card-icon--ok">
+              <IconCheckCircle />
+            </div>
+            <h1>¡Listo! Email verificado.</h1>
+            <p>
+              Ya podés crear ventas, comprobantes y todo lo demás.
+              Te llevamos al portal…
+            </p>
+          </>
+        )}
+        {status === 'error' && (
+          <>
+            <div className="auth-card-icon auth-card-icon--err">
+              <IconXCircle />
+            </div>
+            <h1>No se pudo verificar</h1>
+            <p>{errorMsg}</p>
+            <p className="auth-card-cta">
+              <Link to="/">Iniciá sesión</Link> y pedí un email nuevo desde el
+              banner del dashboard.
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
