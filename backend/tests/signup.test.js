@@ -243,6 +243,26 @@ describe('POST /api/auth/verify-email', () => {
     expect(v.status).toBe(400);
   });
 
+  it('TANDA 2.6: tenant huérfano → 410 reason="tenant_orphan" (NO cae a tenant 1)', async () => {
+    // Edge case: user existe pero no tiene fila en tenant_users (caso teórico:
+    // tenant soft-deleted, link borrado manualmente). Antes el verify cae a
+    // tenant_id=1 (tenant del owner) y atribuía el audit al tenant equivocado.
+    // Ahora devolvemos 410 sin tocar nada.
+    const { res } = await signup({ email: `orphan_${Date.now()}@example.com` });
+    const tok = res.body._verification_token;
+    const userId = res.body.user.id;
+    // Borrar el link tenant_users para simular tenant huérfano.
+    await pool.query('DELETE FROM tenant_users WHERE user_id = $1', [userId]);
+
+    const v = await request(app).post('/api/auth/verify-email').send({ token: tok });
+    expect(v.status).toBe(410);
+    expect(v.body.reason).toBe('tenant_orphan');
+
+    // Confirmar que el user NO quedó verificado (el verify se abortó antes del UPDATE).
+    const { rows } = await pool.query('SELECT email_verified_at FROM users WHERE id = $1', [userId]);
+    expect(rows[0].email_verified_at).toBeNull();
+  });
+
   it('user verificado YA puede escribir (bloqueo blando desactivado post-verify)', async () => {
     const { res } = await signup();
     const tok = res.body._verification_token;

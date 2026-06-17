@@ -302,15 +302,48 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
 });
 
 /**
+ * Rate limiter dedicado para /verify-email — 30 intentos / minuto / IP.
+ *
+ * TANDA 2.6 fix MEDIUM Seguridad auditoría 2026-06-17: el endpoint /verify-email
+ * dependía solo del global limiter (300/15min). Aunque el espacio de tokens
+ * (256 bits) hace brute-force matemáticamente infactible, sin un limiter
+ * dedicado un atacante con IPs rotantes puede saturar la DB con SELECT FOR
+ * UPDATE + INSERT en audit_logs (un round-trip de DB por token random).
+ *
+ * Límite 30/min/IP es generoso para un user real (clickear el link 1-2 veces)
+ * pero corta brute force / scanning agresivo. Mismo patrón lazy-init que
+ * resendLimiter — el verifyStore se inyecta vía setVerifyStore() desde app.js.
+ */
+function _buildVerifyEmailLimiter(store) {
+  return rateLimit({
+    windowMs: 60 * 1000, // 1 minuto
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiados intentos de verificación. Esperá un minuto.' },
+    keyGenerator: (req) => ipKeyGenerator(req),
+    skip: () => process.env.NODE_ENV === 'test',
+    ...(store && { store }),
+  });
+}
+let _verifyEmailLimiterInstance = _buildVerifyEmailLimiter(undefined);
+exports.setVerifyStore = (store) => {
+  _verifyEmailLimiterInstance = _buildVerifyEmailLimiter(store);
+};
+const verifyEmailLimiter = (req, res, next) => _verifyEmailLimiterInstance(req, res, next);
+
+/**
  * POST /verify-email — consume un token de verificación.
  *
  * Body: { token }
  * Response 200: { ok: true, email_verified_at }
  * Response 400: token inválido / expirado / ya usado
+ * Response 410: tenant huérfano (user sin tenant activo)
  *
  * Público (no requiere auth — el token ES el credential).
+ * Rate limit: 30/min/IP (TANDA 2.6).
  */
-router.post('/verify-email', validate(verifyEmailSchema), async (req, res, next) => {
+router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), async (req, res, next) => {
   const { token } = req.body;
   const client = await db.connect();
   try {
@@ -358,7 +391,21 @@ router.post('/verify-email', validate(verifyEmailSchema), async (req, res, next)
       `SELECT tenant_id FROM tenant_users WHERE user_id = $1 ORDER BY tenant_id ASC LIMIT 1`,
       [userId]
     );
-    const tenantId = tuRows[0]?.tenant_id || 1;
+    // TANDA 2.6 fix HIGH Solidez auditoría 2026-06-17: si el user no tiene
+    // tenant activo (caso edge: tenant soft-deleted, link entre user y tenant
+    // borrado), NO caer a tenant_id=1 (que es el tenant del owner del portal).
+    // Antes: el SET LOCAL se ponía en 1 y los audit_logs del verify-email
+    // quedaban atribuidos al tenant del owner — ruido en el historial real
+    // + atribución forense incorrecta. Ahora: devolvemos 410 Gone (recurso
+    // existió pero ya no tiene contexto válido).
+    if (!tuRows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(410).json({
+        error:  'Tu cuenta no tiene un tenant activo. Contactá a soporte.',
+        reason: 'tenant_orphan',
+      });
+    }
+    const tenantId = tuRows[0].tenant_id;
     await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
 
     // Marcar token usado.
@@ -518,3 +565,4 @@ module.exports = router;
 // props que setteamos en `exports` mientras no reasignemos `exports = ...`.
 // Verificado: `router.setResendStore` queda disponible en app.js.
 module.exports.setResendStore = exports.setResendStore;
+module.exports.setVerifyStore = exports.setVerifyStore;
