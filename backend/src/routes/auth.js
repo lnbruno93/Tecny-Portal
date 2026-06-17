@@ -99,7 +99,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const filter = field === 'email' ? 'LOWER(email) = LOWER($1)' : `${field} = $1`;
     const { rows } = await db.query(
       `SELECT id, nombre, username, email, role, password_hash, password_changed_at,
-              failed_login_count, lockout_until
+              failed_login_count, lockout_until, email_verified_at
        FROM users WHERE ${filter} AND deleted_at IS NULL`,
       [value]
     );
@@ -233,7 +233,19 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
 
     res.json({
       token: await makeToken(user),
-      user: { id: user.id, nombre: user.nombre, username: user.username, email: user.email, role: user.role, perms: permissions },
+      user: {
+        id: user.id,
+        nombre: user.nombre,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        // 2026-06-16 TANDA 2.1: el frontend usa este flag para mostrar el banner
+        // de verificación + deshabilitar acciones de escritura. El backend lo
+        // re-verifica en cada request (middleware/auth.js) — no confiamos
+        // unicamente en el cliente.
+        email_verified: !!user.email_verified_at,
+        perms: permissions,
+      },
     });
   } catch (err) {
     next(err);
@@ -243,7 +255,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      'SELECT id, nombre, username, email, role FROM users WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT id, nombre, username, email, role, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL',
       [req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -253,7 +265,15 @@ router.get('/me', requireAuth, async (req, res, next) => {
       [req.user.id]
     );
     const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
-    res.json({ ...rows[0], perms: { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) } });
+    // 2026-06-16 TANDA 2.1: incluir email_verified en la respuesta de /me para
+    // que el frontend sepa si mostrar el banner de verificación. Excluimos
+    // email_verified_at (timestamp) del response — el cliente solo necesita el bool.
+    const { email_verified_at, ...userRow } = rows[0];
+    res.json({
+      ...userRow,
+      email_verified: !!email_verified_at,
+      perms: { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) },
+    });
   } catch (err) {
     next(err);
   }
