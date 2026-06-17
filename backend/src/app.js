@@ -38,12 +38,16 @@ const globalStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, pre
 //     dedicado 'resend'.
 const signupStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'signup', logger });
 const resendStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'resend', logger });
+// TANDA 2.6: store dedicado para /verify-email limiter (30/min/IP).
+const verifyStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'verify', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
 // TANDA 2.4 fix BLOCKER: inyectar resendStore al lazy-init del rate limiter de
 // /resend-verification (defaults a MemoryStore = bypass en multi-replica).
 if (signupRoutes.setResendStore) signupRoutes.setResendStore(resendStore);
+// TANDA 2.6: inyectar verifyStore al lazy-init del rate limiter de /verify-email.
+if (signupRoutes.setVerifyStore) signupRoutes.setVerifyStore(verifyStore);
 const twoFaRoutes        = require('./routes/twoFa');
 const vendedoresRoutes   = require('./routes/vendedores');
 const comprobantesRoutes = require('./routes/comprobantes');
