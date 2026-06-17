@@ -21,9 +21,14 @@ module.exports = async function requireAuth(req, res, next) {
   //
   // P-04 Fase 3.6: la query a `users` está cacheada 60s en Redis
   // (userAuthCache.js). El cache se invalida explícitamente desde los call-
-  // sites que UPDATE-an users (change-password, login fail/lockout/reset,
-  // admin edit, soft-delete, verify-email). Sub-ms hit en lugar de query
-  // por request.
+  // sites que tocan los fields cacheados:
+  //   - routes/auth.js logout (bump password_changed_at)
+  //   - routes/auth.js change-password (bump password_changed_at)
+  //   - routes/usuarios.js PUT (bump password_changed_at en sensitive changes)
+  //   - routes/usuarios.js DELETE (soft-delete + bump password_changed_at)
+  //   - routes/signup.js verify-email (set email_verified_at)
+  // NO invalidamos en failed_login_count / lockout_until updates — esos
+  // fields no están en el cache. Sub-ms hit en lugar de query por request.
   let userAuth;
   try {
     userAuth = await getUserAuth(decoded.id);

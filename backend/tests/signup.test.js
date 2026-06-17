@@ -162,6 +162,27 @@ describe('POST /api/auth/signup', () => {
     expect(r2.res.body._verification_token).toBeUndefined();
   });
 
+  it('TANDA 1 fix T4: path duplicado emite log signup_dup_email (observabilidad anti-enum)', async () => {
+    // El log es la única señal server-side para detectar enumeration attempts.
+    // Si alguien remueve el logger.info accidentalmente, perdemos visibilidad
+    // de attacks sin que ningún test falle. Lockeamos el log acá.
+    const logger = require('../src/lib/logger');
+    const spy = jest.spyOn(logger, 'info');
+    try {
+      const email = `logdup_${Date.now()}@example.com`;
+      await signup({ email }); // path nuevo
+      spy.mockClear();
+      await signup({ email }); // path duplicado
+      // El log debería tener source: 'signup_dup_email' (ver routes/signup.js).
+      const dupCall = spy.mock.calls.find(([payload]) =>
+        payload && payload.source === 'signup_dup_email'
+      );
+      expect(dupCall).toBeDefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('TANDA 0 hotfix B2: path duplicado ejecuta bcrypt (anti-timing-oracle)', async () => {
     // Sin este fix, path duplicado retornaba ~10ms y path nuevo ~300-500ms
     // (bcrypt cost-12). Un atacante medía response time y enumeraba emails con

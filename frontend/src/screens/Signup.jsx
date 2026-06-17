@@ -169,6 +169,29 @@ export default function Signup() {
               <div className="field-note" style={{ marginTop: 16 }}>
                 ¿No lo ves? Revisá la carpeta de spam. El link expira en 24 horas.
               </div>
+              {/* TANDA 1 fix U2 auditoría 2026-06-17: CTA para retipear el
+                  email. Trade-off del anti-enum: el user que escribió mal su
+                  email NO recibe error explícito — la app dice "Revisá tu
+                  email" pero el link nunca llega. Sin este botón el user
+                  queda atrapado (no puede loguear porque la cuenta no existe
+                  / no está verificada). El click resetea submittedEmail a
+                  null y vuelve al form con los datos en blanco. No rompe
+                  anti-enum: el user solo se rehace a sí mismo. */}
+              <div className="field-note" style={{ marginTop: 12 }}>
+                ¿Te equivocaste de email?{' '}
+                <button
+                  type="button"
+                  className="lg-link"
+                  onClick={() => {
+                    setSubmittedEmail(null);
+                    setEmail('');
+                    setError('');
+                  }}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                >
+                  Volver y crear cuenta de nuevo
+                </button>
+              </div>
               <div className="lg-foot" style={{ marginTop: 20 }}>
                 <Link to="/" className="lg-link" style={{ textDecoration: 'none' }}>
                   Ir a iniciar sesión →

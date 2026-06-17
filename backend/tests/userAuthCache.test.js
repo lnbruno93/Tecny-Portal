@@ -113,3 +113,129 @@ describe('userAuthCache.invalidateUserAuth', () => {
     await expect(invalidateUserAuth(userId)).resolves.toBeUndefined();
   });
 });
+
+// ────────────────────────────────────────────────────────────────
+// T1-T3 (TANDA 1 fix Tests auditoría 2026-06-17): tests con Redis mock
+// ────────────────────────────────────────────────────────────────
+//
+// Los tests anteriores corren con NODE_ENV=test → cache deshabilitado → solo
+// verifican el adapter (query + normalización). Los tests de abajo fuerzan
+// NODE_ENV=production + Redis mock para ejercitar el path REAL:
+//   - T1: invalidación observada end-to-end (UPDATE → invalidate → fresh read)
+//   - T2: cross-instance (réplica B sin fetcher local → invalidate hace redis.del)
+//   - T3: Redis-down → fallback a fetch directo sin romper
+describe('userAuthCache con Redis mock (NODE_ENV=production)', () => {
+  const redisClient = require('../src/lib/redisClient');
+
+  function makeMockRedis() {
+    const store = new Map();
+    const calls = { get: 0, setex: 0, del: 0 };
+    return {
+      mock: {
+        get: jest.fn(async (key) => {
+          calls.get++;
+          return store.has(key) ? store.get(key) : null;
+        }),
+        setex: jest.fn(async (key, ttlSec, value) => {
+          calls.setex++;
+          store.set(key, value);
+          return 'OK';
+        }),
+        del: jest.fn(async (key) => {
+          calls.del++;
+          const had = store.has(key);
+          store.delete(key);
+          return had ? 1 : 0;
+        }),
+        ping: jest.fn(async () => 'PONG'),
+        scanStream: jest.fn(() => ({
+          on: jest.fn((event, cb) => { if (event === 'end') setImmediate(cb); }),
+        })),
+      },
+      store,
+      calls,
+    };
+  }
+
+  const withProdEnv = async (fn) => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try { await fn(); } finally {
+      process.env.NODE_ENV = prev;
+      redisClient._setClientForTest(null);
+      _resetForTest();
+    }
+  };
+
+  it('T1: invalidación end-to-end — UPDATE DB → invalidate → siguiente getUserAuth ve fresh', async () => {
+    await withProdEnv(async () => {
+      const { mock, calls } = makeMockRedis();
+      redisClient._setClientForTest(mock);
+
+      // Estado inicial.
+      await pool.query(
+        `UPDATE users SET password_changed_at = '2026-05-01T00:00:00Z' WHERE id = $1`,
+        [userId]
+      );
+
+      const a = await getUserAuth(userId);
+      expect(a.password_changed_at).toBe('2026-05-01T00:00:00.000Z');
+      expect(calls.setex).toBeGreaterThanOrEqual(1); // se cacheó
+
+      // UPDATE en DB + invalidate.
+      await pool.query(
+        `UPDATE users SET password_changed_at = '2026-06-15T00:00:00Z' WHERE id = $1`,
+        [userId]
+      );
+      await invalidateUserAuth(userId);
+      expect(calls.del).toBeGreaterThanOrEqual(1); // se borró key
+
+      // Próximo read debe refetchear de Postgres.
+      const b = await getUserAuth(userId);
+      expect(b.password_changed_at).toBe('2026-06-15T00:00:00.000Z');
+    });
+  });
+
+  it('T2: cross-instance — réplica B (sin fetcher local) sigue disparando redis.del', async () => {
+    // Simula el caso real de prod: réplica A hizo logout y bumpeó
+    // password_changed_at + invalidate. Réplica B (este test) jamás cacheó
+    // este user pero TIENE que disparar redis.del para que su PROPIA réplica
+    // refetchee al próximo getUserAuth, además de propagar la invalidación
+    // cross-instance.
+    await withProdEnv(async () => {
+      const { mock, calls } = makeMockRedis();
+      redisClient._setClientForTest(mock);
+
+      // _resetForTest ya corrió en beforeEach → fetchers Map vacío.
+      // Llamamos invalidate SIN antes hacer getUserAuth → no hay fetcher local.
+      await invalidateUserAuth(userId);
+
+      // La rama "no fn local" crea fetcher lazy → llama .invalidate() → redis.del.
+      expect(calls.del).toBeGreaterThanOrEqual(1);
+      expect(mock.del.mock.calls[0][0]).toBe(`cache:user_auth:u${userId}`);
+    });
+  });
+
+  it('T3: Redis-down → fallback a fetch directo, no rompe', async () => {
+    await withProdEnv(async () => {
+      // Sin client Redis: redis.isEnabled() devuelve false en redisClient.js.
+      redisClient._setClientForTest(null);
+
+      // Estado conocido.
+      await pool.query(
+        `UPDATE users SET password_changed_at = '2026-07-01T00:00:00Z' WHERE id = $1`,
+        [userId]
+      );
+
+      const a = await getUserAuth(userId);
+      expect(a).not.toBeNull();
+      expect(a.password_changed_at).toBe('2026-07-01T00:00:00.000Z');
+
+      // Cada call hace fetch directo (sin Redis no cacheamos en memoria local).
+      const b = await getUserAuth(userId);
+      expect(b.password_changed_at).toBe('2026-07-01T00:00:00.000Z');
+      // Y invalidateUserAuth tampoco lanza si Redis está down.
+      await expect(invalidateUserAuth(userId)).resolves.toBeUndefined();
+    });
+  });
+});

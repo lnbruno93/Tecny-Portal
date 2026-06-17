@@ -218,7 +218,7 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
       // email_verified_at) no cambiaron — pero invalidamos igual por
       // simplicidad: el costo es 1 redis.del() (~sub-ms) vs. riesgo de
       // olvidarse un campo en el futuro.
-      invalidateUserAuth(id).catch(() => {});
+      invalidateUserAuth(id);
       res.json(rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -267,7 +267,7 @@ router.delete('/:id', async (req, res, next) => {
     // próximo lookup devuelve null → requireAuth rechaza el token. Sin
     // invalidar, una réplica con el row cacheado sigue aceptando el token
     // hasta TTL de 60s.
-    invalidateUserAuth(id).catch(() => {});
+    invalidateUserAuth(id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

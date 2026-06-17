@@ -108,8 +108,11 @@ export default function VerifyEmail() {
             </div>
             <h1>¡Listo! Email verificado.</h1>
             <p>
-              Ya podés crear ventas, comprobantes y todo lo demás.
-              Te llevamos al portal…
+              {/* TANDA 1 fix U1 auditoría 2026-06-17: copy desactualizada
+                  post-TANDA 2.7. El signup ya no auto-loguea — el user va
+                  al Login, no al portal. Antes decía "Te llevamos al portal"
+                  y aterrizaba en Login, confundiendo. */}
+              Iniciá sesión para entrar al portal. Te llevamos al login…
             </p>
           </>
         )}
@@ -121,7 +124,7 @@ export default function VerifyEmail() {
             <h1>Este email ya estaba verificado</h1>
             <p>
               No hace falta hacer nada más. Iniciá sesión y entrá al portal.
-              Te llevamos…
+              Te llevamos al login…
             </p>
           </>
         )}
