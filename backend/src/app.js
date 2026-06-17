@@ -30,6 +30,7 @@ const twoFaStore  = isTestEnv ? undefined : new PostgresRateLimitStore({ db, pre
 const globalStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'global', logger });
 
 const authRoutes         = require('./routes/auth');
+const signupRoutes       = require('./routes/signup');
 const twoFaRoutes        = require('./routes/twoFa');
 const vendedoresRoutes   = require('./routes/vendedores');
 const comprobantesRoutes = require('./routes/comprobantes');
@@ -435,6 +436,16 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/auth/login', loginLimiter);
 
+// 2026-06-16 TANDA 2.1: signup público con rate limit estricto (5/hora/IP).
+// Defiende contra abuse (creación masiva de cuentas + spam del provider de
+// email). Limiter compartido entre réplicas via loginStore (PG-backed).
+// El route en signup.js maneja también /verify-email y /resend-verification
+// — esos tienen su propia política interna (verify-email confía en el espacio
+// de tokens de 256 bits; resend-verification tiene un per-user limiter).
+const createSignupLimiter = require('./middleware/signupLimiter');
+const signupLimiter = createSignupLimiter(loginStore);
+app.use('/api/auth/signup', signupLimiter);
+
 // 2026-06-11 SE-07: rate limit dedicado para /api/auth/change-password.
 // Sin esto, un token robado podía martillar el endpoint para brute-forcear el
 // currentPassword (solo limitado por el global de 300/15min). 5 intentos/15min
@@ -456,6 +467,12 @@ const changePasswordLimiter = rateLimit({
 app.use('/api/auth/change-password', requireAuth, changePasswordLimiter);
 
 // Auth (sin restricción de permisos)
+// 2026-06-16 TANDA 2.1: signupRoutes va ANTES de authRoutes — ambos montados
+// en /api/auth. Express resuelve por el primer match, así que las rutas de
+// signupRoutes (/signup, /verify-email, /resend-verification) toman precedencia.
+// authRoutes maneja /login, /me, /logout, /change-password — no hay colisión
+// de paths entre los dos routers.
+app.use('/api/auth',          signupRoutes);
 app.use('/api/auth',          authRoutes);
 
 // 2FA — endpoints de setup/enable/disable. Requieren JWT válido (requireAuth)
