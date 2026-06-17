@@ -84,8 +84,17 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
 // flow de 2FA devuelve 401 con `twofa_required: true` durante un login válido.
 // El api() wrapper hace clearToken+session-expired event ante CUALQUIER 401, lo
 // cual rompería ese flow. Acá manejamos 401 nosotros sin disparar logout.
+//
+// TANDA 2.3: el primer parámetro `username` ahora puede ser username O email.
+// Si contiene '@', lo enviamos al backend en el field `email`; si no, en
+// `username`. El backend acepta ambos (loginSchema con refine) — ver
+// backend/src/routes/auth.js. Esto cierra el loop con signup público: los
+// users signupeados por TANDA 2.2 conocen su email (no el username derivado).
 async function loginDirect({ username, password, code }) {
-  const body = { username, password };
+  const isEmail = typeof username === 'string' && username.includes('@');
+  const body = isEmail
+    ? { email: username, password }
+    : { username, password };
   if (code) body.code = code;
   const res = await fetch(BASE + '/api/auth/login', {
     method: 'POST',

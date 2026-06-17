@@ -186,13 +186,17 @@ export default function Login() {
             {!twofaRequired && (
               <>
                 <div className="field">
-                  <label htmlFor="login-username">Usuario</label>
+                  <label htmlFor="login-username">Usuario o email</label>
                   <div className="iw">
                     <span className="lead"><IconUser /></span>
                     <input
                       id="login-username"
                       type="text"
-                      placeholder="usuario"
+                      // TANDA 2.3: aceptamos username o email. autoComplete='username'
+                      // sigue siendo correcto — los password managers entienden el
+                      // término genéricamente (usan el field para autofill tanto
+                      // de username como de email).
+                      placeholder="usuario o tu@email.com"
                       autoComplete="username"
                       autoFocus
                       autoCapitalize="none"

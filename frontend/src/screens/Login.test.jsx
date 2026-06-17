@@ -22,7 +22,7 @@ const renderL = () => render(
 // Helpers: getByLabelText(/contraseña/) matchea el input Y el toggle ojito
 // (aria-label "Mostrar contraseña"). Usamos selectores específicos para
 // distinguir input vs button.
-const getUsernameInput = () => screen.getByLabelText('Usuario');
+const getUsernameInput = () => screen.getByLabelText('Usuario o email');
 const getPasswordInput = () => screen.getByPlaceholderText('••••••••');
 const getCodeInput     = () => screen.getByLabelText('Código de verificación');
 const getSubmitBtn     = () => screen.getByRole('button', { name: /^(ingresar|verificar)/i });
@@ -53,6 +53,22 @@ describe('Login — toggle ojito + flow 2FA', () => {
     expect(mockLogin).toHaveBeenCalledWith('lucas', 'pass123', undefined);
   });
 
+  it('TANDA 2.3: login con email también funciona (trim + lowercase)', async () => {
+    // Backend acepta `username` o `email` desde TANDA 1; el frontend pasa el
+    // identifier tal cual, y api.js lo rutea al field correcto según contenga
+    // '@'. Acá testeamos solo la parte del Login.jsx — la decisión del field
+    // está en api.test (no se mocká acá).
+    mockLogin.mockResolvedValue({ user: { id: 2 } });
+    renderL();
+    const user = userEvent.setup();
+    await user.type(getUsernameInput(), '  Lucas@Empresa.com  ');
+    await user.type(getPasswordInput(), 'pass123');
+    await user.click(getSubmitBtn());
+    await waitFor(() => expect(mockLogin).toHaveBeenCalled());
+    // El identifier viene normalizado a lowercase + trim (handleSubmit).
+    expect(mockLogin).toHaveBeenCalledWith('lucas@empresa.com', 'pass123', undefined);
+  });
+
   it('cuando el backend pide 2FA, oculta inputs iniciales y muestra input de código', async () => {
     mockLogin.mockResolvedValue({ twofa_required: true });
     renderL();
@@ -63,7 +79,7 @@ describe('Login — toggle ojito + flow 2FA', () => {
     expect(await screen.findByRole('heading', { name: /verificación en 2 pasos/i })).toBeInTheDocument();
     expect(getCodeInput()).toBeInTheDocument();
     // Los inputs iniciales ya no están visibles.
-    expect(screen.queryByLabelText('Usuario')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Usuario o email')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('••••••••')).not.toBeInTheDocument();
   });
 
