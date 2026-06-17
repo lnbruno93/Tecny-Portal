@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, saveToken, ocr, comprobantes } from './api';
+import { api, saveToken, ocr, comprobantes, auth } from './api';
 
 describe('api() — cliente HTTP', () => {
   beforeEach(() => {
@@ -61,5 +61,46 @@ describe('api() — cliente HTTP', () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: 'x', tipo: 'image/png' }) });
     await comprobantes.archivo(42);
     expect(global.fetch.mock.calls[0][0]).toContain('/api/comprobantes/42/archivo');
+  });
+});
+
+describe('auth.login — TANDA 2.3: ruteo email vs username', () => {
+  // El backend acepta `username` O `email` en el body (loginSchema, refine).
+  // api.js debe decidir cuál mandar según presencia de '@' en el input.
+  beforeEach(() => { vi.restoreAllMocks(); });
+
+  it('input sin "@" se envía como username', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ token: 'x', user: { id: 1 } }),
+    });
+    await auth.login('lucas', 'pw123');
+    const [url, opts] = global.fetch.mock.calls[0];
+    expect(url).toContain('/api/auth/login');
+    const body = JSON.parse(opts.body);
+    expect(body).toEqual({ username: 'lucas', password: 'pw123' });
+    expect(body.email).toBeUndefined();
+  });
+
+  it('input con "@" se envía como email', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ token: 'x', user: { id: 1 } }),
+    });
+    await auth.login('lucas@empresa.com', 'pw123');
+    const [, opts] = global.fetch.mock.calls[0];
+    const body = JSON.parse(opts.body);
+    expect(body).toEqual({ email: 'lucas@empresa.com', password: 'pw123' });
+    expect(body.username).toBeUndefined();
+  });
+
+  it('code 2FA se incluye en ambos casos (username + email)', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ token: 'x', user: { id: 1 } }),
+    });
+    await auth.login('lucas@x.com', 'pw', '123456');
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body).toEqual({ email: 'lucas@x.com', password: 'pw', code: '123456' });
   });
 });
