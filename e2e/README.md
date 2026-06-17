@@ -42,9 +42,19 @@ e2e/
 ├── helpers/
 │   ├── auth.js            # helper login(page, {...})
 │   ├── globalSetup.js     # corre 1 vez antes de la suite (migraciones + seed)
+│   ├── signup.js          # helpers para signup + verify (lee tokens de DB)
 │   └── startBackend.js    # starter custom del backend (ver "Notas")
 └── specs/
-    └── login.spec.js      # primer flow: login feliz + error + logout
+    ├── login.spec.js                # login feliz + error + logout
+    ├── login-2fa.spec.js            # login con 2FA activo (TOTP + recovery)
+    ├── signup-verify.spec.js        # signup → verify-email → portal + anti-enum
+    ├── venta-retail.spec.js         # alta de venta retail
+    ├── b2b-venta.spec.js            # B2B alta planilla
+    ├── envio-entregado.spec.js      # envíos → entregado → venta acreditada
+    ├── cobranza-masiva.spec.js      # B2B cobranza masiva
+    ├── activar-2fa-ui.spec.js       # activar 2FA desde UI Config
+    ├── editar-venta.spec.js         # edición de venta retail
+    └── dashboard-venta.spec.js      # dashboard refleja venta nueva
 ```
 
 ## Variables de entorno
