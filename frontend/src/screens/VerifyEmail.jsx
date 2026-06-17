@@ -25,11 +25,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { auth as authApi } from '../lib/api';
 
 export default function VerifyEmail() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { refreshUser } = useAuth(); // TODO: agregar este método al context — re-fetch GET /api/auth/me y actualiza email_verified
+  const { refreshUser } = useAuth();
   const token = params.get('token');
 
   const [status, setStatus] = useState('loading'); // 'loading' | 'success' | 'error'
@@ -43,25 +44,18 @@ export default function VerifyEmail() {
     }
     async function verify() {
       try {
-        const res = await fetch('/api/auth/verify-email', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ token }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setStatus('error');
-          setErrorMsg(data.error || 'Token inválido o expirado.');
-          return;
-        }
+        await authApi.verifyEmail(token);
         setStatus('success');
-        // Si el user está logueado, refresh para que email_verified pase a true.
-        if (refreshUser) await refreshUser();
-        // Redirect a /inicio después de 2s.
-        setTimeout(() => navigate('/inicio', { replace: true }), 2000);
-      } catch (e) {
+        // Si el user ya está logueado, refrescamos /me para que
+        // email_verified pase a true en memoria (el banner desaparece).
+        // refreshUser() es no-op silencioso si no hay sesión.
+        await refreshUser();
+        // Redirect a / después de 2s — AuthGuard decide si va a Shell
+        // (si está logueado) o a Login (si no).
+        setTimeout(() => navigate('/', { replace: true }), 2000);
+      } catch (err) {
         setStatus('error');
-        setErrorMsg('Error de conexión.');
+        setErrorMsg(err.message || 'Token inválido o expirado.');
       }
     }
     verify();
@@ -70,7 +64,7 @@ export default function VerifyEmail() {
 
   return (
     <div id="verify-email-screen" className="auth-screen">
-      {/* TODO: visual completo (card centrada). */}
+      {/* TODO TANDA 2.2 Fase B: visual completo (card centrada con ícono). */}
       {status === 'loading' && <p>Verificando tu email...</p>}
       {status === 'success' && (
         <div>
@@ -83,7 +77,7 @@ export default function VerifyEmail() {
           <h2>✗ No se pudo verificar</h2>
           <p>{errorMsg}</p>
           <p>
-            <Link to="/login">Iniciá sesión</Link> y pedí un nuevo email de verificación desde el banner del dashboard.
+            <Link to="/">Iniciá sesión</Link> y pedí un nuevo email de verificación desde el banner del dashboard.
           </p>
         </div>
       )}

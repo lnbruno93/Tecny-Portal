@@ -26,9 +26,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { auth as authApi } from '../lib/api';
 
 export default function Signup() {
-  const { setAuthFromSignup } = useAuth(); // TODO: agregar este método al context — recibe { token, user } y los setea sin re-fetch
+  const { setAuthFromSignup } = useAuth();
   const navigate = useNavigate();
 
   const [nombre, setNombre] = useState('');
@@ -43,28 +44,20 @@ export default function Signup() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/signup', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          nombre,
-          email:         email.trim().toLowerCase(),
-          password,
-          tenant_nombre: tenantNombre.trim(),
-        }),
+      // El wrapper api() lanza Error con msg ya parseado del backend.
+      const data = await authApi.signup({
+        nombre,
+        email: email.trim().toLowerCase(),
+        password,
+        tenant_nombre: tenantNombre.trim(),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'No se pudo crear la cuenta');
-        return;
-      }
-      // Backend devolvió { token, user, tenant, verification_required }.
-      // Persistir token + user en AuthContext y redirigir a /inicio.
-      // El Shell detecta user.email_verified=false y muestra banner.
+      // Backend devuelve { token, user, tenant, verification_required }.
+      // Persistir token + user. El Shell detecta user.email_verified=false y
+      // muestra el UnverifiedBanner (a integrar — TANDA 2.2 Fase B).
       setAuthFromSignup({ token: data.token, user: data.user });
       navigate('/inicio', { replace: true });
     } catch (err) {
-      setError('Error de conexión');
+      setError(err.message || 'No se pudo crear la cuenta.');
     } finally {
       setLoading(false);
     }
@@ -72,7 +65,9 @@ export default function Signup() {
 
   return (
     <div id="signup-screen" className="auth-screen">
-      {/* TODO: visual completo. Mirror del split-screen de Login.jsx. */}
+      {/* TODO TANDA 2.2 Fase B: visual completo (mirror del split-screen de
+          Login.jsx — panel marca a la izq, form a la der con clases .lg-*
+          reusadas vía .auth-screen). Por ahora form básico funcional. */}
       <h1>Crear cuenta</h1>
       <form onSubmit={onSubmit}>
         <label>
@@ -97,7 +92,7 @@ export default function Signup() {
         </button>
       </form>
       <p>
-        ¿Ya tenés cuenta? <Link to="/login">Iniciar sesión</Link>
+        ¿Ya tenés cuenta? <Link to="/">Iniciar sesión</Link>
       </p>
     </div>
   );
