@@ -8,7 +8,8 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
 const { TOOLS } = require('../lib/tools');
-const { invalidateUserAuth } = require('../lib/userAuthCache');
+// Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
+const userAuthCache = require('../lib/userAuthCache');
 
 const BCRYPT_ROUNDS = 12;
 
@@ -214,11 +215,18 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
       });
       await client.query('COMMIT');
       // P-04 Fase 3.6: invalidar cache de auth meta DESPUÉS del COMMIT.
-      // Si bumpPwChanged=false, los fields cacheados (password_changed_at,
-      // email_verified_at) no cambiaron — pero invalidamos igual por
-      // simplicidad: el costo es 1 redis.del() (~sub-ms) vs. riesgo de
-      // olvidarse un campo en el futuro.
-      invalidateUserAuth(id);
+      //
+      // TANDA 3 fix M3 auditoría 2026-06-17: solo invalidamos si REALMENTE
+      // cambió un field cacheado. Antes invalidábamos siempre "por simplicidad"
+      // — pero un admin editando solo `nombre` en bulk (loop) disparaba 100
+      // invalidaciones innecesarias → cache stampede en las 2 réplicas.
+      //
+      // Los fields cacheados son: password_changed_at + email_verified_at.
+      // El bumpPwChanged controla password_changed_at; email_verified_at
+      // NO se toca acá (verify-email lo bumpea en otra route).
+      if (bumpPwChanged) {
+        userAuthCache.invalidateUserAuth(id);
+      }
       res.json(rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -267,7 +275,7 @@ router.delete('/:id', async (req, res, next) => {
     // próximo lookup devuelve null → requireAuth rechaza el token. Sin
     // invalidar, una réplica con el row cacheado sigue aceptando el token
     // hasta TTL de 60s.
-    invalidateUserAuth(id);
+    userAuthCache.invalidateUserAuth(id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

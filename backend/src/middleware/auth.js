@@ -1,6 +1,9 @@
 const jwt    = require('jsonwebtoken');
 const Sentry = require('@sentry/node');
-const { getUserAuth } = require('../lib/userAuthCache');
+// Importamos el módulo (no destructuramos) para que jest.spyOn pueda
+// reemplazar `getUserAuth` desde tests sin gimnasia de jest.mock. Acceso
+// late-binding via `userAuthCache.getUserAuth(...)` en cada request.
+const userAuthCache = require('../lib/userAuthCache');
 
 module.exports = async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -31,12 +34,21 @@ module.exports = async function requireAuth(req, res, next) {
   // fields no están en el cache. Sub-ms hit en lugar de query por request.
   let userAuth;
   try {
-    userAuth = await getUserAuth(decoded.id);
+    userAuth = await userAuthCache.getUserAuth(decoded.id);
     if (!userAuth) return res.status(401).json({ error: 'Usuario no encontrado' });
 
     const changedAt = userAuth.password_changed_at;
     if (changedAt) {
       const changedAtMs   = new Date(changedAt).getTime();
+      // TANDA 3 fix T7 auditoría 2026-06-17: NaN guard. Si el cache Redis
+      // devuelve un timestamp malformado (data corruption, poisoning, parser
+      // bug futuro), `new Date('not-a-date').getTime()` da NaN. La comparación
+      // `tokenIssuedMs < NaN` siempre es false → el token VIEJO sería aceptado
+      // como válido aunque debiera rechazarse. Fail-closed: si no podemos
+      // verificar el timestamp, rechazamos el token.
+      if (Number.isNaN(changedAtMs)) {
+        return res.status(401).json({ error: 'Sesión inválida. Ingresá de nuevo.' });
+      }
       // iat_ms está presente en tokens nuevos (precisión ms); fallback a iat*1000 para tokens legacy
       const tokenIssuedMs = decoded.iat_ms ?? decoded.iat * 1000;
       if (tokenIssuedMs < changedAtMs) {
