@@ -1451,6 +1451,53 @@ body {
   line-height: 1.4;
   color: var(--text-muted);
 }
+/* Fila "Recordarme" + link "¿Olvidaste tu contraseña?" — handoff 2026-06-17.
+   Scopeada bajo #login-screen para no chocar con otras filas/links. */
+#login-screen .lg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 0 22px;
+}
+#login-screen .lg-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+#login-screen .lg-remember input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+#login-screen .lg-remember span {
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+#login-screen .lg-link {
+  font-size: 13.5px;
+  color: var(--accent);
+  font-weight: 500;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+#login-screen .lg-link:hover { color: var(--accent-2, var(--accent)); }
+#login-screen .lg-forgot-hint {
+  margin: -10px 0 18px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--accent-soft, rgba(56,189,248,.10));
+  border: 1px solid var(--accent-ring, rgba(56,189,248,.25));
+  border-radius: 9px;
+}
 /* Botón principal — más alto que el original, sombra accent */
 .login-btn {
   width: 100%;
