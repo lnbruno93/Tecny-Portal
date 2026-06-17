@@ -86,6 +86,10 @@ export default function Login() {
   const [twofaRequired, setTwofaRequired] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // "Recordarme" — UI por ahora. El token vive en localStorage siempre.
+  // Cuando agreguemos sesión efímera (sessionStorage si !remember), wireamos.
+  const [remember, setRemember] = useState(true);
+  const [forgotHint, setForgotHint] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -220,6 +224,36 @@ export default function Login() {
                     </button>
                   </div>
                 </div>
+
+                {/* Recordarme + forgot password — del handoff 2026-06-17.
+                    Recordarme: visual por ahora (token siempre persiste en localStorage).
+                    Forgot password: no tenemos flow de reset auto-servicio aún; el botón
+                    despliega el flow real actual (pedirle al admin del tenant). Cuando
+                    implementemos reset por email (TANDA futura), reemplazar por Link. */}
+                <div className="lg-row">
+                  <label className="lg-remember">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={e => setRemember(e.target.checked)}
+                    />
+                    <span>Recordarme</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="lg-link"
+                    onClick={() => setForgotHint(h => !h)}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+                {forgotHint && (
+                  <div className="lg-forgot-hint" role="note">
+                    Pedile a un admin de tu cuenta que la resetee desde
+                    {' '}<strong>Config → Usuarios</strong>. El reset auto-servicio
+                    llega pronto.
+                  </div>
+                )}
               </>
             )}
 
