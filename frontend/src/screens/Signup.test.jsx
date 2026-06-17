@@ -3,22 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
-// Mocks — el Signup usa:
-//   - useAuth().setAuthFromSignup → persistir token + setear user.
-//   - useNavigate → redirect a /inicio post-success.
-//   - auth.signup de lib/api → POST al backend.
-const mockSetAuthFromSignup = vi.fn();
-const mockNavigate = vi.fn();
+// TANDA 2.7 anti-enum: el Signup ya NO usa setAuthFromSignup ni useNavigate
+// (no hay auto-login post-success). Mock solo de lib/api.signup; toggle ojito
+// y el flujo nuevo "Revisá tu email" se prueban directamente.
 const mockSignup = vi.fn();
-
-vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ setAuthFromSignup: mockSetAuthFromSignup }),
-}));
-
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
-  return { ...actual, useNavigate: () => mockNavigate };
-});
 
 vi.mock('../lib/api', () => ({
   auth: {
@@ -40,10 +28,8 @@ const getEmpresa  = () => screen.getByLabelText('Nombre de tu empresa');
 const getSubmit   = () => screen.getByRole('button', { name: /crear cuenta/i });
 const getEyeBtn   = () => screen.getByRole('button', { name: /^(mostrar|ocultar) contraseña$/i });
 
-describe('Signup — TANDA 2.2 Fase B', () => {
+describe('Signup — TANDA 2.7 anti-enum', () => {
   beforeEach(() => {
-    mockSetAuthFromSignup.mockReset();
-    mockNavigate.mockReset();
     mockSignup.mockReset();
   });
 
@@ -59,7 +45,7 @@ describe('Signup — TANDA 2.2 Fase B', () => {
     // Brand panel (oculto < 900px vía CSS, pero el DOM existe)
     expect(screen.getByText(/cuenta nueva/i)).toBeInTheDocument();
     expect(screen.getByText(/todo tu negocio/i)).toBeInTheDocument();
-    // Link a / (Iniciar sesión)
+    // Link a / (Iniciar sesión) — el form panel tiene el link al login.
     expect(screen.getByRole('link', { name: /iniciar sesión/i })).toHaveAttribute('href', '/');
   });
 
@@ -73,14 +59,11 @@ describe('Signup — TANDA 2.2 Fase B', () => {
     expect(getPassword()).toHaveAttribute('type', 'password');
   });
 
-  it('signup exitoso → llama setAuthFromSignup + navigate a /inicio', async () => {
-    const fakeData = {
-      token: 'jwt-fake',
-      user:  { id: 1, email: 'test@x.com', email_verified: false },
-      tenant: { id: 1, slug: 'mi-empresa' },
-      verification_required: true,
-    };
-    mockSignup.mockResolvedValue(fakeData);
+  it('signup exitoso → muestra pantalla "Revisá tu email" con el email submitido (NO auto-login)', async () => {
+    // TANDA 2.7: el backend devuelve { verification_required: true } sin
+    // token/user. El frontend muestra una pantalla de "revisá tu email"
+    // idéntica para email nuevo vs. duplicado (anti-enum).
+    mockSignup.mockResolvedValue({ verification_required: true });
     renderS();
     const user = userEvent.setup();
 
@@ -98,24 +81,32 @@ describe('Signup — TANDA 2.2 Fase B', () => {
       password:      'pass1234',
       tenant_nombre: 'Mi empresa SA',
     });
-    expect(mockSetAuthFromSignup).toHaveBeenCalledWith({ token: 'jwt-fake', user: fakeData.user });
-    expect(mockNavigate).toHaveBeenCalledWith('/inicio', { replace: true });
+
+    // Reemplaza el form con la pantalla de "Revisá tu email" + email visible.
+    expect(await screen.findByRole('heading', { name: /revisá tu email/i })).toBeInTheDocument();
+    expect(screen.getByText('lucas@example.com')).toBeInTheDocument();
+    // Los inputs del form ya no están renderizados.
+    expect(screen.queryByLabelText('Tu nombre')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+    // Hay un link "Ir a iniciar sesión" hacia /.
+    expect(screen.getByRole('link', { name: /iniciar sesión/i })).toHaveAttribute('href', '/');
   });
 
-  it('error del backend muestra mensaje sin navegar', async () => {
-    mockSignup.mockRejectedValue(new Error('Email ya registrado'));
+  it('error del backend muestra mensaje sin pasar a "Revisá tu email"', async () => {
+    mockSignup.mockRejectedValue(new Error('Rate limit excedido'));
     renderS();
     const user = userEvent.setup();
 
     await user.type(getNombre(), 'Lucas');
-    await user.type(getEmail(), 'duplicado@x.com');
+    await user.type(getEmail(), 'rate@x.com');
     await user.type(getPassword(), 'pass1234');
     await user.type(getEmpresa(), 'Mi empresa');
     await user.click(getSubmit());
 
-    expect(await screen.findByText(/email ya registrado/i)).toBeInTheDocument();
-    expect(mockSetAuthFromSignup).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(await screen.findByText(/rate limit/i)).toBeInTheDocument();
+    // El form sigue visible (no se mostró la pantalla "Revisá tu email").
+    expect(screen.getByLabelText('Tu nombre')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /revisá tu email/i })).not.toBeInTheDocument();
   });
 
   it('botón deshabilitado mientras loadea + texto cambia a "Creando cuenta…"', async () => {
@@ -134,7 +125,8 @@ describe('Signup — TANDA 2.2 Fase B', () => {
     expect(await screen.findByRole('button', { name: /creando cuenta…/i })).toBeDisabled();
 
     // Resolveo la promesa para no dejar el test colgado.
-    resolveSignup({ token: 't', user: { id: 1 } });
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalled());
+    resolveSignup({ verification_required: true });
+    // Pantalla "Revisá tu email" aparece después de resolve.
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /revisá tu email/i })).toBeInTheDocument());
   });
 });
