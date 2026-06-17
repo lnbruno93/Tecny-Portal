@@ -130,6 +130,10 @@ describe('POST /api/auth/signup', () => {
 
   it('envía verification email (stub registra en _testQueue)', async () => {
     await signup({ email: 'queuetest_' + Date.now() + '@example.com' });
+    // TANDA 0 hotfix B2: sendVerificationEmail ahora corre fire-and-forget vía
+    // setImmediate (anti-timing-oracle). Flush pending immediates antes de
+    // assertar el queue.
+    await new Promise(setImmediate);
     const queue = emailLib._getTestQueue();
     expect(queue.length).toBeGreaterThanOrEqual(1);
     const last = queue[queue.length - 1];
@@ -156,6 +160,30 @@ describe('POST /api/auth/signup', () => {
     expect(rows[0].c).toBe(1);
     // El response del duplicado NO incluye _verification_token (no se creó token nuevo).
     expect(r2.res.body._verification_token).toBeUndefined();
+  });
+
+  it('TANDA 0 hotfix B2: path duplicado ejecuta bcrypt (anti-timing-oracle)', async () => {
+    // Sin este fix, path duplicado retornaba ~10ms y path nuevo ~300-500ms
+    // (bcrypt cost-12). Un atacante medía response time y enumeraba emails con
+    // ~10 samples, anulando el anti-enum por shape de TANDA 2.7. Ahora ambos
+    // paths hacen bcrypt → timing similar dentro del jitter de red.
+    const bcrypt = require('bcrypt');
+    const spy = jest.spyOn(bcrypt, 'hash');
+    try {
+      const email = `timing_${Date.now()}@example.com`;
+      // Seed: signup nuevo (path "nuevo") para que el segundo signup sea duplicado.
+      await signup({ email });
+      spy.mockClear();
+      // Path duplicado.
+      const dup = await signup({ email });
+      expect(dup.res.status).toBe(200);
+      // bcrypt.hash debería haber sido llamado exactamente 1 vez en el path
+      // duplicado (dummy work para igualar timing al path nuevo).
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(expect.any(String), expect.any(Number));
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('rechaza password débil con 400 (schema)', async () => {

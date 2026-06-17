@@ -141,6 +141,13 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     [email]
   );
   if (existing.rows.length > 0) {
+    // TANDA 0 hotfix BLOCKER B2 auditoría 2026-06-17: timing oracle anti-enum.
+    // Antes el path duplicado retornaba ~10ms y el nuevo ~300-500ms (bcrypt cost-12).
+    // Un atacante medía response time y enumeraba emails con ~10 samples, anulando
+    // el anti-enum por shape de TANDA 2.7. Mismo patrón que el DUMMY_HASH del login
+    // (auth.js:128). Ejecutamos bcrypt.hash() y descartamos el resultado — costo
+    // CPU equivalente al path nuevo, garantizando timing constante.
+    await bcrypt.hash(password, BCRYPT_ROUNDS);
     logger.info({ email_hash: 'redacted', source: 'signup_dup_email' },
       'signup duplicado — respondiendo genérico (anti-enum)');
     return res.status(200).json({ verification_required: true });
@@ -245,20 +252,32 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     client.release();
   }
 
-  // 8. Send verification email — POST-tx (best effort, no bloquea el response).
-  try {
-    const verifyUrl = `${frontendUrl()}/verify-email?token=${result.token}`;
-    await sendVerificationEmail({
-      to: result.user.email,
-      name: result.user.nombre,
-      verifyUrl,
-    });
-  } catch (e) {
-    logger.error(
-      { err: e, user_id: result.user.id },
-      'No se pudo enviar verification email post-signup. User debe usar /resend-verification.'
-    );
-  }
+  // 8. Send verification email — fire-and-forget vía setImmediate.
+  //
+  // TANDA 0 hotfix BLOCKER B2 auditoría 2026-06-17 (parte 2): mover el await
+  // fuera del response path. El Resend SaaS tarda 500ms-3s en aceptar el envío;
+  // si esperamos, el path "nuevo" tarda 800ms-3.5s y el path "duplicado" (con
+  // dummy bcrypt) tarda ~300ms. Esa diferencia residual es medible. Con
+  // setImmediate, el response se devuelve apenas terminan los INSERTs + bcrypt
+  // (~350ms), igualando dentro del jitter de red al path duplicado.
+  //
+  // Trade-off: si Resend devuelve error, el user no ve nada — debe usar
+  // /resend-verification. Loggeamos para observabilidad.
+  setImmediate(async () => {
+    try {
+      const verifyUrl = `${frontendUrl()}/verify-email?token=${result.token}`;
+      await sendVerificationEmail({
+        to: result.user.email,
+        name: result.user.nombre,
+        verifyUrl,
+      });
+    } catch (e) {
+      logger.error(
+        { err: e, user_id: result.user.id },
+        'No se pudo enviar verification email post-signup. User debe usar /resend-verification.'
+      );
+    }
+  });
 
   // TANDA 2.7 anti-enum: response idéntica al caso "email duplicado" (línea ~135).
   // NO devolvemos token/user/tenant — eso permitía distinguir signup nuevo de
@@ -542,7 +561,13 @@ router.post('/resend-verification', requireAuth, resendLimiter, async (req, res,
     }
 
     const response = { ok: true };
-    if (process.env.NODE_ENV !== 'production') {
+    // TANDA 0 hotfix HIGH S2 auditoría 2026-06-17: gate dual NODE_ENV + flag
+    // explícito. Mismo patrón que /signup (TANDA 2.5). El gate solo-NODE_ENV
+    // de este endpoint era frágil — staging/preview/demo deploys sin
+    // NODE_ENV='production' exponían el token al cliente.
+    const exposeToken = process.env.NODE_ENV === 'test'
+      || (process.env.NODE_ENV !== 'production' && process.env.EXPOSE_VERIFICATION_TOKEN === '1');
+    if (exposeToken) {
       response._verification_token = token;
     }
     res.json(response);
