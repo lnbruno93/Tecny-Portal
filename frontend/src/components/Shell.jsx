@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
+import UnverifiedBanner from './UnverifiedBanner';
 import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
@@ -383,6 +384,7 @@ export default function Shell() {
           onSearchClick={() => setPaletteOpen(true)}
         />
         <UpdateBanner />
+        <UnverifiedBanner />
         <div className="content">
           <Outlet />
         </div>
