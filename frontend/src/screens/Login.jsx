@@ -202,6 +202,7 @@ export default function Login() {
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
+                      required
                       value={username}
                       onChange={e => setUsername(e.target.value)}
                     />
@@ -216,6 +217,7 @@ export default function Login() {
                       type={showPw ? 'text' : 'password'}
                       placeholder="••••••••"
                       autoComplete="current-password"
+                      required
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                     />

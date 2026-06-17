@@ -1661,6 +1661,9 @@ body {
    Color warning (amarillo) — comunica urgencia sin alarmar. Layout
    horizontal: ícono ⚠ + texto + botones (Reenviar | Cerrar). */
 .unverified-banner {
+  position: sticky;
+  top: 0;
+  z-index: 49;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1680,7 +1683,7 @@ body {
 .unverified-banner-text {
   flex: 1;
   min-width: 200px;
-  color: var(--text-2);
+  color: var(--text);
 }
 .unverified-banner-text strong { color: var(--text); }
 .unverified-banner-actions {
