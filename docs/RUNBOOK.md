@@ -153,12 +153,40 @@ los recovery codes). El audit log queda con el evento DELETE.
 
 ---
 
-## Email/Notificaciones (no implementado todavía)
+## Email / Notificaciones (TANDA 2.2)
 
-Cuando se sume:
-- ¿SMTP provider? Resend / SendGrid free tier.
-- Templates fuera del código (Markdown + variables).
-- DKIM/SPF configurado en el dominio del remitente.
+**Provider:** Resend (free tier: 100 emails/día, 3000/mes). Se activa cuando hay
+`RESEND_API_KEY` en env vars del backend; sin esa key cae automáticamente a un
+stub que loguea los emails a Pino (útil en dev/tests).
+
+**Env vars requeridas en Railway (staging + prod):**
+- `RESEND_API_KEY` — copiar de 1Password.
+- `EMAIL_FROM` — string `Display Name <email@domain>`. Por defecto del code:
+  `iPro Portal <onboarding@resend.dev>` (sender no verificado, limitado a
+  entregar al email del owner de Resend).
+- `FRONTEND_URL` — URL del frontend para construir el link de verificación
+  (`{FRONTEND_URL}/verify-email?token=...`).
+
+**Verificar un dominio en Resend** (necesario para signup público a usuarios
+externos — sin dominio verificado solo se entrega al email del owner de Resend):
+1. Resend dashboard → Domains → Add Domain → tu dominio.
+2. Te muestra 3 records DNS (SPF + DKIM + MX). Agregalos en tu provider de DNS.
+3. Resend verifica en ~5 min. Cuando esté verde, podés usar `noreply@<dominio>`
+   en `EMAIL_FROM`.
+4. Cambiar `EMAIL_FROM` en Railway env vars → redeploy automático.
+
+**Troubleshooting deliverability:**
+- Email llega a spam → marcá "No es spam" en Gmail / agregar DKIM al dominio.
+- "Domain not verified" en Resend response → revisar DNS, esperar 10 min.
+- `429 Too Many Requests` de Resend → upgrade plan o esperar reset diario.
+
+**Templates:** HTML inline en `backend/src/lib/email.js`. Hay templates para
+verification email + welcome email. Son strings ES con interpolación segura
+(`_esc()`). Para cambiar copy o branding, editar ahí.
+
+**Tests:** `backend/tests/email.test.js` cubre los 3 modos (Resend real
+mockeado / stub / failure). El stub guarda emails en una queue accesible vía
+`emailLib._getTestQueue()` durante tests.
 
 ---
 

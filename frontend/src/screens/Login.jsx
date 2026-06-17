@@ -97,8 +97,15 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
+      // TANDA 2.5 fix HIGH auditoría 2026-06-17 (Solidez H1): solo lowercaseamos
+      // si el input parece email (contiene '@'). Emails son case-insensitive y
+      // el backend los normaliza con LOWER(email) en login. Para usernames, el
+      // lowercase rompe users pre-existentes con mixed-case (ej. "Lucas",
+      // "Admin") porque la columna users.username es case-sensitive.
+      const id = username.trim();
+      const identifier = id.includes('@') ? id.toLowerCase() : id;
       const result = await login(
-        username.trim().toLowerCase(),
+        identifier,
         password,
         twofaRequired ? code.trim() : undefined,
       );
