@@ -94,4 +94,25 @@ describe('Protección de rutas', () => {
     const res = await request(app).get('/api/cajas/resumen');
     expect(res.status).toBe(401);
   });
+
+  it('TANDA 3 fix T7: cache devuelve password_changed_at corrupto → 401 (fail-closed)', async () => {
+    // Cache poisoning / data corruption / parser bug futuro pueden hacer que
+    // userAuthCache devuelva un timestamp malformado. Sin el NaN guard, la
+    // comparación `tokenIssuedMs < NaN` daba false → token VIEJO aceptado
+    // como válido. Con el fix: rechazamos con 401 fail-closed.
+    const userAuthCache = require('../src/lib/userAuthCache');
+    const spy = jest.spyOn(userAuthCache, 'getUserAuth').mockResolvedValueOnce({
+      password_changed_at: 'not-a-valid-date',
+      email_verified_at: null,
+    });
+    try {
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(401);
+      expect(res.body.error).toMatch(/sesión inválida/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

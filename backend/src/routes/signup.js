@@ -42,7 +42,8 @@ const logger = require('../lib/logger');
 const { sendVerificationEmail, sendWelcomeEmail } = require('../lib/email');
 const { signupSchema, verifyEmailSchema } = require('../schemas/signup');
 const { TOOLS } = require('../lib/tools');
-const { invalidateUserAuth } = require('../lib/userAuthCache');
+// Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
+const userAuthCache = require('../lib/userAuthCache');
 
 const BCRYPT_ROUNDS = 12;
 const TOKEN_BYTES = 32; // → 64 chars hex
@@ -444,7 +445,7 @@ router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), as
     // email_verified_at cambió de null → NOW(). Sin invalidar, una réplica
     // con el row stale seguiría devolviendo email_verified=false → el
     // bloqueo blando (requireAuth) seguiría rechazando escrituras hasta TTL.
-    invalidateUserAuth(user.id);
+    userAuthCache.invalidateUserAuth(user.id);
 
     // Welcome email (best effort, no bloquea el response).
     try {

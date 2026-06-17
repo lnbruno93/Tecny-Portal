@@ -9,7 +9,8 @@ const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
 const { loadUserPerms } = require('../lib/permissions');
-const { invalidateUserAuth } = require('../lib/userAuthCache');
+// Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
+const userAuthCache = require('../lib/userAuthCache');
 
 // Costo de bcrypt — 12 rounds (resistencia a cracking offline; costo de CPU despreciable en login)
 const BCRYPT_ROUNDS = 12;
@@ -304,7 +305,7 @@ router.post('/logout', requireAuth, async (req, res, next) => {
     // Sin esto, otra réplica con el row cacheado seguiría aceptando el token
     // hasta TTL de 60s. Fire-and-forget — userAuthCache loggea fallos
     // internamente (TANDA 1 fix H1-Sol).
-    invalidateUserAuth(req.user.id);
+    userAuthCache.invalidateUserAuth(req.user.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -346,16 +347,35 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     }
 
     const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await db.query(
-      'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
-      [hash, user.id]
-    );
-    // P-04 Fase 3.6: invalidar cache de auth meta. password_changed_at cambió
-    // → cualquier réplica con el row cacheado debe re-fetchar para que el
-    // siguiente request vea iat < changedAt y rechace el token viejo.
-    invalidateUserAuth(user.id);
-    // 2026-06-11 SE-05: req se propaga al audit para capturar IP/UA/request_id.
-    await audit('users', 'UPDATE', user.id, { tipo: 'cambio_password', user_id: req.user.id, req });
+    // TANDA 3 fix M2 auditoría 2026-06-17: audit-in-tx. Antes el UPDATE
+    // corría con db.query (pool global) y el audit corría DESPUÉS, también
+    // con pool global. Si el audit fallaba (network, Sentry down), el
+    // password ya estaba cambiado pero la traza se perdía — regresión vs
+    // el patrón audit-in-tx que routes/usuarios.js aplica.
+    // Ahora UPDATE + audit van en la misma tx; si audit falla, ROLLBACK.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
+        [hash, user.id]
+      );
+      // 2026-06-11 SE-05: req se propaga al audit para capturar IP/UA/request_id.
+      await audit(client, 'users', 'UPDATE', user.id, {
+        tipo: 'cambio_password', user_id: req.user.id, req,
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    // P-04 Fase 3.6: invalidar cache de auth meta DESPUÉS del COMMIT.
+    // password_changed_at cambió → cualquier réplica con el row cacheado
+    // debe re-fetchar para que el siguiente request vea iat < changedAt
+    // y rechace el token viejo.
+    userAuthCache.invalidateUserAuth(user.id);
 
     res.json({ ok: true });
   } catch (err) {
