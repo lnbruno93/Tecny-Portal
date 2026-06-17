@@ -8,6 +8,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
 const { TOOLS } = require('../lib/tools');
+const { invalidateUserAuth } = require('../lib/userAuthCache');
 
 const BCRYPT_ROUNDS = 12;
 
@@ -212,6 +213,12 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
         user_id: req.user.id,
       });
       await client.query('COMMIT');
+      // P-04 Fase 3.6: invalidar cache de auth meta DESPUÉS del COMMIT.
+      // Si bumpPwChanged=false, los fields cacheados (password_changed_at,
+      // email_verified_at) no cambiaron — pero invalidamos igual por
+      // simplicidad: el costo es 1 redis.del() (~sub-ms) vs. riesgo de
+      // olvidarse un campo en el futuro.
+      invalidateUserAuth(id).catch(() => {});
       res.json(rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -256,6 +263,11 @@ router.delete('/:id', async (req, res, next) => {
       return rows;
     });
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
+    // P-04 Fase 3.6: invalidar cache de auth meta. deleted_at = NOW() →
+    // próximo lookup devuelve null → requireAuth rechaza el token. Sin
+    // invalidar, una réplica con el row cacheado sigue aceptando el token
+    // hasta TTL de 60s.
+    invalidateUserAuth(id).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
     next(err);

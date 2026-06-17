@@ -1,6 +1,6 @@
 const jwt    = require('jsonwebtoken');
-const db     = require('../config/database');
 const Sentry = require('@sentry/node');
+const { getUserAuth } = require('../lib/userAuthCache');
 
 module.exports = async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -18,15 +18,18 @@ module.exports = async function requireAuth(req, res, next) {
 
   // Verificar que el token no fue emitido antes de un cambio de contraseña
   // y leer el estado de verificación de email (TANDA 2.1).
-  let isEmailVerified;
+  //
+  // P-04 Fase 3.6: la query a `users` está cacheada 60s en Redis
+  // (userAuthCache.js). El cache se invalida explícitamente desde los call-
+  // sites que UPDATE-an users (change-password, login fail/lockout/reset,
+  // admin edit, soft-delete, verify-email). Sub-ms hit en lugar de query
+  // por request.
+  let userAuth;
   try {
-    const { rows } = await db.query(
-      'SELECT password_changed_at, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL',
-      [decoded.id]
-    );
-    if (!rows[0]) return res.status(401).json({ error: 'Usuario no encontrado' });
+    userAuth = await getUserAuth(decoded.id);
+    if (!userAuth) return res.status(401).json({ error: 'Usuario no encontrado' });
 
-    const changedAt = rows[0].password_changed_at;
+    const changedAt = userAuth.password_changed_at;
     if (changedAt) {
       const changedAtMs   = new Date(changedAt).getTime();
       // iat_ms está presente en tokens nuevos (precisión ms); fallback a iat*1000 para tokens legacy
@@ -35,16 +38,16 @@ module.exports = async function requireAuth(req, res, next) {
         return res.status(401).json({ error: 'Sesión expirada. Ingresá de nuevo.' });
       }
     }
-
-    // 2026-06-16 TANDA 2.1: source of truth = DB (no el JWT cacheado en cliente).
-    // Los users pre-TANDA 2.1 fueron backfilleados con email_verified_at = NOW() en
-    // la migration 20260616000004, así que para usuarios existentes esto es true.
-    // Para signups públicos nuevos, esto es null hasta que el user clickee el link
-    // de verificación → bloqueo blando de escrituras (abajo).
-    isEmailVerified = !!rows[0].email_verified_at;
   } catch (err) {
     return next(err);
   }
+
+  // 2026-06-16 TANDA 2.1: source of truth = DB (no el JWT cacheado en cliente).
+  // Los users pre-TANDA 2.1 fueron backfilleados con email_verified_at = NOW() en
+  // la migration 20260616000004, así que para usuarios existentes esto es true.
+  // Para signups públicos nuevos, esto es null hasta que el user clickee el link
+  // de verificación → bloqueo blando de escrituras (abajo).
+  const isEmailVerified = !!userAuth.email_verified_at;
 
   req.user = { ...decoded, email_verified: isEmailVerified };
 

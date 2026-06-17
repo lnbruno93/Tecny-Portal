@@ -9,6 +9,7 @@ const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
 const { loadUserPerms } = require('../lib/permissions');
+const { invalidateUserAuth } = require('../lib/userAuthCache');
 
 // Costo de bcrypt — 12 rounds (resistencia a cracking offline; costo de CPU despreciable en login)
 const BCRYPT_ROUNDS = 12;
@@ -299,6 +300,10 @@ router.post('/logout', requireAuth, async (req, res, next) => {
       `UPDATE users SET password_changed_at = to_timestamp(($1::bigint + 1) / 1000.0) WHERE id = $2`,
       [Date.now(), req.user.id]
     );
+    // P-04 Fase 3.6: invalidar cache de auth meta (cross-instance Redis).
+    // Sin esto, otra réplica con el row cacheado seguiría aceptando el token
+    // hasta TTL de 60s.
+    invalidateUserAuth(req.user.id).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -344,6 +349,10 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
       'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
       [hash, user.id]
     );
+    // P-04 Fase 3.6: invalidar cache de auth meta. password_changed_at cambió
+    // → cualquier réplica con el row cacheado debe re-fetchar para que el
+    // siguiente request vea iat < changedAt y rechace el token viejo.
+    invalidateUserAuth(user.id).catch(() => {});
     // 2026-06-11 SE-05: req se propaga al audit para capturar IP/UA/request_id.
     await audit('users', 'UPDATE', user.id, { tipo: 'cambio_password', user_id: req.user.id, req });
 
