@@ -40,6 +40,15 @@ const signupStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, pre
 const resendStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'resend', logger });
 // TANDA 2.6: store dedicado para /verify-email limiter (30/min/IP).
 const verifyStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'verify', logger });
+// 2026-06-18 #313 fix: changePasswordLimiter compartía loginStore.
+// express-rate-limit v7+ valida que cada limiter tenga un store dedicado y al
+// arrancar emitía ValidationError ERR_ERL_STORE_REUSE en los Railway logs (non-
+// fatal, las validations son catched + logged por wrappedValidations). Más allá
+// del log noise, compartir el store hace que el counter de change-password
+// pise el de login: 5 intentos fallidos de change-password drenaban el cupo
+// de 5 logins (mismo namespace en la tabla `rate_limits`). Fix: prefix
+// dedicado 'change-password'.
+const changePasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'change-password', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
@@ -480,7 +489,9 @@ const changePasswordLimiter = rateLimit({
   keyGenerator: (req) => req.user?.id ? String(req.user.id) : ipKeyGenerator(req),
   skipSuccessfulRequests: true,
   skip: () => process.env.NODE_ENV === 'test',
-  ...(loginStore && { store: loginStore }),
+  // 2026-06-18 #313: store dedicado (era loginStore — compartía namespace
+  // con loginLimiter, generaba ValidationError ERR_ERL_STORE_REUSE en boot).
+  ...(changePasswordStore && { store: changePasswordStore }),
 });
 app.use('/api/auth/change-password', requireAuth, changePasswordLimiter);
 
