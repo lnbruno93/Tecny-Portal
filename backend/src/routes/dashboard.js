@@ -20,7 +20,10 @@
 
 const router = require('express').Router();
 const db = require('../config/database');
-const { createCachedFetcherRedis } = require('../lib/cacheTtl');
+// TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): pattern Map<scopeKey,
+// fetcher> + LRU + factory ahora vive en `createTenantScopedCache`.
+const { createTenantScopedCache } = require('../lib/cacheTtl');
+const { DASHBOARD_MENSUAL } = require('../lib/cacheConfig');
 const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensual');
 
 // Caché de funciones por (tenant, periodo, comparado). Cada llamada al endpoint
@@ -37,44 +40,29 @@ const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensu
 // Acotamos a MAX_FETCHERS — al exceder, evictamos la entry más vieja (MRU
 // detrás por reinserción en cada acceso). 100 cubre ~8 años de pares mes
 // (12 × 8) × N tenants pequeños, suficiente para cualquier uso humano.
-const MAX_FETCHERS = 100;
-const fetchers = new Map();
-function getFetcher(tenantId, periodoActual, periodoComparado) {
-  const key = `${tenantId}|${periodoActual}|${periodoComparado}`;
-  let fn = fetchers.get(key);
-  if (fn) {
-    // touch: re-insertar para mover al final (MRU) — Map preserva orden de inserción.
-    fetchers.delete(key);
-    fetchers.set(key, fn);
-    return fn;
-  }
-  fn = createCachedFetcherRedis(
-    `cache:dashboard:resumen:${key}`,
-    60_000,
-    async () => {
-      const { desde: dA, hasta: hA } = rangoMes(periodoActual);
-      const { desde: dC, hasta: hC } = rangoMes(periodoComparado);
-      // 2026-06-16 multi-tenant: ambos kpisDelPeriodo corren en UNA sola tx
-      // con app.current_tenant seteado vía withTenant. RLS filtra por tenant
-      // todas las tablas (ventas, venta_items, caja_movimientos, etc.).
-      const { actual, comparado } = await db.withTenant(tenantId, async (client) => {
-        const [actual, comparado] = await Promise.all([
-          kpisDelPeriodo(client, dA, hA),
-          kpisDelPeriodo(client, dC, hC),
-        ]);
-        return { actual, comparado };
-      });
-      return { actual, comparado, generado_en: new Date().toISOString() };
-    }
-  );
-  fetchers.set(key, fn);
-  // Evict LRU si superamos el cap.
-  if (fetchers.size > MAX_FETCHERS) {
-    const oldestKey = fetchers.keys().next().value;
-    fetchers.delete(oldestKey);
-  }
-  return fn;
-}
+// Cache scopeado por `${tenantId}|${periodoActual}|${periodoComparado}`.
+// El fetcher recibe la scopeKey, la parsea para extraer los componentes,
+// y ejecuta la query bajo withTenant para que RLS filtre por tenant.
+const cache = createTenantScopedCache({
+  ...DASHBOARD_MENSUAL,
+  fetcher: async (scopeKey) => {
+    const [tenantStr, periodoActual, periodoComparado] = scopeKey.split('|');
+    const tenantId = Number(tenantStr);
+    const { desde: dA, hasta: hA } = rangoMes(periodoActual);
+    const { desde: dC, hasta: hC } = rangoMes(periodoComparado);
+    // 2026-06-16 multi-tenant: ambos kpisDelPeriodo corren en UNA sola tx
+    // con app.current_tenant seteado vía withTenant. RLS filtra por tenant
+    // todas las tablas (ventas, venta_items, caja_movimientos, etc.).
+    const { actual, comparado } = await db.withTenant(tenantId, async (client) => {
+      const [actual, comparado] = await Promise.all([
+        kpisDelPeriodo(client, dA, hA),
+        kpisDelPeriodo(client, dC, hC),
+      ]);
+      return { actual, comparado };
+    });
+    return { actual, comparado, generado_en: new Date().toISOString() };
+  },
+});
 
 // Mes actual en YYYY-MM (UTC para consistencia con el resto del backend).
 function mesActual() {
@@ -89,7 +77,7 @@ router.get('/resumen-mensual', async (req, res, next) => {
     // Validación temprana: rangoMes lanza si el formato es inválido.
     rangoMes(periodoActual);
     rangoMes(periodoComparado);
-    const data = await getFetcher(req.tenantId, periodoActual, periodoComparado)();
+    const data = await cache.get(`${req.tenantId}|${periodoActual}|${periodoComparado}`);
     res.json(data);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });

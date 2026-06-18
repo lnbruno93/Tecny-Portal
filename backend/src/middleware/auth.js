@@ -1,6 +1,9 @@
 const jwt    = require('jsonwebtoken');
-const db     = require('../config/database');
 const Sentry = require('@sentry/node');
+// Importamos el módulo (no destructuramos) para que jest.spyOn pueda
+// reemplazar `getUserAuth` desde tests sin gimnasia de jest.mock. Acceso
+// late-binding via `userAuthCache.getUserAuth(...)` en cada request.
+const userAuthCache = require('../lib/userAuthCache');
 
 module.exports = async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -18,33 +21,50 @@ module.exports = async function requireAuth(req, res, next) {
 
   // Verificar que el token no fue emitido antes de un cambio de contraseña
   // y leer el estado de verificación de email (TANDA 2.1).
-  let isEmailVerified;
+  //
+  // P-04 Fase 3.6: la query a `users` está cacheada 60s en Redis
+  // (userAuthCache.js). El cache se invalida explícitamente desde los call-
+  // sites que tocan los fields cacheados:
+  //   - routes/auth.js logout (bump password_changed_at)
+  //   - routes/auth.js change-password (bump password_changed_at)
+  //   - routes/usuarios.js PUT (bump password_changed_at en sensitive changes)
+  //   - routes/usuarios.js DELETE (soft-delete + bump password_changed_at)
+  //   - routes/signup.js verify-email (set email_verified_at)
+  // NO invalidamos en failed_login_count / lockout_until updates — esos
+  // fields no están en el cache. Sub-ms hit en lugar de query por request.
+  let userAuth;
   try {
-    const { rows } = await db.query(
-      'SELECT password_changed_at, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL',
-      [decoded.id]
-    );
-    if (!rows[0]) return res.status(401).json({ error: 'Usuario no encontrado' });
+    userAuth = await userAuthCache.getUserAuth(decoded.id);
+    if (!userAuth) return res.status(401).json({ error: 'Usuario no encontrado' });
 
-    const changedAt = rows[0].password_changed_at;
+    const changedAt = userAuth.password_changed_at;
     if (changedAt) {
       const changedAtMs   = new Date(changedAt).getTime();
+      // TANDA 3 fix T7 auditoría 2026-06-17: NaN guard. Si el cache Redis
+      // devuelve un timestamp malformado (data corruption, poisoning, parser
+      // bug futuro), `new Date('not-a-date').getTime()` da NaN. La comparación
+      // `tokenIssuedMs < NaN` siempre es false → el token VIEJO sería aceptado
+      // como válido aunque debiera rechazarse. Fail-closed: si no podemos
+      // verificar el timestamp, rechazamos el token.
+      if (Number.isNaN(changedAtMs)) {
+        return res.status(401).json({ error: 'Sesión inválida. Ingresá de nuevo.' });
+      }
       // iat_ms está presente en tokens nuevos (precisión ms); fallback a iat*1000 para tokens legacy
       const tokenIssuedMs = decoded.iat_ms ?? decoded.iat * 1000;
       if (tokenIssuedMs < changedAtMs) {
         return res.status(401).json({ error: 'Sesión expirada. Ingresá de nuevo.' });
       }
     }
-
-    // 2026-06-16 TANDA 2.1: source of truth = DB (no el JWT cacheado en cliente).
-    // Los users pre-TANDA 2.1 fueron backfilleados con email_verified_at = NOW() en
-    // la migration 20260616000004, así que para usuarios existentes esto es true.
-    // Para signups públicos nuevos, esto es null hasta que el user clickee el link
-    // de verificación → bloqueo blando de escrituras (abajo).
-    isEmailVerified = !!rows[0].email_verified_at;
   } catch (err) {
     return next(err);
   }
+
+  // 2026-06-16 TANDA 2.1: source of truth = DB (no el JWT cacheado en cliente).
+  // Los users pre-TANDA 2.1 fueron backfilleados con email_verified_at = NOW() en
+  // la migration 20260616000004, así que para usuarios existentes esto es true.
+  // Para signups públicos nuevos, esto es null hasta que el user clickee el link
+  // de verificación → bloqueo blando de escrituras (abajo).
+  const isEmailVerified = !!userAuth.email_verified_at;
 
   req.user = { ...decoded, email_verified: isEmailVerified };
 

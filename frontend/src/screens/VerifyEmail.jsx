@@ -89,9 +89,19 @@ export default function VerifyEmail() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // TANDA 2 fix U6 auditoría 2026-06-17: `role` y `aria-live` dinámicos.
+  // `polite` para loading/success/already (info no urgente), `alert`+`assertive`
+  // para error (debe interrumpir al lector de pantalla). Sin esto, un user
+  // ciego que llega a un link inválido NO se entera del error a tiempo —
+  // el redirect no ocurre en error state, sigue mostrando el mensaje.
+  const isError = status === 'error';
+  const ariaProps = isError
+    ? { role: 'alert', 'aria-live': 'assertive' }
+    : { role: 'status', 'aria-live': 'polite' };
+
   return (
     <div id="verify-email-screen" className="auth-screen auth-screen--center">
-      <div className="auth-card" role="status" aria-live="polite">
+      <div className="auth-card" {...ariaProps}>
         {status === 'loading' && (
           <>
             <div className="auth-card-icon auth-card-icon--neutral">
@@ -108,8 +118,11 @@ export default function VerifyEmail() {
             </div>
             <h1>¡Listo! Email verificado.</h1>
             <p>
-              Ya podés crear ventas, comprobantes y todo lo demás.
-              Te llevamos al portal…
+              {/* TANDA 1 fix U1 auditoría 2026-06-17: copy desactualizada
+                  post-TANDA 2.7. El signup ya no auto-loguea — el user va
+                  al Login, no al portal. Antes decía "Te llevamos al portal"
+                  y aterrizaba en Login, confundiendo. */}
+              Iniciá sesión para entrar al portal. Te llevamos al login…
             </p>
           </>
         )}
@@ -121,7 +134,7 @@ export default function VerifyEmail() {
             <h1>Este email ya estaba verificado</h1>
             <p>
               No hace falta hacer nada más. Iniciá sesión y entrá al portal.
-              Te llevamos…
+              Te llevamos al login…
             </p>
           </>
         )}

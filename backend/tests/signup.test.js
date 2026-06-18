@@ -37,26 +37,57 @@ async function signup(overrides = {}) {
   return { res, body };
 }
 
+// TANDA 2.7 anti-enum: signup ya no devuelve user/tenant. Tests que necesitan
+// el id buscan en DB después del signup.
+async function fetchUserByEmail(email) {
+  const { rows } = await pool.query(
+    `SELECT u.id, u.nombre, u.username, u.email, u.role, u.email_verified_at,
+            t.id AS tenant_id, t.nombre AS tenant_nombre, t.slug AS tenant_slug, t.plan AS tenant_plan
+       FROM users u
+       JOIN tenant_users tu ON tu.user_id = u.id
+       JOIN tenants t ON t.id = tu.tenant_id
+      WHERE LOWER(u.email) = LOWER($1) AND u.deleted_at IS NULL`,
+    [email]
+  );
+  return rows[0] || null;
+}
+
+// TANDA 2.7: signup ya no auto-loguea (anti-enum). Para tests que necesitan
+// un JWT autenticado, hacemos login tradicional después del signup.
+async function loginAfter({ email, password }) {
+  const r = await request(app).post('/api/auth/login').send({ email, password });
+  if (r.status !== 200) {
+    throw new Error(`login post-signup falló: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+  return { token: r.body.token, user: r.body.user };
+}
+
 describe('POST /api/auth/signup', () => {
   beforeEach(() => emailLib._resetTestQueue());
 
-  it('crea tenant + user + token y devuelve 201 con JWT + verification_required', async () => {
+  it('TANDA 2.7 anti-enum: response genérica 200 + crea tenant + user en DB', async () => {
     const { res, body } = await signup();
-    expect(res.status).toBe(201);
-    expect(res.body.token).toBeTruthy();
-    expect(res.body.user.email).toBe(body.email);
-    expect(res.body.user.email_verified).toBe(false);
-    expect(res.body.tenant.id).toBeGreaterThan(0);
-    expect(res.body.tenant.plan).toBe('trial');
+    // TANDA 2.7: response genérico (anti-enum). NO incluye token/user/tenant.
+    expect(res.status).toBe(200);
     expect(res.body.verification_required).toBe(true);
-    // En NODE_ENV=test, el token de verificación viene en la response.
+    expect(res.body.token).toBeUndefined();
+    expect(res.body.user).toBeUndefined();
+    expect(res.body.tenant).toBeUndefined();
+    // El verification_token sí se expone en NODE_ENV=test.
     expect(res.body._verification_token).toMatch(/^[0-9a-f]{64}$/);
+    // El user/tenant SÍ se crearon en DB (verify via lookup).
+    const u = await fetchUserByEmail(body.email);
+    expect(u).not.toBeNull();
+    expect(u.email).toBe(body.email);
+    expect(u.email_verified_at).toBeNull();
+    expect(u.tenant_plan).toBe('trial');
   });
 
   it('seedea las cajas default en el tenant nuevo', async () => {
-    const { res } = await signup();
-    expect(res.status).toBe(201);
-    const tenantId = res.body.tenant.id;
+    const { res, body } = await signup();
+    expect(res.status).toBe(200);
+    const u = await fetchUserByEmail(body.email);
+    const tenantId = u.tenant_id;
 
     // RLS bloquea si no SET LOCAL — usamos query directa al pool con
     // app.current_tenant en sesión para listar.
@@ -82,24 +113,27 @@ describe('POST /api/auth/signup', () => {
     // rol admin global, bypaseando RequirePermission del frontend y abriendo
     // /api/feature-flags y otros endpoints globales. Fix: role='op' + el rol
     // de owner del tenant se representa en tenant_users.rol='owner'.
-    const { res } = await signup({ email: `roletest_${Date.now()}@example.com` });
-    expect(res.status).toBe(201);
-    expect(res.body.user.role).toBe('op');
-
-    // Verificar también en DB.
-    const { rows } = await pool.query('SELECT role FROM users WHERE id = $1', [res.body.user.id]);
-    expect(rows[0].role).toBe('op');
+    // TANDA 2.7 anti-enum: el response ya no incluye user/tenant; chequeamos
+    // ambas cosas en DB.
+    const { res, body } = await signup({ email: `roletest_${Date.now()}@example.com` });
+    expect(res.status).toBe(200);
+    const u = await fetchUserByEmail(body.email);
+    expect(u.role).toBe('op');
 
     // Y que el tenant_users link tiene rol='owner' (sigue siendo owner del tenant).
     const { rows: tu } = await pool.query(
       `SELECT rol FROM tenant_users WHERE user_id = $1 AND tenant_id = $2`,
-      [res.body.user.id, res.body.tenant.id]
+      [u.id, u.tenant_id]
     );
     expect(tu[0].rol).toBe('owner');
   });
 
   it('envía verification email (stub registra en _testQueue)', async () => {
     await signup({ email: 'queuetest_' + Date.now() + '@example.com' });
+    // TANDA 0 hotfix B2: sendVerificationEmail ahora corre fire-and-forget vía
+    // setImmediate (anti-timing-oracle). Flush pending immediates antes de
+    // assertar el queue.
+    await new Promise(setImmediate);
     const queue = emailLib._getTestQueue();
     expect(queue.length).toBeGreaterThanOrEqual(1);
     const last = queue[queue.length - 1];
@@ -107,12 +141,103 @@ describe('POST /api/auth/signup', () => {
     expect(last.verifyUrl).toContain('/verify-email?token=');
   });
 
-  it('rechaza email duplicado con 409 (case-insensitive)', async () => {
+  it('TANDA 2.7 anti-enum: email duplicado responde 200 IDÉNTICO (case-insensitive)', async () => {
+    // Antes: 409 explicito → enumeration. Ahora: response idéntica al signup
+    // exitoso. El user existente NO se duplica en DB.
     const email = `dup_${Date.now()}@example.com`;
     const r1 = await signup({ email });
-    expect(r1.res.status).toBe(201);
+    expect(r1.res.status).toBe(200);
+    expect(r1.res.body.verification_required).toBe(true);
+    // Segundo signup con el mismo email (variante case): MISMA response.
     const r2 = await signup({ email: email.toUpperCase() });
-    expect(r2.res.status).toBe(409);
+    expect(r2.res.status).toBe(200);
+    expect(r2.res.body.verification_required).toBe(true);
+    // Validar que NO se creó un segundo user en DB (anti-enum + sin daño).
+    const { rows } = await pool.query(
+      'SELECT COUNT(*)::int AS c FROM users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL',
+      [email]
+    );
+    expect(rows[0].c).toBe(1);
+    // El response del duplicado NO incluye _verification_token (no se creó token nuevo).
+    expect(r2.res.body._verification_token).toBeUndefined();
+  });
+
+  it('TANDA 1 fix T4: path duplicado emite log signup_dup_email (observabilidad anti-enum)', async () => {
+    // El log es la única señal server-side para detectar enumeration attempts.
+    // Si alguien remueve el logger.info accidentalmente, perdemos visibilidad
+    // de attacks sin que ningún test falle. Lockeamos el log acá.
+    const logger = require('../src/lib/logger');
+    const spy = jest.spyOn(logger, 'info');
+    try {
+      const email = `logdup_${Date.now()}@example.com`;
+      await signup({ email }); // path nuevo
+      spy.mockClear();
+      await signup({ email }); // path duplicado
+      // El log debería tener source: 'signup_dup_email' (ver routes/signup.js).
+      const dupCall = spy.mock.calls.find(([payload]) =>
+        payload && payload.source === 'signup_dup_email'
+      );
+      expect(dupCall).toBeDefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('CAPTCHA: con HCAPTCHA_FORCE_IN_TESTS=1 y sin SECRET → 400 captcha_failed', async () => {
+    // Verifica que el gate captcha está conectado al endpoint. Forzamos
+    // captcha real (sin bypass) sin secret → config_error → 400.
+    const prevEnv = process.env.NODE_ENV;
+    const prevForce = process.env.HCAPTCHA_FORCE_IN_TESTS;
+    const prevEnabled = process.env.HCAPTCHA_ENABLED;
+    const prevSecret = process.env.HCAPTCHA_SECRET;
+    try {
+      process.env.HCAPTCHA_FORCE_IN_TESTS = '1';
+      process.env.HCAPTCHA_ENABLED = 'true';
+      delete process.env.HCAPTCHA_SECRET;
+      const r = await signup({ email: `captcha_${Date.now()}@example.com` });
+      expect(r.res.status).toBe(400);
+      expect(r.res.body.reason).toBe('captcha_failed');
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      if (prevForce === undefined) delete process.env.HCAPTCHA_FORCE_IN_TESTS;
+      else process.env.HCAPTCHA_FORCE_IN_TESTS = prevForce;
+      if (prevEnabled === undefined) delete process.env.HCAPTCHA_ENABLED;
+      else process.env.HCAPTCHA_ENABLED = prevEnabled;
+      if (prevSecret === undefined) delete process.env.HCAPTCHA_SECRET;
+      else process.env.HCAPTCHA_SECRET = prevSecret;
+    }
+  });
+
+  it('CAPTCHA: bypass por default en NODE_ENV=test (signup pasa sin hcaptcha_response)', async () => {
+    // El signup sigue pasando sin tener que pasar hcaptcha_response porque
+    // verifyCaptcha bypassa en NODE_ENV=test default.
+    const r = await signup();
+    expect(r.res.status).toBe(200);
+    expect(r.res.body.verification_required).toBe(true);
+  });
+
+  it('TANDA 0 hotfix B2: path duplicado ejecuta bcrypt (anti-timing-oracle)', async () => {
+    // Sin este fix, path duplicado retornaba ~10ms y path nuevo ~300-500ms
+    // (bcrypt cost-12). Un atacante medía response time y enumeraba emails con
+    // ~10 samples, anulando el anti-enum por shape de TANDA 2.7. Ahora ambos
+    // paths hacen bcrypt → timing similar dentro del jitter de red.
+    const bcrypt = require('bcrypt');
+    const spy = jest.spyOn(bcrypt, 'hash');
+    try {
+      const email = `timing_${Date.now()}@example.com`;
+      // Seed: signup nuevo (path "nuevo") para que el segundo signup sea duplicado.
+      await signup({ email });
+      spy.mockClear();
+      // Path duplicado.
+      const dup = await signup({ email });
+      expect(dup.res.status).toBe(200);
+      // bcrypt.hash debería haber sido llamado exactamente 1 vez en el path
+      // duplicado (dummy work para igualar timing al path nuevo).
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(expect.any(String), expect.any(Number));
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('rechaza password débil con 400 (schema)', async () => {
@@ -135,11 +260,13 @@ describe('Bloqueo blando: user unverified no puede escribir', () => {
   let userEmail;
 
   beforeAll(async () => {
-    const { res, body } = await signup({ email: `unverified_${Date.now()}@example.com` });
-    token = res.body.token;
+    // TANDA 2.7 anti-enum: signup ya no auto-loguea. Hacemos login después.
+    const { body } = await signup({ email: `unverified_${Date.now()}@example.com` });
     userEmail = body.email;
+    const loginR = await loginAfter({ email: body.email, password: body.password });
+    token = loginR.token;
     // Sanity: el user fue creado unverified.
-    expect(res.body.user.email_verified).toBe(false);
+    expect(loginR.user.email_verified).toBe(false);
   });
 
   it('GET endpoints funcionan (lectura permitida)', async () => {
@@ -187,9 +314,9 @@ describe('Bloqueo blando: user unverified no puede escribir', () => {
 
 describe('POST /api/auth/verify-email', () => {
   it('consume un token válido y marca user verificado', async () => {
-    const { res } = await signup();
+    const { res, body } = await signup();
     const tok = res.body._verification_token;
-    const userId = res.body.user.id;
+    const u = await fetchUserByEmail(body.email);
 
     const verify = await request(app).post('/api/auth/verify-email').send({ token: tok });
     expect(verify.status).toBe(200);
@@ -197,7 +324,7 @@ describe('POST /api/auth/verify-email', () => {
     expect(verify.body.email_verified_at).toBeTruthy();
 
     // En DB, el user debería estar verified ahora.
-    const { rows } = await pool.query('SELECT email_verified_at FROM users WHERE id = $1', [userId]);
+    const { rows } = await pool.query('SELECT email_verified_at FROM users WHERE id = $1', [u.id]);
     expect(rows[0].email_verified_at).toBeTruthy();
   });
 
@@ -248,9 +375,10 @@ describe('POST /api/auth/verify-email', () => {
     // tenant soft-deleted, link borrado manualmente). Antes el verify cae a
     // tenant_id=1 (tenant del owner) y atribuía el audit al tenant equivocado.
     // Ahora devolvemos 410 sin tocar nada.
-    const { res } = await signup({ email: `orphan_${Date.now()}@example.com` });
+    const { res, body } = await signup({ email: `orphan_${Date.now()}@example.com` });
     const tok = res.body._verification_token;
-    const userId = res.body.user.id;
+    const u = await fetchUserByEmail(body.email);
+    const userId = u.id;
     // Borrar el link tenant_users para simular tenant huérfano.
     await pool.query('DELETE FROM tenant_users WHERE user_id = $1', [userId]);
 
@@ -264,9 +392,11 @@ describe('POST /api/auth/verify-email', () => {
   });
 
   it('user verificado YA puede escribir (bloqueo blando desactivado post-verify)', async () => {
-    const { res } = await signup();
+    const { res, body } = await signup();
     const tok = res.body._verification_token;
-    const userToken = res.body.token;
+    // TANDA 2.7: hacer login después del signup (anti-enum no auto-loguea).
+    const loginR = await loginAfter({ email: body.email, password: body.password });
+    const userToken = loginR.token;
 
     // Antes de verificar: write bloqueado.
     const before = await request(app).post('/api/contactos')
@@ -287,9 +417,10 @@ describe('POST /api/auth/verify-email', () => {
 
 describe('POST /api/auth/resend-verification', () => {
   it('genera token nuevo + invalida el previo', async () => {
-    const { res } = await signup();
+    const { res, body } = await signup();
     const oldToken = res.body._verification_token;
-    const userToken = res.body.token;
+    // TANDA 2.7: signup ya no devuelve token; login después.
+    const { token: userToken } = await loginAfter({ email: body.email, password: body.password });
 
     const resend = await request(app)
       .post('/api/auth/resend-verification')
@@ -308,9 +439,10 @@ describe('POST /api/auth/resend-verification', () => {
   });
 
   it('idempotente: user ya verificado → 200 con already_verified:true', async () => {
-    const { res } = await signup();
+    const { res, body } = await signup();
     const tok = res.body._verification_token;
-    const userToken = res.body.token;
+    // TANDA 2.7: signup ya no devuelve token; login después.
+    const { token: userToken } = await loginAfter({ email: body.email, password: body.password });
 
     // Verificar primero.
     await request(app).post('/api/auth/verify-email').send({ token: tok });

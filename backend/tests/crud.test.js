@@ -174,6 +174,34 @@ describe('PUT /api/usuarios/:id', () => {
       .send({});
     expect(res.status).toBe(400);
   });
+
+  it('TANDA 3 fix M3: edit de nombre solo (no sensitive) NO invalida cache de auth', async () => {
+    // M3: invalidación gratuita en edits de fields no-cacheados produce
+    // stampede en réplicas. Verificamos que solo se invalida si
+    // bumpPwChanged=true (password/role/perms changed).
+    const userAuthCache = require('../src/lib/userAuthCache');
+    const spy = jest.spyOn(userAuthCache, 'invalidateUserAuth');
+    try {
+      // Cambio NO sensitive: solo nombre.
+      const r1 = await request(app)
+        .put(`/api/usuarios/${nuevoUserId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ nombre: 'Solo Nombre' });
+      expect(r1.status).toBe(200);
+      expect(spy).not.toHaveBeenCalled();
+
+      // Cambio sensitive: perms → bumpPwChanged=true → invalidate.
+      spy.mockClear();
+      const r2 = await request(app)
+        .put(`/api/usuarios/${nuevoUserId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ perms: { cotizador: true, financiera: false, cajas: false, envios: false, usuarios: false } });
+      expect(r2.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(nuevoUserId);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe('DELETE /api/usuarios/:id', () => {

@@ -42,6 +42,9 @@ const logger = require('../lib/logger');
 const { sendVerificationEmail, sendWelcomeEmail } = require('../lib/email');
 const { signupSchema, verifyEmailSchema } = require('../schemas/signup');
 const { TOOLS } = require('../lib/tools');
+// Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
+const userAuthCache = require('../lib/userAuthCache');
+const captcha = require('../lib/captcha');
 
 const BCRYPT_ROUNDS = 12;
 const TOKEN_BYTES = 32; // → 64 chars hex
@@ -123,16 +126,66 @@ function frontendUrl() {
  *                _verification_token (solo en dev/test) }
  */
 router.post('/signup', validate(signupSchema), async (req, res, next) => {
-  const { nombre, email, password, tenant_nombre } = req.body;
+  const { nombre, email, password, tenant_nombre, hcaptcha_response } = req.body;
 
-  // Pre-check de email (mensaje claro). DB también lo bloquea via UNIQUE
-  // case-insensitive — esto es solo para UX.
+  // CAPTCHA gate — antes de cualquier query a DB para protegerla del costo de
+  // SELECT/INSERT con tokens inválidos masivos. Si HCAPTCHA_ENABLED!='true'
+  // o NODE_ENV=test, verifyCaptcha bypassa silenciosamente. Si el captcha
+  // falla, retornamos 400 antes de la query → atacante no puede usar el
+  // endpoint para nada salvo consumir CPU validando captchas (rate-limiteado
+  // por signupLimiter más arriba en la pipeline).
+  //
+  // El mensaje de error mapea categoría → texto:
+  //   - 'expired'       → "Verificación expirada, intentá de nuevo"
+  //   - 'duplicate'     → "Verificación ya usada, recargá la página"
+  //   - 'invalid_token' → "Verificación inválida, completá el captcha"
+  //   - network/config/http → "No pudimos verificar. Reintentá en un minuto."
+  const captchaResult = await captcha.verifyCaptcha(hcaptcha_response, req.ip);
+  if (!captchaResult.success) {
+    const errMap = {
+      expired:       'La verificación expiró. Intentá de nuevo.',
+      duplicate:     'La verificación ya fue usada. Recargá la página.',
+      invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+    };
+    const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+    logger.info({ source: 'signup_captcha_fail', error: captchaResult.error },
+      'signup rechazado por captcha');
+    return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+  }
+
+  // TANDA 2.7 fix HIGH#1 Seguridad auditoría 2026-06-17: anti-enumeration.
+  // Antes el endpoint distinguía emails registrados (409) de no-registrados
+  // (201) → cualquiera podía probar emails masivamente y enumerar cuentas.
+  // Ahora la response es **idéntica** para ambos casos: 200 con
+  // { verification_required: true }. Cost: signup ya NO auto-loguea — el user
+  // debe verificar email antes de poder iniciar sesión. Trade-off aceptado:
+  // anti-enum perfecto + verify-before-use es el patrón estándar de SaaS.
+  //
+  // Si el email ya existe, NO creamos nada — solo respondemos genérico.
+  // (Recovery email "alguien intentó usar tu email" queda para follow-up.)
   const existing = await db.query(
     'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL',
     [email]
   );
   if (existing.rows.length > 0) {
-    return res.status(409).json({ error: 'Este email ya está registrado' });
+    // TANDA 0 hotfix BLOCKER B2 auditoría 2026-06-17: timing oracle anti-enum.
+    // Antes el path duplicado retornaba ~10ms y el nuevo ~300-500ms (bcrypt cost-12).
+    // Un atacante medía response time y enumeraba emails con ~10 samples, anulando
+    // el anti-enum por shape de TANDA 2.7. Mismo patrón que el DUMMY_HASH del login
+    // (auth.js:128). Ejecutamos bcrypt.hash() y descartamos el resultado — costo
+    // CPU equivalente al path nuevo, garantizando timing constante.
+    await bcrypt.hash(password, BCRYPT_ROUNDS);
+    logger.info({ email_hash: 'redacted', source: 'signup_dup_email' },
+      'signup duplicado — respondiendo genérico (anti-enum)');
+    // TANDA 5 fix U3 auditoría 2026-06-17: incluir TTL en response. Antes
+    // el frontend hardcodeaba "24 horas" en el copy — si el backend
+    // ajustaba TOKEN_EXPIRY_HOURS la UI mostraba info incorrecta. Ahora
+    // el frontend lee este field. La info también se incluye en el path
+    // duplicado para preservar shape idéntica (anti-enum).
+    return res.status(200).json({
+      verification_required: true,
+      verification_token_ttl_hours: TOKEN_EXPIRY_HOURS,
+    });
   }
 
   const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -234,50 +287,42 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     client.release();
   }
 
-  // 8. Send verification email — POST-tx (best effort, no bloquea el response).
-  try {
-    const verifyUrl = `${frontendUrl()}/verify-email?token=${result.token}`;
-    await sendVerificationEmail({
-      to: result.user.email,
-      name: result.user.nombre,
-      verifyUrl,
-    });
-  } catch (e) {
-    logger.error(
-      { err: e, user_id: result.user.id },
-      'No se pudo enviar verification email post-signup. User debe usar /resend-verification.'
-    );
-  }
-
-  // 9. JWT login + response. email_verified=false → frontend muestra banner.
-  const payload = {
-    id: result.user.id,
-    username: result.user.username,
-    email: result.user.email,
-    role: result.user.role,
-    tenant_id: result.tenant.id,
-    tenant_rol: 'owner',
-    perms: Object.fromEntries(TOOLS.map(t => [t, true])),
-    iat_ms: Date.now(),
-  };
-  const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '8h',
-    algorithm: JWT_ALGORITHM,
+  // 8. Send verification email — fire-and-forget vía setImmediate.
+  //
+  // TANDA 0 hotfix BLOCKER B2 auditoría 2026-06-17 (parte 2): mover el await
+  // fuera del response path. El Resend SaaS tarda 500ms-3s en aceptar el envío;
+  // si esperamos, el path "nuevo" tarda 800ms-3.5s y el path "duplicado" (con
+  // dummy bcrypt) tarda ~300ms. Esa diferencia residual es medible. Con
+  // setImmediate, el response se devuelve apenas terminan los INSERTs + bcrypt
+  // (~350ms), igualando dentro del jitter de red al path duplicado.
+  //
+  // Trade-off: si Resend devuelve error, el user no ve nada — debe usar
+  // /resend-verification. Loggeamos para observabilidad.
+  setImmediate(async () => {
+    try {
+      const verifyUrl = `${frontendUrl()}/verify-email?token=${result.token}`;
+      await sendVerificationEmail({
+        to: result.user.email,
+        name: result.user.nombre,
+        verifyUrl,
+      });
+    } catch (e) {
+      logger.error(
+        { err: e, user_id: result.user.id },
+        'No se pudo enviar verification email post-signup. User debe usar /resend-verification.'
+      );
+    }
   });
 
+  // TANDA 2.7 anti-enum: response idéntica al caso "email duplicado" (línea ~135).
+  // NO devolvemos token/user/tenant — eso permitía distinguir signup nuevo de
+  // signup duplicado por shape de la response. Trade-off: el user debe verificar
+  // email antes de iniciar sesión (no hay auto-login). El JWT antes generado
+  // acá ya no se genera (era para auto-login).
+  // TANDA 5 fix U3: incluir TTL en response (idéntico al path duplicado).
   const response = {
-    token: jwtToken,
-    user: {
-      id: result.user.id,
-      nombre: result.user.nombre,
-      username: result.user.username,
-      email: result.user.email,
-      role: result.user.role,
-      email_verified: false,
-      perms: payload.perms,
-    },
-    tenant: result.tenant,
     verification_required: true,
+    verification_token_ttl_hours: TOKEN_EXPIRY_HOURS,
   };
 
   // En dev/test, devolvemos el token para que E2E pueda verificar inline.
@@ -298,7 +343,8 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     response._verification_token = result.token;
   }
 
-  return res.status(201).json(response);
+  // TANDA 2.7: 200 (no 201) para matchear el response del caso "email duplicado".
+  return res.status(200).json(response);
 });
 
 /**
@@ -431,6 +477,11 @@ router.post('/verify-email', verifyEmailLimiter, validate(verifyEmailSchema), as
     });
 
     await client.query('COMMIT');
+    // P-04 Fase 3.6: invalidar cache de auth meta DESPUÉS del COMMIT.
+    // email_verified_at cambió de null → NOW(). Sin invalidar, una réplica
+    // con el row stale seguiría devolviendo email_verified=false → el
+    // bloqueo blando (requireAuth) seguiría rechazando escrituras hasta TTL.
+    userAuthCache.invalidateUserAuth(user.id);
 
     // Welcome email (best effort, no bloquea el response).
     try {
@@ -547,7 +598,13 @@ router.post('/resend-verification', requireAuth, resendLimiter, async (req, res,
     }
 
     const response = { ok: true };
-    if (process.env.NODE_ENV !== 'production') {
+    // TANDA 0 hotfix HIGH S2 auditoría 2026-06-17: gate dual NODE_ENV + flag
+    // explícito. Mismo patrón que /signup (TANDA 2.5). El gate solo-NODE_ENV
+    // de este endpoint era frágil — staging/preview/demo deploys sin
+    // NODE_ENV='production' exponían el token al cliente.
+    const exposeToken = process.env.NODE_ENV === 'test'
+      || (process.env.NODE_ENV !== 'production' && process.env.EXPOSE_VERIFICATION_TOKEN === '1');
+    if (exposeToken) {
       response._verification_token = token;
     }
     res.json(response);

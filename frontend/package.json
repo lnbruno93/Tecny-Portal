@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hcaptcha/react-hcaptcha": "^2.0.2",
     "@zxing/browser": "^0.2.0",
     "@zxing/library": "^0.22.0",
     "jspdf": "^4.2.1",
