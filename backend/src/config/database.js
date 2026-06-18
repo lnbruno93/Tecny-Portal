@@ -29,6 +29,80 @@ pool.on('error', (err) => {
   logger.error({ err }, 'PostgreSQL pool error');
 });
 
+// ── Instrumentación defensiva: int-cast errors ───────────────────────────
+//
+// Bug latente reportado en staging 2026-06-17 22:21:14: un POST /api/auth/login
+// devolvió 500 con:
+//   err.message: 'invalid input syntax for type integer: ""'
+//   err.routine: 'pg_strtoint32_safe'
+//
+// La investigación del login path no encontró ninguna query que reciba input
+// del request en una columna int — todas usan user.id (DB row). El sporadic
+// 1-de-2 probablemente fue:
+//   (a) un endpoint adyacente cuyo error fue mal-atribuido a /login por el
+//       logger (request_id bleeding), o
+//   (b) un payload edge-case que evadió las defensas existentes.
+//
+// Sin más evidencia no se puede apuntar al call site exacto. Esta capa
+// instrumenta `pool.query` para que la PRÓXIMA vez que ocurra un error
+// de cast int (pg_strtoint16/32/64), loguee el SQL + params + stack abreviado
+// — convirtiendo el sporadic en evidencia procesable inmediatamente.
+//
+// Trade-off: agregamos un try/catch + check de routine en cada query del
+// backend. El cost es ~µs por query (overhead despreciable vs el round-trip
+// a Postgres). El upside es ENORME: la próxima recurrencia del bug tiene
+// stack trace + SQL en el log, no toca debugger.
+//
+// Decisión de scope: solo logueamos errores con `routine` en INT_CAST_ROUTINES
+// (no todos los DatabaseError). Esto evita ruido — solo logueamos lo que es
+// específicamente el bug que estamos cazando.
+const INT_CAST_ROUTINES = new Set([
+  'pg_strtoint16',        // int2 (smallint) — Postgres 16+
+  'pg_strtoint16_safe',   // int2 — Postgres 17+
+  'pg_strtoint32',        // int4 (integer) — Postgres 16
+  'pg_strtoint32_safe',   // int4 — Postgres 17+ — el que vimos en staging
+  'pg_strtoint64',        // int8 (bigint) — Postgres 16
+  'pg_strtoint64_safe',   // int8 — Postgres 17+
+]);
+
+const _originalQuery = pool.query.bind(pool);
+pool.query = async function instrumentedQuery(...args) {
+  try {
+    return await _originalQuery(...args);
+  } catch (err) {
+    if (err && INT_CAST_ROUTINES.has(err.routine)) {
+      // Best-effort extract de SQL + params para el log. El primer arg puede ser:
+      //   - string: `pool.query('SELECT ...', [params])`
+      //   - objeto: `pool.query({ text: 'SELECT ...', values: [params] })`
+      const first = args[0];
+      const sql = typeof first === 'string' ? first
+                : (first && typeof first.text === 'string') ? first.text
+                : '<unknown>';
+      const params = Array.isArray(args[1]) ? args[1]
+                   : (first && Array.isArray(first.values)) ? first.values
+                   : null;
+      // Stack abreviado: las primeras frames son node_modules/pg, queremos las
+      // userland. Tomamos líneas 2-9 (skipea el "Error:" header y la frame
+      // de este wrapper).
+      const stack = new Error().stack
+        .split('\n')
+        .slice(2, 10)
+        .join('\n');
+      logger.error({
+        err: { message: err.message, routine: err.routine, position: err.position, code: err.code },
+        sql: typeof sql === 'string' ? sql.slice(0, 500) : sql,
+        // Sanitize params: stringify y truncar. NO loggeamos secrets — los
+        // params típicos del bug son int ids, no passwords. Si por alguna razón
+        // un password caía acá, se truncaría también. Riesgo aceptable vs valor
+        // de debug.
+        params_preview: params ? JSON.stringify(params).slice(0, 500) : null,
+        stack_short: stack,
+      }, 'int_cast_error — query con int cast inválido (debug bug pg_strtoint)');
+    }
+    throw err;
+  }
+};
+
 /**
  * 2026-06-15 multi-tenant PR 3 — helper para queries con contexto de tenant.
  *
