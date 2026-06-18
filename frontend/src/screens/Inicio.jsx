@@ -4,6 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../components/Icons';
 import { config, envios, historial } from '../lib/api';
 import { fmt as fmtMagnitud } from '../lib/format';
+// 2026-06-18 #323 TANDA 1 H3: card de onboarding para signup público nuevo.
+// El componente se auto-oculta cuando el user completa los 3 pasos o lo
+// dismissa manualmente — no hay flag de "es user nuevo" porque es más
+// honesto basarse en el estado real del tenant.
+import OnboardingCard from '../components/OnboardingCard';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 // Hygiene H2 auditoría 2026-06-06: usar lib/format como fuente única.
@@ -168,6 +173,11 @@ export default function Inicio() {
   // ── Full render ───────────────────────────────────────────────────────────
   return (
     <div>
+      {/* TANDA 1 H3 #323: onboarding card. Visible solo si el user no completó
+          los 3 primeros pasos y no clickeó "saltar". Se auto-oculta cuando
+          corresponde. NO recibe props — fetchea su propio status. */}
+      <OnboardingCard />
+
       {/* Greeting */}
       <div className="hello">
         <div className="greet">
