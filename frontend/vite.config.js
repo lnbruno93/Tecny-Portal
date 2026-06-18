@@ -73,10 +73,55 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Precache todo el bundle
+        // Precache todo el bundle. HTML se mantiene en precache pero NO se usa
+        // como navigation handler — la runtime rule NetworkFirst de abajo se
+        // encarga de las navigations cuando hay red, y cae al cache de
+        // 'navigation-cache' offline. El index.html precacheado queda como
+        // entrada inerte (sirve para bundle integrity check pero no se sirve
+        // directamente — ver navigateFallback: null abajo).
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // navigateFallback: null deshabilita el NavigationRoute default de
+        // workbox (que servía index.html del precache para CUALQUIER request
+        // de navigation). Sin esto, ese route quedaba registrado ANTES de
+        // nuestra runtime rule de NetworkFirst y se la comía — nuestro rule
+        // nunca disparaba (first-match-wins en workbox routing). Resultado:
+        // HTML siempre del precache → CSP cacheado → bug original.
+        // Trade-off: primera navegación offline (sin cache previo) falla.
+        // Aceptable — un PWA recién instalado tiene cache de la instalación.
+        navigateFallback: null,
+        // skipWaiting + clientsClaim: el nuevo SW se activa apenas instala y
+        // toma control de las tabs abiertas (no espera a que se cierren todas).
+        // Es lo que registerType: 'autoUpdate' implica, pero lo dejo explícito
+        // para que sea obvio leyendo el archivo. Combinado con el banner de
+        // Shell.jsx (needRefresh) y la runtime rule NetworkFirst abajo, asegura
+        // que los users vean cambios de CSP / build dentro de minutos, no días.
+        skipWaiting: true,
+        clientsClaim: true,
         // API → NetworkFirst (siempre intenta red, cae a cache si offline)
         runtimeCaching: [
+          // 2026-06-18 #309: Navigation requests → NetworkFirst.
+          // Antes el SW servía index.html del precache CON los HTTP response
+          // headers cacheados (incluyendo CSP). Cuando actualizábamos CSP a
+          // nivel Netlify (#307 hCaptcha, #308 report-uri), users con SW
+          // stale veían el CSP viejo hasta clickear "Actualizar" en el banner.
+          // Con NetworkFirst, cuando hay red el HTML viene fresco de Netlify
+          // (con el CSP del momento). Offline cae al cache. networkTimeoutSeconds:
+          // 3s para no degradar la experiencia de carga.
+          //
+          // sameOrigin: solo nuestro frontend (Netlify), no apunta a Railway
+          // ni a hCaptcha. request.mode === 'navigate' = top-level navigation
+          // request (la única que carga HTML; los fetch/XHR son 'cors'/'no-cors').
+          {
+            urlPattern: ({ request, sameOrigin }) =>
+              sameOrigin && request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'navigation-cache',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
