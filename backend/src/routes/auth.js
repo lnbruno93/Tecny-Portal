@@ -8,7 +8,7 @@ const { loginSchema, changePasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
-const { loadUserPerms, loadUserPermsRows } = require('../lib/permissions');
+const { loadUserPermsRows, resolveUserTenant } = require('../lib/permissions');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
 
@@ -28,43 +28,35 @@ const JWT_ALGORITHM = 'HS256';
 const LOCKOUT_THRESHOLD = 10;
 const LOCKOUT_DURATION_MIN = 15;
 
-// 2026-06-15 multi-tenant PR 3: resuelve el tenant del user al hacer login.
-// Mientras estamos en single-tenant, todo user nuevo se vincula al tenant 1
-// vía la migration de PR 1, así que esta query siempre devuelve algo. Cuando
-// arranque el SaaS, el user puede pertenecer a varios tenants — por ahora
-// elegimos el primero (ordered por id). UI futura permitirá switch entre
-// tenants y refrescará el JWT.
-async function resolveDefaultTenant(userId) {
-  const { rows } = await db.query(
-    `SELECT tenant_id, rol FROM tenant_users
-      WHERE user_id = $1
-      ORDER BY tenant_id ASC LIMIT 1`,
-    [userId]
-  );
-  // Fallback defensivo: si el user no tiene tenant (caso edge, no debería
-  // pasar post-PR1 backfill), lo asignamos al tenant 1.
-  return rows[0] || { tenant_id: 1, rol: 'member' };
-}
-
-async function makeToken(user) {
-  // iat_ms: timestamp de emisión en milisegundos — permite comparación de precisión
-  // sub-segundo contra password_changed_at (que tiene precisión de microsegundos en PG).
-  // El jwt.iat estándar solo tiene precisión de segundos, lo que genera race conditions
-  // cuando el login y el cambio de contraseña ocurren en el mismo segundo.
-  //
-  // 2026-06-11 P-02: embebemos `perms` en el JWT para evitar la query DB por
-  // request del middleware requirePermission. Admin no necesita perms en el token
-  // (el middleware ya bypassea por role). Para users con role='op', leemos las
-  // perms de DB en el login y las incluimos. Si después cambian los perms (via
-  // PUT /usuarios/:id), bumpeamos password_changed_at del afectado y el user
-  // re-loguea para refrescar el token.
-  //
-  // 2026-06-15 multi-tenant PR 3: sumamos `tenant_id` y `tenant_rol` al payload.
-  // El middleware requireAuth los decora a `req.tenantId` y `req.tenantRol`. Los
-  // endpoints (refactor en PR 4) lo usarán para queries multi-tenant aware.
-  // RLS de PR 2 ya está activo — cuando `app.current_tenant` se setee al inicio
-  // del request, Postgres filtra automáticamente.
-  const tenant = await resolveDefaultTenant(user.id);
+/**
+ * Firma el JWT del login. NO hace queries — los datos vienen pre-resueltos
+ * del caller (login handler).
+ *
+ * 2026-06-18 #314 perf: antes makeToken hacía 2 queries internas
+ *   (resolveDefaultTenant + loadUserPerms para non-admin), y el handler hacía
+ *   otra ronda equivalente para el response.perms. Total: ~10 queries por
+ *   login. Ahora el handler resuelve todo 1×, makeToken solo firma. Total
+ *   neto: ~5 queries (paridad con pre-RLS-fix).
+ *
+ * 2026-06-15 multi-tenant PR 3: incluye `tenant_id` y `tenant_rol` en el
+ *   payload. El middleware requireAuth los decora como `req.tenantId` y
+ *   `req.tenantRol`.
+ * 2026-06-11 P-02: embebe `perms` (solo enabled tools) en el JWT para
+ *   evitar query DB por request del middleware requirePermission. Admin no
+ *   necesita perms (bypass por role). Si cambian perms via PUT /usuarios/:id,
+ *   se bumpea password_changed_at → token invalidado → user re-loguea.
+ *
+ * @param {object} user — row de users con id/username/email/role mínimo
+ * @param {object} tenant — { tenant_id, rol } del default tenant
+ * @param {object} [tokenPerms] — { tool: true } para non-admin. Si user.role
+ *   es admin, este arg se ignora (el JWT no lleva perms).
+ * @returns {string} JWT firmado
+ */
+function makeToken(user, tenant, tokenPerms) {
+  // iat_ms: timestamp de emisión en milisegundos — permite comparación de
+  // precisión sub-segundo contra password_changed_at (precisión µs en PG).
+  // El jwt.iat estándar solo tiene precisión de segundos, lo que genera race
+  // conditions cuando login y change-password ocurren en el mismo segundo.
   const payload = {
     id: user.id,
     username: user.username,
@@ -74,15 +66,16 @@ async function makeToken(user) {
     tenant_rol: tenant.rol,
     iat_ms: Date.now(),
   };
-  if (user.role !== 'admin') {
-    payload.perms = await loadUserPerms(user.id);
+  if (user.role !== 'admin' && tokenPerms) {
+    payload.perms = tokenPerms;
   }
   return jwt.sign(
     payload,
     process.env.JWT_SECRET,
-    // 2026-06-10 SE-01: bajamos default de 7d → 8h. Token en localStorage con vida
-    // larga es vector XSS: cualquier dep transitiva compromete = sesión robada por
-    // una semana. Fix real (httpOnly cookie + refresh token) queda para TANDA 6.
+    // 2026-06-10 SE-01: bajamos default de 7d → 8h. Token en localStorage con
+    // vida larga es vector XSS: cualquier dep transitiva compromete = sesión
+    // robada por una semana. Fix real (httpOnly cookie + refresh token) queda
+    // para TANDA 6.
     { expiresIn: process.env.JWT_EXPIRES_IN || '8h', algorithm: JWT_ALGORITHM }
   );
 }
@@ -226,17 +219,45 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
 
-    // 2026-06-18 RLS NULLIF hotfix: user_permissions tiene RLS activo. La
-    // policy filtra por tenant_id = NULLIF(current_setting(...), '')::int.
-    // Sin SET LOCAL, current_setting devuelve '' y la fila no pasa el filtro.
-    // `loadUserPermsRows` resuelve el tenant del user + wrappea en withTenant
-    // para que la policy vea el tenant correcto y devuelva los rows.
-    const perms = await loadUserPermsRows(user.id);
+    // 2026-06-18 RLS NULLIF hotfix + #314 perf: resolvemos tenant + perms
+    // UNA sola vez y reutilizamos para response.perms + JWT.perms. Antes el
+    // handler hacía loadUserPermsRows acá (que internamente llama
+    // resolveUserTenant + withTenant) y makeToken hacía resolveDefaultTenant +
+    // loadUserPerms otra vez → ~10 queries por login. Ahora ~5 queries
+    // (paridad con pre-RLS-fix). Detalle de queries:
+    //   1. SELECT tenant_users (resolveUserTenant)
+    //   2-5. BEGIN + SET LOCAL + SELECT user_permissions + COMMIT (withTenant)
+    //
+    // Inlineamos la query de user_permissions en lugar de llamar
+    // loadUserPermsRows() — ese helper resuelve el tenant internamente, lo
+    // que duplicaría el SELECT tenant_users. Acá ya tenemos el tenant
+    // resuelto del paso 1.
+    //
+    // Mantenemos el shape de response.perms idéntico al anterior (default
+    // false + override de DB rows) para zero behavior change. Admin ve
+    // role bypass en el frontend (useVisibleNav) — su user.perms content
+    // es irrelevante operacionalmente, pero igual lo poblamos como antes
+    // para preservar shape.
+    const tenant = await resolveUserTenant(user.id);
+    const permsRows = await db.withTenant(tenant.tenant_id, async (client) => {
+      const { rows } = await client.query(
+        'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
+        [user.id],
+      );
+      return rows;
+    });
+
     const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
-    const permissions = { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) };
+    const permissions = { ...defaultPerms, ...Object.fromEntries(permsRows.map(p => [p.tool, p.enabled])) };
+
+    // JWT.perms: solo enabled, solo para non-admin (admin bypassea en el
+    // middleware requirePermission por role — no necesita perms en token).
+    const tokenPerms = user.role !== 'admin'
+      ? Object.fromEntries(permsRows.filter(p => p.enabled === true).map(p => [p.tool, true]))
+      : undefined;
 
     res.json({
-      token: await makeToken(user),
+      token: makeToken(user, tenant, tokenPerms),
       user: {
         id: user.id,
         nombre: user.nombre,
