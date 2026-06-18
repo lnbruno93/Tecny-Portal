@@ -114,3 +114,90 @@ describe('database.js — instrumentación int-cast errors', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('database.js — instrumentación en client.query (vía pool.connect)', () => {
+  // 2026-06-18: extensión post-mortem. La instrumentación original solo
+  // cubría pool.query. Si el bug pg_strtoint vive en una query de tx (que usa
+  // client.query del pool.connect), nunca lo cazaríamos. Esta suite valida
+  // que el wrapper también captura desde client.query.
+
+  let errorSpy;
+
+  beforeEach(() => {
+    errorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it('loguea int_cast_error cuando client.query dispara pg_strtoint32_safe', async () => {
+    const client = await db.connect();
+    try {
+      await expect(
+        client.query('SELECT $1::int4 AS id', [''])
+      ).rejects.toMatchObject({ routine: 'pg_strtoint32_safe' });
+    } finally {
+      client.release();
+    }
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [logArgs, msg] = errorSpy.mock.calls[0];
+    expect(msg).toMatch(/int_cast_error/);
+    expect(logArgs).toMatchObject({
+      err: expect.objectContaining({ routine: 'pg_strtoint32_safe' }),
+      sql: expect.stringContaining('$1::int4'),
+      params_preview: expect.stringContaining('""'),
+      stack_short: expect.any(String),
+    });
+  });
+
+  it('no loguea si client.query falla con otro routine no int-cast', async () => {
+    const client = await db.connect();
+    try {
+      await expect(
+        client.query('SELECT * FROM tabla_inexistente_xyz')
+      ).rejects.toThrow();
+    } finally {
+      client.release();
+    }
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('client reusado del pool mantiene instrumentación idempotente', async () => {
+    // Sacamos un client, lo devolvemos al pool, lo volvemos a sacar.
+    // La instrumentación debe seguir activa pero no debe duplicarse
+    // (sino veríamos 2 logs por una sola query mala).
+    const client1 = await db.connect();
+    client1.release();
+
+    const client2 = await db.connect();
+    try {
+      await expect(
+        client2.query('SELECT $1::int4', [''])
+      ).rejects.toMatchObject({ routine: 'pg_strtoint32_safe' });
+    } finally {
+      client2.release();
+    }
+
+    // Una sola entrada de log, no dos (idempotencia del wrapper).
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('transacción manual (BEGIN/ROLLBACK) preserva instrumentación', async () => {
+    // Simula el patrón change-password: connect + BEGIN + query + COMMIT/ROLLBACK.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await expect(
+        client.query('SELECT $1::int4 AS id', [''])
+      ).rejects.toMatchObject({ routine: 'pg_strtoint32_safe' });
+      await client.query('ROLLBACK').catch(() => {});
+    } finally {
+      client.release();
+    }
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0].sql).toContain('$1::int4');
+  });
+});
