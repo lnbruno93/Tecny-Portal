@@ -9,6 +9,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
 import UnverifiedBanner from './UnverifiedBanner';
+import ChangePasswordModal from './ChangePasswordModal';
 import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
@@ -259,6 +260,8 @@ function Sidebar({ badges = {}, open, onClose }) {
 
 function UserPill() {
   const { user, logout } = useAuth();
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
   if (!user) return null;
 
   const initials = getInitials(user.nombre || user.username);
@@ -266,23 +269,43 @@ function UserPill() {
   const roleLabel = user.role === 'admin' ? 'Admin' : 'Operador';
 
   return (
-    <div className="user-pill" style={{ cursor: 'default' }}>
-      <div className="avatar">{initials}</div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div className="name">{displayName}</div>
-        <div className="role">
-          {roleLabel} · @{user.username}
+    <>
+      <div className="user-pill" style={{ cursor: 'default' }}>
+        <div className="avatar">{initials}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="name">{displayName}</div>
+          <div className="role">
+            {roleLabel} · @{user.username}
+          </div>
         </div>
+        {/* 2026-06-18 #306: botón cambiar contraseña.
+            Antes el endpoint existía pero no había forma de invocarlo desde la
+            UI — los admins debían usar fetch desde DevTools console (filtraba
+            passwords en console history). Cierra el gap detectado en staging. */}
+        <button
+          className="icon-btn"
+          onClick={() => setShowChangePassword(true)}
+          title="Cambiar contraseña"
+          aria-label="Cambiar contraseña"
+          style={{ flexShrink: 0 }}
+        >
+          <Icons.Lock size={14} />
+        </button>
+        <button
+          className="icon-btn"
+          onClick={logout}
+          title="Cerrar sesión"
+          aria-label="Cerrar sesión"
+          style={{ flexShrink: 0 }}
+        >
+          <Icons.Logout size={14} />
+        </button>
       </div>
-      <button
-        className="icon-btn"
-        onClick={logout}
-        title="Cerrar sesión"
-        style={{ flexShrink: 0 }}
-      >
-        <Icons.Logout size={14} />
-      </button>
-    </div>
+      <ChangePasswordModal
+        open={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
+    </>
   );
 }
 
