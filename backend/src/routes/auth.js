@@ -9,6 +9,7 @@ const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
 const { loadUserPermsRows, resolveUserTenant } = require('../lib/permissions');
+const { CODES } = require('../lib/authErrorCodes');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
 
@@ -116,7 +117,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       logger.warn({ user_id: user.id, ip: req.ip, lockout_until: user.lockout_until }, 'login bloqueado por lockout');
       // Igual ejecutamos bcrypt para que el tiempo de respuesta sea constante.
       await bcrypt.compare(password, DUMMY_HASH);
-      return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
+      return res.status(401).json({ error: 'Usuario o contraseña incorrectos', code: CODES.INVALID_CREDENTIALS });
     }
 
     // Siempre ejecutar bcrypt.compare (tiempo constante) para no revelar si el usuario existe
@@ -144,7 +145,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
           logger.error({ err: e }, 'no se pudo actualizar failed_login_count');
         }
       }
-      return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
+      return res.status(401).json({ error: 'Usuario o contraseña incorrectos', code: CODES.INVALID_CREDENTIALS });
     }
 
     // ─── 2FA gate ───
@@ -180,6 +181,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         return res.status(401).json({
           error: 'Se requiere código 2FA.',
           twofa_required: true, // flag para que el front muestre el input
+          code: CODES.TWOFA_REQUIRED,
         });
       }
       const { ok } = await verifyAndConsume(user.id, String(code));
@@ -203,7 +205,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         } catch (e) {
           logger.error({ err: e }, 'no se pudo actualizar failed_login_count (2FA)');
         }
-        return res.status(401).json({ error: 'Código 2FA incorrecto.' });
+        return res.status(401).json({ error: 'Código 2FA incorrecto.', code: CODES.INVALID_TWOFA_CODE });
       }
       // 2FA OK: verifyAndConsume ya hizo el UPDATE atómico de last_used_at + last_used_step.
     }
@@ -283,7 +285,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
       'SELECT id, nombre, username, email, role, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL',
       [req.user.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado', code: CODES.USER_NOT_FOUND });
 
     // 2026-06-18 RLS NULLIF hotfix: ver comentario en login (línea ~229).
     // loadUserPermsRows resuelve tenant + withTenant internamente.
@@ -343,10 +345,10 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
       [req.user.id]
     );
     const user = rows[0];
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado', code: CODES.USER_NOT_FOUND });
 
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta', code: CODES.INVALID_CURRENT_PASSWORD });
 
     // 2026-06-11 SE-07: re-verificar 2FA si está activa. Sin esto, un token
     // robado podía cambiar la password sin que el atacante supiera el TOTP →
@@ -359,12 +361,13 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
         return res.status(401).json({
           error: 'Se requiere código 2FA para cambiar la contraseña.',
           twofa_required: true,
+          code: CODES.TWOFA_REQUIRED,
         });
       }
       const { ok } = await verifyAndConsume(user.id, String(twofa_code));
       if (!ok) {
         logger.warn({ user_id: user.id, ip: req.ip }, 'change-password 2FA fallido');
-        return res.status(401).json({ error: 'Código 2FA incorrecto.' });
+        return res.status(401).json({ error: 'Código 2FA incorrecto.', code: CODES.INVALID_TWOFA_CODE });
       }
     }
 

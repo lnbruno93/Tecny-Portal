@@ -164,10 +164,14 @@ describe('ChangePasswordModal', () => {
 
   it('si backend pide 2FA → muestra input y re-submit con el código', async () => {
     // Primer call: pide 2FA. Segundo call: éxito.
+    // 2026-06-18 #318: el backend ahora devuelve `code: 'TWOFA_REQUIRED'`.
+    // Mantenemos `twofa_required: true` en el mock para reflejar el shape
+    // real del response (ambos campos coexisten — el code es el canónico,
+    // twofa_required queda como fallback de compatibilidad).
     mockChangePassword
       .mockRejectedValueOnce(Object.assign(new Error('Se requiere código 2FA'), {
         status: 401,
-        responseBody:   { twofa_required: true, error: 'Se requiere código 2FA' },
+        responseBody: { twofa_required: true, error: 'Se requiere código 2FA', code: 'TWOFA_REQUIRED' },
       }))
       .mockResolvedValueOnce({ ok: true });
 
@@ -196,11 +200,11 @@ describe('ChangePasswordModal', () => {
     mockChangePassword
       .mockRejectedValueOnce(Object.assign(new Error('2FA req'), {
         status: 401,
-        responseBody:   { twofa_required: true, error: 'Se requiere código 2FA' },
+        responseBody: { twofa_required: true, error: 'Se requiere código 2FA', code: 'TWOFA_REQUIRED' },
       }))
       .mockRejectedValueOnce(Object.assign(new Error('2FA bad'), {
         status: 401,
-        responseBody:   { error: 'Código 2FA incorrecto.' },
+        responseBody: { error: 'Código 2FA incorrecto.', code: 'INVALID_TWOFA_CODE' },
       }));
 
     const user = userEvent.setup();
@@ -221,7 +225,7 @@ describe('ChangePasswordModal', () => {
   it('password actual incorrecta (sin 2FA) → error inline en input current', async () => {
     mockChangePassword.mockRejectedValue(Object.assign(new Error('bad'), {
       status: 401,
-      responseBody:   { error: 'Contraseña actual incorrecta.' },
+      responseBody: { error: 'Contraseña actual incorrecta.', code: 'INVALID_CURRENT_PASSWORD' },
     }));
 
     const user = userEvent.setup();
@@ -274,5 +278,80 @@ describe('ChangePasswordModal', () => {
     const toggles = screen.getAllByLabelText(/mostrar contraseña/i);
     await user.click(toggles[0]);
     expect(currentInput).toHaveAttribute('type', 'text');
+  });
+
+  // ── Branching por `code` field (2026-06-18 #318) ──────────────────────────
+  // Tests específicos del path "code-first": el backend manda code estable,
+  // el frontend matchea por code (no por regex sobre error string ni por
+  // el flag legacy twofa_required). Estos tests fuerzan los responses a NO
+  // tener los campos legacy → si alguien quita el branching por code, fallan.
+
+  it('#318 code TWOFA_REQUIRED → muestra input 2FA (sin depender de twofa_required flag)', async () => {
+    mockChangePassword
+      .mockRejectedValueOnce(Object.assign(new Error('Se requiere código 2FA'), {
+        status: 401,
+        // SOLO code, sin twofa_required → forza branching por code.
+        responseBody: { error: 'Wording que NO matchea regex', code: 'TWOFA_REQUIRED' },
+      }))
+      .mockResolvedValueOnce({ ok: true });
+
+    const user = userEvent.setup();
+    renderModal();
+    await user.type(screen.getByLabelText(/contraseña actual/i), 'old-pass-123');
+    await user.type(screen.getByLabelText(/^contraseña nueva$/i), 'newpass123');
+    await user.type(screen.getByLabelText(/confirmar contraseña nueva/i), 'newpass123');
+    await user.click(screen.getByRole('button', { name: /cambiar contraseña/i }));
+
+    // El input de 2FA debe aparecer aunque el error string no contenga "2FA".
+    expect(await screen.findByLabelText(/código 2fa/i)).toBeInTheDocument();
+  });
+
+  it('#318 code INVALID_TWOFA_CODE → error en campo 2FA (sin depender de regex)', async () => {
+    mockChangePassword
+      .mockRejectedValueOnce(Object.assign(new Error('req'), {
+        status: 401,
+        responseBody: { error: 'req', code: 'TWOFA_REQUIRED' },
+      }))
+      .mockRejectedValueOnce(Object.assign(new Error('bad'), {
+        status: 401,
+        // Error string NO contiene "2FA" → solo el code identifica el caso.
+        responseBody: { error: 'Wording sin la sigla', code: 'INVALID_TWOFA_CODE' },
+      }));
+
+    const user = userEvent.setup();
+    renderModal();
+    await user.type(screen.getByLabelText(/contraseña actual/i), 'old-pass-123');
+    await user.type(screen.getByLabelText(/^contraseña nueva$/i), 'newpass123');
+    await user.type(screen.getByLabelText(/confirmar contraseña nueva/i), 'newpass123');
+    await user.click(screen.getByRole('button', { name: /cambiar contraseña/i }));
+
+    await screen.findByLabelText(/código 2fa/i);
+    await user.type(screen.getByLabelText(/código 2fa/i), '000000');
+    await user.click(screen.getByRole('button', { name: /confirmar/i }));
+
+    // Error inline en el input 2FA — confirma que el code disparó el branching
+    // correcto, no la regex.
+    expect(await screen.findByText(/código incorrecto/i)).toBeInTheDocument();
+  });
+
+  it('#318 fallback legacy (response sin code) sigue funcionando — deploy lag', async () => {
+    // Simula response de un backend que todavía NO desplegó #318 — sin code.
+    // El frontend debe caer al fallback (twofa_required flag + regex).
+    mockChangePassword
+      .mockRejectedValueOnce(Object.assign(new Error('req'), {
+        status: 401,
+        // Sin code, con flag legacy.
+        responseBody: { error: 'Se requiere código 2FA', twofa_required: true },
+      }))
+      .mockResolvedValueOnce({ ok: true });
+
+    const user = userEvent.setup();
+    renderModal();
+    await user.type(screen.getByLabelText(/contraseña actual/i), 'old-pass-123');
+    await user.type(screen.getByLabelText(/^contraseña nueva$/i), 'newpass123');
+    await user.type(screen.getByLabelText(/confirmar contraseña nueva/i), 'newpass123');
+    await user.click(screen.getByRole('button', { name: /cambiar contraseña/i }));
+
+    expect(await screen.findByLabelText(/código 2fa/i)).toBeInTheDocument();
   });
 });
