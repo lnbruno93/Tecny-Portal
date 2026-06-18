@@ -144,10 +144,9 @@ export default function Login() {
       {/* Panel marca (izquierda) — oculto en mobile < 900px */}
       <aside className="lg-brand">
         <div className="lg-top">
-          <div className="lg-mark">iP</div>
+          <div className="lg-mark">T</div>
           <div>
-            <div className="lg-name">iPro</div>
-            <div className="lg-sub">Tech Reseller · Celnyx</div>
+            <div className="lg-name">Tecny</div>
           </div>
         </div>
         <div className="lg-mid">
@@ -173,10 +172,9 @@ export default function Login() {
         <div className="login-box">
           {/* Logo mobile (visible solo < 900px) */}
           <div className="lg-mobile">
-            <div className="lg-mark">iP</div>
+            <div className="lg-mark">T</div>
             <div>
-              <div className="lg-name">iPro</div>
-              <div className="lg-sub">Tech Reseller · Celnyx</div>
+              <div className="lg-name">Tecny</div>
             </div>
           </div>
 

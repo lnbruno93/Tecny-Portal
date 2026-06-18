@@ -50,7 +50,7 @@ describe('generarTarjetasResumenPdf', () => {
 
     await generarTarjetasResumenPdf({ movimientos, totales, periodoLabel: 'junio 2026' });
 
-    expect(calls.text.some(s => /iPro · Tarjetas/.test(s))).toBe(true);
+    expect(calls.text.some(s => /Tecny · Tarjetas/.test(s))).toBe(true);
     expect(calls.text.some(s => /junio 2026/.test(s))).toBe(true);
 
     expect(calls.autoTable).not.toBeNull();

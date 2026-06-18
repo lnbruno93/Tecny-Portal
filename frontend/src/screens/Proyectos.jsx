@@ -466,7 +466,7 @@ export default function Proyectos() {
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="field">
                     <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    <input className="input" placeholder="Ej: App iPro v2" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
+                    <input className="input" placeholder="Ej: App Tecny v2" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
                   </div>
                   <div className="field">
                     <label className="field-label">Objetivo</label>

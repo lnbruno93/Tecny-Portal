@@ -52,7 +52,7 @@ export function generarComprobantesResumenXlsx({
   generadoEn = new Date(),
 } = {}) {
   const aoa = [
-    ['iPro · Comprobantes — Resumen'],
+    ['Tecny · Comprobantes — Resumen'],
     [`Período: ${periodoLabel || '—'}`],
     [
       'Cantidad', toNum(totales.count),

@@ -88,10 +88,9 @@ export default function ForgotPassword() {
     <div id="forgot-pw-screen" className="auth-screen">
       <aside className="lg-brand">
         <div className="lg-top">
-          <div className="lg-mark">iP</div>
+          <div className="lg-mark">T</div>
           <div>
-            <div className="lg-name">iPro</div>
-            <div className="lg-sub">Tech Reseller · Celnyx</div>
+            <div className="lg-name">Tecny</div>
           </div>
         </div>
         <div className="lg-mid">
@@ -115,10 +114,9 @@ export default function ForgotPassword() {
       <main className="lg-form">
         <div className="login-box">
           <div className="lg-mobile">
-            <div className="lg-mark">iP</div>
+            <div className="lg-mark">T</div>
             <div>
-              <div className="lg-name">iPro</div>
-              <div className="lg-sub">Tech Reseller · Celnyx</div>
+              <div className="lg-name">Tecny</div>
             </div>
           </div>
 

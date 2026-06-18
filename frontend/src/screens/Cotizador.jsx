@@ -117,7 +117,7 @@ function TabTarjetas() {
       txt += `💳 TOTAL 3 cuotas: $${fmt(calculo.tots.c3)}\n`;
       txt += `💳 TOTAL 6 cuotas: $${fmt(calculo.tots.c6)}\n`;
     }
-    txt += `\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.`;
+    txt += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +2800 reseñas 5 estrellas.`;
     navigator.clipboard?.writeText(txt);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 1800);
@@ -356,7 +356,7 @@ function TabUsd() {
       if (optTars) m += `TOTAL Transferencia ARS: $${fmt(calculo.tots.tars)}\n`;
       if (optTusd) m += `TOTAL Transferencia USD: u$s ${fmt(calculo.tots.tusd)}\n`;
     }
-    m += `\nNos encontrás en Google como "iPro Tech | Reseller" con +2800 reseñas 5 estrellas.`;
+    m += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +2800 reseñas 5 estrellas.`;
     navigator.clipboard?.writeText(m);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 1800);

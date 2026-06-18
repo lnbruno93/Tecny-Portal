@@ -69,7 +69,7 @@ export async function generarTarjetasResumenPdf({
   tc(doc, [255, 255, 255]);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('iPro · Tarjetas', M, 12);
+  doc.text('Tecny · Tarjetas', M, 12);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   const subtitle = `Estado de cuenta ${periodoLabel ? '· ' + periodoLabel : ''}`.trim();
