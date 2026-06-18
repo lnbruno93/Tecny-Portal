@@ -1,6 +1,15 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { auth as authApi } from '../lib/api';
+
+// CAPTCHA: site key del widget. Lee de Netlify env var VITE_HCAPTCHA_SITE_KEY
+// (build-time inline). Default: la test sitekey oficial de hCaptcha (siempre
+// passes) para dev local + tests. Si la real falta en prod (misconfig), el
+// widget aún renderiza pero los tokens del test sitekey son rechazados por
+// el backend con la secret real → user ve "verificación inválida".
+const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY
+  || '10000000-ffff-ffff-ffff-000000000001';
 
 // Signup público (TANDA 2.2 Fase B — visual polish).
 //
@@ -95,6 +104,13 @@ export default function Signup() {
   // Default 24 por si el backend (legacy) no manda el field.
   const [tokenTtlHours, setTokenTtlHours] = useState(24);
 
+  // CAPTCHA: el widget hCaptcha en modo "99.9% passive" resuelve invisible
+  // para users legítimos — el token llega via onVerify sin friction. Solo
+  // sospechosos ven challenge visual. Si el user es flaggeado y NO completa
+  // el challenge, captchaToken queda null y el submit se bloquea client-side.
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const captchaRef = useRef(null);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -106,6 +122,7 @@ export default function Signup() {
         email: normalizedEmail,
         password,
         tenant_nombre: tenantNombre.trim(),
+        hcaptcha_response: captchaToken || undefined,
       });
       // TANDA 2.7: backend response idéntica para email nuevo vs. duplicado
       // (anti-enum). El user no se auto-loguea — debe verificar email primero.
@@ -116,6 +133,10 @@ export default function Signup() {
       }
     } catch (err) {
       setError(err.message || 'No se pudo crear la cuenta.');
+      // El token hCaptcha es single-use. Si el submit falla por cualquier
+      // motivo, reseteamos para que el siguiente intento genere uno nuevo.
+      setCaptchaToken(null);
+      if (captchaRef.current) captchaRef.current.resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -300,6 +321,23 @@ export default function Signup() {
                       maxLength={120}
                     />
                   </div>
+                </div>
+
+                {/* hCaptcha widget. En modo "99.9% passive" (config en
+                    hCaptcha dashboard) es invisible para users legítimos —
+                    onVerify dispara con el token sin friction. Solo
+                    sospechosos ven challenge. theme="light" coincide con
+                    el split-screen. size="invisible" significa que el badge
+                    es discreto (no hay checkbox visible). */}
+                <div style={{ margin: '12px 0', display: 'flex', justifyContent: 'center' }}>
+                  <HCaptcha
+                    ref={captchaRef}
+                    sitekey={HCAPTCHA_SITE_KEY}
+                    onVerify={(token) => setCaptchaToken(token)}
+                    onExpire={() => setCaptchaToken(null)}
+                    onError={() => setCaptchaToken(null)}
+                    theme="light"
+                  />
                 </div>
 
                 <button className="login-btn" type="submit" disabled={loading}>
