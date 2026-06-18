@@ -8,7 +8,7 @@ const { loginSchema, changePasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
-const { loadUserPerms } = require('../lib/permissions');
+const { loadUserPerms, loadUserPermsRows } = require('../lib/permissions');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
 
@@ -226,10 +226,12 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
 
-    const { rows: perms } = await db.query(
-      'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
-      [user.id]
-    );
+    // 2026-06-18 RLS NULLIF hotfix: user_permissions tiene RLS activo. La
+    // policy filtra por tenant_id = NULLIF(current_setting(...), '')::int.
+    // Sin SET LOCAL, current_setting devuelve '' y la fila no pasa el filtro.
+    // `loadUserPermsRows` resuelve el tenant del user + wrappea en withTenant
+    // para que la policy vea el tenant correcto y devuelva los rows.
+    const perms = await loadUserPermsRows(user.id);
     const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
     const permissions = { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) };
 
@@ -262,10 +264,9 @@ router.get('/me', requireAuth, async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const { rows: perms } = await db.query(
-      'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
-      [req.user.id]
-    );
+    // 2026-06-18 RLS NULLIF hotfix: ver comentario en login (línea ~229).
+    // loadUserPermsRows resuelve tenant + withTenant internamente.
+    const perms = await loadUserPermsRows(req.user.id);
     const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
     // 2026-06-16 TANDA 2.1: incluir email_verified en la respuesta de /me para
     // que el frontend sepa si mostrar el banner de verificación. Excluimos
