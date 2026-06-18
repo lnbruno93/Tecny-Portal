@@ -118,7 +118,16 @@ export const auth = {
   login: (username, password, code) => loginDirect({ username, password, code }),
   me: () => api('/api/auth/me'),
   logout: () => api('/api/auth/logout', 'POST'),
-  changePassword: (currentPassword, newPassword) => api('/api/auth/change-password', 'POST', { currentPassword, newPassword }),
+  // 2026-06-11 SE-07: 3er arg opcional twofa_code para users con 2FA activo.
+  // El flow es two-step: primer call sin code → si backend responde
+  // { twofa_required: true } el UI muestra input de 2FA → segundo call con code.
+  changePassword: (currentPassword, newPassword, twofaCode) => api(
+    '/api/auth/change-password',
+    'POST',
+    twofaCode
+      ? { currentPassword, newPassword, twofa_code: twofaCode }
+      : { currentPassword, newPassword }
+  ),
   // TANDA 2.2: signup público + email verification. Las dos primeras son
   // públicas (sin auth header — el wrapper api() las manda sin token si no
   // hay sesión, igual el backend acepta). resendVerification SÍ requiere auth
