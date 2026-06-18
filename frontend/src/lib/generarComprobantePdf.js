@@ -74,11 +74,11 @@ export async function generarComprobantePdf(venta) {
   doc.rect(0, 0, pageWidth, 6, 'F');
 
   y = 50;
-  // Logo de texto "iPro" con tracking grande
+  // Logo de texto "Tecny" con tracking grande
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(28);
   tc(doc, COLOR.brand);
-  doc.text('iPro', margin, y);
+  doc.text('Tecny', margin, y);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
@@ -337,7 +337,7 @@ export async function generarComprobantePdf(venta) {
   doc.setFontSize(8);
   tc(doc, COLOR.textSoft);
   doc.text(
-    `Generado el ${new Date().toLocaleString('es-AR')} · iPro Portal`,
+    `Generado el ${new Date().toLocaleString('es-AR')} · Tecny`,
     pageWidth - margin,
     footerY + 24,
     { align: 'right' }

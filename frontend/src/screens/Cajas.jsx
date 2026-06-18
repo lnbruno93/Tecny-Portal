@@ -20,7 +20,9 @@ function todayISO() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const TIPO_TONE  = { amigo: 'info', familiar: 'accent', cliente: 'pos', inversor: 'warn', 'ipro team': 'default' };
-const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'iPro team' };
+// El value 'ipro team' es legacy (constraint DB pre-rebrand 2026-06-18 #324).
+// Mantenemos el value para no romper rows existentes; solo cambia el display.
+const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'Tecny team' };
 
 // Badge ahora vive en frontend/src/components/Badge.jsx (U-13 dedup,
 // auditoría 2026-06-10) — importado arriba.
@@ -1049,7 +1051,7 @@ export default function Cajas() {
                       <option value="familiar">Familiar</option>
                       <option value="cliente">Cliente</option>
                       <option value="inversor">Inversor</option>
-                      <option value="ipro team">iPro Team</option>
+                      <option value="ipro team">Tecny Team</option>
                     </select>
                   </div>
                   {cError && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{cError}</div>}

@@ -61,10 +61,10 @@ function decryptSecret(blob) {
 // scanear con la app.
 function generateSecret() {
   // speakeasy devuelve { ascii, hex, base32, otpauth_url }. Usamos base32.
-  return speakeasy.generateSecret({ length: 20, name: 'iPro Portal' }).base32;
+  return speakeasy.generateSecret({ length: 20, name: 'Tecny' }).base32;
 }
 
-function buildOtpAuthUri(secret, username, issuer = 'iPro Portal') {
+function buildOtpAuthUri(secret, username, issuer = 'Tecny') {
   return speakeasy.otpauthURL({
     secret,
     label: `${issuer}:${username}`,

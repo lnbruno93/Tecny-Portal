@@ -65,7 +65,7 @@ export async function generarComprobantesResumenPdf({
   tc(doc, [255, 255, 255]);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('iPro · Comprobantes', M, 12);
+  doc.text('Tecny · Comprobantes', M, 12);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   const subtitle = `Resumen ${periodoLabel ? '· ' + periodoLabel : ''}`.trim();

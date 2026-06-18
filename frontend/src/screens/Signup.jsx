@@ -168,10 +168,9 @@ export default function Signup() {
       {/* Panel marca (izquierda) — mismo que Login pero eyebrow distinto */}
       <aside className="lg-brand">
         <div className="lg-top">
-          <div className="lg-mark">iP</div>
+          <div className="lg-mark">T</div>
           <div>
-            <div className="lg-name">iPro</div>
-            <div className="lg-sub">Tech Reseller · Celnyx</div>
+            <div className="lg-name">Tecny</div>
           </div>
         </div>
         <div className="lg-mid">
@@ -196,10 +195,9 @@ export default function Signup() {
       <main className="lg-form">
         <div className="login-box">
           <div className="lg-mobile">
-            <div className="lg-mark">iP</div>
+            <div className="lg-mark">T</div>
             <div>
-              <div className="lg-name">iPro</div>
-              <div className="lg-sub">Tech Reseller · Celnyx</div>
+              <div className="lg-name">Tecny</div>
             </div>
           </div>
 
@@ -257,7 +255,7 @@ export default function Signup() {
             <>
               <div className="lg-h">
                 <h1>Crear tu cuenta</h1>
-                <p>Empezá a usar iPro en menos de un minuto.</p>
+                <p>Empezá a usar Tecny en menos de un minuto.</p>
               </div>
 
               <form onSubmit={handleSubmit}>
