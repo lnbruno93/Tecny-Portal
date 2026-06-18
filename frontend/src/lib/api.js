@@ -558,3 +558,10 @@ export const featureFlags = {
   adminUpdate:  (name, data) => api(`/api/feature-flags/${name}`, 'PATCH', data),
   adminDelete:  (name) => api(`/api/feature-flags/${name}`, 'DELETE'),
 };
+
+// 2026-06-18 #323 TANDA 1 H3: onboarding status para Inicio.jsx.
+// Devuelve { has_productos, has_contactos, has_ventas }. OnboardingCard
+// lo lee al mount, decide qué items mostrar tachados / pendientes.
+export const onboarding = {
+  status: () => api('/api/onboarding/status'),
+};

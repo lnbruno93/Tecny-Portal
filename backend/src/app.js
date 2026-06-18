@@ -92,6 +92,7 @@ const conciliacionRoutes = require('./routes/conciliacion');
 const alertasRoutes      = require('./routes/alertas');
 const adminRoutes        = require('./routes/admin');
 const featureFlagsRoutes = require('./routes/feature-flags');
+const onboardingRoutes   = require('./routes/onboarding');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -646,6 +647,11 @@ app.use('/api/admin',         requireAuth, adminRoutes);
 // dentro del router porque NO TODO el router es admin (a diferencia de
 // /api/admin). Ver routes/feature-flags.js para el rationale.
 app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
+
+// 2026-06-18 #323 TANDA 1 H3: onboarding status. Cualquier user logueado
+// del tenant puede consultar (no requiere permission — es read-only check
+// del estado del tenant).
+app.use('/api/onboarding', requireAuth, onboardingRoutes);
 
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');
