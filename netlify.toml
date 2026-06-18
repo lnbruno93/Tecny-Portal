@@ -51,7 +51,14 @@
     # connect-src incluye prod y staging (el branch deploy de staging pega al backend de staging).
     # report-uri: las browsers postean reports de violaciones de CSP a este endpoint
     # (apunta a prod; staging usa el mismo — el endpoint loguea con redacción).
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://ipro-backend-production.up.railway.app https://ipro-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://ipro-backend-production.up.railway.app/api/csp-report"
+    #
+    # hCaptcha (signup público anti-bot, PR #281):
+    #   - script-src: https://*.hcaptcha.com (carga /1/api.js + onload callback)
+    #   - frame-src: https://*.hcaptcha.com (challenge iframe + checkbox iframe)
+    #   - style-src: https://*.hcaptcha.com (estilos inyectados del widget)
+    #   - connect-src: https://*.hcaptcha.com (siteverify telemetry + sentry.hcaptcha.com)
+    # Ver https://docs.hcaptcha.com/#content-security-policy-settings.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://ipro-backend-production.up.railway.app https://ipro-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://ipro-backend-production.up.railway.app/api/csp-report"
 
 # Headers for service worker scope and caching
 [[headers]]
