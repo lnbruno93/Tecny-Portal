@@ -140,9 +140,11 @@ export default function ChangePasswordModal({ open, onClose }) {
       // Pequeño delay para que el toast se vea antes del redirect a login.
       setTimeout(() => logout(), 800);
     } catch (err) {
-      // El wrapper api() lanza Error con .status y .body. Distinguimos casos:
+      // El wrapper api() (lib/api.js) lanza Error con `.status` y
+      // `.responseBody` (no `.body` — naming intencional para no chocar con
+      // Response.body nativo). Distinguimos casos.
       const status = err?.status;
-      const body   = err?.body || {};
+      const body   = err?.responseBody || {};
 
       if (status === 401 && body.twofa_required) {
         // Primera vez que vemos que el user tiene 2FA — mostrar input.

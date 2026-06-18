@@ -167,7 +167,7 @@ describe('ChangePasswordModal', () => {
     mockChangePassword
       .mockRejectedValueOnce(Object.assign(new Error('Se requiere código 2FA'), {
         status: 401,
-        body:   { twofa_required: true, error: 'Se requiere código 2FA' },
+        responseBody:   { twofa_required: true, error: 'Se requiere código 2FA' },
       }))
       .mockResolvedValueOnce({ ok: true });
 
@@ -196,11 +196,11 @@ describe('ChangePasswordModal', () => {
     mockChangePassword
       .mockRejectedValueOnce(Object.assign(new Error('2FA req'), {
         status: 401,
-        body:   { twofa_required: true, error: 'Se requiere código 2FA' },
+        responseBody:   { twofa_required: true, error: 'Se requiere código 2FA' },
       }))
       .mockRejectedValueOnce(Object.assign(new Error('2FA bad'), {
         status: 401,
-        body:   { error: 'Código 2FA incorrecto.' },
+        responseBody:   { error: 'Código 2FA incorrecto.' },
       }));
 
     const user = userEvent.setup();
@@ -221,7 +221,7 @@ describe('ChangePasswordModal', () => {
   it('password actual incorrecta (sin 2FA) → error inline en input current', async () => {
     mockChangePassword.mockRejectedValue(Object.assign(new Error('bad'), {
       status: 401,
-      body:   { error: 'Contraseña actual incorrecta.' },
+      responseBody:   { error: 'Contraseña actual incorrecta.' },
     }));
 
     const user = userEvent.setup();
@@ -238,7 +238,7 @@ describe('ChangePasswordModal', () => {
   it('400 datos inválidos del backend → muestra mensaje del backend', async () => {
     mockChangePassword.mockRejectedValue(Object.assign(new Error('invalid'), {
       status: 400,
-      body:   { error: 'Mensaje específico del backend' },
+      responseBody:   { error: 'Mensaje específico del backend' },
     }));
 
     const user = userEvent.setup();
