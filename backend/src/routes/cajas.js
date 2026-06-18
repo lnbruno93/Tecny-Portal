@@ -5,7 +5,8 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
-const { createCachedFetcher } = require('../lib/cacheTtl');
+const { createTenantScopedCache } = require('../lib/cacheTtl');
+const { CAJAS_RESUMEN } = require('../lib/cacheConfig');
 const { getCajasList, invalidateCajas } = require('../lib/cajasCache');
 const { postCajaMovimiento } = require('../lib/cajaLedger');
 const {
@@ -562,33 +563,37 @@ const RESUMEN_INV_SQL = `
   WHERE m.deleted_at IS NULL
   GROUP BY m.contacto_id, ut.tasa
 `;
-const RESUMEN_MAX_FETCHERS = 256;
-const resumenFetchers = new Map();
-function getResumenFetcher(tenantId) {
-  let fn = resumenFetchers.get(tenantId);
-  if (fn) {
-    resumenFetchers.delete(tenantId);
-    resumenFetchers.set(tenantId, fn);
-    return fn;
-  }
-  fn = createCachedFetcher(`cajas:resumen:t${tenantId}`, 20_000, async () =>
-    db.withTenant(tenantId, async (client) => {
+// Cache resumen (Inversiones + Deudas).
+//
+// Migrado a createTenantScopedCache (Redis) — antes era createCachedFetcher
+// local. Beneficios cross-instance:
+//   - Las 2 réplicas Railway comparten el cache → menos queries duplicadas.
+//   - El jitter ±20% del wrapper Redis previene stampede en el TTL boundary.
+//   - Key Redis preservada (`cache:cajas:resumen:t${tenantId}`) para no
+//     invalidar entries activos al deploy.
+//
+// Naming nota: el keyPrefix anterior era `cajas:resumen:t` (sin `cache:`
+// prefix por inconsistencia histórica — flagged como LOW H6-Hyg en el
+// audit). El nuevo prefix sí incluye `cache:` para alinear con el resto
+// de los caches Redis del sistema. Esto invalida el cache local previo
+// la próxima vez que se llame, pero NO causa downtime — el primer hit
+// post-deploy hace MISS y refetchea desde Postgres en <100ms.
+const resumenCache = createTenantScopedCache({
+  ...CAJAS_RESUMEN,
+  fetcher: async (tenantId) => {
+    const id = Number(tenantId);
+    return db.withTenant(id, async (client) => {
       const [{ rows: deudas }, { rows: inv }] = await Promise.all([
         client.query(RESUMEN_DEUDAS_SQL),
         client.query(RESUMEN_INV_SQL),
       ]);
       return { deudas, inversiones: inv };
-    })
-  );
-  resumenFetchers.set(tenantId, fn);
-  if (resumenFetchers.size > RESUMEN_MAX_FETCHERS) {
-    resumenFetchers.delete(resumenFetchers.keys().next().value);
-  }
-  return fn;
-}
+    });
+  },
+});
 
 router.get('/resumen', async (req, res, next) => {
-  try { res.json(await getResumenFetcher(req.tenantId)()); } catch (err) { next(err); }
+  try { res.json(await resumenCache.get(req.tenantId)); } catch (err) { next(err); }
 });
 
 module.exports = router;

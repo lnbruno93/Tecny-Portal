@@ -177,7 +177,15 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     await bcrypt.hash(password, BCRYPT_ROUNDS);
     logger.info({ email_hash: 'redacted', source: 'signup_dup_email' },
       'signup duplicado — respondiendo genérico (anti-enum)');
-    return res.status(200).json({ verification_required: true });
+    // TANDA 5 fix U3 auditoría 2026-06-17: incluir TTL en response. Antes
+    // el frontend hardcodeaba "24 horas" en el copy — si el backend
+    // ajustaba TOKEN_EXPIRY_HOURS la UI mostraba info incorrecta. Ahora
+    // el frontend lee este field. La info también se incluye en el path
+    // duplicado para preservar shape idéntica (anti-enum).
+    return res.status(200).json({
+      verification_required: true,
+      verification_token_ttl_hours: TOKEN_EXPIRY_HOURS,
+    });
   }
 
   const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -311,8 +319,10 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
   // signup duplicado por shape de la response. Trade-off: el user debe verificar
   // email antes de iniciar sesión (no hay auto-login). El JWT antes generado
   // acá ya no se genera (era para auto-login).
+  // TANDA 5 fix U3: incluir TTL en response (idéntico al path duplicado).
   const response = {
     verification_required: true,
+    verification_token_ttl_hours: TOKEN_EXPIRY_HOURS,
   };
 
   // En dev/test, devolvemos el token para que E2E pueda verificar inline.

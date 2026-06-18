@@ -67,4 +67,15 @@ module.exports = {
     ttlMs: 30_000,
     maxFetchers: 100,
   },
+
+  // Resumen Inversiones + Deudas para Cajas (2 queries paralelas).
+  // Sin invalidación explícita — TTL-based recovery (mismo semantics que
+  // pre-refactor cuando era createCachedFetcher local). Si en el futuro
+  // queremos freshness inmediata post-write de inversiones/deudas, agregar
+  // invalidate desde routes/proveedores.js + routes/inversiones.js.
+  CAJAS_RESUMEN: {
+    keyPrefix: 'cache:cajas:resumen:t',
+    ttlMs: 20_000,
+    maxFetchers: 256,
+  },
 };

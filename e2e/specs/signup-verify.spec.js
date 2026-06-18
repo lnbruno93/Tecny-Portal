@@ -71,6 +71,26 @@ test.describe('Signup → verify-email → portal access', () => {
     expect(verifyToken).toMatch(/^[0-9a-f]{64}$/);
 
     // 4) Visitamos el link del email — VerifyEmail.jsx auto-verifica en useEffect.
+    //
+    // TANDA 5 fix M4 auditoría 2026-06-17: capturamos las responses del API
+    // verify-email para distinguir el path "first call success" del path
+    // "subsequent already_used". En dev React StrictMode hace que useEffect
+    // corra 2× → 2 calls al API. En prod (sin StrictMode) hay 1 sola call.
+    // Lo que NUNCA debería pasar (en NINGÚN entorno) es que el PRIMER call
+    // devuelva ok=false — eso sería un bug de regresión que el test debe
+    // cazar. La assertion del heading sigue siendo broad por StrictMode,
+    // pero la del primer API response cubre lo que el audit pidió.
+    const verifyResponses = [];
+    page.on('response', async (response) => {
+      if (response.url().endsWith('/api/auth/verify-email')) {
+        try {
+          verifyResponses.push({
+            status: response.status(),
+            body: await response.json(),
+          });
+        } catch { /* body parse fail — record status only */ }
+      }
+    });
     await page.goto(`/verify-email?token=${verifyToken}`);
 
     // 5) Aparece el estado de éxito Y redirige a / tras 2.5s.
@@ -78,12 +98,19 @@ test.describe('Signup → verify-email → portal access', () => {
     //    primer call consume el token (status='success'), el segundo ve
     //    already_used (status='already'). Ambos estados son "verified OK"
     //    y redirigen. En prod (sin StrictMode) solo se ve 'success'.
-    //    Aceptamos cualquiera de los dos headings.
+    //    Aceptamos cualquiera de los dos headings VISIBLES; el API check
+    //    abajo locka que el PRIMER call siempre fue success real.
     await expect(
       page.getByRole('heading', {
         name: /listo.*email verificado|este email ya estaba verificado/i,
       })
     ).toBeVisible({ timeout: 10_000 });
+
+    // El primer API call al verify-email DEBE ser un éxito real (status 200,
+    // ok:true). Sin esto un mapping erróneo expired→success no se cazaría.
+    expect(verifyResponses.length).toBeGreaterThanOrEqual(1);
+    expect(verifyResponses[0].status).toBe(200);
+    expect(verifyResponses[0].body && verifyResponses[0].body.ok).toBe(true);
     // Esperamos el redirect a / (que muestra Login porque no hay sesión).
     await page.waitForURL((url) => !url.pathname.startsWith('/verify-email'), {
       timeout: 5_000,

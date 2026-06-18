@@ -98,6 +98,11 @@ export default function Signup() {
   // requería auto-login), mostramos pantalla "revisá tu email". El email
   // sometido se guarda en `submittedEmail` para personalizar el mensaje.
   const [submittedEmail, setSubmittedEmail] = useState(null);
+  // TANDA 5 fix U3 auditoría 2026-06-17: el backend devuelve
+  // `verification_token_ttl_hours` en la response — antes era hardcoded
+  // "24 horas" en el copy, lo que mentía si el backend ajustaba TTL.
+  // Default 24 por si el backend (legacy) no manda el field.
+  const [tokenTtlHours, setTokenTtlHours] = useState(24);
 
   // CAPTCHA: el widget hCaptcha en modo "99.9% passive" resuelve invisible
   // para users legítimos — el token llega via onVerify sin friction. Solo
@@ -112,7 +117,7 @@ export default function Signup() {
     setLoading(true);
     const normalizedEmail = email.trim().toLowerCase();
     try {
-      await authApi.signup({
+      const data = await authApi.signup({
         nombre: nombre.trim(),
         email: normalizedEmail,
         password,
@@ -123,6 +128,9 @@ export default function Signup() {
       // (anti-enum). El user no se auto-loguea — debe verificar email primero.
       // Mostramos pantalla "revisá tu email" sin distinguir los dos casos.
       setSubmittedEmail(normalizedEmail);
+      if (data && data.verification_token_ttl_hours) {
+        setTokenTtlHours(data.verification_token_ttl_hours);
+      }
     } catch (err) {
       setError(err.message || 'No se pudo crear la cuenta.');
       // El token hCaptcha es single-use. Si el submit falla por cualquier
@@ -192,7 +200,8 @@ export default function Signup() {
                 </p>
               </div>
               <div className="field-note" style={{ marginTop: 16 }}>
-                ¿No lo ves? Revisá la carpeta de spam. El link expira en 24 horas.
+                ¿No lo ves? Revisá la carpeta de spam. El link expira en{' '}
+                {tokenTtlHours} {tokenTtlHours === 1 ? 'hora' : 'horas'}.
               </div>
               {/* TANDA 1 fix U2 auditoría 2026-06-17: CTA para retipear el
                   email. Trade-off del anti-enum: el user que escribió mal su
