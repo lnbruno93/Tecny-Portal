@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// 2026-06-18 #321: Login.jsx ahora usa <Link to="/forgot-password"> — necesita
+// Router context. MemoryRouter es el wrap correcto para tests (no toca el
+// historial real del browser).
+import { MemoryRouter } from 'react-router-dom';
 
 // Mock de AuthContext — el Login usa `useAuth().login()`. Mockeamos con una
 // función vi.fn() que cada test configura su resolved/rejected value antes
@@ -16,7 +20,7 @@ import Login from './Login';
 import { ToastProvider } from '../contexts/ToastContext';
 
 const renderL = () => render(
-  <ToastProvider><Login /></ToastProvider>
+  <MemoryRouter><ToastProvider><Login /></ToastProvider></MemoryRouter>
 );
 
 // Helpers: getByLabelText(/contraseña/) matchea el input Y el toggle ojito

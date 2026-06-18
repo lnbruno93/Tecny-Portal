@@ -53,6 +53,17 @@ const CODES = Object.freeze({
   // NULL). Caso edge: token válido pero user borrado entre login y la
   // próxima request. Frontend debería forzar logout.
   USER_NOT_FOUND:             'USER_NOT_FOUND',
+
+  // ─── Forgot / Reset password (TANDA 0 #321) ───────────────────────────
+  // 401 — el token de reset no existe en la tabla (mal copiado del email, o
+  // formato inválido que pasó el regex zod pero no matchea ninguna row).
+  INVALID_RESET_TOKEN:        'INVALID_RESET_TOKEN',
+  // 401 — el token de reset está vencido (past expires_at). User debe pedir
+  // uno nuevo desde /forgot-password.
+  EXPIRED_RESET_TOKEN:        'EXPIRED_RESET_TOKEN',
+  // 401 — el token de reset ya fue consumido (used_at IS NOT NULL). Single-
+  // shot por diseño: si el user ya cambió la pass, el link viejo no sirve.
+  USED_RESET_TOKEN:           'USED_RESET_TOKEN',
 });
 
 module.exports = { CODES };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 // Login screen — rediseño split-screen (2026-06-06).
@@ -90,7 +91,6 @@ export default function Login() {
   // "Recordarme" — UI por ahora. El token vive en localStorage siempre.
   // Cuando agreguemos sesión efímera (sessionStorage si !remember), wireamos.
   const [remember, setRemember] = useState(true);
-  const [forgotHint, setForgotHint] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -241,9 +241,9 @@ export default function Login() {
 
                 {/* Recordarme + forgot password — del handoff 2026-06-17.
                     Recordarme: visual por ahora (token siempre persiste en localStorage).
-                    Forgot password: no tenemos flow de reset auto-servicio aún; el botón
-                    despliega el flow real actual (pedirle al admin del tenant). Cuando
-                    implementemos reset por email (TANDA futura), reemplazar por Link. */}
+                    Forgot password: TANDA 0 #321 (2026-06-18) ya tiene flow
+                    auto-servicio — link a /forgot-password en lugar del hint
+                    legacy. */}
                 <div className="lg-row">
                   <label className="lg-remember">
                     <input
@@ -253,21 +253,10 @@ export default function Login() {
                     />
                     <span>Recordarme</span>
                   </label>
-                  <button
-                    type="button"
-                    className="lg-link"
-                    onClick={() => setForgotHint(h => !h)}
-                  >
+                  <Link to="/forgot-password" className="lg-link">
                     ¿Olvidaste tu contraseña?
-                  </button>
+                  </Link>
                 </div>
-                {forgotHint && (
-                  <div className="lg-forgot-hint" role="note">
-                    Pedile a un admin de tu cuenta que la resetee desde
-                    {' '}<strong>Config → Usuarios</strong>. El reset auto-servicio
-                    llega pronto.
-                  </div>
-                )}
               </>
             )}
 
