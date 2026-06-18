@@ -64,7 +64,7 @@ export function generarTarjetasResumenXlsx({
   const usdt = totales.USDT || {};
 
   const aoa = [
-    ['iPro · Tarjetas — Estado de cuenta'],
+    ['Tecny · Tarjetas — Estado de cuenta'],
     [`Período: ${periodoLabel || '—'}`],
     kpiRow('ARS', ars),
   ];

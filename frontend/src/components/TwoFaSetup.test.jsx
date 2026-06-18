@@ -16,7 +16,7 @@ vi.mock('../lib/api', () => ({
   twoFa: {
     setup: vi.fn(() => Promise.resolve({
       secret: 'ABCDEFGH12345678ABCD',
-      otpauth_uri: 'otpauth://totp/iPro:test?secret=ABCD&issuer=iPro',
+      otpauth_uri: 'otpauth://totp/Tecny:test?secret=ABCD&issuer=Tecny',
       recovery_codes: [
         'AAAA-BBBB-CC', 'DDDD-EEEE-FF', 'GGGG-HHHH-II', 'JJJJ-KKKK-LL',
         'MMMM-NNNN-OO', 'PPPP-QQQQ-RR', 'SSSS-TTTT-UU', 'VVVV-WWWW-XX',
@@ -49,7 +49,7 @@ beforeEach(() => {
   // Reset mock implementation to default (used by other tests after error tests change it).
   twoFa.setup.mockImplementation(() => Promise.resolve({
     secret: 'ABCDEFGH12345678ABCD',
-    otpauth_uri: 'otpauth://totp/iPro:test?secret=ABCD&issuer=iPro',
+    otpauth_uri: 'otpauth://totp/Tecny:test?secret=ABCD&issuer=Tecny',
     recovery_codes: [
       'AAAA-BBBB-CC', 'DDDD-EEEE-FF', 'GGGG-HHHH-II', 'JJJJ-KKKK-LL',
       'MMMM-NNNN-OO', 'PPPP-QQQQ-RR', 'SSSS-TTTT-UU', 'VVVV-WWWW-XX',

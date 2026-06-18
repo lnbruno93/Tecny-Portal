@@ -61,7 +61,7 @@ function _emailFrom() {
   // Si no hay EMAIL_FROM, usamos onboarding@resend.dev — Resend permite enviar
   // desde ese sender solo al email del owner de la cuenta (limitado pero
   // útil para staging temprano sin dominio verificado).
-  return process.env.EMAIL_FROM || 'iPro Portal <onboarding@resend.dev>';
+  return process.env.EMAIL_FROM || 'Tecny <onboarding@resend.dev>';
 }
 
 // ── HTML templates ───────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ function _verificationHtml({ name, verifyUrl }) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Verificá tu email — iPro Portal</title>
+<title>Verificá tu email — Tecny</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1a14;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:40px 16px;">
@@ -85,12 +85,12 @@ function _verificationHtml({ name, verifyUrl }) {
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
         <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
           <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
-          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">iPro Portal</span>
+          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny</span>
         </td></tr>
         <tr><td style="padding:36px 36px 12px;">
           <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#0d1220;">Verificá tu email</h1>
           <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
-          <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#3f3a2c;">Te diste de alta en iPro Portal. Para empezar a operar (crear ventas, comprobantes, etc.), confirmanos que el email es tuyo:</p>
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#3f3a2c;">Te diste de alta en Tecny. Para empezar a operar (crear ventas, comprobantes, etc.), confirmanos que el email es tuyo:</p>
           <p style="margin:0 0 24px;text-align:center;">
             <a href="${_esc(verifyUrl)}" style="display:inline-block;padding:13px 28px;background:#0ea5e9;color:#ffffff;text-decoration:none;border-radius:9px;font-weight:700;font-size:15px;letter-spacing:-0.005em;">Verificar email →</a>
           </p>
@@ -99,7 +99,7 @@ function _verificationHtml({ name, verifyUrl }) {
           <p style="margin:0;font-size:13px;line-height:1.55;color:#76705c;">El link vence en 24 horas. Si no creaste vos esta cuenta, podés ignorar este email.</p>
         </td></tr>
         <tr><td style="padding:20px 36px 32px;border-top:1px solid #f0ead6;font-size:12px;color:#9c957f;text-align:center;">
-          iPro Portal · Tech Reseller · Celnyx
+          Tecny
         </td></tr>
       </table>
     </td></tr>
@@ -113,27 +113,27 @@ function _verificationText({ name, verifyUrl }) {
   const greeting = name ? `Hola ${name},` : 'Hola,';
   return `${greeting}
 
-Te diste de alta en iPro Portal. Para empezar a operar (crear ventas, comprobantes, etc.), confirmanos tu email abriendo este link:
+Te diste de alta en Tecny. Para empezar a operar (crear ventas, comprobantes, etc.), confirmanos tu email abriendo este link:
 
 ${verifyUrl}
 
 El link vence en 24 horas. Si no creaste vos esta cuenta, ignorá este email.
 
-— iPro Portal`;
+— Tecny`;
 }
 
 function _welcomeHtml({ name }) {
   const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
   return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Bienvenido a iPro Portal</title></head>
+<head><meta charset="UTF-8"><title>Bienvenido a Tecny</title></head>
 <body style="margin:0;padding:0;background:#f4f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1a14;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:40px 16px;">
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
         <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
           <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
-          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">iPro Portal</span>
+          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny</span>
         </td></tr>
         <tr><td style="padding:36px 36px 24px;">
           <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#0d1220;">¡Listo! Cuenta verificada ✓</h1>
@@ -142,7 +142,7 @@ function _welcomeHtml({ name }) {
           <p style="margin:0;font-size:13px;line-height:1.55;color:#76705c;">¿Algún problema? Respondé a este email y te ayudamos.</p>
         </td></tr>
         <tr><td style="padding:20px 36px 32px;border-top:1px solid #f0ead6;font-size:12px;color:#9c957f;text-align:center;">
-          iPro Portal · Tech Reseller · Celnyx
+          Tecny
         </td></tr>
       </table>
     </td></tr>
@@ -155,11 +155,11 @@ function _welcomeText({ name }) {
   const greeting = name ? `Hola ${name},` : 'Hola,';
   return `${greeting}
 
-¡Listo! Tu cuenta de iPro Portal está verificada. Ya podés operar sin restricciones — crear ventas, registrar pagos, gestionar inventario y todo lo demás.
+¡Listo! Tu cuenta de Tecny está verificada. Ya podés operar sin restricciones — crear ventas, registrar pagos, gestionar inventario y todo lo demás.
 
 ¿Algún problema? Respondé a este email.
 
-— iPro Portal`;
+— Tecny`;
 }
 
 // Mini-escape HTML — evitamos inyectar nombres / URLs sin escape en el HTML.
@@ -206,7 +206,7 @@ async function sendVerificationEmail({ to, name, verifyUrl }) {
     const result = await resend.emails.send({
       from:    _emailFrom(),
       to,
-      subject: 'Verificá tu email — iPro Portal',
+      subject: 'Verificá tu email — Tecny',
       html:    _verificationHtml({ name, verifyUrl }),
       text:    _verificationText({ name, verifyUrl }),
     });
@@ -254,7 +254,7 @@ async function sendWelcomeEmail({ to, name }) {
     const result = await resend.emails.send({
       from:    _emailFrom(),
       to,
-      subject: '¡Bienvenido a iPro Portal!',
+      subject: '¡Bienvenido a Tecny!',
       html:    _welcomeHtml({ name }),
       text:    _welcomeText({ name }),
     });
@@ -279,7 +279,7 @@ function _passwordResetHtml({ name, resetUrl, ttlHours }) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Resetear contraseña — iPro Portal</title>
+<title>Resetear contraseña — Tecny</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1a14;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:40px 16px;">
@@ -287,12 +287,12 @@ function _passwordResetHtml({ name, resetUrl, ttlHours }) {
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
         <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
           <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
-          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">iPro Portal</span>
+          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny</span>
         </td></tr>
         <tr><td style="padding:36px 36px 12px;">
           <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#0d1220;">Resetear tu contraseña</h1>
           <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
-          <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#3f3a2c;">Recibimos una solicitud para resetear la contraseña de tu cuenta en iPro Portal. Si fuiste vos, hacé click para elegir una nueva:</p>
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#3f3a2c;">Recibimos una solicitud para resetear la contraseña de tu cuenta en Tecny. Si fuiste vos, hacé click para elegir una nueva:</p>
           <p style="margin:0 0 24px;text-align:center;">
             <a href="${_esc(resetUrl)}" style="display:inline-block;padding:13px 28px;background:#0ea5e9;color:#ffffff;text-decoration:none;border-radius:9px;font-weight:700;font-size:15px;letter-spacing:-0.005em;">Elegir nueva contraseña →</a>
           </p>
@@ -312,7 +312,7 @@ function _passwordResetText({ name, resetUrl, ttlHours }) {
   const greeting = name ? `Hola ${name},` : 'Hola,';
   return `${greeting}
 
-Recibimos una solicitud para resetear la contraseña de tu cuenta en iPro Portal.
+Recibimos una solicitud para resetear la contraseña de tu cuenta en Tecny.
 
 Si fuiste vos, abrí este link para elegir una nueva:
 ${resetUrl}
@@ -321,7 +321,7 @@ El link vence en ${ttlHours} ${ttlHours === 1 ? 'hora' : 'horas'}.
 
 Si no pediste vos este reset, ignorá este email. Tu contraseña actual sigue funcionando.
 
-— iPro Portal`;
+— Tecny`;
 }
 
 /**
@@ -367,7 +367,7 @@ async function sendPasswordResetEmail({ to, name, resetUrl, ttlHours }) {
     const result = await resend.emails.send({
       from:    _emailFrom(),
       to,
-      subject: 'Resetear contraseña — iPro Portal',
+      subject: 'Resetear contraseña — Tecny',
       html:    _passwordResetHtml({ name, resetUrl, ttlHours }),
       text:    _passwordResetText({ name, resetUrl, ttlHours }),
     });

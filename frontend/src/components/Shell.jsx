@@ -205,9 +205,9 @@ function Sidebar({ badges = {}, open, onClose }) {
       )}
       <aside className={'sidebar' + (open ? ' sidebar-open' : '')}>
         <div className="brand">
-          <div className="brand-mark">iP</div>
+          <div className="brand-mark">T</div>
           <div>
-            <div className="brand-name">iPro</div>
+            <div className="brand-name">Tecny</div>
             <div className="brand-sub">Portal operativo</div>
           </div>
         </div>

@@ -123,7 +123,7 @@ export default function OnboardingCard() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
         <div>
           <h3 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
-            ¡Bienvenido a iPro!
+            ¡Bienvenido a Tecny!
           </h3>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
             Configuremos lo básico para que empieces a operar. 3 pasos rápidos:

@@ -17,7 +17,8 @@
 //                     contactos creados desde acá. Solo afecta el initial.
 import { Icons } from './Icons';
 
-const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'iPro Team' };
+// El value 'ipro team' es legacy (constraint DB pre-rebrand 2026-06-18 #324).
+const TIPO_LABEL = { amigo: 'Amigo', familiar: 'Familiar', cliente: 'Cliente', inversor: 'Inversor', 'ipro team': 'Tecny Team' };
 
 export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
   return (
@@ -72,7 +73,7 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
               <option value="familiar">Familiar</option>
               <option value="cliente">Cliente</option>
               <option value="inversor">Inversor</option>
-              <option value="ipro team">iPro Team</option>
+              <option value="ipro team">Tecny Team</option>
             </select>
           </div>
         </div>
