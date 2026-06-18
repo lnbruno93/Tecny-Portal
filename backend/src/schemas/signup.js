@@ -18,6 +18,12 @@ const signupSchema = z.object({
   email:         z.string().trim().toLowerCase().email('Email inválido').max(254),
   password:      passwordField(),
   tenant_nombre: z.string().trim().min(2, 'Nombre de empresa: mínimo 2 caracteres').max(80),
+  // CAPTCHA: response token del widget hCaptcha. Opcional en el schema porque
+  // el toggle operacional vive en backend (HCAPTCHA_ENABLED env var). Si está
+  // activado y falta el token, el verifyCaptcha lo rechaza con 'invalid_token'.
+  // Bound a 10kB — tokens reales son ~500-2000 chars; este límite protege
+  // contra abuse de payload size.
+  hcaptcha_response: z.string().trim().max(10_000).optional(),
 }).strict();
 
 /** Schema para POST /api/auth/verify-email — recibe token UUID-hex. */

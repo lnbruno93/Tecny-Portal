@@ -44,6 +44,7 @@ const { signupSchema, verifyEmailSchema } = require('../schemas/signup');
 const { TOOLS } = require('../lib/tools');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
+const captcha = require('../lib/captcha');
 
 const BCRYPT_ROUNDS = 12;
 const TOKEN_BYTES = 32; // → 64 chars hex
@@ -125,7 +126,32 @@ function frontendUrl() {
  *                _verification_token (solo en dev/test) }
  */
 router.post('/signup', validate(signupSchema), async (req, res, next) => {
-  const { nombre, email, password, tenant_nombre } = req.body;
+  const { nombre, email, password, tenant_nombre, hcaptcha_response } = req.body;
+
+  // CAPTCHA gate — antes de cualquier query a DB para protegerla del costo de
+  // SELECT/INSERT con tokens inválidos masivos. Si HCAPTCHA_ENABLED!='true'
+  // o NODE_ENV=test, verifyCaptcha bypassa silenciosamente. Si el captcha
+  // falla, retornamos 400 antes de la query → atacante no puede usar el
+  // endpoint para nada salvo consumir CPU validando captchas (rate-limiteado
+  // por signupLimiter más arriba en la pipeline).
+  //
+  // El mensaje de error mapea categoría → texto:
+  //   - 'expired'       → "Verificación expirada, intentá de nuevo"
+  //   - 'duplicate'     → "Verificación ya usada, recargá la página"
+  //   - 'invalid_token' → "Verificación inválida, completá el captcha"
+  //   - network/config/http → "No pudimos verificar. Reintentá en un minuto."
+  const captchaResult = await captcha.verifyCaptcha(hcaptcha_response, req.ip);
+  if (!captchaResult.success) {
+    const errMap = {
+      expired:       'La verificación expiró. Intentá de nuevo.',
+      duplicate:     'La verificación ya fue usada. Recargá la página.',
+      invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+    };
+    const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+    logger.info({ source: 'signup_captcha_fail', error: captchaResult.error },
+      'signup rechazado por captcha');
+    return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+  }
 
   // TANDA 2.7 fix HIGH#1 Seguridad auditoría 2026-06-17: anti-enumeration.
   // Antes el endpoint distinguía emails registrados (409) de no-registrados

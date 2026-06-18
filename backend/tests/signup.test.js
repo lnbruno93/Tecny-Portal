@@ -183,6 +183,39 @@ describe('POST /api/auth/signup', () => {
     }
   });
 
+  it('CAPTCHA: con HCAPTCHA_FORCE_IN_TESTS=1 y sin SECRET → 400 captcha_failed', async () => {
+    // Verifica que el gate captcha está conectado al endpoint. Forzamos
+    // captcha real (sin bypass) sin secret → config_error → 400.
+    const prevEnv = process.env.NODE_ENV;
+    const prevForce = process.env.HCAPTCHA_FORCE_IN_TESTS;
+    const prevEnabled = process.env.HCAPTCHA_ENABLED;
+    const prevSecret = process.env.HCAPTCHA_SECRET;
+    try {
+      process.env.HCAPTCHA_FORCE_IN_TESTS = '1';
+      process.env.HCAPTCHA_ENABLED = 'true';
+      delete process.env.HCAPTCHA_SECRET;
+      const r = await signup({ email: `captcha_${Date.now()}@example.com` });
+      expect(r.res.status).toBe(400);
+      expect(r.res.body.reason).toBe('captcha_failed');
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      if (prevForce === undefined) delete process.env.HCAPTCHA_FORCE_IN_TESTS;
+      else process.env.HCAPTCHA_FORCE_IN_TESTS = prevForce;
+      if (prevEnabled === undefined) delete process.env.HCAPTCHA_ENABLED;
+      else process.env.HCAPTCHA_ENABLED = prevEnabled;
+      if (prevSecret === undefined) delete process.env.HCAPTCHA_SECRET;
+      else process.env.HCAPTCHA_SECRET = prevSecret;
+    }
+  });
+
+  it('CAPTCHA: bypass por default en NODE_ENV=test (signup pasa sin hcaptcha_response)', async () => {
+    // El signup sigue pasando sin tener que pasar hcaptcha_response porque
+    // verifyCaptcha bypassa en NODE_ENV=test default.
+    const r = await signup();
+    expect(r.res.status).toBe(200);
+    expect(r.res.body.verification_required).toBe(true);
+  });
+
   it('TANDA 0 hotfix B2: path duplicado ejecuta bcrypt (anti-timing-oracle)', async () => {
     // Sin este fix, path duplicado retornaba ~10ms y path nuevo ~300-500ms
     // (bcrypt cost-12). Un atacante medía response time y enumeraba emails con

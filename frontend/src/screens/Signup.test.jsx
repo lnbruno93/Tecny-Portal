@@ -14,6 +14,27 @@ vi.mock('../lib/api', () => ({
   },
 }));
 
+// CAPTCHA: mock del widget hCaptcha — el real intenta cargar script externo
+// y abre iframe, lo que JSDOM no soporta. El mock auto-dispara onVerify con
+// un token fake al montar, simulando el modo "99.9% passive" donde el captcha
+// resuelve invisible. Tests que quieran probar el path "captcha no resuelto"
+// pueden overridear este mock.
+vi.mock('@hcaptcha/react-hcaptcha', () => {
+  const React = require('react');
+  return {
+    default: React.forwardRef(function MockHCaptcha({ onVerify }, ref) {
+      React.useImperativeHandle(ref, () => ({
+        resetCaptcha: () => {},
+      }));
+      React.useEffect(() => {
+        // Disparo del verify con token fake (simula passive mode auto-pass).
+        if (onVerify) onVerify('mock-captcha-token');
+      }, [onVerify]);
+      return React.createElement('div', { 'data-testid': 'hcaptcha-mock' });
+    }),
+  };
+});
+
 import Signup from './Signup';
 
 const renderS = () => render(
@@ -73,13 +94,15 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
     await user.type(getEmpresa(), 'Mi empresa SA');
     await user.click(getSubmit());
 
-    // Email se normaliza a lowercase + trim.
+    // Email se normaliza a lowercase + trim. CAPTCHA token incluído
+    // (mock auto-dispara onVerify con 'mock-captcha-token').
     await waitFor(() => expect(mockSignup).toHaveBeenCalled());
     expect(mockSignup).toHaveBeenCalledWith({
-      nombre:        'Lucas Bruno',
-      email:         'lucas@example.com',
-      password:      'pass1234',
-      tenant_nombre: 'Mi empresa SA',
+      nombre:            'Lucas Bruno',
+      email:             'lucas@example.com',
+      password:          'pass1234',
+      tenant_nombre:     'Mi empresa SA',
+      hcaptcha_response: 'mock-captcha-token',
     });
 
     // Reemplaza el form con la pantalla de "Revisá tu email" + email visible.
