@@ -14,10 +14,32 @@ import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
-// registerType: 'prompt' means the SW waits for the user to confirm before
-// taking over — this prevents the app from refreshing mid-use.
+//
+// vite.config.js usa registerType: 'autoUpdate' + skipWaiting/clientsClaim
+// para que el nuevo SW se active solo. needRefresh sigue disparándose para que
+// el user clickee "Actualizar" y forzar el reload — sin reload el documento
+// HTML queda viejo (incluye CSP, JS bundles cacheados via SW).
+//
+// onRegisteredSW: poll periódico (1h) para detectar nuevos releases si el user
+// tiene una tab abierta horas/días. Sin esto, el browser solo checkea el SW en
+// navigations + page load — un PWA standalone que el user no cierra nunca
+// nunca vería el banner. La runtime rule NetworkFirst de navigation (vite.config
+// .js) ya garantiza que el HTML viene fresco con el CSP del momento cuando hay
+// red, pero el update() acá asegura que también se detecte la versión nueva del
+// SW para que el JS bundle se actualice.
+const SW_UPDATE_INTERVAL_MS = 60 * 60 * 1000; // 1h
+
 function UpdateBanner() {
-  const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW();
+  const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+      setInterval(() => {
+        // .update() puede tirar si el browser no soporta o hay error de red.
+        // Silenciamos — el siguiente intervalo lo retrya.
+        registration.update().catch(() => {});
+      }, SW_UPDATE_INTERVAL_MS);
+    },
+  });
 
   if (!needRefresh) return null;
 

@@ -38,7 +38,21 @@
   to     = "/index.html"
   status = 200
 
-# Security headers globales para todo el frontend
+# Security headers globales para todo el frontend.
+#
+# Este block aplica en context production. En branch-deploy y deploy-preview,
+# los context-specific blocks de más abajo REPLACE este block para /* (Netlify
+# NO mergea — el block context-específico reemplaza por completo al global
+# para los paths que matchea). Por eso esos blocks duplican todos los headers
+# (HSTS, X-Frame-Options, etc.) — la única diferencia funcional es el
+# `report-uri` del CSP, que apunta al backend del env (no cross-environment).
+#
+# hCaptcha (signup público anti-bot, PR #281):
+#   - script-src: https://*.hcaptcha.com (carga /1/api.js + onload callback)
+#   - frame-src: https://*.hcaptcha.com (challenge iframe + checkbox iframe)
+#   - style-src: https://*.hcaptcha.com (estilos inyectados del widget)
+#   - connect-src: https://*.hcaptcha.com (siteverify telemetry + sentry.hcaptcha.com)
+# Ver https://docs.hcaptcha.com/#content-security-policy-settings.
 [[headers]]
   for = "/*"
   [headers.values]
@@ -47,18 +61,44 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    # CSP del frontend, ajustada al build real (Vite, sin scripts inline) + Google Fonts.
-    # connect-src incluye prod y staging (el branch deploy de staging pega al backend de staging).
-    # report-uri: las browsers postean reports de violaciones de CSP a este endpoint
-    # (apunta a prod; staging usa el mismo — el endpoint loguea con redacción).
-    #
-    # hCaptcha (signup público anti-bot, PR #281):
-    #   - script-src: https://*.hcaptcha.com (carga /1/api.js + onload callback)
-    #   - frame-src: https://*.hcaptcha.com (challenge iframe + checkbox iframe)
-    #   - style-src: https://*.hcaptcha.com (estilos inyectados del widget)
-    #   - connect-src: https://*.hcaptcha.com (siteverify telemetry + sentry.hcaptcha.com)
-    # Ver https://docs.hcaptcha.com/#content-security-policy-settings.
+    # Default CSP (production). Branch deploys override este header en su
+    # context block para apuntar report-uri a backend-staging.
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://ipro-backend-production.up.railway.app https://ipro-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://ipro-backend-production.up.railway.app/api/csp-report"
+
+# 2026-06-18 #308: CSP report-uri environment-aware.
+# Antes el branch-deploy (staging frontend) posteaba reports a backend-prod
+# → bloqueado por Cross-Origin-Resource-Policy (cross-env, distinto origen). Se
+# veía como "Failed to load resource: ipro-backend-production.../api/csp-report"
+# en la console del browser de staging. Ahora cada env reporta a su propio
+# backend.
+#
+# IMPORTANTE: este block REPLACE los headers globales arriba para /* en el
+# context branch-deploy. Debe DUPLICAR todos los demás headers (HSTS, etc.)
+# porque Netlify no hace merge — un context-specific block reemplaza el
+# global para los paths que matchea. Si solo pusiéramos CSP acá, perdiéramos
+# HSTS / X-Frame-Options / etc. en staging.
+[[context.branch-deploy.headers]]
+  for = "/*"
+  [context.branch-deploy.headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    # Mismo CSP que production EXCEPTO report-uri que apunta a staging backend.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://ipro-backend-production.up.railway.app https://ipro-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://ipro-backend-staging.up.railway.app/api/csp-report"
+
+# Deploy previews (PR builds): mismo CSP que branch-deploy (postear a staging
+# backend tiene más sentido que a prod para previews — son entornos no-prod).
+[[context.deploy-preview.headers]]
+  for = "/*"
+  [context.deploy-preview.headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://ipro-backend-production.up.railway.app https://ipro-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://ipro-backend-staging.up.railway.app/api/csp-report"
 
 # Headers for service worker scope and caching
 [[headers]]
