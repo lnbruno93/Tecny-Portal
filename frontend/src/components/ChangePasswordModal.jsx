@@ -46,21 +46,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useModal } from '../lib/useModal';
 import { friendlyError } from '../lib/friendlyError';
-
-// Política de password — mirror del backend (lib/password.js).
-// Si cambia ahí, cambiar acá también. Tests garantizan paridad.
-const MIN_PASSWORD_LENGTH = 8;
-const PASSWORD_HAS_LETTER = /[A-Za-z]/;
-const PASSWORD_HAS_NUMBER = /[0-9]/;
-
-function validatePasswordPolicy(pw) {
-  if (!pw || pw.length < MIN_PASSWORD_LENGTH) {
-    return `Mínimo ${MIN_PASSWORD_LENGTH} caracteres`;
-  }
-  if (!PASSWORD_HAS_LETTER.test(pw)) return 'Debe incluir al menos una letra';
-  if (!PASSWORD_HAS_NUMBER.test(pw)) return 'Debe incluir al menos un número';
-  return null;
-}
+// 2026-06-18 #322: política centralizada en lib/passwordPolicy. Antes vivía
+// duplicada inline acá (con la misma lógica).
+import { validatePasswordPolicy, MIN_PASSWORD_LENGTH } from '../lib/passwordPolicy';
 
 export default function ChangePasswordModal({ open, onClose }) {
   const { logout } = useAuth();

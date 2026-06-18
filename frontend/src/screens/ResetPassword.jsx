@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { auth as authApi } from '../lib/api';
+// 2026-06-18 #322: política centralizada en lib/passwordPolicy. Antes vivía
+// duplicada inline acá (con la misma lógica).
+import { validatePasswordPolicy, MIN_PASSWORD_LENGTH } from '../lib/passwordPolicy';
 
 // ResetPassword — TANDA 0 #321 (BLOCKER B1 audit 2026-06-18).
 //
@@ -17,20 +20,6 @@ import { auth as authApi } from '../lib/api';
 //
 // Diseño: card centrada (.auth-screen--center) — diferente del split-screen
 // de Login/Signup/ForgotPassword. Es transient (5-10s en pantalla).
-
-// Política de password — mirror del backend (lib/password.js).
-const MIN_PASSWORD_LENGTH = 8;
-const PASSWORD_HAS_LETTER = /[A-Za-z]/;
-const PASSWORD_HAS_NUMBER = /[0-9]/;
-
-function validatePasswordPolicy(pw) {
-  if (!pw || pw.length < MIN_PASSWORD_LENGTH) {
-    return `Mínimo ${MIN_PASSWORD_LENGTH} caracteres`;
-  }
-  if (!PASSWORD_HAS_LETTER.test(pw)) return 'Debe incluir al menos una letra';
-  if (!PASSWORD_HAS_NUMBER.test(pw)) return 'Debe incluir al menos un número';
-  return null;
-}
 
 const IconLock = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
