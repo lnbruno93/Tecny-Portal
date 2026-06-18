@@ -14,6 +14,9 @@ import Forbidden from './screens/Forbidden';
 // Rutas públicas TANDA 2.2 — accesibles SIN sesión (no pasan por AuthGuard).
 const Signup = lazy(() => import('./screens/Signup'));
 const VerifyEmail = lazy(() => import('./screens/VerifyEmail'));
+// TANDA 0 #321 — forgot-password auto-servicio.
+const ForgotPassword = lazy(() => import('./screens/ForgotPassword'));
+const ResetPassword = lazy(() => import('./screens/ResetPassword'));
 
 // Lazy-load screens — Vite genera un chunk por pantalla (~40% menos bundle inicial)
 const Inicio     = lazy(() => import('./screens/Inicio'));
@@ -118,6 +121,13 @@ export default function App() {
               } />
               <Route path="/verify-email" element={
                 <ErrorBoundary><VerifyEmail /></ErrorBoundary>
+              } />
+              {/* TANDA 0 #321 — forgot-password auto-servicio. */}
+              <Route path="/forgot-password" element={
+                <ErrorBoundary><ForgotPassword /></ErrorBoundary>
+              } />
+              <Route path="/reset-password" element={
+                <ErrorBoundary><ResetPassword /></ErrorBoundary>
               } />
 
               {/* ── Rutas protegidas: AuthGuard intercepta ── */}

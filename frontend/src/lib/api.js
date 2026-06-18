@@ -135,6 +135,22 @@ export const auth = {
   signup: (data) => api('/api/auth/signup', 'POST', data),
   verifyEmail: (token) => api('/api/auth/verify-email', 'POST', { token }),
   resendVerification: () => api('/api/auth/resend-verification', 'POST'),
+  // TANDA 0 #321: forgot-password auto-servicio. Las 2 son públicas.
+  // forgotPassword: pide reset por email. Backend responde 200 idéntica para
+  // email existente vs no-existente (anti-enum) → frontend muestra siempre
+  // "Si el email es válido, te mandamos un link".
+  // resetPassword: consume el token del email + setea nueva pass. Errores
+  // distinguen por `code` ∈ {INVALID_RESET_TOKEN, EXPIRED_RESET_TOKEN, USED_RESET_TOKEN}.
+  forgotPassword: (email, hcaptchaResponse) => api(
+    '/api/auth/forgot-password',
+    'POST',
+    hcaptchaResponse ? { email, hcaptcha_response: hcaptchaResponse } : { email }
+  ),
+  resetPassword: (token, newPassword) => api(
+    '/api/auth/reset-password',
+    'POST',
+    { token, newPassword }
+  ),
 };
 
 // 2FA endpoints. Todos requieren JWT válido (requireAuth) — usan el wrapper api()

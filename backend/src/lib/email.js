@@ -270,6 +270,119 @@ async function sendWelcomeEmail({ to, name }) {
   }
 }
 
+// ── Password reset (TANDA 0 #321) ─────────────────────────────────────────
+
+function _passwordResetHtml({ name, resetUrl, ttlHours }) {
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resetear contraseña — iPro Portal</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1a14;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
+        <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
+          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
+          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">iPro Portal</span>
+        </td></tr>
+        <tr><td style="padding:36px 36px 12px;">
+          <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#0d1220;">Resetear tu contraseña</h1>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#3f3a2c;">Recibimos una solicitud para resetear la contraseña de tu cuenta en iPro Portal. Si fuiste vos, hacé click para elegir una nueva:</p>
+          <p style="margin:0 0 24px;text-align:center;">
+            <a href="${_esc(resetUrl)}" style="display:inline-block;padding:13px 28px;background:#0ea5e9;color:#ffffff;text-decoration:none;border-radius:9px;font-weight:700;font-size:15px;letter-spacing:-0.005em;">Elegir nueva contraseña →</a>
+          </p>
+          <p style="margin:0 0 8px;font-size:13px;line-height:1.55;color:#76705c;">Si el botón no abre, copiá este link en tu navegador:</p>
+          <p style="margin:0 0 24px;font-size:12.5px;line-height:1.45;color:#0ea5e9;word-break:break-all;">${_esc(resetUrl)}</p>
+          <p style="margin:0 0 8px;font-size:13px;line-height:1.55;color:#76705c;">El link vence en ${ttlHours} ${ttlHours === 1 ? 'hora' : 'horas'}.</p>
+          <p style="margin:0;font-size:13px;line-height:1.55;color:#76705c;"><strong>Si no pediste vos este reset, ignorá este email.</strong> Tu contraseña actual sigue funcionando.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function _passwordResetText({ name, resetUrl, ttlHours }) {
+  const greeting = name ? `Hola ${name},` : 'Hola,';
+  return `${greeting}
+
+Recibimos una solicitud para resetear la contraseña de tu cuenta en iPro Portal.
+
+Si fuiste vos, abrí este link para elegir una nueva:
+${resetUrl}
+
+El link vence en ${ttlHours} ${ttlHours === 1 ? 'hora' : 'horas'}.
+
+Si no pediste vos este reset, ignorá este email. Tu contraseña actual sigue funcionando.
+
+— iPro Portal`;
+}
+
+/**
+ * Envía email con link para resetear password.
+ *
+ * 2026-06-18 #321: parte del flow forgot-password auto-servicio. El backend
+ * llama fire-and-forget (no bloquea response). Si el send falla, el user
+ * no recibe el email — puede reintentar via /forgot-password (rate-limit
+ * aplica). Mismo trade-off que sendVerificationEmail.
+ *
+ * @param {object} args
+ * @param {string} args.to         — destinatario
+ * @param {string} [args.name]     — para personalizar el saludo
+ * @param {string} args.resetUrl   — link al frontend con el token
+ * @param {number} args.ttlHours   — TTL del token en horas, para mostrar al user
+ */
+async function sendPasswordResetEmail({ to, name, resetUrl, ttlHours }) {
+  if (!to || !resetUrl || !ttlHours) {
+    throw new Error('sendPasswordResetEmail: `to`, `resetUrl` y `ttlHours` son requeridos');
+  }
+  const payload = {
+    type:    'password_reset',
+    from:    _emailFrom(),
+    to,
+    name:    name || null,
+    resetUrl,
+    ttlHours,
+    sentAt:  new Date().toISOString(),
+  };
+
+  if (isTest()) {
+    _testQueue.push(payload);
+    return { ok: true, deliveryId: 'test-' + Date.now() };
+  }
+
+  const resend = _getResend();
+  if (!resend) {
+    logger.warn({ to, resetUrl }, '[email] RESEND_API_KEY no seteada — password reset email no se envió (modo stub)');
+    return { ok: true, deliveryId: 'stub-' + Date.now() };
+  }
+
+  try {
+    const result = await resend.emails.send({
+      from:    _emailFrom(),
+      to,
+      subject: 'Resetear contraseña — iPro Portal',
+      html:    _passwordResetHtml({ name, resetUrl, ttlHours }),
+      text:    _passwordResetText({ name, resetUrl, ttlHours }),
+    });
+    if (result.error) {
+      logger.error({ err: result.error, to }, '[email] Resend error en password reset email');
+      return { ok: false, deliveryId: null, error: result.error.message || 'Resend error' };
+    }
+    logger.info({ to, deliveryId: result.data?.id }, '[email] password reset email enviado');
+    return { ok: true, deliveryId: result.data?.id };
+  } catch (err) {
+    logger.error({ err, to }, '[email] excepción al enviar password reset email');
+    return { ok: false, deliveryId: null, error: err.message };
+  }
+}
+
 /** Para tests: snapshot read-only de los emails enviados en la suite. */
 function _getTestQueue() { return _testQueue.slice(); }
 
@@ -279,6 +392,7 @@ function _resetTestQueue() { _testQueue.length = 0; }
 module.exports = {
   sendVerificationEmail,
   sendWelcomeEmail,
+  sendPasswordResetEmail,
   _getTestQueue,
   _resetTestQueue,
 };

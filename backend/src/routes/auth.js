@@ -1,17 +1,24 @@
 const router = require('express').Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { randomBytes } = require('crypto');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const validate = require('../lib/validate');
-const { loginSchema, changePasswordSchema } = require('../schemas/auth');
+const { loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { TOOLS } = require('../lib/tools');
 const { loadUserPermsRows, resolveUserTenant } = require('../lib/permissions');
 const { CODES } = require('../lib/authErrorCodes');
+const { sendPasswordResetEmail } = require('../lib/email');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
+
+// TANDA 0 #321: TTL del token de reset. 1h corto a propósito — ventana
+// pequeña de exposición si el email del user es comprometido.
+const RESET_TOKEN_BYTES = 32; // → 64 chars hex
+const RESET_TOKEN_TTL_HOURS = 1;
 
 // Costo de bcrypt — 12 rounds (resistencia a cracking offline; costo de CPU despreciable en login)
 const BCRYPT_ROUNDS = 12;
@@ -401,6 +408,196 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     // debe re-fetchar para que el siguiente request vea iat < changedAt
     // y rechace el token viejo.
     userAuthCache.invalidateUserAuth(user.id);
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Forgot / Reset password (TANDA 0 #321) ────────────────────────────────
+//
+// Flow:
+//   1. User olvidó su pass → frontend POSTea /forgot-password con email.
+//   2. Backend lookup case-insensitive. Si existe + verificado, genera token,
+//      INSERT en password_reset_tokens, envía email con link.
+//   3. Response: 200 genérica (anti-enum, idéntica para existing/non-existing).
+//   4. User clickea link → frontend POSTea /reset-password con token + newPassword.
+//   5. Backend valida token (existe + not used + not expired) + policy de pass.
+//   6. UPDATE users.password_hash + password_changed_at en tx + mark token used.
+//   7. JWT viejo del user queda inválido (password_changed_at bumped).
+//   8. Audit + invalidate userAuthCache.
+//
+// Decisiones durables:
+//   - TTL 1 hora (corto a propósito — ventana de exposición chica si el email
+//     leakea). User puede pedir otro link si vence.
+//   - Token UUID-hex 32 bytes (256 bits) — espacio infactible brute-force.
+//   - Single-shot (used_at IS NOT NULL ⇒ rechazado). Si el user clickea el
+//     link 2 veces, el segundo falla con USED_RESET_TOKEN — UX guides al login.
+//   - No auto-login post-reset: el user va a la pantalla de login con su
+//     nueva pass. Razón: si alguien interceptó el link, no le damos sesión.
+//   - Rate limits dedicados (app.js): 3/h en /forgot, 10/h en /reset.
+
+/**
+ * POST /forgot-password — pide reset por email. Anti-enum.
+ *
+ * Body: { email, hcaptcha_response? }
+ * Response 200: { reset_required: true, reset_token_ttl_hours }
+ *   (idéntico para email existente vs. no-existente)
+ */
+router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res, next) => {
+  const { email } = req.body;
+
+  // Captcha gate — antes de cualquier query a DB (mismo pattern que signup).
+  // Si HCAPTCHA_ENABLED!='true' o NODE_ENV=test, verifyCaptcha bypassa.
+  const captcha = require('../lib/captcha');
+  const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
+  if (!captchaResult.success) {
+    const errMap = {
+      expired:       'La verificación expiró. Intentá de nuevo.',
+      duplicate:     'La verificación ya fue usada. Recargá la página.',
+      invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+    };
+    const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+    logger.info({ source: 'forgot_password_captcha_fail', error: captchaResult.error },
+      'forgot-password rechazado por captcha');
+    return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+  }
+
+  try {
+    // Lookup case-insensitive. Solo users con email verificado pueden resetear —
+    // si el email no está verificado, no probablemente no es del user real.
+    // (Si fuera del user, primero debe verificar via /resend-verification.)
+    const { rows } = await db.query(
+      `SELECT id, nombre, email FROM users
+        WHERE LOWER(email) = LOWER($1)
+          AND deleted_at IS NULL
+          AND email_verified_at IS NOT NULL`,
+      [email]
+    );
+    const user = rows[0];
+
+    if (user) {
+      // Generar token + insertar + send email (fire-and-forget).
+      const token = randomBytes(RESET_TOKEN_BYTES).toString('hex');
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_HOURS * 60 * 60 * 1000);
+      await db.query(
+        `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)`,
+        [user.id, token, expiresAt]
+      );
+      logger.info({ user_id: user.id, source: 'forgot_password_token_issued' },
+        'token de reset emitido');
+
+      // fire-and-forget — si email provider falla, el log lo captura. El user
+      // puede reintentar via /forgot-password (rate limit aplica).
+      setImmediate(async () => {
+        try {
+          const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
+          await sendPasswordResetEmail({
+            to: user.email,
+            name: user.nombre,
+            resetUrl,
+            ttlHours: RESET_TOKEN_TTL_HOURS,
+          });
+        } catch (e) {
+          logger.error({ err: e, user_id: user.id },
+            'No se pudo enviar password reset email. User debe reintentar.');
+        }
+      });
+    } else {
+      // Anti-enum: dummy bcrypt para equalizar timing con el path "user existe"
+      // (que después manda email — más latencia). Sin esto, response time
+      // permite distinguir email registrado vs no, anulando el anti-enum.
+      // Mismo patrón que el login (DUMMY_HASH) y el signup duplicate.
+      await bcrypt.compare('__dummy_timing_equalizer__', DUMMY_HASH);
+      logger.info({ source: 'forgot_password_unknown_email' },
+        'forgot-password con email desconocido — respondiendo genérico (anti-enum)');
+    }
+
+    // Response idéntica para ambos paths (anti-enum). El user ve siempre el
+    // mismo "Si el email es válido, te mandamos un link" en el frontend.
+    res.status(200).json({
+      reset_required: true,
+      reset_token_ttl_hours: RESET_TOKEN_TTL_HOURS,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /reset-password — consume el token + setea nueva pass.
+ *
+ * Body: { token, newPassword }
+ * Response 200: { ok: true }
+ * Errors:
+ *   - 401 INVALID_RESET_TOKEN — token no existe (mal copiado del email)
+ *   - 401 EXPIRED_RESET_TOKEN — token venció
+ *   - 401 USED_RESET_TOKEN    — token ya fue consumido
+ *   - 400 Datos inválidos     — password policy fail (zod validate antes)
+ */
+router.post('/reset-password', validate(resetPasswordSchema), async (req, res, next) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    // Lookup el token. JOIN con users para tomar el row del user en la
+    // misma query y evitar un extra hop.
+    const { rows } = await db.query(
+      `SELECT prt.id AS token_id, prt.user_id, prt.expires_at, prt.used_at,
+              u.email, u.nombre
+         FROM password_reset_tokens prt
+         JOIN users u ON u.id = prt.user_id
+        WHERE prt.token = $1 AND u.deleted_at IS NULL`,
+      [token]
+    );
+    const row = rows[0];
+
+    if (!row) {
+      return res.status(401).json({ error: 'Token inválido.', code: CODES.INVALID_RESET_TOKEN });
+    }
+    if (row.used_at) {
+      return res.status(401).json({ error: 'Este link ya fue usado. Pedí uno nuevo si lo necesitás.', code: CODES.USED_RESET_TOKEN });
+    }
+    if (new Date(row.expires_at) <= new Date()) {
+      return res.status(401).json({ error: 'El link venció. Pedí uno nuevo.', code: CODES.EXPIRED_RESET_TOKEN });
+    }
+
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+    // UPDATE password + mark token used + audit en una tx para atomicity.
+    // Si el audit falla, el reset se revierte (mismo patrón que change-password).
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2',
+        [hash, row.user_id]
+      );
+      await client.query(
+        'UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1',
+        [row.token_id]
+      );
+      // Audit como system event (no tenemos req.user — el endpoint es público).
+      // user_id en el extra para attribution.
+      await audit(client, 'users', 'UPDATE', row.user_id, {
+        tipo: 'password_reset',
+        user_id: row.user_id,
+        req,
+      });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Invalidate auth cache → el JWT viejo del user queda inválido (next
+    // /me request lee password_changed_at fresh y rechaza el token).
+    userAuthCache.invalidateUserAuth(row.user_id);
+
+    logger.info({ user_id: row.user_id, source: 'password_reset_completed' },
+      'password reset completado exitosamente');
 
     res.json({ ok: true });
   } catch (err) {
