@@ -65,42 +65,120 @@ const INT_CAST_ROUTINES = new Set([
   'pg_strtoint64_safe',   // int8 — Postgres 17+
 ]);
 
+// Logging compartido entre el wrapper de pool.query y el de client.query.
+// Captura el call site preservando el stack capturado en el wrapper (sin
+// node_modules/pg) — clave para identificar qué línea de nuestro código
+// emitió la query.
+function _logIntCastErrorIfMatch(err, args, capturedStack) {
+  if (!err || !INT_CAST_ROUTINES.has(err.routine)) return;
+  // Best-effort extract de SQL + params para el log. El primer arg puede ser:
+  //   - string: `query('SELECT ...', [params])`
+  //   - objeto: `query({ text: 'SELECT ...', values: [params] })`
+  const first = args[0];
+  const sql = typeof first === 'string' ? first
+            : (first && typeof first.text === 'string') ? first.text
+            : '<unknown>';
+  const params = Array.isArray(args[1]) ? args[1]
+               : (first && Array.isArray(first.values)) ? first.values
+               : null;
+  logger.error({
+    err: { message: err.message, routine: err.routine, position: err.position, code: err.code },
+    sql: typeof sql === 'string' ? sql.slice(0, 500) : sql,
+    // Sanitize params: stringify y truncar. NO loggeamos secrets — los
+    // params típicos del bug son int ids, no passwords. Si por alguna razón
+    // un password caía acá, se truncaría también. Riesgo aceptable vs valor
+    // de debug.
+    params_preview: params ? JSON.stringify(params).slice(0, 500) : null,
+    stack_short: capturedStack,
+  }, 'int_cast_error — query con int cast inválido (debug bug pg_strtoint)');
+}
+
+// Captura stack del call site del wrapper. Skipea las primeras 3 frames
+// (Error header + esta función + el wrapper que la llama) y se queda con
+// 6 frames userland.
+function _captureCallerStack() {
+  return new Error().stack
+    .split('\n')
+    .slice(3, 9)
+    .join('\n');
+}
+
 const _originalQuery = pool.query.bind(pool);
 pool.query = async function instrumentedQuery(...args) {
+  const callerStack = _captureCallerStack();
   try {
     return await _originalQuery(...args);
   } catch (err) {
-    if (err && INT_CAST_ROUTINES.has(err.routine)) {
-      // Best-effort extract de SQL + params para el log. El primer arg puede ser:
-      //   - string: `pool.query('SELECT ...', [params])`
-      //   - objeto: `pool.query({ text: 'SELECT ...', values: [params] })`
-      const first = args[0];
-      const sql = typeof first === 'string' ? first
-                : (first && typeof first.text === 'string') ? first.text
-                : '<unknown>';
-      const params = Array.isArray(args[1]) ? args[1]
-                   : (first && Array.isArray(first.values)) ? first.values
-                   : null;
-      // Stack abreviado: las primeras frames son node_modules/pg, queremos las
-      // userland. Tomamos líneas 2-9 (skipea el "Error:" header y la frame
-      // de este wrapper).
-      const stack = new Error().stack
-        .split('\n')
-        .slice(2, 10)
-        .join('\n');
-      logger.error({
-        err: { message: err.message, routine: err.routine, position: err.position, code: err.code },
-        sql: typeof sql === 'string' ? sql.slice(0, 500) : sql,
-        // Sanitize params: stringify y truncar. NO loggeamos secrets — los
-        // params típicos del bug son int ids, no passwords. Si por alguna razón
-        // un password caía acá, se truncaría también. Riesgo aceptable vs valor
-        // de debug.
-        params_preview: params ? JSON.stringify(params).slice(0, 500) : null,
-        stack_short: stack,
-      }, 'int_cast_error — query con int cast inválido (debug bug pg_strtoint)');
-    }
+    _logIntCastErrorIfMatch(err, args, callerStack);
     throw err;
   }
+};
+
+// Extensión: instrumentamos también `client.query` para los call sites que
+// usan `pool.connect()` + `client.query()` directamente (ej. transacciones
+// manuales: `change-password`, `withTenant`, scripts admin). Sin esto, el
+// wrapper de `pool.query` deja una zona ciega — el bug pg_strtoint del login
+// puede vivir en una query de tx que use client.query y nunca lo cazaríamos.
+//
+// Implementación: wrappeamos pool.connect → al devolver el client, parchamos
+// su .query in-place (idempotente vía flag `__intCastInstrumented`). El client
+// devuelve al pool con el patch — cuando otro request lo saque, ya está
+// instrumentado.
+//
+// Importante: pool.connect tiene 2 firmas:
+//   (1) `pool.connect()` → returns Promise<Client>          (usamos esta)
+//   (2) `pool.connect(cb)` → calls cb(err, client, done)    (uso INTERNO de pg-pool!)
+//
+// pg-pool internamente usa la firma callback en `pool.query` (porque el pool
+// saca un client, corre la query, lo libera todo via callback). Si nuestro
+// wrapper hiciera `await _originalConnect(cb)`, el await resuelve a undefined
+// (pg pasa el client al callback, no via promise) → rompe pool.query
+// con "Cannot read properties of undefined".
+//
+// Solución: si el último arg es función (callback-style), interceptamos el
+// callback para instrumentar el client antes de devolverlo. Si no, wrappeamos
+// la promesa.
+function _instrumentClient(client) {
+  if (!client || client.__intCastInstrumented) return client;
+  const _originalClientQuery = client.query.bind(client);
+  client.query = function instrumentedClientQuery(...queryArgs) {
+    const callerStack = _captureCallerStack();
+    // client.query también soporta callback-style. Si el último arg es
+    // función, devolvemos tal cual (el callback recibirá err/result).
+    const last = queryArgs[queryArgs.length - 1];
+    if (typeof last === 'function') {
+      return _originalClientQuery(...queryArgs);
+    }
+    const result = _originalClientQuery(...queryArgs);
+    if (result && typeof result.then === 'function') {
+      return result.catch(err => {
+        _logIntCastErrorIfMatch(err, queryArgs, callerStack);
+        throw err;
+      });
+    }
+    return result;
+  };
+  client.__intCastInstrumented = true;
+  return client;
+}
+
+const _originalConnect = pool.connect.bind(pool);
+pool.connect = function instrumentedConnect(...args) {
+  const last = args[args.length - 1];
+  if (typeof last === 'function') {
+    // Callback-style: interceptamos el cb para instrumentar el client antes
+    // de pasárselo al caller original (probablemente el pool.query interno
+    // de pg-pool). El client queda con .query patched para todo su lifetime.
+    const userCb = last;
+    const newArgs = args.slice(0, -1);
+    return _originalConnect(...newArgs, (err, client, done) => {
+      if (!err) _instrumentClient(client);
+      userCb(err, client, done);
+    });
+  }
+  // Promise-style: wrappeamos la promesa para instrumentar al client antes
+  // de devolverlo al caller.
+  return _originalConnect(...args).then(_instrumentClient);
 };
 
 /**
