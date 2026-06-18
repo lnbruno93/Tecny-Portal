@@ -86,7 +86,7 @@ describe('verifyCaptcha — verificación activa', () => {
   it('respuesta success=true → { success: true }', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ success: true, hostname: 'staging--ipro-portal.netlify.app' }),
+      json: async () => ({ success: true, hostname: 'staging.tecnyapp.com' }),
     });
     const r = await verifyCaptcha('tok', '1.2.3.4');
     expect(r).toEqual({ success: true });
