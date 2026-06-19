@@ -44,6 +44,36 @@ const SENTRY_ORG   = process.env.SENTRY_ORG   || 'lnbruno';
 const SENTRY_PROJECT = process.env.SENTRY_PROJECT || 'tecny-portal-frontend';
 const BUILD_SHA = buildCommit();
 
+// Gate de configuración VITE_API_URL en builds de Netlify NO production.
+//
+// `process.env.CONTEXT` es seteada por Netlify durante el build:
+//   - "production"     → main branch / prod site
+//   - "branch-deploy"  → cualquier otra rama (incluye `staging`)
+//   - "deploy-preview" → PR builds
+// En local (npm run dev / build), `CONTEXT` es undefined → check skipeado.
+//
+// Sin este gate, un branch-deploy o preview build sin `VITE_API_URL` seteada
+// completa el build OK, pero el bundle JS termina con BASE = fallback hardcoded
+// `tecny-backend-production` (ver `src/lib/api.js`). Resultado: el frontend de
+// staging/preview pega a backend prod, CORS rechaza el origin, UI muestra
+// "Sin conexión con el servidor" sin pista del root cause.
+//
+// Bug detectado el 2026-06-19 (1h de debug). El runtime check de api.js
+// detecta URLs malformadas (sin protocolo), pero no detecta "var ausente"
+// porque el código tiene fallback intencional para prod. Este gate cubre
+// ese hueco: si la var no está y NO es prod, fallar el build de Netlify de
+// forma visible — el log queda en rojo y no se sirve un bundle roto.
+const NETLIFY_CONTEXT = process.env.CONTEXT;
+const HAS_VITE_API_URL = Boolean((process.env.VITE_API_URL || '').trim());
+if (NETLIFY_CONTEXT && NETLIFY_CONTEXT !== 'production' && !HAS_VITE_API_URL) {
+  throw new Error(
+    `[vite.config] VITE_API_URL no está seteada para Netlify context "${NETLIFY_CONTEXT}". ` +
+    `Configurala en Site settings → Environment variables, scope correspondiente ` +
+    `("Branch deploys" o "Deploy previews"). Sin esto el bundle cae al fallback ` +
+    `prod-backend y CORS rechaza requests del origen non-prod.`
+  );
+}
+
 export default defineConfig({
   define: {
     __BUILD_COMMIT__:  JSON.stringify(BUILD_SHA),
