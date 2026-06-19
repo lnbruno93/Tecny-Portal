@@ -73,10 +73,31 @@ beforeAll(async () => {
   // 3. Sembrar categorías distintas en cada tenant (3 en A, 2 en B).
   await pool.query(`INSERT INTO categorias (nombre, tenant_id) VALUES ('ISO_A_CAT_1', $1), ('ISO_A_CAT_2', $1), ('ISO_A_CAT_3', $1)`, [TENANT_A]);
   await pool.query(`INSERT INTO categorias (nombre, tenant_id) VALUES ('ISO_B_CAT_1', $1), ('ISO_B_CAT_2', $1)`, [TENANT_B]);
+
+  // 4. Sembrar audit_logs para validar fix del leak cross-tenant en /api/historial
+  //    (hotfix #336, 2026-06-19). Tres tipos de rows:
+  //      - tenant_id = A (datos del tenant A → user A debe verlos)
+  //      - tenant_id = B (datos del tenant B → user B debe verlos)
+  //      - tenant_id NULL (audit del "sistema" → ningún user-facing /api/historial debe verlos)
+  //    El fix agrega `WHERE a.tenant_id IS NOT NULL` al endpoint → la fila NULL
+  //    queda invisible para ambos users, y A/B siguen aislados.
+  await pool.query(`
+    INSERT INTO audit_logs (tabla, accion, registro_id, datos_despues, user_id, tenant_id, created_at)
+    VALUES
+      ('ventas', 'INSERT', 9001, '{"cliente":"ISO_A_AUDIT_TEST"}'::jsonb, $1, $2, NOW() - INTERVAL '1 hour'),
+      ('ventas', 'INSERT', 9002, '{"cliente":"ISO_B_AUDIT_TEST"}'::jsonb, $3, $4, NOW() - INTERVAL '1 hour'),
+      ('ventas', 'INSERT', 9003, '{"cliente":"ISO_NULL_AUDIT_TEST"}'::jsonb, NULL, NULL, NOW() - INTERVAL '1 hour')
+  `, [USER_A.id, TENANT_A, USER_B.id, TENANT_B]);
 });
 
 afterAll(async () => {
   await pool.query(`DELETE FROM categorias WHERE nombre LIKE 'ISO_A_%' OR nombre LIKE 'ISO_B_%'`);
+  // Cleanup audits sembrados para el fix #336 (incluye la fila NULL).
+  await pool.query(`
+    DELETE FROM audit_logs
+    WHERE registro_id IN (9001, 9002, 9003)
+       OR (datos_despues->>'cliente' IN ('ISO_A_AUDIT_TEST', 'ISO_B_AUDIT_TEST', 'ISO_NULL_AUDIT_TEST'))
+  `);
   await pool.query(`DELETE FROM tenant_users WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
   await pool.query(`DELETE FROM users WHERE username IN ($1, $2)`, [USER_A.username, USER_B.username]);
   await pool.query(`DELETE FROM tenants WHERE id IN ($1, $2)`, [TENANT_A, TENANT_B]);
@@ -131,6 +152,59 @@ describe('E2E multi-tenant: aislamiento de /api/inventario/categorias', () => {
     expect(payloadA.tenant_id).not.toBe(payloadB.tenant_id);
     expect(payloadA.tenant_id).toBe(TENANT_A);
     expect(payloadB.tenant_id).toBe(TENANT_B);
+  });
+
+  // Hotfix 2026-06-19 #336: leak cross-tenant en /api/historial.
+  //
+  // La policy RLS de audit_logs permitía `tenant_id IS NULL` por diseño
+  // (audits del sistema). En prod había 82 rows NULL (legacy pre-TANDA 0a /
+  // pre-TANDA 0b refactor) visibles a TODOS los tenants. El "Actividad
+  // reciente" del Inicio mostraba acciones cross-tenant.
+  //
+  // Fix de superficie: `WHERE a.tenant_id IS NOT NULL` en el SQL del endpoint
+  // user-facing → defense in depth, sin depender solo de RLS. La política RLS
+  // sigue permitiendo NULL para tools de admin/sysadmin que sí necesitan ver
+  // audits de sistema; los usuarios normales NO los ven en su feed.
+  //
+  // Este test valida el filtro EXPLÍCITO (funciona en cualquier env, incluido
+  // local con superuser que bypassa RLS). El cross-tenant aislamiento real
+  // (entre tenant A y B con tenant_id set) está cubierto por withTenant.test.js
+  // (rol no-super en local) + RLS en CI/staging/prod.
+  describe('#336 fix: /api/historial NO sirve audits con tenant_id NULL', () => {
+    it('user A NO ve la fila NULL en su /api/historial', async () => {
+      const r = await request(app)
+        .get('/api/historial?per_page=200')
+        .set('Authorization', `Bearer ${tokenA}`);
+      expect(r.status).toBe(200);
+      // El endpoint expone el cliente vía el campo `detalle` (derivado de
+      // datos_despues.cliente para INSERT). Buscamos la fila sembrada como NULL.
+      const detalles = (r.body.data || []).map(it => it.detalle).filter(Boolean);
+      expect(detalles.some(d => d.includes('ISO_NULL_AUDIT_TEST'))).toBe(false);
+    });
+
+    it('user B NO ve la fila NULL en su /api/historial', async () => {
+      // Misma garantía para el otro tenant — el fix es a nivel SQL, no a nivel
+      // de qué tenant pregunta. Si funciona para A, debe funcionar para B.
+      const r = await request(app)
+        .get('/api/historial?per_page=200')
+        .set('Authorization', `Bearer ${tokenB}`);
+      expect(r.status).toBe(200);
+      const detalles = (r.body.data || []).map(it => it.detalle).filter(Boolean);
+      expect(detalles.some(d => d.includes('ISO_NULL_AUDIT_TEST'))).toBe(false);
+    });
+
+    it('user A SÍ ve audits con tenant_id seteado (regresión: no rompimos el feed)', async () => {
+      // Sanity check de no haber roto el caso normal. La fila ISO_A_AUDIT_TEST
+      // tiene tenant_id = TENANT_A y user_id = USER_A, así que A debe verla.
+      // En local sin RLS también puede ver la de B — eso es esperado y NO se
+      // testea acá (ver withTenant.test.js para validación cross-tenant real).
+      const r = await request(app)
+        .get('/api/historial?per_page=200')
+        .set('Authorization', `Bearer ${tokenA}`);
+      expect(r.status).toBe(200);
+      const detalles = (r.body.data || []).map(it => it.detalle).filter(Boolean);
+      expect(detalles.some(d => d.includes('ISO_A_AUDIT_TEST'))).toBe(true);
+    });
   });
 
   // TANDA 2.4 fix BLOCKER auditoría 2026-06-17: la tabla `users` NO está en
