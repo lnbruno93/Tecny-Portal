@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
@@ -282,6 +283,7 @@ function Sidebar({ badges = {}, open, onClose }) {
 
 function UserPill() {
   const { user, logout } = useAuth();
+  const { isDark, toggle: toggleTheme } = useTheme();
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   if (!user) return null;
@@ -300,6 +302,18 @@ function UserPill() {
             {roleLabel} · @{user.username}
           </div>
         </div>
+        {/* 2026-06-19 #338: toggle dark/light. Icono sol cuando estamos en
+            dark (action: "ir a light"), luna cuando estamos en light (action:
+            "ir a dark"). aria-label describe el destino, no el estado actual. */}
+        <button
+          className="icon-btn"
+          onClick={toggleTheme}
+          title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          aria-label={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          style={{ flexShrink: 0 }}
+        >
+          {isDark ? <Icons.Sun size={14} /> : <Icons.Moon size={14} />}
+        </button>
         {/* 2026-06-18 #306: botón cambiar contraseña.
             Antes el endpoint existía pero no había forma de invocarlo desde la
             UI — los admins debían usar fetch desde DevTools console (filtraba
@@ -384,6 +398,13 @@ export default function Shell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [badges, setBadges] = useState({});
   const { user } = useAuth();
+  // 2026-06-19 #338: tema dinámico (vault dark / linen light).
+  // El ThemeProvider también setea documentElement.data-theme como side
+  // effect, pero acá lo aplicamos al contenedor `.app` para garantizar
+  // que el árbol React refleja el tema actual incluso si algún ancestor
+  // del DOM tiene un atributo distinto (defensive en SPAs con múltiples
+  // mount points / portals fuera del root).
+  const { theme } = useTheme();
 
   // Global ⌘K / Ctrl+K shortcut to open the command palette
   useEffect(() => {
@@ -421,7 +442,7 @@ export default function Shell() {
   }, [user]);
 
   return (
-    <div className="app" data-theme="vault">
+    <div className="app" data-theme={theme}>
       <Sidebar badges={badges} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main">
         <Topbar
