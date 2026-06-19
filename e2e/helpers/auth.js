@@ -9,12 +9,13 @@
 const { TEST_USER } = require('./globalSetup');
 
 async function login(page, { username = TEST_USER.username, password = TEST_USER.password } = {}) {
-  // Importante: navegamos a `/` (raíz), NO a `/login`. En el portal real, el
-  // user va a la raíz y AuthContext renderiza <Login /> mientras no haya
-  // sesión. Tras autenticarse, React Router resuelve la <Route index> que
-  // hace Navigate a /inicio. Si la URL es /login el redirect index no se
-  // dispara (no hay ruta `/login` definida) y queda en NotFound.
-  await page.goto('/');
+  // Post-#331: `/` ahora es la landing comercial pública. El form de login
+  // vive en `/login` (ruta explícita agregada en el mismo PR). Antes este
+  // helper navegaba a `/` y dependía del AuthContext renderizando <Login />
+  // como fallback del AuthGuard — ese patrón se reemplazó por una Route
+  // dedicada. Para tests de auth puro, ir directo a `/login` es más rápido
+  // y estable que pasar por el nav de la landing.
+  await page.goto('/login');
   // exact:true en 'Contraseña' para no matchear el botón "Mostrar contraseña"
   // (toggle del ojito que tiene aria-label que incluye la palabra).
   await page.getByLabel('Usuario').fill(username);
