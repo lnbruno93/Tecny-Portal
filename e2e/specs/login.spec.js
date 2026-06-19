@@ -34,7 +34,8 @@ test.describe('Login flow', () => {
   });
 
   test('password incorrecto: NO redirige al dashboard y muestra error', async ({ page }) => {
-    await page.goto('/');
+    // Post-#331: `/` es la landing; el form de login vive en `/login`.
+    await page.goto('/login');
     await page.getByLabel('Usuario').fill(TEST_USER.username);
     await page.getByLabel('Contraseña', { exact: true }).fill('wrong-password-zzz');
     await page.getByRole('button', { name: /Ingresar/i }).click();

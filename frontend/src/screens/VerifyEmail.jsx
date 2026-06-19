@@ -67,8 +67,12 @@ export default function VerifyEmail() {
         setStatus('success');
         // Refresh /me si hay sesión activa (no-op silencioso si no).
         await refreshUser();
-        // Redirect a / después de 2.5s — AuthGuard decide si va a Shell o Login.
-        setTimeout(() => navigate('/', { replace: true }), 2500);
+        // Redirect a /login después de 2.5s. Antes redirigíamos a `/` y el
+        // AuthGuard decidía entre Shell o Login según hubiera sesión; post-#331
+        // `/` es la landing comercial pública, no el login. Para el flow de
+        // verify-email el destino lógico es siempre el form de login —el
+        // user acaba de verificar su email y quiere ingresar.
+        setTimeout(() => navigate('/login', { replace: true }), 2500);
       } catch (err) {
         // El api wrapper adjunta el body parseado en err.responseBody (ver api.js).
         // Backend devuelve reason ∈ {'invalid','already_used','expired'} para
@@ -78,7 +82,8 @@ export default function VerifyEmail() {
           // Caso típico: el user clickea 2 veces el mismo link. El email YA
           // está verificado, no hay error real — solo redirigimos.
           setStatus('already');
-          setTimeout(() => navigate('/', { replace: true }), 2500);
+          // Post-#331: redirect a /login en vez de /, ver nota arriba.
+          setTimeout(() => navigate('/login', { replace: true }), 2500);
           return;
         }
         setStatus('error');
