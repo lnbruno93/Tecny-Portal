@@ -3,7 +3,7 @@
 // un backend HTTP y reporta latencia + throughput de cada uno.
 //
 // Uso:
-//   IPRO_TARGET=https://ipro-backend-staging.up.railway.app \
+//   IPRO_TARGET=https://tecny-backend-staging.up.railway.app \
 //   IPRO_TOKEN=<jwt-de-un-admin> \
 //   node loadtest/run.js [scenario-name]
 //
@@ -22,7 +22,7 @@ const TOKEN  = process.env.IPRO_TOKEN;
 
 if (!TARGET) {
   console.error('❌  IPRO_TARGET es requerido. Ej:');
-  console.error('   IPRO_TARGET=https://ipro-backend-staging.up.railway.app');
+  console.error('   IPRO_TARGET=https://tecny-backend-staging.up.railway.app');
   console.error('   Para tests local: IPRO_TARGET=http://localhost:3001');
   process.exit(1);
 }

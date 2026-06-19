@@ -691,7 +691,7 @@ app.use((err, req, res, _next) => {
   // El check de host cubre el caso Railway: por default Railway setea
   // NODE_ENV=production en TODOS los environments (staging y prod), así que el
   // check basado solo en NODE_ENV no distingue entre ambos. El host sí
-  // (ipro-backend-staging.up.railway.app vs ipro-backend-production.up.railway.app).
+  // (tecny-backend-staging.up.railway.app vs tecny-backend-production.up.railway.app).
   //
   // Seguridad: el detalle solo se expone si (a) el caller es admin, (b) el host
   // NO es production. En el host de producción real siempre se devuelve el

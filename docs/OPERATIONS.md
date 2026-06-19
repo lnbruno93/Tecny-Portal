@@ -26,7 +26,7 @@ Runbook operativo: backups, rollback y decisiones de escala. Producción es Rail
 
 Railway auto-deploya en cada push a `main`. Si un deploy queda mal:
 
-1. **Rollback instantáneo (sin tocar código):** Railway → servicio `ipro-backend` → **Deployments** → en un deploy verde anterior, menú ⋮ → **Redeploy**. Vuelve a esa versión en minutos.
+1. **Rollback instantáneo (sin tocar código):** Railway → servicio `tecny-backend` → **Deployments** → en un deploy verde anterior, menú ⋮ → **Redeploy**. Vuelve a esa versión en minutos.
 2. **Rollback por código (preferido si el problema es el código):**
    ```bash
    git revert <sha-del-merge> -m 1   # revierte el merge problemático
@@ -113,7 +113,7 @@ Convención: prefijo `cache:` + scope. Todas las keys tienen TTL explícito.
 
 ```bash
 # Endpoint público — sin auth:
-curl https://ipro-backend-production.up.railway.app/health | jq .redis
+curl https://tecny-backend-production.up.railway.app/health | jq .redis
 # Esperado: { "status": "ok", "latency_ms": <N> }
 ```
 

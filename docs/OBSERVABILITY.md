@@ -50,7 +50,7 @@ Qué está monitoreado, dónde se ven los datos, y cómo se configura.
 
 1. Crear cuenta en https://uptimerobot.com.
 2. New monitor → HTTP(s):
-   - URL: `https://ipro-backend-production.up.railway.app/health`
+   - URL: `https://tecny-backend-production.up.railway.app/health`
    - Type: HTTP(s)
    - Interval: 5 min
    - Alert contacts: tu email + WhatsApp (opcional, en plan paid).

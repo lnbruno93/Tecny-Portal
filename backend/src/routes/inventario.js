@@ -787,7 +787,7 @@ router.delete('/productos/:id', async (req, res, next) => {
 //                    necesita para devolver el equipo cuando vuelve)
 //   · 'reservado'  — apartado para un cliente, no se borra a la ligera
 //
-// Reversible: como todo en iPro, es soft-delete (deleted_at = NOW()).
+// Reversible: como todo en Tecny, es soft-delete (deleted_at = NOW()).
 // Para recuperar, hay que correr SQL directo en DB (no hay UI de undelete).
 router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, next) => {
   // Auditoría 2026-06-03: cambios respecto a la versión original:

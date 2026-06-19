@@ -1,4 +1,4 @@
-// Redis client singleton para iPro.
+// Redis client singleton para Tecny.
 //
 // Diseño: ver docs/design/p04-redis-caching.md.
 //

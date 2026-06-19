@@ -92,8 +92,9 @@ module.exports = async function requireAuth(req, res, next) {
   // - JWTs emitidos post-PR3 incluyen tenant_id (resuelto al login vía
   //   tenant_users del user).
   // - JWTs viejos (pre-PR3, en cache de browser de users actuales) NO los
-  //   tienen → default a tenant 1 (Lucas/iPro Original) hasta el próximo
-  //   login que regenera el JWT con el nuevo formato.
+  //   tienen → default a tenant 1 (Tecny, el tenant histórico — ex "iPro
+  //   Original") hasta el próximo login que regenera el JWT con el nuevo
+  //   formato.
   // - PR 4 usará estos campos en endpoints; PR 6 agrega tests de aislamiento
   //   exhaustivos.
   req.tenantId  = decoded.tenant_id ?? 1;

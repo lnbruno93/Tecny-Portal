@@ -75,7 +75,7 @@ Tiempo total: ~30 min de tu lado + 5–60 min de propagación DNS.
 
 Una vez que Resend marca el dominio Verified ✅:
 
-1. Railway → **ipro-backend (prod)** → Variables.
+1. Railway → **tecny-backend (prod)** → Variables.
 2. Setear / actualizar:
    ```
    EMAIL_FROM = iPro Portal <noreply@tecnyapp.com>
@@ -83,7 +83,7 @@ Una vez que Resend marca el dominio Verified ✅:
    (Si ya existía con otro valor, sobrescribirlo. Si no existía,
    crear nueva.)
 3. Railway redeploya automáticamente al guardar la variable.
-4. Repetir en **ipro-backend (staging)** con el mismo valor — así staging
+4. Repetir en **tecny-backend (staging)** con el mismo valor — así staging
    también usa el dominio verificado.
 
 ---

@@ -14,7 +14,7 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
 - **Netlify** — https://app.netlify.com → site iPro
 - **Sentry** — https://sentry.io/organizations/<org>/issues/
 - **GitHub** — https://github.com/lnbruno93/iPro-Portal
-- **Health en vivo** — https://ipro-backend-production.up.railway.app/health
+- **Health en vivo** — https://tecny-backend-production.up.railway.app/health
 
 ---
 
@@ -24,7 +24,7 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
 
 1. Probar `/health` desde el browser/curl. Si responde 200 → problema es frontend o red del usuario.
 2. Si responde 503 o no responde:
-   - Railway → ipro-backend → **Deployments** → ver el último: ¿está "Building", "Failed", "Crashed"?
+   - Railway → tecny-backend → **Deployments** → ver el último: ¿está "Building", "Failed", "Crashed"?
    - Si "Crashed": ver Logs, buscar el error reciente. Si está en loop, Railway lo reinicia automáticamente.
    - Si la causa es el último deploy: rollback (ver OPERATIONS.md §2).
 3. Si `/health` responde 503 con `db.status: error`:
@@ -35,7 +35,7 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
 
 1. ¿El usuario está offline? El service worker debería mostrar página cacheada — si no, problema del SW.
 2. CORS: si el navegador del usuario muestra "CORS error" en la consola, revisar `CORS_ORIGIN` en Railway envs — debe incluir el dominio Netlify del usuario.
-3. Probar la API directo con curl: `curl -i https://ipro-backend-production.up.railway.app/health` — descarta backend down.
+3. Probar la API directo con curl: `curl -i https://tecny-backend-production.up.railway.app/health` — descarta backend down.
 
 ---
 
@@ -86,7 +86,7 @@ Para escenarios de pérdida/corrupción de datos ver [DISASTER_RECOVERY.md](DISA
 
 1. **Forzar check de invariantes** (más rápido que SQL manual):
    ```bash
-   curl -s -X GET "https://ipro-backend-production.up.railway.app/api/admin/invariants" \
+   curl -s -X GET "https://tecny-backend-production.up.railway.app/api/admin/invariants" \
         -H "Authorization: Bearer <admin-token>" | jq
    ```
    El campo `caja_saldo_negativo.violaciones` lista las cajas con saldo < 0.
@@ -247,7 +247,7 @@ policy RLS quedó fail-closed; el último paso es cambiar el role.
    campos quedan igual.
 
 5. **Cambiar la env var en Railway**:
-   - Railway → ipro-backend (servicio) → **Variables** → `DATABASE_URL`.
+   - Railway → tecny-backend (servicio) → **Variables** → `DATABASE_URL`.
    - Pegar la nueva URL. Railway redeploya automáticamente al guardar
      (2-3 minutos).
 
@@ -273,7 +273,7 @@ policy RLS quedó fail-closed; el último paso es cambiar el role.
 
 Si el deploy se cae con errores RLS imposibles de debuggear en vivo:
 
-1. Railway → ipro-backend → **Variables** → revertir `DATABASE_URL` a la
+1. Railway → tecny-backend → **Variables** → revertir `DATABASE_URL` a la
    string con `postgres` (la vieja). Redeploy automático.
 2. El role `ipro_app` queda en la DB sin uso. No lo borres todavía — lo
    podés necesitar cuando vuelvas a intentar.
