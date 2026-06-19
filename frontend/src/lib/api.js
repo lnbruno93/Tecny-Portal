@@ -1,5 +1,51 @@
-// Base URL: local dev → localhost:3001, production → Railway
-const BASE = import.meta.env.VITE_API_URL || 'https://tecny-backend-production.up.railway.app';
+// Base URL del backend. Source de verdad:
+//   - Local dev: .env.local con `VITE_API_URL=http://localhost:3001`
+//   - Netlify prod/staging/preview: env var `VITE_API_URL` por context
+//   - Fallback (env var ausente): hardcoded tecny-backend-production
+//
+// Validación al cargar el módulo — sin esto, configs rotas degradan en
+// runtime y son muy caras de debuggear:
+//
+// Bug 2026-06-19: Netlify "Branch deploys" tenía `VITE_API_URL` seteada
+// pero SIN protocolo `https://` (valor "tecny-backend-staging.up.railway.app").
+// `fetch(BASE + path)` con BASE sin protocolo lo trata como URL relativa →
+// pegaba a `https://staging.tecnyapp.com/tecny-backend-staging.up.railway.app/...`
+// → SPA fallback respondía index.html → JSON parse falla → UI mostraba
+// "Sin conexión con el servidor" sin pista del origen real. 1h de debug.
+//
+// Hardening:
+//   1. Si VITE_API_URL está seteada y NO arranca con http(s):// → throw al
+//      cargar el módulo. Error visible en consola al instante.
+//   2. Trim de trailing slash — el código asume BASE + '/api/...' sin
+//      generar doble slash.
+//   3. Fallback silencioso a prod-backend solo si la env var falta del todo.
+//      El gate adicional en `vite.config.js` (build-time) impide builds de
+//      staging/preview sin la var seteada, así nunca usamos el fallback en
+//      contextos no-prod (que es lo que generó el bug de hoy).
+// Resolución exportada para tests unitarios — el módulo la invoca una vez
+// con `import.meta.env.VITE_API_URL` al cargar, pero también queremos cubrir
+// casos edge (sin protocolo, con trailing slash, vacía) sin tener que
+// recargar el módulo con stubs de import.meta.env.
+export function resolveApiBase(rawUrl) {
+  const trimmed = (rawUrl || '').trim();
+  if (trimmed && !/^https?:\/\//.test(trimmed)) {
+    throw new Error(
+      `[api] VITE_API_URL inválida: "${trimmed}". ` +
+      'Debe arrancar con http:// o https://. ' +
+      'Revisá la env var en Netlify (Site settings → Environment variables) ' +
+      'o en .env.local si estás en dev.'
+    );
+  }
+  // Fallback hardcoded a backend prod cuando la var no está. En builds de
+  // Netlify NO production (branch-deploy/preview), vite.config.js falla el
+  // build si la var falta — entonces este fallback solo se usa en:
+  //   - prod (donde el backend prod ES el correcto)
+  //   - tests (donde nadie hace requests reales)
+  //   - dev local sin .env.local (developer ve el fallback en consola)
+  return (trimmed || 'https://tecny-backend-production.up.railway.app').replace(/\/+$/, '');
+}
+
+const BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 
 function getToken() {
   return localStorage.getItem('fin_token') || null;

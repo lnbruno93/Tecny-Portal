@@ -1,5 +1,59 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, saveToken, ocr, comprobantes, auth } from './api';
+import { api, saveToken, ocr, comprobantes, auth, resolveApiBase } from './api';
+
+// Tests del resolver de VITE_API_URL — hotfix 2026-06-19.
+// Bug original: Netlify Branch deploys tenía VITE_API_URL sin protocolo
+// (`tecny-backend-staging.up.railway.app` en vez de `https://...`). fetch()
+// lo trataba como URL relativa → bug oscuro de "Sin conexión con el servidor"
+// en staging que pegaba a un path que devolvía index.html. 1h de debug.
+// Estos tests blindan los casos límite.
+describe('resolveApiBase() — validación de VITE_API_URL', () => {
+  it('devuelve el fallback prod cuando rawUrl es undefined', () => {
+    expect(resolveApiBase(undefined)).toBe('https://tecny-backend-production.up.railway.app');
+  });
+
+  it('devuelve el fallback prod cuando rawUrl es string vacío', () => {
+    expect(resolveApiBase('')).toBe('https://tecny-backend-production.up.railway.app');
+  });
+
+  it('devuelve el fallback prod cuando rawUrl es solo whitespace', () => {
+    expect(resolveApiBase('   ')).toBe('https://tecny-backend-production.up.railway.app');
+  });
+
+  it('acepta URL https válida tal cual', () => {
+    expect(resolveApiBase('https://tecny-backend-staging.up.railway.app'))
+      .toBe('https://tecny-backend-staging.up.railway.app');
+  });
+
+  it('acepta URL http (caso dev local) tal cual', () => {
+    expect(resolveApiBase('http://localhost:3010'))
+      .toBe('http://localhost:3010');
+  });
+
+  it('saca el trailing slash para no generar doble slash en BASE + /api/...', () => {
+    expect(resolveApiBase('https://tecny-backend-prod.up.railway.app/'))
+      .toBe('https://tecny-backend-prod.up.railway.app');
+    expect(resolveApiBase('https://tecny-backend-prod.up.railway.app///'))
+      .toBe('https://tecny-backend-prod.up.railway.app');
+  });
+
+  it('trim de whitespace alrededor de URL válida', () => {
+    expect(resolveApiBase('  https://x.com  ')).toBe('https://x.com');
+  });
+
+  it('THROW cuando rawUrl no arranca con http:// ni https:// (bug del 2026-06-19)', () => {
+    expect(() => resolveApiBase('tecny-backend-staging.up.railway.app'))
+      .toThrow(/VITE_API_URL inválida/);
+    expect(() => resolveApiBase('tecny-backend-staging.up.railway.app'))
+      .toThrow(/Debe arrancar con http:\/\/ o https:\/\//);
+  });
+
+  it('THROW para otros protocolos no soportados', () => {
+    expect(() => resolveApiBase('ftp://x.com')).toThrow(/VITE_API_URL inválida/);
+    expect(() => resolveApiBase('//x.com')).toThrow(/VITE_API_URL inválida/);
+    expect(() => resolveApiBase('javascript:alert(1)')).toThrow(/VITE_API_URL inválida/);
+  });
+});
 
 describe('api() — cliente HTTP', () => {
   beforeEach(() => {
