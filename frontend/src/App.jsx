@@ -17,6 +17,10 @@ const VerifyEmail = lazy(() => import('./screens/VerifyEmail'));
 // TANDA 0 #321 — forgot-password auto-servicio.
 const ForgotPassword = lazy(() => import('./screens/ForgotPassword'));
 const ResetPassword = lazy(() => import('./screens/ResetPassword'));
+// Landing comercial (#331) — montada en `/`. Lazy load para no inflar el
+// bundle del portal (los users logueados nunca la cargan: hay redirect a
+// /inicio en el Route `/`).
+const Landing = lazy(() => import('./screens/Landing'));
 
 // Lazy-load screens — Vite genera un chunk por pantalla (~40% menos bundle inicial)
 const Inicio     = lazy(() => import('./screens/Inicio'));
@@ -84,6 +88,29 @@ function AuthGuard() {
   return <Outlet />;
 }
 
+// ── Landing gate ───────────────────────────────────────────────────────────────
+// Para la ruta pública `/`: si el user ya está logueado, lo mandamos directo al
+// portal (/inicio) — no queremos que vea marketing si entró por bookmark. Si
+// no hay sesión, mostramos la landing comercial. Pattern estándar de SaaS
+// (Stripe, Linear, Netflix).
+//
+// Mientras carga el estado de auth (loading=true en AuthContext), devolvemos
+// la landing igual — el flash de marketing es preferible al pantallazo en
+// blanco. Cuando termine de cargar y haya sesión, el Navigate hace su efecto.
+function LandingOrRedirect() {
+  const { user, loading } = useAuth();
+  if (!loading && user) return <Navigate to="/inicio" replace />;
+  return <Landing />;
+}
+
+// Lo mismo para /login y /signup: si el user YA está logueado, no tiene
+// sentido mostrarle el form — redirect al portal.
+function RedirectIfAuthed({ children }) {
+  const { user, loading } = useAuth();
+  if (!loading && user) return <Navigate to="/inicio" replace />;
+  return children;
+}
+
 // ── Permission gate ────────────────────────────────────────────────────────────
 // perm: key en user.perms (ej. 'financiera')
 // adminOnly: true → solo role === 'admin'
@@ -115,9 +142,26 @@ export default function App() {
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
+              {/* ── Landing comercial (#331) ── */}
+              {/* `/` es pública. Si hay JWT, LandingOrRedirect → /inicio. */}
+              <Route path="/" element={
+                <ErrorBoundary><LandingOrRedirect /></ErrorBoundary>
+              } />
+
+              {/* ── /login ── ruta explícita post-#331 para que la landing
+                  pueda linkear a ella. Si el user YA tiene sesión, redirect
+                  a /inicio en lugar de mostrar el form. */}
+              <Route path="/login" element={
+                <RedirectIfAuthed>
+                  <ErrorBoundary><Login /></ErrorBoundary>
+                </RedirectIfAuthed>
+              } />
+
               {/* ── Rutas públicas (TANDA 2.2) ── */}
               <Route path="/signup" element={
-                <ErrorBoundary><Signup /></ErrorBoundary>
+                <RedirectIfAuthed>
+                  <ErrorBoundary><Signup /></ErrorBoundary>
+                </RedirectIfAuthed>
               } />
               <Route path="/verify-email" element={
                 <ErrorBoundary><VerifyEmail /></ErrorBoundary>
@@ -130,131 +174,133 @@ export default function App() {
                 <ErrorBoundary><ResetPassword /></ErrorBoundary>
               } />
 
-              {/* ── Rutas protegidas: AuthGuard intercepta ── */}
+              {/* ── Rutas protegidas: AuthGuard intercepta. ── */}
+              {/* Post-#331: Shell pasa de `path="/"` a layout pathless
+                  porque `/` ahora es Landing. Las child routes son
+                  absolutas (/inicio, /cotizador, etc.) en lugar de
+                  relativas. */}
               <Route element={<AuthGuard />}>
-                <Route path="/" element={<Shell />}>
-                  <Route index element={<Navigate to="/inicio" replace />} />
-
+                <Route element={<Shell />}>
                   {/* ── Siempre visible ── */}
-                  <Route path="inicio" element={
+                  <Route path="/inicio" element={
                     <ErrorBoundary><Inicio /></ErrorBoundary>
                   } />
 
                   {/* ── Por permiso ── */}
-                  <Route path="cotizador" element={
+                  <Route path="/cotizador" element={
                     <RequirePermission perm="cotizador">
                       <ErrorBoundary><Cotizador /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="financiera/*" element={
+                  <Route path="/financiera/*" element={
                     <RequirePermission perm="financiera">
                       <ErrorBoundary><Financiera /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="cajas/*" element={
+                  <Route path="/cajas/*" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Cajas /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="egresos" element={
+                  <Route path="/egresos" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Egresos /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="capital" element={
+                  <Route path="/capital" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Capital /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="resumen" element={
+                  <Route path="/resumen" element={
                     <RequirePermission perm="financiera">
                       <ErrorBoundary><Resumen /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="conciliacion" element={
+                  <Route path="/conciliacion" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Conciliacion /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="envios" element={
+                  <Route path="/envios" element={
                     <RequirePermission perm="envios">
                       <ErrorBoundary><Envios /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="cuentas/*" element={
+                  <Route path="/cuentas/*" element={
                     <RequirePermission perm="cuentas">
                       <ErrorBoundary><CuentasCC /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="usados" element={
+                  <Route path="/usados" element={
                     <RequirePermission perm="usados">
                       <ErrorBoundary><Usados /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="inventario" element={
+                  <Route path="/inventario" element={
                     <RequirePermission perm="inventario">
                       <ErrorBoundary><Inventario /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="inventario/desglose" element={
+                  <Route path="/inventario/desglose" element={
                     <RequirePermission perm="inventario">
                       <ErrorBoundary><Desglose360 /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="inventario/recepcion" element={
+                  <Route path="/inventario/recepcion" element={
                     <RequirePermission perm="inventario">
                       <ErrorBoundary><RecepcionStock /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="ventas" element={
+                  <Route path="/ventas" element={
                     <RequirePermission perm="ventas">
                       <ErrorBoundary><Ventas /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="proveedores" element={
+                  <Route path="/proveedores" element={
                     <RequirePermission perm="proveedores">
                       <ErrorBoundary><Proveedores /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
-                  <Route path="proyectos" element={
+                  <Route path="/proyectos" element={
                     <RequirePermission perm="proyectos">
                       <ErrorBoundary><Proyectos /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
-                  <Route path="contactos" element={
+                  <Route path="/contactos" element={
                     <RequirePermission perm="contactos">
                       <ErrorBoundary><Contactos /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
-                  <Route path="cambios" element={
+                  <Route path="/cambios" element={
                     <RequirePermission perm="cambios">
                       <ErrorBoundary><Cambios /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
-                  <Route path="tarjetas" element={
+                  <Route path="/tarjetas" element={
                     <RequirePermission perm="tarjetas">
                       <ErrorBoundary><Tarjetas /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   {/* ── Historial y Config requieren 'financiera' ── */}
-                  <Route path="historial" element={
+                  <Route path="/historial" element={
                     <RequirePermission perm="financiera">
                       <ErrorBoundary><Historial /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  <Route path="config" element={
+                  <Route path="/config" element={
                     <RequirePermission perm="financiera">
                       <ErrorBoundary><Config /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   {/* ── Solo admin ── */}
-                  <Route path="usuarios" element={
+                  <Route path="/usuarios" element={
                     <RequirePermission adminOnly>
                       <ErrorBoundary><Usuarios /></ErrorBoundary>
                     </RequirePermission>

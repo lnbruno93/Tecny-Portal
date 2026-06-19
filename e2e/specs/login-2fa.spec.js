@@ -39,8 +39,8 @@ test.describe('Login con 2FA activo', () => {
     });
 
     test('password OK + TOTP OK → dashboard + token JWT', async ({ page }) => {
-      // Paso 1: navegar a / y submitear username + password.
-      await page.goto('/');
+      // Paso 1: navegar a /login (post-#331 `/` es la landing) y submitear.
+      await page.goto('/login');
       await page.getByLabel('Usuario').fill(TEST_USER.username);
       await page.getByLabel('Contraseña', { exact: true }).fill(TEST_USER.password);
       await page.getByRole('button', { name: /Ingresar/i }).click();
@@ -89,8 +89,8 @@ test.describe('Login con 2FA activo', () => {
     });
 
     test('password OK + TOTP 000000 → error, no JWT, no redirect', async ({ page }) => {
-      // Paso 1: password OK → llegamos al form 2FA.
-      await page.goto('/');
+      // Paso 1: password OK → llegamos al form 2FA (post-#331 `/` es landing).
+      await page.goto('/login');
       await page.getByLabel('Usuario').fill(TEST_USER.username);
       await page.getByLabel('Contraseña', { exact: true }).fill(TEST_USER.password);
       await page.getByRole('button', { name: /Ingresar/i }).click();

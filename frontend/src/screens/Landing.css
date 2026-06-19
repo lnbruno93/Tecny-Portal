@@ -1,0 +1,320 @@
+/**
+ * Estilos de la landing comercial de Tecny (en tecnyapp.com root).
+ *
+ * Fuente: paquete entregado por Claude Design (Tecny Landing.html). El HTML
+ * original era autocontenido con <style> inline; lo separé en este archivo
+ * para que el componente React Landing.jsx se mantenga legible y los estilos
+ * sean cacheables como asset estático.
+ *
+ * Scope: los estilos están a propósito sueltos (sin BEM ni CSS Modules) porque
+ * la landing es una pantalla única que NO comparte el resto del portal. Los
+ * tokens (--bg, --accent, etc.) son LOCALES a la landing — no entran en
+ * conflicto con styles.css global del portal porque la landing se monta en
+ * una ruta separada (/) y el browser cascada de :root igual gana en su scope
+ * propio dentro del Landing component.
+ *
+ * Tipografía: Inter (UI) + JetBrains Mono (números). Cargado vía Google Fonts
+ * en el <head> del index.html — agregado allí porque preconnect/stylesheet
+ * tiene que estar ANTES del render para evitar FOUT.
+ */
+
+/* Vars locales — overridean a los globales del portal cuando se está dentro
+   de la landing. Usar el mismo nombre (--accent, --bg, etc.) hace que cualquier
+   componente compartido que use estos tokens herede el look de la landing si
+   se monta acá (no lo hace hoy, pero es defensa por las dudas). */
+.tecny-landing {
+  --bg:            #0a0e18;
+  --bg-2:          #0d1220;
+  --surface:       #131a2b;
+  --surface-2:     #1a2238;
+  --surface-3:     #232c46;
+  --border:        #1f2740;
+  --border-strong: #2c3656;
+  --hairline:      rgba(255,255,255,0.06);
+
+  --text:          #e8ecf6;
+  --text-2:        #b8c1d6;
+  --muted:         #7c87a5;
+  --dim:           #525c79;
+
+  --accent:        #0ea5e9;
+  --accent-2:      #38bdf8;
+  --accent-soft:   rgba(14,165,233,0.12);
+  --accent-ink:    #04253a;
+
+  --pos:           #4ade80;
+  --info:          #7aa9ff;
+
+  --maxw: 1200px;
+  --pad: 40px;
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: "ss01","cv11";
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  font-size: 16px;
+  min-height: 100vh;
+}
+.tecny-landing * { box-sizing: border-box; }
+.tecny-landing { scroll-behavior: smooth; }
+.tecny-landing .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.tecny-landing ::selection { background: var(--accent-soft); color: var(--text); }
+.tecny-landing a { color: inherit; text-decoration: none; }
+
+.tecny-landing .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
+
+/* ── Nav ─────────────────────────────────────────────── */
+.tecny-landing .nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,14,24,0.78);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 1px solid var(--hairline);
+}
+.tecny-landing .nav-inner {
+  max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);
+  display: flex; align-items: center; gap: 28px;
+}
+.tecny-landing .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+.tecny-landing .brand .mk {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--accent-ink); display: grid; place-items: center;
+  font-weight: 800; font-size: 12px; letter-spacing: -0.04em;
+  box-shadow: 0 4px 12px -2px rgba(14,165,233,0.4);
+}
+.tecny-landing .nav-links { display: flex; gap: 4px; margin-left: 8px; }
+.tecny-landing .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 7px; transition: .15s; }
+.tecny-landing .nav-links a:hover { color: var(--text); background: var(--surface); }
+.tecny-landing .nav-cta { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.tecny-landing .btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 42px; padding: 0 20px; border-radius: 10px;
+  font: 600 14.5px/1 'Inter', sans-serif; letter-spacing: -0.005em;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); cursor: pointer; transition: .14s; white-space: nowrap;
+}
+.tecny-landing .btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.tecny-landing .btn-primary {
+  background: var(--accent); color: var(--accent-ink); border-color: transparent;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 8px 24px -8px rgba(14,165,233,0.5);
+}
+.tecny-landing .btn-primary:hover { background: var(--accent-2); transform: translateY(-1px); }
+.tecny-landing .btn-lg { height: 50px; padding: 0 26px; font-size: 15.5px; border-radius: 12px; }
+.tecny-landing .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.tecny-landing .btn-ghost:hover { background: var(--surface); color: var(--text); }
+
+/* ── Hero ────────────────────────────────────────────── */
+.tecny-landing .hero { position: relative; overflow: hidden; padding: 100px 0 80px; }
+.tecny-landing .hero::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 800px 500px at 70% -5%, rgba(14,165,233,0.10), transparent 60%),
+    radial-gradient(ellipse 600px 400px at 10% 30%, rgba(122,169,255,0.05), transparent 55%);
+  pointer-events: none;
+}
+.tecny-landing .hero-grid { position: relative; display: grid; grid-template-columns: 1fr; gap: 40px; max-width: 880px; }
+.tecny-landing .eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 6px 12px; border-radius: 999px; margin-bottom: 24px;
+  border: 1px solid rgba(14,165,233,0.25);
+}
+.tecny-landing .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.tecny-landing h1.hero-h {
+  font-size: clamp(40px, 6.4vw, 76px); line-height: 1.02;
+  letter-spacing: -0.04em; font-weight: 700; margin: 0 0 24px;
+}
+.tecny-landing h1.hero-h .hl { color: var(--accent); }
+.tecny-landing .hero-sub {
+  font-size: clamp(17px, 2vw, 21px); color: var(--text-2);
+  max-width: 620px; line-height: 1.5; margin: 0 0 32px; font-weight: 400;
+}
+.tecny-landing .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.tecny-landing .hero-note { font-size: 13px; color: var(--muted); margin-top: 16px; display: flex; align-items: center; gap: 8px; }
+.tecny-landing .hero-note svg { color: var(--pos); }
+
+/* Product window */
+.tecny-landing .product-shot {
+  margin-top: 64px; position: relative;
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  box-shadow: 0 40px 100px -30px rgba(0,0,0,0.8), 0 0 0 1px var(--hairline) inset;
+}
+.tecny-landing .shot-chrome {
+  display: flex; align-items: center; gap: 8px; padding: 13px 16px;
+  background: var(--bg-2); border-bottom: 1px solid var(--hairline);
+}
+.tecny-landing .shot-chrome span { width: 11px; height: 11px; border-radius: 50%; }
+.tecny-landing .shot-chrome span:nth-child(1){ background:#ff5f57 }
+.tecny-landing .shot-chrome span:nth-child(2){ background:#febc2e }
+.tecny-landing .shot-chrome span:nth-child(3){ background:#28c840 }
+.tecny-landing .shot-url { margin-left: 14px; font-family:'JetBrains Mono',monospace; font-size: 12px; color: var(--muted); padding: 4px 12px; background: var(--surface); border-radius: 6px; }
+.tecny-landing .shot-body { display: grid; grid-template-columns: 220px 1fr; min-height: 460px; }
+.tecny-landing .shot-side { background: var(--bg-2); border-right: 1px solid var(--hairline); padding: 18px 12px; }
+.tecny-landing .shot-side .sb { display:flex; align-items:center; gap:9px; padding: 8px 10px 16px; border-bottom: 1px solid var(--hairline); margin-bottom: 12px; font-weight: 700; font-size: 14px; letter-spacing:-0.01em; }
+.tecny-landing .shot-side .sb .m { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),var(--accent-2)); color: var(--accent-ink); display: grid; place-items: center; font-size: 10px; font-weight: 800; }
+.tecny-landing .shot-side .sh { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 12px 10px 6px; }
+.tecny-landing .shot-side .si { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; font-size: 13px; color: var(--text-2); font-weight: 500; }
+.tecny-landing .shot-side .si.on { background: var(--surface-2); color: var(--text); }
+.tecny-landing .shot-side .si .d { width: 15px; height: 15px; border-radius: 4px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
+.tecny-landing .shot-side .si.on .d { background: var(--accent-soft); }
+.tecny-landing .shot-main { padding: 24px 26px; }
+.tecny-landing .shot-h { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 4px; }
+.tecny-landing .shot-hsub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+.tecny-landing .shot-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+.tecny-landing .shot-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.tecny-landing .shot-kpi .l { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.tecny-landing .shot-kpi .v { font-family:'JetBrains Mono',monospace; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin-top: 6px; }
+.tecny-landing .shot-kpi .t { font-size: 11px; font-weight: 600; margin-top: 4px; color: var(--pos); }
+.tecny-landing .shot-row { display: flex; align-items:center; justify-content: space-between; padding: 11px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; }
+.tecny-landing .shot-row .nm { font-weight: 600; font-size: 13px; }
+.tecny-landing .shot-row .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.tecny-landing .shot-row .amt { font-family:'JetBrains Mono',monospace; font-weight: 600; font-size: 13px; }
+.tecny-landing .pill { display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 8px; font-size:11px; font-weight:600; border-radius:6px; }
+.tecny-landing .pill-pos { background: rgba(74,222,128,0.13); color: var(--pos); }
+.tecny-landing .pill-amber { background: var(--accent-soft); color: var(--accent); }
+
+/* ── Logo strip ──────────────────────────────────────── */
+.tecny-landing .strip { border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); padding: 36px 0; }
+.tecny-landing .strip-label { text-align: center; font-size: 12.5px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; margin-bottom: 22px; }
+.tecny-landing .strip-logos { display: flex; justify-content: center; gap: 48px; flex-wrap: wrap; align-items: center; opacity: 0.6; }
+.tecny-landing .strip-logos .lg { font-weight: 700; font-size: 19px; letter-spacing: -0.02em; color: var(--text-2); }
+
+/* ── Section frame ───────────────────────────────────── */
+.tecny-landing section.s { padding: 96px 0; }
+.tecny-landing .s-head { max-width: 680px; margin: 0 0 56px; }
+.tecny-landing .s-head.center { margin: 0 auto 56px; text-align: center; }
+.tecny-landing .s-kicker { font-size: 12.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+.tecny-landing .s-title { font-size: clamp(30px, 4vw, 46px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 700; margin: 0 0 16px; }
+.tecny-landing .s-sub { font-size: 18px; color: var(--text-2); line-height: 1.55; }
+
+/* ── Steps ───────────────────────────────────────────── */
+.tecny-landing .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; counter-reset: step; }
+.tecny-landing .step { position: relative; padding-top: 28px; }
+.tecny-landing .step .n { font-family:'JetBrains Mono',monospace; font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 14px; }
+.tecny-landing .step .ico { width: 48px; height: 48px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); display: grid; place-items: center; color: var(--accent); margin-bottom: 16px; }
+.tecny-landing .step h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+.tecny-landing .step p { font-size: 14.5px; color: var(--text-2); margin: 0; line-height: 1.5; }
+.tecny-landing .step::before { content:""; position:absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), transparent); border-radius: 2px; }
+
+/* ── Modules ─────────────────────────────────────────── */
+.tecny-landing .mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.tecny-landing .mod {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px; transition: .16s; position: relative; overflow: hidden;
+}
+.tecny-landing .mod:hover { border-color: var(--border-strong); transform: translateY(-2px); background: var(--surface-2); }
+.tecny-landing .mod .ico { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 16px; }
+.tecny-landing .mod h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+.tecny-landing .mod p { font-size: 14px; color: var(--text-2); margin: 0; line-height: 1.5; }
+.tecny-landing .tint-amber{background:rgba(14,165,233,0.13);color:#0ea5e9}
+.tecny-landing .tint-blue{background:rgba(122,169,255,0.14);color:#7aa9ff}
+.tecny-landing .tint-green{background:rgba(74,222,128,0.13);color:#6ee79f}
+.tecny-landing .tint-purple{background:rgba(167,139,250,0.16);color:#c4aeff}
+.tecny-landing .tint-cyan{background:rgba(56,189,248,0.14);color:#6fcef5}
+.tecny-landing .tint-pink{background:rgba(244,114,182,0.14);color:#f4a5cf}
+.tecny-landing .tint-slate{background:rgba(148,163,184,0.14);color:#cbd5e1}
+
+/* ── Feature highlight ───────────────────────────────── */
+.tecny-landing .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.tecny-landing .feat-list { display: flex; flex-direction: column; gap: 22px; margin-top: 28px; }
+.tecny-landing .feat-item { display: grid; grid-template-columns: 28px 1fr; gap: 14px; }
+.tecny-landing .feat-item .ck { width: 26px; height: 26px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+.tecny-landing .feat-item h4 { margin: 0 0 4px; font-size: 15.5px; font-weight: 600; }
+.tecny-landing .feat-item p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.45; }
+.tecny-landing .feat-visual {
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 28px;
+  box-shadow: 0 30px 70px -24px rgba(0,0,0,0.7);
+}
+.tecny-landing .calc-row { display:flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 14px; }
+.tecny-landing .calc-row .l { color: var(--muted); }
+.tecny-landing .calc-row .v { font-family:'JetBrains Mono',monospace; font-weight: 600; }
+.tecny-landing .calc-total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 14px; display:flex; justify-content: space-between; align-items: baseline; }
+.tecny-landing .calc-total .v { font-family:'JetBrains Mono',monospace; font-size: 24px; font-weight: 700; color: var(--accent); }
+
+/* ── Testimonios ─────────────────────────────────────── */
+.tecny-landing .tests { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.tecny-landing .test { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px; display: flex; flex-direction: column; }
+.tecny-landing .test .stars { color: var(--accent); font-size: 14px; letter-spacing: 2px; margin-bottom: 16px; }
+.tecny-landing .test .q { font-size: 15.5px; line-height: 1.55; color: var(--text); margin: 0 0 22px; flex: 1; }
+.tecny-landing .test .who { display: flex; align-items: center; gap: 12px; }
+.tecny-landing .test .av { width: 40px; height: 40px; border-radius: 50%; background: var(--surface-3); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+.tecny-landing .test .nm { font-weight: 600; font-size: 14px; }
+.tecny-landing .test .rl { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+
+.tecny-landing .bigstat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--surface); margin-top: 48px; }
+.tecny-landing .bigstat > div { padding: 28px; border-right: 1px solid var(--hairline); text-align: center; }
+.tecny-landing .bigstat > div:last-child { border-right: 0; }
+.tecny-landing .bigstat .v { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; color: var(--accent); font-family:'JetBrains Mono',monospace; }
+.tecny-landing .bigstat .l { font-size: 13px; color: var(--text-2); margin-top: 6px; }
+
+/* ── Pricing ─────────────────────────────────────────── */
+.tecny-landing .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
+.tecny-landing .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 30px; position: relative; }
+.tecny-landing .plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 24px 60px -20px rgba(14,165,233,0.25); }
+.tecny-landing .plan .tag-pop { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--accent-ink); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; padding: 4px 14px; border-radius: 999px; }
+.tecny-landing .plan .pname { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+.tecny-landing .plan .pdesc { font-size: 13px; color: var(--muted); margin-top: 4px; min-height: 36px; }
+.tecny-landing .plan .price { margin: 20px 0 6px; display: flex; align-items: baseline; gap: 4px; }
+.tecny-landing .plan .price .num { font-size: 44px; font-weight: 700; letter-spacing: -0.03em; font-family:'JetBrains Mono',monospace; }
+.tecny-landing .plan .price .per { font-size: 14px; color: var(--muted); }
+.tecny-landing .plan .price .cur { font-size: 18px; color: var(--text-2); font-weight: 600; align-self: flex-start; margin-top: 6px; }
+.tecny-landing .plan .pnote { font-size: 12px; color: var(--dim); margin-bottom: 22px; }
+.tecny-landing .plan ul { list-style: none; margin: 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.tecny-landing .plan li { display: flex; gap: 10px; font-size: 14px; color: var(--text-2); align-items: flex-start; }
+.tecny-landing .plan li svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.tecny-landing .plan .btn { width: 100%; justify-content: center; }
+.tecny-landing .price-note { text-align: center; margin-top: 26px; font-size: 13.5px; color: var(--muted); }
+
+/* ── FAQ ─────────────────────────────────────────────── */
+.tecny-landing .faq { max-width: 800px; margin: 0 auto; }
+.tecny-landing .qa { border-bottom: 1px solid var(--border); }
+.tecny-landing .qa summary { cursor: pointer; padding: 22px 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.tecny-landing .qa summary::-webkit-details-marker { display: none; }
+.tecny-landing .qa summary .pm { width: 22px; height: 22px; flex-shrink: 0; color: var(--accent); transition: transform .2s; }
+.tecny-landing .qa[open] summary .pm { transform: rotate(45deg); }
+.tecny-landing .qa .a { padding: 0 4px 24px; font-size: 15px; color: var(--text-2); line-height: 1.6; max-width: 680px; }
+
+/* ── CTA final ───────────────────────────────────────── */
+.tecny-landing .cta-final { position: relative; overflow: hidden; border-radius: 24px; padding: 72px 48px; text-align: center; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%); border: 1px solid var(--border-strong); }
+.tecny-landing .cta-final::before { content:""; position:absolute; inset: 0; background: radial-gradient(ellipse 600px 300px at 50% 0%, rgba(14,165,233,0.12), transparent 60%); pointer-events: none; }
+.tecny-landing .cta-final h2 { position: relative; font-size: clamp(30px, 4.5vw, 52px); line-height: 1.05; letter-spacing: -0.03em; font-weight: 700; margin: 0 0 18px; }
+.tecny-landing .cta-final p { position: relative; font-size: 18px; color: var(--text-2); max-width: 520px; margin: 0 auto 32px; }
+.tecny-landing .cta-final .hero-actions { position: relative; justify-content: center; }
+
+/* ── Footer ──────────────────────────────────────────── */
+.tecny-landing footer { border-top: 1px solid var(--hairline); padding: 56px 0 40px; margin-top: 96px; }
+.tecny-landing .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 48px; }
+.tecny-landing .foot-brand-blurb { font-size: 14px; color: var(--muted); max-width: 280px; margin-top: 16px; line-height: 1.5; }
+.tecny-landing .foot-col h5 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin: 0 0 16px; }
+.tecny-landing .foot-col a { display: block; font-size: 14px; color: var(--text-2); padding: 5px 0; transition: .12s; }
+.tecny-landing .foot-col a:hover { color: var(--text); }
+.tecny-landing .foot-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: 28px; border-top: 1px solid var(--hairline); flex-wrap: wrap; gap: 16px; }
+.tecny-landing .foot-bottom .cr { font-size: 13px; color: var(--muted); }
+.tecny-landing .foot-bottom .soc { display: flex; gap: 8px; }
+.tecny-landing .foot-bottom .soc a { width: 34px; height: 34px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; color: var(--muted); transition: .14s; }
+.tecny-landing .foot-bottom .soc a:hover { color: var(--text); border-color: var(--border-strong); }
+
+@media (max-width: 940px) {
+  .tecny-landing { --pad: 24px; }
+  .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .mods, .tecny-landing .tests, .tecny-landing .plans { grid-template-columns: 1fr; }
+  .tecny-landing .feat { grid-template-columns: 1fr; gap: 32px; }
+  .tecny-landing .bigstat { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .bigstat > div:nth-child(2) { border-right: 0; }
+  .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+  .tecny-landing .nav-links { display: none; }
+  .tecny-landing .shot-body { grid-template-columns: 1fr; }
+  .tecny-landing .shot-side { display: none; }
+}
+@media (max-width: 560px) {
+  .tecny-landing .steps, .tecny-landing .bigstat { grid-template-columns: 1fr; }
+  .tecny-landing .shot-kpis { grid-template-columns: 1fr 1fr; }
+  .tecny-landing .plan .price .num { font-size: 38px; }
+}
