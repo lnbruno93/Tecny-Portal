@@ -18,7 +18,7 @@ const logger = pino({
   level: process.env.LOG_LEVEL ||
     (process.env.NODE_ENV === 'test' ? 'warn' : 'info'),
 
-  base: { service: 'ipro-backend' },
+  base: { service: 'tecny-backend' },
 
   timestamp: pino.stdTimeFunctions.isoTime,
 

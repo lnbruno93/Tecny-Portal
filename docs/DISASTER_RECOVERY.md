@@ -172,7 +172,7 @@ pg_restore --no-owner --no-privileges \
   -d "$NUEVA_DB_URL" \
   ~/ipro-restore.dump
 
-# 4. Reapuntar DATABASE_URL en Railway → ipro-backend.
+# 4. Reapuntar DATABASE_URL en Railway → tecny-backend.
 
 # 5. Las migraciones ya están en el dump. Si querés validar:
 #    cd backend && DATABASE_URL=$NUEVA_DB_URL npm run migrate

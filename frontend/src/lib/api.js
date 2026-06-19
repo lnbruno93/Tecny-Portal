@@ -1,5 +1,5 @@
 // Base URL: local dev → localhost:3001, production → Railway
-const BASE = import.meta.env.VITE_API_URL || 'https://ipro-backend-production.up.railway.app';
+const BASE = import.meta.env.VITE_API_URL || 'https://tecny-backend-production.up.railway.app';
 
 function getToken() {
   return localStorage.getItem('fin_token') || null;
@@ -179,7 +179,7 @@ export const comprobantes = {
   // Mandamos el JWT por header como el resto del API.
   exportZip: async (params = {}) => {
     const token = localStorage.getItem('fin_token');
-    const url = (import.meta.env.VITE_API_URL || 'https://ipro-backend-production.up.railway.app')
+    const url = (import.meta.env.VITE_API_URL || 'https://tecny-backend-production.up.railway.app')
       + '/api/comprobantes/export-zip?' + new URLSearchParams(params);
     const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
     if (!res.ok) {
