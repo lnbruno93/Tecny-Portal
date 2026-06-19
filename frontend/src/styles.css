@@ -428,22 +428,21 @@ body {
   color: var(--text-muted);
   margin-top: 4px;
 }
-/* 2026-06-19 Lucas: que los botones del header ocupen el ancho disponible
-   y se distribuyan entre los extremos. Antes quedaban apretados a la derecha,
-   "Agregar producto" pegado a "Vaciar stock + compras" sin respiro. Ahora:
-   - flex: 1 1 auto: page-actions toma el espacio que sobra a la derecha del
-     título, en vez de dejar gap muerto.
-   - justify-content: space-between: los botones se distribuyen a lo largo
-     del ancho disponible, con respiración entre ellos.
-   - flex-wrap: wrap: si no entran todos en una fila (Inventario tiene 9),
-     wrappean a una segunda fila dentro del propio container, sin romper. */
+/* 2026-06-19: probamos `space-between` para que los botones se distribuyeran
+   pero Lucas reportó que en pantallas con pocos botones (Ventas, B2B,
+   Financiera, Envíos: 2-5 botones) quedaban demasiado separados, "feo".
+   Volvemos al comportamiento agrupado a la derecha (default de la
+   justify-content: space-between del page-head padre).
+   Mantenemos `flex-wrap: wrap` porque sí ayuda cuando hay muchos botones
+   (Inventario tiene 9): si no entran en una fila, wrappean dentro del
+   propio container con los botones extra en una segunda fila también
+   alineados a la derecha. */
 .page-actions {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
-  flex: 1 1 auto;
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────── */
