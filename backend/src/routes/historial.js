@@ -93,6 +93,29 @@ router.get('/', async (req, res, next) => {
     const conditions = [];
     const params     = [];
 
+    // Hotfix 2026-06-19 #336: leak cross-tenant en /api/historial.
+    //
+    // La policy RLS de `audit_logs` permite `tenant_id IS NULL` por diseño
+    // (audits del sistema sin contexto de tenant — jobs/crons). El problema:
+    // entre 2026-06-16 y 2026-06-18, 82 audits se insertaron con tenant_id NULL
+    // por un bug en code paths legacy (pre TANDA 0b refactor). Esos 82 quedaban
+    // visibles a TODOS los tenants al listar /api/historial — el "Actividad
+    // reciente" del Inicio mostraba acciones de otros tenants.
+    //
+    // Fix de superficie: filtrar `tenant_id IS NOT NULL` en este endpoint.
+    // RLS sigue filtrando el resto (tenant_id = current_setting). Defense
+    // in depth: la app NO confía en que la policy cubra el corner case del
+    // NULL — lo descartamos explícitamente en el SQL.
+    //
+    // Audits de sistema (tenant_id NULL) NO deben aparecer en UI user-facing
+    // en ningún caso — son para admin / sysadmin tools, no para el feed de
+    // actividad del dashboard.
+    //
+    // Follow-up planeado: (a) backfill de los 82 huérfanos via user_id →
+    // users.tenant_id, (b) borrado de los que queden sin attribution,
+    // (c) tighten RLS para no permitir NULL en audit_logs — defensa permanente.
+    conditions.push('a.tenant_id IS NOT NULL');
+
     if (hayBusqueda) {
       params.push(`%${q.trim()}%`);
       const i = params.length;
