@@ -65,7 +65,8 @@ async function resolveUserTenant(userId) {
   // al user. El equipo OPS revisa y decide: mover al tenant correcto, o
   // deshabilitar el user si es zombi.
   //
-  // SEGURIDAD: el fallback asigna al user a tenant 1 (iPro Original). En
+  // SEGURIDAD: el fallback asigna al user a tenant 1 (Tecny, el tenant
+  // histórico — ex "iPro Original"). En
   // este escenario, el user vería data del owner del SaaS — potencial data
   // leak. Por eso la alerta tiene que llegar rápido.
   logger.warn(
