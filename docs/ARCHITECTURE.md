@@ -41,7 +41,7 @@ Maneja:
 | Backend tests | Jest + supertest | 539 tests integration |
 | DB | PostgreSQL 18 | node-pg-migrate, sin ORM |
 | Auth | JWT HS256 + bcrypt + lockout + 2FA TOTP opcional | Ver §8 decisiones durables; sin OAuth todavía |
-| Deploy backend | Railway | `Postgres-AueP` (DB) + `ipro-backend` (rename a `tecny-backend` pendiente — fase 2 del rebrand) |
+| Deploy backend | Railway | `Postgres-AueP` (DB) + `tecny-backend` (rename a `tecny-backend` pendiente — fase 2 del rebrand) |
 | Deploy frontend | Netlify | `tecnyapp.com` (custom domain) — fallback `ipro-portal.netlify.app` |
 | Observability | pino (logs) + Sentry (errors) + UptimeRobot | Plus `/health` y `/ready` |
 | CI | GitHub Actions | npm audit + lint + tests + build |

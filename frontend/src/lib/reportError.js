@@ -15,7 +15,7 @@
  * Throttle: máximo 5 reportes por sesión, mínimo 2s entre reportes. Si la
  * app está en loop generando errores, no queremos DDOS-earnos a nosotros mismos.
  */
-const BASE = import.meta.env.VITE_API_URL || 'https://ipro-backend-production.up.railway.app';
+const BASE = import.meta.env.VITE_API_URL || 'https://tecny-backend-production.up.railway.app';
 
 // Build metadata inyectada por vite.config.js (via define). Permite correlacionar
 // errores client con el commit/release exacto que estaba activo cuando ocurrió.

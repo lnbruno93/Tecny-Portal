@@ -27,12 +27,12 @@ cd backend
 # 2. Conseguir un token JWT de un admin contra staging.
 #    Más rápido: login desde el frontend de staging, copiar el token del localStorage.
 #    Alternativa: curl al endpoint de login.
-curl -X POST "https://ipro-backend-staging.up.railway.app/api/auth/login" \
+curl -X POST "https://tecny-backend-staging.up.railway.app/api/auth/login" \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"..."}'
 
 # 3. Exportar env vars
-export IPRO_TARGET=https://ipro-backend-staging.up.railway.app
+export IPRO_TARGET=https://tecny-backend-staging.up.railway.app
 export IPRO_TOKEN=<el-jwt-del-paso-2>
 
 # 4. Correr todos los scenarios (~2 min total)
@@ -210,7 +210,7 @@ Posibles causas (en orden de probabilidad):
 1 RTT extra (response a un GET sin query — viaja de vuelta al cliente AR).
 
 **Regiones verificadas en Railway production:**
-- `ipro-backend`: **US West (California, USA)**.
+- `tecny-backend`: **US West (California, USA)**.
 - `Postgres-AueP`: **US West (California, USA)** — misma región que el backend.
 
 ### Conclusión
