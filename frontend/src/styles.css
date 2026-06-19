@@ -395,7 +395,16 @@ body {
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 24px;
+  /* 2026-06-19: flex-wrap + min-width:0 a los hijos. En pantallas con MUCHOS
+     botones de acción (ej. Inventario: Actualizar, Plantilla x2, Importar,
+     Exportar, Categorías, Vaciar x2, Agregar) la columna de actions comía
+     casi todo el ancho y la del título quedaba apretada → el subtítulo
+     "Stock de equipos y accesorios · costos, depósitos y proveedores"
+     wrapeaba a 4 líneas finas. Con wrap, cuando no entran en una fila las
+     actions caen a una segunda fila completa y el título recupera ancho. */
+  flex-wrap: wrap;
 }
+.page-head > * { min-width: 0; }
 .page-title {
   /* UX H2 auditoría 2026-06-06: title fluido — 22px en mobile, 26px en
      desktop. Mejora la legibilidad en mobile (donde 26px+títulos largos
