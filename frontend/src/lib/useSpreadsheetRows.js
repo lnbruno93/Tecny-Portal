@@ -1,5 +1,5 @@
 /**
- * useSpreadsheetRows — hook común para los modales spreadsheet de iPro.
+ * useSpreadsheetRows — hook común para los modales spreadsheet de Tecny.
  *
  * Auditoría #R-01: CompraProveedorModal, VentaB2BModal y CobranzaMasivaModal
  * repetían el mismo patrón ~80 líneas: state de rows, mkRow, isUsedRow,

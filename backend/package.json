@@ -1,7 +1,7 @@
 {
-  "name": "ipro-portal-backend",
+  "name": "tecny-portal-backend",
   "version": "1.0.1",
-  "description": "iPro Portal — API Backend",
+  "description": "Tecny — API Backend",
   "main": "server.js",
   "scripts": {
     "start": "npm run migrate && node server.js",
