@@ -67,6 +67,9 @@ export const Icons = {
   FileText: (p) => <ICO {...p}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="M8 13h8M8 17h6" /></ICO>,
   // Grilla de planilla — usado para botones de export XLSX.
   Sheet: (p) => <ICO {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 16h18M9 4v16M15 4v16" /></ICO>,
+  // Sol / Luna — toggle dark/light mode (UserPill del sidebar).
+  Sun: (p) => <ICO {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></ICO>,
+  Moon: (p) => <ICO {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" /></ICO>,
 };
 
 export default Icons;

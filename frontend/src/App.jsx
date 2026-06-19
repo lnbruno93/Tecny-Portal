@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './components/ConfirmModal';
@@ -133,6 +134,7 @@ function RequirePermission({ perm, adminOnly, children }) {
 // ── App ────────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <ToastProvider>
       <ConfirmProvider>
@@ -319,5 +321,6 @@ export default function App() {
       </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
