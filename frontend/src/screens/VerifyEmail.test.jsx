@@ -72,7 +72,7 @@ describe('VerifyEmail — TANDA 2.2 Fase B', () => {
 
     // Avanzo el timer 2500ms.
     await act(async () => { vi.advanceTimersByTime(2500); });
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
   });
 
   it('error del backend: muestra ✗ + mensaje + link a /', async () => {
@@ -109,7 +109,7 @@ describe('VerifyEmail — TANDA 2.2 Fase B', () => {
     // Igual que success: redirige a / después de 2.5s.
     expect(mockNavigate).not.toHaveBeenCalled();
     await act(async () => { vi.advanceTimersByTime(2500); });
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true });
   });
 
   it('sin token en URL: muestra error específico sin llamar al backend', async () => {
