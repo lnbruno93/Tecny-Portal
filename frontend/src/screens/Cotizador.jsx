@@ -117,7 +117,11 @@ function TabTarjetas() {
       txt += `💳 TOTAL 3 cuotas: $${fmt(calculo.tots.c3)}\n`;
       txt += `💳 TOTAL 6 cuotas: $${fmt(calculo.tots.c6)}\n`;
     }
-    txt += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +2800 reseñas 5 estrellas.`;
+    // Cotización con tarjeta: dato de reseñas actualizado (2800 → 3200) +
+    // recomendación de validar con el banco — algunos bancos rechazan operaciones
+    // grandes sin aviso previo. La 2da frase NO se duplica en TabUsd porque
+    // efectivo/transferencia no involucra banco que validar.
+    txt += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +3200 reseñas 5 estrellas. En caso de que te interese la cotización, te recomendamos llamar previamente a tu banco para validar la operación.`;
     navigator.clipboard?.writeText(txt);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 1800);
@@ -356,7 +360,7 @@ function TabUsd() {
       if (optTars) m += `TOTAL Transferencia ARS: $${fmt(calculo.tots.tars)}\n`;
       if (optTusd) m += `TOTAL Transferencia USD: u$s ${fmt(calculo.tots.tusd)}\n`;
     }
-    m += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +2800 reseñas 5 estrellas.`;
+    m += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +3200 reseñas 5 estrellas.`;
     navigator.clipboard?.writeText(m);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 1800);
