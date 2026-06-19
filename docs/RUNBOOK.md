@@ -175,6 +175,10 @@ externos — sin dominio verificado solo se entrega al email del owner de Resend
    en `EMAIL_FROM`.
 4. Cambiar `EMAIL_FROM` en Railway env vars → redeploy automático.
 
+**Dominio actual (post #312, 2026-06-18):** `tecnyapp.com`, registrado en
+GoDaddy. `EMAIL_FROM` en Railway = `iPro Portal <noreply@tecnyapp.com>`.
+Setup detallado: [docs/runbooks/resend-domain-setup.md](runbooks/resend-domain-setup.md).
+
 **Troubleshooting deliverability:**
 - Email llega a spam → marcá "No es spam" en Gmail / agregar DKIM al dominio.
 - "Domain not verified" en Resend response → revisar DNS, esperar 10 min.

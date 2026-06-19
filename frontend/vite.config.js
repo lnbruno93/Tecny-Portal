@@ -55,9 +55,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'pwa-icon.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
-        name: 'iPro Portal',
-        short_name: 'iPro',
-        description: 'Portal operativo iPro Tech — Financiera, Cajas, Envíos, Cotizador',
+        name: 'Tecny',
+        short_name: 'Tecny',
+        description: 'Portal operativo Tecny — Financiera, Cajas, Envíos, Cotizador',
         theme_color: '#0a0e18',
         background_color: '#0a0e18',
         display: 'standalone',

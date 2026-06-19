@@ -29,4 +29,20 @@ const changePasswordSchema = z.object({
   twofa_code:      z.string().trim().min(6).max(20).optional(),
 }).strict();
 
-module.exports = { loginSchema, changePasswordSchema };
+// 2026-06-18 #321 forgot-password.
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Email inválido').max(254),
+  // hCaptcha opcional en schema. El toggle vive en HCAPTCHA_ENABLED env.
+  // Si está enabled y falta, verifyCaptcha lo rechaza con 'invalid_token'.
+  // Bound a 10kB — tokens reales son ~500-2000 chars.
+  hcaptcha_response: z.string().trim().max(10_000).optional(),
+}).strict();
+
+const resetPasswordSchema = z.object({
+  // crypto.randomBytes(32).toString('hex') → 64 chars hex.
+  // Validamos formato como defensa anti-basura (no estricto a 64 por compat).
+  token:       z.string().trim().regex(/^[0-9a-f]+$/i, 'Token inválido').min(32).max(128),
+  newPassword: passwordField(),
+}).strict();
+
+module.exports = { loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema };

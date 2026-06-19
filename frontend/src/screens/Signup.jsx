@@ -2,6 +2,11 @@ import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { auth as authApi } from '../lib/api';
+import {
+  validatePasswordPolicy,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_POLICY_HINT,
+} from '../lib/passwordPolicy';
 
 // CAPTCHA: site key del widget. Lee de Netlify env var VITE_HCAPTCHA_SITE_KEY
 // (build-time inline). Default: la test sitekey oficial de hCaptcha (siempre
@@ -103,6 +108,10 @@ export default function Signup() {
   // "24 horas" en el copy, lo que mentía si el backend ajustaba TTL.
   // Default 24 por si el backend (legacy) no manda el field.
   const [tokenTtlHours, setTokenTtlHours] = useState(24);
+  // 2026-06-18 #322 TANDA 1 H2: error inline del field password (policy
+  // backend: min 8 + letra + número). Sin esto, user que escribe "12345678"
+  // ve genérico "No se pudo crear la cuenta" sin saber qué corregir.
+  const [pwError, setPwError] = useState('');
 
   // CAPTCHA: el widget hCaptcha en modo "99.9% passive" resuelve invisible
   // para users legítimos — el token llega via onVerify sin friction. Solo
@@ -114,6 +123,18 @@ export default function Signup() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setPwError('');
+
+    // Client-side password policy — espejo del backend (lib/passwordPolicy.js).
+    // Sin esto, el user que escribe "12345678" o "abcdefgh" ve genérico "No se
+    // pudo crear la cuenta" porque el backend lo rechaza con error de Zod —
+    // mala UX. Ahora le decimos qué corregir antes del round-trip.
+    const pwIssue = validatePasswordPolicy(password);
+    if (pwIssue) {
+      setPwError(pwIssue);
+      return;
+    }
+
     setLoading(true);
     const normalizedEmail = email.trim().toLowerCase();
     try {
@@ -147,10 +168,9 @@ export default function Signup() {
       {/* Panel marca (izquierda) — mismo que Login pero eyebrow distinto */}
       <aside className="lg-brand">
         <div className="lg-top">
-          <div className="lg-mark">iP</div>
+          <div className="lg-mark">T</div>
           <div>
-            <div className="lg-name">iPro</div>
-            <div className="lg-sub">Tech Reseller · Celnyx</div>
+            <div className="lg-name">Tecny</div>
           </div>
         </div>
         <div className="lg-mid">
@@ -175,10 +195,9 @@ export default function Signup() {
       <main className="lg-form">
         <div className="login-box">
           <div className="lg-mobile">
-            <div className="lg-mark">iP</div>
+            <div className="lg-mark">T</div>
             <div>
-              <div className="lg-name">iPro</div>
-              <div className="lg-sub">Tech Reseller · Celnyx</div>
+              <div className="lg-name">Tecny</div>
             </div>
           </div>
 
@@ -236,7 +255,7 @@ export default function Signup() {
             <>
               <div className="lg-h">
                 <h1>Crear tu cuenta</h1>
-                <p>Empezá a usar iPro en menos de un minuto.</p>
+                <p>Empezá a usar Tecny en menos de un minuto.</p>
               </div>
 
               <form onSubmit={handleSubmit}>
@@ -285,12 +304,18 @@ export default function Signup() {
                     <input
                       id="signup-password"
                       type={showPw ? 'text' : 'password'}
-                      placeholder="Mínimo 8 caracteres"
+                      placeholder={PASSWORD_POLICY_HINT}
                       autoComplete="new-password"
                       value={password}
-                      onChange={e => setPassword(e.target.value)}
+                      onChange={e => {
+                        setPassword(e.target.value);
+                        // Limpiar error inline cuando el user empieza a corregir,
+                        // así no queda rojo mientras escribe.
+                        if (pwError) setPwError('');
+                      }}
                       required
-                      minLength={8}
+                      minLength={MIN_PASSWORD_LENGTH}
+                      aria-invalid={!!pwError}
                     />
                     <button
                       type="button"
@@ -301,9 +326,15 @@ export default function Signup() {
                       {showPw ? <IconEyeOff /> : <IconEye />}
                     </button>
                   </div>
-                  <div className="field-note">
-                    Mínimo 8 caracteres. Usá una contraseña que no uses en otros sitios.
-                  </div>
+                  {pwError ? (
+                    <div className="field-note" style={{ color: 'var(--neg)' }} role="alert">
+                      {pwError}
+                    </div>
+                  ) : (
+                    <div className="field-note">
+                      {PASSWORD_POLICY_HINT} Usá una contraseña que no uses en otros sitios.
+                    </div>
+                  )}
                 </div>
 
                 <div className="field">

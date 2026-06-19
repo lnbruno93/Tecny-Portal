@@ -176,4 +176,52 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
     // Pantalla "Revisá tu email" aparece después de resolve.
     await waitFor(() => expect(screen.queryByRole('heading', { name: /revisá tu email/i })).toBeInTheDocument());
   });
+
+  // ── TANDA 1 #322 H2: password policy client-side ────────────────────────
+  // Backend requiere min 8 + letra + número (Zod). Antes el form solo
+  // validaba HTML minLength=8 → passwords como "12345678" o "abcdefgh"
+  // pasaban al backend que devolvía "No se pudo crear la cuenta" genérico.
+  // Ahora validación inline antes del round-trip.
+
+  describe('#322 password policy client-side', () => {
+    async function fillForm({ pw }) {
+      const user = userEvent.setup();
+      renderS();
+      await user.type(getNombre(), 'Lucas');
+      await user.type(getEmail(), 'test@x.com');
+      await user.type(getPassword(), pw);
+      await user.type(getEmpresa(), 'Mi empresa');
+      return user;
+    }
+
+    it('rechaza password sin letra ("12345678") + NO llama backend', async () => {
+      const user = await fillForm({ pw: '12345678' });
+      await user.click(getSubmit());
+      expect(await screen.findByText(/al menos una letra/i)).toBeInTheDocument();
+      expect(mockSignup).not.toHaveBeenCalled();
+    });
+
+    it('rechaza password sin número ("abcdefgh") + NO llama backend', async () => {
+      const user = await fillForm({ pw: 'abcdefgh' });
+      await user.click(getSubmit());
+      expect(await screen.findByText(/al menos un número/i)).toBeInTheDocument();
+      expect(mockSignup).not.toHaveBeenCalled();
+    });
+
+    it('acepta password válida (8 chars + letra + número) y llama backend', async () => {
+      mockSignup.mockResolvedValue({ verification_required: true });
+      const user = await fillForm({ pw: 'pass1234' });
+      await user.click(getSubmit());
+      await waitFor(() => expect(mockSignup).toHaveBeenCalledTimes(1));
+    });
+
+    it('error inline se limpia cuando el user corrige', async () => {
+      const user = await fillForm({ pw: '12345678' });
+      await user.click(getSubmit());
+      expect(await screen.findByText(/al menos una letra/i)).toBeInTheDocument();
+      // Agregamos una letra al input → el error desaparece.
+      await user.type(getPassword(), 'a');
+      expect(screen.queryByText(/al menos una letra/i)).not.toBeInTheDocument();
+    });
+  });
 });

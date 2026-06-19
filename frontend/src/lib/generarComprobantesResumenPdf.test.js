@@ -54,7 +54,7 @@ describe('generarComprobantesResumenPdf', () => {
     });
 
     // Verificamos los textos renderizados clave en el header.
-    expect(calls.text.some(s => /iPro · Comprobantes/.test(s))).toBe(true);
+    expect(calls.text.some(s => /Tecny · Comprobantes/.test(s))).toBe(true);
     expect(calls.text.some(s => /mayo 2026/.test(s))).toBe(true);
 
     // autoTable recibió body de 2 filas + footRow con TOTAL.

@@ -46,21 +46,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useModal } from '../lib/useModal';
 import { friendlyError } from '../lib/friendlyError';
-
-// Política de password — mirror del backend (lib/password.js).
-// Si cambia ahí, cambiar acá también. Tests garantizan paridad.
-const MIN_PASSWORD_LENGTH = 8;
-const PASSWORD_HAS_LETTER = /[A-Za-z]/;
-const PASSWORD_HAS_NUMBER = /[0-9]/;
-
-function validatePasswordPolicy(pw) {
-  if (!pw || pw.length < MIN_PASSWORD_LENGTH) {
-    return `Mínimo ${MIN_PASSWORD_LENGTH} caracteres`;
-  }
-  if (!PASSWORD_HAS_LETTER.test(pw)) return 'Debe incluir al menos una letra';
-  if (!PASSWORD_HAS_NUMBER.test(pw)) return 'Debe incluir al menos un número';
-  return null;
-}
+// 2026-06-18 #322: política centralizada en lib/passwordPolicy. Antes vivía
+// duplicada inline acá (con la misma lógica).
+import { validatePasswordPolicy, MIN_PASSWORD_LENGTH } from '../lib/passwordPolicy';
 
 export default function ChangePasswordModal({ open, onClose }) {
   const { logout } = useAuth();
@@ -143,23 +131,33 @@ export default function ChangePasswordModal({ open, onClose }) {
       // El wrapper api() (lib/api.js) lanza Error con `.status` y
       // `.responseBody` (no `.body` — naming intencional para no chocar con
       // Response.body nativo). Distinguimos casos.
+      //
+      // 2026-06-18 #318: branching por `code` (enum stable), no por regex
+      // sobre `error` string. Ver backend/src/lib/authErrorCodes.js para la
+      // lista de codes. Mantenemos fallback a regex/twofa_required por si
+      // llega un response viejo (deploy lag entre backend y frontend).
+      // Eliminar fallback después de un release stable con codes en backend.
       const status = err?.status;
       const body   = err?.responseBody || {};
+      const code   = body.code;
 
-      if (status === 401 && body.twofa_required) {
-        // Primera vez que vemos que el user tiene 2FA — mostrar input.
-        // NO mostramos error rojo, es un step legítimo del flow.
+      // 2FA required (legítimo, primera vez que el modal ve que el user tiene
+      // 2FA activo). NO mostramos error rojo — mostramos el input de 2FA.
+      const isTwofaRequired = code === 'TWOFA_REQUIRED' || body.twofa_required === true;
+      // 2FA code inválido (re-submit con código mal copiado / vencido).
+      const isInvalidTwofa  = code === 'INVALID_TWOFA_CODE' || /2FA/i.test(body.error || '');
+
+      if (status === 401 && isTwofaRequired) {
         setTwofaRequired(true);
         setError(''); // limpiar cualquier error previo
         // Mover focus al input de 2FA tras render
         setTimeout(() => {
           document.getElementById('change-pw-2fa')?.focus();
         }, 50);
-      } else if (status === 401 && /2FA/i.test(body.error || '')) {
-        // 2FA code incorrecto.
+      } else if (status === 401 && isInvalidTwofa) {
         setFieldErrors(f => ({ ...f, twofaCode: 'Código incorrecto' }));
       } else if (status === 401) {
-        // Password actual incorrecta.
+        // Default: contraseña actual incorrecta (code === 'INVALID_CURRENT_PASSWORD').
         setFieldErrors(f => ({ ...f, currentPassword: 'Contraseña incorrecta' }));
       } else if (status === 400) {
         // Validación del backend rechazó algo. Si trae mensaje específico,

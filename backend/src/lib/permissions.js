@@ -33,6 +33,7 @@
 //   que setea `app.current_tenant` vía SET LOCAL. Self-contained: el caller
 //   no tiene que saber nada de tenants para llamar a estos helpers.
 const db = require('../config/database');
+const logger = require('./logger');
 
 /**
  * Resuelve el tenant default del user (el de menor id si tiene varios).
@@ -48,9 +49,30 @@ async function resolveUserTenant(userId) {
       ORDER BY tenant_id ASC LIMIT 1`,
     [userId]
   );
-  // Fallback defensivo: si el user no tiene tenant_users row (caso edge,
-  // post-PR1 backfill no debería pasar), asignamos al tenant 1.
-  return rows[0] || { tenant_id: 1, rol: 'member' };
+
+  if (rows[0]) return rows[0];
+
+  // 2026-06-18 #319 hygiene: el fallback NO debería dispararse en producción.
+  // Todos los users post-multitenant-PR1 tienen row en tenant_users (backfill
+  // + signup endpoint los crea siempre, en la misma tx que crea el user).
+  // Si llegamos acá, es un edge case sospechoso:
+  //   - Race condition raro en alguna tx (no debería ocurrir).
+  //   - User legacy pre-PR1 que escapó al backfill (tampoco debería existir).
+  //   - Bug nuevo en algún flow que crea users sin bridge.
+  //
+  // Log como WARN: el sistema NO se rompe (el fallback funciona), pero hay
+  // que investigar. WARN dispara alerta en Sentry/observabilidad sin afectar
+  // al user. El equipo OPS revisa y decide: mover al tenant correcto, o
+  // deshabilitar el user si es zombi.
+  //
+  // SEGURIDAD: el fallback asigna al user a tenant 1 (iPro Original). En
+  // este escenario, el user vería data del owner del SaaS — potencial data
+  // leak. Por eso la alerta tiene que llegar rápido.
+  logger.warn(
+    { userId, fallback_tenant_id: 1 },
+    'resolveUserTenant: user sin row en tenant_users — fallback a tenant 1 (potencial data leak)'
+  );
+  return { tenant_id: 1, rol: 'member' };
 }
 
 /**

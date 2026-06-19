@@ -49,6 +49,15 @@ const verifyStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, pre
 // de 5 logins (mismo namespace en la tabla `rate_limits`). Fix: prefix
 // dedicado 'change-password'.
 const changePasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'change-password', logger });
+// 2026-06-18 #321 forgot-password:
+//   - forgotPasswordStore: rate limit 3/hora/IP para POST /forgot-password.
+//     Anti-spam (un atacante podría bombardear emails reset a una víctima si
+//     no hay limit). Prefix dedicado para no chocar con otros stores.
+//   - resetPasswordStore: rate limit 10/hora/IP para POST /reset-password.
+//     Más lenient porque el token es la defensa primaria (256-bit, single-shot,
+//     TTL 1h). El limit acá es contra brute-force masivo del token space.
+const forgotPasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'forgot-password', logger });
+const resetPasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'reset-password', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
@@ -83,6 +92,7 @@ const conciliacionRoutes = require('./routes/conciliacion');
 const alertasRoutes      = require('./routes/alertas');
 const adminRoutes        = require('./routes/admin');
 const featureFlagsRoutes = require('./routes/feature-flags');
+const onboardingRoutes   = require('./routes/onboarding');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -495,6 +505,40 @@ const changePasswordLimiter = rateLimit({
 });
 app.use('/api/auth/change-password', requireAuth, changePasswordLimiter);
 
+// 2026-06-18 #321 forgot-password: rate limit estricto. 3 intentos/hora/IP
+// es holgado para fat-fingers (legítimo: 1 intento exitoso/año), apretado
+// para anti-spam (cada intento manda email — sin limit, atacante podía
+// usar el endpoint para email-bombear una víctima inundándola de mails).
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados pedidos de reset. Esperá 1 hora y reintentá.' },
+  // Endpoint público — solo IP. ipKeyGenerator colapsa IPv6 al /64.
+  keyGenerator: (req) => ipKeyGenerator(req),
+  skip: () => process.env.NODE_ENV === 'test',
+  ...(forgotPasswordStore && { store: forgotPasswordStore }),
+});
+app.use('/api/auth/forgot-password', forgotPasswordLimiter);
+
+// 2026-06-18 #321 reset-password: rate limit más lenient (10/hora/IP). La
+// defensa primaria es el token (256-bit hex, single-shot, TTL 1h) — el
+// limit acá es contra brute-force masivo del token space (10^77 — infactible
+// igual, pero defense in depth).
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de reset. Esperá 1 hora.' },
+  keyGenerator: (req) => ipKeyGenerator(req),
+  skipSuccessfulRequests: true,
+  skip: () => process.env.NODE_ENV === 'test',
+  ...(resetPasswordStore && { store: resetPasswordStore }),
+});
+app.use('/api/auth/reset-password', resetPasswordLimiter);
+
 // Auth (sin restricción de permisos)
 // 2026-06-16 TANDA 2.1: signupRoutes va ANTES de authRoutes — ambos montados
 // en /api/auth. Express resuelve por el primer match, así que las rutas de
@@ -603,6 +647,11 @@ app.use('/api/admin',         requireAuth, adminRoutes);
 // dentro del router porque NO TODO el router es admin (a diferencia de
 // /api/admin). Ver routes/feature-flags.js para el rationale.
 app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
+
+// 2026-06-18 #323 TANDA 1 H3: onboarding status. Cualquier user logueado
+// del tenant puede consultar (no requiere permission — es read-only check
+// del estado del tenant).
+app.use('/api/onboarding', requireAuth, onboardingRoutes);
 
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');
