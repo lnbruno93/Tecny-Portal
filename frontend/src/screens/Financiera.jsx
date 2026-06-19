@@ -374,9 +374,15 @@ export default function Financiera() {
     let mounted = true;
     setDashError('');
     const baseParams = rangeToParams(dashRange);
+    // 2026-06-19: limit subido de 6 → 20 a pedido de Lucas. Con 6 se veían
+    // muy pocas filas en la tab Dashboard cuando el rango era "Todo el período"
+    // (el KPI mostraba 235 pero la tabla solo 6). 20 es buen balance: triplica
+    // visibilidad sin engordar el bundle de respuesta del dashboard. Si en el
+    // futuro queremos paginación real en esta tabla del dashboard, ahí evaluar
+    // un wrapper más sofisticado.
     Promise.all([
       compApi.totales(baseParams),
-      compApi.list({ ...baseParams, limit: 6 }),
+      compApi.list({ ...baseParams, limit: 20 }),
     ])
       .then(([totals, list]) => {
         if (!mounted) return;
