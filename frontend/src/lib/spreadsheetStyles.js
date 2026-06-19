@@ -1,5 +1,5 @@
 /**
- * Estilos compartidos para los modales spreadsheet de iPro.
+ * Estilos compartidos para los modales spreadsheet de Tecny.
  * Auditoría #R-01: antes había objetos cellInp y th IDÉNTICOS en los 3
  * modales (CompraProveedorModal, VentaB2BModal, CobranzaMasivaModal).
  */

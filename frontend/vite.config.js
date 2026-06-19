@@ -41,7 +41,7 @@ function buildVersion() {
 // no se setea — los maps no se suben.
 const SENTRY_TOKEN = process.env.SENTRY_AUTH_TOKEN;
 const SENTRY_ORG   = process.env.SENTRY_ORG   || 'lnbruno';
-const SENTRY_PROJECT = process.env.SENTRY_PROJECT || 'ipro-portal-frontend';
+const SENTRY_PROJECT = process.env.SENTRY_PROJECT || 'tecny-portal-frontend';
 const BUILD_SHA = buildCommit();
 
 export default defineConfig({
