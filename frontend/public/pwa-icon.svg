@@ -1,14 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Background -->
-  <rect width="512" height="512" rx="112" fill="#0a0e18"/>
-  <!-- iP mark — stylized lightning bolt in sky-500 -->
-  <text
-    x="256" y="330"
-    font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
-    font-size="220"
-    font-weight="700"
-    fill="#0ea5e9"
-    text-anchor="middle"
-    letter-spacing="-8"
-  >iP</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"></stop>
+      <stop offset="0.55" stop-color="#38bdf8"></stop>
+      <stop offset="1" stop-color="#7dd3fc"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"></rect>
+  <path d="M18 21 H46 M32 21 V45" stroke="#04253a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
 </svg>
