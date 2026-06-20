@@ -1,0 +1,96 @@
+# Netlify config — Tecny Admin (admin.tecnyapp.com).
+#
+# Site separado del portal principal (frontend/) por razones de seguridad:
+# distinto dominio, distinto bundle, distinto CSP. Un compromiso en el portal
+# público NO debería darle al atacante el código del admin app.
+#
+# Branch deploys de `staging` mapean al sub-dominio
+# admin-staging.tecnyapp.com (configurar en Netlify UI). Production deploys
+# de `main` mapean al sub-dominio admin.tecnyapp.com.
+
+[build]
+  base    = "admin-frontend"
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback — react-router maneja todas las rutas internamente.
+# Tiene que ser la ÚLTIMA redirect rule (Netlify procesa en orden).
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ── Security headers (production) ─────────────────────────────────────
+#
+# Stack mínimo necesario: noindex (admin no es público), HSTS, X-Frame-Options
+# (clickjacking), CSP estricto.
+#
+# CSP rationale:
+#   - script-src 'self' únicamente. NO usamos hCaptcha (admin es solo super-
+#     admins autenticados, no signup público), NO usamos Google Tag Manager,
+#     NO usamos analytics externo. Sin third-party scripts.
+#   - style-src 'self' + Google Fonts (Inter + JetBrains Mono via @import en
+#     styles.css; ver Sub-fase A.2). 'unsafe-inline' necesario porque algunas
+#     primitivas usan style={{...}} inline (sub-fase futura puede mover esos a
+#     classes para sacar el unsafe-inline).
+#   - connect-src: solo Tecny backend (prod + staging — el bundle puede ir a
+#     cualquiera según VITE_API_URL en build time, mantenemos ambos para que
+#     no falle por config).
+#   - frame-ancestors 'none' — admin NUNCA puede ser embed-eado en otro site.
+#   - report-uri al backend prod por default; branch-deploy override abajo.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
+
+# ── Branch deploys (staging) ──────────────────────────────────────────
+#
+# Netlify NO mergea context blocks con el global — REPLACE para los paths
+# que matchea. Replicamos todos los headers cambiando SOLO el report-uri
+# (apunta a backend-staging en vez de prod). Misma razón que frontend/.
+[[context.branch-deploy.headers]]
+  for = "/*"
+  [context.branch-deploy.headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+
+# ── Deploy previews (PRs) ─────────────────────────────────────────────
+#
+# Misma config que branch-deploy. Previews son entornos no-prod, reportan a
+# staging backend.
+[[context.deploy-preview.headers]]
+  for = "/*"
+  [context.deploy-preview.headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+
+# ── Cache headers ─────────────────────────────────────────────────────
+#
+# index.html — no cachear (siempre la última versión, esencial para que el
+# user reciba el bundle nuevo al refresh post-deploy)
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Assets con hash en el nombre (Vite genera `index-ABC123.js`) — cache forever
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
