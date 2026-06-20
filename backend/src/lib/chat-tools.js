@@ -33,6 +33,8 @@ const db = require('../config/database');
 const logger = require('./logger');
 const { periodoRange, PERIODO_SCHEMA_FRAGMENT } = require('./chat-periods');
 const { SALDO_CASE_M } = require('./saldoCC');
+const { evaluarTodas } = require('./alertas');
+const { saldoNetoCase } = require('./tarjetasSaldo');
 
 // ──────────────────────────────────────────────────────────────────────────
 // System prompt — instrucciones al bot
@@ -692,116 +694,45 @@ const handlers = {
   },
 
   // ──────────────────────────────────────────────────────────────────────
-  // get_alertas — resumen tenant-scoped (no usa /api/alertas porque ése
-  // tiene cache global sin tenant key, ver task spawneada al respecto).
+  // get_alertas — resumen tenant-scoped.
+  //
+  // 2026-06-21 TANDA 2 #341 DRY refactor: delega a `evaluarTodas` de
+  // lib/alertas.js (single source of truth). Pre-refactor inlineabamos
+  // 100+ líneas de SQL acá que duplicaban la lógica de evalCajaNegativa,
+  // evalStockBajo y evalCcMora — cualquier fix a una de las dos requería
+  // updates espejos en la otra (de hecho, los fixes TANDA 0/1 hubo que
+  // aplicarlos en ambos lados). Ahora ambos comparten una sola fórmula:
+  // si arreglamos un bug en evalStockBajo, el bot lo gana automático.
+  //
+  // Diferencias vs el endpoint /api/alertas (que también usa evaluarTodas):
+  //   - Slice top 5 items por tipo (el bot prioriza conciseness).
+  //   - Solo grupos NO vacíos (el endpoint devuelve todos para mostrar
+  //     "0 alertas" en cada card). El bot no necesita esa info — si no
+  //     hay alertas de stock_bajo, no menciona stock_bajo.
+  //   - Aplana al formato bot: { tipo, count, items: [{descripcion, ...}] }.
   // ──────────────────────────────────────────────────────────────────────
   async get_alertas(_input, ctx) {
-    return db.withTenant(ctx.tenantId, async (client) => {
-      // Cajas con saldo < 0 — usamos la misma fórmula que get_saldos_cajas.
-      const { rows: cajasNeg } = await client.query(
-        `SELECT mp.nombre, mp.moneda,
-                (mp.saldo_inicial + COALESCE(
-                  SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END)
-                    FILTER (WHERE cm.deleted_at IS NULL),
-                  0
-                ))::numeric AS saldo
-         FROM metodos_pago mp
-         LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id
-         WHERE mp.deleted_at IS NULL AND mp.activo IS NOT FALSE
-         GROUP BY mp.id, mp.nombre, mp.moneda, mp.saldo_inicial
-         HAVING (mp.saldo_inicial + COALESCE(
-                  SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END)
-                    FILTER (WHERE cm.deleted_at IS NULL),
-                  0
-                )) < 0
-         ORDER BY saldo ASC
-         LIMIT 5`
-      );
+    const grupos = await evaluarTodas({ tenantId: ctx.tenantId, db });
 
-      // Stock bajo — umbral default 5. Usamos la config de alertas_config
-      // si existe, sino el default. La tabla alertas_config es RLS-scoped.
-      const { rows: cfgRows } = await client.query(
-        `SELECT parametros FROM alertas_config WHERE tipo = 'stock_bajo' AND activa = true`
-      );
-      const umbralStock = Number(cfgRows[0]?.parametros?.umbral_unidades) || 5;
+    // Transformamos al formato bot. evaluarTodas ya devuelve la "descripcion"
+    // formateada por evaluador, sólo agregamos slice top 5 y aplanamos.
+    const gruposBot = grupos
+      .filter((g) => !g.error && g.count > 0)
+      .map((g) => ({
+        tipo: g.tipo,
+        titulo: g.titulo,
+        severidad: g.severidad,
+        count: g.count,
+        // Top 5 — el bot resume, no enumera todo. Si el user quiere
+        // más, los tools individuales (get_stock_bajo, get_cc_mora)
+        // devuelven listas completas paginables.
+        items: g.items.slice(0, 5),
+      }));
 
-      // 2026-06-20 TANDA 1 fix #341 P1: NO excluir cantidad=0 — los agotados
-      // son los MÁS urgentes para reponer. También filtrar estado <> 'vendido'
-      // y trackear_stock = true (mismo filtro que evalStockBajo canónico
-      // en lib/alertas.js#evalStockBajo) — sin esto, productos vendidos o
-      // que el user explícitamente marcó "no trackear" aparecían como alerta.
-      const { rows: stockBajo } = await client.query(
-        `SELECT id, nombre, cantidad
-         FROM productos
-         WHERE deleted_at IS NULL
-           AND oculto IS NOT TRUE
-           AND condicion = 'nuevo'
-           AND estado <> 'vendido'
-           AND trackear_stock = true
-           AND cantidad < $1
-         ORDER BY cantidad ASC
-         LIMIT 5`,
-        [umbralStock]
-      );
-
-      // CC en mora — clientes B2B con saldo > 0 (nos deben) y último mov hace > N días.
-      const { rows: cfgMora } = await client.query(
-        `SELECT parametros FROM alertas_config WHERE tipo = 'cc_mora' AND activa = true`
-      );
-      const diasMora = Number(cfgMora[0]?.parametros?.dias_sin_pago) || 30;
-
-      // 2026-06-20 TANDA 0 fix #341: usa SALDO_CASE_M canónico (saldoCC.js).
-      // Pre-fix inlineaba un CASE distinto al del módulo /api/cuentas.
-      const { rows: ccMora } = await client.query(
-        `SELECT c.id, c.nombre, c.apellido,
-                COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo,
-                MAX(m.fecha) AS ultimo_mov
-         FROM clientes_cc c
-         LEFT JOIN movimientos_cc m ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
-         WHERE c.deleted_at IS NULL
-         GROUP BY c.id, c.nombre, c.apellido
-         HAVING COALESCE(SUM(${SALDO_CASE_M}), 0) > 0
-            AND (MAX(m.fecha) IS NULL OR MAX(m.fecha) < CURRENT_DATE - INTERVAL '1 day' * $1)
-         ORDER BY saldo DESC
-         LIMIT 5`,
-        [diasMora]
-      );
-
-      const grupos = [
-        {
-          tipo: 'caja_negativa',
-          count: cajasNeg.length,
-          items: cajasNeg.map((c) => ({
-            descripcion: `${c.nombre} (${c.moneda})`,
-            saldo: Number(c.saldo),
-          })),
-        },
-        {
-          tipo: 'stock_bajo',
-          count: stockBajo.length,
-          umbral: umbralStock,
-          items: stockBajo.map((p) => ({
-            descripcion: p.nombre,
-            cantidad: p.cantidad,
-          })),
-        },
-        {
-          tipo: 'cc_mora',
-          count: ccMora.length,
-          dias_umbral: diasMora,
-          items: ccMora.map((c) => ({
-            descripcion: `${c.nombre} ${c.apellido || ''}`.trim(),
-            saldo_usd: Number(c.saldo),
-            ultimo_mov: c.ultimo_mov,
-          })),
-        },
-      ];
-
-      return {
-        total: grupos.reduce((acc, g) => acc + g.count, 0),
-        grupos,
-      };
-    });
+    return {
+      total: gruposBot.reduce((acc, g) => acc + g.count, 0),
+      grupos: gruposBot,
+    };
   },
 
   // ──────────────────────────────────────────────────────────────────────
@@ -1073,19 +1004,14 @@ const handlers = {
 
   async get_tarjetas_no_liquidadas(_input, ctx) {
     return db.withTenant(ctx.tenantId, async (client) => {
-      // Saldo = Σ(cobros) - Σ(liquidaciones) sobre tarjeta_movimientos
-      // de cada caja con es_tarjeta=true. Solo cuenta movimientos vivos
-      // (deleted_at IS NULL). En `monto_neto` (lo que la procesadora
-      // efectivamente debe pagarnos, después de descontar su comisión).
+      // 2026-06-21 TANDA 2 #341 DRY: usa saldoNetoCase canónico de
+      // lib/tarjetasSaldo.js — misma fórmula que /api/tarjetas/saldos-resumen
+      // y la lista paginada de tarjetas. Si arreglamos signos o un edge case
+      // del CASE en el helper, el bot lo gana automático.
       const { rows } = await client.query(
         `SELECT
            mp.id, mp.nombre, mp.moneda,
-           COALESCE(SUM(
-             CASE WHEN tm.tipo = 'cobro'       AND tm.deleted_at IS NULL THEN  tm.monto_neto
-                  WHEN tm.tipo = 'liquidacion' AND tm.deleted_at IS NULL THEN -tm.monto_neto
-                  ELSE 0
-             END
-           ), 0)::numeric AS saldo_adeudado
+           COALESCE(SUM(${saldoNetoCase('tm')}), 0)::numeric AS saldo_adeudado
          FROM metodos_pago mp
          LEFT JOIN tarjeta_movimientos tm ON tm.metodo_pago_id = mp.id
          WHERE mp.es_tarjeta = true
@@ -1205,6 +1131,24 @@ const handlers = {
 
 // ──────────────────────────────────────────────────────────────────────────
 // Dispatcher
+//
+// 2026-06-21 TANDA 3 #341: agregamos logger.debug con latencia + métricas
+// de result. En prod por default los pino-debug NO se loguean (LOG_LEVEL
+// default 'info'), así que zero overhead salvo el Date.now() — pero
+// cuando hay que diagnosticar costos del bot ("¿qué tool está tardando
+// 2s?", "¿por qué este tenant agotó cuota?") se sube LOG_LEVEL=debug
+// y aparece todo. Sin esto, el bot es una caja negra en prod.
+//
+// Lo que logueamos por tool call:
+//   - toolName: cuál tool
+//   - tenantId: para filtrar por cliente al investigar
+//   - durationMs: cuánto tardó (perf budget = 1s, alertar si > 3s)
+//   - resultSize: bytes del resultado serializado (cuánto ocupa en el
+//     payload a Anthropic — directo a costo por tokens). Si una tool
+//     devuelve 50KB regular, costo asoma.
+//   - inputKeys: las claves del input (sin values — algunas tools usan
+//     `query` con texto del user que podría ser PII; loguear keys es
+//     suficiente para debug).
 // ──────────────────────────────────────────────────────────────────────────
 async function executeTool(name, input, ctx) {
   const handler = handlers[name];
@@ -1212,11 +1156,30 @@ async function executeTool(name, input, ctx) {
     logger.warn({ toolName: name }, '[chat-tools] handler no encontrado');
     return { error: `Tool "${name}" no implementada.` };
   }
+  const startedAt = Date.now();
   try {
     const result = await handler(input || {}, ctx);
+    const durationMs = Date.now() - startedAt;
+    // Result size — útil para detectar tools que devuelven mucha data
+    // (y por ende inflar input tokens del próximo turno a Anthropic).
+    // JSON.stringify es relativamente barato vs la query SQL que ya
+    // corrimos, no agrega latencia perceptible.
+    const resultSize = (() => {
+      try { return JSON.stringify(result).length; } catch { return -1; }
+    })();
+    logger.debug({
+      toolName: name,
+      tenantId: ctx.tenantId,
+      durationMs,
+      resultSize,
+      inputKeys: Object.keys(input || {}),
+    }, `[chat-tools] ${name} (${durationMs}ms, ${resultSize}b)`);
     return result;
   } catch (err) {
-    logger.error({ err, toolName: name, tenantId: ctx.tenantId }, '[chat-tools] error ejecutando handler');
+    const durationMs = Date.now() - startedAt;
+    logger.error({
+      err, toolName: name, tenantId: ctx.tenantId, durationMs,
+    }, '[chat-tools] error ejecutando handler');
     // Devolvemos error como data para que el bot pueda explicarlo al user
     // (en vez de propagar el throw que cortaría la conversación).
     return {
