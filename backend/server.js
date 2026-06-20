@@ -49,6 +49,7 @@ const { startInvariantsJob } = require('./src/jobs/invariantsJob');
 const { startAuditPartitionsJob } = require('./src/jobs/auditPartitionsJob');
 const { startAuditQueueWorker } = require('./src/jobs/auditQueueWorker');
 const { startEmailTokensCleanupJob } = require('./src/jobs/emailTokensCleanupJob');
+const { startChatCleanupJob } = require('./src/jobs/chatCleanupJob');
 const withAdvisoryLock = require('./src/lib/withAdvisoryLock');
 const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
@@ -90,6 +91,13 @@ const server = app.listen(PORT, () => {
   // >1 día). Sin este job la tabla crecía monotónicamente — cada signup +
   // cada resend agrega una fila. Multi-instance safe via advisory lock.
   startEmailTokensCleanupJob({ intervalHours: 24 });
+
+  // TANDA 3 #341 (follow-up auditoría post-bot): purga periódica de
+  // `chat_rate_limits` con window_start > 7 días. Sin este job la tabla
+  // crecía linealmente con el uso del bot — a escala 500 users/día son
+  // 180k filas/año por entorno. El UPSERT del rate-limit se vuelve más
+  // lento sin purga. Multi-instance safe via advisory lock.
+  startChatCleanupJob({ intervalHours: 24 });
 
   // P1 auditoría 2026-06: cleanup periódico de rate_limit_entries expiradas.
   // El store nunca borra automáticamente — las filas con expires_at < NOW()

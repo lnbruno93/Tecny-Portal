@@ -1131,6 +1131,24 @@ const handlers = {
 
 // ──────────────────────────────────────────────────────────────────────────
 // Dispatcher
+//
+// 2026-06-21 TANDA 3 #341: agregamos logger.debug con latencia + métricas
+// de result. En prod por default los pino-debug NO se loguean (LOG_LEVEL
+// default 'info'), así que zero overhead salvo el Date.now() — pero
+// cuando hay que diagnosticar costos del bot ("¿qué tool está tardando
+// 2s?", "¿por qué este tenant agotó cuota?") se sube LOG_LEVEL=debug
+// y aparece todo. Sin esto, el bot es una caja negra en prod.
+//
+// Lo que logueamos por tool call:
+//   - toolName: cuál tool
+//   - tenantId: para filtrar por cliente al investigar
+//   - durationMs: cuánto tardó (perf budget = 1s, alertar si > 3s)
+//   - resultSize: bytes del resultado serializado (cuánto ocupa en el
+//     payload a Anthropic — directo a costo por tokens). Si una tool
+//     devuelve 50KB regular, costo asoma.
+//   - inputKeys: las claves del input (sin values — algunas tools usan
+//     `query` con texto del user que podría ser PII; loguear keys es
+//     suficiente para debug).
 // ──────────────────────────────────────────────────────────────────────────
 async function executeTool(name, input, ctx) {
   const handler = handlers[name];
@@ -1138,11 +1156,30 @@ async function executeTool(name, input, ctx) {
     logger.warn({ toolName: name }, '[chat-tools] handler no encontrado');
     return { error: `Tool "${name}" no implementada.` };
   }
+  const startedAt = Date.now();
   try {
     const result = await handler(input || {}, ctx);
+    const durationMs = Date.now() - startedAt;
+    // Result size — útil para detectar tools que devuelven mucha data
+    // (y por ende inflar input tokens del próximo turno a Anthropic).
+    // JSON.stringify es relativamente barato vs la query SQL que ya
+    // corrimos, no agrega latencia perceptible.
+    const resultSize = (() => {
+      try { return JSON.stringify(result).length; } catch { return -1; }
+    })();
+    logger.debug({
+      toolName: name,
+      tenantId: ctx.tenantId,
+      durationMs,
+      resultSize,
+      inputKeys: Object.keys(input || {}),
+    }, `[chat-tools] ${name} (${durationMs}ms, ${resultSize}b)`);
     return result;
   } catch (err) {
-    logger.error({ err, toolName: name, tenantId: ctx.tenantId }, '[chat-tools] error ejecutando handler');
+    const durationMs = Date.now() - startedAt;
+    logger.error({
+      err, toolName: name, tenantId: ctx.tenantId, durationMs,
+    }, '[chat-tools] error ejecutando handler');
     // Devolvemos error como data para que el bot pueda explicarlo al user
     // (en vez de propagar el throw que cortaría la conversación).
     return {
