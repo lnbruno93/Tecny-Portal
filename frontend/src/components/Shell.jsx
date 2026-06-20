@@ -11,6 +11,7 @@ import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
 import UnverifiedBanner from './UnverifiedBanner';
 import ChangePasswordModal from './ChangePasswordModal';
+import ChatWidget from './ChatWidget';
 import { alertas as alertasApi } from '../lib/api';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
@@ -456,6 +457,10 @@ export default function Shell() {
         </div>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {/* 2026-06-20 #340 Fase 1: Asistente Tecny — FAB + Modal. Sin guard
+          de permisos: el bot es read-only y usa RLS scope del backend, así
+          que el user solo ve datos a los que ya tiene acceso. */}
+      <ChatWidget />
     </div>
   );
 }

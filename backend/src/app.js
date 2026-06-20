@@ -93,6 +93,7 @@ const alertasRoutes      = require('./routes/alertas');
 const adminRoutes        = require('./routes/admin');
 const featureFlagsRoutes = require('./routes/feature-flags');
 const onboardingRoutes   = require('./routes/onboarding');
+const chatRoutes         = require('./routes/chat');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -652,6 +653,14 @@ app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
 // del tenant puede consultar (no requiere permission — es read-only check
 // del estado del tenant).
 app.use('/api/onboarding', requireAuth, onboardingRoutes);
+
+// 2026-06-20 #340 Fase 1: Bot conversacional analítico.
+// Disponible para todos los users autenticados de cualquier tenant (todos los
+// planes). Sin requirePermission — el bot ya es read-only y RLS-scoped, así
+// que cualquier user del tenant puede preguntar sobre la data que ya tiene
+// permiso de ver (las tools usan withTenant del ctx, no bypass de RLS).
+// Rate limits internos al router (5/min/user + 50/día/user + 150/día/tenant).
+app.use('/api/chat',       requireAuth, chatRoutes);
 
 // Sentry captura los errores antes que el handler genérico
 const Sentry = require('@sentry/node');

@@ -70,6 +70,8 @@ export const Icons = {
   // Sol / Luna — toggle dark/light mode (UserPill del sidebar).
   Sun: (p) => <ICO {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></ICO>,
   Moon: (p) => <ICO {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" /></ICO>,
+  // Sparkles — icono del bot Asistente (FAB + header del modal #340).
+  Sparkles: (p) => <ICO {...p}><path d="M12 3l1.7 4.6L18 9l-4.3 1.4L12 15l-1.7-4.6L6 9l4.3-1.4L12 3z" /><path d="M19 14l.9 2.4L22 17l-2.1.6L19 20l-.9-2.4L16 17l2.1-.6L19 14z" /></ICO>,
 };
 
 export default Icons;
