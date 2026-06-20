@@ -82,8 +82,14 @@ function getAnthropicClient() {
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
- * Carga últimos N mensajes de la conversación, ordenados cronológicamente.
- * Devuelve array en formato Anthropic messages API: [{role, content}, ...].
+ * Carga últimos N mensajes de la conversación, ordenados cronológicamente
+ * (más viejos primero — formato esperado por Anthropic).
+ *
+ * 2026-06-20 TANDA 0 fix #341 P0-1: La query previa hacía ORDER BY ASC LIMIT
+ * 20, lo cual tomaba los 20 mensajes MÁS VIEJOS. Apenas la conversación
+ * superaba 20 turnos, el user msg recién guardado caía fuera del array
+ * enviado a Anthropic → el bot respondía sin ver la pregunta actual o sin
+ * contexto reciente. Fix: subquery con DESC LIMIT, luego invertir.
  *
  * Importante: trae los mensajes "tal cual" se guardaron, incluyendo bloques
  * tool_use + tool_result que vivieron en turnos anteriores. Esto preserva el
@@ -93,10 +99,14 @@ function getAnthropicClient() {
 async function loadHistory(client, conversationId) {
   const { rows } = await client.query(
     `SELECT role, content
-       FROM chat_messages
-      WHERE conversation_id = $1
-      ORDER BY created_at ASC, id ASC
-      LIMIT $2`,
+       FROM (
+         SELECT role, content, created_at, id
+           FROM chat_messages
+          WHERE conversation_id = $1
+          ORDER BY created_at DESC, id DESC
+          LIMIT $2
+       ) AS recent
+      ORDER BY created_at ASC, id ASC`,
     [conversationId, HISTORY_LIMIT]
   );
   return rows.map((r) => ({
@@ -241,10 +251,16 @@ async function runChatTurn({ conversationId, userText, ctx }) {
       resp = await anthropic.messages.create({
         model: MODEL,
         max_tokens: 1024,
-        // System prompt como array con cache_control: Anthropic cachea
+        // System prompt + TOOLS con cache_control: Anthropic cachea
         // ephemerally por 5 min. En turnos seguidos del mismo user, esto
-        // ahorra ~10x el costo del system block (que tiene los rationale +
-        // formato + tono — bastante texto).
+        // ahorra ~10x el costo de esos bloques.
+        //
+        // 2026-06-20 TANDA 0 fix #341 P1-cost: la versión previa pasaba
+        // `tools: TOOLS` plano — el comentario decía que se cacheaba pero
+        // el array no tenía cache_control marker. Anthropic cachea desde
+        // el inicio hasta el ÚLTIMO breakpoint marcado, así que marcamos
+        // el último tool del array. Los 14 tool definitions juntos (~3-5k
+        // tokens) ahora sí entran al cache.
         system: [
           {
             type: 'text',
@@ -252,7 +268,11 @@ async function runChatTurn({ conversationId, userText, ctx }) {
             cache_control: { type: 'ephemeral' },
           },
         ],
-        tools: TOOLS,
+        tools: TOOLS.map((t, i) =>
+          i === TOOLS.length - 1
+            ? { ...t, cache_control: { type: 'ephemeral' } }
+            : t
+        ),
         messages,
       });
     } catch (err) {

@@ -70,6 +70,15 @@ router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res,
   const tipo = String(req.params.tipo);
   if (!tipoValido(tipo)) return res.status(400).json({ error: `Tipo de alerta desconocido: ${tipo}` });
 
+  // 2026-06-20 TANDA 0 fix #341 P2-hardening: validar tenantId antes de
+  // interpolar en SQL (`SET LOCAL`). El middleware auth ya garantiza un
+  // número finito pero defendemos contra cambios futuros / JWT raros.
+  // `db.withTenant` ya hace este check, pero acá no lo usamos porque
+  // necesitamos llamar `audit()` adentro y tenemos manejo manual de tx.
+  if (!Number.isInteger(req.tenantId) || req.tenantId <= 0) {
+    return res.status(401).json({ error: 'No autenticado' });
+  }
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
