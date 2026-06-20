@@ -1,19 +1,32 @@
 // Evaluador de alertas — corre en runtime las queries de cada tipo activo
-// y devuelve los items que disparan cada alerta. Pensado para llamarse
-// desde el endpoint GET /api/alertas con cache TTL de 60s.
+// y devuelve los items que disparan cada alerta.
 //
 // Cada evaluador devuelve un array de "items" — el shape depende del tipo,
 // pero todos llevan al menos: id (del recurso afectado), descripcion,
 // link_sugerido (donde el front puede llevar al usuario). El front
 // renderiza la lista y armar el deep link.
-
-const db = require('../config/database');
+//
+// 2026-06-20 #343 — refactor tenant-aware:
+//   Pre-fix: las funciones eval* usaban `db.query(...)` directo, sin
+//   `SET LOCAL app.current_tenant`. Con la RLS strict (#293/#337) que ya
+//   no tolera NULL en la setting, esto resultó en TODAS las queries
+//   filtrando 0 rows en prod (Railway corre como rol NOSUPERUSER). El
+//   módulo /api/alertas devolvía silenciosamente `{ total_alertas: 0 }`
+//   desde el deploy de la migration `rls_fail_closed`. En desarrollo
+//   local NO se notaba porque el rol es superuser + bypassrls.
+//
+//   El fix: cada eval* ahora recibe un `client` ya scopeado a tenant
+//   (parte de una `db.withTenant(tenantId, async (client) => ...)`).
+//   `evaluarTodas({ tenantId })` es el wrapper público, abre la tx ÚNICA
+//   para todos los evaluadores y devuelve la respuesta agregada. Cualquier
+//   caller (route, chat tool, cron) DEBE pasar tenantId — no hay path
+//   global porque alertas son ESPECÍFICAS del tenant por definición.
 
 // ──────────────────────────────────────────────────────────────────────
 // 1. caja_negativa — cualquier caja con saldo actual < 0.
 // ──────────────────────────────────────────────────────────────────────
-async function evalCajaNegativa() {
-  const { rows } = await db.query(
+async function evalCajaNegativa(client) {
+  const { rows } = await client.query(
     `SELECT mp.id, mp.nombre, mp.moneda,
             mp.saldo_inicial + COALESCE(SUM(
               CASE WHEN cm.tipo = 'ingreso' THEN cm.monto ELSE -cm.monto END
@@ -42,8 +55,8 @@ async function evalCajaNegativa() {
 // 2. stock_bajo — productos con cantidad < umbral.
 //    Solo considera productos visibles + activos (no ocultos, no vendidos).
 // ──────────────────────────────────────────────────────────────────────
-async function evalStockBajo({ umbral_unidades = 5 } = {}) {
-  const { rows } = await db.query(
+async function evalStockBajo(client, { umbral_unidades = 5 } = {}) {
+  const { rows } = await client.query(
     `SELECT p.id, p.nombre, p.cantidad, c.nombre AS categoria,
             COALESCE(p.proveedor, '—') AS proveedor
        FROM productos p
@@ -70,8 +83,8 @@ async function evalStockBajo({ umbral_unidades = 5 } = {}) {
 //    de pago fue hace más de N días. Si nunca hubo pago, se usa la fecha
 //    del primer movimiento como referencia.
 // ──────────────────────────────────────────────────────────────────────
-async function evalCcMora({ dias_sin_pago = 30 } = {}) {
-  const { rows } = await db.query(
+async function evalCcMora(client, { dias_sin_pago = 30 } = {}) {
+  const { rows } = await client.query(
     `WITH saldos AS (
        SELECT c.id, c.nombre, c.apellido, c.categoria,
               COALESCE(SUM(CASE m.tipo
@@ -112,8 +125,8 @@ async function evalCcMora({ dias_sin_pago = 30 } = {}) {
 // 4. proveedor_atrasado — proveedores con saldo > 0 (les debemos) sin
 //    movimiento (ni compra ni pago) hace más de N días.
 // ──────────────────────────────────────────────────────────────────────
-async function evalProveedorAtrasado({ dias_sin_movimiento = 30 } = {}) {
-  const { rows } = await db.query(
+async function evalProveedorAtrasado(client, { dias_sin_movimiento = 30 } = {}) {
+  const { rows } = await client.query(
     `WITH saldos AS (
        SELECT p.id, p.nombre,
               COALESCE(SUM(CASE m.tipo
@@ -173,38 +186,62 @@ const SEVERIDAD = {
 };
 
 /**
- * Evalúa todas las alertas activas en paralelo. Devuelve un array de
- * "grupos" — uno por tipo activo evaluable, con items + metadata.
+ * Evalúa todas las alertas activas del tenant en paralelo. Devuelve un
+ * array de "grupos" — uno por tipo activo evaluable, con items + metadata.
  * Si un evaluador falla, esa alerta queda en error pero las demás siguen.
  *
  * Importante: solo procesa tipos que tienen evaluador en EVALUADORES.
  * Tipos "settings" (ej. tc_referencia, que es solo un valor de referencia
  * consumido por el frontend) NO entran en el array de grupos — no son
  * alertas activas, son configuración global.
+ *
+ * Todo el cómputo corre en UNA sola transacción con `SET LOCAL
+ * app.current_tenant = tenantId`, así RLS filtra automáticamente y
+ * compartimos snapshot consistente entre los 4 evaluadores.
+ *
+ * @param {object} opts
+ * @param {number} opts.tenantId — REQUIRED. tenant cuyas alertas evaluamos.
+ * @param {object} [opts.db] — opcional, default require('../config/database').
+ *   Inyectable para tests que quieran mockear el pool.
  */
-async function evaluarTodas() {
-  const { rows: configs } = await db.query(
-    'SELECT tipo, activa, parametros FROM alertas_config ORDER BY tipo'
-  );
-  // Filtrar: activos Y evaluables (con función registrada).
-  const evaluables = configs.filter(c => c.activa && EVALUADORES[c.tipo]);
-  const resultados = await Promise.all(evaluables.map(async (cfg) => {
-    const fn = EVALUADORES[cfg.tipo];
-    try {
-      const items = await fn(cfg.parametros || {});
-      return {
-        tipo:        cfg.tipo,
-        titulo:      TITULOS[cfg.tipo] || cfg.tipo,
-        severidad:   SEVERIDAD[cfg.tipo] || 'media',
-        parametros:  cfg.parametros,
-        count:       items.length,
-        items,
-      };
-    } catch (err) {
-      return { tipo: cfg.tipo, error: err.message, items: [], count: 0 };
-    }
-  }));
-  return resultados;
+async function evaluarTodas({ tenantId, db } = {}) {
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error(`evaluarTodas: tenantId inválido (${tenantId})`);
+  }
+  const pool = db || require('../config/database');
+
+  return pool.withTenant(tenantId, async (client) => {
+    // Filtro explícito por tenant_id además de RLS — defense in depth.
+    // Misma lógica que el fix #336 en /api/historial: si por algún motivo el
+    // SET LOCAL no aplica (ej. role superuser+bypassrls en testing local), el
+    // WHERE explícito sigue manteniendo el aislamiento.
+    const { rows: configs } = await client.query(
+      'SELECT tipo, activa, parametros FROM alertas_config WHERE tenant_id = $1 ORDER BY tipo',
+      [tenantId]
+    );
+    // Filtrar: activos Y evaluables (con función registrada).
+    const evaluables = configs.filter(c => c.activa && EVALUADORES[c.tipo]);
+    // Corremos en paralelo. Todos comparten el MISMO client (misma tx) →
+    // se serializan a nivel de conexión PG pero el costo en latencia es
+    // menor que abrir 4 transacciones separadas + 4 SET LOCAL.
+    const resultados = await Promise.all(evaluables.map(async (cfg) => {
+      const fn = EVALUADORES[cfg.tipo];
+      try {
+        const items = await fn(client, cfg.parametros || {});
+        return {
+          tipo:        cfg.tipo,
+          titulo:      TITULOS[cfg.tipo] || cfg.tipo,
+          severidad:   SEVERIDAD[cfg.tipo] || 'media',
+          parametros:  cfg.parametros,
+          count:       items.length,
+          items,
+        };
+      } catch (err) {
+        return { tipo: cfg.tipo, error: err.message, items: [], count: 0 };
+      }
+    }));
+    return resultados;
+  });
 }
 
 // Set de tipos que son "configuraciones globales" (no listas de items
@@ -213,4 +250,17 @@ async function evaluarTodas() {
 // filtrar/diferenciar al validar el PUT /config/:tipo.
 const TIPOS_SETTING = new Set(['tc_referencia']);
 
-module.exports = { evaluarTodas, EVALUADORES, TITULOS, SEVERIDAD, TIPOS_SETTING };
+module.exports = {
+  evaluarTodas,
+  EVALUADORES,
+  TITULOS,
+  SEVERIDAD,
+  TIPOS_SETTING,
+  // Exportados para tests unitarios per-evaluador
+  _internal: {
+    evalCajaNegativa,
+    evalStockBajo,
+    evalCcMora,
+    evalProveedorAtrasado,
+  },
+};
