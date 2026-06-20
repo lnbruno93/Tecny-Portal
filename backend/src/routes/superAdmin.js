@@ -1,5 +1,5 @@
 /**
- * Super-Admin routes — para la app admin.tecnyapp.com (#353 Fase 1).
+ * Super-Admin routes — para la app admin.tecnyapp.com (#353 Fases 1+2).
  *
  * IMPORTANTE — distinción vs `/api/admin/*`:
  *   - `/api/admin/*` (routes/admin.js): operaciones admin DENTRO de un tenant
@@ -10,19 +10,17 @@
  *     vía pool admin separado. Protegido por `requireSuperAdmin`
  *     (is_super_admin === true en users, gestionado vía script — NO API).
  *
- * Endpoints (Fase 1):
- *   GET /api/super-admin/me                — ping de verificación
- *   GET /api/super-admin/tenants           — lista tenants con stats inline
- *   GET /api/super-admin/tenants/:id       — detalle de un tenant
- *
- * Endpoints futuros (Fase 2):
- *   PATCH /api/super-admin/tenants/:id     — mutate (plan, suspend, etc)
- *   POST  /api/super-admin/tenants/:id/extend-trial
- *   POST  /api/super-admin/tenants/:id/suspend
- *   POST  /api/super-admin/tenants/:id/reactivate
- *   GET   /api/super-admin/tenants/:id/activity
- *   GET   /api/super-admin/metrics
- *   GET   /api/super-admin/metrics/history
+ * Endpoints:
+ *   GET   /api/super-admin/me                       — ping de verificación
+ *   GET   /api/super-admin/tenants                  — lista con stats inline
+ *   GET   /api/super-admin/tenants/:id              — detalle del tenant
+ *   PATCH /api/super-admin/tenants/:id              — mutate atómico c/ audit
+ *   POST  /api/super-admin/tenants/:id/extend-trial — extiende trial N días
+ *   POST  /api/super-admin/tenants/:id/suspend      — suspende (reason req.)
+ *   POST  /api/super-admin/tenants/:id/reactivate   — reactiva
+ *   GET   /api/super-admin/tenants/:id/activity     — drill-down per tipo
+ *   GET   /api/super-admin/metrics                  — KPIs SaaS agregados
+ *   GET   /api/super-admin/metrics/history          — serie temporal 90d
  *
  * Diseño:
  *   - TODAS las queries pasan por `db.adminQuery()` (BYPASSRLS). El linter
@@ -330,7 +328,7 @@ router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next)
         await client.query('COMMIT');
         return { tenant: updatedTenant };
       } catch (err) {
-        try { await client.query('ROLLBACK'); } catch (_) {}
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow — error original ya se propaga */ }
         throw err;
       }
     });
@@ -406,7 +404,7 @@ router.post('/tenants/:id/extend-trial', validate(extendTrialSchema), async (req
         await client.query('COMMIT');
         return { trial_until: newTrialUntil };
       } catch (err) {
-        try { await client.query('ROLLBACK'); } catch (_) {}
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow — error original ya se propaga */ }
         throw err;
       }
     });
@@ -470,7 +468,7 @@ router.post('/tenants/:id/suspend', validate(suspendTenantSchema), async (req, r
         await client.query('COMMIT');
         return { ok: true };
       } catch (err) {
-        try { await client.query('ROLLBACK'); } catch (_) {}
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow — error original ya se propaga */ }
         throw err;
       }
     });
@@ -521,7 +519,7 @@ router.post('/tenants/:id/reactivate', validate(reactivateTenantSchema), async (
         await client.query('COMMIT');
         return { ok: true };
       } catch (err) {
-        try { await client.query('ROLLBACK'); } catch (_) {}
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow — error original ya se propaga */ }
         throw err;
       }
     });
