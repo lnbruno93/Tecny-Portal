@@ -187,8 +187,9 @@ describe('Evaluadores con datos sembrados', () => {
     );
 
     // Llamar al evaluador directo (sin pasar por el endpoint cacheado).
+    // 2026-06-20 #343: evaluarTodas ahora requiere tenantId.
     const { evaluarTodas } = require('../src/lib/alertas');
-    const grupos = await evaluarTodas();
+    const grupos = await evaluarTodas({ tenantId: 1 });
     const cajaNeg = grupos.find(g => g.tipo === 'caja_negativa');
     expect(cajaNeg).toBeTruthy();
     const item = cajaNeg.items.find(it => it.id === c.id);
@@ -198,5 +199,70 @@ describe('Evaluadores con datos sembrados', () => {
     // Cleanup
     await pool.query('DELETE FROM caja_movimientos WHERE caja_id = $1', [c.id]);
     await pool.query('DELETE FROM metodos_pago WHERE id = $1', [c.id]);
+  });
+
+  // 2026-06-20 #343: tenant scope — evaluarTodas usa la config del tenant
+  // que se pasa, NO una global. Pre-fix usaba db.query crudo y leía SIEMPRE
+  // las mismas filas (porque alertas_config tenía UNIQUE global en tipo).
+  //
+  // Caveat de testing local (mismo que multitenant-isolation.test.js):
+  // el pool corre con un user superuser de Postgres → BYPASSA RLS aún con
+  // FORCE. No podemos verificar el filtrado real de RLS acá. Lo que SÍ
+  // validamos:
+  //   1. La migration #343 separa alertas_config por (tenant_id, tipo).
+  //   2. evaluarTodas({tenantId: X}) lee la config de X — si X no tiene
+  //      ninguna activa, devuelve [] (no las del tenant default).
+  //   3. Diferentes tenantId con configs distintas devuelven resultados
+  //      distintos (ej. umbral_unidades distinto → diferente stock_bajo).
+  //
+  // El filtrado RLS real se valida en CI/staging/prod (role NOSUPERUSER).
+  it('aislamiento de config: cada tenant lee su propia alertas_config', async () => {
+    // Crear tenant 2 fresco.
+    await pool.query(
+      `INSERT INTO tenants (id, nombre, slug) VALUES (2, 'Tenant 2 Alertas', 'tenant-2-alertas')
+         ON CONFLICT (id) DO NOTHING`
+    );
+    // Limpiar configs default que la migration #343 seedeó (queremos
+    // control fino para el assertion).
+    await pool.query(`DELETE FROM alertas_config WHERE tenant_id = 2`);
+
+    const { evaluarTodas } = require('../src/lib/alertas');
+
+    // Tenant 2 SIN configs activas → array vacío (no copia las del tenant 1).
+    const sinConfig = await evaluarTodas({ tenantId: 2 });
+    expect(sinConfig).toEqual([]);
+
+    // Tenant 2 CON solo stock_bajo activado con umbral propio (umbral=99).
+    // Si leyera config global, vería caja_negativa también.
+    await pool.query(
+      `INSERT INTO alertas_config (tenant_id, tipo, activa, parametros)
+       VALUES (2, 'stock_bajo', true, '{"umbral_unidades":99}'::jsonb)`
+    );
+    const t2 = await evaluarTodas({ tenantId: 2 });
+    expect(t2.map(g => g.tipo).sort()).toEqual(['stock_bajo']);
+    expect(t2.find(g => g.tipo === 'stock_bajo').parametros).toEqual({ umbral_unidades: 99 });
+
+    // Tenant 1 sigue viendo SU config (independiente de tenant 2). Forzamos un
+    // umbral conocido para no depender del seed (que varía: el original era
+    // 5, la app permite editarlo via PUT /config/:tipo, etc.).
+    await pool.query(
+      `UPDATE alertas_config SET parametros = '{"umbral_unidades":7}'::jsonb
+        WHERE tenant_id = 1 AND tipo = 'stock_bajo'`
+    );
+    const t1 = await evaluarTodas({ tenantId: 1 });
+    const t1Stock = t1.find(g => g.tipo === 'stock_bajo');
+    expect(t1Stock?.parametros).toEqual({ umbral_unidades: 7 });
+    // Confirmar que NO leyó el umbral del tenant 2 (99).
+    expect(t1Stock?.parametros.umbral_unidades).not.toBe(99);
+
+    // Cleanup
+    await pool.query(`DELETE FROM alertas_config WHERE tenant_id = 2`);
+  });
+
+  it('rechaza tenantId inválido con error claro', async () => {
+    const { evaluarTodas } = require('../src/lib/alertas');
+    await expect(evaluarTodas()).rejects.toThrow(/tenantId inválido/);
+    await expect(evaluarTodas({ tenantId: 0 })).rejects.toThrow(/tenantId inválido/);
+    await expect(evaluarTodas({ tenantId: 'one' })).rejects.toThrow(/tenantId inválido/);
   });
 });

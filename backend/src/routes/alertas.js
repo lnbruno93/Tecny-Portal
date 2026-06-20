@@ -11,7 +11,7 @@ const router = require('express').Router();
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
-const { createCachedFetcher } = require('../lib/cacheTtl');
+const { createTenantScopedCache } = require('../lib/cacheTtl');
 const { evaluarTodas, EVALUADORES, TIPOS_SETTING } = require('../lib/alertas');
 const { updateAlertaConfigSchema, validarParametros } = require('../schemas/alertas');
 const { ZodError } = require('zod');
@@ -21,21 +21,35 @@ function tipoValido(tipo) {
   return EVALUADORES[tipo] !== undefined || TIPOS_SETTING.has(tipo);
 }
 
-// Caché del evaluador completo. TTL 5 min — los datos del negocio (stock,
-// saldos, CC) no cambian en ese plazo a un ritmo que el usuario perciba.
-// Antes era 60s, pero las queries son pesadas (joins sobre productos +
-// movimientos_cc + proveedor_movimientos) y el badge se refresca cada 2min
-// desde el frontend, así que la mayoría de los hits caen en el caché.
-// El usuario refresca a mano si quiere forzar un re-eval.
-const fetchAlertas = createCachedFetcher('alertas:eval', 5 * 60_000, async () => {
-  const grupos = await evaluarTodas();
-  const total_alertas = grupos.reduce((acc, g) => acc + (g.count || 0), 0);
-  return { grupos, total_alertas, generado_en: new Date().toISOString() };
+// 2026-06-20 #343 — fix tenant scope.
+//
+// Antes este cache usaba `createCachedFetcher('alertas:eval', ...)` — UNA
+// sola key in-memory para TODOS los tenants. Si por algún motivo el
+// evaluator hubiera devuelto datos (no lo hacía post-RLS strict, pero
+// hipotéticamente), el primer tenant que pegaba al endpoint warmaba la
+// cache y todos los demás veían SU data → leak garantizado.
+//
+// Ahora usamos `createTenantScopedCache` que crea una cache por tenant
+// vía Redis con key `alertas:eval:t{tenantId}` (cross-instance, anti-
+// stale-write tombstone, single-flight dedup local). Mismo TTL 5 min.
+const alertasCache = createTenantScopedCache({
+  keyPrefix: 'cache:alertas:eval:t',
+  ttlMs: 5 * 60_000,
+  maxFetchers: 64, // ~64 tenants concurrentes activos antes de evicción LRU
+  fetcher: async (tenantIdStr) => {
+    const tenantId = Number(tenantIdStr);
+    const grupos = await evaluarTodas({ tenantId });
+    const total_alertas = grupos.reduce((acc, g) => acc + (g.count || 0), 0);
+    return { grupos, total_alertas, generado_en: new Date().toISOString() };
+  },
 });
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const data = await fetchAlertas();
+    if (!Number.isInteger(req.tenantId) || req.tenantId <= 0) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+    const data = await alertasCache.get(req.tenantId);
     res.json(data);
   } catch (err) { next(err); }
 });
@@ -104,6 +118,13 @@ router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res,
     await audit(client, 'alertas_config', 'UPDATE', rows[0].id,
                 { antes: before[0], despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
+
+    // 2026-06-20 #343: invalidar cache del tenant — un toggle activa/desactiva
+    // o cambio de parámetros (ej. umbral_unidades) impacta inmediatamente la
+    // próxima evaluación. Cross-instance via Redis DEL + tombstone.
+    // Fire-and-forget: si falla, el cache vence solo a los 5 min.
+    alertasCache.invalidate(req.tenantId).catch(() => {});
+
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
