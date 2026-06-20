@@ -652,7 +652,11 @@ describe('Tools Tier 1 — get_alertas', () => {
     expect(cajaNeg.count).toBeGreaterThanOrEqual(1);
     const stock = r.grupos.find((g) => g.tipo === 'stock_bajo');
     expect(stock.count).toBeGreaterThanOrEqual(1);
-    expect(stock.items.some((i) => i.descripcion === 'ProdBajoStock')).toBe(true);
+    // 2026-06-21 TANDA 2 #341: descripcion ahora viene de evalStockBajo
+    // canónico (formato "Nombre — N ud. (categoría: X)") en vez del
+    // formato bot-only que duplicaba SQL. Usamos startsWith para no
+    // acoplar el test al sufijo (que podría cambiar).
+    expect(stock.items.some((i) => i.descripcion.startsWith('ProdBajoStock'))).toBe(true);
   });
 });
 

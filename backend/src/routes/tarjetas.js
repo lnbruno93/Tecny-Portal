@@ -19,6 +19,7 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { postCajaMovimientoTarjeta } = require('../lib/tarjetas');
+const { saldoNetoCase } = require('../lib/tarjetasSaldo');
 const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
@@ -118,21 +119,21 @@ router.get('/', async (req, res, next) => {
 router.get('/saldos-resumen', async (req, res, next) => {
   try {
     const row = await db.withTenant(req.tenantId, async (client) => {
+      // 2026-06-21 TANDA 2 #341 DRY: usa saldoNetoCase canónico de
+      // lib/tarjetasSaldo.js — single source of truth con bot y lista
+      // paginada. Wrapped en CASE moneda para particionar el SUM en
+      // 2 buckets (ARS / USD+USDT) sin re-evaluar la lógica.
       const { rows } = await client.query(
         `SELECT
-           COALESCE(SUM(CASE WHEN mp.moneda = 'ARS' THEN
-             CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
-           ELSE 0 END), 0) AS saldo_ars,
-           COALESCE(SUM(CASE WHEN mp.moneda IN ('USD','USDT') THEN
-             CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END
-           ELSE 0 END), 0) AS saldo_usd
+           COALESCE(SUM(CASE WHEN mp.moneda = 'ARS' THEN ${saldoNetoCase('m')} ELSE 0 END), 0) AS saldo_ars,
+           COALESCE(SUM(CASE WHEN mp.moneda IN ('USD','USDT') THEN ${saldoNetoCase('m')} ELSE 0 END), 0) AS saldo_usd
          FROM tarjeta_movimientos m
          JOIN metodos_pago mp ON mp.id = m.metodo_pago_id
          -- mp.es_tarjeta=true es defense-in-depth: hoy no debería haber
          -- tarjeta_movimientos con métodos no-tarjeta, pero si alguien futuro
          -- introduce un bug que inserta uno (ej. seed mal escrito), Capital
          -- mentiría sumando "saldos" de cuentas que no son tarjetas.
-         WHERE m.deleted_at IS NULL AND mp.deleted_at IS NULL AND mp.es_tarjeta = true`
+         WHERE mp.deleted_at IS NULL AND mp.es_tarjeta = true`
       );
       return rows[0];
     });
