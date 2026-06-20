@@ -37,8 +37,16 @@
 const router = require('express').Router();
 const db = require('../config/database');
 const requireSuperAdmin = require('../middleware/requireSuperAdmin');
-const { getTenantMrr } = require('../lib/planPricing');
+const validate = require('../lib/validate');
+const { getTenantMrr, PLAN_PRICES_USD } = require('../lib/planPricing');
 const parseId = require('../lib/parseId');
+const {
+  patchTenantSchema,
+  extendTrialSchema,
+  suspendTenantSchema,
+  reactivateTenantSchema,
+} = require('../schemas/superAdmin');
+const logger = require('../lib/logger');
 
 // Todos los endpoints de este módulo requieren super-admin.
 router.use(requireSuperAdmin);
@@ -186,6 +194,576 @@ router.get('/tenants/:id', async (req, res, next) => {
       mrr_usd: getTenantMrr(result.tenant.plan, result.tenant.custom_mrr_usd),
       recent_admin_actions: result.recent_admin_actions,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helper interno — escribe a tenant_admin_actions dentro de la tx admin.
+//
+// Recibe el `client` ya en tx (BEGIN ejecutado). Espera before/after como
+// objects JSON-serializables. No throws (deja al caller manejar el error si
+// la query falla — pero realísticamente si esto falla, el commit también).
+// ──────────────────────────────────────────────────────────────────────────
+async function insertAdminAction(client, {
+  tenantId,
+  superAdminUserId,
+  action,
+  beforeState,
+  afterState,
+  reason,
+}) {
+  await client.query(
+    `INSERT INTO tenant_admin_actions
+       (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)`,
+    [
+      tenantId,
+      superAdminUserId,
+      action,
+      beforeState ? JSON.stringify(beforeState) : null,
+      afterState  ? JSON.stringify(afterState)  : null,
+      reason || null,
+    ]
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /tenants/:id — mutate genérico
+//
+// Permite cambiar cualquier combinación de campos admin en un solo request.
+// Atomicidad: leemos estado actual + comparamos + UPDATE + audit en UNA tx.
+// Sin esto, dos super-admins concurrentes podrían pisarse y el audit reflejar
+// un before_state que ya no era cierto cuando se aplicó el cambio.
+//
+// Reglas de coherencia (más allá del Zod schema):
+//   - Si plan cambia a algo != 'trial', limpiamos trial_until automáticamente.
+//     Sin esto el CHECK constraint de DB rebotaría con 500 — preferimos UX
+//     transparente (el cambio aplica + limpia el campo relacionado).
+//   - Si plan cambia a algo != 'enterprise', limpiamos custom_mrr_usd igual.
+//   - Estas auto-limpiezas se loguean en after_state también — el operador
+//     ve qué se modificó.
+//
+// Action loggeado: el más específico que detectemos. Si el patch cambia plan
+// → 'plan_change'. Si cambia notes → 'note_update'. Si cambia ambos →
+// 'plan_change' tiene prioridad. Sin esto, todos los PATCH serían el genérico
+// "patch" y la búsqueda de "¿qué cambios de plan hubo?" sería más difícil.
+// ──────────────────────────────────────────────────────────────────────────
+router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { reason, ...mutables } = req.body;
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        // 1. Estado actual (locked para evitar race con otros PATCHes).
+        const beforeRow = await client.query(
+          `SELECT plan, suspended_at, suspended_reason, trial_until,
+                  custom_mrr_usd, notes
+             FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL
+            FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        // 2. Coherencia: limpiar campos relacionados al cambio de plan.
+        const after = { ...before, ...mutables };
+        if (mutables.plan !== undefined) {
+          if (mutables.plan !== 'trial') after.trial_until = null;
+          if (mutables.plan !== 'enterprise') after.custom_mrr_usd = null;
+        }
+
+        // 3. UPDATE solo de campos que cambiaron — generamos el SET dinámico.
+        const sets = [];
+        const params = [];
+        for (const k of Object.keys(after)) {
+          if (after[k] !== before[k]) {
+            params.push(after[k]);
+            sets.push(`${k} = $${params.length}`);
+          }
+        }
+        if (sets.length === 0) {
+          // No-op (el patch coincidía con el estado actual). Devolvemos
+          // estado actual sin audit — no hay cambio que loggear.
+          await client.query('ROLLBACK');
+          return { tenant: before, noop: true };
+        }
+        params.push(id);
+        const updateRow = await client.query(
+          `UPDATE tenants SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+          params
+        );
+        const updatedTenant = updateRow.rows[0];
+
+        // 4. Decidir el `action` más específico.
+        let action = 'note_update';
+        if (mutables.plan !== undefined && mutables.plan !== before.plan) {
+          action = 'plan_change';
+        } else if (mutables.suspended_at !== undefined) {
+          action = mutables.suspended_at ? 'suspend' : 'reactivate';
+        } else if (mutables.trial_until !== undefined) {
+          action = 'trial_extend';
+        } else if (mutables.custom_mrr_usd !== undefined) {
+          action = 'custom_mrr_update';
+        }
+
+        // 5. Audit trail.
+        await insertAdminAction(client, {
+          tenantId: id,
+          superAdminUserId: req.user.id,
+          action,
+          beforeState: before,
+          afterState: after,
+          reason,
+        });
+
+        await client.query('COMMIT');
+        return { tenant: updatedTenant };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) {}
+        throw err;
+      }
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    logger.info(
+      { tenant_id: id, super_admin: req.user.id, noop: !!result.noop },
+      '[super-admin] PATCH /tenants/:id'
+    );
+
+    res.json({
+      ...result.tenant,
+      mrr_usd: getTenantMrr(result.tenant.plan, result.tenant.custom_mrr_usd),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /tenants/:id/extend-trial — shortcut: trial_until += days
+//
+// Más cómodo que un PATCH con cálculo de fechas en el frontend. Solo
+// aplica si el tenant tiene plan='trial' — sino devuelve 400 (no tiene
+// sentido extender trial de un cliente pago).
+// ──────────────────────────────────────────────────────────────────────────
+router.post('/tenants/:id/extend-trial', validate(extendTrialSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { days, reason } = req.body;
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT plan, trial_until FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+        if (before.plan !== 'trial') {
+          await client.query('ROLLBACK');
+          return { invalidPlan: before.plan };
+        }
+
+        // Calcular nuevo trial_until. Si era NULL, base es HOY; sino base
+        // es el trial_until actual. PG hace la suma con INTERVAL.
+        const updateRow = await client.query(
+          `UPDATE tenants
+              SET trial_until = COALESCE(trial_until, CURRENT_DATE) + ($1 || ' days')::interval
+            WHERE id = $2
+            RETURNING trial_until`,
+          [String(days), id]
+        );
+        const newTrialUntil = updateRow.rows[0].trial_until;
+
+        await insertAdminAction(client, {
+          tenantId: id,
+          superAdminUserId: req.user.id,
+          action: 'trial_extend',
+          beforeState: { trial_until: before.trial_until },
+          afterState:  { trial_until: newTrialUntil, days_added: days },
+          reason,
+        });
+        await client.query('COMMIT');
+        return { trial_until: newTrialUntil };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) {}
+        throw err;
+      }
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+    if (result.invalidPlan) {
+      return res.status(400).json({
+        error: `No se puede extender trial: el tenant tiene plan='${result.invalidPlan}'.`,
+      });
+    }
+    res.json({ trial_until: result.trial_until });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /tenants/:id/suspend — marca suspended_at=NOW + razón
+// POST /tenants/:id/reactivate — marca suspended_at=NULL
+//
+// Shortcuts más legibles que PATCH genérico para acciones frecuentes.
+// El frontend usa endpoints separados para botones bien diferenciados
+// ("Suspender" vs "Reactivar") sin tener que armar payloads.
+// ──────────────────────────────────────────────────────────────────────────
+router.post('/tenants/:id/suspend', validate(suspendTenantSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { reason } = req.body;
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT suspended_at, suspended_reason FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        await client.query(
+          `UPDATE tenants
+              SET suspended_at = NOW(), suspended_reason = $1
+            WHERE id = $2`,
+          [reason, id]
+        );
+        await insertAdminAction(client, {
+          tenantId: id,
+          superAdminUserId: req.user.id,
+          action: 'suspend',
+          beforeState: before,
+          afterState: { suspended_at: 'NOW()', suspended_reason: reason },
+          reason,
+        });
+        await client.query('COMMIT');
+        return { ok: true };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) {}
+        throw err;
+      }
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/tenants/:id/reactivate', validate(reactivateTenantSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { reason } = req.body;
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT suspended_at, suspended_reason FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        await client.query(
+          `UPDATE tenants
+              SET suspended_at = NULL, suspended_reason = NULL
+            WHERE id = $1`,
+          [id]
+        );
+        await insertAdminAction(client, {
+          tenantId: id,
+          superAdminUserId: req.user.id,
+          action: 'reactivate',
+          beforeState: before,
+          afterState: { suspended_at: null, suspended_reason: null },
+          reason,
+        });
+        await client.query('COMMIT');
+        return { ok: true };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) {}
+        throw err;
+      }
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /tenants/:id/activity — drill-down de actividad del tenant
+//
+// Devuelve summary por type: ventas, cajas, alertas, bot, audit. El frontend
+// los renderiza como tabs. Cada type tiene su shape — no buscamos un schema
+// unificado, sería un mal compromiso.
+//
+// Cap a últimos 20 items por type (frontend pagina con scroll vertical o
+// "ver más" — Fase 4 si hace falta más detalle).
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/tenants/:id/activity', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const type = String(req.query.type || 'ventas');
+    const limit = Math.min(Math.max(1, Number(req.query.limit) || 20), 100);
+
+    const data = await db.adminQuery(async (client) => {
+      // Confirmar que el tenant existe (404 limpio si no).
+      const t = await client.query(
+        `SELECT 1 FROM tenants WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (!t.rows[0]) return null;
+
+      switch (type) {
+        case 'ventas': {
+          const { rows } = await client.query(
+            `SELECT id, order_id, fecha, total_usd, cliente_nombre, estado, created_at
+               FROM ventas
+              WHERE tenant_id = $1 AND deleted_at IS NULL
+              ORDER BY created_at DESC
+              LIMIT $2`,
+            [id, limit]
+          );
+          return { type, items: rows };
+        }
+        case 'cajas': {
+          const { rows } = await client.query(
+            `SELECT cm.id, cm.fecha, cm.tipo, cm.monto, cm.monto_usd,
+                    cm.concepto, cm.origen, mp.nombre AS caja_nombre, mp.moneda
+               FROM caja_movimientos cm
+               JOIN metodos_pago mp ON mp.id = cm.caja_id
+              WHERE cm.tenant_id = $1 AND cm.deleted_at IS NULL
+              ORDER BY cm.fecha DESC, cm.id DESC
+              LIMIT $2`,
+            [id, limit]
+          );
+          return { type, items: rows };
+        }
+        case 'bot': {
+          // Mensajes del bot — vista forense de uso (cuántos mensajes, qué
+          // usaron). NO devolvemos el contenido completo (privacy + payload
+          // grande). Solo el contador + fecha del último.
+          const { rows: counts } = await client.query(
+            `SELECT
+               COUNT(*)::int AS mensajes_total,
+               COUNT(*) FILTER (WHERE role = 'user')::int AS mensajes_user,
+               MAX(created_at) AS ultimo_mensaje,
+               COUNT(DISTINCT conversation_id)::int AS conversaciones
+              FROM chat_messages
+             WHERE tenant_id = $1`,
+            [id]
+          );
+          const { rows: recent } = await client.query(
+            `SELECT c.id AS conversation_id, c.titulo, c.created_at,
+                    u.username,
+                    (SELECT COUNT(*)::int FROM chat_messages m
+                       WHERE m.conversation_id = c.id) AS msg_count
+               FROM chat_conversations c
+               JOIN users u ON u.id = c.user_id
+              WHERE c.tenant_id = $1
+              ORDER BY c.updated_at DESC
+              LIMIT $2`,
+            [id, limit]
+          );
+          return { type, summary: counts[0], recent_conversations: recent };
+        }
+        case 'alertas': {
+          const { rows } = await client.query(
+            `SELECT tipo, activa, parametros, updated_at
+               FROM alertas_config
+              WHERE tenant_id = $1
+              ORDER BY tipo`,
+            [id]
+          );
+          return { type, items: rows };
+        }
+        case 'audit': {
+          // Últimos cambios de DATA del tenant (no del admin sobre tenant —
+          // eso vive en tenant_admin_actions). Útil para forense del lado
+          // del cliente: "qué movió, cuándo".
+          const { rows } = await client.query(
+            `SELECT id, tabla, accion, registro_id, user_id, created_at
+               FROM audit_logs
+              WHERE tenant_id = $1
+              ORDER BY created_at DESC
+              LIMIT $2`,
+            [id, limit]
+          );
+          return { type, items: rows };
+        }
+        default:
+          return { type, items: [], error: `type '${type}' desconocido (válidos: ventas, cajas, bot, alertas, audit)` };
+      }
+    });
+
+    if (!data) return res.status(404).json({ error: 'Tenant no encontrado' });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /metrics — dashboard SaaS agregado
+//
+// Devuelve KPIs operativos en una sola query (subqueries paralelas vía PG).
+// Cacheo en frontend (no en backend) — el dashboard se actualiza al refrescar,
+// no necesita ser 100% en vivo.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/metrics', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      // Una sola query con CTEs para evitar 5 round-trips. PG paraleliza
+      // los subselects mejor que Node.js + Promise.all (un SQL = 1 plan).
+      const { rows } = await client.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM tenants
+            WHERE deleted_at IS NULL AND suspended_at IS NULL) AS active,
+          (SELECT COUNT(*)::int FROM tenants
+            WHERE deleted_at IS NULL AND plan = 'trial' AND suspended_at IS NULL) AS in_trial,
+          (SELECT COUNT(*)::int FROM tenants
+            WHERE deleted_at IS NULL AND suspended_at IS NOT NULL) AS suspended,
+          (SELECT COUNT(*)::int FROM tenants
+            WHERE deleted_at IS NULL AND created_at >= NOW() - INTERVAL '7 days') AS signups_7d,
+          (SELECT COUNT(*)::int FROM tenants
+            WHERE deleted_at IS NULL AND created_at >= NOW() - INTERVAL '30 days') AS signups_30d,
+          (SELECT COUNT(*)::int FROM tenants
+            WHERE deleted_at IS NULL AND suspended_at >= NOW() - INTERVAL '30 days') AS churn_30d
+      `);
+      const counts = rows[0];
+
+      // MRR total: SUM por plan price. enterprise lee de custom_mrr_usd.
+      const mrrRow = await client.query(`
+        SELECT plan, custom_mrr_usd, COUNT(*)::int AS cnt
+          FROM tenants
+         WHERE deleted_at IS NULL AND suspended_at IS NULL
+         GROUP BY plan, custom_mrr_usd
+      `);
+      let mrr_total_usd = 0;
+      for (const r of mrrRow.rows) {
+        mrr_total_usd += getTenantMrr(r.plan, r.custom_mrr_usd) * r.cnt;
+      }
+
+      // Conversion trial → paid en los últimos 30d.
+      // Heurística: tenants que CAMBIARON de plan='trial' a otro plan en
+      // los últimos 30d, contados sobre tenants que ENTRARON en trial en
+      // los últimos 60d (para tener cohort representativa).
+      // Fuente: tenant_admin_actions con action='plan_change'.
+      const convRow = await client.query(`
+        WITH trials_60d AS (
+          SELECT id FROM tenants
+           WHERE deleted_at IS NULL
+             AND created_at >= NOW() - INTERVAL '60 days'
+        ),
+        converted_30d AS (
+          SELECT DISTINCT taa.tenant_id
+            FROM tenant_admin_actions taa
+            JOIN trials_60d t ON t.id = taa.tenant_id
+           WHERE taa.action = 'plan_change'
+             AND taa.created_at >= NOW() - INTERVAL '30 days'
+             AND taa.before_state->>'plan' = 'trial'
+             AND taa.after_state->>'plan' <> 'trial'
+        )
+        SELECT
+          (SELECT COUNT(*)::int FROM trials_60d) AS cohort,
+          (SELECT COUNT(*)::int FROM converted_30d) AS converted
+      `);
+      const { cohort, converted } = convRow.rows[0];
+      const conversion_trial_paid_30d = cohort > 0 ? Math.round((converted / cohort) * 1000) / 10 : 0; // % con 1 decimal
+
+      return {
+        mrr_total_usd: Math.round(mrr_total_usd * 100) / 100,
+        tenants_active: counts.active,
+        tenants_trial: counts.in_trial,
+        tenants_suspended: counts.suspended,
+        signups_7d: counts.signups_7d,
+        signups_30d: counts.signups_30d,
+        churn_30d: counts.churn_30d,
+        conversion_trial_paid_30d, // porcentaje (e.g. 23.5)
+        plan_prices_usd: PLAN_PRICES_USD,
+      };
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /metrics/history — serie temporal últimos 90 días
+//
+// Para gráficos: MRR diario + signups diarios + suspensions diarias.
+// generate_series garantiza N días continuos (sin gaps cuando hay 0).
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/metrics/history', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(`
+        WITH days AS (
+          SELECT generate_series(
+            CURRENT_DATE - INTERVAL '89 days',
+            CURRENT_DATE,
+            INTERVAL '1 day'
+          )::date AS d
+        )
+        SELECT
+          d::text AS date,
+          (SELECT COUNT(*)::int FROM tenants
+             WHERE deleted_at IS NULL AND created_at::date = d) AS signups,
+          (SELECT COUNT(*)::int FROM tenants
+             WHERE deleted_at IS NULL AND suspended_at::date = d) AS suspensions
+          FROM days
+         ORDER BY d ASC
+      `);
+      return { history: rows };
+    });
+    res.json(data);
   } catch (err) {
     next(err);
   }

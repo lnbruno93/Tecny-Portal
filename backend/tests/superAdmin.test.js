@@ -225,3 +225,286 @@ describe('GET /api/super-admin/tenants/:id', () => {
     expect(r.status).toBe(403);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fase 2 — Mutations + Activity + Metrics
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /api/super-admin/tenants/:id', () => {
+  beforeEach(async () => {
+    // Reset estado del tenant 777 — los tests muteán esto.
+    await pool.query(
+      `UPDATE tenants
+          SET plan='pro', suspended_at=NULL, suspended_reason=NULL,
+              trial_until=NULL, custom_mrr_usd=NULL, notes=NULL
+        WHERE id=777`
+    );
+    await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = 777`);
+  });
+
+  it('cambia plan + setea custom_mrr_usd cuando va a enterprise', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ plan: 'enterprise', custom_mrr_usd: 250, reason: 'deal cerrado' });
+    expect(r.status).toBe(200);
+    expect(r.body.plan).toBe('enterprise');
+    expect(Number(r.body.custom_mrr_usd)).toBe(250);
+    expect(r.body.mrr_usd).toBe(250);
+  });
+
+  it('actualiza notes', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ notes: 'Cliente referido por X', reason: 'CRM' });
+    expect(r.status).toBe(200);
+    expect(r.body.notes).toBe('Cliente referido por X');
+  });
+
+  it('audit trail: PATCH crea fila en tenant_admin_actions con action correcto', async () => {
+    await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ plan: 'starter', reason: 'downgrade' });
+    const { rows } = await pool.query(
+      `SELECT action, reason, before_state, after_state
+         FROM tenant_admin_actions WHERE tenant_id = 777`
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].action).toBe('plan_change');
+    expect(rows[0].reason).toBe('downgrade');
+    expect(rows[0].before_state.plan).toBe('pro');
+    expect(rows[0].after_state.plan).toBe('starter');
+  });
+
+  it('coherencia: al cambiar plan != trial, limpia trial_until automáticamente', async () => {
+    // Setup: tenant en trial con trial_until seteado.
+    await pool.query(
+      `UPDATE tenants SET plan='trial', trial_until=CURRENT_DATE + 30 WHERE id=777`
+    );
+    // Pasamos a pro — trial_until debería quedar NULL.
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ plan: 'pro', reason: 'upgraded' });
+    expect(r.status).toBe(200);
+    expect(r.body.trial_until).toBeNull();
+  });
+
+  it('rechaza body vacío (debe tener al menos un campo mutable)', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({});
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza campo no permitido (.strict())', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ plan: 'pro', some_random_field: 'hack' });
+    expect(r.status).toBe(400);
+  });
+
+  it('404 si tenant no existe', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/99999')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ notes: 'x' });
+    expect(r.status).toBe(404);
+  });
+
+  it('regular user recibe 403', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${regularUserToken}`)
+      .send({ notes: 'x' });
+    expect(r.status).toBe(403);
+  });
+});
+
+describe('POST /api/super-admin/tenants/:id/extend-trial', () => {
+  beforeEach(async () => {
+    await pool.query(
+      `UPDATE tenants SET plan='trial', trial_until=CURRENT_DATE + 5 WHERE id=777`
+    );
+    await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = 777`);
+  });
+
+  it('extiende trial_until por N días', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/extend-trial')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ days: 14, reason: 'cliente pidió + tiempo' });
+    expect(r.status).toBe(200);
+    // Era CURRENT_DATE + 5, ahora + 19.
+    const { rows } = await pool.query(
+      `SELECT trial_until FROM tenants WHERE id = 777`
+    );
+    const diff = Math.round(
+      (new Date(rows[0].trial_until) - new Date()) / (1000 * 60 * 60 * 24)
+    );
+    expect(diff).toBeGreaterThanOrEqual(18); // tolerancia por hora del día
+    expect(diff).toBeLessThanOrEqual(20);
+  });
+
+  it('rechaza si tenant no está en plan trial', async () => {
+    await pool.query(`UPDATE tenants SET plan='pro', trial_until=NULL WHERE id=777`);
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/extend-trial')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ days: 7, reason: 'x' });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/plan='pro'/);
+  });
+
+  it('reason requerido', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/extend-trial')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ days: 7 });
+    expect(r.status).toBe(400);
+  });
+});
+
+describe('POST /api/super-admin/tenants/:id/suspend + /reactivate', () => {
+  beforeEach(async () => {
+    await pool.query(
+      `UPDATE tenants SET suspended_at=NULL, suspended_reason=NULL WHERE id=777`
+    );
+    await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = 777`);
+  });
+
+  it('suspend: setea suspended_at + reason', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/suspend')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'no pagó' });
+    expect(r.status).toBe(200);
+    const { rows } = await pool.query(
+      `SELECT suspended_at, suspended_reason FROM tenants WHERE id = 777`
+    );
+    expect(rows[0].suspended_at).not.toBeNull();
+    expect(rows[0].suspended_reason).toBe('no pagó');
+  });
+
+  it('reactivate: limpia suspended_at + reason', async () => {
+    // Setup: suspendido.
+    await pool.query(
+      `UPDATE tenants SET suspended_at=NOW(), suspended_reason='old' WHERE id=777`
+    );
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/reactivate')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'pagó al fin' });
+    expect(r.status).toBe(200);
+    const { rows } = await pool.query(
+      `SELECT suspended_at, suspended_reason FROM tenants WHERE id = 777`
+    );
+    expect(rows[0].suspended_at).toBeNull();
+    expect(rows[0].suspended_reason).toBeNull();
+  });
+
+  it('suspend: reason requerido', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/suspend')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({});
+    expect(r.status).toBe(400);
+  });
+});
+
+describe('GET /api/super-admin/tenants/:id/activity', () => {
+  it('?type=ventas devuelve items (vacío en este test)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants/1/activity?type=ventas')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.type).toBe('ventas');
+    expect(Array.isArray(r.body.items)).toBe(true);
+  });
+
+  it('?type=bot devuelve summary + recent_conversations', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants/1/activity?type=bot')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.type).toBe('bot');
+    expect(typeof r.body.summary.mensajes_total).toBe('number');
+    expect(Array.isArray(r.body.recent_conversations)).toBe(true);
+  });
+
+  it('?type=alertas devuelve config de alertas del tenant', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants/1/activity?type=alertas')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.type).toBe('alertas');
+    // El seed crea 5 tipos default por tenant (vía migration alertas_config_per_tenant).
+    expect(r.body.items.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('?type=unknown devuelve error informativo (no 500)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants/1/activity?type=xxx')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.error).toMatch(/type 'xxx' desconocido/);
+  });
+
+  it('404 si tenant no existe', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants/99999/activity?type=ventas')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('GET /api/super-admin/metrics', () => {
+  it('devuelve KPIs agregados', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    // Estructura esperada
+    expect(typeof r.body.mrr_total_usd).toBe('number');
+    expect(typeof r.body.tenants_active).toBe('number');
+    expect(typeof r.body.tenants_trial).toBe('number');
+    expect(typeof r.body.tenants_suspended).toBe('number');
+    expect(typeof r.body.signups_7d).toBe('number');
+    expect(typeof r.body.signups_30d).toBe('number');
+    expect(typeof r.body.churn_30d).toBe('number');
+    expect(typeof r.body.conversion_trial_paid_30d).toBe('number');
+    expect(r.body.plan_prices_usd).toEqual(
+      expect.objectContaining({ trial: 0 })
+    );
+  });
+
+  it('regular user recibe 403', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics')
+      .set('Authorization', `Bearer ${regularUserToken}`);
+    expect(r.status).toBe(403);
+  });
+});
+
+describe('GET /api/super-admin/metrics/history', () => {
+  it('devuelve serie temporal de 90 días', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics/history')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.history)).toBe(true);
+    expect(r.body.history).toHaveLength(90);
+    // Cada item tiene date, signups, suspensions
+    expect(r.body.history[0]).toEqual(
+      expect.objectContaining({
+        date: expect.any(String),
+        signups: expect.any(Number),
+        suspensions: expect.any(Number),
+      })
+    );
+  });
+});
