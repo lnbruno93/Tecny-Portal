@@ -222,6 +222,13 @@ describe('Evaluadores con datos sembrados', () => {
       `INSERT INTO tenants (id, nombre, slug) VALUES (2, 'Tenant 2 Alertas', 'tenant-2-alertas')
          ON CONFLICT (id) DO NOTHING`
     );
+    // CRÍTICO: avanzar tenants_id_seq al MAX(id) actual. Sin esto, signup.test.js
+    // (corre después alfabéticamente) genera nuevos tenants vía secuencia, recibe
+    // id=2, choca con la fila acá → INSERT falla con 23505 → endpoint 409.
+    // Mismo pattern que multitenant-isolation.test.js#53 y chat.test.js post-fix.
+    await pool.query(
+      `SELECT setval('tenants_id_seq', GREATEST((SELECT MAX(id) FROM tenants), 1))`
+    );
     // Limpiar configs default que la migration #343 seedeó (queremos
     // control fino para el assertion).
     await pool.query(`DELETE FROM alertas_config WHERE tenant_id = 2`);
