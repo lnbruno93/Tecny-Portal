@@ -408,6 +408,9 @@ const handlers = {
       // fecha=hoy a las 23:55 ART cuente en el día corriente (no en el
       // siguiente UTC). c.fecha::timestamp + AT TIME ZONE fuerza la
       // interpretación.
+      // 2026-06-20 TANDA 1 fix #341 P1: filtrar deleted_at IS NULL.
+      // Sin esto, comprobantes soft-deleted del día (canceladas, errores
+      // corregidos, etc.) inflaban el "bruto hoy" que el bot reportaba.
       const { rows: kpisRows } = await client.query(`
         SELECT
           COALESCE(SUM(c.monto),            0)::numeric AS bruto_hoy,
@@ -416,6 +419,7 @@ const handlers = {
           COUNT(*)::int                                  AS comprobantes_hoy
         FROM comprobantes c
         WHERE c.fecha = (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+          AND c.deleted_at IS NULL
       `);
 
       // Envíos activos: estado 'Pendiente' o 'En camino' (no terminados).
@@ -721,14 +725,20 @@ const handlers = {
       );
       const umbralStock = Number(cfgRows[0]?.parametros?.umbral_unidades) || 5;
 
+      // 2026-06-20 TANDA 1 fix #341 P1: NO excluir cantidad=0 — los agotados
+      // son los MÁS urgentes para reponer. También filtrar estado <> 'vendido'
+      // y trackear_stock = true (mismo filtro que evalStockBajo canónico
+      // en lib/alertas.js#evalStockBajo) — sin esto, productos vendidos o
+      // que el user explícitamente marcó "no trackear" aparecían como alerta.
       const { rows: stockBajo } = await client.query(
         `SELECT id, nombre, cantidad
          FROM productos
          WHERE deleted_at IS NULL
            AND oculto IS NOT TRUE
            AND condicion = 'nuevo'
+           AND estado <> 'vendido'
+           AND trackear_stock = true
            AND cantidad < $1
-           AND cantidad > 0
          ORDER BY cantidad ASC
          LIMIT 5`,
         [umbralStock]
@@ -807,11 +817,23 @@ const handlers = {
       // GROUP BY descripcion (no producto_id) porque históricamente la
       // descripción es lo que el usuario reconoce (IMEIs son distintos
       // por unidad pero misma descripción = mismo modelo).
+      //
+      // 2026-06-20 TANDA 1 fix #341 P1: items en ARS se convierten a USD
+      // vía v.tc_venta. Sin esto, una venta de $100.000 ARS aparecía como
+      // USD 100.000 en el ranking, distorsionando completamente el top.
+      // Misma fórmula que dashboardMensual.js (canónica) y routes/ventas.js.
+      // NULLIF evita división por cero si tc_venta no se cargó.
       const { rows } = await client.query(
         `SELECT
            vi.descripcion,
-           SUM(vi.cantidad)::int                                  AS qty,
-           COALESCE(SUM(vi.precio_vendido * vi.cantidad), 0)::numeric AS ingreso_usd
+           SUM(vi.cantidad)::int AS qty,
+           COALESCE(SUM(
+             CASE
+               WHEN vi.moneda = 'ARS' AND COALESCE(v.tc_venta, 0) > 0
+                 THEN vi.precio_vendido * vi.cantidad / v.tc_venta
+               ELSE vi.precio_vendido * vi.cantidad
+             END
+           ), 0)::numeric AS ingreso_usd
          FROM venta_items vi
          JOIN ventas v ON v.id = vi.venta_id
          WHERE v.fecha >= $1 AND v.fecha <= $2
@@ -845,12 +867,22 @@ const handlers = {
       // su vendedor incluso si la venta tiene varios items con vendedores
       // distintos. Usamos COUNT(DISTINCT venta_id) para "cuántas ventas
       // distintas trabajó" en vez de items.
+      //
+      // 2026-06-20 TANDA 1 fix #341 P1: misma conversión ARS→USD que
+      // get_top_productos. Sin esto el ranking de facturación quedaba
+      // distorsionado por items en ARS.
       const { rows } = await client.query(
         `SELECT
            ve.id                                                          AS vendedor_id,
            ve.nombre                                                      AS nombre,
            COUNT(DISTINCT vi.venta_id)::int                               AS ventas_count,
-           COALESCE(SUM(vi.precio_vendido * vi.cantidad), 0)::numeric     AS ingreso_usd
+           COALESCE(SUM(
+             CASE
+               WHEN vi.moneda = 'ARS' AND COALESCE(v.tc_venta, 0) > 0
+                 THEN vi.precio_vendido * vi.cantidad / v.tc_venta
+               ELSE vi.precio_vendido * vi.cantidad
+             END
+           ), 0)::numeric AS ingreso_usd
          FROM venta_items vi
          JOIN ventas    v  ON v.id  = vi.venta_id
          JOIN vendedores ve ON ve.id = vi.vendedor_id
@@ -942,16 +974,28 @@ const handlers = {
     const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
-      // proveedor_movimientos.monto_usd es la fuente — el módulo ya
-      // normaliza a USD al insertar. Tipos: 'compra' suma, 'pago' resta.
+      // proveedor_movimientos.monto_usd ya viene normalizado a USD al insertar.
+      //
+      // 2026-06-20 TANDA 1 fix #341 P1: usar la fórmula canónica de
+      // routes/proveedores.js#79-86 (el GET /api/proveedores que renderiza la
+      // pantalla operativa):
+      //   - 'pago'                            → resta (les pagamos)
+      //   - 'compra' AND caja_id IS NOT NULL  → 0 (contado, no genera deuda)
+      //   - 'saldo_inicial' / 'compra'        → suma (deuda heredada / a crédito)
+      // La versión previa ignoraba 'saldo_inicial' (cliente con apertura
+      // de deuda lo veía como 0) y trataba TODA 'compra' como deuda
+      // (compras de contado infladas). Resultado: el bot mostraba saldos
+      // distintos a /api/proveedores.
       const { rows } = await client.query(
         `WITH saldos AS (
            SELECT p.id, p.nombre,
-                  COALESCE(SUM(CASE m.tipo
-                    WHEN 'compra' THEN m.monto_usd
-                    WHEN 'pago'   THEN -m.monto_usd
-                    ELSE 0
-                  END), 0) AS saldo,
+                  COALESCE(SUM(
+                    CASE
+                      WHEN m.tipo='pago'                             THEN -m.monto_usd
+                      WHEN m.tipo='compra' AND m.caja_id IS NOT NULL THEN 0
+                      ELSE m.monto_usd
+                    END
+                  ), 0) AS saldo,
                   MAX(m.fecha) AS ultimo_mov
              FROM proveedores p
              LEFT JOIN proveedor_movimientos m
@@ -1069,6 +1113,9 @@ const handlers = {
     const limit = Math.min(Math.max(1, Number(input?.limit) || 20), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
+      // 2026-06-20 TANDA 1 fix #341 P1: mismo fix que get_alertas section
+      // stock_bajo. NO excluir cantidad=0, agregar filtros estado<>'vendido'
+      // y trackear_stock=true (canónico de evalStockBajo lib/alertas.js).
       const { rows } = await client.query(
         `SELECT p.id, p.nombre, p.cantidad,
                 c.nombre AS categoria,
@@ -1078,8 +1125,9 @@ const handlers = {
           WHERE p.deleted_at IS NULL
             AND p.oculto IS NOT TRUE
             AND p.condicion = 'nuevo'
+            AND p.estado <> 'vendido'
+            AND p.trackear_stock = true
             AND p.cantidad < $1
-            AND p.cantidad > 0
           ORDER BY p.cantidad ASC, p.nombre
           LIMIT $2`,
         [umbral, limit]
