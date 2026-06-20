@@ -115,6 +115,15 @@ beforeAll(async () => {
     `INSERT INTO tenants (id, nombre, slug) VALUES (2, 'Tenant 2', 'tenant-2')
        ON CONFLICT (id) DO NOTHING`
   );
+  // CRÍTICO: avanzar tenants_id_seq al MAX(id) actual. Sin esto, signup.test.js
+  // (corre después alfabéticamente) genera nuevos tenants vía secuencia, recibe
+  // id=2, choca con la fila acá → INSERT falla con 23505 → endpoint devuelve
+  // 409. Mismo pattern que multitenant-isolation.test.js#53.
+  // (Setval no es CASCADE — la secuencia persiste entre TRUNCATEs hasta que
+  // alguien la resetee, así que este SELECT es defensivo cada vez.)
+  await pool.query(
+    `SELECT setval('tenants_id_seq', GREATEST((SELECT MAX(id) FROM tenants), 1))`
+  );
   const { rows: u3Rows } = await pool.query(
     `INSERT INTO users (nombre, username, email, password_hash, role)
      VALUES ('User1 Tenant2', 'u1t2', 'u1t2@test.local', $1, 'admin')
