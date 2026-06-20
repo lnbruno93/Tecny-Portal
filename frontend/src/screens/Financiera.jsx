@@ -678,13 +678,35 @@ export default function Financiera() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div>
-      {/* Page head */}
+      {/* Page head — 2026-06-19 Lucas: solo título + subtítulo, los botones
+          bajan a la fila de tabs. */}
       <div className="page-head">
         <div>
           <h1 className="page-title">Transferencias</h1>
           <div className="page-sub">
             Comprobantes, pagos y OCR · retención al {pct.toFixed(1)}%
           </div>
+        </div>
+      </div>
+
+      {/* Tabs bar + botones en la misma fila */}
+      <div className="flex-between" style={{ marginBottom: 20, gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="tabs">
+          {[
+            { value: 'dashboard',    label: 'Dashboard' },
+            { value: 'cargar',       label: 'Cargar' },
+            { value: 'comprobantes', label: 'Comprobantes' },
+            { value: 'pagos',        label: 'Pagos' },
+            { value: 'vendedores',   label: 'Vendedores' },
+          ].map(t => (
+            <button
+              key={t.value}
+              className={'tab' + (tab === t.value ? ' active' : '')}
+              onClick={() => setTab(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
         <div className="page-actions">
           <button className="btn" onClick={() => setTab('cargar')}>
@@ -694,25 +716,6 @@ export default function Financiera() {
             <Icons.Plus size={14} /> Nuevo comprobante
           </button>
         </div>
-      </div>
-
-      {/* Tabs bar */}
-      <div className="tabs" style={{ marginBottom: 20 }}>
-        {[
-          { value: 'dashboard',    label: 'Dashboard' },
-          { value: 'cargar',       label: 'Cargar' },
-          { value: 'comprobantes', label: 'Comprobantes' },
-          { value: 'pagos',        label: 'Pagos' },
-          { value: 'vendedores',   label: 'Vendedores' },
-        ].map(t => (
-          <button
-            key={t.value}
-            className={'tab' + (tab === t.value ? ' active' : '')}
-            onClick={() => setTab(t.value)}
-          >
-            {t.label}
-          </button>
-        ))}
       </div>
 
       {/* ════════════════════════════════════════════════════════

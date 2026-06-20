@@ -42,9 +42,13 @@ export default function Conciliacion() {
 
   return (
     <div>
+      {/* 2026-06-19: h1 + subtítulo en div interno (sino space-between
+          del page-head los separa horizontal). */}
       <div className="page-head">
-        <h1>Conciliación bancaria</h1>
-        <div className="muted tiny">Importá el extracto del banco y matcheá con tu ledger.</div>
+        <div>
+          <h1 className="page-title">Conciliación bancaria</h1>
+          <div className="page-sub">Importá el extracto del banco y matcheá con tu ledger.</div>
+        </div>
       </div>
 
       {vista === 'lista' && (
