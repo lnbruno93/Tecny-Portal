@@ -21,6 +21,9 @@
  *   GET   /api/super-admin/tenants/:id/activity     — drill-down per tipo
  *   GET   /api/super-admin/metrics                  — KPIs SaaS agregados
  *   GET   /api/super-admin/metrics/history          — serie temporal 90d
+ *   GET   /api/super-admin/metrics/recent-actions   — feed cross-tenant de
+ *                                                     acciones admin (para el
+ *                                                     Resumen del dashboard)
  *
  * Diseño:
  *   - TODAS las queries pasan por `db.adminQuery()` (BYPASSRLS). El linter
@@ -676,7 +679,12 @@ router.get('/metrics', async (_req, res, next) => {
       `);
       const counts = rows[0];
 
-      // MRR total: SUM por plan price. enterprise lee de custom_mrr_usd.
+      // MRR total + breakdown por plan. Una sola query GROUP BY (plan,
+      // custom_mrr_usd) — usamos custom_mrr_usd en el group porque hace falta
+      // diferenciar enterprise con distintos precios negociados al sumar MRR.
+      // Pero para `tenants_by_plan` agrupamos solo por plan (el frontend no
+      // necesita ver "enterprise@500" vs "enterprise@800" como rows distintos
+      // en la distribución, le alcanza con "enterprise: N clientes, $X MRR").
       const mrrRow = await client.query(`
         SELECT plan, custom_mrr_usd, COUNT(*)::int AS cnt
           FROM tenants
@@ -684,9 +692,23 @@ router.get('/metrics', async (_req, res, next) => {
          GROUP BY plan, custom_mrr_usd
       `);
       let mrr_total_usd = 0;
+      const planAgg = new Map(); // plan → { count, mrr_usd }
       for (const r of mrrRow.rows) {
-        mrr_total_usd += getTenantMrr(r.plan, r.custom_mrr_usd) * r.cnt;
+        const rowMrr = getTenantMrr(r.plan, r.custom_mrr_usd) * r.cnt;
+        mrr_total_usd += rowMrr;
+        const prev = planAgg.get(r.plan) || { plan: r.plan, count: 0, mrr_usd: 0 };
+        prev.count += r.cnt;
+        prev.mrr_usd += rowMrr;
+        planAgg.set(r.plan, prev);
       }
+      // Garantizamos un row por plan canónico aunque tenga 0 clientes
+      // (así el frontend renderiza siempre la lista completa sin gaps).
+      for (const p of ['trial', 'starter', 'pro', 'enterprise']) {
+        if (!planAgg.has(p)) planAgg.set(p, { plan: p, count: 0, mrr_usd: 0 });
+      }
+      const tenants_by_plan = Array.from(planAgg.values())
+        .map((p) => ({ ...p, mrr_usd: Math.round(p.mrr_usd * 100) / 100 }))
+        .sort((a, b) => b.mrr_usd - a.mrr_usd || b.count - a.count);
 
       // Conversion trial → paid en los últimos 30d.
       // Heurística: tenants que CAMBIARON de plan='trial' a otro plan en
@@ -725,6 +747,7 @@ router.get('/metrics', async (_req, res, next) => {
         churn_30d: counts.churn_30d,
         conversion_trial_paid_30d, // porcentaje (e.g. 23.5)
         plan_prices_usd: PLAN_PRICES_USD,
+        tenants_by_plan, // [{ plan, count, mrr_usd }] orden desc por MRR
       };
     });
     res.json(data);
@@ -760,6 +783,47 @@ router.get('/metrics/history', async (_req, res, next) => {
          ORDER BY d ASC
       `);
       return { history: rows };
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /metrics/recent-actions — feed cross-tenant de acciones admin
+//
+// El Resumen del dashboard lo muestra como activity feed ("Lucas suspendió
+// Aurora Mobile · hace 3 h"). Es el equivalente al activity per-tenant pero
+// agregado para todos los tenants — útil cuando hay varios super-admins
+// trabajando en paralelo o para ver "qué hicimos esta semana".
+//
+// Distinto a tenant_admin_actions con LIMIT: acá joineamos tenant + super-admin
+// user en una sola query para que el frontend renderice sin lookups extra.
+// Cap default 10 (Resumen muestra 5-7), max 50 (sub-fase futura "ver todo").
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/metrics/recent-actions', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(1, Number(req.query.limit) || 10), 50);
+
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `SELECT taa.id,
+                taa.tenant_id,
+                t.nombre AS tenant_nombre,
+                t.slug   AS tenant_slug,
+                taa.action,
+                taa.reason,
+                taa.created_at,
+                u.username AS super_admin_username
+           FROM tenant_admin_actions taa
+           JOIN tenants t ON t.id = taa.tenant_id
+           LEFT JOIN users u ON u.id = taa.super_admin_user_id
+          ORDER BY taa.created_at DESC
+          LIMIT $1`,
+        [limit]
+      );
+      return { recent_actions: rows };
     });
     res.json(data);
   } catch (err) {

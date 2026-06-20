@@ -120,23 +120,91 @@ async function loginDirect(username, password) {
   throw err;
 }
 
+// Helper interno: filtra keys vacías/null antes de armar el query string.
+// URLSearchParams las incluiría como `key=` (string vacío) y el backend
+// distingue eso de "no enviado" en filtros tipo suspended=true|false.
+function buildQs(params) {
+  const clean = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v !== '' && v != null)
+  );
+  const qs = new URLSearchParams(clean).toString();
+  return qs ? '?' + qs : '';
+}
+
 export const adminApi = {
-  // Auth
+  // ── Auth ──────────────────────────────────────────────────────────────
   login: (username, password) => loginDirect(username, password),
-  // GET /api/super-admin/me — devuelve { is_super_admin, user_id, username }.
-  // Se usa para revalidar la sesión al refresh del browser (el token podría
-  // ser válido pero el flag is_super_admin podría haberse revocado).
+  // GET /me — devuelve { is_super_admin, user_id, username }. Usado por
+  // AuthContext al mount para revalidar que el flag is_super_admin sigue
+  // activo (podría haberse revocado vía script desde el último login).
   me: () => api('/api/super-admin/me'),
-  // Tenants
-  listTenants: (filters = {}) => {
-    // Filtramos keys vacías antes de serializar — URLSearchParams las incluye
-    // como `key=` (string vacío), y el backend interpreta `suspended=` como
-    // distinto de "no enviado". Mantener ambos lados limpios.
-    const clean = Object.fromEntries(
-      Object.entries(filters).filter(([, v]) => v !== '' && v != null)
-    );
-    const qs = new URLSearchParams(clean).toString();
-    return api('/api/super-admin/tenants' + (qs ? '?' + qs : ''));
-  },
+
+  // ── Tenants (read) ────────────────────────────────────────────────────
+  // GET /tenants?plan=&suspended=&search= — lista con stats inline.
+  // Filtros opcionales: `plan` (trial|starter|pro|enterprise),
+  // `suspended` ('true'|'false'), `search` (match nombre OR slug ILIKE).
+  // Cada row: { id, nombre, slug, plan, custom_mrr_usd, suspended_at,
+  // suspended_reason, trial_until, created_at, notes, users_count,
+  // last_venta_at, signups_30d, mrr_usd }.
+  listTenants: (filters = {}) =>
+    api('/api/super-admin/tenants' + buildQs(filters)),
+
+  // GET /tenants/:id — detalle del tenant + recent_admin_actions (últimas
+  // 10 acciones admin sobre este tenant). Devuelve 404 si id no existe.
   getTenant: (id) => api(`/api/super-admin/tenants/${id}`),
+
+  // GET /tenants/:id/activity?type=&limit= — drill-down de actividad.
+  // type: 'ventas'|'cajas'|'bot'|'alertas'|'audit' (default 'ventas').
+  // Cada type tiene shape distinto — el frontend lo renderiza por tab.
+  // limit: 1-100, default 20.
+  getActivity: (id, type = 'ventas', limit = 20) =>
+    api(`/api/super-admin/tenants/${id}/activity?type=${encodeURIComponent(type)}&limit=${limit}`),
+
+  // ── Metrics ───────────────────────────────────────────────────────────
+  // GET /metrics — KPIs SaaS agregados (MRR total, # activos/trial/
+  // suspended, signups 7d/30d, churn 30d, conversion trial→paid 30d,
+  // plan_prices_usd, tenants_by_plan).
+  getMetrics: () => api('/api/super-admin/metrics'),
+
+  // GET /metrics/history — serie temporal últimos 90 días con
+  // { history: [{date, signups, suspensions}] }. Por ahora solo signups
+  // y suspensions; MRR histórico se agrega cuando exista la métrica.
+  getMetricsHistory: () => api('/api/super-admin/metrics/history'),
+
+  // GET /metrics/recent-actions?limit= — feed cross-tenant de acciones
+  // admin (joined con tenant.nombre + super_admin.username). Cap 50,
+  // default 10. El Resumen lo usa como "activity feed".
+  getRecentActions: (limit = 10) =>
+    api(`/api/super-admin/metrics/recent-actions?limit=${limit}`),
+
+  // ── Tenants (mutations) ───────────────────────────────────────────────
+  // Todos los mutations son atómicos en backend (tx + FOR UPDATE +
+  // audit trail). Devuelven el tenant actualizado o ok=true según endpoint.
+
+  // PATCH /tenants/:id — mutate genérico. body acepta cualquier combo de
+  // { plan, custom_mrr_usd, notes, trial_until, suspended_at, reason }.
+  // Auto-coherencia: cambiar plan a no-trial limpia trial_until; a
+  // no-enterprise limpia custom_mrr_usd. reason es opcional pero
+  // recomendado para audit forense.
+  patchTenant: (id, body) =>
+    api(`/api/super-admin/tenants/${id}`, 'PATCH', body),
+
+  // POST /tenants/:id/extend-trial — body { days, reason }. days es
+  // entero positivo. Solo funciona si tenant.plan === 'trial' (sino 400).
+  // Suma sobre el trial_until actual (o sobre hoy si era NULL).
+  extendTrial: (id, body) =>
+    api(`/api/super-admin/tenants/${id}/extend-trial`, 'POST', body),
+
+  // POST /tenants/:id/suspend — body { reason } (requerido). Setea
+  // suspended_at=NOW + suspended_reason. El backend NO desautoriza users
+  // del tenant; el efecto de "no pueden operar" lo aplica el middleware
+  // requireActiveTenant si el frontend agrega lo correspondiente.
+  suspendTenant: (id, body) =>
+    api(`/api/super-admin/tenants/${id}/suspend`, 'POST', body),
+
+  // POST /tenants/:id/reactivate — body { reason } opcional. Setea
+  // suspended_at=NULL + suspended_reason=NULL. No revierte otros cambios
+  // del periodo de suspensión (si subieron plan, queda subido).
+  reactivateTenant: (id, body = {}) =>
+    api(`/api/super-admin/tenants/${id}/reactivate`, 'POST', body),
 };
