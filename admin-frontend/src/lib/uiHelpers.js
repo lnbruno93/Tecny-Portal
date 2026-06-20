@@ -54,3 +54,24 @@ export const tenantInitials = (name) => {
     .join('')
     .toUpperCase();
 };
+
+// Proxy 0–100 de "salud" del tenant basado SOLO en cuánto hace que no
+// hay actividad de venta. Es una señal débil pero suficiente para una
+// columna de "vista de pájaro" en el listado de Clientes / Top clientes
+// del Resumen — el super-admin lo usa para detectar cuentas que se
+// están enfriando, no como métrica formal.
+//
+// TODO Sub-fase Z (Salud real): definir fórmula combinada
+//   uso producto (logins/eventos) + cobros al día + adopción features.
+// Cuando exista, este helper se reemplaza pero la firma queda igual
+// para no romper call-sites (Resumen, Clientes).
+export function healthProxy(lastActivityAt) {
+  if (!lastActivityAt) return 25;
+  const ts = new Date(lastActivityAt).getTime();
+  if (isNaN(ts)) return 25;
+  const days = (Date.now() - ts) / 86400000;
+  if (days < 1) return 95;
+  if (days < 7) return 75;
+  if (days < 30) return 50;
+  return 25;
+}
