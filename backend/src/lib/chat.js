@@ -46,8 +46,17 @@ const logger = require('./logger');
 const { SYSTEM_PROMPT, TOOLS, executeTool } = require('./chat-tools');
 
 // Modelo: Sonnet 4.5 — balance calidad / costo para razonamiento + tool use.
-// Si en el futuro cambia el lineup, este es el único lugar a tocar.
-const MODEL = 'claude-sonnet-4-5';
+//
+// 2026-06-21 TANDA 3 #341: env-overridable vía CHAT_MODEL. Casos de uso:
+//   · Tests de carga: forzar haiku (claude-haiku-4-5) para no quemar
+//     créditos durante un load test contra el bot.
+//   · A/B testing entre versiones del modelo sin redeploy.
+//   · Hotfix de modelo deprecated: si Anthropic anuncia EOL de un modelo,
+//     setear CHAT_MODEL=<nuevo> en Railway sin tener que mergear código.
+//
+// Default mantiene comportamiento histórico ('claude-sonnet-4-5') — si la
+// env var no está seteada, comportamiento idéntico al pre-refactor.
+const MODEL = process.env.CHAT_MODEL || 'claude-sonnet-4-5';
 
 // Límite duro del loop tool_use → tool_result. En la práctica un turno
 // converge en 1-2 iteraciones. 5 da headroom para casos legítimos (ej. el

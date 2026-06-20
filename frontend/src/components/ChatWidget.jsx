@@ -81,6 +81,21 @@ export default function ChatWidget() {
     });
   }, [messages, sending]);
 
+  // 2026-06-21 TANDA 4 #341 UX: textarea auto-grow. Pre-fix `rows={1}`
+  // dejaba el input siempre en 1 línea, ocultando preguntas largas — el
+  // user perdía contexto de lo que estaba escribiendo. Ahora la altura
+  // crece con el contenido hasta el cap CSS (max-height: 120px).
+  //
+  // Truco estándar: reset height a 'auto' primero para que scrollHeight
+  // calcule el contenido real, después asignar scrollHeight a height.
+  // Sin el reset, scrollHeight queda atascado en el valor previo.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [draft, open]);
+
   const reset = useCallback(() => {
     setConversationId(null);
     setMessages([]);
@@ -200,7 +215,21 @@ export default function ChatWidget() {
               </div>
             </header>
 
-            <div className="chat-body" ref={scrollerRef}>
+            {/* 2026-06-21 TANDA 4 #341 UX a11y: aria-live="polite" hace que
+                screen readers anuncien mensajes nuevos sin interrumpir lo
+                que el user esté escuchando. aria-atomic=false → solo
+                anuncia los cambios incrementales, no la lista entera cada
+                vez. aria-relevant=additions → solo cuando aparece un msg
+                nuevo (no on remove/change). */}
+            <div
+              className="chat-body"
+              ref={scrollerRef}
+              role="log"
+              aria-live="polite"
+              aria-atomic="false"
+              aria-relevant="additions"
+              aria-label="Mensajes del asistente"
+            >
               {messages.length === 0 && !sending && (
                 <div className="chat-empty">
                   <Icons.Sparkles size={28} />
