@@ -716,7 +716,10 @@ export default function Inventario() {
 
   return (
     <div>
-      {/* ── Page head ── */}
+      {/* ── Page head — 2026-06-19 Lucas: los 9 botones de acciones
+          quedaban apretados en el header. Solución: page-head solo título +
+          subtítulo; los botones bajan a una toolbar dedicada debajo, con
+          espacio para respirar. ── */}
       <div className="page-head">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -727,42 +730,48 @@ export default function Inventario() {
           </div>
           <div className="page-sub">Stock de equipos y accesorios · costos, depósitos y proveedores</div>
         </div>
-        <div className="page-actions">
-          <button className="btn" onClick={() => { loadProductos(); loadMetricas(); }}>
-            <Icons.Refresh size={14} /> Actualizar
+      </div>
+
+      {/* Toolbar de acciones — fila dedicada, sin pelearse con el header.
+          Los botones se distribuyen: refresh/data ops a la izquierda,
+          destructivos al medio, primary action a la derecha. */}
+      <div className="page-actions" style={{ marginBottom: 18, justifyContent: 'flex-start' }}>
+        <button className="btn" onClick={() => { loadProductos(); loadMetricas(); }}>
+          <Icons.Refresh size={14} /> Actualizar
+        </button>
+        <button className="btn" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
+        <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
+        <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
+        {/* Recepción con scanner móvil: la pantalla (/inventario/recepcion)
+            y el componente BarcodeScanner viven en el repo, accesibles por
+            URL directa. Botón oculto a propósito hasta que decidamos retomar
+            esa feature — primero validamos el resto del producto en la
+            prueba con equipo (junio 2026). Para reactivar, descomentar el
+            <Link/> y listo. */}
+        <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
+        <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
+        {/* Acción destructiva — separada visualmente con color rojo del ícono y
+            texto en variante ghost. El ConfirmModal con danger:true protege
+            contra clicks accidentales. */}
+        <button className="btn btn-ghost" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
+          <Icons.Trash size={14} /> Vaciar stock
+        </button>
+        {/* Variante destructiva admin: stock + compras a proveedor. Sólo
+            visible para role=admin para que un operador no la dispare por
+            error — el backend igualmente revalida con adminOnly. */}
+        {isAdmin && (
+          <button
+            className="btn btn-ghost"
+            style={{ color: 'var(--neg)' }}
+            onClick={handleVaciarStockConCompras}
+            title="Admin · vacía stock + borra compras a proveedores asociadas + revierte cajas"
+          >
+            <Icons.Trash size={14} /> Vaciar stock + compras
           </button>
-          <button className="btn" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
-          <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
-          <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
-          {/* Recepción con scanner móvil: la pantalla (/inventario/recepcion)
-              y el componente BarcodeScanner viven en el repo, accesibles por
-              URL directa. Botón oculto a propósito hasta que decidamos retomar
-              esa feature — primero validamos el resto del producto en la
-              prueba con equipo (junio 2026). Para reactivar, descomentar el
-              <Link/> y listo. */}
-          <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
-          <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
-          {/* Acción destructiva — separada visualmente con color rojo del ícono y
-              texto en variante ghost. El ConfirmModal con danger:true protege
-              contra clicks accidentales. */}
-          <button className="btn btn-ghost" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
-            <Icons.Trash size={14} /> Vaciar stock
-          </button>
-          {/* Variante destructiva admin: stock + compras a proveedor. Sólo
-              visible para role=admin para que un operador no la dispare por
-              error — el backend igualmente revalida con adminOnly. */}
-          {isAdmin && (
-            <button
-              className="btn btn-ghost"
-              style={{ color: 'var(--neg)' }}
-              onClick={handleVaciarStockConCompras}
-              title="Admin · vacía stock + borra compras a proveedores asociadas + revierte cajas"
-            >
-              <Icons.Trash size={14} /> Vaciar stock + compras
-            </button>
-          )}
-          <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
-        </div>
+        )}
+        {/* Spacer empuja Agregar producto a la derecha de la toolbar */}
+        <span style={{ marginLeft: 'auto' }} />
+        <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
       </div>
 
       {/* ── KPIs ── */}

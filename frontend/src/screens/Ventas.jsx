@@ -968,11 +968,22 @@ export default function Ventas() {
 
   return (
     <div>
+      {/* 2026-06-19 Lucas: page-head solo título + subtítulo; los botones de
+          acción bajan a la fila de chips de período (flex-between) para
+          quedar a la misma altura visual. */}
       <div className="page-head">
         <div>
           <h1 className="page-title">Ventas</h1>
           <div className="page-sub">Dashboard, movimientos y carga de ventas</div>
         </div>
+      </div>
+
+      {/* Período + acciones en la misma fila */}
+      <div className="flex-between" style={{ marginBottom: 14, gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Seg value={periodo} options={[
+          { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
+          { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
+        ]} onChange={setPeriodoRange} />
         <div className="page-actions">
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
           <button className="btn" onClick={() => setShowGarantias(true)}><Icons.Shield size={14} /> Plantillas</button>
@@ -981,14 +992,6 @@ export default function Ventas() {
           <button className="btn" onClick={exportarExcel}><Icons.Download size={14} /> Exportar</button>
           <button className="btn btn-primary" onClick={() => openVenta(null)}><Icons.Plus size={14} /> Nueva venta</button>
         </div>
-      </div>
-
-      {/* Período */}
-      <div style={{ marginBottom: 14 }}>
-        <Seg value={periodo} options={[
-          { value: 'hoy', label: 'Hoy' }, { value: 'ayer', label: 'Ayer' }, { value: 'semana', label: 'Esta semana' },
-          { value: 'mes', label: 'Este mes' }, { value: 'custom', label: 'Personalizado' },
-        ]} onChange={setPeriodoRange} />
       </div>
 
       {/* Dashboard */}
