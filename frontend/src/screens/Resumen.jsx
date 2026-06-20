@@ -155,9 +155,14 @@ export default function Resumen() {
 
   return (
     <div>
+      {/* 2026-06-19: h1 + subtítulo deben ir EN UN DIV interno, no como
+          siblings directos del .page-head — sino space-between los separa
+          horizontalmente y el subtítulo termina flotando a la derecha. */}
       <div className="page-head">
-        <h1>Resumen del mes</h1>
-        <div className="muted tiny">Comparativo de período + KPIs operativos consolidados.</div>
+        <div>
+          <h1 className="page-title">Resumen del mes</h1>
+          <div className="page-sub">Comparativo de período + KPIs operativos consolidados.</div>
+        </div>
       </div>
 
       {/* Selectores de período (2026-06-15): presets de mes en lugar de un
