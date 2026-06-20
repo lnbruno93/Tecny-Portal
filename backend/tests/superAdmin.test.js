@@ -1,5 +1,5 @@
 /**
- * Tests integration para Super-Admin (#353 Fase 1).
+ * Tests integration para Super-Admin (#353 Fases 1+2+B.1).
  *
  * Cubre:
  *   - 401 sin JWT.
@@ -12,6 +12,9 @@
  *   - GET /tenants/:id devuelve detalle + audit actions.
  *   - GET /tenants/:id devuelve 404 si no existe.
  *   - Logging: 403 emite warn log (no validamos formato exacto).
+ *   - GET /metrics devuelve tenants_by_plan con los 4 planes canónicos.
+ *   - GET /metrics/recent-actions devuelve feed cross-tenant con join a
+ *     tenant.nombre + user.username; respeta param limit; gate super-admin.
  *
  * Caveat de testing local:
  *   En local NO existe el role `tecny_admin` con BYPASSRLS. db.adminQuery
@@ -482,6 +485,27 @@ describe('GET /api/super-admin/metrics', () => {
     );
   });
 
+  it('incluye tenants_by_plan con los 4 planes canónicos', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.tenants_by_plan)).toBe(true);
+    // Garantiza un row por plan canónico aunque sea count=0 (así el
+    // frontend siempre renderiza la distribución completa).
+    const planNames = r.body.tenants_by_plan.map((p) => p.plan).sort();
+    expect(planNames).toEqual(['enterprise', 'pro', 'starter', 'trial']);
+    // Shape de cada row.
+    for (const row of r.body.tenants_by_plan) {
+      expect(row).toEqual(expect.objectContaining({
+        plan: expect.any(String),
+        count: expect.any(Number),
+        mrr_usd: expect.any(Number),
+      }));
+      expect(row.count).toBeGreaterThanOrEqual(0);
+    }
+  });
+
   it('regular user recibe 403', async () => {
     const r = await request(app)
       .get('/api/super-admin/metrics')
@@ -506,5 +530,65 @@ describe('GET /api/super-admin/metrics/history', () => {
         suspensions: expect.any(Number),
       })
     );
+  });
+});
+
+describe('GET /api/super-admin/metrics/recent-actions', () => {
+  // Sembramos un par de acciones en el tenant 777 para que el feed tenga
+  // contenido predecible. Cleanup viene del afterAll global (borra todo
+  // tenant_admin_actions de tenant 777).
+  beforeAll(async () => {
+    await pool.query(
+      `INSERT INTO tenant_admin_actions
+         (tenant_id, super_admin_user_id, action, reason, created_at)
+       VALUES
+         (777, 1, 'suspend',  'test seed B.1 — más viejo', NOW() - INTERVAL '5 minutes'),
+         (777, 1, 'reactivate','test seed B.1 — más reciente', NOW())`
+    );
+  });
+
+  it('devuelve recent_actions con join a tenant + super_admin', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics/recent-actions')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.recent_actions)).toBe(true);
+    expect(r.body.recent_actions.length).toBeGreaterThanOrEqual(2);
+    // Orden DESC por created_at: el primer item debe ser 'reactivate'
+    // (lo seedeamos como el más reciente).
+    const first = r.body.recent_actions[0];
+    expect(first).toEqual(expect.objectContaining({
+      // taa.id es BIGSERIAL → pg lo devuelve como String (no Number). El
+      // frontend lo trata como opaque ID igual; no hace aritmética con él.
+      id: expect.any(String),
+      tenant_id: expect.any(Number),
+      tenant_nombre: expect.any(String),
+      tenant_slug: expect.any(String),
+      action: expect.any(String),
+      created_at: expect.any(String),
+      super_admin_username: expect.any(String),
+    }));
+  });
+
+  it('respeta el param limit (cap 50, default 10, min 1)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics/recent-actions?limit=1')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.recent_actions).toHaveLength(1);
+
+    // Limit fuera de rango → backend lo clamp-a, no rebota con 400.
+    const r2 = await request(app)
+      .get('/api/super-admin/metrics/recent-actions?limit=9999')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r2.status).toBe(200);
+    expect(r2.body.recent_actions.length).toBeLessThanOrEqual(50);
+  });
+
+  it('regular user recibe 403', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics/recent-actions')
+      .set('Authorization', `Bearer ${regularUserToken}`);
+    expect(r.status).toBe(403);
   });
 });
