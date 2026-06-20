@@ -679,3 +679,275 @@ describe('Tools Tier 1 — get_dashboard_mensual', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Tools Tier 2 — handlers contra DB con datos sembrados (PR #3)
+// ─────────────────────────────────────────────────────────────────────────
+describe('Tools Tier 2 — get_top_productos', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM venta_items WHERE venta_id IN (SELECT id FROM ventas WHERE tenant_id = 1)`);
+    await pool.query(`DELETE FROM ventas WHERE tenant_id = 1`);
+  });
+
+  it('agrupa por descripcion y ordena por qty desc + ingreso desc', async () => {
+    const { rows: [v] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES ('o1', CURRENT_DATE, 'C', 'acreditado', 500, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
+       VALUES
+         ($1, 'iPhone 15', 3, 100, 50, 'USD'),
+         ($1, 'iPhone 15', 2, 100, 50, 'USD'),
+         ($1, 'AirPods',   5, 30,  10, 'USD')`,
+      [v.id]
+    );
+
+    const r = await executeTool('get_top_productos', { periodo: 'hoy', limit: 5 }, T1_CTX);
+    expect(r.top).toHaveLength(2);
+    const iphone = r.top.find(p => p.descripcion === 'iPhone 15');
+    expect(iphone.cantidad).toBe(5);
+    expect(Number(iphone.ingreso_usd)).toBe(500);
+    // Empate qty (5 vs 5) → ingreso desc → iPhone primero.
+    expect(r.top[0].descripcion).toBe('iPhone 15');
+  });
+
+  it('skipea ventas canceladas', async () => {
+    const { rows: [vCancel] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES ('cx', CURRENT_DATE, 'X', 'cancelado', 9999, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
+       VALUES ($1, 'ProductoCancelado', 99, 999, 0, 'USD')`,
+      [vCancel.id]
+    );
+    const r = await executeTool('get_top_productos', { periodo: 'hoy' }, T1_CTX);
+    expect(r.top.find(p => p.descripcion === 'ProductoCancelado')).toBeUndefined();
+  });
+});
+
+describe('Tools Tier 2 — get_top_vendedores', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM venta_items WHERE venta_id IN (SELECT id FROM ventas WHERE tenant_id = 1)`);
+    await pool.query(`DELETE FROM ventas WHERE tenant_id = 1`);
+    await pool.query(`DELETE FROM vendedores WHERE tenant_id = 1`);
+  });
+
+  it('rankea por ingreso desc y cuenta ventas distintas', async () => {
+    const { rows: [vd1] } = await pool.query(
+      `INSERT INTO vendedores (nombre, tenant_id) VALUES ('Vendedor A', 1) RETURNING id`
+    );
+    const { rows: [vd2] } = await pool.query(
+      `INSERT INTO vendedores (nombre, tenant_id) VALUES ('Vendedor B', 1) RETURNING id`
+    );
+    const { rows: [v1] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES ('o1', CURRENT_DATE, 'C1', 'acreditado', 100, 1) RETURNING id`
+    );
+    const { rows: [v2] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES ('o2', CURRENT_DATE, 'C2', 'acreditado', 100, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, vendedor_id, descripcion, cantidad, precio_vendido, costo, moneda)
+       VALUES
+         ($1, $3, 'X', 1, 500, 0, 'USD'),
+         ($2, $3, 'Y', 1, 300, 0, 'USD'),
+         ($1, $4, 'Z', 1, 100, 0, 'USD')`,
+      [v1.id, v2.id, vd1.id, vd2.id]
+    );
+    const r = await executeTool('get_top_vendedores', { periodo: 'hoy' }, T1_CTX);
+    expect(r.top[0].nombre).toBe('Vendedor A');
+    expect(Number(r.top[0].ingreso_usd)).toBe(800);
+    expect(r.top[0].ventas_count).toBe(2);
+    expect(r.top[1].nombre).toBe('Vendedor B');
+    expect(r.top[1].ventas_count).toBe(1);
+  });
+});
+
+describe('Tools Tier 2 — get_cc_pendientes', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM movimientos_cc WHERE cliente_cc_id IN (SELECT id FROM clientes_cc WHERE tenant_id = 1)`);
+    await pool.query(`DELETE FROM clientes_cc WHERE tenant_id = 1`);
+  });
+
+  it('clientes con saldo > 0 aparecen, saldo 0 no', async () => {
+    const { rows: [c1] } = await pool.query(
+      `INSERT INTO clientes_cc (nombre, tenant_id) VALUES ('Cliente Debe', 1) RETURNING id`
+    );
+    const { rows: [c2] } = await pool.query(
+      `INSERT INTO clientes_cc (nombre, tenant_id) VALUES ('Cliente Pago Todo', 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total)
+       VALUES ($1, CURRENT_DATE, 'compra', 200), ($1, CURRENT_DATE, 'pago', 50)`,
+      [c1.id]
+    );
+    await pool.query(
+      `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total)
+       VALUES ($1, CURRENT_DATE, 'compra', 100), ($1, CURRENT_DATE, 'pago', 100)`,
+      [c2.id]
+    );
+
+    const r = await executeTool('get_cc_pendientes', {}, T1_CTX);
+    expect(r.resumen.clientes_con_saldo).toBe(1);
+    expect(Number(r.resumen.total_a_cobrar_usd)).toBe(150);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].nombre).toBe('Cliente Debe');
+    expect(Number(r.items[0].saldo_usd)).toBe(150);
+  });
+
+  it('compra con caja_id (cobrada al instante) NO cuenta como CC', async () => {
+    const { rows: [c] } = await pool.query(
+      `INSERT INTO clientes_cc (nombre, tenant_id) VALUES ('Cliente Contado', 1) RETURNING id`
+    );
+    const { rows: [caja] } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial, tenant_id)
+       VALUES ('CajaTestCC', 'USD', 0, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total, caja_id)
+       VALUES ($1, CURRENT_DATE, 'compra', 500, $2)`,
+      [c.id, caja.id]
+    );
+    const r = await executeTool('get_cc_pendientes', {}, T1_CTX);
+    expect(r.resumen.clientes_con_saldo).toBe(0);
+  });
+});
+
+describe('Tools Tier 2 — get_proveedores_pendientes', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM proveedor_movimientos WHERE proveedor_id IN (SELECT id FROM proveedores WHERE tenant_id = 1)`);
+    await pool.query(`DELETE FROM proveedores WHERE tenant_id = 1`);
+  });
+
+  it('proveedor con saldo > 0 aparece, ordenado por mayor saldo primero', async () => {
+    const { rows: [p1] } = await pool.query(
+      `INSERT INTO proveedores (nombre, tenant_id) VALUES ('Prov A', 1) RETURNING id`
+    );
+    const { rows: [p2] } = await pool.query(
+      `INSERT INTO proveedores (nombre, tenant_id) VALUES ('Prov B', 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd)
+       VALUES
+         ($1, CURRENT_DATE, 'compra', 1000), ($1, CURRENT_DATE, 'pago', 200),
+         ($2, CURRENT_DATE, 'compra', 500)`,
+      [p1.id, p2.id]
+    );
+    const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
+    expect(r.items[0].nombre).toBe('Prov A');
+    expect(Number(r.items[0].saldo_usd)).toBe(800);
+    expect(r.items[1].nombre).toBe('Prov B');
+    expect(Number(r.resumen.total_a_pagar_usd)).toBe(1300);
+  });
+});
+
+describe('Tools Tier 2 — get_ventas_pendientes', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM ventas WHERE tenant_id = 1`);
+  });
+
+  it('lista solo ventas con estado pendiente, más viejas primero', async () => {
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES
+         ('p1', CURRENT_DATE - INTERVAL '5 days', 'PEND1', 'pendiente',  100, 1),
+         ('p2', CURRENT_DATE - INTERVAL '2 days', 'PEND2', 'pendiente',  200, 1),
+         ('ac', CURRENT_DATE,                     'AC',    'acreditado', 999, 1),
+         ('cn', CURRENT_DATE,                     'CN',    'cancelado',  999, 1)`
+    );
+    const r = await executeTool('get_ventas_pendientes', {}, T1_CTX);
+    expect(r.resumen.total_count).toBe(2);
+    expect(Number(r.resumen.total_pendiente_usd)).toBe(300);
+    expect(r.items[0].cliente).toBe('PEND1');
+    expect(r.items[1].cliente).toBe('PEND2');
+  });
+});
+
+describe('Tools Tier 2 — get_tarjetas_no_liquidadas', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM tarjeta_movimientos WHERE metodo_pago_id IN (SELECT id FROM metodos_pago WHERE nombre LIKE 'TestTarjeta%')`);
+    await pool.query(`DELETE FROM metodos_pago WHERE nombre LIKE 'TestTarjeta%' AND tenant_id = 1`);
+  });
+
+  it('saldo adeudado = cobros - liquidaciones', async () => {
+    const { rows: [t] } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, es_tarjeta, activo, tenant_id)
+       VALUES ('TestTarjeta Visa', 'ARS', true, true, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO tarjeta_movimientos
+         (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, tenant_id)
+       VALUES
+         ($1, CURRENT_DATE, 'cobro',       'ARS', 1000, 5, 50, 950, 1),
+         ($1, CURRENT_DATE, 'cobro',       'ARS', 500,  5, 25, 475, 1),
+         ($1, CURRENT_DATE, 'liquidacion', 'ARS', 500,  5, 25, 475, 1)`,
+      [t.id]
+    );
+    const r = await executeTool('get_tarjetas_no_liquidadas', {}, T1_CTX);
+    const visa = r.tarjetas.find(x => x.nombre === 'TestTarjeta Visa');
+    expect(Number(visa.saldo_adeudado)).toBe(950); // 950 + 475 - 475
+  });
+});
+
+describe('Tools Tier 2 — get_stock_bajo', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM productos WHERE tenant_id = 1 AND nombre LIKE 'StockTest%'`);
+  });
+
+  it('lista productos visibles con cantidad < umbral, excluye ocultos y usados', async () => {
+    await pool.query(
+      `INSERT INTO productos (nombre, cantidad, oculto, condicion, tenant_id)
+       VALUES
+         ('StockTest A', 2, false, 'nuevo', 1),
+         ('StockTest B', 10, false, 'nuevo', 1),
+         ('StockTest Oculto', 1, true,  'nuevo', 1),
+         ('StockTest Usado',  1, false, 'usado', 1)`
+    );
+    const r = await executeTool('get_stock_bajo', { umbral: 5 }, T1_CTX);
+    const nombres = r.items.map(i => i.nombre);
+    expect(nombres).toContain('StockTest A');
+    expect(nombres).not.toContain('StockTest B');
+    expect(nombres).not.toContain('StockTest Oculto');
+    expect(nombres).not.toContain('StockTest Usado');
+  });
+});
+
+describe('Tools Tier 2 — get_actividad_reciente', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM audit_logs WHERE tenant_id = 1`);
+  });
+
+  it('devuelve eventos del tenant ordenados desc, excluye audit_queue', async () => {
+    // audit_logs.accion CHECK solo permite INSERT/UPDATE/DELETE.
+    // LOGIN se trackea aparte (no llega a esta tabla).
+    await pool.query(
+      `INSERT INTO audit_logs (tabla, accion, registro_id, datos_despues, user_id, tenant_id, created_at)
+       VALUES
+         ('ventas',      'INSERT', 1, '{"cliente":"C1"}'::jsonb, 1, 1, NOW() - INTERVAL '2 hours'),
+         ('comprobantes','INSERT', 2, '{"cliente":"C2"}'::jsonb, 1, 1, NOW() - INTERVAL '1 hour'),
+         ('audit_queue', 'INSERT', 3, '{"data":"interno"}'::jsonb, 1, 1, NOW() - INTERVAL '15 minutes')`
+    );
+    const r = await executeTool('get_actividad_reciente', { limit: 10, dias: 1 }, T1_CTX);
+    // audit_queue excluido (es ruido async low-level)
+    expect(r.items.find(i => i.modulo === 'audit_queue')).toBeUndefined();
+    expect(r.items).toHaveLength(2);
+    expect(r.items[0].modulo).toBe('comprobantes');
+    expect(r.items[0].detalle).toBe('C2');
+    expect(r.items[1].modulo).toBe('ventas');
+  });
+
+  it('respeta ventana de días', async () => {
+    await pool.query(
+      `INSERT INTO audit_logs (tabla, accion, registro_id, datos_despues, user_id, tenant_id, created_at)
+       VALUES
+         ('ventas', 'INSERT', 1, '{"cliente":"reciente"}'::jsonb, 1, 1, NOW() - INTERVAL '2 days'),
+         ('ventas', 'INSERT', 2, '{"cliente":"viejo"}'::jsonb,    1, 1, NOW() - INTERVAL '30 days')`
+    );
+    const r = await executeTool('get_actividad_reciente', { dias: 7 }, T1_CTX);
+    const detalles = r.items.map(i => i.detalle);
+    expect(detalles).toContain('reciente');
+    expect(detalles).not.toContain('viejo');
+  });
+});

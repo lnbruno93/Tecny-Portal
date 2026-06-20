@@ -67,13 +67,24 @@ Lo que NO podés hacer (importante):
 - NO inventar datos. Si una tool falla o no devuelve info, decílo claramente. No alucines números.
 - NO compartir info de OTROS tenants — eso lo asegura el sistema (RLS), pero no asumas y no especules sobre otros negocios.
 
-Uso eficiente de tools:
-- Para preguntas de ventas, usá get_ventas_periodo con el periodo apropiado ('hoy', 'semana', 'mes', etc.) — devuelve retail + B2B unificados con ganancia neta.
-- Para comparar dos períodos, llamá get_ventas_periodo dos veces con distintos 'periodo' (ej. 'mes' vs 'mes_anterior'). Si pide explícitamente "mes vs mes anterior", get_dashboard_mensual lo hace en una sola llamada.
-- Si el user pregunta por envíos pendientes/en calle, get_envios_activos.
-- Si pregunta por saldos de cajas / cuánto dinero hay, get_saldos_cajas.
-- Si pregunta "qué alertas hay" o "qué tengo que revisar urgente", get_alertas.
+Uso eficiente de tools — guía rápida (qué tool para qué pregunta):
+- Ventas del período → get_ventas_periodo (retail + B2B unificados, con ganancia neta)
+- "Mes vs mes pasado" → get_dashboard_mensual (con deltas absoluto y %)
+- Envíos pendientes / en calle → get_envios_activos
+- Saldos / cuánto dinero hay → get_saldos_cajas
+- Alertas urgentes → get_alertas
+- Top productos vendidos → get_top_productos (con periodo)
+- Ranking de vendedores → get_top_vendedores (con periodo)
+- "Quién me debe" (B2B) → get_cc_pendientes
+- "A quién le debo" (proveedores) → get_proveedores_pendientes
+- Ventas pendientes de acreditar → get_ventas_pendientes (NO confundir con CC: ésas son ventas con estado='pendiente')
+- "Cuánto me deben las tarjetas" → get_tarjetas_no_liquidadas
+- Stock por reponer → get_stock_bajo (umbral default 5)
+- "Qué pasó hoy / esta semana" → get_actividad_reciente
+
+Reglas de uso:
 - Combiná tools cuando tenga sentido (ej. "cómo viene hoy" → get_ventas_periodo + get_envios_activos + get_alertas en paralelo).
+- Para comparar 2 períodos: 2 llamadas a get_ventas_periodo con distintos 'periodo'. Si es "mes vs mes_anterior", get_dashboard_mensual lo hace en 1 llamada.
 - Si la respuesta del user es ambigua, preguntá antes de llamar tools (ahorra costo y le da control al user).
 - Si el user te pide algo que no tenés tool para responder, decílo claramente — no inventes data.
 
@@ -187,6 +198,183 @@ const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {},
+      required: [],
+    },
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // TIER 2 — análisis profundo (#340 Fase 2 PR#3)
+  // ──────────────────────────────────────────────────────────────────────
+
+  {
+    name: 'get_top_productos',
+    description:
+      'Top productos más vendidos en el período. Devuelve cantidad ' +
+      'vendida + ingreso en USD por descripción de producto. Útil para ' +
+      '"qué se vende más este mes", "cuál es mi producto estrella", ' +
+      '"qué moví más esta semana".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ...PERIODO_SCHEMA_FRAGMENT,
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 20,
+          description: 'Cuántos top devolver. Default 5.',
+        },
+      },
+      required: ['periodo'],
+    },
+  },
+
+  {
+    name: 'get_top_vendedores',
+    description:
+      'Top vendedores por facturación en el período. Devuelve ranking ' +
+      'con nombre, count de ventas y total facturado en USD. Útil para ' +
+      '"quién facturó más", "cómo viene mi equipo", "ranking de vendedores".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ...PERIODO_SCHEMA_FRAGMENT,
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 20,
+          description: 'Cuántos top devolver. Default 5.',
+        },
+      },
+      required: ['periodo'],
+    },
+  },
+
+  {
+    name: 'get_cc_pendientes',
+    description:
+      'Clientes B2B con saldo a cobrar (saldo > 0 en USD). Ordenados ' +
+      'por saldo descendente. Devuelve resumen + lista con nombre, saldo, ' +
+      'días desde último movimiento. Útil para "quién me debe", "cuánto ' +
+      'tengo por cobrar de B2B", "qué cliente está más atrasado".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description: 'Cuántos clientes devolver. Default 10.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_proveedores_pendientes',
+    description:
+      'Proveedores con saldo a pagar (les debemos, saldo > 0 en USD). ' +
+      'Útil para "a quién le debo", "qué proveedor tengo que pagar primero", ' +
+      '"saldo de proveedores".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description: 'Cuántos proveedores devolver. Default 10.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_ventas_pendientes',
+    description:
+      'Ventas con estado pendiente (no acreditadas todavía). Ordenadas ' +
+      'por fecha más vieja primero. Útil para "qué ventas tengo pendientes ' +
+      'de acreditar", "qué cobranzas tengo que confirmar". NOTA: para ' +
+      'saldos B2B reales (CC) usá get_cc_pendientes en lugar de esta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description: 'Cuántas ventas devolver. Default 10.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_tarjetas_no_liquidadas',
+    description:
+      'Saldo pendiente de liquidación por tarjeta — lo que las procesadoras ' +
+      '(Visa, Master, etc.) aún no nos depositaron. Calculado como cobros ' +
+      'menos liquidaciones por cada caja-tarjeta. Útil para "cuánto me ' +
+      'deben las tarjetas", "qué saldo tiene mi tarjeta tal".',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_stock_bajo',
+    description:
+      'Productos con stock por debajo de un umbral. Devuelve lista ordenada ' +
+      'por menor stock primero. Útil para "qué se está acabando", "qué ' +
+      'tengo que reponer", "stock bajo".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        umbral: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 100,
+          description: 'Umbral de cantidad. Default 5.',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description: 'Cuántos productos devolver. Default 20.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  {
+    name: 'get_actividad_reciente',
+    description:
+      'Últimos N eventos del portal (INSERT/UPDATE/DELETE en cualquier ' +
+      'tabla auditada). Devuelve qué se hizo, en qué módulo, qué user y ' +
+      'cuándo. Excluye eventos de bajo nivel (LOGIN, audits del sistema). ' +
+      'Útil para "qué pasó hoy", "qué hicimos esta semana", "última ' +
+      'actividad".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description: 'Cuántos eventos devolver. Default 15.',
+        },
+        dias: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 90,
+          description: 'Mirar atrás N días. Default 7.',
+        },
+      },
       required: [],
     },
   },
@@ -613,6 +801,383 @@ const handlers = {
       return {
         total: grupos.reduce((acc, g) => acc + g.count, 0),
         grupos,
+      };
+    });
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // TIER 2 — handlers
+  // ──────────────────────────────────────────────────────────────────────
+
+  async get_top_productos(input, ctx) {
+    const { periodo, desde: desdeIn, hasta: hastaIn } = input || {};
+    const { desde, hasta, label } = periodoRange(periodo, { desde: desdeIn, hasta: hastaIn });
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 5), 20);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // GROUP BY descripcion (no producto_id) porque históricamente la
+      // descripción es lo que el usuario reconoce (IMEIs son distintos
+      // por unidad pero misma descripción = mismo modelo).
+      const { rows } = await client.query(
+        `SELECT
+           vi.descripcion,
+           SUM(vi.cantidad)::int                                  AS qty,
+           COALESCE(SUM(vi.precio_vendido * vi.cantidad), 0)::numeric AS ingreso_usd
+         FROM venta_items vi
+         JOIN ventas v ON v.id = vi.venta_id
+         WHERE v.fecha >= $1 AND v.fecha <= $2
+           AND v.estado <> 'cancelado'
+           AND v.deleted_at IS NULL
+           AND vi.descripcion IS NOT NULL
+         GROUP BY vi.descripcion
+         ORDER BY qty DESC, ingreso_usd DESC
+         LIMIT $3`,
+        [desde, hasta, limit]
+      );
+
+      return {
+        periodo: { desde, hasta, label },
+        top: rows.map((r) => ({
+          descripcion: r.descripcion,
+          cantidad: r.qty,
+          ingreso_usd: Number(r.ingreso_usd),
+        })),
+      };
+    });
+  },
+
+  async get_top_vendedores(input, ctx) {
+    const { periodo, desde: desdeIn, hasta: hastaIn } = input || {};
+    const { desde, hasta, label } = periodoRange(periodo, { desde: desdeIn, hasta: hastaIn });
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 5), 20);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // venta_items.vendedor_id es la fuente — un mismo item se atribuye a
+      // su vendedor incluso si la venta tiene varios items con vendedores
+      // distintos. Usamos COUNT(DISTINCT venta_id) para "cuántas ventas
+      // distintas trabajó" en vez de items.
+      const { rows } = await client.query(
+        `SELECT
+           ve.id                                                          AS vendedor_id,
+           ve.nombre                                                      AS nombre,
+           COUNT(DISTINCT vi.venta_id)::int                               AS ventas_count,
+           COALESCE(SUM(vi.precio_vendido * vi.cantidad), 0)::numeric     AS ingreso_usd
+         FROM venta_items vi
+         JOIN ventas    v  ON v.id  = vi.venta_id
+         JOIN vendedores ve ON ve.id = vi.vendedor_id
+         WHERE v.fecha >= $1 AND v.fecha <= $2
+           AND v.estado <> 'cancelado'
+           AND v.deleted_at IS NULL
+         GROUP BY ve.id, ve.nombre
+         ORDER BY ingreso_usd DESC, ventas_count DESC
+         LIMIT $3`,
+        [desde, hasta, limit]
+      );
+
+      return {
+        periodo: { desde, hasta, label },
+        top: rows.map((r) => ({
+          vendedor_id: r.vendedor_id,
+          nombre: r.nombre,
+          ventas_count: r.ventas_count,
+          ingreso_usd: Number(r.ingreso_usd),
+        })),
+      };
+    });
+  },
+
+  async get_cc_pendientes(input, ctx) {
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // Lógica de saldo replicada del módulo Cuentas Corrientes:
+      //   saldo_inicial + compra + entrega_mercaderia - pago - parte_de_pago - devolucion
+      // Excluye 'compra' con caja_id != NULL (esas se cobraron al instante
+      // contra una caja, no quedan en CC). Igual que evalCcMora pero sin
+      // filtro de días.
+      const { rows } = await client.query(
+        `WITH saldos AS (
+           SELECT c.id, c.nombre, c.apellido,
+                  COALESCE(SUM(
+                    CASE m.tipo
+                      WHEN 'saldo_inicial'      THEN  m.monto_total
+                      WHEN 'compra'             THEN
+                        CASE WHEN m.caja_id IS NULL THEN m.monto_total ELSE 0 END
+                      WHEN 'entrega_mercaderia' THEN  m.monto_total
+                      ELSE -m.monto_total
+                    END
+                  ), 0) AS saldo,
+                  MAX(m.fecha) AS ultimo_mov
+             FROM clientes_cc c
+             LEFT JOIN movimientos_cc m
+                    ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
+            WHERE c.deleted_at IS NULL
+            GROUP BY c.id, c.nombre, c.apellido
+         )
+         SELECT id, nombre, apellido, saldo, ultimo_mov,
+                CASE WHEN ultimo_mov IS NOT NULL
+                     THEN CURRENT_DATE - ultimo_mov
+                     ELSE NULL
+                END AS dias_sin_movimiento
+           FROM saldos
+          WHERE saldo > 0
+          ORDER BY saldo DESC
+          LIMIT $1`,
+        [limit]
+      );
+
+      // Suma total para resumen.
+      const { rows: totRows } = await client.query(
+        `WITH saldos AS (
+           SELECT
+             COALESCE(SUM(
+               CASE m.tipo
+                 WHEN 'saldo_inicial' THEN m.monto_total
+                 WHEN 'compra'        THEN
+                   CASE WHEN m.caja_id IS NULL THEN m.monto_total ELSE 0 END
+                 WHEN 'entrega_mercaderia' THEN m.monto_total
+                 ELSE -m.monto_total
+               END
+             ), 0) AS saldo
+           FROM clientes_cc c
+           LEFT JOIN movimientos_cc m
+                  ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
+           WHERE c.deleted_at IS NULL
+           GROUP BY c.id
+         )
+         SELECT COALESCE(SUM(saldo) FILTER (WHERE saldo > 0), 0)::numeric AS total_a_cobrar,
+                COUNT(*) FILTER (WHERE saldo > 0)::int                    AS clientes_con_saldo
+         FROM saldos`
+      );
+
+      const t = totRows[0] || {};
+      return {
+        resumen: {
+          total_a_cobrar_usd: Number(t.total_a_cobrar || 0),
+          clientes_con_saldo: t.clientes_con_saldo || 0,
+        },
+        items: rows.map((r) => ({
+          id: r.id,
+          nombre: `${r.nombre}${r.apellido ? ' ' + r.apellido : ''}`.trim(),
+          saldo_usd: Number(r.saldo),
+          dias_sin_movimiento: r.dias_sin_movimiento,
+        })),
+      };
+    });
+  },
+
+  async get_proveedores_pendientes(input, ctx) {
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // proveedor_movimientos.monto_usd es la fuente — el módulo ya
+      // normaliza a USD al insertar. Tipos: 'compra' suma, 'pago' resta.
+      const { rows } = await client.query(
+        `WITH saldos AS (
+           SELECT p.id, p.nombre,
+                  COALESCE(SUM(CASE m.tipo
+                    WHEN 'compra' THEN m.monto_usd
+                    WHEN 'pago'   THEN -m.monto_usd
+                    ELSE 0
+                  END), 0) AS saldo,
+                  MAX(m.fecha) AS ultimo_mov
+             FROM proveedores p
+             LEFT JOIN proveedor_movimientos m
+                    ON m.proveedor_id = p.id AND m.deleted_at IS NULL
+            WHERE p.deleted_at IS NULL
+            GROUP BY p.id, p.nombre
+         )
+         SELECT id, nombre, saldo, ultimo_mov,
+                CASE WHEN ultimo_mov IS NOT NULL
+                     THEN CURRENT_DATE - ultimo_mov
+                     ELSE NULL
+                END AS dias_sin_movimiento
+           FROM saldos
+          WHERE saldo > 0
+          ORDER BY saldo DESC
+          LIMIT $1`,
+        [limit]
+      );
+
+      const total = rows.reduce((acc, r) => acc + Number(r.saldo || 0), 0);
+      return {
+        resumen: {
+          total_a_pagar_usd: Number(total.toFixed(2)),
+          proveedores_con_saldo: rows.length,
+        },
+        items: rows.map((r) => ({
+          id: r.id,
+          nombre: r.nombre,
+          saldo_usd: Number(r.saldo),
+          dias_sin_movimiento: r.dias_sin_movimiento,
+        })),
+      };
+    });
+  },
+
+  async get_ventas_pendientes(input, ctx) {
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT
+           v.id, v.order_id, v.fecha, v.cliente_nombre,
+           v.total_usd
+         FROM ventas v
+         WHERE v.estado = 'pendiente'
+           AND v.deleted_at IS NULL
+         ORDER BY v.fecha ASC, v.id ASC
+         LIMIT $1`,
+        [limit]
+      );
+
+      const { rows: aggRows } = await client.query(
+        `SELECT COUNT(*)::int AS total_count,
+                COALESCE(SUM(total_usd), 0)::numeric AS total_usd
+         FROM ventas
+         WHERE estado = 'pendiente' AND deleted_at IS NULL`
+      );
+
+      const agg = aggRows[0] || {};
+      return {
+        resumen: {
+          total_count: agg.total_count || 0,
+          total_pendiente_usd: Number(agg.total_usd || 0),
+        },
+        items: rows.map((r) => ({
+          id: r.id,
+          order_id: r.order_id,
+          fecha: r.fecha,
+          cliente: r.cliente_nombre,
+          total_usd: Number(r.total_usd || 0),
+        })),
+      };
+    });
+  },
+
+  async get_tarjetas_no_liquidadas(_input, ctx) {
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // Saldo = Σ(cobros) - Σ(liquidaciones) sobre tarjeta_movimientos
+      // de cada caja con es_tarjeta=true. Solo cuenta movimientos vivos
+      // (deleted_at IS NULL). En `monto_neto` (lo que la procesadora
+      // efectivamente debe pagarnos, después de descontar su comisión).
+      const { rows } = await client.query(
+        `SELECT
+           mp.id, mp.nombre, mp.moneda,
+           COALESCE(SUM(
+             CASE WHEN tm.tipo = 'cobro'       AND tm.deleted_at IS NULL THEN  tm.monto_neto
+                  WHEN tm.tipo = 'liquidacion' AND tm.deleted_at IS NULL THEN -tm.monto_neto
+                  ELSE 0
+             END
+           ), 0)::numeric AS saldo_adeudado
+         FROM metodos_pago mp
+         LEFT JOIN tarjeta_movimientos tm ON tm.metodo_pago_id = mp.id
+         WHERE mp.es_tarjeta = true
+           AND mp.deleted_at IS NULL
+           AND mp.activo IS NOT FALSE
+         GROUP BY mp.id, mp.nombre, mp.moneda
+         ORDER BY saldo_adeudado DESC, mp.nombre`
+      );
+
+      const total = rows.reduce((acc, r) => acc + Number(r.saldo_adeudado || 0), 0);
+      return {
+        tarjetas: rows.map((r) => ({
+          id: r.id,
+          nombre: r.nombre,
+          moneda: r.moneda,
+          saldo_adeudado: Number(r.saldo_adeudado || 0),
+        })),
+        total_adeudado: Number(total.toFixed(2)),
+      };
+    });
+  },
+
+  async get_stock_bajo(input, ctx) {
+    const umbral = Math.min(Math.max(1, Number(input?.umbral) || 5), 100);
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 20), 50);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT p.id, p.nombre, p.cantidad,
+                c.nombre AS categoria,
+                COALESCE(p.proveedor, '—') AS proveedor
+           FROM productos p
+           LEFT JOIN categorias c ON c.id = p.categoria_id
+          WHERE p.deleted_at IS NULL
+            AND p.oculto IS NOT TRUE
+            AND p.condicion = 'nuevo'
+            AND p.cantidad < $1
+            AND p.cantidad > 0
+          ORDER BY p.cantidad ASC, p.nombre
+          LIMIT $2`,
+        [umbral, limit]
+      );
+
+      return {
+        umbral,
+        total: rows.length,
+        items: rows.map((r) => ({
+          id: r.id,
+          nombre: r.nombre,
+          cantidad: r.cantidad,
+          categoria: r.categoria,
+          proveedor: r.proveedor,
+        })),
+      };
+    });
+  },
+
+  async get_actividad_reciente(input, ctx) {
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 15), 50);
+    const dias = Math.min(Math.max(1, Number(input?.dias) || 7), 90);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // audit_logs.accion solo puede ser INSERT/UPDATE/DELETE (CHECK
+      // constraint, migrations/20260611000004). LOGIN no llega acá —
+      // se trackea aparte por el route de auth. Filtros:
+      //  - tenant_id = ctx.tenantId: defense in depth además de RLS
+      //    (mismo pattern que fix #336 historial).
+      //  - tabla NOT IN ('audit_queue'): jobs async low-level no son
+      //    eventos de negocio.
+      //  - ventana de N días en ART (CURRENT_DATE - INTERVAL).
+      const { rows } = await client.query(
+        `SELECT
+           a.id,
+           a.tabla,
+           a.accion,
+           a.registro_id,
+           COALESCE(
+             a.datos_despues->>'cliente',
+             a.datos_despues->>'cliente_nombre',
+             a.datos_despues->>'nombre',
+             a.datos_despues->>'descripcion',
+             a.datos_antes->>'cliente',
+             a.datos_antes->>'nombre',
+             '#' || a.registro_id::text
+           ) AS detalle,
+           COALESCE(u.nombre, u.username, 'Sistema') AS usuario,
+           a.created_at
+         FROM audit_logs a
+         LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.tenant_id = $1
+           AND a.tabla NOT IN ('audit_queue')
+           AND a.created_at >= NOW() - ($2 || ' days')::interval
+         ORDER BY a.created_at DESC
+         LIMIT $3`,
+        [ctx.tenantId, String(dias), limit]
+      );
+
+      return {
+        ventana_dias: dias,
+        total: rows.length,
+        items: rows.map((r) => ({
+          id: r.id,
+          modulo: r.tabla,
+          accion: r.accion, // INSERT/UPDATE/DELETE
+          detalle: r.detalle,
+          usuario: r.usuario,
+          cuando: r.created_at,
+        })),
       };
     });
   },
