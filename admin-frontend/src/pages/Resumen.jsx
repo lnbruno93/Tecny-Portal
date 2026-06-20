@@ -16,9 +16,9 @@ import { useNavigate } from 'react-router-dom';
 import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Btn, Card, Badge } from '../components/primitives/index.jsx';
-import { Icons } from '../components/Icons.jsx';
 import { fmt, fmtMoney, fmtPct, ago } from '../lib/format.js';
 import { planTone, tenantInitials } from '../lib/uiHelpers.js';
+import { describeAction, actionLongText } from '../lib/actionDescriptors.js';
 import ColChart from '../components/charts/ColChart.jsx';
 
 // ── Helpers locales (no se reusan fuera de Resumen) ──────────────────
@@ -33,30 +33,9 @@ function firstName(user) {
   return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
-// Derivar un mensaje legible para cada tipo de action admin.
-// Mantenido como switch porque el set de acciones es chico (6) y
-// está cerrado: si el backend agrega un tipo, queremos que el default
-// muestre algo razonable mientras se actualiza el mapeo.
-function describeAction(a) {
-  const who = a?.super_admin_username || 'admin';
-  const tenant = a?.tenant_nombre || `tenant #${a?.tenant_id || '?'}`;
-  switch (a?.action) {
-    case 'suspend':
-      return { icon: 'Lock',    tone: 'neg',    text: `${who} suspendió ${tenant}` };
-    case 'reactivate':
-      return { icon: 'Refresh', tone: 'pos',    text: `${who} reactivó ${tenant}` };
-    case 'plan_change':
-      return { icon: 'TrendUp', tone: 'accent', text: `${who} cambió plan de ${tenant}` };
-    case 'trial_extend':
-      return { icon: 'Calendar', tone: 'info',  text: `${who} extendió trial de ${tenant}` };
-    case 'custom_mrr_update':
-      return { icon: 'Dollar',  tone: 'info',   text: `${who} actualizó MRR de ${tenant}` };
-    case 'note_update':
-      return { icon: 'Edit',    tone: 'muted',  text: `${who} editó notas de ${tenant}` };
-    default:
-      return { icon: 'Sparkle', tone: 'muted',  text: `${who} → ${a?.action || '?'} en ${tenant}` };
-  }
-}
+// El mapeo action→{icon,tone,texto} vive ahora en lib/actionDescriptors.js
+// (Sub-fase B.3) para reuso desde Ficha. Importamos describeAction +
+// actionLongText arriba.
 
 // Plan canónico → CSS var para color de barra en "Distribución por plan".
 // Usamos PLAN_TONES vía planTone() para el badge, pero la barra necesita
@@ -315,13 +294,15 @@ export default function Resumen() {
             <div className="activity">
               {actions.slice(0, 7).map((a) => {
                 const d = describeAction(a);
-                const IconCmp = Icons[d.icon] || Icons.Sparkle;
                 return (
                   <div key={a.id} className="activity-item">
-                    <div className="dot-ico" style={{ color: `var(--${d.tone === 'muted' ? 'text-muted' : d.tone})` }}>
-                      <IconCmp size={14} />
+                    <div
+                      className="dot-ico"
+                      style={{ color: `var(--${d.tone === 'muted' ? 'text-muted' : d.tone})` }}
+                    >
+                      <d.IconCmp size={14} />
                     </div>
-                    <div className="activity-msg">{d.text}</div>
+                    <div className="activity-msg">{actionLongText(a)}</div>
                     <div className="activity-time">{ago(a.created_at)}</div>
                   </div>
                 );
