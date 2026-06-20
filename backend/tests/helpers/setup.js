@@ -52,6 +52,8 @@ async function setupTestDb() {
   `);
 
   // Limpiar todas las tablas de datos y reiniciar secuencias
+  // 2026-06-20 #340: chat_messages + chat_conversations + chat_rate_limits
+  // agregados para que tests del bot arranquen siempre limpios.
   await pool.query(`
     TRUNCATE TABLE
       audit_logs, audit_queue,
@@ -66,6 +68,7 @@ async function setupTestDb() {
       envio_items, envios,
       movimientos_inversiones, movimientos_deudas, contactos,
       comprobantes, pagos, vendedores,
+      chat_messages, chat_conversations, chat_rate_limits,
       feature_flags,
       user_permissions, users
     RESTART IDENTITY CASCADE

@@ -611,3 +611,23 @@ export const featureFlags = {
 export const onboarding = {
   status: () => api('/api/onboarding/status'),
 };
+
+// 2026-06-20 #340: Bot conversacional analítico (Asistente Tecny).
+//   · createConversation: arranca una sesión nueva (titulo se asigna del
+//     primer mensaje del user automáticamente).
+//   · list/get: para reabrir conversaciones pasadas desde el widget.
+//   · sendMessage: post sincronico al bot. timeoutMs alto (60s) porque las
+//     tools + tool loop pueden tardar varios segundos en converger.
+//   · delete: borra conversación + cascada a mensajes.
+//
+// El response de sendMessage trae:
+//   { text, content, model, tokens: { input, output, cached }, tool_calls }
+// El widget muestra `text`; los demás campos son para debugging / cost
+// dashboard futuro.
+export const chat = {
+  listConversations:  (limit = 30) => api('/api/chat/conversations?' + new URLSearchParams({ limit })),
+  createConversation: () => api('/api/chat/conversations', 'POST', {}),
+  getConversation:    (id) => api(`/api/chat/conversations/${id}`),
+  sendMessage:        (id, text) => api(`/api/chat/conversations/${id}/messages`, 'POST', { text }, 60000),
+  deleteConversation: (id) => api(`/api/chat/conversations/${id}`, 'DELETE'),
+};
