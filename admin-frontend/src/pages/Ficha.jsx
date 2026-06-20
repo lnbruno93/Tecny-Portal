@@ -1,0 +1,768 @@
+// Ficha de cliente — detalle full de un tenant (Sub-fase B.3 #353).
+//
+// Compone:
+//   · header (back + page-head con logo + nombre + plan + status + acciones)
+//   · banners contextuales (suspendido / trial)
+//   · 4 stat cards (MRR, usuarios, salud proxy, última venta)
+//   · 2 tabs: Resumen (salud + audit per-tenant) y Actividad (5 sub-tabs)
+//   · 4 modals de mutations (edit / suspend / reactivate / extend-trial)
+//
+// Decisión explícita vs el design original (admin-screens-2.jsx):
+//   Hacemos 2 tabs con data 100% real, en vez de 4 con mocks. Facturación
+//   + Equipo se agregan en Sub-fase C cuando existan los endpoints reales.
+//
+// Defensive coding everywhere — optional chaining, Array.isArray, defaults.
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { adminApi } from '../lib/api.js';
+import {
+  Btn, Badge, Status, Card, Seg, Tabs, PageHead,
+} from '../components/primitives/index.jsx';
+import { Icons } from '../components/Icons.jsx';
+import { fmt, fmtMoney, fmtDate, fmtDateTime, ago } from '../lib/format.js';
+import {
+  planTone,
+  tenantInitials,
+  getTenantStatus,
+  TENANT_STATUS,
+  healthProxy,
+  healthColor,
+} from '../lib/uiHelpers.js';
+import { describeAction, actionShortText } from '../lib/actionDescriptors.js';
+import EditTenantModal from '../components/modals/EditTenantModal.jsx';
+import SuspendTenantModal from '../components/modals/SuspendTenantModal.jsx';
+import ReactivateTenantModal from '../components/modals/ReactivateTenantModal.jsx';
+import ExtendTrialModal from '../components/modals/ExtendTrialModal.jsx';
+
+// ── Helpers locales ───────────────────────────────────────────────────
+
+function planLabel(p) {
+  if (!p) return '—';
+  return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+// Texto descriptivo del rango de salud — para el sub del stat card.
+function healthDescriptor(h) {
+  if (h >= 80) return 'excelente';
+  if (h >= 55) return 'estable';
+  if (h >= 40) return 'en riesgo';
+  return 'frío';
+}
+
+// Proxy "actividad reciente 30d" (0–100). Heurística simple basada en
+// cuánto hace que no hay venta. TODO Sub-fase Z (salud real).
+function activityProxy(lastActivityAt) {
+  if (!lastActivityAt) return 20;
+  const ts = new Date(lastActivityAt).getTime();
+  if (isNaN(ts)) return 20;
+  const days = (Date.now() - ts) / 86400000;
+  if (days < 7) return 90;
+  if (days < 30) return 50;
+  return 20;
+}
+
+// Cuántos días faltan / pasaron del trial_until.
+function trialDaysDelta(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const day = new Date(d);
+  day.setHours(0, 0, 0, 0);
+  return Math.round((day - now) / 86400000);
+}
+
+const ACTIVITY_TABS = [
+  { value: 'ventas',   label: 'Ventas' },
+  { value: 'cajas',    label: 'Cajas' },
+  { value: 'bot',      label: 'Bot' },
+  { value: 'alertas',  label: 'Alertas' },
+  { value: 'audit',    label: 'Audit log' },
+];
+
+// Mapping audit accion → tone para el badge inline.
+function auditAccionTone(accion) {
+  const a = String(accion || '').toLowerCase();
+  if (a.includes('insert') || a === 'create' || a === 'created') return 'pos';
+  if (a.includes('delete') || a === 'destroy') return 'neg';
+  if (a.includes('update') || a === 'modify') return 'info';
+  return 'default';
+}
+
+export default function Ficha() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  // Tenant detail.
+  const [tenant, setTenant] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Tabs UI.
+  const [activeTab, setActiveTab] = useState('resumen');
+  const [activitySubTab, setActivitySubTab] = useState('ventas');
+
+  // Activity per-subtab.
+  const [activityData, setActivityData] = useState(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+
+  // Modal abierto: 'edit' | 'suspend' | 'reactivate' | 'extend-trial' | null
+  const [openModal, setOpenModal] = useState(null);
+
+  // ── Carga del tenant ──────────────────────────────────────────────
+  // Memoizamos para reusar en el onSaved de los modals (reload tras mutate).
+  // Igual recibe el id por closure — ese no cambia mid-vida del componente.
+  const reloadTenant = useCallback(() => {
+    if (id == null) return;
+    setLoading(true);
+    setError('');
+    adminApi
+      .getTenant(id)
+      .then((data) => {
+        setTenant(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setTenant(null);
+        // 404 vs error general — mensaje distinto.
+        if (err?.status === 404) {
+          setError('NOT_FOUND');
+        } else {
+          setError(err?.message || 'No pudimos cargar el tenant.');
+        }
+        setLoading(false);
+      });
+  }, [id]);
+
+  useEffect(() => {
+    reloadTenant();
+  }, [reloadTenant]);
+
+  // ── Carga de activity (solo cuando se ve la tab Actividad) ────────
+  useEffect(() => {
+    if (activeTab !== 'actividad' || !id) return;
+    let alive = true;
+    setActivityLoading(true);
+    setActivityError('');
+    setActivityData(null);
+    adminApi
+      .getActivity(id, activitySubTab, 20)
+      .then((data) => {
+        if (!alive) return;
+        setActivityData(data);
+        setActivityLoading(false);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setActivityError(err?.message || 'No pudimos cargar la actividad.');
+        setActivityLoading(false);
+      });
+    return () => { alive = false; };
+  }, [activeTab, activitySubTab, id]);
+
+  // Cuando un modal guarda OK, recargamos tenant y cerramos modal.
+  // (El modal en sí no necesita esperar al reload — el cierre + skeleton
+  // del page provee feedback inmediato.)
+  const handleSaved = useCallback(() => {
+    setOpenModal(null);
+    reloadTenant();
+  }, [reloadTenant]);
+
+  // ── Render: error state (404 / otro) ──────────────────────────────
+  if (!loading && error === 'NOT_FOUND') {
+    return (
+      <>
+        <Btn
+          kind="ghost"
+          sm
+          icon="ChevronRight"
+          onClick={() => navigate('/clientes')}
+          className="ficha-back"
+          style={{ paddingLeft: 6 }}
+        >
+          <span style={{ transform: 'scaleX(-1)', display: 'inline-block', marginRight: 4 }} />
+          Volver a clientes
+        </Btn>
+        <Card>
+          <div className="empty-state">
+            <div className="empty-title">Tenant no encontrado</div>
+            El tenant con id <span className="mono">{id}</span> no existe o
+            fue eliminado.
+            <div className="empty-action">
+              <Btn onClick={() => navigate('/clientes')}>Volver a clientes</Btn>
+            </div>
+          </div>
+        </Card>
+      </>
+    );
+  }
+
+  if (!loading && error && error !== 'NOT_FOUND') {
+    return (
+      <>
+        <Btn
+          kind="ghost"
+          sm
+          onClick={() => navigate('/clientes')}
+          className="ficha-back"
+        >
+          ← Volver a clientes
+        </Btn>
+        <div role="alert" className="banner banner-neg">{error}</div>
+      </>
+    );
+  }
+
+  // Loading state — skeleton mínimo.
+  if (loading && !tenant) {
+    return (
+      <>
+        <Btn
+          kind="ghost"
+          sm
+          onClick={() => navigate('/clientes')}
+          className="ficha-back"
+        >
+          ← Volver a clientes
+        </Btn>
+        <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
+      </>
+    );
+  }
+
+  // tenant existe a partir de acá.
+  const statusKey = getTenantStatus(tenant);
+  const statusMeta = TENANT_STATUS[statusKey] || TENANT_STATUS.active;
+  const health = healthProxy(tenant?.last_venta_at);
+  const hColor = healthColor(health);
+  const hDesc = healthDescriptor(health);
+  const activity30 = activityProxy(tenant?.last_venta_at);
+  const isSuspended = !!tenant?.suspended_at;
+  const isTrial = tenant?.plan === 'trial';
+
+  return (
+    <>
+      {/* Botón "Volver a clientes". No tenemos ArrowLeft en el set,
+          usamos ChevronRight flippeado horizontalmente. */}
+      <Btn
+        kind="ghost"
+        sm
+        onClick={() => navigate('/clientes')}
+        className="ficha-back"
+      >
+        <span
+          aria-hidden="true"
+          className="ico"
+          style={{ transform: 'scaleX(-1)', display: 'inline-flex' }}
+        >
+          <Icons.ChevronRight size={13} />
+        </span>
+        Volver a clientes
+      </Btn>
+
+      <PageHead
+        title={
+          <span className="flex-row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <span>{tenant.nombre || '—'}</span>
+            <Badge tone={planTone(tenant.plan)}>{planLabel(tenant.plan)}</Badge>
+            <Status tone={statusMeta.tone}>{statusMeta.label}</Status>
+          </span>
+        }
+        subtitle={`#${tenant.id} · ${tenant.slug || '—'} · cliente desde ${fmtDate(tenant.created_at)}`}
+        breadcrumb={
+          <div
+            className="company-logo company-logo-lg"
+            style={{ marginBottom: 10 }}
+          >
+            {tenantInitials(tenant.nombre)}
+          </div>
+        }
+        actions={
+          <>
+            {isSuspended ? (
+              <Btn
+                kind="primary"
+                icon="Refresh"
+                onClick={() => setOpenModal('reactivate')}
+              >
+                Reactivar
+              </Btn>
+            ) : (
+              <Btn icon="Lock" onClick={() => setOpenModal('suspend')}>
+                Suspender
+              </Btn>
+            )}
+            {isTrial && (
+              <Btn icon="Calendar" onClick={() => setOpenModal('extend-trial')}>
+                Extender trial
+              </Btn>
+            )}
+            <Btn icon="Sliders" onClick={() => setOpenModal('edit')}>
+              Editar
+            </Btn>
+          </>
+        }
+      />
+
+      {/* Banners contextuales ─────────────────────────────────────── */}
+      {isSuspended && (
+        <div className="banner banner-warn">
+          <Icons.Lock size={16} />
+          <span>
+            <strong>Suspendida desde {fmtDate(tenant.suspended_at)}</strong>
+            {' · '}
+            {tenant.suspended_reason || 'sin razón documentada'}
+          </span>
+        </div>
+      )}
+      {isTrial && tenant.trial_until && (() => {
+        const delta = trialDaysDelta(tenant.trial_until);
+        if (delta == null) return null;
+        if (delta < 0) {
+          return (
+            <div className="banner banner-neg">
+              <Icons.Calendar size={16} />
+              <span>
+                <strong>Trial vencido</strong> hace {Math.abs(delta)} días
+                ({fmtDate(tenant.trial_until)})
+              </span>
+            </div>
+          );
+        }
+        return (
+          <div className="banner banner-info">
+            <Icons.Calendar size={16} />
+            <span>
+              Trial activo hasta <strong>{fmtDate(tenant.trial_until)}</strong>
+              {' '}({delta} {delta === 1 ? 'día' : 'días'} restantes)
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* 4 stat cards ─────────────────────────────────────────────── */}
+      <div className="ficha-stats">
+        <Card tight>
+          <div className="kpi-label">MRR</div>
+          <div className="kpi-value">
+            {fmtMoney(tenant.mrr_usd ?? 0)}
+            <span className="muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 4 }}>/mes</span>
+          </div>
+          <div className="muted tiny">Plan {planLabel(tenant.plan)}</div>
+        </Card>
+
+        <Card tight>
+          <div className="kpi-label">Usuarios activos</div>
+          <div className="kpi-value">{fmt(tenant.users_count ?? 0)}</div>
+          <div className="muted tiny">miembros del tenant</div>
+        </Card>
+
+        <Card tight>
+          <div className="kpi-label">Salud (proxy)</div>
+          <div className="kpi-value" style={{ color: hColor }}>
+            {health}
+            <span className="muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 4 }}>/100</span>
+          </div>
+          <div className="muted tiny">{hDesc}</div>
+        </Card>
+
+        <Card tight>
+          <div className="kpi-label">Última venta</div>
+          <div className="kpi-value" style={{ fontSize: 18 }}>
+            {tenant.last_venta_at ? ago(tenant.last_venta_at) : '—'}
+          </div>
+          <div className="muted tiny">
+            {tenant.last_venta_at ? fmtDateTime(tenant.last_venta_at) : 'sin actividad de venta'}
+          </div>
+        </Card>
+      </div>
+
+      {/* Tabs ─────────────────────────────────────────────────────── */}
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        options={[
+          { value: 'resumen',    label: 'Resumen' },
+          { value: 'actividad',  label: 'Actividad' },
+        ]}
+      />
+
+      {activeTab === 'resumen' && (
+        <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
+          {/* Salud de la cuenta — 4 barras derivadas. TODO Sub-fase Z. */}
+          <Card title="Salud de la cuenta" subtitle="Señales de uso y riesgo">
+            <HealthBar
+              label="Salud del tenant"
+              value={health}
+              color={hColor}
+            />
+            <HealthBar
+              label="Asientos ocupados"
+              value={Math.min(100, Math.round(((tenant.users_count || 0) / 10) * 100))}
+              color="var(--accent)"
+            />
+            <HealthBar
+              label="Actividad reciente (30d)"
+              value={activity30}
+              color="var(--info)"
+            />
+            <HealthBar
+              label="Cobros al día"
+              value={isSuspended ? 0 : 95}
+              color={isSuspended ? 'var(--neg)' : 'var(--pos)'}
+            />
+            {/* Nota explícita: las 4 son derivaciones — Sub-fase Z las reemplaza. */}
+            <div className="muted tiny" style={{ marginTop: 12 }}>
+              Sub-fase Z reemplaza estos proxies por señales reales (uso de
+              producto + cobros + adopción de features).
+            </div>
+          </Card>
+
+          <Card
+            flush
+            title="Actividad admin"
+            subtitle="Últimas acciones sobre este tenant"
+          >
+            {!Array.isArray(tenant.recent_admin_actions) || tenant.recent_admin_actions.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-title">Sin acciones admin sobre este tenant todavía.</div>
+                Las suspensiones, cambios de plan y notas que hagas acá
+                aparecen en el feed.
+              </div>
+            ) : (
+              <div className="activity">
+                {tenant.recent_admin_actions.map((a) => {
+                  const d = describeAction(a);
+                  return (
+                    <div key={a.id} className="activity-item">
+                      <div
+                        className="dot-ico"
+                        style={{ color: `var(--${d.tone === 'muted' ? 'text-muted' : d.tone})` }}
+                      >
+                        <d.IconCmp size={14} />
+                      </div>
+                      <div className="activity-msg">{actionShortText(a)}</div>
+                      <div className="activity-time">{ago(a.created_at)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'actividad' && (
+        <div style={{ marginTop: 'var(--gap)' }}>
+          <div className="flex-row" style={{ marginBottom: 12 }}>
+            <Seg
+              value={activitySubTab}
+              onChange={setActivitySubTab}
+              options={ACTIVITY_TABS}
+            />
+          </div>
+          <ActivityPanel
+            type={activitySubTab}
+            data={activityData}
+            loading={activityLoading}
+            error={activityError}
+          />
+        </div>
+      )}
+
+      {/* Modals — siempre montados, controlados por openModal ─────── */}
+      <EditTenantModal
+        tenant={tenant}
+        open={openModal === 'edit'}
+        onClose={() => setOpenModal(null)}
+        onSaved={handleSaved}
+      />
+      <SuspendTenantModal
+        tenant={tenant}
+        open={openModal === 'suspend'}
+        onClose={() => setOpenModal(null)}
+        onSaved={handleSaved}
+      />
+      <ReactivateTenantModal
+        tenant={tenant}
+        open={openModal === 'reactivate'}
+        onClose={() => setOpenModal(null)}
+        onSaved={handleSaved}
+      />
+      <ExtendTrialModal
+        tenant={tenant}
+        open={openModal === 'extend-trial'}
+        onClose={() => setOpenModal(null)}
+        onSaved={handleSaved}
+      />
+    </>
+  );
+}
+
+// ── Sub-componente: barra horizontal para "Salud de la cuenta" ─────
+function HealthBar({ label, value, color }) {
+  const safe = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <div className="bar-row">
+      <span className="bar-row-label">{label}</span>
+      <span className="bar-row-value" style={{ color }}>{safe}</span>
+      <div className="bar-row-track bar-track" style={{ height: 6 }}>
+        <div
+          className="bar-fill"
+          style={{ width: safe + '%', background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-componente: panel de actividad por tipo ────────────────────
+// Recibe el tipo activo + data crudo. Decide qué shape esperar.
+function ActivityPanel({ type, data, loading, error }) {
+  if (loading) {
+    return (
+      <Card flush>
+        <table className="tbl">
+          <tbody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <tr key={i} className="tbl-skel-row">
+                <td colSpan={5}>
+                  <div className="skeleton" style={{ height: 14, width: '70%' }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    );
+  }
+  if (error) {
+    return (
+      <Card>
+        <div className="banner banner-neg" role="alert">{error}</div>
+      </Card>
+    );
+  }
+  if (!data) return null;
+
+  switch (type) {
+    case 'ventas':   return <VentasPanel items={data.items} />;
+    case 'cajas':    return <CajasPanel items={data.items} />;
+    case 'bot':      return <BotPanel summary={data.summary} conversations={data.recent_conversations} />;
+    case 'alertas':  return <AlertasPanel items={data.items} />;
+    case 'audit':    return <AuditPanel items={data.items} />;
+    default:         return null;
+  }
+}
+
+function emptyState(text) {
+  return (
+    <div className="empty-state">
+      <div className="empty-title">{text}</div>
+    </div>
+  );
+}
+
+function VentasPanel({ items }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <Card flush>{emptyState('Sin ventas en el período.')}</Card>;
+  }
+  return (
+    <Card flush>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Order ID</th>
+            <th>Cliente</th>
+            <th className="num">Total</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((v) => (
+            <tr key={v.id}>
+              <td className="muted tiny">{fmtDateTime(v.fecha || v.created_at)}</td>
+              <td className="mono tiny">{v.order_id || '—'}</td>
+              <td>{v.cliente_nombre || '—'}</td>
+              <td className="num mono" style={{ fontWeight: 600 }}>
+                {fmtMoney(v.total_usd ?? 0)}
+              </td>
+              <td><Status tone="muted">{v.estado || '—'}</Status></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function CajasPanel({ items }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <Card flush>{emptyState('Sin movimientos de caja.')}</Card>;
+  }
+  return (
+    <Card flush>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Caja</th>
+            <th>Tipo</th>
+            <th>Concepto</th>
+            <th className="num">Monto (USD)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((m) => (
+            <tr key={m.id}>
+              <td className="muted tiny">{fmtDateTime(m.fecha)}</td>
+              <td>{m.caja_nombre || '—'}</td>
+              <td><Badge tone="default">{m.tipo || '—'}</Badge></td>
+              <td>{m.concepto || '—'}</td>
+              <td className="num mono" style={{ fontWeight: 600 }}>
+                {fmtMoney(m.monto_usd ?? 0)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function BotPanel({ summary, conversations }) {
+  const hasConvs = Array.isArray(conversations) && conversations.length > 0;
+  const hasSummary = summary && (summary.mensajes_total || summary.conversaciones);
+  if (!hasConvs && !hasSummary) {
+    return <Card flush>{emptyState('Este tenant no usó el bot todavía.')}</Card>;
+  }
+  return (
+    <div className="stack">
+      {summary && (
+        <div className="ficha-stats">
+          <Card tight>
+            <div className="kpi-label">Mensajes total</div>
+            <div className="kpi-value">{fmt(summary.mensajes_total ?? 0)}</div>
+          </Card>
+          <Card tight>
+            <div className="kpi-label">Mensajes user</div>
+            <div className="kpi-value">{fmt(summary.mensajes_user ?? 0)}</div>
+          </Card>
+          <Card tight>
+            <div className="kpi-label">Conversaciones</div>
+            <div className="kpi-value">{fmt(summary.conversaciones ?? 0)}</div>
+          </Card>
+          <Card tight>
+            <div className="kpi-label">Último mensaje</div>
+            <div className="kpi-value" style={{ fontSize: 16 }}>
+              {summary.ultimo_mensaje ? ago(summary.ultimo_mensaje) : '—'}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      <Card flush title="Conversaciones recientes" subtitle="Top 20 por actividad">
+        {!hasConvs ? (
+          emptyState('Sin conversaciones recientes.')
+        ) : (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Título</th>
+                <th>Usuario</th>
+                <th className="num">Mensajes</th>
+                <th>Creada</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conversations.map((c) => (
+                <tr key={c.conversation_id}>
+                  <td>{c.titulo || '—'}</td>
+                  <td>{c.username || '—'}</td>
+                  <td className="num mono">{fmt(c.msg_count ?? 0)}</td>
+                  <td className="muted tiny">{c.created_at ? ago(c.created_at) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function AlertasPanel({ items }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <Card flush>{emptyState('Sin alertas configuradas.')}</Card>;
+  }
+  return (
+    <Card flush>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Estado</th>
+            <th>Parámetros</th>
+            <th>Actualizada</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((a, i) => (
+            <tr key={`${a.tipo}-${i}`}>
+              <td><Badge tone="info">{a.tipo || '—'}</Badge></td>
+              <td>
+                <Status tone={a.activa ? 'pos' : 'muted'}>
+                  {a.activa ? 'Activa' : 'Inactiva'}
+                </Status>
+              </td>
+              <td className="mono tiny" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {a.parametros ? JSON.stringify(a.parametros) : '—'}
+              </td>
+              <td className="muted tiny">{fmtDateTime(a.updated_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function AuditPanel({ items }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <Card flush>{emptyState('Sin cambios de datos recientes.')}</Card>;
+  }
+  return (
+    <Card flush>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Cuándo</th>
+            <th>Tabla</th>
+            <th>Acción</th>
+            <th>Registro</th>
+            <th>User</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((a) => (
+            <tr key={a.id}>
+              <td className="mono tiny">{fmtDateTime(a.created_at)}</td>
+              <td className="mono">{a.tabla || '—'}</td>
+              <td><Badge tone={auditAccionTone(a.accion)}>{a.accion || '—'}</Badge></td>
+              <td className="mono">{a.registro_id || '—'}</td>
+              <td className="mono">{a.user_id || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+// Memo: este componente vive bajo un Route protegido; el unmount/mount
+// natural al cambiar :id resetea state. No hace falta cleanup explícito
+// del fetch en useEffect (alive flag) salvo en /activity — ahí sí está.
