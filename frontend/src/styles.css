@@ -2024,7 +2024,12 @@ body.modal-open { overflow: hidden; }
   width: 420px;
   max-width: 100%;
   height: 600px;
+  /* 2026-06-21 TANDA 4 #341 UX: 100svh (small viewport height) en lugar de
+     100vh. svh refleja el viewport cuando la barra dinámica de iOS Safari
+     está visible — sin esto el bot se cortaba bajo la barra de navegación
+     al abrirla. Fallback a 100vh para browsers viejos. */
   max-height: calc(100vh - 48px);
+  max-height: calc(100svh - 48px);
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -2039,7 +2044,16 @@ body.modal-open { overflow: hidden; }
 }
 @media (max-width: 600px) {
   .chat-overlay { padding: 0; }
-  .chat-card { width: 100%; height: 100vh; max-height: 100vh; border-radius: 0; }
+  /* svh: ver comentario arriba — sin esto, en iOS Safari mobile el footer
+     del chat queda tapado por la URL bar dinámica. */
+  .chat-card {
+    width: 100%;
+    height: 100vh;
+    height: 100svh;
+    max-height: 100vh;
+    max-height: 100svh;
+    border-radius: 0;
+  }
 }
 
 /* Header — avatar + título + acciones */
@@ -2145,7 +2159,7 @@ body.modal-open { overflow: hidden; }
   border-top: 1px solid var(--border);
 }
 
-/* Footer — textarea + send button */
+/* Footer — textarea + send button. */
 .chat-footer {
   display: flex;
   gap: 8px;
@@ -2181,8 +2195,14 @@ body.modal-open { overflow: hidden; }
   display: flex; align-items: center; justify-content: center;
 }
 .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 2026-06-21 TANDA 4 #341 UX: padding-bottom con safe-area-inset para
+   no quedar tapado por el home indicator de iPhone X+. max() asegura
+   que en devices sin safe-area el padding base de 8px sigue siendo
+   mínimo. El hint es el bottom-most del card, así que va acá (no en
+   el footer, que tiene el hint debajo). */
 .chat-foot-hint {
   padding: 0 12px 8px;
+  padding-bottom: max(8px, calc(8px + env(safe-area-inset-bottom)));
   font-size: 10px;
   color: var(--text-muted);
   background: var(--surface);
