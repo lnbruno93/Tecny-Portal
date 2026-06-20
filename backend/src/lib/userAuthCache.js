@@ -40,8 +40,13 @@ const logger = require('./logger');
 
 // Query: el filter `deleted_at IS NULL` se hace en el query — si el user
 // está soft-deleted no devolvemos ningún row, y getUserAuth → null.
+//
+// 2026-06-21 #353 Fase 1: agregamos is_super_admin para que el middleware
+// requireSuperAdmin pueda validar sin pegar a DB en cada request. El JWT
+// también lleva el claim, pero validamos contra DB porque el bit puede
+// haberse revocado después de emitir el token (script setSuperAdmin --revoke).
 const USER_AUTH_SQL = `
-  SELECT password_changed_at, email_verified_at
+  SELECT password_changed_at, email_verified_at, is_super_admin
     FROM users
    WHERE id = $1 AND deleted_at IS NULL`;
 
@@ -67,6 +72,8 @@ const cache = createTenantScopedCache({
       email_verified_at: rows[0].email_verified_at
         ? rows[0].email_verified_at.toISOString()
         : null,
+      // boolean — JSON round-trip safe sin transformación.
+      is_super_admin: !!rows[0].is_super_admin,
     };
   },
 });

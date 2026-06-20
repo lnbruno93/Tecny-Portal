@@ -74,6 +74,16 @@ function makeToken(user, tenant, tokenPerms) {
     tenant_rol: tenant.rol,
     iat_ms: Date.now(),
   };
+  // 2026-06-21 #353 Fase 1: is_super_admin como claim. NO es source of
+  // truth (el middleware requireSuperAdmin re-valida contra userAuthCache
+  // → DB), pero embeberlo evita un round-trip extra al frontend admin
+  // app: el cliente lee `decoded.is_super_admin` del JWT y decide si
+  // redirigir a /admin sin pegar a /api/admin/me primero. Defensa en
+  // depth: aún si un atacante alterara el JWT, el backend lo rechaza
+  // por firma HS256 (no se puede forjar sin JWT_SECRET).
+  if (user.is_super_admin) {
+    payload.is_super_admin = true;
+  }
   if (user.role !== 'admin' && tokenPerms) {
     payload.perms = tokenPerms;
   }
@@ -102,7 +112,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const filter = field === 'email' ? 'LOWER(email) = LOWER($1)' : `${field} = $1`;
     const { rows } = await db.query(
       `SELECT id, nombre, username, email, role, password_hash, password_changed_at,
-              failed_login_count, lockout_until, email_verified_at
+              failed_login_count, lockout_until, email_verified_at, is_super_admin
        FROM users WHERE ${filter} AND deleted_at IS NULL`,
       [value]
     );
@@ -278,6 +288,10 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         // re-verifica en cada request (middleware/auth.js) — no confiamos
         // unicamente en el cliente.
         email_verified: !!user.email_verified_at,
+        // 2026-06-21 #353 Fase 1: admin app lee este flag del response del
+        // login para decidir si redirigir a /admin. NO source of truth para
+        // autorización — eso es el middleware `requireSuperAdmin` server-side.
+        is_super_admin: !!user.is_super_admin,
         perms: permissions,
       },
     });
@@ -289,7 +303,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      'SELECT id, nombre, username, email, role, email_verified_at FROM users WHERE id = $1 AND deleted_at IS NULL',
+      'SELECT id, nombre, username, email, role, email_verified_at, is_super_admin FROM users WHERE id = $1 AND deleted_at IS NULL',
       [req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado', code: CODES.USER_NOT_FOUND });
@@ -301,10 +315,12 @@ router.get('/me', requireAuth, async (req, res, next) => {
     // 2026-06-16 TANDA 2.1: incluir email_verified en la respuesta de /me para
     // que el frontend sepa si mostrar el banner de verificación. Excluimos
     // email_verified_at (timestamp) del response — el cliente solo necesita el bool.
-    const { email_verified_at, ...userRow } = rows[0];
+    const { email_verified_at, is_super_admin, ...userRow } = rows[0];
     res.json({
       ...userRow,
       email_verified: !!email_verified_at,
+      // 2026-06-21 #353 Fase 1: ver comentario en /login response.
+      is_super_admin: !!is_super_admin,
       perms: { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) },
     });
   } catch (err) {
