@@ -94,6 +94,10 @@ const adminRoutes        = require('./routes/admin');
 const featureFlagsRoutes = require('./routes/feature-flags');
 const onboardingRoutes   = require('./routes/onboarding');
 const chatRoutes         = require('./routes/chat');
+// 2026-06-21 #353 Fase 1: Super-Admin app (admin.tecnyapp.com). DISTINTO de
+// adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
+// tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
+const superAdminRoutes   = require('./routes/superAdmin');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -641,6 +645,12 @@ app.use('/api/usuarios',      requireAuth, usuariosRoutes);
 // Admin — herramientas de operación (invariantes, etc.). adminOnly enforced
 // dentro del router. Acceso solo via JWT con role='admin'.
 app.use('/api/admin',         requireAuth, adminRoutes);
+
+// 2026-06-21 #353 Fase 1: Super-Admin — admin.tecnyapp.com app.
+// DISTINTO de /api/admin (admin DENTRO de un tenant). Este namespace opera
+// cross-tenant con BYPASSRLS. Solo Lucas (users.is_super_admin=true) puede
+// usar — el middleware requireSuperAdmin enforcea adentro del router.
+app.use('/api/super-admin',   requireAuth, superAdminRoutes);
 
 // Feature flags (M-08 GRAN auditoría 2026-06-10). Sistema minimalista on/off
 // global. GET / es accesible a cualquier user logueado (lo lee el frontend

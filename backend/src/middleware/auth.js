@@ -66,7 +66,16 @@ module.exports = async function requireAuth(req, res, next) {
   // de verificación → bloqueo blando de escrituras (abajo).
   const isEmailVerified = !!userAuth.email_verified_at;
 
-  req.user = { ...decoded, email_verified: isEmailVerified };
+  // 2026-06-21 #353 Fase 1: decorar req.user con is_super_admin desde DB
+  // (no el JWT). Source of truth = DB — si Lucas revoca super-admin a
+  // alguien via script `setSuperAdmin --revoke`, el cambio aplica en la
+  // próxima request (post invalidación del cache de 60s), sin esperar a
+  // que el token venza.
+  req.user = {
+    ...decoded,
+    email_verified: isEmailVerified,
+    is_super_admin: !!userAuth.is_super_admin,
+  };
 
   // 2026-06-16 TANDA 2.1 bloqueo blando: si el user NO verificó su email,
   // bloquear escrituras (POST/PUT/PATCH/DELETE) excepto los endpoints de
