@@ -232,4 +232,88 @@ pool.withTenant = async function withTenant(tenantId, callback) {
   }
 };
 
+// ────────────────────────────────────────────────────────────────────────────
+// 2026-06-21 #353 Fase 1 — Admin pool (BYPASSRLS)
+//
+// Pool separado con role `tecny_admin` que tiene BYPASSRLS attribute en
+// Postgres. Permite a los endpoints `/api/admin/*` ver TODOS los tenants
+// sin importar la policy RLS — necesario para el dashboard super-admin
+// que opera cross-tenant.
+//
+// Lazy init: solo abre el pool cuando se llama por PRIMERA vez. Razón: en
+// tests + dev local NO existe el role tecny_admin (no corremos el
+// CREATE ROLE en migrations — es operación de infra, no de schema). Tests
+// que necesitan adminQuery deben mockear este pool o tolerar el throw.
+// En prod/staging, ADMIN_DATABASE_URL viene de Railway env.
+//
+// Si ADMIN_DATABASE_URL no está seteado, devolvemos pool normal — los
+// endpoints admin entonces ven solo lo que RLS deja pasar (filtrado por
+// tenant del super-admin). En prod NUNCA debería pasar — el deploy debe
+// fallar antes (validar en server.js startup checks).
+//
+// Mismo connection settings que el pool principal (timeout, max, etc).
+let _adminPool = null;
+function getAdminPool() {
+  if (_adminPool) return _adminPool;
+  const adminUrl = process.env.ADMIN_DATABASE_URL;
+  if (!adminUrl) {
+    // No ADMIN_DATABASE_URL → fallback al pool principal. Esto es seguro
+    // porque requireSuperAdmin sigue bloqueando acceso no-autorizado; lo
+    // que perdemos es el bypass de RLS (las queries admin filtran por
+    // tenant del super-admin, mostrando solo el tenant 1). Tests + dev
+    // local usan esto.
+    logger.warn(
+      '[db.adminQuery] ADMIN_DATABASE_URL no configurado — usando pool principal (RLS aplicará). En prod esto debería estar seteado.'
+    );
+    return pool;
+  }
+  _adminPool = new Pool({
+    connectionString:        adminUrl,
+    max:                     parseInt(process.env.ADMIN_DB_POOL_MAX) || 5,  // mucho menos tráfico que app pool
+    connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT)   || 5_000,
+    idleTimeoutMillis:       parseInt(process.env.DB_IDLE_TIMEOUT)   || 30_000,
+    allowExitOnIdle:         true,
+    statement_timeout:                   parseInt(process.env.DB_STATEMENT_TIMEOUT) || 15_000,
+    query_timeout:                       parseInt(process.env.DB_QUERY_TIMEOUT)     || 15_000,
+    idle_in_transaction_session_timeout: parseInt(process.env.DB_IDLE_TX_TIMEOUT)   || 10_000,
+  });
+  _adminPool.on('error', (err) => {
+    logger.error({ err }, 'Admin PostgreSQL pool error');
+  });
+  return _adminPool;
+}
+
+/**
+ * Ejecuta callback con un client del pool admin (BYPASSRLS). Para uso
+ * EXCLUSIVO de endpoints /api/admin/* que operan cross-tenant.
+ *
+ * NO usar desde rutas tenant-scoped — eso violaría RLS y leakaría data.
+ * El linter de CI debería rechazar `db.adminQuery` fuera de
+ * `backend/src/routes/admin/`.
+ *
+ * Sin tx auto (a diferencia de withTenant) — el caller decide si abre tx.
+ * Razón: las queries admin son mayormente reads agregados (cross-tenant
+ * SELECTs), no requieren tx para ser correctos. Mutations (PATCH tenant)
+ * sí abren tx manualmente con `client.query('BEGIN')`.
+ *
+ * @param {function(client): Promise<*>} callback — recibe un pg.Client.
+ * @returns {Promise<*>} lo que devuelva el callback.
+ */
+pool.adminQuery = async function adminQuery(callback) {
+  const client = await getAdminPool().connect();
+  try {
+    return await callback(client);
+  } finally {
+    client.release();
+  }
+};
+
+// Cleanup del pool admin en shutdown.
+pool.endAdmin = async function endAdmin() {
+  if (_adminPool) {
+    try { await _adminPool.end(); } catch (_) { /* swallow */ }
+    _adminPool = null;
+  }
+};
+
 module.exports = pool;
