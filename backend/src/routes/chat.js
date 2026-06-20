@@ -126,12 +126,14 @@ function getTodayWindowStartArtIso() {
  *
  * Estrategia: dentro de una sola tx (con RLS por tenant), incrementamos el
  * counter del user y luego sumamos el total del tenant. Si alguno excede
- * límite, hacemos throw → la tx hace rollback (el INSERT no queda) →
- * respondemos 429.
+ * límite, el callback devuelve un objeto `{limit, used, max}` (no throw) →
+ * la tx hace COMMIT → respondemos 429 con el counter ya bumpeado.
  *
- * Trade-off: si el handler downstream falla (ej. Anthropic 500), el counter
- * SÍ queda incrementado (es middleware previo al handler). Aceptable: cuenta
- * "intentos", no "respuestas exitosas". Anti-abuse por encima de UX perfecta.
+ * Trade-off intencional: el counter SE incrementa aún cuando devolvemos 429
+ * — y también si el handler downstream falla (ej. Anthropic 500), porque
+ * este middleware corre ANTES. Cuenta "intentos", no "respuestas exitosas".
+ * Anti-abuse por encima de UX perfecta: un loop infinito no puede esquivar
+ * el cap haciendo que las requests "fallen" después de pasar.
  */
 async function enforceDailyChatLimits(req, res, next) {
   if (isTestEnv) return next();

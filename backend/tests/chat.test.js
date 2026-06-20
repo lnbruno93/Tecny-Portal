@@ -960,3 +960,469 @@ describe('Tools Tier 2 — get_actividad_reciente', () => {
     expect(detalles).not.toContain('viejo');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// TANDA 1 fixes — regression coverage para los 4 fixes de tools de correctness
+// y para los fixes de TANDA 0 (P0-1 loadHistory cap + P1 cache_control).
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('TANDA 1 fix — get_kpis_hoy excluye soft-deleted', () => {
+  it('NO suma comprobantes con deleted_at IS NOT NULL', async () => {
+    await pool.query(`DELETE FROM comprobantes WHERE tenant_id = 1`);
+    await pool.query(
+      `INSERT INTO comprobantes (fecha, cliente, monto, monto_financiera, monto_neto, tenant_id, deleted_at)
+       VALUES
+         (CURRENT_DATE, 'Vivo',    100, 5, 95,  1, NULL),
+         (CURRENT_DATE, 'Borrado', 999, 0, 999, 1, NOW())`
+    );
+    const r = await executeTool('get_kpis_hoy', {}, T1_CTX);
+    expect(Number(r.bruto_hoy)).toBe(100); // 100, NO 1099
+    expect(r.comprobantes_hoy).toBe(1);
+  });
+});
+
+describe('TANDA 1 fix — get_top_productos convierte ARS→USD', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM venta_items WHERE venta_id IN (SELECT id FROM ventas WHERE tenant_id = 1)`);
+    await pool.query(`DELETE FROM ventas WHERE tenant_id = 1`);
+  });
+
+  it('divide por v.tc_venta cuando vi.moneda=ARS', async () => {
+    const { rows: [v] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tc_venta, tenant_id)
+       VALUES ('arsv', CURRENT_DATE, 'C', 'acreditado', 100, 1000, 1) RETURNING id`
+    );
+    // Item de $100.000 ARS @ TC 1000 = USD 100 (no USD 100.000)
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
+       VALUES ($1, 'iPhone ARS', 1, 100000, 50000, 'ARS')`,
+      [v.id]
+    );
+    const r = await executeTool('get_top_productos', { periodo: 'hoy' }, T1_CTX);
+    const iphone = r.top.find(p => p.descripcion === 'iPhone ARS');
+    expect(Number(iphone.ingreso_usd)).toBe(100); // 100000 / 1000
+  });
+
+  it('mantiene precio en USD si moneda=USD (no divide)', async () => {
+    const { rows: [v] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tc_venta, tenant_id)
+       VALUES ('usdv', CURRENT_DATE, 'C', 'acreditado', 500, 1000, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
+       VALUES ($1, 'iPhone USD', 1, 500, 250, 'USD')`,
+      [v.id]
+    );
+    const r = await executeTool('get_top_productos', { periodo: 'hoy' }, T1_CTX);
+    const iphone = r.top.find(p => p.descripcion === 'iPhone USD');
+    expect(Number(iphone.ingreso_usd)).toBe(500);
+  });
+
+  it('fallback a precio_vendido si tc_venta=0 (no divide por cero)', async () => {
+    const { rows: [v] } = await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tc_venta, tenant_id)
+       VALUES ('tczero', CURRENT_DATE, 'C', 'acreditado', 100, 0, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
+       VALUES ($1, 'NoTC', 1, 100000, 0, 'ARS')`,
+      [v.id]
+    );
+    // Sin TC válido se cae al ELSE (no divide). El bot reportará el valor
+    // raw en vez de inflar a infinity / NaN. Trade-off conservativo.
+    const r = await executeTool('get_top_productos', { periodo: 'hoy' }, T1_CTX);
+    const x = r.top.find(p => p.descripcion === 'NoTC');
+    expect(Number(x.ingreso_usd)).toBe(100000);
+  });
+});
+
+describe('TANDA 1 fix — get_proveedores_pendientes saldo_inicial + caja_id', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM proveedor_movimientos WHERE proveedor_id IN (SELECT id FROM proveedores WHERE tenant_id = 1)`);
+    await pool.query(`DELETE FROM proveedores WHERE tenant_id = 1`);
+  });
+
+  it('saldo_inicial cuenta como deuda', async () => {
+    const { rows: [p] } = await pool.query(
+      `INSERT INTO proveedores (nombre, tenant_id) VALUES ('Prov Apertura', 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd)
+       VALUES ($1, CURRENT_DATE, 'saldo_inicial', 500)`,
+      [p.id]
+    );
+    const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
+    const prov = r.items.find(x => x.nombre === 'Prov Apertura');
+    expect(prov).toBeDefined();
+    expect(Number(prov.saldo_usd)).toBe(500);
+  });
+
+  it('compra con caja_id (contado) NO genera deuda', async () => {
+    const { rows: [p] } = await pool.query(
+      `INSERT INTO proveedores (nombre, tenant_id) VALUES ('Prov Contado', 1) RETURNING id`
+    );
+    const { rows: [caja] } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial, tenant_id)
+       VALUES ('CajaProvTest', 'USD', 0, 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd, caja_id)
+       VALUES ($1, CURRENT_DATE, 'compra', 1000, $2)`,
+      [p.id, caja.id]
+    );
+    const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
+    expect(r.items.find(x => x.nombre === 'Prov Contado')).toBeUndefined();
+  });
+
+  it('compra sin caja_id + pago = saldo neto', async () => {
+    const { rows: [p] } = await pool.query(
+      `INSERT INTO proveedores (nombre, tenant_id) VALUES ('Prov Mix', 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd)
+       VALUES ($1, CURRENT_DATE, 'compra', 1000),
+              ($1, CURRENT_DATE, 'pago',   400)`,
+      [p.id]
+    );
+    const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
+    const prov = r.items.find(x => x.nombre === 'Prov Mix');
+    expect(Number(prov.saldo_usd)).toBe(600);
+  });
+});
+
+describe('TANDA 1 fix — get_stock_bajo incluye agotados (cantidad=0)', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM productos WHERE tenant_id = 1 AND nombre LIKE 'StockFix%'`);
+  });
+
+  it('producto agotado (cantidad=0) APARECE en stock bajo', async () => {
+    await pool.query(
+      `INSERT INTO productos (nombre, cantidad, oculto, condicion, estado, trackear_stock, tenant_id)
+       VALUES ('StockFix Agotado', 0, false, 'nuevo', 'disponible', true, 1)`
+    );
+    const r = await executeTool('get_stock_bajo', { umbral: 5 }, T1_CTX);
+    expect(r.items.find(i => i.nombre === 'StockFix Agotado')).toBeDefined();
+  });
+
+  it('producto con estado=vendido NO aparece', async () => {
+    await pool.query(
+      `INSERT INTO productos (nombre, cantidad, oculto, condicion, estado, trackear_stock, tenant_id)
+       VALUES ('StockFix Vendido', 1, false, 'nuevo', 'vendido', true, 1)`
+    );
+    const r = await executeTool('get_stock_bajo', { umbral: 5 }, T1_CTX);
+    expect(r.items.find(i => i.nombre === 'StockFix Vendido')).toBeUndefined();
+  });
+
+  it('producto con trackear_stock=false NO aparece', async () => {
+    await pool.query(
+      `INSERT INTO productos (nombre, cantidad, oculto, condicion, estado, trackear_stock, tenant_id)
+       VALUES ('StockFix NoTrack', 1, false, 'nuevo', 'disponible', false, 1)`
+    );
+    const r = await executeTool('get_stock_bajo', { umbral: 5 }, T1_CTX);
+    expect(r.items.find(i => i.nombre === 'StockFix NoTrack')).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Regression tests para fixes de TANDA 0 (P0-1 loadHistory cap + P1 cache_control)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('TANDA 0 regression — loadHistory carga los MÁS NUEVOS', () => {
+  it('con >20 mensajes en DB, envía los últimos 20 a Anthropic (no los primeros)', async () => {
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+
+    // Sembrar 25 mensajes con contenido distintivo (msg-1..msg-25).
+    // Solo persistimos manualmente — no van por runChatTurn.
+    for (let i = 1; i <= 25; i++) {
+      await pool.query(
+        `INSERT INTO chat_messages (conversation_id, tenant_id, role, content, created_at)
+         VALUES ($1, 1, 'user', $2::jsonb, NOW() - ($3 || ' seconds')::interval)`,
+        [conv.body.id, JSON.stringify([{ type: 'text', text: `msg-${i}` }]), 25 - i]
+      );
+    }
+
+    Anthropic.__queueResponse({
+      id: 'm_final',
+      content: [{ type: 'text', text: 'respuesta' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+
+    await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: 'pregunta nueva' });
+
+    const sent = Anthropic.lastCallParams.messages;
+    const texts = sent.flatMap(m =>
+      Array.isArray(m.content)
+        ? m.content.filter(b => b.type === 'text').map(b => b.text)
+        : []
+    );
+
+    // runChatTurn primero guarda la "pregunta nueva" y DESPUÉS loadHistory.
+    // Así loadHistory ve 26 rows en total y carga las 20 más recientes:
+    //   msg-7..msg-25 (19) + "pregunta nueva" (1) = 20.
+    // Pre-fix (ORDER ASC LIMIT 20): cargaba msg-1..msg-20, dejando AFUERA
+    // tanto la pregunta nueva como los msgs recientes 21-25.
+    expect(texts).toContain('pregunta nueva');
+    expect(texts).toContain('msg-25');                  // más nuevo del histórico
+    expect(texts).toContain('msg-7');                   // boundary últimos 20
+    expect(texts).not.toContain('msg-6');               // primero fuera del cap
+    expect(texts).not.toContain('msg-1');               // mucho más viejo
+  });
+});
+
+describe('TANDA 0 regression — cache_control aplicado a system + último tool', () => {
+  it('Anthropic recibe system con cache_control ephemeral', async () => {
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    Anthropic.__queueResponse({
+      id: 'm', content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: 'hola' });
+
+    const params = Anthropic.lastCallParams;
+    expect(params.system).toBeInstanceOf(Array);
+    expect(params.system[0].cache_control).toEqual({ type: 'ephemeral' });
+  });
+
+  it('último TOOL del array tiene cache_control ephemeral (Anthropic cachea hasta el último breakpoint)', async () => {
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    Anthropic.__queueResponse({
+      id: 'm', content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: 'hola' });
+
+    const tools = Anthropic.lastCallParams.tools;
+    expect(tools.length).toBeGreaterThan(1);
+    // Solo el último debe tener cache_control (Anthropic cachea desde el inicio
+    // hasta el último marker).
+    const withCache = tools.filter(t => t.cache_control);
+    expect(withCache).toHaveLength(1);
+    expect(tools[tools.length - 1].cache_control).toEqual({ type: 'ephemeral' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// loadConversation happy path (gap detectado por auditoría #341)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('GET /conversations/:id (loadConversation happy path)', () => {
+  it('devuelve la conv con mensajes en orden cronológico ASC', async () => {
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    // Insertar 3 mensajes en orden NO cronológico (created_at distintos).
+    await pool.query(
+      `INSERT INTO chat_messages (conversation_id, tenant_id, role, content, created_at)
+       VALUES
+         ($1, 1, 'user',      '[{"type":"text","text":"primero"}]'::jsonb,  NOW() - INTERVAL '3 minutes'),
+         ($1, 1, 'assistant', '[{"type":"text","text":"segundo"}]'::jsonb,  NOW() - INTERVAL '2 minutes'),
+         ($1, 1, 'user',      '[{"type":"text","text":"tercero"}]'::jsonb,  NOW() - INTERVAL '1 minute')`,
+      [conv.body.id]
+    );
+
+    const r = await request(app)
+      .get(`/api/chat/conversations/${conv.body.id}`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`);
+
+    expect(r.status).toBe(200);
+    expect(r.body.id).toBeDefined();
+    expect(r.body.messages).toHaveLength(3);
+    expect(r.body.messages[0].content[0].text).toBe('primero');
+    expect(r.body.messages[1].content[0].text).toBe('segundo');
+    expect(r.body.messages[2].content[0].text).toBe('tercero');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// TANDA 1 — Unit: enforceDailyChatLimits (rate-limit P0 audit gap)
+//
+// En NODE_ENV=test el middleware se skipea (`if (isTestEnv) return next();`)
+// para no acoplar tests al UPSERT y RLS de chat_rate_limits. Eso dejaba SIN
+// COBERTURA: el UPSERT atómico, el SUM por tenant, la forma del 429, el
+// boundary de window_start, y la decisión consciente de COMMIT-on-exceed
+// (counter persiste).
+//
+// Estrategia: jest.isolateModules + NODE_ENV='production' temporal para
+// re-importar el módulo con `isTestEnv=false` capturado en closure. La
+// función resultante ejerce SQL real contra la DB de test (mismo Postgres,
+// pool separado dentro del isolate — eventual consistency vía COMMIT).
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('TANDA 1 unit — enforceDailyChatLimits', () => {
+  // Re-importa el route bajo NODE_ENV='production' (+ opcionales overrides de
+  // límites) para que `isTestEnv` quede false en el closure del middleware.
+  // Restaura el entorno antes de salir.
+  function loadMiddlewareForTest({ perUser, perTenant } = {}) {
+    let mw, windowStartFn;
+    const prevEnv = process.env.NODE_ENV;
+    const prevPerUser = process.env.CHAT_MSG_PER_DAY_PER_USER;
+    const prevPerTenant = process.env.CHAT_MSG_PER_DAY_PER_TENANT;
+    try {
+      process.env.NODE_ENV = 'production';
+      if (perUser != null) process.env.CHAT_MSG_PER_DAY_PER_USER = String(perUser);
+      if (perTenant != null) process.env.CHAT_MSG_PER_DAY_PER_TENANT = String(perTenant);
+      jest.isolateModules(() => {
+        const route = require('../src/routes/chat');
+        mw = route.enforceDailyChatLimits;
+        windowStartFn = route.getTodayWindowStartArtIso;
+      });
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      if (prevPerUser === undefined) delete process.env.CHAT_MSG_PER_DAY_PER_USER;
+      else process.env.CHAT_MSG_PER_DAY_PER_USER = prevPerUser;
+      if (prevPerTenant === undefined) delete process.env.CHAT_MSG_PER_DAY_PER_TENANT;
+      else process.env.CHAT_MSG_PER_DAY_PER_TENANT = prevPerTenant;
+    }
+    return { mw, windowStartFn };
+  }
+
+  async function call(mw, { tenantId, userId }) {
+    let nextCalled = false;
+    let statusCode = null;
+    let body = null;
+    let nextErr = null;
+    const req = { tenantId, user: userId == null ? null : { id: userId } };
+    const res = {
+      status(c) { statusCode = c; return this; },
+      json(p) { body = p; return this; },
+    };
+    const next = (err) => {
+      if (err) nextErr = err;
+      else nextCalled = true;
+    };
+    await mw(req, res, next);
+    return { nextCalled, statusCode, body, nextErr };
+  }
+
+  beforeEach(async () => {
+    await pool.query(`TRUNCATE chat_rate_limits RESTART IDENTITY CASCADE`);
+  });
+
+  it('UPSERT atómico: 1er call crea row con messages=1, 2do incrementa a 2', async () => {
+    const { mw } = loadMiddlewareForTest({ perUser: 100, perTenant: 100 });
+    const r1 = await call(mw, { tenantId: 1, userId: 1 });
+    const r2 = await call(mw, { tenantId: 1, userId: 1 });
+    expect(r1.nextCalled).toBe(true);
+    expect(r2.nextCalled).toBe(true);
+    const { rows } = await pool.query(
+      `SELECT messages FROM chat_rate_limits WHERE tenant_id=1 AND user_id=1`
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].messages).toBe(2);
+  });
+
+  it('window_start del row coincide con getTodayWindowStartArtIso() (00:00 ART)', async () => {
+    const { mw, windowStartFn } = loadMiddlewareForTest({ perUser: 100, perTenant: 100 });
+    await call(mw, { tenantId: 1, userId: 1 });
+    const expectedIso = windowStartFn();
+    const { rows } = await pool.query(
+      `SELECT window_start FROM chat_rate_limits WHERE user_id=1`
+    );
+    expect(new Date(rows[0].window_start).toISOString()).toBe(expectedIso);
+  });
+
+  it('per-user 429: al pasar MSG_PER_DAY_PER_USER responde con limit_kind=user', async () => {
+    const { mw } = loadMiddlewareForTest({ perUser: 2, perTenant: 100 });
+    const r1 = await call(mw, { tenantId: 1, userId: 1 });
+    const r2 = await call(mw, { tenantId: 1, userId: 1 });
+    const r3 = await call(mw, { tenantId: 1, userId: 1 }); // 3 > 2
+    expect(r1.nextCalled).toBe(true);
+    expect(r2.nextCalled).toBe(true);
+    expect(r3.nextCalled).toBe(false);
+    expect(r3.statusCode).toBe(429);
+    expect(r3.body.limit_kind).toBe('user');
+    expect(r3.body.error).toMatch(/3\/2/); // "3/2 mensajes"
+    expect(r3.body.error).toMatch(/tu límite/);
+  });
+
+  it('per-tenant 429: sumando users del mismo tenant responde con limit_kind=tenant', async () => {
+    const { mw } = loadMiddlewareForTest({ perUser: 100, perTenant: 2 });
+    await call(mw, { tenantId: 1, userId: 1 });
+    await call(mw, { tenantId: 1, userId: 1 });
+    // user 2 (mismo tenant) hace el 3ro → cruza tenant cap (3 > 2)
+    const r3 = await call(mw, { tenantId: 1, userId: 2 });
+    expect(r3.statusCode).toBe(429);
+    expect(r3.body.limit_kind).toBe('tenant');
+    expect(r3.body.error).toMatch(/equipo/);
+  });
+
+  it('counter se persiste aún en 429 (intentional commit-on-exceed)', async () => {
+    // Decisión documentada en el docstring: cuenta INTENTOS, no respuestas
+    // exitosas — anti-abuse por encima de UX perfecta.
+    const { mw } = loadMiddlewareForTest({ perUser: 1, perTenant: 100 });
+    await call(mw, { tenantId: 1, userId: 1 }); // ok (1/1)
+    const r2 = await call(mw, { tenantId: 1, userId: 1 }); // 429 (2/1)
+    expect(r2.statusCode).toBe(429);
+    const { rows } = await pool.query(
+      `SELECT messages FROM chat_rate_limits WHERE user_id=1`
+    );
+    // messages = 2 — el INSERT del 2do call quedó committeado pese al 429.
+    expect(rows[0].messages).toBe(2);
+  });
+
+  it('401 si falta tenantId (defensive guard)', async () => {
+    const { mw } = loadMiddlewareForTest({ perUser: 5, perTenant: 50 });
+    const r = await call(mw, { tenantId: null, userId: 1 });
+    expect(r.statusCode).toBe(401);
+    expect(r.body.error).toBe('No autenticado');
+  });
+
+  it('401 si falta userId (defensive guard)', async () => {
+    const { mw } = loadMiddlewareForTest({ perUser: 5, perTenant: 50 });
+    const r = await call(mw, { tenantId: 1, userId: null });
+    expect(r.statusCode).toBe(401);
+  });
+
+  // Caveat de testing local (mismo que multitenant-isolation.test.js,
+  // alertas.test.js): el pool del test corre con role superuser+BYPASSRLS
+  // de Postgres → la policy `USING (tenant_id = current_setting(...))` NO
+  // filtra acá aunque FORCE RLS esté activo. Por eso NO podemos validar
+  // empíricamente que la SUM por tenant filtra cross-tenant en este test
+  // — en local los 2 rows se suman y daría 429 incorrecto.
+  //
+  // Lo que SÍ validamos estructuralmente:
+  //   1. Cada UPSERT graba el `tenant_id` correcto en la row (no merge).
+  //   2. UNIQUE (user_id, window_start) impide colisiones (tenant 2 con
+  //      su propio user_id crea SU row, no choca con tenant 1).
+  //   3. La SUM en producción (role NOSUPERUSER) se filtra por RLS —
+  //      validado estructuralmente vía migration TABLAS_CON_RLS y por
+  //      multitenant-rls-isolation.test.js que usa role custom.
+  it('tenant_id se graba correctamente en cada UPSERT (basis para RLS en prod)', async () => {
+    const { rows: u2t2 } = await pool.query(
+      `SELECT user_id FROM tenant_users WHERE tenant_id = 2 LIMIT 1`
+    );
+    expect(u2t2[0]).toBeDefined();
+    const tenant2UserId = u2t2[0].user_id;
+
+    const { mw } = loadMiddlewareForTest({ perUser: 100, perTenant: 100 });
+    await call(mw, { tenantId: 1, userId: 1 });
+    await call(mw, { tenantId: 2, userId: tenant2UserId });
+
+    const { rows } = await pool.query(
+      `SELECT tenant_id, user_id, messages FROM chat_rate_limits ORDER BY tenant_id`
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ tenant_id: 1, user_id: 1, messages: 1 });
+    expect(rows[1]).toMatchObject({ tenant_id: 2, user_id: tenant2UserId, messages: 1 });
+  });
+});
