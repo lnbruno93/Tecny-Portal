@@ -1,14 +1,16 @@
-// Router del admin console. Estado actual (post-Sub-fase B.2):
+// Router del admin console. Estado actual (post-Sub-fase B.3):
 //   · /login                  → real
 //   · /                       → Resumen, real (KPIs + chart + activity + top)
 //   · /clientes               → Clientes, real (lista + filtros + búsqueda)
-//   · /clientes/:id, /planes, /facturacion, /onboarding, /uso, /soporte
-//                             → placeholders ComingSoon (Sub-fases B.3 y C)
+//   · /clientes/:id           → Ficha, real (detalle + 2 tabs + 4 modals de mutations)
+//   · /planes, /facturacion, /onboarding, /uso, /soporte
+//                             → placeholders ComingSoon (Sub-fase C)
 
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';
 import Resumen from './pages/Resumen.jsx';
 import Clientes from './pages/Clientes.jsx';
+import Ficha from './pages/Ficha.jsx';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { PageHead } from './components/primitives/index.jsx';
@@ -98,7 +100,7 @@ export default function App() {
         path="/clientes/:id"
         element={
           <ProtectedRoute>
-            <ComingSoon label="Ficha" title="Ficha de cliente" />
+            <Ficha />
           </ProtectedRoute>
         }
       />

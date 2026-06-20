@@ -8,8 +8,12 @@
 import { Icon } from '../Icons.jsx';
 
 /**
- * Botón base. `kind` define color (default/primary/ghost). `icon` es un
+ * Botón base. `kind` define color (default/primary/ghost/danger). `icon` es un
  * nombre del set Icons. `iconOnly` arma un cuadrado sin children visibles.
+ *
+ * El variant 'danger' (rojo) se usa para acciones destructivas críticas —
+ * el caso típico es "Suspender cuenta" en la Ficha de cliente. El color
+ * vivo obliga al super-admin a confirmar lo que está haciendo.
  */
 export function Btn({
   kind = 'default',
@@ -27,6 +31,7 @@ export function Btn({
   const classes = ['btn'];
   if (kind === 'primary') classes.push('btn-primary');
   else if (kind === 'ghost') classes.push('btn-ghost');
+  else if (kind === 'danger') classes.push('btn-danger');
   if (sm) classes.push('btn-sm');
   if (iconOnly) classes.push('btn-icon');
   if (className) classes.push(className);
