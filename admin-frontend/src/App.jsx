@@ -1,10 +1,14 @@
-// Router del admin console. Sub-fase A: solo Login es real; el resto son
-// placeholders ComingSoon que muestran el header de la sección pero sin
-// data. Sub-fase B/C cablea Resumen y Clientes contra los endpoints de
-// /api/super-admin/*.
+// Router del admin console. Estado actual (post-Sub-fase B.2):
+//   · /login                  → real
+//   · /                       → Resumen, real (KPIs + chart + activity + top)
+//   · /clientes               → Clientes, real (lista + filtros + búsqueda)
+//   · /clientes/:id, /planes, /facturacion, /onboarding, /uso, /soporte
+//                             → placeholders ComingSoon (Sub-fases B.3 y C)
 
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';
+import Resumen from './pages/Resumen.jsx';
+import Clientes from './pages/Clientes.jsx';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { PageHead } from './components/primitives/index.jsx';
@@ -78,7 +82,7 @@ export default function App() {
         path="/"
         element={
           <ProtectedRoute>
-            <ComingSoon label="Resumen" title="Resumen" />
+            <Resumen />
           </ProtectedRoute>
         }
       />
@@ -86,7 +90,7 @@ export default function App() {
         path="/clientes"
         element={
           <ProtectedRoute>
-            <ComingSoon label="Clientes" title="Clientes" />
+            <Clientes />
           </ProtectedRoute>
         }
       />
