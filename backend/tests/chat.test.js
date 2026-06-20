@@ -64,6 +64,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 const chatRoute = require('../src/routes/chat');
 const chatLib = require('../src/lib/chat');
+const { executeTool } = require('../src/lib/chat-tools');
 
 let pool;
 let user1Tenant1Token;   // testadmin original
@@ -420,3 +421,261 @@ describe('chatLib.runChatTurn — validaciones', () => {
     ).rejects.toThrow('ctx.tenantId requerido');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tools Tier 1 — handlers invocados directo (no via route ni Anthropic)
+// Validan que las queries SQL devuelven números correctos contra datos
+// seedeados en el setup. Cada test limpia + inserta lo que necesita.
+// ─────────────────────────────────────────────────────────────────────────
+const T1_CTX = { tenantId: 1, userId: 1 };
+
+describe('Tools Tier 1 — get_ventas_periodo', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM ventas WHERE tenant_id = 1`);
+    await pool.query(`DELETE FROM movimientos_cc WHERE cliente_cc_id IN (SELECT id FROM clientes_cc WHERE tenant_id = 1)`);
+  });
+
+  it('cuenta ventas retail acreditadas + pendientes del día y skipea canceladas', async () => {
+    // 2 acreditadas + 1 pendiente + 1 cancelada (NO debe contar)
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, comision_total_metodos, tenant_id)
+       VALUES
+         ('o1', CURRENT_DATE, 'A', 'acreditado', 100, 30, 5,  1),
+         ('o2', CURRENT_DATE, 'B', 'acreditado', 200, 60, 10, 1),
+         ('o3', CURRENT_DATE, 'C', 'pendiente',  150, 40, 0,  1),
+         ('o4', CURRENT_DATE, 'D', 'cancelado',  999, 0,  0,  1)`
+    );
+    const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
+    expect(r.retail.ventas_count).toBe(3); // cancelada no cuenta
+    expect(r.retail.acreditadas).toBe(2);
+    expect(r.retail.pendientes).toBe(1);
+    expect(Number(r.retail.ingresos_usd)).toBe(450); // 100+200+150
+    expect(Number(r.retail.ganancia_acreditada_usd)).toBe(90); // 30+60
+    expect(Number(r.consolidado.costo_financiero_usd)).toBe(15); // solo acreditadas: 5+10
+    expect(Number(r.consolidado.ganancia_neta_usd)).toBe(75); // 90 - 15
+    expect(Number(r.consolidado.ticket_promedio_usd)).toBe(150); // 450/3
+  });
+
+  it('filtra por rango: ventas fuera del período no cuentan', async () => {
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, tenant_id)
+       VALUES
+         ('hoy',  CURRENT_DATE,                       'X', 'acreditado', 100, 10, 1),
+         ('ayer', CURRENT_DATE - INTERVAL '1 day',    'Y', 'acreditado', 200, 20, 1),
+         ('viejo',CURRENT_DATE - INTERVAL '60 days',  'Z', 'acreditado', 999, 99, 1)`
+    );
+    const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
+    expect(r.retail.ventas_count).toBe(1);
+    expect(Number(r.retail.ingresos_usd)).toBe(100);
+
+    const semana = await executeTool('get_ventas_periodo', { periodo: 'semana' }, T1_CTX);
+    expect(semana.retail.ventas_count).toBe(2); // hoy + ayer
+  });
+
+  it('skipea ventas soft-deleted', async () => {
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id, deleted_at)
+       VALUES
+         ('live', CURRENT_DATE, 'L', 'acreditado', 50, 1, NULL),
+         ('dead', CURRENT_DATE, 'D', 'acreditado', 99, 1, NOW())`
+    );
+    const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
+    expect(r.retail.ventas_count).toBe(1);
+    expect(Number(r.retail.ingresos_usd)).toBe(50);
+  });
+
+  it('incluye B2B (movimientos_cc tipo=compra) en consolidado', async () => {
+    const { rows: cc } = await pool.query(
+      `INSERT INTO clientes_cc (nombre, tenant_id) VALUES ('B2B Co', 1) RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total)
+       VALUES
+         ($1, CURRENT_DATE, 'compra', 300),
+         ($1, CURRENT_DATE, 'compra', 200),
+         ($1, CURRENT_DATE, 'pago',   100)  -- pago NO cuenta como venta`,
+      [cc[0].id]
+    );
+    const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
+    expect(r.b2b.ventas_count).toBe(2);
+    expect(Number(r.b2b.ingresos_usd)).toBe(500);
+    expect(Number(r.consolidado.ingresos_usd)).toBe(500); // sin retail
+  });
+
+  it('período custom acepta desde/hasta', async () => {
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES ('c1', '2026-03-15', 'X', 'acreditado', 100, 1)`
+    );
+    const r = await executeTool(
+      'get_ventas_periodo',
+      { periodo: 'custom', desde: '2026-03-01', hasta: '2026-03-31' },
+      T1_CTX
+    );
+    expect(r.retail.ventas_count).toBe(1);
+    expect(r.periodo.label).toContain('2026-03-01');
+  });
+
+  it('devuelve error friendly si período es inválido (no rompe el chat)', async () => {
+    const r = await executeTool('get_ventas_periodo', { periodo: 'siglo' }, T1_CTX);
+    expect(r.error).toBeDefined();
+    expect(r.error).toMatch(/datos/i);
+  });
+});
+
+describe('Tools Tier 1 — get_envios_activos', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM envios WHERE tenant_id = 1`);
+  });
+
+  it('cuenta Pendiente + En camino, excluye Entregado y Cancelado', async () => {
+    await pool.query(
+      `INSERT INTO envios (fecha, cliente, direccion, total_cobrado, estado, tenant_id)
+       VALUES
+         (CURRENT_DATE, 'C1', 'd1', 100, 'Pendiente', 1),
+         (CURRENT_DATE, 'C2', 'd2', 200, 'En camino', 1),
+         (CURRENT_DATE, 'C3', 'd3', 300, 'Entregado', 1),
+         (CURRENT_DATE, 'C4', 'd4', 999, 'Cancelado', 1)`
+    );
+    const r = await executeTool('get_envios_activos', {}, T1_CTX);
+    expect(r.resumen.total).toBe(2);
+    expect(r.resumen.pendientes).toBe(1);
+    expect(r.resumen.en_camino).toBe(1);
+    expect(Number(r.resumen.total_a_cobrar)).toBe(300);
+    expect(r.items).toHaveLength(2);
+  });
+
+  it('ordena por prioridad Alta > Media > sin, después fecha asc', async () => {
+    await pool.query(
+      `INSERT INTO envios (fecha, cliente, direccion, total_cobrado, estado, prioridad, tenant_id)
+       VALUES
+         (CURRENT_DATE,                    'media',  'x', 100, 'Pendiente', 'Media', 1),
+         (CURRENT_DATE - INTERVAL '5 days','alta',   'x', 100, 'Pendiente', 'Alta',  1),
+         (CURRENT_DATE,                    'normal', 'x', 100, 'Pendiente', NULL,    1)`
+    );
+    const r = await executeTool('get_envios_activos', { limit: 10 }, T1_CTX);
+    expect(r.items.map((e) => e.cliente)).toEqual(['alta', 'media', 'normal']);
+  });
+
+  it('respeta limit (default 10, max 50)', async () => {
+    const inserts = Array.from({ length: 15 }, (_, i) =>
+      `(CURRENT_DATE, 'C${i}', 'd', 0, 'Pendiente', 1)`
+    ).join(',');
+    await pool.query(
+      `INSERT INTO envios (fecha, cliente, direccion, total_cobrado, estado, tenant_id) VALUES ${inserts}`
+    );
+    const r1 = await executeTool('get_envios_activos', {}, T1_CTX);
+    expect(r1.items).toHaveLength(10);
+    expect(r1.resumen.total).toBe(15); // resumen no limita
+
+    const r2 = await executeTool('get_envios_activos', { limit: 5 }, T1_CTX);
+    expect(r2.items).toHaveLength(5);
+  });
+});
+
+describe('Tools Tier 1 — get_saldos_cajas', () => {
+  it('calcula saldo = saldo_inicial + ingresos - egresos por caja', async () => {
+    const { rows } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial, activo)
+       VALUES ('CajaUSD Test', 'USD', 1000, true)
+       RETURNING id`
+    );
+    const cajaId = rows[0].id;
+    await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto)
+       VALUES
+         ($1, CURRENT_DATE, 'ingreso', 500, 500, 'ajuste', 'manual', 0, 'ing test'),
+         ($1, CURRENT_DATE, 'egreso',  200, 200, 'ajuste', 'manual', 0, 'eg test')`,
+      [cajaId]
+    );
+    const r = await executeTool('get_saldos_cajas', {}, T1_CTX);
+    const caja = r.cajas.find((c) => c.id === cajaId);
+    expect(caja).toBeDefined();
+    expect(Number(caja.saldo)).toBe(1300); // 1000 + 500 - 200
+    expect(Number(r.totales_por_moneda.USD)).toBeGreaterThanOrEqual(1300);
+  });
+
+  it('agrupa USDT con USD, ARS aparte', async () => {
+    await pool.query(`DELETE FROM caja_movimientos WHERE caja_id IN (SELECT id FROM metodos_pago WHERE nombre LIKE 'AgrupTest%')`);
+    await pool.query(`DELETE FROM metodos_pago WHERE nombre LIKE 'AgrupTest%'`);
+    await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial, activo)
+       VALUES
+         ('AgrupTest USD', 'USD',  100, true),
+         ('AgrupTest USDT','USDT', 50,  true),
+         ('AgrupTest ARS', 'ARS',  1000, true)`
+    );
+    const r = await executeTool('get_saldos_cajas', {}, T1_CTX);
+    const usd = r.cajas.find((c) => c.nombre === 'AgrupTest USD');
+    const usdt = r.cajas.find((c) => c.nombre === 'AgrupTest USDT');
+    const ars = r.cajas.find((c) => c.nombre === 'AgrupTest ARS');
+    expect(Number(usd.saldo)).toBe(100);
+    expect(Number(usdt.saldo)).toBe(50);
+    expect(Number(ars.saldo)).toBe(1000);
+    // El total USD del tenant debe incluir USDT.
+    // (No assertamos valor exacto del total porque hay cajas del seed compartidas.)
+    expect(Object.keys(r.totales_por_moneda).sort()).toEqual(['ARS', 'USD']);
+  });
+});
+
+describe('Tools Tier 1 — get_alertas', () => {
+  it('cuenta stock bajo y cajas en negativo', async () => {
+    // Caja en negativo
+    const { rows: cajaRows } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial, activo)
+       VALUES ('AlertaCaja Test', 'USD', 0, true)
+       RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto)
+       VALUES ($1, CURRENT_DATE, 'egreso', 50, 50, 'ajuste', 'manual', 0, 'forzar negativo')`,
+      [cajaRows[0].id]
+    );
+    // Producto con stock bajo (umbral default 5, ponemos 2)
+    await pool.query(
+      `INSERT INTO productos (nombre, cantidad, oculto, condicion, tenant_id)
+       VALUES ('ProdBajoStock', 2, false, 'nuevo', 1)`
+    );
+
+    const r = await executeTool('get_alertas', {}, T1_CTX);
+    expect(r.total).toBeGreaterThanOrEqual(2);
+    const cajaNeg = r.grupos.find((g) => g.tipo === 'caja_negativa');
+    expect(cajaNeg.count).toBeGreaterThanOrEqual(1);
+    const stock = r.grupos.find((g) => g.tipo === 'stock_bajo');
+    expect(stock.count).toBeGreaterThanOrEqual(1);
+    expect(stock.items.some((i) => i.descripcion === 'ProdBajoStock')).toBe(true);
+  });
+});
+
+describe('Tools Tier 1 — get_dashboard_mensual', () => {
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM ventas WHERE tenant_id = 1`);
+  });
+
+  it('devuelve mes actual + mes anterior + deltas', async () => {
+    // Una venta mes actual + una mes anterior con números distintos.
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, comision_total_metodos, tenant_id)
+       VALUES
+         ('act', CURRENT_DATE,                            'A', 'acreditado', 200, 50, 5, 1),
+         ('ant', CURRENT_DATE - INTERVAL '35 days',       'B', 'acreditado', 100, 20, 0, 1)`
+    );
+    const r = await executeTool('get_dashboard_mensual', {}, T1_CTX);
+    expect(Number(r.mes_actual.ingresos_usd)).toBe(200);
+    // Mes anterior puede no caer exactamente 35 días atrás dependiendo de calendario,
+    // pero al menos validamos shape + deltas.
+    expect(r.deltas).toBeDefined();
+    expect(r.deltas.ingresos_usd).toHaveProperty('absoluto');
+    expect(r.deltas.ingresos_usd).toHaveProperty('porcentual');
+  });
+
+  it('delta 100% si mes anterior fue 0 y mes actual > 0', async () => {
+    await pool.query(
+      `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
+       VALUES ('act', CURRENT_DATE, 'A', 'acreditado', 100, 1)`
+    );
+    const r = await executeTool('get_dashboard_mensual', {}, T1_CTX);
+    expect(r.deltas.ingresos_usd.porcentual).toBe(100);
+  });
+});
+

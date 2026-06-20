@@ -31,6 +31,7 @@
 
 const db = require('../config/database');
 const logger = require('./logger');
+const { periodoRange, PERIODO_SCHEMA_FRAGMENT } = require('./chat-periods');
 
 // ──────────────────────────────────────────────────────────────────────────
 // System prompt — instrucciones al bot
@@ -67,7 +68,12 @@ Lo que NO podés hacer (importante):
 - NO compartir info de OTROS tenants — eso lo asegura el sistema (RLS), pero no asumas y no especules sobre otros negocios.
 
 Uso eficiente de tools:
-- Combiná tools cuando tenga sentido (ej. para "comparame vs ayer" probablemente necesités 2 calls de get_kpis_hoy con distintos rangos).
+- Para preguntas de ventas, usá get_ventas_periodo con el periodo apropiado ('hoy', 'semana', 'mes', etc.) — devuelve retail + B2B unificados con ganancia neta.
+- Para comparar dos períodos, llamá get_ventas_periodo dos veces con distintos 'periodo' (ej. 'mes' vs 'mes_anterior'). Si pide explícitamente "mes vs mes anterior", get_dashboard_mensual lo hace en una sola llamada.
+- Si el user pregunta por envíos pendientes/en calle, get_envios_activos.
+- Si pregunta por saldos de cajas / cuánto dinero hay, get_saldos_cajas.
+- Si pregunta "qué alertas hay" o "qué tengo que revisar urgente", get_alertas.
+- Combiná tools cuando tenga sentido (ej. "cómo viene hoy" → get_ventas_periodo + get_envios_activos + get_alertas en paralelo).
 - Si la respuesta del user es ambigua, preguntá antes de llamar tools (ahorra costo y le da control al user).
 - Si el user te pide algo que no tenés tool para responder, decílo claramente — no inventes data.
 
@@ -95,8 +101,95 @@ const TOOLS = [
       required: [],
     },
   },
-  // Las próximas tools se agregan acá. Mantener orden por dominio:
-  // get_kpis_*, get_ventas_*, get_cajas_*, get_stock_*, etc.
+
+  // ── Ventas ───────────────────────────────────────────────────────────────
+  {
+    name: 'get_ventas_periodo',
+    description:
+      'Ventas del período especificado (retail + B2B unificadas). Devuelve ' +
+      'ingresos en USD, ganancia bruta, ganancia neta (acreditada - costos ' +
+      'financieros), cantidad de comprobantes, ticket promedio, y desglose ' +
+      'acreditadas vs pendientes. Útil para preguntas como "cuánto vendí ' +
+      'esta semana", "cómo viene el mes", "vendí más ayer o hoy". Si el user ' +
+      'pide comparar dos períodos, llamá esta tool dos veces con los ' +
+      'distintos `periodo`.',
+    input_schema: {
+      type: 'object',
+      properties: PERIODO_SCHEMA_FRAGMENT,
+      required: ['periodo'],
+    },
+  },
+
+  // ── Dashboard mensual (con comparativa mes anterior) ─────────────────────
+  {
+    name: 'get_dashboard_mensual',
+    description:
+      'KPIs del mes actual con comparativa contra el mes anterior. Devuelve ' +
+      'bruto, neto, ganancia, ticket promedio + el delta absoluto y % vs ' +
+      'mes anterior. Útil para "cómo viene el mes vs el pasado", "estamos ' +
+      'mejor que el mes pasado". No requiere parámetros — siempre compara ' +
+      'mes en curso contra el mes calendario anterior.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ── Envíos activos ───────────────────────────────────────────────────────
+  {
+    name: 'get_envios_activos',
+    description:
+      'Lista los envíos NO entregados ni cancelados (estados Pendiente o ' +
+      'En camino), ordenados por fecha más vieja primero. Devuelve un ' +
+      'resumen + los primeros N (default 10) con cliente, barrio, monto, ' +
+      'estado y prioridad. Útil para "cuántos envíos tengo en la calle", ' +
+      '"qué entregas tengo pendientes", "qué envío hay que priorizar".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description: 'Máximo de envíos a devolver. Default 10.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  // ── Saldos de cajas ──────────────────────────────────────────────────────
+  {
+    name: 'get_saldos_cajas',
+    description:
+      'Saldo actual de cada caja activa del tenant. Devuelve cada caja con ' +
+      'su moneda + el total agrupado por moneda (USD/USDT consolidado, ARS ' +
+      'separado — los grupos que usa el módulo Cajas en el portal). Útil ' +
+      'para "cuánto tengo en USD", "cuánto cash hay", "qué saldo hay en ' +
+      'tal caja". No requiere parámetros.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ── Alertas activas ──────────────────────────────────────────────────────
+  {
+    name: 'get_alertas',
+    description:
+      'Resumen de alertas activas del tenant: cajas en negativo, stock ' +
+      'bajo de productos, clientes B2B en mora, y proveedores atrasados. ' +
+      'Devuelve total + count por tipo + los primeros items críticos. Útil ' +
+      'para "qué alertas tengo", "qué pasó hoy que tenga que revisar", ' +
+      '"hay algo urgente". No requiere parámetros.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -163,6 +256,363 @@ const handlers = {
         pct_financiera: Number(config.pct_financiera || 3.0),
         fecha: new Date()
           .toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }),
+      };
+    });
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // get_ventas_periodo — retail + B2B unificadas
+  // ──────────────────────────────────────────────────────────────────────
+  async get_ventas_periodo(input, ctx) {
+    const { periodo, desde: desdeIn, hasta: hastaIn } = input || {};
+    const { desde, hasta, label } = periodoRange(periodo, {
+      desde: desdeIn,
+      hasta: hastaIn,
+    });
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // Retail — ventas table. Filtramos cancelado + deleted_at.
+      // Estados: 'acreditado', 'pendiente', 'cancelado' (CHECK constraint).
+      const { rows: retailRows } = await client.query(
+        `SELECT
+           COUNT(*)::int                                              AS ventas_count,
+           COUNT(*) FILTER (WHERE estado = 'acreditado')::int         AS acreditadas_count,
+           COUNT(*) FILTER (WHERE estado = 'pendiente')::int          AS pendientes_count,
+           COALESCE(SUM(total_usd), 0)::numeric                       AS ingresos_usd,
+           COALESCE(SUM(ganancia_usd), 0)::numeric                    AS ganancia_bruta_usd,
+           COALESCE(SUM(ganancia_usd) FILTER
+             (WHERE estado = 'acreditado'), 0)::numeric               AS ganancia_acreditada_usd,
+           COALESCE(SUM(comision_total_metodos) FILTER
+             (WHERE estado = 'acreditado'), 0)::numeric               AS costo_financiero_usd
+         FROM ventas
+         WHERE fecha >= $1 AND fecha <= $2
+           AND estado <> 'cancelado'
+           AND deleted_at IS NULL`,
+        [desde, hasta]
+      );
+
+      // B2B — movimientos_cc tipo='compra'. monto_total ya está en USD.
+      // No tiene "estado cancelado", solo soft-delete.
+      const { rows: b2bRows } = await client.query(
+        `SELECT
+           COUNT(*)::int                          AS b2b_count,
+           COALESCE(SUM(monto_total), 0)::numeric AS b2b_ingresos_usd
+         FROM movimientos_cc
+         WHERE fecha >= $1 AND fecha <= $2
+           AND tipo = 'compra'
+           AND deleted_at IS NULL`,
+        [desde, hasta]
+      );
+
+      const r = retailRows[0] || {};
+      const b = b2bRows[0] || {};
+      const totalCount = (r.ventas_count || 0) + (b.b2b_count || 0);
+      const ingresosTotalUsd = Number(r.ingresos_usd || 0) + Number(b.b2b_ingresos_usd || 0);
+      const gananciaAcreditadaUsd = Number(r.ganancia_acreditada_usd || 0);
+      const costoFinancieroUsd = Number(r.costo_financiero_usd || 0);
+      const gananciaNetaUsd = gananciaAcreditadaUsd - costoFinancieroUsd;
+      const ticketPromedioUsd = totalCount > 0 ? ingresosTotalUsd / totalCount : 0;
+
+      return {
+        periodo: { desde, hasta, label },
+        retail: {
+          ventas_count: r.ventas_count || 0,
+          acreditadas: r.acreditadas_count || 0,
+          pendientes: r.pendientes_count || 0,
+          ingresos_usd: Number(r.ingresos_usd || 0),
+          ganancia_bruta_usd: Number(r.ganancia_bruta_usd || 0),
+          ganancia_acreditada_usd: gananciaAcreditadaUsd,
+        },
+        b2b: {
+          ventas_count: b.b2b_count || 0,
+          ingresos_usd: Number(b.b2b_ingresos_usd || 0),
+        },
+        consolidado: {
+          ventas_count: totalCount,
+          ingresos_usd: ingresosTotalUsd,
+          ganancia_neta_usd: gananciaNetaUsd,
+          costo_financiero_usd: costoFinancieroUsd,
+          ticket_promedio_usd: Number(ticketPromedioUsd.toFixed(2)),
+        },
+      };
+    });
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // get_dashboard_mensual — mes actual vs mes anterior
+  // ──────────────────────────────────────────────────────────────────────
+  // Comparativa simple: 2 períodos consecutivos + deltas. Reusa la lógica
+  // de get_ventas_periodo para garantizar consistencia (mismo SQL → mismos
+  // números que si el bot llamara la otra tool).
+  async get_dashboard_mensual(_input, ctx) {
+    // Llamamos a la implementación interna, NO al dispatcher, para evitar el
+    // overhead de logging y double-error-handling.
+    const actual = await handlers.get_ventas_periodo({ periodo: 'mes' }, ctx);
+    const anterior = await handlers.get_ventas_periodo({ periodo: 'mes_anterior' }, ctx);
+
+    // Función pura para calcular delta seguro (evita división por cero).
+    const delta = (act, ant) => {
+      const abs = act - ant;
+      const pct = ant === 0 ? (act > 0 ? 100 : 0) : (abs / Math.abs(ant)) * 100;
+      return { absoluto: Number(abs.toFixed(2)), porcentual: Number(pct.toFixed(1)) };
+    };
+
+    return {
+      mes_actual: {
+        periodo: actual.periodo,
+        ingresos_usd: actual.consolidado.ingresos_usd,
+        ganancia_neta_usd: actual.consolidado.ganancia_neta_usd,
+        ventas_count: actual.consolidado.ventas_count,
+        ticket_promedio_usd: actual.consolidado.ticket_promedio_usd,
+      },
+      mes_anterior: {
+        periodo: anterior.periodo,
+        ingresos_usd: anterior.consolidado.ingresos_usd,
+        ganancia_neta_usd: anterior.consolidado.ganancia_neta_usd,
+        ventas_count: anterior.consolidado.ventas_count,
+        ticket_promedio_usd: anterior.consolidado.ticket_promedio_usd,
+      },
+      deltas: {
+        ingresos_usd: delta(
+          actual.consolidado.ingresos_usd,
+          anterior.consolidado.ingresos_usd
+        ),
+        ganancia_neta_usd: delta(
+          actual.consolidado.ganancia_neta_usd,
+          anterior.consolidado.ganancia_neta_usd
+        ),
+        ventas_count: delta(
+          actual.consolidado.ventas_count,
+          anterior.consolidado.ventas_count
+        ),
+      },
+    };
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // get_envios_activos — pendientes + en camino
+  // ──────────────────────────────────────────────────────────────────────
+  async get_envios_activos(input, ctx) {
+    const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
+
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // Resumen agregado en una sola query (cheap).
+      const { rows: resumen } = await client.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE estado = 'Pendiente')::int  AS pendientes,
+           COUNT(*) FILTER (WHERE estado = 'En camino')::int  AS en_camino,
+           COALESCE(SUM(total_cobrado), 0)::numeric           AS total_a_cobrar
+         FROM envios
+         WHERE deleted_at IS NULL
+           AND estado IN ('Pendiente', 'En camino')`
+      );
+
+      // Top N a entregar — los más viejos primero (los que urgen).
+      const { rows: items } = await client.query(
+        `SELECT
+           id, fecha, cliente, barrio,
+           total_cobrado, costo_envio, estado, prioridad
+         FROM envios
+         WHERE deleted_at IS NULL
+           AND estado IN ('Pendiente', 'En camino')
+         ORDER BY
+           CASE prioridad WHEN 'Alta' THEN 0 WHEN 'Media' THEN 1 ELSE 2 END,
+           fecha ASC, id ASC
+         LIMIT $1`,
+        [limit]
+      );
+
+      const r = resumen[0] || {};
+      return {
+        resumen: {
+          total: (r.pendientes || 0) + (r.en_camino || 0),
+          pendientes: r.pendientes || 0,
+          en_camino: r.en_camino || 0,
+          total_a_cobrar: Number(r.total_a_cobrar || 0),
+        },
+        items: items.map((e) => ({
+          id: e.id,
+          fecha: e.fecha,
+          cliente: e.cliente,
+          barrio: e.barrio,
+          total_cobrado: Number(e.total_cobrado || 0),
+          costo_envio: Number(e.costo_envio || 0),
+          estado: e.estado,
+          prioridad: e.prioridad,
+        })),
+      };
+    });
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // get_saldos_cajas
+  // ──────────────────────────────────────────────────────────────────────
+  // Saldo actual = saldo_inicial + Σ(ingresos) - Σ(egresos).
+  // Mismo cálculo que cajaLedger.js — replicado acá en SQL pura para no
+  // tener que hacer N+1 (1 query agrupa todas las cajas).
+  async get_saldos_cajas(_input, ctx) {
+    return db.withTenant(ctx.tenantId, async (client) => {
+      const { rows: cajas } = await client.query(
+        `SELECT
+           mp.id,
+           mp.nombre,
+           mp.moneda,
+           mp.es_financiera,
+           mp.es_tarjeta,
+           (mp.saldo_inicial + COALESCE(
+              SUM(CASE WHEN cm.tipo = 'ingreso' THEN cm.monto ELSE -cm.monto END)
+                FILTER (WHERE cm.deleted_at IS NULL),
+              0
+           ))::numeric AS saldo
+         FROM metodos_pago mp
+         LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id
+         WHERE mp.deleted_at IS NULL
+           AND mp.activo IS NOT FALSE
+         GROUP BY mp.id, mp.saldo_inicial
+         ORDER BY mp.orden NULLS LAST, mp.nombre`
+      );
+
+      // Agrupar totales por moneda. Regla del portal (cajaLedger.js#grupoMoneda):
+      // USD y USDT se consolidan, ARS va aparte.
+      const totales = { ARS: 0, USD: 0 };
+      for (const c of cajas) {
+        const saldo = Number(c.saldo || 0);
+        if (c.moneda === 'ARS') totales.ARS += saldo;
+        else totales.USD += saldo; // USD + USDT consolidados
+      }
+
+      return {
+        cajas: cajas.map((c) => ({
+          id: c.id,
+          nombre: c.nombre,
+          moneda: c.moneda,
+          es_financiera: !!c.es_financiera,
+          es_tarjeta: !!c.es_tarjeta,
+          saldo: Number(c.saldo || 0),
+        })),
+        totales_por_moneda: {
+          ARS: Number(totales.ARS.toFixed(2)),
+          USD: Number(totales.USD.toFixed(2)),
+        },
+      };
+    });
+  },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // get_alertas — resumen tenant-scoped (no usa /api/alertas porque ése
+  // tiene cache global sin tenant key, ver task spawneada al respecto).
+  // ──────────────────────────────────────────────────────────────────────
+  async get_alertas(_input, ctx) {
+    return db.withTenant(ctx.tenantId, async (client) => {
+      // Cajas con saldo < 0 — usamos la misma fórmula que get_saldos_cajas.
+      const { rows: cajasNeg } = await client.query(
+        `SELECT mp.nombre, mp.moneda,
+                (mp.saldo_inicial + COALESCE(
+                  SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END)
+                    FILTER (WHERE cm.deleted_at IS NULL),
+                  0
+                ))::numeric AS saldo
+         FROM metodos_pago mp
+         LEFT JOIN caja_movimientos cm ON cm.caja_id = mp.id
+         WHERE mp.deleted_at IS NULL AND mp.activo IS NOT FALSE
+         GROUP BY mp.id, mp.nombre, mp.moneda, mp.saldo_inicial
+         HAVING (mp.saldo_inicial + COALESCE(
+                  SUM(CASE WHEN cm.tipo='ingreso' THEN cm.monto ELSE -cm.monto END)
+                    FILTER (WHERE cm.deleted_at IS NULL),
+                  0
+                )) < 0
+         ORDER BY saldo ASC
+         LIMIT 5`
+      );
+
+      // Stock bajo — umbral default 5. Usamos la config de alertas_config
+      // si existe, sino el default. La tabla alertas_config es RLS-scoped.
+      const { rows: cfgRows } = await client.query(
+        `SELECT parametros FROM alertas_config WHERE tipo = 'stock_bajo' AND activa = true`
+      );
+      const umbralStock = Number(cfgRows[0]?.parametros?.umbral_unidades) || 5;
+
+      const { rows: stockBajo } = await client.query(
+        `SELECT id, nombre, cantidad
+         FROM productos
+         WHERE deleted_at IS NULL
+           AND oculto IS NOT TRUE
+           AND condicion = 'nuevo'
+           AND cantidad < $1
+           AND cantidad > 0
+         ORDER BY cantidad ASC
+         LIMIT 5`,
+        [umbralStock]
+      );
+
+      // CC en mora — clientes B2B con saldo > 0 (nos deben) y último mov hace > N días.
+      const { rows: cfgMora } = await client.query(
+        `SELECT parametros FROM alertas_config WHERE tipo = 'cc_mora' AND activa = true`
+      );
+      const diasMora = Number(cfgMora[0]?.parametros?.dias_sin_pago) || 30;
+
+      const { rows: ccMora } = await client.query(
+        `SELECT c.id, c.nombre, c.apellido,
+                COALESCE(SUM(
+                  CASE
+                    WHEN m.tipo='saldo_inicial' THEN m.monto_total
+                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL THEN 0
+                    WHEN m.tipo='compra' THEN m.monto_total
+                    ELSE -m.monto_total
+                  END
+                ), 0) AS saldo,
+                MAX(m.fecha) AS ultimo_mov
+         FROM clientes_cc c
+         LEFT JOIN movimientos_cc m ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
+         WHERE c.deleted_at IS NULL
+         GROUP BY c.id, c.nombre, c.apellido
+         HAVING COALESCE(SUM(
+                  CASE
+                    WHEN m.tipo='saldo_inicial' THEN m.monto_total
+                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL THEN 0
+                    WHEN m.tipo='compra' THEN m.monto_total
+                    ELSE -m.monto_total
+                  END
+                ), 0) > 0
+            AND (MAX(m.fecha) IS NULL OR MAX(m.fecha) < CURRENT_DATE - INTERVAL '1 day' * $1)
+         ORDER BY saldo DESC
+         LIMIT 5`,
+        [diasMora]
+      );
+
+      const grupos = [
+        {
+          tipo: 'caja_negativa',
+          count: cajasNeg.length,
+          items: cajasNeg.map((c) => ({
+            descripcion: `${c.nombre} (${c.moneda})`,
+            saldo: Number(c.saldo),
+          })),
+        },
+        {
+          tipo: 'stock_bajo',
+          count: stockBajo.length,
+          umbral: umbralStock,
+          items: stockBajo.map((p) => ({
+            descripcion: p.nombre,
+            cantidad: p.cantidad,
+          })),
+        },
+        {
+          tipo: 'cc_mora',
+          count: ccMora.length,
+          dias_umbral: diasMora,
+          items: ccMora.map((c) => ({
+            descripcion: `${c.nombre} ${c.apellido || ''}`.trim(),
+            saldo_usd: Number(c.saldo),
+            ultimo_mov: c.ultimo_mov,
+          })),
+        },
+      ];
+
+      return {
+        total: grupos.reduce((acc, g) => acc + g.count, 0),
+        grupos,
       };
     });
   },
