@@ -35,6 +35,9 @@ jest.mock('@anthropic-ai/sdk', () => {
   // end_turn vacío. Si quiere devolver tool_use, primero el caller pushea
   // una entrada con `stop_reason:'tool_use'` y luego una final con texto.
   const mockResponses = [];
+  // 2026-06-21 TANDA 5 #341: sentinel para forzar throw del SDK simulando
+  // network/5xx errors de Anthropic. Si la cola tiene un objeto con
+  // __throw: Error, el create() throwa esa Error.
   function MockAnthropic() {
     return {
       messages: {
@@ -48,12 +51,15 @@ jest.mock('@anthropic-ai/sdk', () => {
               usage: { input_tokens: 10, output_tokens: 5 },
             };
           }
-          return mockResponses.shift();
+          const next = mockResponses.shift();
+          if (next && next.__throw instanceof Error) throw next.__throw;
+          return next;
         }),
       },
     };
   }
   MockAnthropic.__queueResponse = (r) => mockResponses.push(r);
+  MockAnthropic.__queueThrow = (err) => mockResponses.push({ __throw: err });
   MockAnthropic.__resetQueue = () => { mockResponses.length = 0; };
   MockAnthropic.lastCallParams = null;
   return MockAnthropic;
@@ -1223,6 +1229,172 @@ describe('TANDA 0 regression — cache_control aplicado a system + último tool'
 // ─────────────────────────────────────────────────────────────────────────
 // loadConversation happy path (gap detectado por auditoría #341)
 // ─────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────
+// TANDA 5 #341 — tests gaps remaining (auditoría Tests post-bot)
+//
+// Cubre los huecos que TANDA 1 dejó pendientes:
+//   - Multi-iteration tool_use loop (2+ tools en secuencia).
+//   - MAX_TOOL_ITERATIONS bound — el loop NO se vuelve infinito.
+//   - Error handling Anthropic SDK throw — user msg preservado.
+//   - Tool error path — la tool throws → tool_result con error,
+//     el bot recibe el error como data y puede explicarlo.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('TANDA 5 #341 — tool_use loop multi-iteración', () => {
+  it('encadena 2 tool_use sucesivos antes del texto final', async () => {
+    // Turn 1: tool_use get_kpis_hoy
+    Anthropic.__queueResponse({
+      id: 'm_1',
+      content: [{ type: 'tool_use', id: 'tu_1', name: 'get_kpis_hoy', input: {} }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 200, output_tokens: 20 },
+    });
+    // Turn 2: tool_use get_alertas (Claude decide profundizar)
+    Anthropic.__queueResponse({
+      id: 'm_2',
+      content: [{ type: 'tool_use', id: 'tu_2', name: 'get_alertas', input: {} }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 250, output_tokens: 15 },
+    });
+    // Turn 3: texto final
+    Anthropic.__queueResponse({
+      id: 'm_3',
+      content: [{ type: 'text', text: 'Día tranquilo: $0 vendidos, 0 alertas críticas.' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 300, output_tokens: 40 },
+    });
+
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    const r = await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: '¿Cómo estamos hoy?' });
+
+    expect(r.status).toBe(200);
+    expect(r.body.text).toBe('Día tranquilo: $0 vendidos, 0 alertas críticas.');
+    expect(r.body.tool_calls).toBe(2); // 2 tools antes del texto
+    // Tokens: 200+250+300 = 750 in, 20+15+40 = 75 out
+    expect(r.body.tokens.input).toBe(750);
+    expect(r.body.tokens.output).toBe(75);
+  });
+
+  it('respeta MAX_TOOL_ITERATIONS — no loopea infinito si el modelo se obstina', async () => {
+    // Simulamos un modelo en bucle: 6 tool_use seguidos (MAX_TOOL_ITERATIONS = 5).
+    // El loop debe cortar antes y persistir lo que haya.
+    for (let i = 0; i < 6; i++) {
+      Anthropic.__queueResponse({
+        id: `m_loop_${i}`,
+        content: [{ type: 'tool_use', id: `tu_${i}`, name: 'get_kpis_hoy', input: {} }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 100, output_tokens: 10 },
+      });
+    }
+
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    const r = await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: 'looper' });
+
+    // Sin importar el outcome exacto (200 con fallback o 500), lo crítico es
+    // que NO se haya colgado. Si llegamos acá en < 5s, el loop terminó.
+    expect([200, 500, 503]).toContain(r.status);
+    // En la práctica el lib devuelve 200 con un texto fallback cuando agota
+    // iterations — tool_calls debería ser ≤ MAX_TOOL_ITERATIONS (5).
+    if (r.status === 200) {
+      expect(r.body.tool_calls).toBeLessThanOrEqual(5);
+    }
+  }, 10000);
+});
+
+describe('TANDA 5 #341 — error handling Anthropic SDK', () => {
+  it('si Anthropic.messages.create THROWS, user msg queda persistido + error response', async () => {
+    // Simulamos un fallo de red / 5xx de Anthropic encolando un __throw
+    // sentinel — el mock factory lo detecta y throwa la Error.
+    const apiErr = new Error('Anthropic API unreachable');
+    apiErr.status = 503;
+    Anthropic.__queueThrow(apiErr);
+
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    const r = await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: 'pregunta-que-rompe' });
+
+    // 502 esperado — chat.js wrappea cualquier error de Anthropic en un Error
+    // con status=502 y message user-friendly (ver chat.js#287). El user ve
+    // "No pude generar la respuesta. Probá de nuevo en un momento.", no el
+    // mensaje crudo de la SDK ni stack trace.
+    expect(r.status).toBe(502);
+    expect(r.body.error).toMatch(/no pude generar.*prob/i);
+
+    // CRÍTICO: el user msg quedó persistido (decisión de diseño en chat.js,
+    // line 26-29 — "preferimos preservar el input del user en vez de perderlo").
+    const { rows } = await pool.query(
+      `SELECT role, content FROM chat_messages
+        WHERE conversation_id = $1 ORDER BY created_at ASC`,
+      [conv.body.id]
+    );
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows[0].role).toBe('user');
+    expect(rows[0].content[0].text).toBe('pregunta-que-rompe');
+  });
+});
+
+describe('TANDA 5 #341 — tool error path', () => {
+  it('si una tool throws, el bot recibe tool_result con error y puede recuperarse', async () => {
+    // Turn 1: tool_use de una tool que NO existe (simula error de tool)
+    Anthropic.__queueResponse({
+      id: 'm_err',
+      content: [{ type: 'tool_use', id: 'tu_err', name: 'tool_inexistente', input: {} }],
+      stop_reason: 'tool_use',
+      usage: { input_tokens: 100, output_tokens: 10 },
+    });
+    // Turn 2: el bot ve el error y responde texto (no rompe el flow)
+    Anthropic.__queueResponse({
+      id: 'm_recovery',
+      content: [{ type: 'text', text: 'No pude obtener esos datos, intentá reformulando.' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 150, output_tokens: 20 },
+    });
+
+    const conv = await request(app)
+      .post('/api/chat/conversations')
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({});
+    const r = await request(app)
+      .post(`/api/chat/conversations/${conv.body.id}/messages`)
+      .set('Authorization', `Bearer ${user1Tenant1Token}`)
+      .send({ text: 'tool inexistente test' });
+
+    expect(r.status).toBe(200);
+    expect(r.body.text).toBe('No pude obtener esos datos, intentá reformulando.');
+    expect(r.body.tool_calls).toBe(1);
+
+    // El segundo call a Anthropic debe haber incluido el tool_result con error.
+    const params = Anthropic.lastCallParams;
+    const messagesArr = params.messages;
+    const lastMsg = messagesArr[messagesArr.length - 1];
+    expect(lastMsg.role).toBe('user');
+    const toolResultBlock = lastMsg.content.find(b => b.type === 'tool_result');
+    expect(toolResultBlock).toBeDefined();
+    expect(toolResultBlock.tool_use_id).toBe('tu_err');
+    // El content del tool_result contiene el mensaje de error (la dispatcher
+    // devuelve { error: '...' } cuando la tool no existe).
+    const errPayload = JSON.parse(toolResultBlock.content);
+    expect(errPayload.error).toMatch(/tool_inexistente|no implementada/i);
+  });
+});
 
 describe('GET /conversations/:id (loadConversation happy path)', () => {
   it('devuelve la conv con mensajes en orden cronológico ASC', async () => {
