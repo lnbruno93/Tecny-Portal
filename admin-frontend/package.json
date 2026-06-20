@@ -1,0 +1,29 @@
+{
+  "name": "admin-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tecny super-admin console — gestión de tenants del SaaS (separada del portal de usuarios).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "echo 'lint not configured yet'"
+  },
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jsdom": "^29.1.1",
+    "vite": "8.0.12",
+    "vitest": "4.1.7"
+  }
+}
