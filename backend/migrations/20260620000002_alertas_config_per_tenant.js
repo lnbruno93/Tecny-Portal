@@ -53,21 +53,38 @@ exports.up = (pgm) => {
     ALTER TABLE alertas_config
       ADD CONSTRAINT alertas_config_tenant_tipo_unique UNIQUE (tenant_id, tipo);
 
-    -- 3. Seed defaults para cada tenant que falte. CROSS JOIN entre tenants
-    -- y la lista de tipos default, EXCEPT las combinaciones ya existentes.
-    -- Esto es safe porque la UNIQUE compuesta ya está en su lugar.
-    INSERT INTO alertas_config (tenant_id, tipo, activa, parametros)
-    SELECT t.id, defaults.tipo, defaults.activa, defaults.parametros
-      FROM tenants t
-     CROSS JOIN (VALUES
-       ('tc_referencia',      true, '{"tc":null,"fecha":null}'::jsonb),
-       ('caja_negativa',      true, '{}'::jsonb),
-       ('stock_bajo',         true, '{"umbral_unidades":5}'::jsonb),
-       ('cc_mora',            true, '{"dias_sin_pago":30}'::jsonb),
-       ('proveedor_atrasado', true, '{"dias_sin_movimiento":30}'::jsonb)
-     ) AS defaults(tipo, activa, parametros)
-     WHERE t.deleted_at IS NULL
-    ON CONFLICT (tenant_id, tipo) DO NOTHING;
+    -- 3. Seed defaults para cada tenant que falte.
+    --
+    -- 2026-06-20 INCIDENT FIX: el CROSS JOIN original fallaba en prod/staging
+    -- con error 42501 "new row violates row-level security policy for table
+    -- alertas_config" porque:
+    --   - alertas_config tiene FORCE RLS desde 20260616000002_rls_fail_closed.
+    --   - La policy es WITH CHECK (tenant_id = current_setting(app.current_tenant
+    --     , true)::int). Sin app.current_tenant seteado, el setting devuelve
+    --     NULL -> tenant_id = NULL evalua NULL (no TRUE) -> INSERT rechazado.
+    --   - FORCE RLS aplica al OWNER tambien — SET row_security = off NO la
+    --     bypassa (a diferencia de RLS sin FORCE).
+    --   - En local funcionaba porque el role dev es SUPERUSER + BYPASSRLS;
+    --     en prod/staging el role es NOSUPERUSER (TANDA 0c #294).
+    --
+    -- Fix: loop DO ... que setea app.current_tenant antes de cada INSERT,
+    -- asi el WITH CHECK pasa para cada tenant. set_config(..., true) es
+    -- transaction-local (se descarta al COMMIT, no contamina el client pool).
+    DO $$
+    DECLARE
+      t_id INT;
+    BEGIN
+      FOR t_id IN SELECT id FROM tenants WHERE deleted_at IS NULL ORDER BY id LOOP
+        PERFORM set_config('app.current_tenant', t_id::text, true);
+        INSERT INTO alertas_config (tenant_id, tipo, activa, parametros) VALUES
+          (t_id, 'tc_referencia',      true, '{"tc":null,"fecha":null}'::jsonb),
+          (t_id, 'caja_negativa',      true, '{}'::jsonb),
+          (t_id, 'stock_bajo',         true, '{"umbral_unidades":5}'::jsonb),
+          (t_id, 'cc_mora',            true, '{"dias_sin_pago":30}'::jsonb),
+          (t_id, 'proveedor_atrasado', true, '{"dias_sin_movimiento":30}'::jsonb)
+        ON CONFLICT (tenant_id, tipo) DO NOTHING;
+      END LOOP;
+    END $$;
   `);
 };
 
