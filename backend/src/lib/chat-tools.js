@@ -32,6 +32,7 @@
 const db = require('../config/database');
 const logger = require('./logger');
 const { periodoRange, PERIODO_SCHEMA_FRAGMENT } = require('./chat-periods');
+const { SALDO_CASE_M } = require('./saldoCC');
 
 // ──────────────────────────────────────────────────────────────────────────
 // System prompt — instrucciones al bot
@@ -739,29 +740,17 @@ const handlers = {
       );
       const diasMora = Number(cfgMora[0]?.parametros?.dias_sin_pago) || 30;
 
+      // 2026-06-20 TANDA 0 fix #341: usa SALDO_CASE_M canónico (saldoCC.js).
+      // Pre-fix inlineaba un CASE distinto al del módulo /api/cuentas.
       const { rows: ccMora } = await client.query(
         `SELECT c.id, c.nombre, c.apellido,
-                COALESCE(SUM(
-                  CASE
-                    WHEN m.tipo='saldo_inicial' THEN m.monto_total
-                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL THEN 0
-                    WHEN m.tipo='compra' THEN m.monto_total
-                    ELSE -m.monto_total
-                  END
-                ), 0) AS saldo,
+                COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo,
                 MAX(m.fecha) AS ultimo_mov
          FROM clientes_cc c
          LEFT JOIN movimientos_cc m ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL
          WHERE c.deleted_at IS NULL
          GROUP BY c.id, c.nombre, c.apellido
-         HAVING COALESCE(SUM(
-                  CASE
-                    WHEN m.tipo='saldo_inicial' THEN m.monto_total
-                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL THEN 0
-                    WHEN m.tipo='compra' THEN m.monto_total
-                    ELSE -m.monto_total
-                  END
-                ), 0) > 0
+         HAVING COALESCE(SUM(${SALDO_CASE_M}), 0) > 0
             AND (MAX(m.fecha) IS NULL OR MAX(m.fecha) < CURRENT_DATE - INTERVAL '1 day' * $1)
          ORDER BY saldo DESC
          LIMIT 5`,
@@ -890,23 +879,15 @@ const handlers = {
     const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
-      // Lógica de saldo replicada del módulo Cuentas Corrientes:
-      //   saldo_inicial + compra + entrega_mercaderia - pago - parte_de_pago - devolucion
-      // Excluye 'compra' con caja_id != NULL (esas se cobraron al instante
-      // contra una caja, no quedan en CC). Igual que evalCcMora pero sin
-      // filtro de días.
+      // 2026-06-20 TANDA 0 fix #341 P1-correctness: usar SALDO_CASE_M de
+      // lib/saldoCC.js como fuente única de verdad. La versión previa
+      // inlineaba un CASE distinto (sumaba 'entrega_mercaderia' como +monto,
+      // canónico lo trata como -monto) → el bot mostraba saldos distintos
+      // que /api/cuentas. Misma fórmula que el módulo + dashboard.
       const { rows } = await client.query(
         `WITH saldos AS (
            SELECT c.id, c.nombre, c.apellido,
-                  COALESCE(SUM(
-                    CASE m.tipo
-                      WHEN 'saldo_inicial'      THEN  m.monto_total
-                      WHEN 'compra'             THEN
-                        CASE WHEN m.caja_id IS NULL THEN m.monto_total ELSE 0 END
-                      WHEN 'entrega_mercaderia' THEN  m.monto_total
-                      ELSE -m.monto_total
-                    END
-                  ), 0) AS saldo,
+                  COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo,
                   MAX(m.fecha) AS ultimo_mov
              FROM clientes_cc c
              LEFT JOIN movimientos_cc m
@@ -926,19 +907,10 @@ const handlers = {
         [limit]
       );
 
-      // Suma total para resumen.
+      // Suma total para resumen — misma fórmula canónica.
       const { rows: totRows } = await client.query(
         `WITH saldos AS (
-           SELECT
-             COALESCE(SUM(
-               CASE m.tipo
-                 WHEN 'saldo_inicial' THEN m.monto_total
-                 WHEN 'compra'        THEN
-                   CASE WHEN m.caja_id IS NULL THEN m.monto_total ELSE 0 END
-                 WHEN 'entrega_mercaderia' THEN m.monto_total
-                 ELSE -m.monto_total
-               END
-             ), 0) AS saldo
+           SELECT COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo
            FROM clientes_cc c
            LEFT JOIN movimientos_cc m
                   ON m.cliente_cc_id = c.id AND m.deleted_at IS NULL

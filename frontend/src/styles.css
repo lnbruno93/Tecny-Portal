@@ -2060,7 +2060,7 @@ body.modal-open { overflow: hidden; }
   display: flex; align-items: center; justify-content: center;
 }
 .chat-title { font-weight: 700; font-size: 14px; line-height: 1.1; }
-.chat-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.chat-sub   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .chat-header-actions { display: flex; gap: 4px; }
 
 /* Body — lista de mensajes, scrollable */
@@ -2076,7 +2076,7 @@ body.modal-open { overflow: hidden; }
 .chat-empty {
   margin: auto;
   text-align: center;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 13px;
   padding: 24px 16px;
 }
@@ -2107,10 +2107,10 @@ body.modal-open { overflow: hidden; }
   border-bottom-left-radius: 4px;
 }
 .chat-msg-error .chat-msg-bubble {
-  background: color-mix(in oklab, var(--danger, #d93636) 24%, transparent);
+  background: var(--neg-soft);
   color: var(--text);
 }
-.chat-msg-error-tag { font-size: 11px; color: var(--danger, #d93636); margin-top: 3px; }
+.chat-msg-error-tag { font-size: 11px; color: var(--neg); margin-top: 3px; }
 
 /* Typing indicator — 3 puntos pulsando */
 .chat-msg-typing {
@@ -2122,7 +2122,7 @@ body.modal-open { overflow: hidden; }
 .chat-msg-typing span {
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--text-muted);
   display: inline-block;
   animation: chat-typing 1.2s infinite ease-in-out;
 }
@@ -2139,8 +2139,8 @@ body.modal-open { overflow: hidden; }
 /* Error bar (encima del input) */
 .chat-error-bar {
   padding: 8px 12px;
-  background: color-mix(in oklab, var(--danger, #d93636) 18%, transparent);
-  color: var(--danger, #d93636);
+  background: var(--neg-soft);
+  color: var(--neg);
   font-size: 12px;
   border-top: 1px solid var(--border);
 }
@@ -2184,6 +2184,6 @@ body.modal-open { overflow: hidden; }
 .chat-foot-hint {
   padding: 0 12px 8px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
   background: var(--surface);
 }

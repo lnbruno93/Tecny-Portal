@@ -22,6 +22,13 @@
 //   caller (route, chat tool, cron) DEBE pasar tenantId — no hay path
 //   global porque alertas son ESPECÍFICAS del tenant por definición.
 
+// SALDO_CASE_M = fórmula canónica de saldo CC (lib/saldoCC.js).
+// 2026-06-20 TANDA 0 fix #341: evalCcMora inlineaba un CASE distinto
+// (sumaba 'entrega_mercaderia' como deuda en vez de pago), divergiendo
+// del módulo /api/cuentas + del dashboard. Adoptamos la única fuente de
+// verdad para que las 3 vistas reporten el mismo número.
+const { SALDO_CASE_M } = require('./saldoCC');
+
 // ──────────────────────────────────────────────────────────────────────
 // 1. caja_negativa — cualquier caja con saldo actual < 0.
 // ──────────────────────────────────────────────────────────────────────
@@ -87,14 +94,7 @@ async function evalCcMora(client, { dias_sin_pago = 30 } = {}) {
   const { rows } = await client.query(
     `WITH saldos AS (
        SELECT c.id, c.nombre, c.apellido, c.categoria,
-              COALESCE(SUM(CASE m.tipo
-                WHEN 'compra'             THEN m.monto_total
-                WHEN 'entrega_mercaderia' THEN m.monto_total
-                WHEN 'pago'               THEN -m.monto_total
-                WHEN 'parte_de_pago'      THEN -m.monto_total
-                WHEN 'devolucion'         THEN -m.monto_total
-                ELSE 0
-              END), 0) AS saldo,
+              COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo,
               MAX(m.fecha) FILTER (WHERE m.tipo IN ('pago', 'parte_de_pago')) AS ultimo_pago,
               MIN(m.fecha) AS primer_mov
          FROM clientes_cc c

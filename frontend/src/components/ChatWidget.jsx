@@ -36,6 +36,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Icons } from './Icons';
 import { chat } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import useModal from '../lib/useModal';
 
 // Longitud máxima alineada con el backend (schemas/chat.js). Validado en el
 // server, replicado acá para feedback inmediato (counter de chars).
@@ -52,14 +53,21 @@ export default function ChatWidget() {
 
   const textareaRef = useRef(null);
   const scrollerRef = useRef(null);
+  const overlayRef = useRef(null);
 
-  // Auto-focus en textarea cuando se abre el modal. Más natural que
-  // requerir click adicional.
-  useEffect(() => {
-    if (open && textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, [open]);
+  // 2026-06-20 TANDA 0 fix #341 P0-3: integrar useModal — provee:
+  //   - ESC cierra (antes lo hacíamos a mano)
+  //   - focus trap (Tab cicla dentro del modal, no se escapa al sidebar)
+  //   - body scroll lock (sin esto, swipe en iOS scrollea la página atrás)
+  //   - restore focus al FAB cuando cierra (vs perderlo al <body>)
+  //   - autoFocusSelector: 'textarea' → al abrir, foco directo al input
+  // Sin esto el modal tenía paridad parcial con los 14 modales del portal.
+  useModal({
+    open,
+    onClose: () => setOpen(false),
+    overlayRef,
+    autoFocusSelector: 'textarea',
+  });
 
   // Auto-scroll al fondo cuando llega un mensaje nuevo. requestAnimationFrame
   // garantiza que el DOM ya pintó el msg antes de scrollear (sino scrollea
@@ -72,16 +80,6 @@ export default function ChatWidget() {
       }
     });
   }, [messages, sending]);
-
-  // ESC cierra el modal — paridad con CommandPalette / ChangePasswordModal.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
 
   const reset = useCallback(() => {
     setConversationId(null);
@@ -162,6 +160,7 @@ export default function ChatWidget() {
       {/* Modal (overlay + card) */}
       {open && (
         <div
+          ref={overlayRef}
           className="chat-overlay"
           role="dialog"
           aria-modal="true"
