@@ -84,6 +84,47 @@ body {
 button { font-family: inherit; }
 a { color: inherit; text-decoration: none; }
 
+/* ── Accessibility utilities (TANDA 6 audit 2026-06-22) ───────────
+   .sr-only oculta visualmente pero deja accesible para screen readers.
+   Lo usamos en <caption> de tablas + skip link.
+
+   .skip-link es visually-hidden hasta focus por teclado, ahí salta a
+   posición visible para que el primer Tab del usuario pueda saltarse
+   la sidebar y llegar directo al main content. WCAG 2.1 A 2.4.1.
+*/
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 1000;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+  transition: top 0.15s ease;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
 /* ── App shell ───────────────────────────────────────────────────── */
 .app {
   display: grid;

@@ -32,7 +32,12 @@ function ProtectedRoute({ children }) {
   // mostramos un placeholder neutro para evitar el flicker login → layout.
   if (loading) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}>
+      <div
+        style={{ display: 'grid', placeItems: 'center', height: '100vh' }}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
         <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
       </div>
     );
@@ -47,7 +52,12 @@ function ProtectedRoute({ children }) {
     <Layout>
       <Suspense
         fallback={
-          <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}>
+          <div
+            style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
             <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
           </div>
         }

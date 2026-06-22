@@ -68,8 +68,18 @@ export default function Modal({
   // SuspendTenantModal → Enter → modal cierra antes de leer la advertencia.
   // Limitando al body, el primer focusable es siempre un input/textarea/
   // botón funcional, nunca el cerrar.
+  //
+  // TANDA 6 a11y (audit 2026-06-22): focus restoration al cerrar. Guardamos
+  // document.activeElement antes de robar el focus para el modal, y al
+  // unmount lo devolvemos al elemento que lo tenía (típicamente el botón
+  // que abrió el modal). Sin esto, el focus queda perdido en <body>
+  // después de cerrar — el siguiente Tab arranca desde 0 (re-recorre toda
+  // la sidebar). Para usuarios de teclado/screen-reader es muy disruptivo.
+  const prevFocusRef = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
+    // Snapshot del elemento previo (usualmente el trigger del modal).
+    prevFocusRef.current = document.activeElement;
     const id = setTimeout(() => {
       const root = cardRef.current;
       if (!root) return;
@@ -85,7 +95,17 @@ export default function Modal({
         (footer && footer.querySelector(selector));
       if (focusable) focusable.focus();
     }, 0);
-    return () => clearTimeout(id);
+    return () => {
+      clearTimeout(id);
+      // Restaurar focus al elemento previo si todavía está en el DOM y
+      // es focuseable. Defensive: el trigger pudo haberse desmontado
+      // (ej. si el modal abrió desde una row que se removió post-action).
+      const prev = prevFocusRef.current;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        try { prev.focus(); } catch { /* noop */ }
+      }
+      prevFocusRef.current = null;
+    };
   }, [open]);
 
   if (!open) return null;

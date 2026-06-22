@@ -71,6 +71,14 @@ export default function Layout({ children }) {
 
   return (
     <div className="app">
+      {/* TANDA 6 a11y (audit 2026-06-22): skip link como PRIMER focusable
+          de la página. Permite a usuarios de teclado saltarse la sidebar
+          completa (8 items + user pill + logout = mucho Tab) y caer
+          directo en el contenido. Visually hidden hasta que reciba
+          focus por teclado — no ocupa espacio visual normal. WCAG 2.4.1. */}
+      <a href="#main-content" className="skip-link">
+        Saltar al contenido principal
+      </a>
       <aside className="sidebar" aria-label="Navegación principal">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">T</div>
@@ -183,7 +191,17 @@ export default function Layout({ children }) {
           </button>
         </header>
 
-        <div className="content">
+        {/* TANDA 6 a11y (audit 2026-06-22): id="main-content" como target
+            del skip-link. tabIndex=-1 para que el focus programático del
+            skip funcione (el focus salta acá y la próxima Tab navega el
+            contenido). El outline:none evita el ring feo al recibir el
+            focus desde un skip. */}
+        <div
+          className="content"
+          id="main-content"
+          tabIndex={-1}
+          style={{ outline: 'none' }}
+        >
           <div className="content-narrow">{children}</div>
         </div>
       </main>
