@@ -592,3 +592,156 @@ describe('GET /api/super-admin/metrics/recent-actions', () => {
     expect(r.status).toBe(403);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// C.1.2 #353: plan-prices endpoints
+//
+// Cubre GET (lista los 4 planes con join a updated_by_username) y PATCH
+// (UPDATE atómico + audit trail + cache refresh). Tests defensivos:
+//   · trial NO se puede editar (400)
+//   · enterprise rechaza price_usd != null (400)
+//   · plan inexistente → 404
+//   · PATCH no-op (mismo valor) → 200 con noop:true, sin tocar audit
+//   · regular user → 403
+// ──────────────────────────────────────────────────────────────────────────
+describe('GET /api/super-admin/plan-prices', () => {
+  it('devuelve los 4 planes ordenados (trial, starter, pro, enterprise)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/plan-prices')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.plan_prices)).toBe(true);
+    expect(r.body.plan_prices.map((p) => p.plan)).toEqual(['trial', 'starter', 'pro', 'enterprise']);
+    // El enterprise debe venir con price_usd null (seed de la migration).
+    const ent = r.body.plan_prices.find((p) => p.plan === 'enterprise');
+    expect(ent.price_usd).toBeNull();
+  });
+
+  it('regular user recibe 403', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/plan-prices')
+      .set('Authorization', `Bearer ${regularUserToken}`);
+    expect(r.status).toBe(403);
+  });
+
+  it('sin JWT recibe 401', async () => {
+    const r = await request(app).get('/api/super-admin/plan-prices');
+    expect(r.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/super-admin/plan-prices/:plan', () => {
+  // Cleanup post-test: reset starter+pro a los valores del seed (39/189) y
+  // borra audit rows que generamos. Sin esto, los tests siguientes ven
+  // valores arbitrarios y eso quiebra otras suites.
+  afterEach(async () => {
+    await pool.query(
+      `UPDATE plan_prices SET price_usd = 39, notes = NULL, updated_by = NULL WHERE plan = 'starter'`
+    );
+    await pool.query(
+      `UPDATE plan_prices SET price_usd = 189, notes = NULL, updated_by = NULL WHERE plan = 'pro'`
+    );
+    await pool.query(
+      `DELETE FROM tenant_admin_actions WHERE action = 'plan_price_change'`
+    );
+  });
+
+  it('actualiza precio de starter + audita + responde con valor nuevo', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/starter')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: 49, notes: 'subido por test', reason: 'sanity test' });
+    expect(r.status).toBe(200);
+    expect(r.body.plan).toBe('starter');
+    expect(Number(r.body.price_usd)).toBe(49);
+    expect(r.body.notes).toBe('subido por test');
+    expect(r.body.noop).toBe(false);
+
+    // DB row efectivamente actualizada.
+    const { rows } = await pool.query(
+      `SELECT price_usd, notes, updated_by FROM plan_prices WHERE plan = 'starter'`
+    );
+    expect(Number(rows[0].price_usd)).toBe(49);
+    expect(rows[0].notes).toBe('subido por test');
+    expect(rows[0].updated_by).toBe(1);
+
+    // Audit row creada.
+    const { rows: audit } = await pool.query(
+      `SELECT action, before_state, after_state, reason
+         FROM tenant_admin_actions
+        WHERE action = 'plan_price_change'
+        ORDER BY id DESC LIMIT 1`
+    );
+    expect(audit[0].action).toBe('plan_price_change');
+    // El endpoint hace Number(before.price_usd) antes de meterlo a jsonb —
+    // así que llega como número, no como string '39.00' del driver pg.
+    expect(audit[0].before_state).toMatchObject({ plan: 'starter', price_usd: 39 });
+    expect(audit[0].after_state).toMatchObject({ plan: 'starter', price_usd: 49 });
+    expect(audit[0].reason).toBe('sanity test');
+  });
+
+  it('rechaza editar trial (400)', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/trial')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: 10 });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/trial/i);
+  });
+
+  it('rechaza enterprise con price_usd no-null (400)', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/enterprise')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: 500 });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/enterprise/i);
+  });
+
+  it('plan inexistente → 404', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/no_existe')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: 10 });
+    expect(r.status).toBe(404);
+  });
+
+  it('PATCH no-op (mismo valor) → 200 noop:true sin audit', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/starter')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: 39 }); // mismo valor que el seed
+    expect(r.status).toBe(200);
+    expect(r.body.noop).toBe(true);
+
+    // No se creó audit row.
+    const { rows: audit } = await pool.query(
+      `SELECT COUNT(*)::int AS cnt FROM tenant_admin_actions WHERE action = 'plan_price_change'`
+    );
+    expect(audit[0].cnt).toBe(0);
+  });
+
+  it('rechaza price_usd negativo (400 via zod)', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/pro')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: -1 });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza body con campos extra (.strict)', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/pro')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ price_usd: 199, malicious_field: 'pwn' });
+    expect(r.status).toBe(400);
+  });
+
+  it('regular user recibe 403', async () => {
+    const r = await request(app)
+      .patch('/api/super-admin/plan-prices/starter')
+      .set('Authorization', `Bearer ${regularUserToken}`)
+      .send({ price_usd: 49 });
+    expect(r.status).toBe(403);
+  });
+});
