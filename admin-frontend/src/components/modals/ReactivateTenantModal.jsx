@@ -40,6 +40,10 @@ export default function ReactivateTenantModal({ tenant, open, onClose, onSaved }
       onSaved?.();
     } catch (err) {
       setError(err?.message || 'No pudimos reactivar el tenant.');
+    } finally {
+      // Hygiene 2026-06-22 follow-up del bug Planes.jsx: ver comment en
+      // EditTenantModal — try/finally evita depender del useEffect [open]
+      // + cierre desde el parent. Defensa en profundidad.
       setSubmitting(false);
     }
   };
