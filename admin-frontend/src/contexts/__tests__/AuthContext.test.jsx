@@ -23,6 +23,11 @@ vi.mock('../../lib/api.js', () => ({
   getToken: vi.fn(() => null),
   saveToken: vi.fn(),
   clearToken: vi.fn(),
+  // SEC-3 fix (audit 2026-06-22): logout() ahora llama abortAllInFlight()
+  // ANTES de limpiar state, para abortar requests in-flight que podrían
+  // resolver post-logout con datos del super-admin. El mock necesita
+  // exportarlo o el test de logout crashea con "is not a function".
+  abortAllInFlight: vi.fn(),
   resolveApiBase: (u) => u || 'http://localhost',
 }));
 

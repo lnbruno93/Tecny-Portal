@@ -64,9 +64,38 @@ export function clearToken() {
   }
 }
 
+// SEC-4 fix (audit 2026-06-22): clamp tamaño de error.message para que
+// si el backend devuelve un blob enorme/raro (no JSON, HTML de proxy,
+// stacktrace inadvertido), no se pinta-renderea-completo en banners.
+// Limitamos a 200 chars + ellipsis. React escapa el contenido igual,
+// pero esto evita layouts rotos por strings de N MB.
+const MAX_ERR_MSG = 200;
+function clampMsg(msg) {
+  if (typeof msg !== 'string') return 'Error del servidor';
+  const trimmed = msg.trim();
+  if (trimmed.length <= MAX_ERR_MSG) return trimmed;
+  return trimmed.slice(0, MAX_ERR_MSG - 1) + '…';
+}
+
+// SEC-3 fix (audit 2026-06-22): set de AbortControllers globales para
+// poder abortar requests in-flight desde el logout. Sin esto, una
+// request lenta lanzada antes del logout puede resolver después con
+// datos del super-admin, y un componente puede `setState` sobre ese
+// resultado dejándolo visible momentáneamente. El set se rellena al
+// momento de iniciar cada request y se limpia cuando termina (success
+// o error). `abortAllInFlight` los aborta todos a la vez.
+const inFlightControllers = new Set();
+export function abortAllInFlight() {
+  for (const c of inFlightControllers) {
+    try { c.abort(); } catch { /* noop */ }
+  }
+  inFlightControllers.clear();
+}
+
 // Core wrapper — devuelve JSON, throw en error con mensaje legible.
 export async function api(path, method = 'GET', body = null, timeoutMs = 15000) {
   const controller = new AbortController();
+  inFlightControllers.add(controller);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const opts = {
@@ -86,6 +115,7 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
     throw new Error('Sin conexión con el servidor. Verificá tu red.');
   } finally {
     clearTimeout(timer);
+    inFlightControllers.delete(controller);
   }
 
   if (res.status === 401) {
@@ -107,7 +137,8 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
       parsed = await res.json();
       msg = parsed?.error || parsed?.message || msg;
     } catch (_) { /* body no es JSON, mensaje genérico */ }
-    const err = new Error(msg);
+    // SEC-4: clamp tamaño del mensaje antes de propagarlo al UI.
+    const err = new Error(clampMsg(msg));
     err.status = res.status;
     err.responseBody = parsed;
     throw err;
