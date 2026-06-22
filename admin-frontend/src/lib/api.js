@@ -35,16 +35,34 @@ const BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 
 const TOKEN_KEY = 'admin_token';
 
+// S-8 fix (audit 2026-06-22): try/catch defensivo en localStorage.
+// Safari iOS modo privado tiene quota=0 → setItem tira QuotaExceededError.
+// Sin el guard, login completo crasheaba con excepción no manejada.
+// Failure mode aceptable: token no persiste cross-reload, sesión en
+// memoria sigue OK hasta que el operador cierre la pestaña.
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || null;
+  try {
+    return localStorage.getItem(TOKEN_KEY) || null;
+  } catch {
+    return null;
+  }
 }
 
 export function saveToken(t) {
-  localStorage.setItem(TOKEN_KEY, t);
+  try {
+    localStorage.setItem(TOKEN_KEY, t);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[admin api] localStorage saveToken failed:', err?.message);
+  }
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // No-op si el storage no está disponible.
+  }
 }
 
 // Core wrapper — devuelve JSON, throw en error con mensaje legible.

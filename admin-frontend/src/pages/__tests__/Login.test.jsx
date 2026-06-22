@@ -92,4 +92,37 @@ describe('Login', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/usuario o contraseña incorrectos/i);
     });
   });
+
+  // S-7 regresión (audit 2026-06-22): si backend devuelve 200 con body
+  // sin `user` (bug del server o proxy raro), antes mostraba "no es
+  // super-admin" — confuso porque el user legítimo no perdió permisos,
+  // simplemente la respuesta vino mal. Ahora distinguimos los casos.
+  it('respuesta sin data.user → mensaje "Respuesta inválida" (no enum-leak)', async () => {
+    adminApi.login.mockResolvedValue({ token: 'X' }); // sin .user
+
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+    fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/respuesta inválida/i);
+    });
+
+    const { saveToken } = await import('../../lib/api.js');
+    expect(saveToken).not.toHaveBeenCalled();
+  });
+
+  it('respuesta sin data.token → mensaje "Respuesta inválida"', async () => {
+    adminApi.login.mockResolvedValue({ user: { id: 1, is_super_admin: true } }); // sin .token
+
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+    fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/respuesta inválida/i);
+    });
+  });
 });

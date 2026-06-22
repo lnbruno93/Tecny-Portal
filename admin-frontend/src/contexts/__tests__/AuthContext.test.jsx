@@ -164,6 +164,35 @@ describe('AuthContext', () => {
     expect(lastAuth.isAuthenticated).toBe(false);
   });
 
+  // S-8 regresión (audit 2026-06-22): localStorage con JSON válido pero
+  // shape inválida (array, number, string, null) → loadUser devuelve null
+  // en vez de propagar la basura.
+  it('loadUser sanitiza localStorage con JSON inválido (array)', async () => {
+    localStorage.setItem('admin_user', JSON.stringify([1, 2, 3]));
+    getToken.mockReturnValue(null);
+    let lastAuth = null;
+    render(
+      <AuthProvider>
+        <Probe onAuth={(a) => { lastAuth = a; }} />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(lastAuth.loading).toBe(false));
+    expect(lastAuth.user).toBeNull();
+  });
+
+  it('loadUser sanitiza localStorage con JSON corrupto', async () => {
+    localStorage.setItem('admin_user', '{not valid json}');
+    getToken.mockReturnValue(null);
+    let lastAuth = null;
+    render(
+      <AuthProvider>
+        <Probe onAuth={(a) => { lastAuth = a; }} />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(lastAuth.loading).toBe(false));
+    expect(lastAuth.user).toBeNull();
+  });
+
   it('login() + logout() mutan state correctamente', async () => {
     getToken.mockReturnValue(null);
 
