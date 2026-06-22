@@ -56,7 +56,13 @@ export const healthColor = (h) => {
 
 export const tenantInitials = (name) => {
   if (!name) return '?';
+  // T-? fix (audit 2026-06-22): trim antes del split. Sin esto, un nombre
+  // con leading whitespace ("  Tecny SaaS") quedaba como ['', 'Tecny',
+  // 'SaaS'], slice(0,2) agarraba ['', 'Tecny'] y devolvía solo 'T'.
+  // Edge case en avatares cuando el operador copy-pastea el nombre desde
+  // un email o documento con espacios al principio.
   return name
+    .trim()
     .split(/\s+/)
     .slice(0, 2)
     .map((w) => w[0] || '')
