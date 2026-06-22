@@ -16,7 +16,33 @@
     <link rel="icon" href="/pwa-icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
 
-    <title>Tecny</title>
+    <!-- SEO / Social (UX-1/31 audit 2026-06-22) -->
+    <!-- tecnyapp.com es la landing pre-signup. Sin estos tags, los previews
+         de WhatsApp/Slack/Twitter/LinkedIn salen vacíos o con el HTML
+         scrapeado a ciegas. Google también pierde contexto para el SERP. -->
+    <title>Tecny — el SaaS para revendedores de tecnología</title>
+    <meta name="description" content="Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — todo en un mismo portal. Probá 14 días gratis sin tarjeta." />
+    <link rel="canonical" href="https://tecnyapp.com/" />
+
+    <!-- Open Graph (Facebook, WhatsApp, LinkedIn, Slack) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tecnyapp.com/" />
+    <meta property="og:title" content="Tecny — el SaaS para revendedores de tecnología" />
+    <meta property="og:description" content="Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — todo en un mismo portal. Probá 14 días gratis sin tarjeta." />
+    <meta property="og:image" content="https://tecnyapp.com/og-cover.png" />
+    <meta property="og:locale" content="es_AR" />
+    <meta property="og:site_name" content="Tecny" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tecny — el SaaS para revendedores de tecnología" />
+    <meta name="twitter:description" content="Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — todo en un mismo portal." />
+    <meta name="twitter:image" content="https://tecnyapp.com/og-cover.png" />
+
+    <!-- Si og-cover.png aún no existe en /public, el preview va a fallback al
+         favicon en algunos clients. Cuando Lucas suba la imagen oficial
+         (1200x630 PNG/JPG recomendado), el preview se ve completo. -->
+
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
