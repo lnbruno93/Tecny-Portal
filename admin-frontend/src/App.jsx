@@ -7,15 +7,22 @@
 //   · /facturacion, /onboarding, /uso, /soporte
 //                             → placeholders ComingSoon (no implementadas todavía)
 
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';
-import Resumen from './pages/Resumen.jsx';
-import Clientes from './pages/Clientes.jsx';
-import Ficha from './pages/Ficha.jsx';
-import Planes from './pages/Planes.jsx';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { PageHead } from './components/primitives/index.jsx';
+
+// PERF-3 fix (audit 2026-06-22): code-split de rutas autenticadas con
+// React.lazy + Suspense. El user que aterriza en /login NO necesita el
+// código de Ficha + 4 modals + ColChart + Planes — eso son ~40KB que
+// se descargan solo después de loguearse. Login queda en el initial
+// bundle por velocidad (es la pantalla pre-auth obvia).
+const Resumen  = lazy(() => import('./pages/Resumen.jsx'));
+const Clientes = lazy(() => import('./pages/Clientes.jsx'));
+const Ficha    = lazy(() => import('./pages/Ficha.jsx'));
+const Planes   = lazy(() => import('./pages/Planes.jsx'));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -33,7 +40,22 @@ function ProtectedRoute({ children }) {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <Layout>{children}</Layout>;
+  // Suspense fallback: skeleton mínimo mientras se descarga el chunk de
+  // la página (primera visita post-login a cada ruta). Después queda
+  // cached y el render es instantáneo.
+  return (
+    <Layout>
+      <Suspense
+        fallback={
+          <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}>
+            <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
+          </div>
+        }
+      >
+        {children}
+      </Suspense>
+    </Layout>
+  );
 }
 
 function ComingSoon({ title, label }) {
