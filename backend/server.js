@@ -50,6 +50,7 @@ const { startAuditPartitionsJob } = require('./src/jobs/auditPartitionsJob');
 const { startAuditQueueWorker } = require('./src/jobs/auditQueueWorker');
 const { startEmailTokensCleanupJob } = require('./src/jobs/emailTokensCleanupJob');
 const { startChatCleanupJob } = require('./src/jobs/chatCleanupJob');
+const { primeCache: primePlanPricesCache } = require('./src/lib/planPricing');
 const withAdvisoryLock = require('./src/lib/withAdvisoryLock');
 const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
@@ -57,6 +58,14 @@ const PORT = process.env.PORT || 3001;
 
 const server = app.listen(PORT, () => {
   logger.info({ port: PORT, env: process.env.NODE_ENV || 'production' }, 'iPro API iniciada');
+
+  // C.1 (#353): primear el cache de plan_prices desde la tabla DB.
+  // Async pero NO awaited — el server arranca de todas formas. Si falla,
+  // el cache queda con DEFAULT_PRICES (hardcoded de respaldo) y el log
+  // marca warn. El próximo refresh (5min) reintenta.
+  primePlanPricesCache().catch(err =>
+    logger.warn({ err: err.message }, 'plan_prices primeCache falló en startup — usando defaults')
+  );
 
   // Job interno: cada 24h purga audit_logs > AUDIT_RETENCION_DIAS días (default 365).
   // Sin esto la tabla crecía infinita y rompía /historial. Single-instance only
