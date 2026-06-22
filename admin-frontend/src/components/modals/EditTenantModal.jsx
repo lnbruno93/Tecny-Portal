@@ -105,6 +105,13 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
       onSaved?.(updated);
     } catch (err) {
       setError(err?.message || 'No pudimos guardar los cambios.');
+    } finally {
+      // Hygiene 2026-06-22 follow-up del bug Planes.jsx: setSubmitting(false)
+      // en finally — no solo en catch. Hoy el bug no se manifiesta acá porque
+      // el useEffect [open] resetea al re-abrir Y el parent (Ficha) cierra el
+      // modal en onSaved. Pero el pattern correcto es try/finally para no
+      // depender de esas dos invariantes externas (si alguien quita el
+      // useEffect en un refactor, el bug aparece).
       setSubmitting(false);
     }
   };
