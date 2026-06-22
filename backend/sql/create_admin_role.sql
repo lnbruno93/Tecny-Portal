@@ -57,21 +57,32 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO tecny_adm
 
 -- 4. CRUD en TABLAS FUTURAS (default privileges). Sin esto, una migration
 --    que crea una tabla nueva tendría que volver a correr este script.
---    OWNED BY garantiza que aplica a tablas creadas por el role app
---    (el que corre las migrations), no por cualquier role.
-ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+--
+--    BUG histórico (2026-06-22, C.1 #353): este script lo corre el operador
+--    como superuser (postgres). `CURRENT_USER` = postgres. Postgres scope-ea
+--    las default privileges al ROLE creador → solo cubren tablas creadas por
+--    postgres. Pero las migrations en staging/prod corren con `ipro_app`
+--    (NOSUPERUSER post TANDA 0c). Resultado: tablas creadas por migrations
+--    quedan sin GRANT a tecny_admin → "permission denied" en admin app.
+--
+--    FIX: especificar el role explícitamente con `FOR ROLE ipro_app` así
+--    las default privileges aplican a tablas creadas por ipro_app (las
+--    migrations) independiente de quién corra este script. La migration
+--    20260622180000_grant_admin_default_privileges.js además aplica esto
+--    desde dentro de la migration misma (cubre installs ya existentes).
+ALTER DEFAULT PRIVILEGES FOR ROLE ipro_app IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tecny_admin;
 
 -- 5. SEQUENCES (BIGSERIAL las usa, los INSERTs requieren USAGE + UPDATE
 --    para nextval/setval). Mismo patrón: existentes + futuras.
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO tecny_admin;
-ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE ipro_app IN SCHEMA public
   GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO tecny_admin;
 
 -- 6. FUNCIONES (algunas migraciones definen helpers; el role admin puede
 --    necesitar invocarlos para reports/agregados).
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO tecny_admin;
-ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE ipro_app IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO tecny_admin;
 
 -- 7. Verificación post-aplicación: este SELECT debe devolver:
@@ -93,11 +104,11 @@ WHERE rolname = 'tecny_admin';
 --   REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM tecny_admin;
 --   REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM tecny_admin;
 --   REVOKE USAGE ON SCHEMA public FROM tecny_admin;
---   ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+--   ALTER DEFAULT PRIVILEGES FOR ROLE ipro_app IN SCHEMA public
 --     REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM tecny_admin;
---   ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+--   ALTER DEFAULT PRIVILEGES FOR ROLE ipro_app IN SCHEMA public
 --     REVOKE USAGE, SELECT, UPDATE ON SEQUENCES FROM tecny_admin;
---   ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
+--   ALTER DEFAULT PRIVILEGES FOR ROLE ipro_app IN SCHEMA public
 --     REVOKE EXECUTE ON FUNCTIONS FROM tecny_admin;
 --   DROP ROLE tecny_admin;
 --
