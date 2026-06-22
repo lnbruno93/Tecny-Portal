@@ -264,6 +264,82 @@ describe('Planes', () => {
     expect(adminApi.updatePlanPrice).not.toHaveBeenCalled();
   });
 
+  // TANDA 5 audit 2026-06-22 — casos boundary del precio que no estaban
+  // cubiertos. Importante porque un super-admin distraído puede meter
+  // un 0 sin querer y "regalar" el plan inicial a futuros signups.
+  it('precio 0 abre el modal de confirmación (válido: plan gratis intencional)', async () => {
+    // Decisión de producto: 0 ES un precio válido cliente-side. El
+    // backend lo acepta (zod min 0). El admin debe poder bajar a 0
+    // intencional como promo, pero el confirm modal le da una pausa
+    // para revisar la decisión.
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    fireEvent.change(screen.getByLabelText('Precio del plan starter'), { target: { value: '0' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    // Modal abierto — el operador VE el "$39 → $0" y debe confirmar.
+    // Buscamos dentro del modal específicamente (la página entera tiene
+    // múltiples "$0" — trial muestra $0 también).
+    const modal = screen.getByText('Confirmar cambio de precio').closest('[role="dialog"]')
+      || screen.getByText('Confirmar cambio de precio').closest('.modal')
+      || screen.getByText('Confirmar cambio de precio').parentElement.parentElement;
+    expect(within(modal).getByText(/\$0\b/)).toBeInTheDocument();
+  });
+
+  it('precio decimal "0.99" abre el modal (caso promo/penny pricing)', async () => {
+    // Algunos países hacen "$0.99" psychological pricing. El input
+    // type=number permite decimales; el zod del backend usa z.number()
+    // sin .int(), así que cualquier decimal pasa.
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    fireEvent.change(screen.getByLabelText('Precio del plan starter'), { target: { value: '0.99' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    expect(screen.getByText('Confirmar cambio de precio')).toBeInTheDocument();
+  });
+
+  it('precio NaN/no-numérico no abre modal y muestra error', async () => {
+    // El input es type=number, así que la mayoría de inputs invalidos
+    // los rechaza el browser. Pero si por bug del DOM/test el valor
+    // llega como "abc", validamos isFinite() server-side AND client-side.
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    // Simulamos un valor que Number() convierte en NaN. fireEvent.change
+    // con un input type=number bypassea la validación del browser para
+    // testing — útil para forzar el camino defensivo.
+    const input = screen.getByLabelText('Precio del plan starter');
+    fireEvent.change(input, { target: { value: 'abc' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    expect(screen.queryByText('Confirmar cambio de precio')).toBeNull();
+    expect(adminApi.updatePlanPrice).not.toHaveBeenCalled();
+  });
+
+  it('precio > 99999999 (excede max) no abre modal y muestra error', async () => {
+    // El backend tiene zod .max(99999999). Validamos cliente para no
+    // perder el `reason` que pudiera tipear el admin en el modal.
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    fireEvent.change(screen.getByLabelText('Precio del plan starter'), { target: { value: '100000000' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    expect(screen.queryByText('Confirmar cambio de precio')).toBeNull();
+    expect(screen.getByText(/Excede el máximo permitido/i)).toBeInTheDocument();
+    expect(adminApi.updatePlanPrice).not.toHaveBeenCalled();
+  });
+
   // Regresión: bug reportado por Lucas (2026-06-22). Después del primer save
   // exitoso, el botón "Guardar cambios" del segundo save quedaba colgado
   // mostrando "Guardando…" para siempre — el happy path no reseteaba
