@@ -27,5 +27,28 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.js'],
     globals: true,
     css: false,
+    // T-20 fix (audit 2026-06-22): coverage thresholds para que CI atrape
+    // regresiones de cobertura. Se ejecuta con `npm run coverage`.
+    // Thresholds calibrados al baseline actual + buffer mínimo de margen
+    // para refactors menores. La idea NO es 100% — es no degradar.
+    // Reusable: si la cobertura sube post-features futuros, subir los
+    // thresholds aquí para evitar drift hacia abajo.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'lcov'],
+      include: ['src/**/*.{js,jsx}'],
+      exclude: [
+        'src/**/__tests__/**',
+        'src/**/*.test.{js,jsx}',
+        'src/main.jsx',
+        'src/test-setup.js',
+      ],
+      thresholds: {
+        lines:      60,
+        statements: 60,
+        functions:  60,
+        branches:   55,
+      },
+    },
   },
 });

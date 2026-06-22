@@ -503,7 +503,10 @@ export default function Landing() {
               <Link to="/signup" className="btn">Contactar ventas</Link>
             </div>
           </div>
-          <div className="price-note">Todos los planes incluyen actualizaciones, backups y soporte en español. Precios a confirmar.</div>
+          {/* UX-34 fix (audit 2026-06-22): se eliminó "Precios a confirmar" del
+              disclaimer — contradecía los precios USD reales que SÍ se muestran
+              ($39 starter, $189 pro). Ahora solo el incentivo positivo. */}
+          <div className="price-note">Todos los planes incluyen actualizaciones, backups y soporte en español.</div>
         </div>
       </section>
 

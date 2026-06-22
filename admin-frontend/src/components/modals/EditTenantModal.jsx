@@ -120,6 +120,10 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
       onClose={submitting ? () => {} : onClose}
       title="Editar tenant"
       size="md"
+      // SEC-2 fix (audit 2026-06-22): mutations (plan/MRR/notes) son
+      // acciones con impacto operativo. Click accidental en backdrop no
+      // debe cerrar y perder los cambios + reason. Suspend ya lo tenía.
+      closeOnBackdrop={false}
       actions={
         <>
           <Btn kind="ghost" onClick={onClose} disabled={submitting}>

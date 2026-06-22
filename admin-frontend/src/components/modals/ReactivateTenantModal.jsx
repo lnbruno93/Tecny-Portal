@@ -54,6 +54,9 @@ export default function ReactivateTenantModal({ tenant, open, onClose, onSaved }
       onClose={submitting ? () => {} : onClose}
       title="Reactivar cuenta"
       size="sm"
+      // SEC-2 fix (audit 2026-06-22): mutation con audit trail — click
+      // accidental en backdrop no debe perder el motivo tipeado.
+      closeOnBackdrop={false}
       actions={
         <>
           <Btn kind="ghost" onClick={onClose} disabled={submitting}>
