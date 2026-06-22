@@ -135,24 +135,38 @@ export default function Layout({ children }) {
 
           <div className="topbar-spacer" />
 
-          {/* Search placeholder — se cablea al endpoint global cuando exista. */}
-          <div className="search" role="search" aria-label="Búsqueda global">
+          {/* UX-2 fix (audit 2026-06-22): search/bell/plus son placeholders
+              futuros (sub-fase no determinada). Antes se renderizaban con
+              opacidad full y placeholder atractivo ("Buscar clientes…"),
+              el operador los clickeaba esperando que funcionen. Ahora con
+              opacity reducida y tooltip "Próximamente" — visualmente queda
+              claro que están en wait-state, sin perder el slot del layout
+              para cuando se implementen. */}
+          <div
+            className="search"
+            role="search"
+            aria-label="Búsqueda global"
+            title="Búsqueda global — próximamente"
+            style={{ opacity: 0.4, cursor: 'not-allowed' }}
+          >
             <span className="ico"><Icons.Search size={14} /></span>
             <input
               type="search"
-              placeholder="Buscar clientes, facturas, tickets…"
+              placeholder="Próximamente"
               disabled
               aria-disabled="true"
+              style={{ cursor: 'not-allowed' }}
             />
-            <kbd>⌘K</kbd>
+            <kbd aria-hidden="true">⌘K</kbd>
           </div>
 
           <button
             type="button"
             className="icon-btn"
-            aria-label="Notificaciones"
-            title="Notificaciones (próximamente)"
+            aria-label="Notificaciones (próximamente)"
+            title="Notificaciones — próximamente"
             disabled
+            style={{ opacity: 0.4, cursor: 'not-allowed' }}
           >
             <Icons.Bell size={16} />
             <span className="dot" aria-hidden="true" />
@@ -160,9 +174,10 @@ export default function Layout({ children }) {
           <button
             type="button"
             className="icon-btn"
-            aria-label="Crear"
-            title="Crear (próximamente)"
+            aria-label="Crear (próximamente)"
+            title="Crear — próximamente"
             disabled
+            style={{ opacity: 0.4, cursor: 'not-allowed' }}
           >
             <Icons.Plus size={16} />
           </button>

@@ -54,6 +54,10 @@ export const Icons = {
   X: (p) => <ICO {...p}><path d="M6 6l12 12M18 6 6 18" /></ICO>,
   ChevronRight: (p) => <ICO {...p}><path d="M9 6l6 6-6 6" /></ICO>,
   ChevronUp: (p) => <ICO {...p}><path d="M6 15l6-6 6 6" /></ICO>,
+  // UX-3 fix (audit 2026-06-22): ícono propio para botón "Volver a clientes".
+  // Antes usábamos ChevronRight flippeado con scaleX(-1) en un span vacío,
+  // visualmente quedaba un gap raro. Ahora SVG correcto.
+  ArrowLeft: (p) => <ICO {...p}><path d="M19 12H5M12 19l-7-7 7-7" /></ICO>,
   Sliders: (p) => (
     <ICO {...p}>
       <path d="M4 6h10M18 6h2" />
