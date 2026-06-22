@@ -44,20 +44,8 @@ VITE_API_URL=http://localhost:3001
 | `npm run preview` | Sirve el build localmente.                        |
 | `npm test`        | Vitest run (no watch).                            |
 
-## Estado actual (Fase 3)
-
-Incluye:
-- Login + ProtectedRoute con gate de `is_super_admin`.
-- `/tenants` — lista filtrable por plan / estado / search debounced.
-- Placeholders en `/tenants/:id` y `/metrics` (Fase 4).
-
-Pendiente (Fase 4):
-- Detalle de tenant + acciones (extender trial, suspender, reactivar, cambiar plan).
-- Dashboard de métricas globales (MRR, signups, churn, conversion).
-- Tab de actividad por tenant (ventas, cajas, bot, alertas, audit).
-
 ## Deploy
 
-Pendiente — se va a configurar como site Netlify separado apuntando a
+Configurado en `netlify.toml` — site Netlify separado apuntando a
 `admin.tecnyapp.com`. El bundle no debe servirse jamás desde el dominio del
 portal de usuarios (boundary de seguridad).

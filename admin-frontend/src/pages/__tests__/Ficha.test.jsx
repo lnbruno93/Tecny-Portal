@@ -1,4 +1,4 @@
-// Tests de la Ficha de cliente (Sub-fase B.3 #353).
+// Tests de la Ficha de cliente (#353).
 //
 // Cubrimos:
 //   1. Render básico: nombre, plan, status, stat cards con data real

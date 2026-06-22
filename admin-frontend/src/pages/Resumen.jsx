@@ -1,4 +1,4 @@
-// Pantalla Resumen del admin console (Sub-fase B.2 #353).
+// Pantalla Resumen del admin console (#353).
 //
 // Compone 4 bloques contra los endpoints reales de /api/super-admin/*:
 //   1. Hero "hola, X" con saludo + acciones placeholder
@@ -17,7 +17,7 @@ import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Btn, Card, Badge } from '../components/primitives/index.jsx';
 import { fmt, fmtMoney, fmtPct, ago } from '../lib/format.js';
-import { planTone, tenantInitials } from '../lib/uiHelpers.js';
+import { planTone, planLabel, tenantInitials } from '../lib/uiHelpers.js';
 import { describeAction, actionLongText } from '../lib/actionDescriptors.js';
 import ColChart from '../components/charts/ColChart.jsx';
 
@@ -33,9 +33,8 @@ function firstName(user) {
   return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
-// El mapeo action→{icon,tone,texto} vive ahora en lib/actionDescriptors.js
-// (Sub-fase B.3) para reuso desde Ficha. Importamos describeAction +
-// actionLongText arriba.
+// El mapeo action→{icon,tone,texto} vive en lib/actionDescriptors.js para
+// reuso desde Ficha. Importamos describeAction + actionLongText arriba.
 
 // Plan canónico → CSS var para color de barra en "Distribución por plan".
 // Usamos PLAN_TONES vía planTone() para el badge, pero la barra necesita
@@ -46,11 +45,6 @@ const PLAN_BAR_COLOR = {
   pro:        'var(--info)',
   enterprise: 'var(--warn)',
 };
-
-function planLabel(p) {
-  if (!p) return '—';
-  return p.charAt(0).toUpperCase() + p.slice(1);
-}
 
 export default function Resumen() {
   const navigate = useNavigate();
@@ -219,12 +213,9 @@ export default function Resumen() {
         </div>
       )}
 
-      {/* KPI grid — 6 columnas. Marcamos con kpi-grid-6 para que el
-          breakpoint de styles.css colapse a 3/2 columnas en móvil. */}
-      <div
-        className="kpi-grid kpi-grid-6"
-        style={{ gridTemplateColumns: 'repeat(6, minmax(0, 1fr))' }}
-      >
+      {/* KPI grid — 6 columnas. La clase kpi-grid-6 setea el grid-template
+          en CSS, y los breakpoints colapsan a 3/2 cols en mobile. */}
+      <div className="kpi-grid kpi-grid-6">
         {kpis.map((k, i) => (
           <div key={k.label} className="kpi">
             <div className="kpi-label">{k.label}</div>

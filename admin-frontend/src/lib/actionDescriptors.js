@@ -1,7 +1,7 @@
 // Mapping centralizado de actions admin (audit trail del backend) a su
 // presentación visual. Extraído de Resumen.jsx para reuso desde Ficha.jsx
-// (Sub-fase B.3 #353) — el feed de "Actividad admin" aparece en dos
-// contextos: cross-tenant (Resumen) y per-tenant (Ficha).
+// (#353) — el feed de "Actividad admin" aparece en dos contextos:
+// cross-tenant (Resumen) y per-tenant (Ficha).
 //
 // El backend define 6 action types fijos:
 //   suspend, reactivate, plan_change, trial_extend,

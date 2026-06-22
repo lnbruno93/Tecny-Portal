@@ -1,4 +1,4 @@
-// Pantalla Planes — editor de precios de planes (Sub-fase C.1.3 #353).
+// Pantalla Planes — editor de precios de planes (#353).
 //
 // Reemplaza el placeholder ComingSoon. Lee `plan_prices` del backend y
 // permite editar `price_usd` + `notes` de cada plan editable. trial y
@@ -29,16 +29,11 @@ import { adminApi } from '../lib/api.js';
 import { Btn, Card, Badge, PageHead } from '../components/primitives/index.jsx';
 import Modal from '../components/primitives/Modal.jsx';
 import { fmtMoney, fmtDateTime } from '../lib/format.js';
-import { planTone } from '../lib/uiHelpers.js';
+import { planTone, planLabel } from '../lib/uiHelpers.js';
 
 // Orden canónico de los planes. El backend ya devuelve ordenado, pero
 // usamos esto como fallback defensivo si llegan en orden distinto.
 const PLAN_ORDER = ['trial', 'starter', 'pro', 'enterprise'];
-
-function planLabel(p) {
-  if (!p) return '—';
-  return p.charAt(0).toUpperCase() + p.slice(1);
-}
 
 // BLOCKER H-2 fix (audit 2026-06-22): `planTone` se importa de uiHelpers.js
 // para alinearse con Resumen/Clientes/Ficha. Antes acá había una versión
@@ -195,7 +190,7 @@ function ConfirmModal({ open, onClose, change, onConfirm, submitting, error }) {
         maxLength={500}
       />
       <div className="muted tiny" style={{ marginTop: 4 }}>
-        Queda registrado en el log de cambios (consultable en futura sub-fase).
+        Queda registrado en el log de cambios.
       </div>
 
       {error && (

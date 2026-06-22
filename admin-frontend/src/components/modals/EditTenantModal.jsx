@@ -1,4 +1,4 @@
-// EditTenantModal — PATCH /api/super-admin/tenants/:id (Sub-fase B.3 #353).
+// EditTenantModal — PATCH /api/super-admin/tenants/:id (#353).
 //
 // Cubre plan + custom MRR + notas en una sola operación atómica (el
 // backend wrapea todo en tx + audit trail). El `reason` es opcional pero
@@ -19,13 +19,9 @@ import { useEffect, useId, useState } from 'react';
 import Modal from '../primitives/Modal.jsx';
 import { Btn, Badge } from '../primitives/index.jsx';
 import { adminApi } from '../../lib/api.js';
+import { planLabel } from '../../lib/uiHelpers.js';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'pro', 'enterprise'];
-
-function planLabel(p) {
-  if (!p) return '—';
-  return p.charAt(0).toUpperCase() + p.slice(1);
-}
 
 // Form state inicial derivado del tenant. Lo extraemos a una función
 // para resetear el form cuando se reabre el modal (efecto en open).

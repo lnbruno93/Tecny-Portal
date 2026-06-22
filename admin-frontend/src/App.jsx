@@ -1,11 +1,11 @@
-// Router del admin console. Estado actual (post-Sub-fase C.1.3):
+// Router del admin console:
 //   · /login                  → real
 //   · /                       → Resumen, real (KPIs + chart + activity + top)
 //   · /clientes               → Clientes, real (lista + filtros + búsqueda)
 //   · /clientes/:id           → Ficha, real (detalle + 2 tabs + 4 modals de mutations)
-//   · /planes                 → Planes, real (editor de precios C.1.3 #353)
+//   · /planes                 → Planes, real (editor de precios #353)
 //   · /facturacion, /onboarding, /uso, /soporte
-//                             → placeholders ComingSoon (Sub-fases futuras)
+//                             → placeholders ComingSoon (no implementadas todavía)
 
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';

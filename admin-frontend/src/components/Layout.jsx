@@ -2,9 +2,9 @@
 // search placeholder + bell + plus + user pill). Es el shell que envuelve
 // TODAS las rutas autenticadas; el Login renderiza fuera de esto.
 //
-// Sub-fase A: las acciones de la topbar (search, bell, plus) son visuales
-// — sub-fase B/C las cablea contra los endpoints reales. Logout sí
-// funciona, porque es la única forma de salir de un estado de sesión roto.
+// Las acciones de la topbar (search, bell, plus) son visuales — se van a
+// cablear contra endpoints reales cuando existan. Logout sí funciona,
+// porque es la única forma de salir de un estado de sesión roto.
 
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
@@ -111,10 +111,9 @@ export default function Layout({ children }) {
         </div>
 
         {/*
-          Logout explícito y visible: en sub-fase A es el único "escape" de
-          una sesión rota (token expirado pero is_super_admin todavía true
-          en cache, p.ej.). Cuando agreguemos menú contextual al user-pill,
-          el botón se va al menú.
+          Logout explícito y visible: es el "escape" de una sesión rota
+          (token expirado pero is_super_admin todavía true en cache, p.ej.).
+          Cuando agreguemos menú contextual al user-pill, el botón se va al menú.
         */}
         <button
           type="button"
@@ -136,7 +135,7 @@ export default function Layout({ children }) {
 
           <div className="topbar-spacer" />
 
-          {/* Search placeholder — sub-fase B lo cablea al endpoint global. */}
+          {/* Search placeholder — se cablea al endpoint global cuando exista. */}
           <div className="search" role="search" aria-label="Búsqueda global">
             <span className="ico"><Icons.Search size={14} /></span>
             <input

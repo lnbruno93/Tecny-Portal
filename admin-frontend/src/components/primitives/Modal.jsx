@@ -1,4 +1,4 @@
-// Modal primitive del admin console (Sub-fase B.3 #353).
+// Modal primitive del admin console (#353).
 //
 // React 19 + Vite 8, sin deps externas — los 4 modals de mutations de
 // tenant (edit / suspend / reactivate / extend-trial) lo consumen.
@@ -8,7 +8,7 @@
 //     child se desmonte (resetea form state interno automáticamente y no
 //     deja listeners colgando).
 //   · NO bloqueamos scroll del body. Lucas testea en mobile y el doble
-//     scroll está OK por ahora — si molesta, se ajusta en sub-fase futura.
+//     scroll está OK por ahora — si molesta, se ajusta más adelante.
 //   · Backdrop click cierra (configurable). Click sobre el card NO cierra:
 //     `stopPropagation` para que el bubble no llegue al overlay.
 //   · ESC cierra (configurable). Listener montado solo cuando open=true.

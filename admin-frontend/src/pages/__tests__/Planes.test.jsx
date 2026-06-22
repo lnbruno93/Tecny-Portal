@@ -1,4 +1,4 @@
-// Tests de la pantalla Planes (Sub-fase C.1.3 #353).
+// Tests de la pantalla Planes (#353).
 //
 // Cubrimos los flows críticos que tocan al backend + UX defensiva:
 //   1. Render con 4 planes y label correcto por plan

@@ -1,4 +1,4 @@
-// Pantalla Clientes del admin console (Sub-fase B.2 #353).
+// Pantalla Clientes del admin console (#353).
 //
 // Listado completo de tenants con filtros (estado + búsqueda libre)
 // y click-to-detail. La búsqueda usa debounce de 300ms para no
@@ -16,6 +16,7 @@ import { Icons } from '../components/Icons.jsx';
 import { fmt, fmtMoney, ago } from '../lib/format.js';
 import {
   planTone,
+  planLabel,
   tenantInitials,
   getTenantStatus,
   TENANT_STATUS,
@@ -34,11 +35,6 @@ const FILTER_MODES = [
 
 function modeParams(mode) {
   return FILTER_MODES.find((m) => m.value === mode)?.params || {};
-}
-
-function planLabel(p) {
-  if (!p) return '—';
-  return p.charAt(0).toUpperCase() + p.slice(1);
 }
 
 export default function Clientes() {
