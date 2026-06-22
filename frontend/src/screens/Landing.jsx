@@ -608,9 +608,12 @@ export default function Landing() {
             </div>
             <div className="foot-col">
               <h5>Legal</h5>
-              <SoonLink>Términos</SoonLink>
-              <SoonLink>Privacidad</SoonLink>
-              <SoonLink>Seguridad</SoonLink>
+              {/* #332: las 3 páginas legales ahora existen con boilerplate
+                  AR (Ley 25.326 + CCyCN). Pendiente revisión legal formal
+                  — disclaimer visible en cada página. */}
+              <Link to="/terms">Términos</Link>
+              <Link to="/privacy">Privacidad</Link>
+              <Link to="/security">Seguridad</Link>
             </div>
           </div>
           <div className="foot-bottom">

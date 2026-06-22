@@ -23,6 +23,13 @@ const ResetPassword = lazy(() => import('./screens/ResetPassword'));
 // /inicio en el Route `/`).
 const Landing = lazy(() => import('./screens/Landing'));
 
+// Páginas legales públicas (#332) — Términos, Privacidad, Seguridad.
+// Lazy + named exports del mismo archivo. Cada una hace su propio
+// chunk del bundle compartido `LegalPages`.
+const TermsPage    = lazy(() => import('./screens/LegalPages').then((m) => ({ default: m.TermsPage })));
+const PrivacyPage  = lazy(() => import('./screens/LegalPages').then((m) => ({ default: m.PrivacyPage })));
+const SecurityPage = lazy(() => import('./screens/LegalPages').then((m) => ({ default: m.SecurityPage })));
+
 // Lazy-load screens — Vite genera un chunk por pantalla (~40% menos bundle inicial)
 const Inicio     = lazy(() => import('./screens/Inicio'));
 const CuentasCC  = lazy(() => import('./screens/CuentasCC'));
@@ -174,6 +181,19 @@ export default function App() {
               } />
               <Route path="/reset-password" element={
                 <ErrorBoundary><ResetPassword /></ErrorBoundary>
+              } />
+
+              {/* ── Páginas legales públicas (#332) ── */}
+              {/* Sin guard de auth: tienen que ser accesibles desde la
+                  landing por usuarios anónimos antes del signup. */}
+              <Route path="/terms" element={
+                <ErrorBoundary><TermsPage /></ErrorBoundary>
+              } />
+              <Route path="/privacy" element={
+                <ErrorBoundary><PrivacyPage /></ErrorBoundary>
+              } />
+              <Route path="/security" element={
+                <ErrorBoundary><SecurityPage /></ErrorBoundary>
               } />
 
               {/* ── Rutas protegidas: AuthGuard intercepta. ── */}

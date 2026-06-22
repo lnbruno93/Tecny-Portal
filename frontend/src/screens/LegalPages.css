@@ -1,0 +1,204 @@
+/**
+ * Estilos para las páginas legales (Términos / Privacidad / Seguridad).
+ * Comparten el look-and-feel oscuro del Landing pero optimizado para
+ * lectura larga: line-height generoso, max-width acotado a ~70ch para
+ * que las líneas no sean murallas de texto, headings con jerarquía clara.
+ *
+ * Scope local `.tecny-legal` igual que `.tecny-landing` — variables
+ * heredadas del scope global del browser para mantener marca consistente.
+ */
+
+.tecny-legal {
+  --bg:            #0a0e18;
+  --bg-2:          #0d1220;
+  --surface:       #131a2b;
+  --border:        #1f2740;
+  --hairline:      rgba(255,255,255,0.06);
+
+  --text:          #e8ecf6;
+  --text-2:        #b8c1d6;
+  --muted:         #7c87a5;
+  --dim:           #525c79;
+
+  --accent:        #0ea5e9;
+  --accent-soft:   rgba(14,165,233,0.12);
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.65;
+  font-size: 16px;
+  min-height: 100vh;
+}
+.tecny-legal * { box-sizing: border-box; }
+.tecny-legal a { color: var(--accent); text-decoration: none; }
+.tecny-legal a:hover { text-decoration: underline; }
+
+/* ── Nav simple ───────────────────────────────────── */
+.tecny-legal .legal-nav {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(10,14,24,0.82);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border-bottom: 1px solid var(--hairline);
+}
+.tecny-legal .legal-nav-inner {
+  max-width: 920px; margin: 0 auto; padding: 14px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.tecny-legal .legal-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 17px; letter-spacing: -0.02em;
+  color: var(--text);
+}
+.tecny-legal .legal-brand .mk {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--accent-ink, #04253a);
+  border-radius: 7px; font-weight: 800; font-size: 14px;
+}
+.tecny-legal .legal-back {
+  font-size: 14px; color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.tecny-legal .legal-back:hover { color: var(--accent); text-decoration: none; }
+
+/* ── Contenido principal ─────────────────────────── */
+.tecny-legal .legal-wrap {
+  max-width: 720px; /* ~70ch */
+  margin: 0 auto;
+  padding: 60px 24px 100px;
+}
+
+.tecny-legal .legal-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 6px 12px;
+  background: var(--accent-soft);
+  border-radius: 999px;
+  margin-bottom: 20px;
+}
+
+.tecny-legal h1 {
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+.tecny-legal .legal-meta {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tecny-legal .legal-lead {
+  font-size: 18px;
+  color: var(--text-2);
+  margin: 0 0 32px;
+}
+
+.tecny-legal h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 48px 0 14px;
+  scroll-margin-top: 80px; /* offset por nav sticky */
+}
+.tecny-legal h2:first-of-type { margin-top: 24px; }
+
+.tecny-legal h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 28px 0 10px;
+  color: var(--text);
+}
+
+.tecny-legal p {
+  margin: 0 0 16px;
+  color: var(--text-2);
+}
+
+.tecny-legal ul, .tecny-legal ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+  color: var(--text-2);
+}
+.tecny-legal li { margin-bottom: 6px; }
+.tecny-legal li strong { color: var(--text); font-weight: 600; }
+
+.tecny-legal strong { color: var(--text); font-weight: 600; }
+.tecny-legal code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+.tecny-legal .legal-callout {
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 24px 0;
+  font-size: 15px;
+  color: var(--text-2);
+}
+.tecny-legal .legal-callout strong { color: var(--text); }
+
+.tecny-legal .legal-toc {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin: 0 0 40px;
+}
+.tecny-legal .legal-toc-title {
+  font-size: 12px; font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+.tecny-legal .legal-toc ol {
+  margin: 0; padding-left: 22px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.tecny-legal .legal-toc li { margin-bottom: 4px; }
+.tecny-legal .legal-toc a { color: var(--text-2); }
+.tecny-legal .legal-toc a:hover { color: var(--accent); text-decoration: none; }
+
+/* ── Footer minimalista ──────────────────────────── */
+.tecny-legal .legal-foot {
+  border-top: 1px solid var(--hairline);
+  padding: 30px 24px;
+  margin-top: 60px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.tecny-legal .legal-foot-inner {
+  max-width: 920px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.tecny-legal .legal-foot-links {
+  display: flex; gap: 20px;
+}
+.tecny-legal .legal-foot-links a { color: var(--muted); }
+.tecny-legal .legal-foot-links a:hover { color: var(--accent); }
+
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 600px) {
+  .tecny-legal .legal-wrap { padding: 40px 20px 80px; }
+  .tecny-legal h1 { font-size: 30px; }
+  .tecny-legal h2 { font-size: 20px; }
+  .tecny-legal .legal-lead { font-size: 16px; }
+  .tecny-legal .legal-foot-inner { flex-direction: column; align-items: flex-start; }
+}
