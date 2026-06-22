@@ -322,6 +322,13 @@ export default function Planes() {
       await load();
     } catch (err) {
       setModalError(err?.message || 'No pudimos guardar el cambio.');
+    } finally {
+      // Bug histórico (Lucas, 2026-06-22): el happy path NO reseteaba
+      // `submitting`, solo el catch lo hacía. Como el modal se cerraba en
+      // el happy, no se notaba — hasta que el operador intentaba un SEGUNDO
+      // cambio. Ahí el modal volvía a abrir con el botón "Guardar" disabled
+      // mostrando "Guardando…" para siempre (porque submitting seguía true
+      // del save anterior). El finally garantiza reset en ambos paths.
       setSubmitting(false);
     }
   };
