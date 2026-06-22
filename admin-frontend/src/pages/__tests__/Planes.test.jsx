@@ -226,6 +226,44 @@ describe('Planes', () => {
     });
   });
 
+  // Regresión BLOCKER S-2 (audit 2026-06-22): si user borra el precio
+  // de starter/pro, antes el cliente abría el confirm modal y el backend
+  // rechazaba con 400. Ahora se valida cliente: NO se abre modal y se
+  // muestra error visible. Preserva el `reason` que pudiera estar tipeado.
+  it('validar cliente: borrar precio de starter NO abre modal y muestra error', async () => {
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    // Borrar el precio (input queda vacío).
+    fireEvent.change(screen.getByLabelText('Precio del plan starter'), { target: { value: '' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    // Confirm modal NO debe aparecer.
+    expect(screen.queryByText('Confirmar cambio de precio')).toBeNull();
+
+    // Error visible en pantalla.
+    expect(screen.getByText(/Starter necesita un precio/i)).toBeInTheDocument();
+
+    // El PATCH NO se debe haber llamado.
+    expect(adminApi.updatePlanPrice).not.toHaveBeenCalled();
+  });
+
+  it('validar cliente: precio negativo NO abre modal', async () => {
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    fireEvent.change(screen.getByLabelText('Precio del plan starter'), { target: { value: '-10' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    expect(screen.queryByText('Confirmar cambio de precio')).toBeNull();
+    expect(screen.getByText(/No puede ser negativo/i)).toBeInTheDocument();
+    expect(adminApi.updatePlanPrice).not.toHaveBeenCalled();
+  });
+
   // Regresión: bug reportado por Lucas (2026-06-22). Después del primer save
   // exitoso, el botón "Guardar cambios" del segundo save quedaba colgado
   // mostrando "Guardando…" para siempre — el happy path no reseteaba
