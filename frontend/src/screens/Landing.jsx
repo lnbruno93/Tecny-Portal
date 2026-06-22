@@ -20,7 +20,9 @@
 // porque el CSS tiene scroll-behavior: smooth y funciona sin tocar el router.
 // React Router NO intercepta hash links cuando el path no cambia.
 
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { resolveApiBase } from '../lib/api';
 import './Landing.css';
 
 // Helper visual — checkmark de los bullets de pricing. Repetido tantas veces
@@ -34,7 +36,72 @@ function Check({ size = 16 }) {
   );
 }
 
+// Fallback de pricing — matchea el seed de la migration plan_prices y los
+// valores actuales en backend/src/lib/planPricing.js DEFAULT_PRICES. Si
+// el fetch de /api/public/pricing falla (backend down, network slow,
+// CORS hipotético), la landing sigue mostrando estos valores en vez de
+// quedar con "$NaN" o un placeholder. NUNCA debe haber render sin precio.
+//
+// Cuando Lucas cambie pricing desde admin.tecnyapp.com/planes, el primer
+// render mostrará estos defaults pero el useEffect lo reemplaza ~200ms
+// después con los reales. Aceptable — no hay flicker visible para el
+// user típico (carga + scroll a #precios toma más que el fetch).
+const FALLBACK_PRICES = Object.freeze({
+  starter: 39,
+  pro: 189,
+});
+
+// Resuelve base del backend para el endpoint público. Mismo helper que el
+// resto de api.js — al ser endpoint sin auth, no necesitamos el wrapper
+// completo con manejo de 401/token. fetch directo es suficiente y nos
+// ahorra montar todo el module en el bundle de la landing si en el futuro
+// se hace code-splitting de portal vs landing.
+const BACKEND_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
+
 export default function Landing() {
+  // Pricing dinámico de `plan_prices` table (Sub-fase C.1.4 #353).
+  // Estado inicial = FALLBACK_PRICES para que el primer paint muestre
+  // valores reales (no "—" ni skeleton). El fetch en mount los reemplaza
+  // con los del backend si responde.
+  const [prices, setPrices] = useState(FALLBACK_PRICES);
+
+  useEffect(() => {
+    // AbortController para cancelar si el user navega antes de que resuelva
+    // (poco probable en la landing pero higiénico). Timeout 8s — si el
+    // backend no responde, nos quedamos con los defaults.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    fetch(BACKEND_BASE + '/api/public/pricing', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error('http ' + res.status);
+        return res.json();
+      })
+      .then((data) => {
+        const p = data?.prices;
+        if (!p || typeof p !== 'object') return;
+        // Validación defensiva: solo actualizamos si los campos críticos
+        // son números >= 0. Si llega algo raro (NULL, string, negativo)
+        // mantenemos el fallback hardcoded.
+        const next = { ...FALLBACK_PRICES };
+        if (typeof p.starter === 'number' && p.starter >= 0) next.starter = p.starter;
+        if (typeof p.pro === 'number' && p.pro >= 0) next.pro = p.pro;
+        setPrices(next);
+      })
+      .catch(() => {
+        // Silencioso a propósito. La landing es pre-auth — un usuario
+        // sin contexto ve "$39/mes" (default) y no "error". Si el backend
+        // está caído al cargar la landing tenemos problemas mayores
+        // (Sentry los reporta desde el portal autenticado).
+      })
+      .finally(() => clearTimeout(timer));
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, []);
+
   return (
     <div className="tecny-landing">
       {/* ── NAV ──────────────────────────────────────────── */}
@@ -361,18 +428,20 @@ export default function Landing() {
             <p className="s-sub">Probá gratis 14 días. Sin tarjeta, sin compromiso. Cancelás cuando quieras.</p>
           </div>
           {/*
-            Precios duplicados de backend/src/lib/planPricing.js — mantener
-            en sync manualmente hasta que Sub-fase C.1 mueva el pricing a
-            DB editable + endpoint público que la landing fetchee.
-              Solo   → backend slug 'starter' → USD $39/mes
-              Equipo → backend slug 'pro'     → USD $189/mes
+            Precios dinámicos desde `plan_prices` table via /api/public/pricing.
+            Si Lucas cambia desde admin.tecnyapp.com/planes, este componente
+            refleja el valor nuevo en el próximo render (cache backend max 5min;
+            Cache-Control HTTP max 60s). Fallback a FALLBACK_PRICES hardcoded
+            si el fetch falla — definidos arriba del componente.
+              Solo   → backend slug 'starter' → USD prices.starter/mes
+              Equipo → backend slug 'pro'     → USD prices.pro/mes
               Multi-local → 'enterprise' (custom_mrr_usd per-tenant) → "A medida"
           */}
           <div className="plans">
             <div className="plan">
               <div className="pname">Solo</div>
               <div className="pdesc">Para el revendedor independiente que arranca a ordenarse.</div>
-              <div className="price"><span className="cur">USD </span><span className="num">39</span><span className="per">/mes</span></div>
+              <div className="price"><span className="cur">USD </span><span className="num">{prices.starter}</span><span className="per">/mes</span></div>
               <div className="pnote">14 días de prueba gratis</div>
               <ul>
                 <li><Check /> 1 usuario</li>
@@ -386,7 +455,7 @@ export default function Landing() {
               <div className="tag-pop">Más elegido</div>
               <div className="pname">Equipo</div>
               <div className="pdesc">Para el negocio con vendedores y cuentas corrientes activas.</div>
-              <div className="price"><span className="cur">USD </span><span className="num">189</span><span className="per">/mes</span></div>
+              <div className="price"><span className="cur">USD </span><span className="num">{prices.pro}</span><span className="per">/mes</span></div>
               <div className="pnote">14 días de prueba gratis</div>
               <ul>
                 <li><Check /> Hasta 10 usuarios</li>
