@@ -29,6 +29,7 @@ import { adminApi } from '../lib/api.js';
 import { Btn, Card, Badge, PageHead } from '../components/primitives/index.jsx';
 import Modal from '../components/primitives/Modal.jsx';
 import { fmtMoney, fmtDateTime } from '../lib/format.js';
+import { planTone } from '../lib/uiHelpers.js';
 
 // Orden canónico de los planes. El backend ya devuelve ordenado, pero
 // usamos esto como fallback defensivo si llegan en orden distinto.
@@ -39,13 +40,12 @@ function planLabel(p) {
   return p.charAt(0).toUpperCase() + p.slice(1);
 }
 
-function planTone(p) {
-  if (p === 'trial') return 'muted';
-  if (p === 'starter') return 'info';
-  if (p === 'pro') return 'pos';
-  if (p === 'enterprise') return 'warn';
-  return 'default';
-}
+// BLOCKER H-2 fix (audit 2026-06-22): `planTone` se importa de uiHelpers.js
+// para alinearse con Resumen/Clientes/Ficha. Antes acá había una versión
+// local que pintaba Pro=`pos` (verde) mientras las otras pantallas lo
+// pintaban Pro=`info` (lila) — el mismo plan se veía de dos colores según
+// la pantalla. Ahora es consistente. Si en el futuro Lucas quiere cambiar
+// la paleta, el único lugar es uiHelpers.PLAN_TONES.
 
 // Descripción visible bajo cada plan — orienta al super-admin sobre qué
 // representa cada uno, sin tener que abrir el design doc.
@@ -283,12 +283,40 @@ export default function Planes() {
     if (!original || !ed) return;
 
     // Resolución del nuevo price_usd. Si el input quedó vacío → null
-    // (semánticamente "sin precio"); el backend lo rechaza para starter/pro
-    // pero permitimos que el user lo vea como acción explícita.
+    // (semánticamente "sin precio"). Solo válido para enterprise.
     const newPriceRaw = 'price_usd' in ed ? ed.price_usd : original.price_usd;
     const newPrice = newPriceRaw === '' || newPriceRaw === null ? null : Number(newPriceRaw);
-    if (newPrice != null && (isNaN(newPrice) || newPrice < 0)) {
-      setError(`Precio inválido para ${planLabel(plan)}. Debe ser un número >= 0.`);
+
+    // BLOCKER S-2 fix (audit 2026-06-22): validar ANTES de abrir el modal
+    // de confirmación. El backend rechaza:
+    //   · price_usd != null para enterprise (esquema fijo)
+    //   · price_usd == null para starter/pro (necesitan precio)
+    //   · price_usd negativo o > 99999999 (bounds del zod)
+    //   · NaN (input no-numérico)
+    // Antes la validación cliente solo cubría "negativo o NaN". El operador
+    // podía borrar el precio de starter, llenar el modal con reason, confirmar,
+    // y recién ahí el backend devolvía 400 — perdiendo el reason tipeado.
+    if (newPrice != null && !Number.isFinite(newPrice)) {
+      setError(`Precio inválido para ${planLabel(plan)}. Debe ser un número.`);
+      return;
+    }
+    if (newPrice != null && newPrice < 0) {
+      setError(`Precio inválido para ${planLabel(plan)}. No puede ser negativo.`);
+      return;
+    }
+    if (newPrice != null && newPrice > 99999999) {
+      setError(`Precio inválido para ${planLabel(plan)}. Excede el máximo permitido.`);
+      return;
+    }
+    // Plan editable (starter/pro) requiere precio no-null.
+    const isEditable = plan !== 'trial' && plan !== 'enterprise';
+    if (isEditable && newPrice == null) {
+      setError(`${planLabel(plan)} necesita un precio. Ingresá un número >= 0.`);
+      return;
+    }
+    // Enterprise NO acepta precio fijo (CHECK constraint chk_enterprise_no_fixed_price).
+    if (plan === 'enterprise' && newPrice != null) {
+      setError('Enterprise no acepta precio fijo (custom per-tenant en tenants.custom_mrr_usd).');
       return;
     }
 
@@ -299,6 +327,7 @@ export default function Planes() {
       notesChanged: 'notes' in ed && (ed.notes ?? '') !== (original.notes ?? ''),
     });
     setModalError('');
+    setError(''); // limpiar errores previos al abrir confirm
     setConfirmOpen(true);
   };
 
