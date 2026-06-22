@@ -322,12 +322,16 @@ export default function Resumen() {
             </div>
           ) : (
             <table className="tbl">
+              {/* TANDA 6 a11y (audit 2026-06-22): caption + scope. */}
+              <caption className="sr-only">
+                Top 5 clientes activos ordenados por cantidad de usuarios.
+              </caption>
               <thead>
                 <tr>
-                  <th>Empresa</th>
-                  <th>Plan</th>
-                  <th className="num">Usuarios</th>
-                  <th>Última venta</th>
+                  <th scope="col">Empresa</th>
+                  <th scope="col">Plan</th>
+                  <th scope="col" className="num">Usuarios</th>
+                  <th scope="col">Última venta</th>
                 </tr>
               </thead>
               <tbody>
