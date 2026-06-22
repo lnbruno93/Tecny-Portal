@@ -1,4 +1,5 @@
 # Netlify config — Tecny Admin (admin.tecnyapp.com).
+# v1.0.0 — primer deploy 2026-06-22.
 #
 # Site separado del portal principal (frontend/) por razones de seguridad:
 # distinto dominio, distinto bundle, distinto CSP. Un compromiso en el portal
