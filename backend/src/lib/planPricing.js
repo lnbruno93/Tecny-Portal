@@ -5,13 +5,12 @@
  *   - /api/admin/metrics: cálculo de MRR total.
  *   - /api/admin/tenants: cálculo de MRR per-tenant en el listado.
  *
- * Diseño (#353 Fase 1):
- *   - PLACEHOLDERS en $0 hasta que Lucas decida precios finales. El doc
- *     de diseño dejó esto como open question — la herramienta sirve sin
- *     precios reales (MRR muestra $0). Cuando Lucas pase los valores
- *     finales, cambiar acá y el resto del sistema queda al día.
- *   - `enterprise` siempre = null acá → se lee de `tenants.custom_mrr_usd`
- *     que el admin setea per-tenant al onboardear cuentas enterprise.
+ * Pricing inicial (2026-06-22): seteado con los valores del mock del
+ * handoff de Claude Design ($39 / $189). Lucas iterará desde acá
+ * basado en feedback de los primeros clientes pagos.
+ *
+ * `enterprise` siempre = null acá → se lee de `tenants.custom_mrr_usd`
+ * que el admin setea per-tenant al onboardear cuentas enterprise.
  *
  * Por qué no en DB (al menos por ahora):
  *   Mientras los precios estén hardcoded (no hay self-service ni billing
@@ -19,12 +18,18 @@
  *   payment provider (Stripe/MP), agregamos `plan_prices` con histórico
  *   (qué precio tenía cada plan en cada momento — útil para clientes
  *   "legacy" con precio viejo).
+ *
+ *   Sub-fase C.1 (backlog): mover a una tabla `plan_prices` editable
+ *   desde el admin app + endpoint público para que la landing fetchee
+ *   los precios actuales en vez de hardcodearlos. Hasta entonces, la
+ *   landing duplica estos valores manualmente en Landing.jsx — mantener
+ *   sincronizado a mano hasta C.1.
  */
 
 const PLAN_PRICES_USD = Object.freeze({
   trial:      0,
-  starter:    0, // TODO: setear precio final
-  pro:        0, // TODO: setear precio final
+  starter:    39,
+  pro:        189,
   enterprise: null, // null = leer de tenants.custom_mrr_usd
 });
 
