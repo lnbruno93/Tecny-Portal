@@ -220,4 +220,102 @@ describe('AuthContext', () => {
     expect(clearToken).toHaveBeenCalled();
     await waitFor(() => expect(lastAuth.user).toBeNull());
   });
+
+  // TANDA 5 audit 2026-06-22 — edge cases del listener `admin-session-expired`
+  // que no estaban cubiertos. El bug clase: si el provider se desmonta sin
+  // limpiar listener, hay memory leak (importante en CI con muchos mount/
+  // unmount) y comportamientos raros si dos events caen seguidos.
+
+  it('unmount del provider remueve el listener (no memory leak)', async () => {
+    getToken.mockReturnValue(null);
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    const { unmount } = render(
+      <AuthProvider>
+        <Probe onAuth={() => {}} />
+      </AuthProvider>
+    );
+
+    // Esperar mount completo (incluido useEffect).
+    await waitFor(() => {
+      expect(addSpy.mock.calls.some((c) => c[0] === 'admin-session-expired')).toBe(true);
+    });
+    const addedCount = addSpy.mock.calls.filter((c) => c[0] === 'admin-session-expired').length;
+
+    unmount();
+
+    // Después del unmount, el cleanup del useEffect debe haber removido
+    // exactamente el mismo número de listeners que se agregaron.
+    const removedCount = removeSpy.mock.calls.filter((c) => c[0] === 'admin-session-expired').length;
+    expect(removedCount).toBe(addedCount);
+  });
+
+  it('dos eventos admin-session-expired consecutivos ambos limpian state', async () => {
+    // Bug clase: si dos 401s caen casi simultáneamente (ej. batch de
+    // requests in-flight cuando el token expira), el segundo evento
+    // dispara sobre state ya null. No debe crashear ni re-renderear raro.
+    getToken.mockReturnValue('tok_ok');
+    adminApi.me.mockResolvedValue({
+      is_super_admin: true, user_id: 1, username: 'lucas',
+    });
+
+    let lastAuth = null;
+    render(
+      <AuthProvider>
+        <Probe onAuth={(a) => { lastAuth = a; }} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => expect(lastAuth.isAuthenticated).toBe(true));
+
+    // Dos eventos seguidos — simula dos 401s casi simultáneos.
+    act(() => {
+      window.dispatchEvent(new Event('admin-session-expired'));
+      window.dispatchEvent(new Event('admin-session-expired'));
+    });
+
+    await waitFor(() => expect(lastAuth.user).toBeNull());
+    expect(lastAuth.isAuthenticated).toBe(false);
+    // No crashea: el Probe sigue rindiendo correctamente con state limpio.
+  });
+
+  it('listener se registra ANTES del fetch /me (orden importa para race S-1)', async () => {
+    // Test del orden literal: cuando llega el mount, addEventListener
+    // debe llamarse antes que adminApi.me. Sin esto, si /me dispara el
+    // evento sincrónicamente (en una microtask), se pierde.
+    // Usamos un spy NO-override que solo cuenta calls — el listener real
+    // sigue funcionando vía addEventListener nativo.
+    const callOrder = [];
+
+    getToken.mockReturnValue('tok_xyz');
+
+    // Wrap window.addEventListener sin reemplazar la impl.
+    const origAddEventListener = window.addEventListener.bind(window);
+    const addEventSpy = vi.spyOn(window, 'addEventListener');
+    addEventSpy.mockImplementation((evt, handler, opts) => {
+      if (evt === 'admin-session-expired') callOrder.push('addEventListener');
+      return origAddEventListener(evt, handler, opts);
+    });
+
+    adminApi.me.mockImplementation(() => {
+      callOrder.push('me');
+      return Promise.resolve({ is_super_admin: true, user_id: 1, username: 'l' });
+    });
+
+    render(
+      <AuthProvider>
+        <Probe onAuth={() => {}} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => expect(callOrder).toContain('me'));
+    const addIdx = callOrder.indexOf('addEventListener');
+    const meIdx = callOrder.indexOf('me');
+    expect(addIdx).toBeGreaterThanOrEqual(0);
+    expect(meIdx).toBeGreaterThanOrEqual(0);
+    expect(addIdx).toBeLessThan(meIdx);
+
+    addEventSpy.mockRestore();
+  });
 });
