@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { adminApi, saveToken, clearToken, getToken } from '../lib/api.js';
+import { adminApi, saveToken, clearToken, getToken, abortAllInFlight } from '../lib/api.js';
 
 const AuthContext = createContext(null);
 
@@ -118,6 +118,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    // SEC-3 fix (audit 2026-06-22): abortar requests in-flight ANTES de
+    // limpiar el state. Sin esto, una request lanzada antes del logout
+    // puede resolver después con datos del super-admin, y un componente
+    // puede setState sobre el resultado dejándolo visible momentáneamente.
+    abortAllInFlight();
     clearToken();
     saveUser(null);
     setUser(null);

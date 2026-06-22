@@ -103,6 +103,9 @@ export default function ExtendTrialModal({ tenant, open, onClose, onSaved }) {
       onClose={submitting ? () => {} : onClose}
       title="Extender trial"
       size="md"
+      // SEC-2 fix (audit 2026-06-22): mutation con audit trail — click
+      // accidental en backdrop no debe perder días + reason tipeados.
+      closeOnBackdrop={false}
       actions={
         <>
           <Btn kind="ghost" onClick={onClose} disabled={submitting}>
