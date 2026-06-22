@@ -35,42 +35,57 @@ export function AuthProvider({ children }) {
   // Si el token expiró o el flag se revocó, el wrapper api() ya dispara
   // 'admin-session-expired' y nos clavamos en null.
   useEffect(() => {
-    const cachedToken = getToken();
-    if (!cachedToken) {
-      setLoading(false);
-      return;
-    }
-    adminApi.me()
-      .then((data) => {
-        if (!data?.is_super_admin) {
-          // Token válido pero el user perdió el flag de super-admin → logout.
-          clearToken();
-          saveUser(null);
-          setUser(null);
-          setToken(null);
-          return;
-        }
-        // Mergeamos la info de /me con la cacheada de login. /me trae
-        // { is_super_admin, user_id, username } — el resto (email) ya
-        // está en cache.
-        setUser((prev) => {
-          const merged = { ...(prev || {}), ...data, id: data.user_id };
-          saveUser(merged);
-          return merged;
-        });
-      })
-      .catch(() => {
-        // 401 ya limpió el token; otros errores los ignoramos en silencio
-        // (puede ser red caída — el user retry-ará al hacer la próxima acción).
-      })
-      .finally(() => setLoading(false));
-
+    // BLOCKER S-1 fix (audit 2026-06-22): registrar listener ANTES del
+    // fetch a /me. Si el token cacheado está expirado, el wrapper api()
+    // dispara `admin-session-expired` DURANTE la resolución de la promise
+    // — si el addEventListener estuviera DESPUÉS del .then/.catch, el
+    // listener no existiría cuando el evento se emita y se perdería.
+    // Resultado: user/token quedan stale hasta el siguiente refresh.
+    // Race-y especialmente en React 19 + StrictMode (doble mount en dev).
     const onExpired = () => {
       saveUser(null);
       setUser(null);
       setToken(null);
     };
     window.addEventListener('admin-session-expired', onExpired);
+
+    const cachedToken = getToken();
+    if (!cachedToken) {
+      setLoading(false);
+      // Cleanup vuelve al final del effect.
+    } else {
+      adminApi.me()
+        .then((data) => {
+          if (!data?.is_super_admin) {
+            // Token válido pero el user perdió el flag de super-admin → logout.
+            clearToken();
+            saveUser(null);
+            setUser(null);
+            setToken(null);
+            return;
+          }
+          // Mergeamos la info de /me con la cacheada de login. /me trae
+          // { is_super_admin, user_id, username } — el resto (email) ya
+          // está en cache.
+          setUser((prev) => {
+            const merged = { ...(prev || {}), ...data, id: data.user_id };
+            saveUser(merged);
+            return merged;
+          });
+        })
+        .catch((err) => {
+          // 401 ya disparó `admin-session-expired` desde el wrapper api(),
+          // el onExpired listener (ya registrado arriba) lo procesa. Otros
+          // errores (red caída, 500) los ignoramos — el user retry-ará al
+          // hacer la próxima acción. Logueamos para diagnóstico.
+          if (err?.status !== 401) {
+            // eslint-disable-next-line no-console
+            console.warn('[admin] /me revalidation failed:', err?.message);
+          }
+        })
+        .finally(() => setLoading(false));
+    }
+
     return () => window.removeEventListener('admin-session-expired', onExpired);
   }, []);
 
