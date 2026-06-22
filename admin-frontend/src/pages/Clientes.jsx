@@ -166,17 +166,28 @@ export default function Clientes() {
           </div>
         }
       >
+        {/* TANDA 6 a11y (audit 2026-06-22): caption sr-only + scope="col"
+            en todos los <th>. Para screen readers la tabla ahora se anuncia
+            con propósito ("Listado de clientes Tecny") y cada columna asocia
+            sus celdas semánticamente. La columna 8 (chevron) lleva
+            scope="col" igual pero queda sin texto visible. */}
         <table className="tbl tbl-row-click">
+          <caption className="sr-only">
+            Listado de clientes Tecny con plan, MRR, usuarios, salud, estado
+            y actividad reciente. Cada fila navega al detalle del cliente.
+          </caption>
           <thead>
             <tr>
-              <th>Empresa</th>
-              <th>Plan</th>
-              <th className="num">MRR</th>
-              <th>Usuarios</th>
-              <th>Salud</th>
-              <th>Estado</th>
-              <th>Actividad</th>
-              <th style={{ width: 36 }} aria-label="" />
+              <th scope="col">Empresa</th>
+              <th scope="col">Plan</th>
+              <th scope="col" className="num">MRR</th>
+              <th scope="col">Usuarios</th>
+              <th scope="col">Salud</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Actividad</th>
+              <th scope="col" style={{ width: 36 }}>
+                <span className="sr-only">Acciones</span>
+              </th>
             </tr>
           </thead>
           <tbody>

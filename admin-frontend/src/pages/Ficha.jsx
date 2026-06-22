@@ -574,14 +574,16 @@ function VentasPanel({ items }) {
   }
   return (
     <Card flush>
+      {/* TANDA 6 a11y (audit 2026-06-22): caption + scope="col". */}
       <table className="tbl">
+        <caption className="sr-only">Ventas recientes de este tenant.</caption>
         <thead>
           <tr>
-            <th>Fecha</th>
-            <th>Order ID</th>
-            <th>Cliente</th>
-            <th className="num">Total</th>
-            <th>Estado</th>
+            <th scope="col">Fecha</th>
+            <th scope="col">Order ID</th>
+            <th scope="col">Cliente</th>
+            <th scope="col" className="num">Total</th>
+            <th scope="col">Estado</th>
           </tr>
         </thead>
         <tbody>
@@ -609,13 +611,14 @@ function CajasPanel({ items }) {
   return (
     <Card flush>
       <table className="tbl">
+        <caption className="sr-only">Movimientos de caja recientes.</caption>
         <thead>
           <tr>
-            <th>Fecha</th>
-            <th>Caja</th>
-            <th>Tipo</th>
-            <th>Concepto</th>
-            <th className="num">Monto (USD)</th>
+            <th scope="col">Fecha</th>
+            <th scope="col">Caja</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Concepto</th>
+            <th scope="col" className="num">Monto (USD)</th>
           </tr>
         </thead>
         <tbody>
@@ -672,12 +675,13 @@ function BotPanel({ summary, conversations }) {
           emptyState('Sin conversaciones recientes.')
         ) : (
           <table className="tbl">
+            <caption className="sr-only">Conversaciones recientes del bot.</caption>
             <thead>
               <tr>
-                <th>Título</th>
-                <th>Usuario</th>
-                <th className="num">Mensajes</th>
-                <th>Creada</th>
+                <th scope="col">Título</th>
+                <th scope="col">Usuario</th>
+                <th scope="col" className="num">Mensajes</th>
+                <th scope="col">Creada</th>
               </tr>
             </thead>
             <tbody>
@@ -704,12 +708,13 @@ function AlertasPanel({ items }) {
   return (
     <Card flush>
       <table className="tbl">
+        <caption className="sr-only">Alertas configuradas para este tenant.</caption>
         <thead>
           <tr>
-            <th>Tipo</th>
-            <th>Estado</th>
-            <th>Parámetros</th>
-            <th>Actualizada</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Parámetros</th>
+            <th scope="col">Actualizada</th>
           </tr>
         </thead>
         <tbody>
@@ -740,13 +745,14 @@ function AuditPanel({ items }) {
   return (
     <Card flush>
       <table className="tbl">
+        <caption className="sr-only">Cambios recientes auditados del tenant.</caption>
         <thead>
           <tr>
-            <th>Cuándo</th>
-            <th>Tabla</th>
-            <th>Acción</th>
-            <th>Registro</th>
-            <th>User</th>
+            <th scope="col">Cuándo</th>
+            <th scope="col">Tabla</th>
+            <th scope="col">Acción</th>
+            <th scope="col">Registro</th>
+            <th scope="col">User</th>
           </tr>
         </thead>
         <tbody>
