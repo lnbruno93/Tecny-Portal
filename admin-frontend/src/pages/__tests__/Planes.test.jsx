@@ -225,4 +225,39 @@ describe('Planes', () => {
       expect(screen.getByText(/Sin conexión con el servidor/)).toBeInTheDocument();
     });
   });
+
+  // Regresión: bug reportado por Lucas (2026-06-22). Después del primer save
+  // exitoso, el botón "Guardar cambios" del segundo save quedaba colgado
+  // mostrando "Guardando…" para siempre — el happy path no reseteaba
+  // `submitting`. Fix: try/finally.
+  it('después de un save exitoso, un segundo save funciona (submitting se resetea)', async () => {
+    adminApi.getPlanPrices.mockResolvedValue(happyPlanPrices());
+    adminApi.updatePlanPrice.mockResolvedValue({
+      plan: 'starter', price_usd: 49, notes: 'Plan inicial', noop: false,
+    });
+
+    renderPlanes();
+    await waitFor(() => screen.getByLabelText('Precio del plan starter'));
+
+    // Primer save: starter 39 → 49.
+    fireEvent.change(screen.getByLabelText('Precio del plan starter'), { target: { value: '49' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+    fireEvent.click(screen.getByText('Confirmar y guardar'));
+
+    // Esperar que el banner de éxito aparezca (confirma que el flow terminó).
+    await waitFor(() => {
+      expect(screen.getByText(/Starter actualizado correctamente/)).toBeInTheDocument();
+    });
+
+    // Segundo save: pro 189 → 199. Acá es donde el bug se manifestaba — el
+    // botón "Confirmar y guardar" del modal aparecía con texto "Guardando…"
+    // y disabled, porque `submitting` quedó en true del primer save.
+    fireEvent.change(screen.getByLabelText('Precio del plan pro'), { target: { value: '199' } });
+    fireEvent.click(screen.getByText('Guardar cambios'));
+
+    // Modal abierto, botón debe estar HABILITADO con texto "Confirmar y guardar"
+    // (no "Guardando…").
+    const confirmBtn = screen.getByText('Confirmar y guardar');
+    expect(confirmBtn).not.toBeDisabled();
+  });
 });
