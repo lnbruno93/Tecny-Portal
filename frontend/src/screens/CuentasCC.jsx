@@ -73,7 +73,17 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
         notas:       form.notas.trim()       || null,
       });
       onSuccess(updated);
-    } catch (e) { setError(e.message || 'Error al guardar.'); setSaving(false); }
+    } catch (e) {
+      setError(e.message || 'Error al guardar.');
+    } finally {
+      // Hygiene 2026-06-22: setSaving(false) en finally. Antes solo se hacía
+      // en el catch — el happy path dejaba saving=true. Como el modal se
+      // cierra desde el parent (onSuccess), el botón quedaba invisible —
+      // pero si por algún flujo el modal se reabría con la misma entidad
+      // sin remontarse, el botón quedaba congelado en "Guardando…".
+      // Mismo pattern del bug encontrado en Planes.jsx del admin-frontend.
+      setSaving(false);
+    }
   }
 
   return (
