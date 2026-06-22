@@ -98,6 +98,7 @@ const chatRoutes         = require('./routes/chat');
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
 const superAdminRoutes   = require('./routes/superAdmin');
+const publicRoutes       = require('./routes/public');
 
 const requireAuth       = require('./middleware/auth');
 const requirePermission = require('./middleware/requirePermission');
@@ -651,6 +652,12 @@ app.use('/api/admin',         requireAuth, adminRoutes);
 // cross-tenant con BYPASSRLS. Solo Lucas (users.is_super_admin=true) puede
 // usar — el middleware requireSuperAdmin enforcea adentro del router.
 app.use('/api/super-admin',   requireAuth, superAdminRoutes);
+
+// 2026-06-22 #353 C.1.2: Endpoints PÚBLICOS (sin auth, sin tenant scope).
+// Hoy solo `/api/public/pricing` para la landing. Si en el futuro hace
+// falta más, agregar acá — mantener el namespace para que sea OBVIO qué
+// está expuesto al mundo.
+app.use('/api/public',        publicRoutes);
 
 // Feature flags (M-08 GRAN auditoría 2026-06-10). Sistema minimalista on/off
 // global. GET / es accesible a cualquier user logueado (lo lee el frontend

@@ -112,6 +112,23 @@ async function setupTestDb() {
     UPDATE metodos_pago SET es_financiera = true WHERE nombre = 'Pesos Ars | Efectivo'
   `);
 
+  // C.1.1 #353: re-seed de plan_prices. El TRUNCATE de users CASCADE arriba
+  // arrastra plan_prices porque la columna updated_by es FK a users(id) — PG
+  // TRUNCATE ... CASCADE vacía tablas referenciadas incluso si la FK es
+  // ON DELETE SET NULL (semántica distinta a DELETE). Sin este re-seed, los
+  // endpoints /api/super-admin/plan-prices y /api/public/pricing y el cache
+  // de planPricing quedarían con tabla vacía. Los valores matchean el seed
+  // de migration 20260622153000_plan_prices_table.
+  await pool.query(`
+    INSERT INTO plan_prices (plan, price_usd, notes) VALUES
+      ('trial',      0,    'Trial siempre gratis. NO editar desde admin (la UI lo deshabilita).'),
+      ('starter',    39,   'Plan inicial. Precio mock del handoff de Claude Design.'),
+      ('pro',        189,  'Plan medio. Precio mock del handoff de Claude Design.'),
+      ('enterprise', NULL, 'Custom per-tenant en tenants.custom_mrr_usd. Esta fila es marker.')
+    ON CONFLICT (plan) DO UPDATE
+      SET price_usd = EXCLUDED.price_usd, notes = EXCLUDED.notes, updated_by = NULL
+  `);
+
   // Crear usuario admin de prueba
   const hash = await bcrypt.hash(TEST_USER.password, 10);
   const { rows } = await pool.query(

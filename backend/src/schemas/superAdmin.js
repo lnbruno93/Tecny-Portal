@@ -65,10 +65,27 @@ const reactivateTenantSchema = z.object({
   reason: z.string().max(500).optional(),
 }).strict();
 
+// PATCH /api/super-admin/plan-prices/:plan — cambiar precio de un plan (C.1.2 #353).
+//
+// price_usd: número >= 0 o null (para enterprise, que no tiene precio fijo).
+// El CHECK chk_enterprise_no_fixed_price valida a nivel DB que enterprise
+// solo acepte null — el endpoint enforcea lo mismo antes para 400 limpio.
+//
+// notes: opcional, libre — útil para auditoría manual ("subido 10% por
+// inflación junio 2026"). Si no se manda, no se toca el valor actual.
+//
+// reason: opcional, va al audit trail tenant_admin_actions.reason.
+const patchPlanPriceSchema = z.object({
+  price_usd: z.number().nonnegative().max(99999999.99).nullable(),
+  notes:     z.string().max(2000).nullable().optional(),
+  reason:    z.string().max(500).optional(),
+}).strict();
+
 module.exports = {
   PLANES,
   patchTenantSchema,
   extendTrialSchema,
   suspendTenantSchema,
   reactivateTenantSchema,
+  patchPlanPriceSchema,
 };
