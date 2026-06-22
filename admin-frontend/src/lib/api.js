@@ -207,4 +207,24 @@ export const adminApi = {
   // del periodo de suspensión (si subieron plan, queda subido).
   reactivateTenant: (id, body = {}) =>
     api(`/api/super-admin/tenants/${id}/reactivate`, 'POST', body),
+
+  // ── Plan Prices (C.1.2 #353) ──────────────────────────────────────────
+  // GET /plan-prices — lista los 4 planes con precio + notas + updated_by.
+  // Devuelve { plan_prices: [{ plan, price_usd, active, notes, updated_at,
+  // updated_by, updated_by_username }] }. Orden canónico: trial → starter
+  // → pro → enterprise.
+  getPlanPrices: () => api('/api/super-admin/plan-prices'),
+
+  // PATCH /plan-prices/:plan — actualiza price_usd (+ notes opcional).
+  // body: { price_usd: number|null, notes?: string|null, reason?: string }.
+  // Reglas server-side:
+  //   · trial NO se puede editar (400 con mensaje claro)
+  //   · enterprise rechaza price_usd != null (custom per-tenant via
+  //     tenants.custom_mrr_usd)
+  //   · plan inexistente → 404
+  //   · no-op (mismo valor) → 200 con noop:true
+  // El backend hace refreshCache() post-commit, así que un GET inmediato
+  // devuelve el valor nuevo.
+  updatePlanPrice: (plan, body) =>
+    api(`/api/super-admin/plan-prices/${encodeURIComponent(plan)}`, 'PATCH', body),
 };
