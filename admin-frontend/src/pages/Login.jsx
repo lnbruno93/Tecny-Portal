@@ -36,7 +36,19 @@ export default function Login() {
       // el flag de super-admin ANTES de guardar nada. Si lo dejamos pasar,
       // el revalidate en AuthContext lo desloguea — pero hay una ventana
       // de UX rara, mejor cortar acá.
-      if (!data?.user?.is_super_admin) {
+      //
+      // S-7 fix (audit 2026-06-22): distinguir tres casos:
+      //   1. Respuesta inválida (no hay data.user) → bug del backend o proxy raro.
+      //      Mostrar "Respuesta inválida del servidor" en vez del genérico
+      //      "no sos super-admin" — el operador legítimo no se asusta pensando
+      //      que perdió permisos.
+      //   2. data.user OK pero sin is_super_admin → no es super-admin (legit).
+      //   3. is_super_admin=true → seguir.
+      if (!data?.token || !data?.user) {
+        setError('Respuesta inválida del servidor. Probá de nuevo o avisá al admin.');
+        return;
+      }
+      if (!data.user.is_super_admin) {
         setError('Esta consola es solo para super-admins. Pedile acceso al owner si lo necesitás.');
         return;
       }

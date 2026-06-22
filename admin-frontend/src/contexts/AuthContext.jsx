@@ -10,15 +10,36 @@ const USER_KEY = 'admin_user';
 function loadUser() {
   try {
     const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // S-8 fix (audit 2026-06-22): validar shape. localStorage corrupto
+    // o manipulado puede tener JSON válido pero no-objeto: `[1,2,3]`,
+    // `42`, `"string"`, `null`. Si dejamos pasar eso, `user.is_super_admin`
+    // = undefined → isAuthenticated=false (OK), pero los spreads
+    // `{ ...(prev || {}), ...data }` con prev=[1,2,3] producen objetos
+    // raros. Mejor sanitizar acá.
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
 }
 
 function saveUser(u) {
-  if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
-  else localStorage.removeItem(USER_KEY);
+  // S-8 fix (audit 2026-06-22): localStorage.setItem puede tirar
+  // `QuotaExceededError` en Safari iOS modo privado (quota = 0). Sin el
+  // try/catch, el login completo crashea con excepción no manejada.
+  // Failure mode: el user no se persiste cross-reload (acepta-le),
+  // pero la sesión en memoria sigue funcionando.
+  try {
+    if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
+    else localStorage.removeItem(USER_KEY);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[admin] localStorage write failed:', err?.message);
+  }
 }
 
 export function AuthProvider({ children }) {

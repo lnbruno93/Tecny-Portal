@@ -60,16 +60,29 @@ export default function Modal({
 
   // Focus inicial: al abrir, focuseamos el primer field/button del modal.
   // querySelector se ejecuta DESPUÉS del paint (setTimeout 0) para que el
-  // DOM esté montado completo. Sin esto, el focus podría caer en un
-  // elemento que aún no existe.
+  // DOM esté montado completo.
+  //
+  // S-4 fix (audit 2026-06-22): scope-eamos el querySelector al `.modal-body`
+  // (no a todo el card). Antes el querySelector tomaba el primer `button`
+  // del card — que es el botón "X cerrar" del header. Usuario teclado abre
+  // SuspendTenantModal → Enter → modal cierra antes de leer la advertencia.
+  // Limitando al body, el primer focusable es siempre un input/textarea/
+  // botón funcional, nunca el cerrar.
   useEffect(() => {
     if (!open) return undefined;
     const id = setTimeout(() => {
       const root = cardRef.current;
       if (!root) return;
-      const focusable = root.querySelector(
-        'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])'
-      );
+      // Buscar primero en .modal-body (inputs/textareas/selects/botones
+      // del contenido). Si no hay nada focusable ahí, fallback al footer
+      // (.modal-ft) para focusear el primer botón de acción.
+      const body = root.querySelector('.modal-body');
+      const footer = root.querySelector('.modal-ft');
+      const selector =
+        'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])';
+      const focusable =
+        (body && body.querySelector(selector)) ||
+        (footer && footer.querySelector(selector));
       if (focusable) focusable.focus();
     }, 0);
     return () => clearTimeout(id);
