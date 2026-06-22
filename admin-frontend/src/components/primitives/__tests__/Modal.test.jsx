@@ -1,4 +1,4 @@
-// Tests del Modal primitive (Sub-fase B.3 #353).
+// Tests del Modal primitive (#353).
 //
 // Cubrimos el contrato visible que los 4 modals de mutations dependen:
 //   · open=false → NO renderiza nada (no es solo CSS hidden)

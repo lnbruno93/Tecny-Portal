@@ -1,4 +1,4 @@
-// Tests para los 4 modals de mutations (Sub-fase B.3 #353).
+// Tests para los 4 modals de mutations (#353).
 //
 // Un archivo único para los 4 — son chicos y comparten setup (mock adminApi).
 // Cubrimos solo el contrato crítico de cada uno:

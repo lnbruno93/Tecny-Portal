@@ -36,6 +36,15 @@ export const PLAN_TONES = {
 export const planTone = (plan) =>
   PLAN_TONES[String(plan || '').toLowerCase()] || 'default';
 
+// H-1 centralizado (audit 2026-06-22): antes había 5 copias byte-a-byte
+// de esta función (Resumen, Clientes, Ficha, Planes, EditTenantModal).
+// Refactor a un solo lugar — cambiar capitalización de planes es ahora
+// editar una línea, no cinco.
+export function planLabel(p) {
+  if (!p) return '—';
+  return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
 // Health score → color. Umbrales pensados para "vista de pájaro" del
 // super-admin, no para alertas finas (eso lo hace el backend).
 export const healthColor = (h) => {
@@ -61,7 +70,7 @@ export const tenantInitials = (name) => {
 // del Resumen — el super-admin lo usa para detectar cuentas que se
 // están enfriando, no como métrica formal.
 //
-// TODO Sub-fase Z (Salud real): definir fórmula combinada
+// TODO (Salud real): definir fórmula combinada
 //   uso producto (logins/eventos) + cobros al día + adopción features.
 // Cuando exista, este helper se reemplaza pero la firma queda igual
 // para no romper call-sites (Resumen, Clientes).

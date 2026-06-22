@@ -1,5 +1,5 @@
-// Column chart "barato" — sin librería extra (cumplir restricción: no
-// agregamos chart libs en sub-fase B.2). Pensado para series cortas
+// Column chart "barato" — sin librería extra (decisión explícita: no
+// agregamos chart libs todavía). Pensado para series cortas
 // (~90 puntos) con dos magnitudes apiladas: signups (positivo / accent)
 // arriba de suspensions (negativo / neg). El stacked vertical visualiza
 // "movimiento neto" del día sin recurrir a líneas que requieren SVG.
@@ -57,8 +57,8 @@ export default function ColChart({ series = [], height = 140, xLabels }) {
   const labels = xLabels || derivedLabels;
 
   // Empty state defensivo — si el endpoint devuelve {history: []}, no
-  // queremos renderizar un chart vacío sin contexto. Sub-fase B.2: sin
-  // data, mostramos un placeholder muted en lugar del esqueleto.
+  // queremos renderizar un chart vacío sin contexto. Sin data, mostramos
+  // un placeholder muted en lugar del esqueleto.
   if (!series.length) {
     return (
       <div className="muted tiny" style={{ padding: '20px 0', textAlign: 'center' }}>

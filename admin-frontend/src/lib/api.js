@@ -26,8 +26,7 @@ export function resolveApiBase(rawUrl) {
   }
   // Fallback al backend prod. Mismo razonamiento que el portal: si la var
   // falta en builds non-prod, idealmente vite.config.js debería fallar el
-  // build — TODO cuando se configure Netlify para el admin site. Mientras
-  // tanto, este fallback al menos no rompe builds locales.
+  // build. Mientras tanto, este fallback al menos no rompe builds locales.
   return (trimmed || 'https://tecny-backend-production.up.railway.app').replace(/\/+$/, '');
 }
 

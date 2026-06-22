@@ -1,4 +1,4 @@
-// Ficha de cliente — detalle full de un tenant (Sub-fase B.3 #353).
+// Ficha de cliente — detalle full de un tenant (#353).
 //
 // Compone:
 //   · header (back + page-head con logo + nombre + plan + status + acciones)
@@ -9,7 +9,7 @@
 //
 // Decisión explícita vs el design original (admin-screens-2.jsx):
 //   Hacemos 2 tabs con data 100% real, en vez de 4 con mocks. Facturación
-//   + Equipo se agregan en Sub-fase C cuando existan los endpoints reales.
+//   + Equipo se agregan cuando existan los endpoints reales.
 //
 // Defensive coding everywhere — optional chaining, Array.isArray, defaults.
 
@@ -23,6 +23,7 @@ import { Icons } from '../components/Icons.jsx';
 import { fmt, fmtMoney, fmtDate, fmtDateTime, ago } from '../lib/format.js';
 import {
   planTone,
+  planLabel,
   tenantInitials,
   getTenantStatus,
   TENANT_STATUS,
@@ -37,11 +38,6 @@ import ExtendTrialModal from '../components/modals/ExtendTrialModal.jsx';
 
 // ── Helpers locales ───────────────────────────────────────────────────
 
-function planLabel(p) {
-  if (!p) return '—';
-  return p.charAt(0).toUpperCase() + p.slice(1);
-}
-
 // Texto descriptivo del rango de salud — para el sub del stat card.
 function healthDescriptor(h) {
   if (h >= 80) return 'excelente';
@@ -51,7 +47,7 @@ function healthDescriptor(h) {
 }
 
 // Proxy "actividad reciente 30d" (0–100). Heurística simple basada en
-// cuánto hace que no hay venta. TODO Sub-fase Z (salud real).
+// cuánto hace que no hay venta. TODO (salud real): fórmula combinada.
 function activityProxy(lastActivityAt) {
   if (!lastActivityAt) return 20;
   const ts = new Date(lastActivityAt).getTime();
@@ -404,7 +400,7 @@ export default function Ficha() {
 
       {activeTab === 'resumen' && (
         <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
-          {/* Salud de la cuenta — 4 barras derivadas. TODO Sub-fase Z. */}
+          {/* Salud de la cuenta — 4 barras derivadas (proxies). TODO: salud real. */}
           <Card title="Salud de la cuenta" subtitle="Señales de uso y riesgo">
             <HealthBar
               label="Salud del tenant"
@@ -426,9 +422,9 @@ export default function Ficha() {
               value={isSuspended ? 0 : 95}
               color={isSuspended ? 'var(--neg)' : 'var(--pos)'}
             />
-            {/* Nota explícita: las 4 son derivaciones — Sub-fase Z las reemplaza. */}
+            {/* Nota explícita al user: las 4 son derivaciones, no señales reales. */}
             <div className="muted tiny" style={{ marginTop: 12 }}>
-              Sub-fase Z reemplaza estos proxies por señales reales (uso de
+              Estos proxies se van a reemplazar por señales reales (uso de
               producto + cobros + adopción de features).
             </div>
           </Card>

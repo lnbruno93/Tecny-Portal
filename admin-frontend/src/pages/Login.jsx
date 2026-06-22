@@ -1,8 +1,7 @@
-// Pantalla de Login del admin console. Lógica funcional intacta del
-// scaffold previo (sub-fase A solo cambia la estética): doble gate
-// cliente+servidor — si el server devuelve un user sin flag
-// is_super_admin, NO guardamos el token. Eso es lo que evita que un user
-// normal del portal acceda al back-office aún teniendo creds válidas.
+// Pantalla de Login del admin console. Doble gate cliente+servidor —
+// si el server devuelve un user sin flag is_super_admin, NO guardamos
+// el token. Eso es lo que evita que un user normal del portal acceda
+// al back-office aún teniendo creds válidas.
 
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';

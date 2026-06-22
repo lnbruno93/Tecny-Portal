@@ -29,10 +29,10 @@
 #   - script-src 'self' únicamente. NO usamos hCaptcha (admin es solo super-
 #     admins autenticados, no signup público), NO usamos Google Tag Manager,
 #     NO usamos analytics externo. Sin third-party scripts.
-#   - style-src 'self' + Google Fonts (Inter + JetBrains Mono via @import en
-#     styles.css; ver Sub-fase A.2). 'unsafe-inline' necesario porque algunas
-#     primitivas usan style={{...}} inline (sub-fase futura puede mover esos a
-#     classes para sacar el unsafe-inline).
+#   - style-src 'self' + Google Fonts (Inter + JetBrains Mono via @import
+#     en styles.css). 'unsafe-inline' necesario porque algunas primitivas
+#     usan style={{...}} inline (a futuro se pueden mover a classes para
+#     sacar el unsafe-inline).
 #   - connect-src: solo Tecny backend (prod + staging — el bundle puede ir a
 #     cualquiera según VITE_API_URL en build time, mantenemos ambos para que
 #     no falle por config).
