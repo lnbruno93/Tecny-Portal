@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { adminApi, saveToken, clearToken, getToken } from '../lib/api.js';
 
 const AuthContext = createContext(null);
@@ -124,14 +124,24 @@ export function AuthProvider({ children }) {
     setToken(null);
   }, []);
 
-  const value = {
-    user,
-    token,
-    loading,
-    login,
-    logout,
-    isAuthenticated: Boolean(token && user?.is_super_admin === true),
-  };
+  // PERF-1 fix (audit 2026-06-22): useMemo evita que el `value` cambie
+  // de referencia cada render del Provider. Sin esto, todos los
+  // consumidores de `useAuth()` re-renderean innecesariamente cuando
+  // el Provider se re-renderea por cualquier motivo. login/logout ya
+  // estaban useCallback-adas; faltaba envolver el objeto value.
+  // Defensa en profundidad — gana cuando Layout/Resumen consuman más
+  // auth state.
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      loading,
+      login,
+      logout,
+      isAuthenticated: Boolean(token && user?.is_super_admin === true),
+    }),
+    [user, token, loading, login, logout]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

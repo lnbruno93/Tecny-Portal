@@ -74,31 +74,35 @@ export default function Clientes() {
       });
   };
 
-  // Disparo inicial + cada vez que cambia mode (sin debounce — el seg
-  // es discreto, no genera spam de requests).
+  // PERF-4 fix (audit 2026-06-22): un solo useEffect con debounce
+  // condicional. Antes había DOS effects (uno [mode], otro [search, mode]):
+  // al cambiar mode con search no-vacío, ambos disparaban → 2 fetches al
+  // backend (el reqIdRef descartaba uno, pero el query igual se ejecuta).
+  // Ahora un solo effect: si search está vacío → fetch inmediato (mode
+  // cambió); si search tiene contenido → debounce 300ms (mismo flow viejo
+  // de search, pero ahora también cubre cambios de mode con search).
+  // searchTrim memoizado para mantener la dependencia estable cuando el
+  // user agrega espacios al final.
+  const searchTrim = search.trim();
   useEffect(() => {
-    loadList(modeParams(mode));
-  }, [mode]);
-
-  // Debounce de search: 300ms entre la última tecla y el fetch.
-  // Cleanup borra el timer si el user sigue tipeando → solo dispara
-  // cuando se quedó quieto. Combinamos params del modo activo + search.
-  useEffect(() => {
-    // Caso inicial / search vacío: ya disparamos en el useEffect de
-    // mode. No queremos doble-fetch en el primer render.
-    if (search === '') return;
-    const t = setTimeout(() => {
-      loadList({ ...modeParams(mode), search: search.trim() });
-    }, 300);
+    const params = searchTrim
+      ? { ...modeParams(mode), search: searchTrim }
+      : modeParams(mode);
+    // Sin search: fetch inmediato (cambio de mode no debe esperar).
+    if (!searchTrim) {
+      loadList(params);
+      return undefined;
+    }
+    // Con search: debounce 300ms.
+    const t = setTimeout(() => loadList(params), 300);
     return () => clearTimeout(t);
-  }, [search, mode]);
+  }, [mode, searchTrim]);
 
   const clearFilters = () => {
     setSearch('');
     setMode('todas');
-    // El useEffect de mode dispara loadList automáticamente al mutar mode.
-    // Si ya estábamos en 'todas', forzamos el reload manual:
-    if (mode === 'todas') loadList({});
+    // El useEffect arriba dispara loadList automáticamente porque mode
+    // y/o searchTrim cambian. No necesitamos forzar reload manual.
   };
 
   // ── Render ────────────────────────────────────────────────────────
