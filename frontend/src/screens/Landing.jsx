@@ -360,12 +360,20 @@ export default function Landing() {
             <h2 className="s-title">Planes que crecen con tu equipo</h2>
             <p className="s-sub">Probá gratis 14 días. Sin tarjeta, sin compromiso. Cancelás cuando quieras.</p>
           </div>
+          {/*
+            Precios duplicados de backend/src/lib/planPricing.js — mantener
+            en sync manualmente hasta que Sub-fase C.1 mueva el pricing a
+            DB editable + endpoint público que la landing fetchee.
+              Solo   → backend slug 'starter' → USD $39/mes
+              Equipo → backend slug 'pro'     → USD $189/mes
+              Multi-local → 'enterprise' (custom_mrr_usd per-tenant) → "A medida"
+          */}
           <div className="plans">
             <div className="plan">
               <div className="pname">Solo</div>
               <div className="pdesc">Para el revendedor independiente que arranca a ordenarse.</div>
-              <div className="price"><span className="cur">$</span><span className="num">—</span><span className="per">/mes</span></div>
-              <div className="pnote">Precio a definir</div>
+              <div className="price"><span className="cur">USD </span><span className="num">39</span><span className="per">/mes</span></div>
+              <div className="pnote">14 días de prueba gratis</div>
               <ul>
                 <li><Check /> 1 usuario</li>
                 <li><Check /> Cotizador + Usados</li>
@@ -378,8 +386,8 @@ export default function Landing() {
               <div className="tag-pop">Más elegido</div>
               <div className="pname">Equipo</div>
               <div className="pdesc">Para el negocio con vendedores y cuentas corrientes activas.</div>
-              <div className="price"><span className="cur">$</span><span className="num">—</span><span className="per">/mes</span></div>
-              <div className="pnote">Precio a definir</div>
+              <div className="price"><span className="cur">USD </span><span className="num">189</span><span className="per">/mes</span></div>
+              <div className="pnote">14 días de prueba gratis</div>
               <ul>
                 <li><Check /> Hasta 10 usuarios</li>
                 <li><Check /> Los 7 módulos completos</li>
