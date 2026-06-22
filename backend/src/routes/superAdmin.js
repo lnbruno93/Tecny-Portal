@@ -39,13 +39,20 @@ const router = require('express').Router();
 const db = require('../config/database');
 const requireSuperAdmin = require('../middleware/requireSuperAdmin');
 const validate = require('../lib/validate');
-const { getTenantMrr, PLAN_PRICES_USD } = require('../lib/planPricing');
+const {
+  getTenantMrr,
+  PLAN_PRICES_USD,
+  getPlanPrices,
+  refreshCache: refreshPlanPricesCache,
+} = require('../lib/planPricing');
 const parseId = require('../lib/parseId');
 const {
   patchTenantSchema,
   extendTrialSchema,
   suspendTenantSchema,
   reactivateTenantSchema,
+  patchPlanPriceSchema,
+  PLANES,
 } = require('../schemas/superAdmin');
 const logger = require('../lib/logger');
 
@@ -802,6 +809,191 @@ router.get('/metrics/history', async (_req, res, next) => {
 // user en una sola query para que el frontend renderice sin lookups extra.
 // Cap default 10 (Resumen muestra 5-7), max 50 (sub-fase futura "ver todo").
 // ──────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
+// GET /plan-prices — lista los precios de planes editables (C.1.2 #353).
+//
+// Lee la tabla `plan_prices` directo (NO el cache) — el admin puede ver el
+// estado autoritativo de la DB, no el snapshot que tiene este proceso en
+// memoria. Útil si Lucas pidió el cambio en réplica A y consulta desde
+// réplica B (refresh aún no corrió).
+//
+// Devuelve rows ordenadas por orden canónico (trial, starter, pro, enterprise),
+// con join a users para mostrar quién hizo el último UPDATE.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/plan-prices', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `SELECT pp.plan,
+                pp.price_usd,
+                pp.active,
+                pp.notes,
+                pp.created_at,
+                pp.updated_at,
+                pp.updated_by,
+                u.username AS updated_by_username
+           FROM plan_prices pp
+           LEFT JOIN users u ON u.id = pp.updated_by
+          ORDER BY CASE pp.plan
+                     WHEN 'trial' THEN 1
+                     WHEN 'starter' THEN 2
+                     WHEN 'pro' THEN 3
+                     WHEN 'enterprise' THEN 4
+                     ELSE 99
+                   END`
+      );
+      return rows;
+    });
+    res.json({ plan_prices: data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /plan-prices/:plan — actualiza precio + notes de un plan (C.1.2 #353).
+//
+// Validaciones (más allá del Zod schema):
+//   - `plan` del path debe estar en PLANES (404 sino).
+//   - `trial` NO se puede editar (el frontend lo deshabilita pero defendemos
+//     server-side igual: trial siempre es 0 por contrato del producto).
+//   - `enterprise` requiere price_usd=null (custom per-tenant). El CHECK de
+//     DB lo enforcea pero rebotamos antes para 400 limpio.
+//
+// Atomicidad: leer estado actual + UPDATE + audit en UNA tx (mismo pattern
+// que PATCH /tenants/:id). Si dos super-admins editan el mismo plan en
+// paralelo, FOR UPDATE serializa.
+//
+// Audit: action='plan_price_change'. tenant_id=1 como anchor (es config
+// global, no per-tenant — ver rationale en migration 20260622153000).
+//
+// Post-commit: refreshCache() para que ESTA réplica vea el cambio inmediato.
+// Las otras réplicas se enteran en su próximo refresh periódico (≤5min).
+// ──────────────────────────────────────────────────────────────────────────
+router.patch('/plan-prices/:plan', validate(patchPlanPriceSchema), async (req, res, next) => {
+  try {
+    const plan = String(req.params.plan);
+    if (!PLANES.includes(plan)) {
+      return res.status(404).json({ error: `Plan '${plan}' no existe` });
+    }
+    if (plan === 'trial') {
+      return res.status(400).json({
+        error: 'Trial siempre es gratis — no se puede editar su precio.',
+      });
+    }
+    const { price_usd, notes, reason } = req.body;
+    if (plan === 'enterprise' && price_usd !== null) {
+      return res.status(400).json({
+        error: 'Enterprise no acepta precio fijo (custom per-tenant via tenants.custom_mrr_usd).',
+      });
+    }
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT plan, price_usd, notes, updated_at, updated_by
+             FROM plan_prices
+            WHERE plan = $1
+            FOR UPDATE`,
+          [plan]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        // No-op detection: si price_usd no cambia y notes no se mandó o es igual.
+        const notesProvided = Object.prototype.hasOwnProperty.call(req.body, 'notes');
+        const priceChanged = Number(before.price_usd) !== Number(price_usd)
+                          || (before.price_usd === null) !== (price_usd === null);
+        const notesChanged = notesProvided && before.notes !== notes;
+        if (!priceChanged && !notesChanged) {
+          await client.query('ROLLBACK');
+          return { noop: true, row: before };
+        }
+
+        // UPDATE solo de campos que cambian (mantiene updated_at sin tocar
+        // si solo se editó notes, etc.). Si cambia price_usd, también
+        // updated_at + updated_by.
+        const sets = [];
+        const params = [];
+        if (priceChanged) {
+          params.push(price_usd);
+          sets.push(`price_usd = $${params.length}`);
+        }
+        if (notesChanged) {
+          params.push(notes);
+          sets.push(`notes = $${params.length}`);
+        }
+        params.push(req.user.id);
+        sets.push(`updated_by = $${params.length}`);
+        sets.push(`updated_at = NOW()`);
+        params.push(plan);
+        const updateRow = await client.query(
+          `UPDATE plan_prices SET ${sets.join(', ')}
+            WHERE plan = $${params.length}
+            RETURNING *`,
+          params
+        );
+
+        // Audit: tenant_id=1 (Tecny, anchor del super-admin que hizo el cambio).
+        // Ver rationale en migration 20260622153000.
+        await insertAdminAction(client, {
+          tenantId: 1,
+          superAdminUserId: req.user.id,
+          action: 'plan_price_change',
+          beforeState: {
+            plan: before.plan,
+            price_usd: before.price_usd === null ? null : Number(before.price_usd),
+            notes: before.notes,
+          },
+          afterState: {
+            plan,
+            price_usd,
+            ...(notesChanged ? { notes } : {}),
+          },
+          reason,
+        });
+
+        await client.query('COMMIT');
+        return { row: updateRow.rows[0] };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
+        throw err;
+      }
+    });
+
+    if (result.notFound) {
+      return res.status(404).json({ error: `Plan '${plan}' no existe` });
+    }
+
+    // Hot-invalidate del cache en ESTA réplica. Las otras se enteran en su
+    // próximo refresh (≤5min). Es async pero awaiteamos: si falla, el cliente
+    // ve 200 con datos viejos en la próxima request — preferimos consistencia
+    // inmediata sobre el latency extra (~10-20ms).
+    if (!result.noop) {
+      await refreshPlanPricesCache();
+      logger.info(
+        { plan, super_admin: req.user.id, new_price: result.row.price_usd },
+        '[super-admin] PATCH /plan-prices/:plan'
+      );
+    }
+
+    res.json({
+      plan: result.row.plan,
+      price_usd: result.row.price_usd === null ? null : Number(result.row.price_usd),
+      notes: result.row.notes,
+      updated_at: result.row.updated_at,
+      updated_by: result.row.updated_by,
+      noop: !!result.noop,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/metrics/recent-actions', async (req, res, next) => {
   try {
     const limit = Math.min(Math.max(1, Number(req.query.limit) || 10), 50);
