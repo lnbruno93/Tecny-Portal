@@ -13,7 +13,7 @@
 //
 // Defensive coding everywhere — optional chaining, Array.isArray, defaults.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { adminApi } from '../lib/api.js';
 import {
@@ -114,18 +114,30 @@ export default function Ficha() {
 
   // ── Carga del tenant ──────────────────────────────────────────────
   // Memoizamos para reusar en el onSaved de los modals (reload tras mutate).
-  // Igual recibe el id por closure — ese no cambia mid-vida del componente.
+  //
+  // S-3 fix (audit 2026-06-22): el `id` cambia cuando se navega entre
+  // /clientes/X. React Router NO desmonta el componente — reconcilia el
+  // mismo Ficha con nuevo `id`. Sin guard de race, el fetch del tenant
+  // anterior puede resolver DESPUÉS del fetch del actual, llamando
+  // `setTenant(dataViejo)` sobre el componente con id nuevo. UI muestra
+  // brevemente al tenant equivocado.
+  // Pattern: reqIdRef para versionar el fetch (mismo approach que Clientes.jsx).
+  const reqIdRef = useRef(0);
   const reloadTenant = useCallback(() => {
     if (id == null) return;
+    const myReqId = ++reqIdRef.current;
     setLoading(true);
     setError('');
     adminApi
       .getTenant(id)
       .then((data) => {
+        // Solo aplicar si esta es la request más reciente.
+        if (reqIdRef.current !== myReqId) return;
         setTenant(data);
         setLoading(false);
       })
       .catch((err) => {
+        if (reqIdRef.current !== myReqId) return;
         setTenant(null);
         // 404 vs error general — mensaje distinto.
         if (err?.status === 404) {
