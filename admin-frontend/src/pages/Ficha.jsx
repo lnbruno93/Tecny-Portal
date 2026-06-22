@@ -180,20 +180,26 @@ export default function Ficha() {
   }, [reloadTenant]);
 
   // ── Render: error state (404 / otro) ──────────────────────────────
+  // UX-3 fix (audit 2026-06-22): botón "Volver" extraído a componente
+  // local con ícono ArrowLeft propio (no más scaleX(-1) de ChevronRight).
+  // Reusado en NotFound / error / loading / detail header. Antes había 4
+  // variantes inconsistentes ("←" literal, span vacío con scale, etc.).
+  const BackBtn = () => (
+    <Btn
+      kind="ghost"
+      sm
+      icon="ArrowLeft"
+      onClick={() => navigate('/clientes')}
+      className="ficha-back"
+    >
+      Volver a clientes
+    </Btn>
+  );
+
   if (!loading && error === 'NOT_FOUND') {
     return (
       <>
-        <Btn
-          kind="ghost"
-          sm
-          icon="ChevronRight"
-          onClick={() => navigate('/clientes')}
-          className="ficha-back"
-          style={{ paddingLeft: 6 }}
-        >
-          <span style={{ transform: 'scaleX(-1)', display: 'inline-block', marginRight: 4 }} />
-          Volver a clientes
-        </Btn>
+        <BackBtn />
         <Card>
           <div className="empty-state">
             <div className="empty-title">Tenant no encontrado</div>
@@ -211,32 +217,35 @@ export default function Ficha() {
   if (!loading && error && error !== 'NOT_FOUND') {
     return (
       <>
-        <Btn
-          kind="ghost"
-          sm
-          onClick={() => navigate('/clientes')}
-          className="ficha-back"
-        >
-          ← Volver a clientes
-        </Btn>
+        <BackBtn />
         <div role="alert" className="banner banner-neg">{error}</div>
       </>
     );
   }
 
-  // Loading state — skeleton mínimo.
+  // Loading state — UX-16 fix (audit 2026-06-22): skeleton estructurado
+  // matching la shape real de la pantalla (back + header + 4 stat cards),
+  // en vez de un "Cargando…" en texto plano. Operador clickea una fila
+  // del listado y ve algo coherente inmediatamente.
   if (loading && !tenant) {
     return (
       <>
-        <Btn
-          kind="ghost"
-          sm
-          onClick={() => navigate('/clientes')}
-          className="ficha-back"
-        >
-          ← Volver a clientes
-        </Btn>
-        <div className="muted" style={{ fontSize: 13 }}>Cargando…</div>
+        <BackBtn />
+        <div className="page-head" aria-busy="true">
+          <div>
+            <span className="skeleton" style={{ display: 'block', width: 80, height: 11, marginBottom: 8 }} />
+            <span className="skeleton" style={{ display: 'block', width: 240, height: 26, marginBottom: 6 }} />
+            <span className="skeleton" style={{ display: 'block', width: 320, height: 13 }} />
+          </div>
+        </div>
+        <div className="kpi-grid" style={{ marginTop: 'var(--gap)' }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="kpi">
+              <span className="skeleton" style={{ display: 'block', width: 70, height: 11, marginBottom: 10 }} />
+              <span className="skeleton" style={{ display: 'block', width: 90, height: 22 }} />
+            </div>
+          ))}
+        </div>
       </>
     );
   }
@@ -253,23 +262,8 @@ export default function Ficha() {
 
   return (
     <>
-      {/* Botón "Volver a clientes". No tenemos ArrowLeft en el set,
-          usamos ChevronRight flippeado horizontalmente. */}
-      <Btn
-        kind="ghost"
-        sm
-        onClick={() => navigate('/clientes')}
-        className="ficha-back"
-      >
-        <span
-          aria-hidden="true"
-          className="ico"
-          style={{ transform: 'scaleX(-1)', display: 'inline-flex' }}
-        >
-          <Icons.ChevronRight size={13} />
-        </span>
-        Volver a clientes
-      </Btn>
+      <BackBtn />
+
 
       <PageHead
         title={

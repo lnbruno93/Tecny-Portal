@@ -36,6 +36,28 @@ function Check({ size = 16 }) {
   );
 }
 
+// UX-33 fix (audit 2026-06-22): links de footer que aún no apuntan a páginas
+// reales (Sobre nosotros, Contacto, Soporte, Términos, Privacidad, Seguridad,
+// Novedades + 3 redes sociales). Antes eran `<a href="#">` que scroll-up al
+// top del page — UX engañosa para una landing pública con signup.
+// Decisión Lucas 2026-06-22: marcarlos como "Próximamente" con aria-disabled
+// + cursor not-allowed + tooltip. Preserva el layout completo del footer
+// para cuando se cableen, sin engañar al visitor.
+function SoonLink({ children, label }) {
+  return (
+    <a
+      href="#"
+      role="link"
+      aria-disabled="true"
+      title={`${label || children} — próximamente`}
+      onClick={(e) => e.preventDefault()}
+      style={{ opacity: 0.45, cursor: 'not-allowed' }}
+    >
+      {children}
+    </a>
+  );
+}
+
 // Fallback de pricing — matchea el seed de la migration plan_prices y los
 // valores actuales en backend/src/lib/planPricing.js DEFAULT_PRICES. Si
 // el fetch de /api/public/pricing falla (backend down, network slow,
@@ -572,43 +594,43 @@ export default function Landing() {
               <a href="#modulos">Módulos</a>
               <a href="#como">Cómo funciona</a>
               <a href="#precios">Precios</a>
-              <a href="#">Novedades</a>
+              <SoonLink>Novedades</SoonLink>
             </div>
             <div className="foot-col">
               <h5>Empresa</h5>
-              <a href="#">Sobre nosotros</a>
+              <SoonLink>Sobre nosotros</SoonLink>
               <a href="#testimonios">Clientes</a>
-              <a href="#">Contacto</a>
-              <a href="#">Soporte</a>
+              <SoonLink>Contacto</SoonLink>
+              <SoonLink>Soporte</SoonLink>
             </div>
             <div className="foot-col">
               <h5>Legal</h5>
-              <a href="#">Términos</a>
-              <a href="#">Privacidad</a>
-              <a href="#">Seguridad</a>
+              <SoonLink>Términos</SoonLink>
+              <SoonLink>Privacidad</SoonLink>
+              <SoonLink>Seguridad</SoonLink>
             </div>
           </div>
           <div className="foot-bottom">
             <div className="cr">© 2026 Tecny · Tech Reseller & Celnyx · Buenos Aires, Argentina</div>
             <div className="soc">
-              <a href="#" aria-label="Instagram">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <SoonLink label="Instagram">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-label="Instagram">
                   <rect x="3" y="3" width="18" height="18" rx="5"/>
                   <circle cx="12" cy="12" r="4"/>
                   <circle cx="17.5" cy="6.5" r="0.6" fill="currentColor"/>
                 </svg>
-              </a>
-              <a href="#" aria-label="WhatsApp">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              </SoonLink>
+              <SoonLink label="WhatsApp">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-label="WhatsApp">
                   <path d="M3 21l1.7-5A8 8 0 1 1 8 19.3Z"/>
                 </svg>
-              </a>
-              <a href="#" aria-label="LinkedIn">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              </SoonLink>
+              <SoonLink label="LinkedIn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-label="LinkedIn">
                   <rect x="3" y="3" width="18" height="18" rx="3"/>
                   <path d="M7 10v7M7 7v.01M11 17v-4a2 2 0 0 1 4 0v4"/>
                 </svg>
-              </a>
+              </SoonLink>
             </div>
           </div>
         </div>
