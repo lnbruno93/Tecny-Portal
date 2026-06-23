@@ -349,10 +349,25 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  width: 280px;
+  /* 2026-06-22: bump de 280→320 + nowrap en el span (regla de abajo).
+     El placeholder "Buscar comprobantes, clientes, IMEIs…" se rompía a
+     2 líneas dentro de un box de 32px de alto, quedaba apretado. Ahora
+     entra en una línea y, si por algún breakpoint raro no entrara,
+     hace ellipsis en vez de wrappear. */
+  width: 320px;
   color: var(--text-muted);
   font-size: 13px;
   cursor: text;
+}
+/* El placeholder NO debe wrappear — el box es de altura fija (32px).
+   flex:1 + min-width:0 permite que el texto ocupe el espacio entre
+   el icono y el kbd y que ellipsee si por algún motivo no entra. */
+.search > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .search:hover { border-color: var(--border-strong); }
 .search kbd {
