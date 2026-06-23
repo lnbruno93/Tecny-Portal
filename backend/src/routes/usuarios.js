@@ -7,7 +7,6 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { createUsuarioSchema, updateUsuarioSchema } = require('../schemas/usuarios');
-const { TOOLS } = require('../lib/tools');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
 
@@ -22,10 +21,13 @@ router.use(adminOnly);
 // múltiples tenants) — sin este filtro, un signup-creado-owner podía leer
 // emails/usernames/roles de TODA la base. `tenant_users` tampoco está en RLS,
 // así que el filtro debe ser explícito en el WHERE.
+// 2026-06-23 F4: este endpoint devuelve solo los datos básicos del user.
+// Para roles + capabilities usar GET /api/capabilities/users — ese sí
+// devuelve el shape capability-based (rol, overrides, caps_efectivas).
 router.get('/', async (req, res, next) => {
   try {
-    const { users, perms } = await db.withTenant(req.tenantId, async (client) => {
-      const { rows: users } = await client.query(
+    const users = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
         `SELECT u.id, u.nombre, u.username, u.email, u.role, u.created_at
            FROM users u
            JOIN tenant_users tu ON tu.user_id = u.id
@@ -33,20 +35,9 @@ router.get('/', async (req, res, next) => {
           ORDER BY u.nombre LIMIT 200`,
         [req.tenantId]
       );
-      const { rows: perms } = await client.query(
-        'SELECT user_id, tool, enabled FROM user_permissions WHERE user_id = ANY($1)',
-        [users.map(u => u.id)]
-      );
-      return { users, perms };
+      return rows;
     });
-    const permMap = {};
-    perms.forEach(p => {
-      if (!permMap[p.user_id]) permMap[p.user_id] = {};
-      permMap[p.user_id][p.tool] = p.enabled;
-    });
-    // Garantizar que todos los tools aparezcan (false si falta la fila en DB)
-    const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
-    res.json(users.map(u => ({ ...u, perms: { ...defaultPerms, ...(permMap[u.id] || {}) } })));
+    res.json(users);
   } catch (err) {
     next(err);
   }
@@ -54,7 +45,10 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
   try {
-    const { nombre, username, email, password, role, perms } = req.body;
+    // 2026-06-23 F4: ya no recibimos `perms`. Capabilities + rol se asignan
+    // post-creación vía PUT /api/capabilities/users/:id (lo hace el frontend
+    // en la pantalla nueva de Usuarios, después de un POST exitoso acá).
+    const { nombre, username, email, password, role } = req.body;
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     // 2026-06-16 TANDA 1: email es NOT NULL. Si el admin no lo provee (flow
@@ -85,25 +79,29 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
       // TANDA 2.4 fix BLOCKER auditoría 2026-06-17: link el user nuevo al tenant
       // actual como member. Sin esto, el user creado por admin queda huérfano
       // (no aparece en GET /, no puede hacer login porque /api/auth/login no le
-      // resuelve tenant_id en JWT). Defaul rol 'member' — el admin que lo crea
+      // resuelve tenant_id en JWT). Default rol 'member' — el admin que lo crea
       // puede después promoverlo a 'admin' del tenant si corresponde.
       await client.query(
         `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'member')`,
         [req.tenantId, user.id]
       );
 
-      // Un solo INSERT multi-row en lugar de 5 queries secuenciales
-      const permValues = TOOLS.map((tool, i) => `($1, $${i + 2}, $${i + 2 + TOOLS.length})`).join(', ');
+      // 2026-06-23 F4: seedeamos el rol nuevo (tenant_user_roles) con 'custom'
+      // para que el user arranque sin capabilities. El admin que lo creó va a
+      // setear el rol real con un PUT /api/capabilities/users/:id desde la
+      // pantalla nueva de Usuarios. RLS pasa porque withTenant ya seteó
+      // app.current_tenant arriba.
       await client.query(
-        `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ${permValues}`,
-        [user.id, ...TOOLS, ...TOOLS.map(t => perms[t] === true)]
+        `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES ($1, $2, 'custom')`,
+        [req.tenantId, user.id]
       );
+
       // Audit-in-tx (auditoría 2026-06-06 Sol M2) — antes corría en pool
       // global después del COMMIT, dejando ventana para que el proceso muera
       // entre commit y audit, perdiendo la traza.
       await audit(client, 'users', 'INSERT', user.id, { despues: user, user_id: req.user.id });
       await client.query('COMMIT');
-      res.status(201).json({ ...user, perms });
+      res.status(201).json(user);
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -133,14 +131,17 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     });
     if (!before[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const { nombre, username, email, password, role, perms, twofa_code } = req.body;
+    // 2026-06-23 F4: ya no recibimos `perms` — capabilities se editan vía
+    // /api/capabilities/users/:id, no acá.
+    const { nombre, username, email, password, role, twofa_code } = req.body;
     const hash = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : null;
 
-    // 2026-06-11 SE-08: si el admin está cambiando password / role / perms de
+    // 2026-06-11 SE-08: si el admin está cambiando password / role de
     // OTRO user (no de sí mismo), exigir re-auth 2FA del admin. Esto cierra
     // el path de privilege escalation con token robado: aunque el atacante
-    // tenga el JWT del admin, sin su TOTP no puede cambiar perms de otros.
-    const isSensitiveChange = (hash !== null || role !== undefined || perms !== undefined);
+    // tenga el JWT del admin, sin su TOTP no puede cambiar credenciales
+    // de otros. (Caps van por su propio endpoint que también bumpea pw_changed.)
+    const isSensitiveChange = (hash !== null || role !== undefined);
     const isOtherUser = id !== req.user.id;
     if (isSensitiveChange && isOtherUser) {
       const { load2fa, verifyAndConsume } = require('./twoFa');
@@ -170,11 +171,10 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
       // inmediatamente. Sin este bump, un atacante con un JWT robado seguía
       // autenticado aunque el admin reseteara la password.
       //
-      // 2026-06-11 P-02: también bumpeamos cuando cambian `role` o `perms` —
-      // ahora ambos viajan en el JWT (perms en el payload, role siempre estuvo)
-      // y el token cacheado en el cliente quedaría stale. Forzar re-login = el
-      // user recibe un JWT nuevo con perms actualizadas en el siguiente login.
-      const bumpPwChanged = (hash !== null) || (role !== undefined) || (perms !== undefined);
+      // 2026-06-23 F4: el bump también se dispara al cambiar `role`. Cambios
+      // de capabilities/rol-de-tenant viajan por /api/capabilities/users/:id,
+      // que tiene su propio bump (ver routes/capabilities.js).
+      const bumpPwChanged = (hash !== null) || (role !== undefined);
       const { rows } = await client.query(
         `UPDATE users SET
           nombre               = COALESCE($1, nombre),
@@ -187,30 +187,13 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
         [nombre, username, email, hash, role, bumpPwChanged, id]
       );
 
-      let permsAntes = null;
-      if (perms !== undefined) {
-        // Guardar permisos anteriores para el audit
-        const { rows: permsBefore } = await client.query(
-          'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
-          [id]
-        );
-        permsAntes = Object.fromEntries(permsBefore.map(p => [p.tool, p.enabled]));
-
-        // Un solo UPSERT multi-row en lugar de 5 queries secuenciales
-        const upsertValues = TOOLS.map((tool, i) => `($1, $${i + 2}, $${i + 2 + TOOLS.length})`).join(', ');
-        await client.query(
-          `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ${upsertValues}
-           ON CONFLICT (user_id, tool) DO UPDATE SET enabled = EXCLUDED.enabled`,
-          [id, ...TOOLS, ...TOOLS.map(t => perms[t] === true)]
-        );
-      }
       // Audit-in-tx (auditoría 2026-06-06 Sol M2) — antes corría en pool
       // global después del COMMIT.
       // Excluir password_hash del audit log — es un hash pero no debe persistirse innecesariamente
       const { password_hash: _phAntes, ...safeAntes } = before[0];
       await audit(client, 'users', 'UPDATE', id, {
-        antes:   { ...safeAntes, perms: permsAntes },
-        despues: { ...rows[0],  perms: perms ?? permsAntes },
+        antes:   safeAntes,
+        despues: rows[0],
         user_id: req.user.id,
       });
       await client.query('COMMIT');

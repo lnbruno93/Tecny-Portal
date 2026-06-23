@@ -51,10 +51,16 @@ export function TcReferenciaProvider({ children }) {
 
   const load = useCallback(async () => {
     if (!user) { setTcRef(null); return; }
-    // Solo intentamos cargar si el user tiene permiso de financiera (donde
-    // vive el endpoint). Si no, queda null — no rompe nada.
-    const hasFinanciera = user.role === 'admin' || user.perms?.financiera === true;
-    if (!hasFinanciera) { setTcRef(null); return; }
+    // 2026-06-23 F4: solo intentamos cargar si el user tiene la capability
+    // `config.alertas` (donde vive el endpoint /api/alertas/config). Si no,
+    // queda null — no rompe nada.
+    const isBypass = user.role === 'admin'
+      || user.tenant_cap_rol === 'owner'
+      || user.tenant_cap_rol === 'admin';
+    const hasAlertas = isBypass
+      || user.caps === null
+      || (Array.isArray(user.caps) && user.caps.includes('config.alertas'));
+    if (!hasAlertas) { setTcRef(null); return; }
     try {
       const configs = await alertasApi.config();
       const cfg = configs.find(c => c.tipo === 'tc_referencia');

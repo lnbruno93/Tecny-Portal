@@ -72,7 +72,12 @@ describe('GET /api/auth/me', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.username).toBe(TEST_USER.username);
-    expect(res.body).toHaveProperty('perms');
+    // 2026-06-23 F4: el response del /me ya no incluye `perms` (14 booleans
+    // del sistema viejo). En su lugar manda `caps` (array de slugs activos
+    // o null para bypass) + `tenant_cap_rol`. El test admin tiene role=admin
+    // global → no se materializan caps (bypass implícito), pero el campo
+    // existe en el response shape.
+    expect(res.body).toHaveProperty('caps');
   });
 });
 

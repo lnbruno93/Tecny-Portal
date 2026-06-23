@@ -1,5 +1,5 @@
 // Módulo Proyectos — agrupa proyectos y trackea desarrollo + inversiones.
-// Montado en /api/proyectos con requireAuth + requirePermission('proyectos') (app.js).
+// Montado en /api/proyectos con requireAuth + requireCapability('proyectos.trabajar') (app.js).
 const router  = require('express').Router();
 const db      = require('../config/database');
 const validate = require('../lib/validate');

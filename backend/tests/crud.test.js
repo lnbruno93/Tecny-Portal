@@ -31,14 +31,23 @@ beforeAll(async () => {
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   adminToken = r1.body.token;
 
-  // Crear usuario 'op' sin permisos para testear 403
+  // Crear usuario 'op' sin caps para testear 403.
+  // 2026-06-23 F4: sin filas en tenant_user_roles + user_capabilities →
+  // resolveCaps devuelve rol='custom' con caps=Set() (default-deny). El
+  // middleware requireCapability rebota con 403 en cualquier slug.
   const hash = await bcrypt.hash('op_pass_123', 10);
   const { rows } = await pool.query(
     'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id',
     ['Op User', 'opuser', 'opuser@test.local', hash, 'op']
   );
   opId = rows[0].id;
-  // Sin filas en user_permissions → cualquier permiso dará 403
+  // Linkear el opuser al tenant 1 — sin esto, /api/auth/login no le resuelve
+  // tenant_id en el JWT y muchos endpoints rebotan antes del check de caps.
+  await pool.query(
+    `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES (1, $1, 'member')
+     ON CONFLICT DO NOTHING`,
+    [opId]
+  );
 
   const r2 = await request(app)
     .post('/api/auth/login')
@@ -76,7 +85,10 @@ describe('GET /api/usuarios', () => {
 });
 
 describe('POST /api/usuarios', () => {
-  it('admin crea usuario con permisos → 201', async () => {
+  it('admin crea usuario → 201', async () => {
+    // 2026-06-23 F4: el POST /usuarios ya no recibe `perms` (schema .strict()
+    // lo rechaza). Capabilities se asignan post-create vía PUT
+    // /api/capabilities/users/:id.
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -85,7 +97,6 @@ describe('POST /api/usuarios', () => {
         username: 'vendedor01',
         password: 'pass12345',
         role:     'op',
-        perms:    { cotizador: false, financiera: true, cajas: false, envios: false, usuarios: false },
       });
     expect(res.status).toBe(201);
     expect(res.body.username).toBe('vendedor01');
@@ -98,14 +109,12 @@ describe('POST /api/usuarios', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         nombre: 'Otro', username: 'vendedor01', password: 'pass12345', role: 'op',
-        perms: { cotizador: false, financiera: false, cajas: false, envios: false, usuarios: false },
       });
     expect(res.status).toBe(409);
   });
 
   it('permite recrear un usuario con el mismo username/email tras borrarlo', async () => {
-    const mk = (nombre) => ({ nombre, username: 'reuse01', email: 'reuse01@x.com', password: 'pass12345', role: 'op',
-      perms: { cotizador: false, financiera: false, cajas: false, envios: false, usuarios: false } });
+    const mk = (nombre) => ({ nombre, username: 'reuse01', email: 'reuse01@x.com', password: 'pass12345', role: 'op' });
     const u1 = await request(app).post('/api/usuarios').set('Authorization', `Bearer ${adminToken}`).send(mk('Reusable'));
     expect(u1.status).toBe(201);
     const del = await request(app).delete(`/api/usuarios/${u1.body.id}`).set('Authorization', `Bearer ${adminToken}`);
@@ -118,7 +127,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: '', username: 'x_user', password: 'pass12345', role: 'op', perms: {} });
+      .send({ nombre: '', username: 'x_user', password: 'pass12345', role: 'op' });
     expect(res.status).toBe(400);
   });
 
@@ -126,7 +135,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Alguien', username: 'a_user', password: '123', role: 'op', perms: {} });
+      .send({ nombre: 'Alguien', username: 'a_user', password: '123', role: 'op' });
     expect(res.status).toBe(400);
   });
 
@@ -134,7 +143,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Alguien', username: 'UserBad', password: 'pass12345', role: 'op', perms: {} });
+      .send({ nombre: 'Alguien', username: 'UserBad', password: 'pass12345', role: 'op' });
     expect(res.status).toBe(400);
   });
 });
@@ -149,14 +158,16 @@ describe('PUT /api/usuarios/:id', () => {
     expect(res.body.nombre).toBe('Vendedor Actualizado');
   });
 
-  it('admin puede actualizar permisos', async () => {
+  it('admin puede actualizar caps vía el endpoint nuevo', async () => {
+    // 2026-06-23 F4: el endpoint /usuarios ya no acepta `perms`. Caps + rol
+    // se editan ahora vía PUT /api/capabilities/users/:id. Mandamos un body
+    // mínimo (sin overrides para no acoplar el test a un slug específico).
     const res = await request(app)
-      .put(`/api/usuarios/${nuevoUserId}`)
+      .put(`/api/capabilities/users/${nuevoUserId}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        perms: { cotizador: false, financiera: false, cajas: true, envios: false, usuarios: false },
-      });
+      .send({ rol: 'vendedor' });
     expect(res.status).toBe(200);
+    expect(res.body.rol).toBe('vendedor');
   });
 
   it('ID inexistente → 404', async () => {
@@ -178,7 +189,12 @@ describe('PUT /api/usuarios/:id', () => {
   it('TANDA 3 fix M3: edit de nombre solo (no sensitive) NO invalida cache de auth', async () => {
     // M3: invalidación gratuita en edits de fields no-cacheados produce
     // stampede en réplicas. Verificamos que solo se invalida si
-    // bumpPwChanged=true (password/role/perms changed).
+    // bumpPwChanged=true.
+    //
+    // 2026-06-23 F4: el endpoint /usuarios ya no maneja perms — solo role +
+    // password disparan bumpPwChanged ahora. Cambios de caps/rol-de-tenant
+    // viajan por /api/capabilities/users/:id (que también bumpea, pero eso
+    // lo cubre capabilities-routes.test.js).
     const userAuthCache = require('../src/lib/userAuthCache');
     const spy = jest.spyOn(userAuthCache, 'invalidateUserAuth');
     try {
@@ -190,12 +206,12 @@ describe('PUT /api/usuarios/:id', () => {
       expect(r1.status).toBe(200);
       expect(spy).not.toHaveBeenCalled();
 
-      // Cambio sensitive: perms → bumpPwChanged=true → invalidate.
+      // Cambio sensitive: password → bumpPwChanged=true → invalidate.
       spy.mockClear();
       const r2 = await request(app)
         .put(`/api/usuarios/${nuevoUserId}`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ perms: { cotizador: true, financiera: false, cajas: false, envios: false, usuarios: false } });
+        .send({ password: 'nuevopass12345' });
       expect(r2.status).toBe(200);
       expect(spy).toHaveBeenCalledWith(nuevoUserId);
     } finally {
@@ -323,18 +339,23 @@ describe('POST /api/contactos', () => {
     expect(res.status).toBe(403);
   });
 
-  it('usuario op con permiso contactos SÍ puede crear → 201', async () => {
-    // Otorgar el permiso 'contactos' al opuser y verificar que ahora pasa.
+  it('usuario op con capability contactos.crear_borrar SÍ puede crear → 201', async () => {
+    // 2026-06-23 F4: las caps viven ahora en tenant_user_roles +
+    // user_capabilities. Insertamos un override `contactos.crear_borrar=true`
+    // para el opuser y re-logueamos para que el JWT lo embeba. Igual que
+    // antes: en producción, el admin edita caps → PUT /api/capabilities/users
+    // bumpea password_changed_at → user re-loguea con caps nuevas.
     await pool.query(
-      `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1, 'contactos', true)
-       ON CONFLICT (user_id, tool) DO UPDATE SET enabled = true`,
+      `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES (1, $1, 'custom')
+       ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'custom'`,
       [opId]
     );
-    // 2026-06-11 P-02: los perms van embebidos en el JWT al login. Después de
-    // modificar user_permissions en DB, hay que re-loguear para que el JWT
-    // refleje el nuevo permiso. En producción, el flujo es: admin cambia perms
-    // → PUT /usuarios bumpea password_changed_at → user re-loguea al siguiente
-    // request. Acá simulamos el re-login manualmente.
+    await pool.query(
+      `INSERT INTO user_capabilities (tenant_id, user_id, capability_slug, enabled)
+       VALUES (1, $1, 'contactos.crear_borrar', true)
+       ON CONFLICT (tenant_id, user_id, capability_slug) DO UPDATE SET enabled = true`,
+      [opId]
+    );
     const reLogin = await request(app)
       .post('/api/auth/login')
       .send({ username: 'opuser', password: 'op_pass_123' });
@@ -346,7 +367,7 @@ describe('POST /api/contactos', () => {
     expect(res.status).toBe(201);
     // Limpieza: dejar el opuser como estaba para no contaminar otros tests.
     await pool.query(
-      `DELETE FROM user_permissions WHERE user_id = $1 AND tool = 'contactos'`,
+      `DELETE FROM user_capabilities WHERE tenant_id = 1 AND user_id = $1 AND capability_slug = 'contactos.crear_borrar'`,
       [opId]
     );
   });

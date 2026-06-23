@@ -511,8 +511,10 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     const tocaStock = ['compra', 'devolucion', 'entrega_mercaderia'].includes(tipo)
       && items.some(it => it.producto_id);
     if (tocaStock) {
-      const { hasPermission } = require('../middleware/requirePermission');
-      const ok = await hasPermission(req.user, 'inventario');
+      // 2026-06-23 F4: cutover a requireCapability. hasCapability mantiene
+      // la misma semántica para checks cross-módulo inline.
+      const { hasCapability } = require('../middleware/requireCapability');
+      const ok = await hasCapability(req.user, 'inventario.ver');
       if (!ok) {
         return res.status(403).json({
           error: 'Para registrar un movimiento que descuenta stock necesitás también permiso de Inventario.',
