@@ -72,6 +72,7 @@ const comprobantesRoutes = require('./routes/comprobantes');
 const pagosRoutes        = require('./routes/pagos');
 const historialRoutes    = require('./routes/historial');
 const configRoutes       = require('./routes/config');
+const tenantProfileRoutes = require('./routes/tenant-profile');
 const ocrRoutes          = require('./routes/ocr');
 const contactosRoutes    = require('./routes/contactos');
 const cajasRoutes        = require('./routes/cajas');
@@ -590,6 +591,11 @@ app.use('/api/comprobantes',  requireAuth, requirePermission('financiera'), comp
 app.use('/api/pagos',         requireAuth, requirePermission('financiera'), pagosRoutes);
 app.use('/api/historial',     requireAuth, requirePermission('financiera'), historialRoutes);
 app.use('/api/config',        requireAuth, requirePermission('financiera'), configRoutes);
+// Perfil del tenant (datos públicos del negocio: ficha de Google, nombre, etc).
+// Sin requirePermission — cualquier user autenticado del tenant puede LEERLO
+// (el Cotizador lo consume y a Cotizador llegan vendedores comunes). La
+// edición está gateada por adminOnly DENTRO del router.
+app.use('/api/tenant-profile', requireAuth, tenantProfileRoutes);
 app.use('/api/ocr',           requireAuth, requirePermission('financiera'), ocrRoutes);
 
 // Contactos — agenda compartida (la usan Ventas, Cajas, Proyectos para quick-add).

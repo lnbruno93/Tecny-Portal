@@ -1,7 +1,31 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
+import { tenantProfile } from '../lib/api'; // 2026-06-22 fix multi-tenant Google profile
+
+// 2026-06-22 fix: arma la oración "Nos encontrás en Google como..." dinámicamente
+// según el perfil del tenant. Si el tenant NO tiene ficha de Google activada,
+// devuelve string vacío (no se incluye la oración). Si la tiene pero faltan
+// datos (caso defensivo, no debería pasar porque el backend valida), también
+// se omite para no generar texto roto.
+//
+// Reglas del template:
+//   · enabled=false → no aparece nada de Google.
+//   · enabled=true + name + count>0 → "Nos encontrás en Google como "<name>"
+//     con +N reseñas 5 estrellas."
+//   · enabled=true + name pero count=0/null → "Nos encontrás en Google como
+//     "<name>"." (sin la parte de reseñas — no inventamos números).
+function buildGoogleLine(profile) {
+  if (!profile?.google_business_enabled) return '';
+  const name = (profile.google_business_name || '').trim();
+  if (!name) return '';
+  const count = Number(profile.google_reviews_count);
+  const reseñas = Number.isInteger(count) && count > 0
+    ? ` con +${count} reseñas 5 estrellas`
+    : '';
+  return `Nos encontrás en Google como "${name}"${reseñas}.`;
+}
 
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -63,6 +87,18 @@ function TabTarjetas() {
     { id: 1, nom: 'iPhone 16 Pro 256GB Natural Titanium', vari: '', usd: 0 },
   ]);
   const [copiado, setCopiado] = useState(false);
+  // Perfil del tenant para inyectar la oración de Google dinámicamente en
+  // el mensaje copiado. Si el fetch falla (red caída) cae al string vacío
+  // por defecto y el mensaje sale SIN la frase de Google — preferible a
+  // bloquear el cotizado o mostrar datos de otro negocio.
+  const [profile, setProfile] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    tenantProfile.get()
+      .then((p) => { if (alive) setProfile(p); })
+      .catch(() => { /* silent: el mensaje sale sin la frase de Google */ });
+    return () => { alive = false; };
+  }, []);
 
   const addProd = () =>
     setProds([...prods, { id: Date.now(), nom: '', vari: '', usd: 0 }]);
@@ -117,11 +153,22 @@ function TabTarjetas() {
       txt += `💳 TOTAL 3 cuotas: $${fmt(calculo.tots.c3)}\n`;
       txt += `💳 TOTAL 6 cuotas: $${fmt(calculo.tots.c6)}\n`;
     }
-    // Cotización con tarjeta: dato de reseñas actualizado (2800 → 3200) +
-    // recomendación de validar con el banco — algunos bancos rechazan operaciones
-    // grandes sin aviso previo. La 2da frase NO se duplica en TabUsd porque
-    // efectivo/transferencia no involucra banco que validar.
-    txt += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +3200 reseñas 5 estrellas. En caso de que te interese la cotización, te recomendamos llamar previamente a tu banco para validar la operación.`;
+    // 2026-06-22 fix multi-tenant: la frase de Google (nombre del negocio +
+    // reseñas) ahora se inyecta dinámicamente desde el perfil del tenant.
+    // Si el tenant tiene `google_business_enabled = false`, NO aparece nada
+    // de Google (cada cliente Tecny solía ver "Tecny Tech | Reseller", el
+    // negocio personal de Lucas — bug obvio en multi-tenant).
+    //
+    // La 2da frase (recomendación del banco) sigue para TODOS porque es
+    // universal sobre operaciones con tarjeta, no específica de un negocio.
+    // No se duplica en TabUsd porque efectivo/transferencia no involucra
+    // banco que validar.
+    const googleLine = buildGoogleLine(profile);
+    if (googleLine) {
+      txt += `\n${googleLine} En caso de que te interese la cotización, te recomendamos llamar previamente a tu banco para validar la operación.`;
+    } else {
+      txt += `\nEn caso de que te interese la cotización, te recomendamos llamar previamente a tu banco para validar la operación.`;
+    }
     navigator.clipboard?.writeText(txt);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 1800);
@@ -305,6 +352,17 @@ function TabUsd() {
   const [optTars, setOptTars] = useState(false);
   const [optTusd, setOptTusd] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  // Mismo patrón que TabTarjetas — perfil del tenant para frase de Google
+  // dinámica. Cada tab tiene su propio fetch para no acoplar el state entre
+  // ambos tabs (siguen siendo componentes independientes).
+  const [profile, setProfile] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    tenantProfile.get()
+      .then((p) => { if (alive) setProfile(p); })
+      .catch(() => { /* silent */ });
+    return () => { alive = false; };
+  }, []);
 
   const addProd = () =>
     setProds([...prods, { id: Date.now(), nom: '', usd: 0 }]);
@@ -360,7 +418,10 @@ function TabUsd() {
       if (optTars) m += `TOTAL Transferencia ARS: $${fmt(calculo.tots.tars)}\n`;
       if (optTusd) m += `TOTAL Transferencia USD: u$s ${fmt(calculo.tots.tusd)}\n`;
     }
-    m += `\nNos encontrás en Google como "Tecny Tech | Reseller" con +3200 reseñas 5 estrellas.`;
+    // 2026-06-22 fix multi-tenant: ver TabTarjetas para racionale completo.
+    // En TabUsd la 2da frase del banco NO aplica (no es operación con tarjeta).
+    const googleLine = buildGoogleLine(profile);
+    if (googleLine) m += `\n${googleLine}`;
     navigator.clipboard?.writeText(m);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 1800);
