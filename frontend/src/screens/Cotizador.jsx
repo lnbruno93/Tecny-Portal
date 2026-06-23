@@ -3,6 +3,8 @@ import { Icons } from '../components/Icons';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
 import { tenantProfile } from '../lib/api'; // 2026-06-22 fix multi-tenant Google profile
+import { useAuth } from '../contexts/AuthContext'; // 2026-06-22 tab Configuración (Mi negocio)
+import BusinessProfileSection from '../components/BusinessProfileSection'; // idem
 
 // 2026-06-22 fix: arma la oración "Nos encontrás en Google como..." dinámicamente
 // según el perfil del tenant. Si el tenant NO tiene ficha de Google activada,
@@ -669,6 +671,13 @@ function TabUsd() {
 
 export default function Cotizador() {
   const [tab, setTab] = useState('tarjetas');
+  // 2026-06-22 — el perfil del negocio (ficha de Google) vive ACÁ y no en
+  // Config, porque acá es donde el dato se usa (mensaje generado en cada
+  // cotización). Lucas pidió moverlo de Config para que sea más contextual y
+  // se preste a menos confusión. El form completo aparece solo a admins; los
+  // vendedores comunes ven una vista read-only desde la misma tab.
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   return (
     <div>
@@ -679,6 +688,16 @@ export default function Cotizador() {
           <div className="page-sub">Cálculo de precios para clientes · client-side, no persiste</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {/* Configuración va primera porque es lo que el admin abre cuando
+              llega al módulo por primera vez (setea su ficha de Google una
+              vez y se olvida). Default tab sigue siendo 'tarjetas' — el uso
+              diario es la cotización, no la config. */}
+          <button
+            className={'btn' + (tab === 'config' ? ' btn-primary' : '')}
+            onClick={() => setTab('config')}
+          >
+            <Icons.Settings size={14} /> Configuración
+          </button>
           <button
             className={'btn' + (tab === 'tarjetas' ? ' btn-primary' : '')}
             onClick={() => setTab('tarjetas')}
@@ -696,6 +715,7 @@ export default function Cotizador() {
 
       {tab === 'tarjetas' && <TabTarjetas />}
       {tab === 'usd'      && <TabUsd />}
+      {tab === 'config'   && <BusinessProfileSection isAdmin={isAdmin} />}
     </div>
   );
 }

@@ -8,9 +8,13 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import AlertasModule from './Alertas';
 import TwoFaSection from '../components/TwoFaSection';
 import MantenimientoSection from '../components/MantenimientoSection';
-// 2026-06-22 fix multi-tenant Cotizador: el perfil del negocio (ficha de
-// Google) ahora se configura por tenant. Antes hardcoded a Tecny Tech.
-import BusinessProfileSection from '../components/BusinessProfileSection';
+// 2026-06-22: el perfil del negocio (ficha de Google que usa el Cotizador
+// para personalizar el mensaje generado) vive como tab "Configuración"
+// dentro de Cotizador, NO acá en Config global. Se hizo así para que el
+// dato esté al lado del lugar donde se usa — Lucas pidió evitar la confusión
+// de tener configuración "general del portal" mezclada con configuración
+// específica de un módulo. Por eso `BusinessProfileSection` no se importa
+// más desde acá.
 
 
 const SYSTEM_LIMITS = [
@@ -32,10 +36,9 @@ export default function Config() {
   // cae a 'general'); el backend igual rechaza con 403 a no-admins.
   const initialTab = location.hash === '#alertas' ? 'alertas'
                     : location.hash === '#seguridad' ? 'seguridad'
-                    : location.hash === '#negocio' ? 'negocio'
                     : (location.hash === '#mantenimiento' && isAdmin) ? 'mantenimiento'
                     : 'general';
-  const [tab, setTab]           = useState(initialTab); // 'general' | 'negocio' | 'alertas' | 'seguridad' | 'mantenimiento'
+  const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad' | 'mantenimiento'
   // Sección unificada "Comisiones de métodos de pago" (2026-06-14, pedido Lucas):
   //   · `pct` / `inputVal`     — Financiera (= config.pct_financiera)
   //   · `tarjetas`             — métodos es_tarjeta=true con su comision_pct.
@@ -54,7 +57,6 @@ export default function Config() {
   useEffect(() => {
     if (location.hash === '#alertas') setTab('alertas');
     else if (location.hash === '#seguridad') setTab('seguridad');
-    else if (location.hash === '#negocio') setTab('negocio');
     else if (location.hash === '#mantenimiento' && isAdmin) setTab('mantenimiento');
     else if (location.hash === '#general') setTab('general');
   }, [location.hash, isAdmin]);
@@ -193,10 +195,6 @@ export default function Config() {
                 onClick={() => goToTab('general')}>
           General
         </button>
-        <button className={'btn ' + (tab === 'negocio' ? 'btn-primary' : '')}
-                onClick={() => goToTab('negocio')}>
-          <Icons.Building size={14} /> Mi negocio
-        </button>
         <button className={'btn ' + (tab === 'alertas' ? 'btn-primary' : '')}
                 onClick={() => goToTab('alertas')}>
           <Icons.Bell size={14} /> Alertas
@@ -216,7 +214,6 @@ export default function Config() {
       </div>
 
       {tab === 'alertas' && <AlertasModule />}
-      {tab === 'negocio' && <BusinessProfileSection isAdmin={isAdmin} />}
       {tab === 'seguridad' && <TwoFaSection />}
       {tab === 'mantenimiento' && isAdmin && <MantenimientoSection />}
 
