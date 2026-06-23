@@ -121,6 +121,10 @@ const NAV_MAIN = [
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
   // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas',       group: 2 },
+  // Sanidad del Negocio (feature 2026-06-23) — dashboard mensual de
+  // presupuesto vs ejecución. Ubicada entre Cajas y Conciliación porque
+  // cruza datos de cajas/egresos. Permiso 'cajas' — mismo gate.
+  { id: 'sanidad',    path: '/sanidad',    label: 'Sanidad del Negocio', icon: 'Trend', perm: 'cajas', group: 2 },
   { id: 'conciliacion', path: '/conciliacion', label: 'Conciliación bancaria', icon: 'Refresh', perm: 'cajas', group: 2 },
   { id: 'egresos',    path: '/egresos',    label: 'Egresos',    icon: 'ArrowDownRight', perm: 'cajas',   group: 2 },
   { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario',  group: 2 },
@@ -161,6 +165,7 @@ const SCREEN_LABELS = {
   capital:    '360 & Capital',
   conciliacion: 'Conciliación bancaria',
   egresos:    'Egresos',
+  sanidad:    'Sanidad del Negocio',
   envios:     'Envíos',
   cuentas:    'Venta & Gestión B2B',
   contactos:  'Contactos',

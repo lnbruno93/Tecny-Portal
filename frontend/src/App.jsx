@@ -50,6 +50,7 @@ const Proveedores = lazy(() => import('./screens/Proveedores'));
 const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
 const Egresos    = lazy(() => import('./screens/Egresos'));
+const Sanidad    = lazy(() => import('./screens/Sanidad'));
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
 // (Nota: Alertas ahora vive como tab dentro de Config.jsx, no como ruta propia)
@@ -227,6 +228,11 @@ export default function App() {
                   <Route path="/egresos" element={
                     <RequirePermission perm="cajas">
                       <ErrorBoundary><Egresos /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="/sanidad" element={
+                    <RequirePermission perm="cajas">
+                      <ErrorBoundary><Sanidad /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/capital" element={

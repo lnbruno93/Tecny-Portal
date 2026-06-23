@@ -313,6 +313,15 @@ export const egresos = {
   generar:          (periodo) => api('/api/egresos/generar', 'POST', { periodo }),
 };
 
+// Sanidad del Negocio (feature 2026-06-23) — dashboard de presupuesto vs real
+// mensual. El backend devuelve TODO cruzado en un solo GET.
+export const sanidad = {
+  list:             (meses = 6) => api(`/api/sanidad?meses=${meses}`),
+  upsertProyeccion: (periodo, bruto_proyectado_usd) =>
+    api('/api/sanidad/proyeccion', 'PUT', { periodo, bruto_proyectado_usd }),
+  deleteProyeccion: (periodo) => api(`/api/sanidad/proyeccion/${periodo}`, 'DELETE'),
+};
+
 export const cambios = {
   entidades:       () => api('/api/cambios/entidades'),
   // Saldo agregado en USD — consumido por 360 & Capital ({ saldo_usd }).
