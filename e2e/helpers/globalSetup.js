@@ -33,9 +33,12 @@ process.env.JWT_SECRET = process.env.JWT_SECRET ||
 process.env.TWOFA_ENCRYPTION_KEY = process.env.TWOFA_ENCRYPTION_KEY ||
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
-// Tabla de permisos (lista de tools). Importamos del backend porque la
-// lista cambia con features y queremos mantener sync automático.
-const { TOOLS } = require(path.resolve(__dirname, '../../backend/src/lib/tools'));
+// 2026-06-23 F4: el sistema viejo flat de TOOLS murió. El test admin tiene
+// users.role='admin' global → bypassa todos los gates del nuevo middleware
+// requireCapability sin necesidad de seedear capabilities específicas.
+// Si hace falta seedear capabilities para un user no-admin, hacerlo
+// directamente vía INSERT a tenant_user_roles + user_capabilities (con
+// SET LOCAL app.current_tenant porque ambas tablas tienen FORCE RLS).
 
 const TEST_USER = {
   nombre:   'Test Admin',
@@ -76,7 +79,7 @@ async function globalSetup() {
       envio_items, envios,
       movimientos_inversiones, movimientos_deudas, contactos,
       comprobantes, pagos, vendedores,
-      user_permissions, users
+      users
     RESTART IDENTITY CASCADE
   `);
 
@@ -95,7 +98,10 @@ async function globalSetup() {
     UPDATE metodos_pago SET es_financiera = true WHERE nombre = 'Pesos Ars | Efectivo'
   `);
 
-  // 4) Usuario admin de prueba + todos los permisos.
+  // 4) Usuario admin de prueba. role='admin' global → bypassa todos los
+  // middleware (requireCapability ve req.user.role === 'admin' y pasa).
+  // 2026-06-23 F4: NO seedeamos user_capabilities — el bypass por role
+  // del sistema nuevo hace todo el trabajo.
   const hash = await bcrypt.hash(TEST_USER.password, 10);
   const { rows } = await pool.query(
     'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id',
@@ -103,11 +109,29 @@ async function globalSetup() {
   );
   const userId = rows[0].id;
 
-  for (const tool of TOOLS) {
-    await pool.query(
-      'INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1,$2,$3)',
-      [userId, tool, true]
+  // Vincular al tenant 1 con rol='admin'. Sin esto, el login emite JWT con
+  // tenant_rol='member' (fallback) — los endpoints adminOnly fallan.
+  await pool.query(
+    `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES (1, $1, 'admin')
+       ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'admin'`,
+    [userId]
+  );
+
+  // tenant_user_roles del sistema nuevo: rol='admin' del tenant → bypass
+  // implícito en el middleware capability-based. FORCE RLS exige
+  // SET LOCAL app.current_tenant en la misma tx que el INSERT.
+  const setupClient = await pool.connect();
+  try {
+    await setupClient.query('BEGIN');
+    await setupClient.query('SET LOCAL app.current_tenant = 1');
+    await setupClient.query(
+      `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES (1, $1, 'admin')
+         ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'admin'`,
+      [userId]
     );
+    await setupClient.query('COMMIT');
+  } finally {
+    setupClient.release();
   }
 
   await pool.end();

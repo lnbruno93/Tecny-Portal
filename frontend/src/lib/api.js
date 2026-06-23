@@ -536,6 +536,26 @@ export const usuarios = {
   delete: (id) => api(`/api/usuarios/${id}`, 'DELETE'),
 };
 
+// 2026-06-23 Permisos F2: endpoints del sistema capability-based.
+// Catalog = 45 capabilities agrupadas en 19 pantallas (lectura libre).
+// Users = lista enriquecida con rol + overrides + caps efectivas.
+// Update = PUT con `rol` y/o `overrides` (reemplazo total de overrides).
+//
+// Conviven con `usuarios` (legacy CRUD) durante F1–F3. F4 reemplaza el
+// modelo de permisos viejo. Acá usamos `capabilities.users` solo para
+// VER y EDITAR roles/overrides; create/delete/password siguen vía
+// `usuarios.*`.
+export const capabilities = {
+  catalog: () => api('/api/capabilities/catalog'),
+  users:   () => api('/api/capabilities/users'),
+  update:  (id, { rol, overrides } = {}) => {
+    const body = {};
+    if (rol !== undefined) body.rol = rol;
+    if (overrides !== undefined) body.overrides = overrides;
+    return api(`/api/capabilities/users/${id}`, 'PUT', body);
+  },
+};
+
 export const config = {
   get: () => api('/api/config'),
   update: (data) => api('/api/config', 'PUT', data),

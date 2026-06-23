@@ -40,19 +40,17 @@ async function createUser({ username, email, verified }) {
     [username, username, email]
   );
   const userId = rows[0].id;
-  // Vincular a tenant 1 con rol admin (necesario porque /api/contactos chequea
-  // permisos por tenant_rol y/o user_permissions).
+  // Vincular a tenant 1 con rol admin del tenant (bypass total en el sistema
+  // capability-based — el middleware requireCapability ve tenant_cap_rol='admin'
+  // en el JWT y pasa todos los gates).
   await pool.query(
     `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES (1, $1, 'admin')
        ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'admin'`,
     [userId]
   );
-  // Permisos: contactos enabled.
-  await pool.query(
-    `INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1, 'contactos', true)
-       ON CONFLICT (user_id, tool) DO UPDATE SET enabled = true`,
-    [userId]
-  );
+  // 2026-06-23 F4: el sistema viejo user_permissions murió. Como este user
+  // tiene tenant_cap_rol='admin' en el JWT (signToken más abajo), bypassa
+  // todo el middleware sin necesidad de filas en user_capabilities.
   return userId;
 }
 
@@ -65,6 +63,9 @@ function signToken(userId, username) {
       role: 'op',
       tenant_id: 1,
       tenant_rol: 'admin',
+      // 2026-06-23 F4: tenant_cap_rol='admin' → bypass total en
+      // requireCapability (sin necesidad de embeber slugs específicos).
+      tenant_cap_rol: 'admin',
       iat_ms: Date.now(),
     },
     process.env.JWT_SECRET,

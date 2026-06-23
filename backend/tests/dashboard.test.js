@@ -103,16 +103,43 @@ describe('GET /api/dashboard/resumen-mensual', () => {
     expect(r2.status).toBe(400);
   });
 
-  it('requiere permiso financiera (usuario sin permiso → 403)', async () => {
-    // Crear usuario sin permiso financiera
-    const noFin = await request(app).post('/api/usuarios').set(auth()).send({
-      nombre: 'Sin Fin', username: 'sinfin', password: 'pwd123abc', role: 'usuario',
-      perms: { ventas: true, cajas: true }, // sin financiera
-    });
-    if (noFin.status !== 201) return; // depende del setup; skip si la fixture no permite
-    const login = await request(app).post('/api/auth/login')
-      .send({ username: 'sinfin', password: 'pwd123abc' });
-    const tok = login.body.token;
+  it('requiere capability resumen.ver (usuario sin caps → 403)', async () => {
+    // 2026-06-23 F4: el dashboard mensual está gateado por `resumen.ver`
+    // (antes reusaba `financiera`). Firmamos un JWT con tenant_cap_rol='custom'
+    // y caps={ ventas.trabajar: true, cajas.ver: true } — sin resumen.ver.
+    const jwt = require('jsonwebtoken');
+    const bcrypt = require('bcrypt');
+    // Idempotente: borrar y reinsertar (el UNIQUE de username es parcial
+    // WHERE deleted_at IS NULL, así que ON CONFLICT directo no matchea).
+    await pool.query(`DELETE FROM tenant_users WHERE user_id IN (SELECT id FROM users WHERE username = 'sinresumen')`);
+    await pool.query(`DELETE FROM users WHERE username = 'sinresumen'`);
+    const { rows } = await pool.query(
+      `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
+       VALUES ('Sin Resumen', 'sinresumen', 'sinresumen@test.local', $1, 'op', NOW())
+       RETURNING id`,
+      [bcrypt.hashSync('pwd123abc', 4)]
+    );
+    const userId = rows[0].id;
+    await pool.query(
+      `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES (1, $1, 'member')
+       ON CONFLICT DO NOTHING`,
+      [userId]
+    );
+    const tok = jwt.sign(
+      {
+        id: userId,
+        username: 'sinresumen',
+        email: 'sinresumen@test.local',
+        role: 'op',
+        tenant_id: 1,
+        tenant_rol: 'member',
+        tenant_cap_rol: 'custom',
+        caps: { 'ventas.trabajar': true, 'cajas.ver': true },
+        iat_ms: Date.now(),
+      },
+      process.env.JWT_SECRET,
+      { algorithm: 'HS256' }
+    );
     const res = await request(app).get('/api/dashboard/resumen-mensual')
       .set({ Authorization: `Bearer ${tok}` });
     expect(res.status).toBe(403);

@@ -4,7 +4,7 @@
  * Cubre:
  *   · GET ?meses=6 devuelve 6 meses con shape esperado (bruto/gastos/neto/daily).
  *   · GET valida `meses` (out of range → 400).
- *   · GET sin auth → 401; member sin permiso 'cajas' → 403.
+ *   · GET sin auth → 401; member sin capability 'sanidad.trabajar' → 403.
  *   · GET refleja egresos recurrentes activos en gastos.proyectado_usd.
  *   · GET refleja egresos pagados (estado='pagado') en gastos.real_usd, con
  *     agrupación correcta por recurrente_id + bucket "Otros" para los sueltos.
@@ -31,9 +31,16 @@ let adminToken;
 let memberSinCajasToken;
 
 // Helper: firma un JWT con los claims típicos del portal.
-function signToken({ id, username, email, role, tenant_id, tenant_rol }) {
+// 2026-06-23 F4: ahora aceptamos `tenant_cap_rol` + `caps` opcionales para el
+// sistema capability-based. Si no se pasan, el middleware hace fallback a DB.
+function signToken({ id, username, email, role, tenant_id, tenant_rol, tenant_cap_rol, caps }) {
   return jwt.sign(
-    { id, username, email, role, tenant_id, tenant_rol, iat_ms: Date.now() },
+    {
+      id, username, email, role, tenant_id, tenant_rol,
+      ...(tenant_cap_rol !== undefined ? { tenant_cap_rol } : {}),
+      ...(caps !== undefined ? { caps } : {}),
+      iat_ms: Date.now(),
+    },
     process.env.JWT_SECRET,
     { algorithm: 'HS256' }
   );
@@ -49,20 +56,20 @@ function periodoActual() {
 beforeAll(async () => {
   pool = await setupTestDb();
 
-  // Admin del tenant 1 con tenant_rol=admin y permiso 'cajas' (el endpoint
-  // exige ese permiso). El testadmin que crea setupTestDb tiene role=admin
-  // global → admin bypass lo deja pasar todos los requirePermission.
+  // Admin del tenant 1 con tenant_rol=admin. El testadmin que crea setupTestDb
+  // tiene role=admin global → admin bypass lo deja pasar todos los gates
+  // requireCapability (tanto el viejo requirePermission como el nuevo).
   adminToken = signToken({
     id: 1, username: 'testadmin', email: 'testadmin@test.local',
     role: 'admin', tenant_id: 1, tenant_rol: 'admin',
   });
 
-  // Member sin permiso 'cajas' — para validar el gate requirePermission.
+  // Member sin capability `sanidad.trabajar` — para validar el gate de mount.
   await pool.query(`DELETE FROM tenant_users WHERE user_id IN (SELECT id FROM users WHERE username = 'memberSinCajas')`);
   await pool.query(`DELETE FROM users WHERE username = 'memberSinCajas'`);
   const { rows: [member] } = await pool.query(
     `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
-     VALUES ('Member Sin Cajas', 'memberSinCajas', 'sincajas@test.local', $1, 'op', NOW())
+     VALUES ('Member Sin Caps', 'memberSinCajas', 'sincajas@test.local', $1, 'op', NOW())
      RETURNING id`,
     [bcrypt.hashSync('pwpw1234', 4)]
   );
@@ -70,12 +77,14 @@ beforeAll(async () => {
     `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES (1, $1, 'member')`,
     [member.id]
   );
-  // NO insertamos user_permissions con tool='cajas'. El middleware
-  // requirePermission('cajas') hace SELECT y cuando no hay row devuelve 403
-  // (default-deny). Perfecto para validar el gate sin tocar fixtures globales.
+  // 2026-06-23 F4: firmamos con tenant_cap_rol='custom' + caps={} para que el
+  // middleware requireCapability lea las caps directo del JWT y rechace
+  // (default-deny). Sin esto, haría fallback a DB y el resultado sería el
+  // mismo, pero el path JWT es más rápido y aislado del estado de DB.
   memberSinCajasToken = signToken({
     id: member.id, username: 'memberSinCajas', email: 'sincajas@test.local',
     role: 'op', tenant_id: 1, tenant_rol: 'member',
+    tenant_cap_rol: 'custom', caps: {},
   });
 });
 
@@ -100,7 +109,7 @@ describe('GET /api/sanidad', () => {
     expect(r.status).toBe(401);
   });
 
-  it('member sin permiso cajas → 403', async () => {
+  it('member sin capability sanidad.trabajar → 403', async () => {
     const r = await request(app)
       .get('/api/sanidad')
       .set('Authorization', `Bearer ${memberSinCajasToken}`);

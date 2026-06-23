@@ -1,7 +1,7 @@
 // Módulo Egresos (bajo Cajas). Gastos de la empresa con categoría, agenda y
 // estado pendiente/pagado. Recién al marcar 'pagado' descuenta de la caja
 // elegida (ledger, origen 'egreso'). Soporta plantillas recurrentes mensuales.
-// Montado en /api/egresos con requireAuth + requirePermission('cajas') (app.js).
+// Montado en /api/egresos con requireAuth + requireCapability('egresos.ver') (app.js).
 const router   = require('express').Router();
 const db       = require('../config/database');
 const validate = require('../lib/validate');

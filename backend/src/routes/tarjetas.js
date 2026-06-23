@@ -9,7 +9,7 @@
 //   · Permite editar y eliminar cobros previos y liquidaciones. Los cobros
 //     que vienen de una venta NO se editan acá (se ajustan desde la venta).
 //   · Expone /saldos-resumen agregado para 360 & Capital.
-// Montado en /api/tarjetas con requireAuth + requirePermission('tarjetas') (app.js).
+// Montado en /api/tarjetas con requireAuth + requireCapability('tarjetas.trabajar') (app.js).
 const router   = require('express').Router();
 const db       = require('../config/database');
 const validate = require('../lib/validate');

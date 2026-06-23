@@ -1,6 +1,6 @@
 // Módulo Proveedores — cuentas por pagar. Alta de proveedores + cuenta corriente
 // (compras que les debemos y pagos que les hicimos). Montos normalizados a USD.
-// Montado en /api/proveedores con requireAuth + requirePermission('proveedores') (app.js).
+// Montado en /api/proveedores con requireAuth + requireCapability('proveedores.trabajar') (app.js).
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const router = require('express').Router();
 const db = require('../config/database');
@@ -458,8 +458,10 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     // por la puerta de atrás.
     const creaStock = tipo === 'compra' && items.some(it => it.producto_stock);
     if (creaStock) {
-      const { hasPermission } = require('../middleware/requirePermission');
-      const ok = await hasPermission(req.user, 'inventario');
+      // 2026-06-23 F4: cutover a requireCapability. hasCapability mantiene
+      // la misma semántica para checks cross-módulo inline.
+      const { hasCapability } = require('../middleware/requireCapability');
+      const ok = await hasCapability(req.user, 'inventario.ver');
       if (!ok) {
         return res.status(403).json({
           error: 'Para registrar una compra que crea productos necesitás también permiso de Inventario.',
@@ -670,8 +672,10 @@ router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMov
       m.tipo === 'compra' && (m.items || []).some(it => it.producto_stock)
     );
     if (algunoCreaStock) {
-      const { hasPermission } = require('../middleware/requirePermission');
-      const ok = await hasPermission(req.user, 'inventario');
+      // 2026-06-23 F4: cutover a requireCapability. hasCapability mantiene
+      // la misma semántica para checks cross-módulo inline.
+      const { hasCapability } = require('../middleware/requireCapability');
+      const ok = await hasCapability(req.user, 'inventario.ver');
       if (!ok) {
         return res.status(403).json({
           error: 'Para registrar compras que crean productos necesitás también permiso de Inventario.',

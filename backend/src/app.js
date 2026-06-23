@@ -82,6 +82,7 @@ const cambiosRoutes      = require('./routes/cambios');
 const tarjetasRoutes     = require('./routes/tarjetas');
 const enviosRoutes       = require('./routes/envios');
 const usuariosRoutes     = require('./routes/usuarios');
+const capabilitiesRoutes = require('./routes/capabilities');
 const cuentasRoutes      = require('./routes/cuentas');
 const usadosRoutes       = require('./routes/usados');
 const inventarioRoutes   = require('./routes/inventario');
@@ -103,7 +104,11 @@ const superAdminRoutes   = require('./routes/superAdmin');
 const publicRoutes       = require('./routes/public');
 
 const requireAuth       = require('./middleware/auth');
-const requirePermission = require('./middleware/requirePermission');
+// 2026-06-23 Permisos F3/F4: el sistema viejo `requirePermission(tool)` se
+// retiró en favor de `requireCapability('pantalla.capability')`. Capability
+// slugs en backend/src/lib/capabilityCatalog.js (45 caps en 19 pantallas).
+// Cualquier route nueva tiene que usar requireCapability.
+const requireCapability = require('./middleware/requireCapability');
 
 const app = express();
 
@@ -586,70 +591,85 @@ const twoFaLimiter = rateLimit({
 });
 app.use('/api/auth/2fa',      requireAuth, twoFaLimiter, twoFaRoutes);
 
-// Financiera — requiere permiso "financiera"
-app.use('/api/vendedores',    requireAuth, requirePermission('financiera'), vendedoresRoutes);
-app.use('/api/comprobantes',  requireAuth, requirePermission('financiera'), comprobantesRoutes);
-app.use('/api/pagos',         requireAuth, requirePermission('financiera'), pagosRoutes);
-app.use('/api/historial',     requireAuth, requirePermission('financiera'), historialRoutes);
-app.use('/api/config',        requireAuth, requirePermission('financiera'), configRoutes);
+// Financiera — requiere capability `financiera.trabajar`.
+// 2026-06-23 Permisos F3: cutover de `requirePermission('financiera')` a la
+// capability slug equivalente. Mismo gate operacional — ahora granular si
+// más adelante queremos separar comprobantes/pagos de transferencias.
+app.use('/api/vendedores',    requireAuth, requireCapability('financiera.trabajar'), vendedoresRoutes);
+app.use('/api/comprobantes',  requireAuth, requireCapability('financiera.trabajar'), comprobantesRoutes);
+app.use('/api/pagos',         requireAuth, requireCapability('financiera.trabajar'), pagosRoutes);
+app.use('/api/historial',     requireAuth, requireCapability('historial.ver'),       historialRoutes);
+app.use('/api/config',        requireAuth, requireCapability('config.general'),      configRoutes);
 // Perfil del tenant (datos públicos del negocio: ficha de Google, nombre, etc).
-// Sin requirePermission — cualquier user autenticado del tenant puede LEERLO
+// Sin requireCapability — cualquier user autenticado del tenant puede LEERLO
 // (el Cotizador lo consume y a Cotizador llegan vendedores comunes). La
 // edición está gateada por adminOnly DENTRO del router.
 app.use('/api/tenant-profile', requireAuth, tenantProfileRoutes);
-app.use('/api/ocr',           requireAuth, requirePermission('financiera'), ocrRoutes);
+app.use('/api/ocr',           requireAuth, requireCapability('financiera.trabajar'), ocrRoutes);
 
 // Contactos — agenda compartida (la usan Ventas, Cajas, Proyectos para quick-add).
-// Mount con sesión + permisos por método (auditoría 2026-06-06 Sec H1):
+// Mount con sesión + caps por método (auditoría 2026-06-06 Sec H1):
 //   · GET (list/search) — solo requiere sesión: necesario para el quick-add
 //     desde Ventas/Cajas/Proyectos. Es lectura no destructiva.
-//   · POST/PUT/DELETE — requieren permiso 'contactos' (enforced en cada
-//     handler de routes/contactos.js). El toggle del frontend ahora SÍ
-//     bloquea efectivamente la edición del directorio.
+//   · POST/PUT/DELETE — requieren capability `contactos.crear_borrar`
+//     (enforced en cada handler de routes/contactos.js).
 app.use('/api/contactos',     requireAuth, contactosRoutes);
 
-// Cajas — requiere permiso "cajas"
-app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRoutes);
-// Métodos de pago lite — sin permiso "cajas". 2026-06-10: bug de Envíos
+// Cajas — capability `cajas.ver` (gate operacional principal).
+app.use('/api/cajas',         requireAuth, requireCapability('cajas.ver'), cajasRoutes);
+// Métodos de pago lite — sin gate de capability. 2026-06-10: bug de Envíos
 // donde un operador sin permiso de cajas no podía cobrar. Ver
 // src/routes/metodos-pago.js para el rationale completo.
 app.use('/api/metodos-pago',  requireAuth, require('./routes/metodos-pago'));
-app.use('/api/egresos',       requireAuth, requirePermission('cajas'), egresosRoutes);
-app.use('/api/sanidad',       requireAuth, requirePermission('cajas'), sanidadRoutes);
-app.use('/api/cambios',       requireAuth, requirePermission('cambios'), cambiosRoutes);
-app.use('/api/tarjetas',      requireAuth, requirePermission('tarjetas'), tarjetasRoutes);
+app.use('/api/egresos',       requireAuth, requireCapability('egresos.ver'),     egresosRoutes);
+app.use('/api/sanidad',       requireAuth, requireCapability('sanidad.trabajar'), sanidadRoutes);
+app.use('/api/cambios',       requireAuth, requireCapability('cambios.trabajar'), cambiosRoutes);
+app.use('/api/tarjetas',      requireAuth, requireCapability('tarjetas.trabajar'), tarjetasRoutes);
 
-// Envíos — requiere permiso "envios"
-app.use('/api/envios',        requireAuth, requirePermission('envios'), enviosRoutes);
+// Envíos — requires `envios.trabajar`.
+app.use('/api/envios',        requireAuth, requireCapability('envios.trabajar'), enviosRoutes);
 
-// Cuentas Corrientes — requiere permiso "cuentas"
-app.use('/api/cuentas',       requireAuth, requirePermission('cuentas'), cuentasRoutes);
+// Cuentas Corrientes / B2B — capability `b2b.trabajar` (slug nuevo, módulo
+// se renombró visualmente a "Venta & Gestión B2B" en 2026-04, el route path
+// quedó como /api/cuentas por compat retro).
+app.use('/api/cuentas',       requireAuth, requireCapability('b2b.trabajar'), cuentasRoutes);
 
-// Cotizador Usados — requiere permiso "usados"
-app.use('/api/usados',        requireAuth, requirePermission('usados'), usadosRoutes);
+// Cotizador Usados — capability `usados.ver` (acceso al catálogo).
+app.use('/api/usados',        requireAuth, requireCapability('usados.ver'), usadosRoutes);
 
-// Inventario — requiere permiso "inventario"
-app.use('/api/inventario',    requireAuth, requirePermission('inventario'), inventarioRoutes);
+// Inventario — capability `inventario.ver` (gate operacional principal).
+// Sub-capabilities (ver_costos, vaciar_stock, importar/exportar) se aplican
+// inline en los handlers correspondientes — pendiente para una tanda futura.
+app.use('/api/inventario',    requireAuth, requireCapability('inventario.ver'), inventarioRoutes);
 
-// Ventas — requiere permiso "ventas" (sub-recursos + core, mismo prefijo)
-app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasExtraRoutes);
-app.use('/api/ventas',        requireAuth, requirePermission('ventas'), ventasRoutes);
+// Ventas — capability `ventas.trabajar` (sub-recursos + core, mismo prefijo).
+// `ventas.eliminar` se chequea inline en el handler DELETE /api/ventas/:id
+// (granularidad fina). Pendiente la migración de ese check inline.
+app.use('/api/ventas',        requireAuth, requireCapability('ventas.trabajar'), ventasExtraRoutes);
+app.use('/api/ventas',        requireAuth, requireCapability('ventas.trabajar'), ventasRoutes);
 
-// Proveedores — requiere permiso "proveedores" (cuentas por pagar)
-app.use('/api/proveedores',   requireAuth, requirePermission('proveedores'), proveedoresRoutes);
-app.use('/api/proyectos',     requireAuth, requirePermission('proyectos'),   proyectosRoutes);
-app.use('/api/conciliacion',  requireAuth, requirePermission('cajas'),       conciliacionRoutes);
-// Alertas: vista cross-módulo (cajas, stock, CC, proveedores). Reusa 'financiera'.
-app.use('/api/alertas',       requireAuth, requirePermission('financiera'),  alertasRoutes);
+// Proveedores — capability `proveedores.trabajar` (gate del módulo).
+app.use('/api/proveedores',   requireAuth, requireCapability('proveedores.trabajar'), proveedoresRoutes);
+app.use('/api/proyectos',     requireAuth, requireCapability('proyectos.trabajar'),   proyectosRoutes);
+app.use('/api/conciliacion',  requireAuth, requireCapability('cajas.conciliacion'),   conciliacionRoutes);
+// Alertas: vista cross-módulo (cajas, stock, CC, proveedores). Capability
+// `config.alertas` (la configura el owner desde Config → Alertas).
+app.use('/api/alertas',       requireAuth, requireCapability('config.alertas'),  alertasRoutes);
 
-// Dashboard mensual: vista de gerencia, agrega datos de varios módulos
-// (ventas, cajas, deudas, egresos). Reusa el permiso 'financiera' que ya
-// engloba reportes consolidados. Si se quiere granularidad, separar a
-// permiso 'dashboard' propio.
-app.use('/api/dashboard',     requireAuth, requirePermission('financiera'),  dashboardRoutes);
+// Dashboard mensual / Resumen del mes: capability `resumen.ver`. Antes
+// reusaba `financiera` por compat; ahora tiene capability propia ya que
+// la pantalla Resumen del mes (botón del sidebar) la ven roles distintos
+// que Transferencias.
+app.use('/api/dashboard',     requireAuth, requireCapability('resumen.ver'),  dashboardRoutes);
 
 // Usuarios — solo admin (requireAuth aquí + adminOnly dentro del router)
 app.use('/api/usuarios',      requireAuth, usuariosRoutes);
+
+// Capabilities (Permisos F1 — 2026-06-23): el sistema nuevo capability-based
+// vive al lado del viejo /api/usuarios. GET /catalog es lectura libre para
+// authenticated; GET /users + PUT /users/:id tienen adminOnly DENTRO del
+// router. Coexistencia con el sistema viejo hasta el cutover F4.
+app.use('/api/capabilities',  requireAuth, capabilitiesRoutes);
 
 // Admin — herramientas de operación (invariantes, etc.). adminOnly enforced
 // dentro del router. Acceso solo via JWT con role='admin'.

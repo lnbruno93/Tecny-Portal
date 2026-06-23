@@ -2,7 +2,7 @@
 // Dos lados: 'entrega_ars' (les damos pesos, egreso de una caja ARS) y
 // 'recibo_usd' (nos devuelven dólares, ingreso a una caja USD). El saldo en USD
 // muestra lo que la financiera todavía nos debe. Integrado al ledger (origen 'cambio').
-// Montado en /api/cambios con requireAuth + requirePermission('cambios') (app.js).
+// Montado en /api/cambios con requireAuth + requireCapability('cambios.trabajar') (app.js).
 const router   = require('express').Router();
 const db       = require('../config/database');
 const validate = require('../lib/validate');

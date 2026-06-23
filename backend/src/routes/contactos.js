@@ -3,15 +3,16 @@ const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
-const requirePermission = require('../middleware/requirePermission');
+const requireCapability = require('../middleware/requireCapability');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createContactoSchema, updateContactoSchema, queryContactosSchema } = require('../schemas/contactos');
 
-// Auditoría 2026-06-06 (Sec H1): GET queda abierto para quick-add desde
-// Ventas/Cajas/Proyectos (lectura de agenda con sesión válida). POST/PUT/
-// DELETE requieren permiso 'contactos' explícito — el toggle del frontend
-// ahora es real, no decorativo. Sin este enforce, cualquier operador con
-// permiso parcial podía editar/borrar el directorio entero.
+// Auditoría 2026-06-06 (Sec H1) + 2026-06-23 F4 cutover capability-based:
+// GET queda abierto para quick-add desde Ventas/Cajas/Proyectos (lectura
+// de agenda con sesión válida). POST/PUT/DELETE requieren capability
+// `contactos.crear_borrar` explícita — el toggle del frontend ahora es
+// real, no decorativo. Sin este enforce, cualquier operador con permiso
+// parcial podía editar/borrar el directorio entero.
 
 router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) => {
   try {
@@ -59,7 +60,7 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
 // audit dentro de la misma TX. Antes el audit corría post-write con pool global:
 // si el proceso moría entre el INSERT/UPDATE y el audit, los cambios quedaban
 // persistidos sin trazabilidad. Patrón sistémico que cerramos incrementalmente.
-router.post('/', requirePermission('contactos'), validate(createContactoSchema), async (req, res, next) => {
+router.post('/', requireCapability('contactos.crear_borrar'), validate(createContactoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -80,7 +81,7 @@ router.post('/', requirePermission('contactos'), validate(createContactoSchema),
   } finally { client.release(); }
 });
 
-router.put('/:id', requirePermission('contactos'), validate(updateContactoSchema), async (req, res, next) => {
+router.put('/:id', requireCapability('contactos.crear_borrar'), validate(updateContactoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const id = parseId(req.params.id);
@@ -117,7 +118,7 @@ router.put('/:id', requirePermission('contactos'), validate(updateContactoSchema
   } finally { client.release(); }
 });
 
-router.delete('/:id', requirePermission('contactos'), async (req, res, next) => {
+router.delete('/:id', requireCapability('contactos.crear_borrar'), async (req, res, next) => {
   const client = await db.connect();
   try {
     const id = parseId(req.params.id);

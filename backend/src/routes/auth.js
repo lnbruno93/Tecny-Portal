@@ -8,8 +8,8 @@ const validate = require('../lib/validate');
 const { loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema } = require('../schemas/auth');
 const audit = require('../lib/audit');
 const logger = require('../lib/logger');
-const { TOOLS } = require('../lib/tools');
-const { loadUserPermsRows, resolveUserTenant } = require('../lib/permissions');
+const { resolveUserTenant } = require('../lib/permissions');
+const { loadUserCapsForTenant, capsForJwt } = require('../lib/capabilities');
 const { CODES } = require('../lib/authErrorCodes');
 const { sendPasswordResetEmail } = require('../lib/email');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
@@ -40,27 +40,29 @@ const LOCKOUT_DURATION_MIN = 15;
  * Firma el JWT del login. NO hace queries — los datos vienen pre-resueltos
  * del caller (login handler).
  *
- * 2026-06-18 #314 perf: antes makeToken hacía 2 queries internas
- *   (resolveDefaultTenant + loadUserPerms para non-admin), y el handler hacía
- *   otra ronda equivalente para el response.perms. Total: ~10 queries por
- *   login. Ahora el handler resuelve todo 1×, makeToken solo firma. Total
- *   neto: ~5 queries (paridad con pre-RLS-fix).
+ * 2026-06-23 Permisos F4: cutover capability-based. Antes el JWT embebía
+ * `perms` (14 booleans flat). Ahora embebe:
+ *   - tenant_cap_rol: el rol del user en su tenant (owner|admin|vendedor|
+ *     encargado|lectura|custom). El middleware requireCapability lo usa
+ *     para bypass owner/admin sin query DB.
+ *   - caps: { 'pantalla.capability': true } — solo enabled. Undefined si
+ *     el rol es bypass (owner/admin del tenant — no necesita enumerar).
+ * Admin global (users.role='admin') ya bypassea en el middleware nuevo —
+ * tampoco le embebemos caps.
  *
  * 2026-06-15 multi-tenant PR 3: incluye `tenant_id` y `tenant_rol` en el
  *   payload. El middleware requireAuth los decora como `req.tenantId` y
- *   `req.tenantRol`.
- * 2026-06-11 P-02: embebe `perms` (solo enabled tools) en el JWT para
- *   evitar query DB por request del middleware requirePermission. Admin no
- *   necesita perms (bypass por role). Si cambian perms via PUT /usuarios/:id,
- *   se bumpea password_changed_at → token invalidado → user re-loguea.
+ *   `req.tenantRol`. Si el user cambia rol/overrides via PUT
+ *   /capabilities/users/:id, se bumpea password_changed_at → token
+ *   invalidado → user re-loguea con caps nuevas.
  *
  * @param {object} user — row de users con id/username/email/role mínimo
  * @param {object} tenant — { tenant_id, rol } del default tenant
- * @param {object} [tokenPerms] — { tool: true } para non-admin. Si user.role
- *   es admin, este arg se ignora (el JWT no lleva perms).
+ * @param {object} [capInfo] — { rol, caps } para non-admin. Si user.role
+ *   es admin global, este arg se ignora.
  * @returns {string} JWT firmado
  */
-function makeToken(user, tenant, tokenPerms) {
+function makeToken(user, tenant, capInfo) {
   // iat_ms: timestamp de emisión en milisegundos — permite comparación de
   // precisión sub-segundo contra password_changed_at (precisión µs en PG).
   // El jwt.iat estándar solo tiene precisión de segundos, lo que genera race
@@ -84,8 +86,11 @@ function makeToken(user, tenant, tokenPerms) {
   if (user.is_super_admin) {
     payload.is_super_admin = true;
   }
-  if (user.role !== 'admin' && tokenPerms) {
-    payload.perms = tokenPerms;
+  if (capInfo && user.role !== 'admin') {
+    payload.tenant_cap_rol = capInfo.rol;
+    if (capInfo.caps !== undefined) {
+      payload.caps = capInfo.caps;
+    }
   }
   return jwt.sign(
     payload,
@@ -238,45 +243,37 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
 
-    // 2026-06-18 RLS NULLIF hotfix + #314 perf: resolvemos tenant + perms
-    // UNA sola vez y reutilizamos para response.perms + JWT.perms. Antes el
-    // handler hacía loadUserPermsRows acá (que internamente llama
-    // resolveUserTenant + withTenant) y makeToken hacía resolveDefaultTenant +
-    // loadUserPerms otra vez → ~10 queries por login. Ahora ~5 queries
-    // (paridad con pre-RLS-fix). Detalle de queries:
-    //   1. SELECT tenant_users (resolveUserTenant)
-    //   2-5. BEGIN + SET LOCAL + SELECT user_permissions + COMMIT (withTenant)
-    //
-    // Inlineamos la query de user_permissions en lugar de llamar
-    // loadUserPermsRows() — ese helper resuelve el tenant internamente, lo
-    // que duplicaría el SELECT tenant_users. Acá ya tenemos el tenant
-    // resuelto del paso 1.
-    //
-    // Mantenemos el shape de response.perms idéntico al anterior (default
-    // false + override de DB rows) para zero behavior change. Admin ve
-    // role bypass en el frontend (useVisibleNav) — su user.perms content
-    // es irrelevante operacionalmente, pero igual lo poblamos como antes
-    // para preservar shape.
+    // 2026-06-23 Permisos F4: resolución capability-based. Antes había acá
+    // un SELECT a user_permissions (14 booleans) — esa tabla murió en F4.
+    // Ahora:
+    //   1. resolveUserTenant — query a tenant_users (sin RLS).
+    //   2. loadUserCapsForTenant — query a tenant_user_roles + user_capabilities
+    //      vía withTenant (RLS-safe).
+    // Admin global (users.role='admin') bypassea: no necesita caps embebidas.
+    // Si la resolución de caps falla por algún edge, NO rompemos login —
+    // logueamos y el middleware hace fallback a DB en el primer request.
     const tenant = await resolveUserTenant(user.id);
-    const permsRows = await db.withTenant(tenant.tenant_id, async (client) => {
-      const { rows } = await client.query(
-        'SELECT tool, enabled FROM user_permissions WHERE user_id = $1',
-        [user.id],
-      );
-      return rows;
-    });
 
-    const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
-    const permissions = { ...defaultPerms, ...Object.fromEntries(permsRows.map(p => [p.tool, p.enabled])) };
-
-    // JWT.perms: solo enabled, solo para non-admin (admin bypassea en el
-    // middleware requirePermission por role — no necesita perms en token).
-    const tokenPerms = user.role !== 'admin'
-      ? Object.fromEntries(permsRows.filter(p => p.enabled === true).map(p => [p.tool, true]))
-      : undefined;
+    let capInfo;
+    let capsResponse = null; // para el response.user.caps (frontend)
+    let rolResponse = null;
+    if (user.role !== 'admin') {
+      try {
+        const { rol, caps } = await loadUserCapsForTenant(user.id, tenant.tenant_id);
+        capInfo = { rol, caps: capsForJwt(rol, caps) };
+        rolResponse = rol;
+        // capsResponse: para el cliente. null = bypass (owner/admin). Si
+        // no es bypass, mandamos un array de slugs activos (más compacto
+        // que el objeto del JWT, mismo shape consumible).
+        capsResponse = caps === null ? null : Array.from(caps);
+      } catch (e) {
+        logger.warn({ err: e, userId: user.id, tenantId: tenant.tenant_id },
+          'login: error resolviendo capabilities — sigue sin capInfo (fallback DB en middleware)');
+      }
+    }
 
     res.json({
-      token: makeToken(user, tenant, tokenPerms),
+      token: makeToken(user, tenant, capInfo),
       user: {
         id: user.id,
         nombre: user.nombre,
@@ -292,7 +289,11 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         // login para decidir si redirigir a /admin. NO source of truth para
         // autorización — eso es el middleware `requireSuperAdmin` server-side.
         is_super_admin: !!user.is_super_admin,
-        perms: permissions,
+        // 2026-06-23 F4: response capability-based. tenant_cap_rol = rol
+        // nuevo (owner/admin/vendedor/...). caps = array de slugs activos
+        // o null para bypass (owner/admin). Admin global → caps undefined.
+        tenant_cap_rol: rolResponse,
+        caps: capsResponse,
       },
     });
   } catch (err) {
@@ -308,20 +309,35 @@ router.get('/me', requireAuth, async (req, res, next) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado', code: CODES.USER_NOT_FOUND });
 
-    // 2026-06-18 RLS NULLIF hotfix: ver comentario en login (línea ~229).
-    // loadUserPermsRows resuelve tenant + withTenant internamente.
-    const perms = await loadUserPermsRows(req.user.id);
-    const defaultPerms = Object.fromEntries(TOOLS.map(t => [t, false]));
+    // 2026-06-23 F4: resolución capability-based (igual que login). Admin
+    // global no necesita caps en el response — el frontend lo trata como
+    // bypass por role.
+    const userRow = rows[0];
+    let rolResponse = null;
+    let capsResponse = null;
+    if (userRow.role !== 'admin') {
+      try {
+        const { tenant_id } = await resolveUserTenant(req.user.id);
+        const { rol, caps } = await loadUserCapsForTenant(req.user.id, tenant_id);
+        rolResponse = rol;
+        capsResponse = caps === null ? null : Array.from(caps);
+      } catch (e) {
+        logger.warn({ err: e, userId: req.user.id },
+          '/me: error resolviendo capabilities — devuelve sin caps');
+      }
+    }
+
     // 2026-06-16 TANDA 2.1: incluir email_verified en la respuesta de /me para
     // que el frontend sepa si mostrar el banner de verificación. Excluimos
     // email_verified_at (timestamp) del response — el cliente solo necesita el bool.
-    const { email_verified_at, is_super_admin, ...userRow } = rows[0];
+    const { email_verified_at, is_super_admin, ...rest } = userRow;
     res.json({
-      ...userRow,
+      ...rest,
       email_verified: !!email_verified_at,
       // 2026-06-21 #353 Fase 1: ver comentario en /login response.
       is_super_admin: !!is_super_admin,
-      perms: { ...defaultPerms, ...Object.fromEntries(perms.map(p => [p.tool, p.enabled])) },
+      tenant_cap_rol: rolResponse,
+      caps: capsResponse,
     });
   } catch (err) {
     next(err);

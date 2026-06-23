@@ -51,6 +51,7 @@ const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
 const Egresos    = lazy(() => import('./screens/Egresos'));
 const Sanidad    = lazy(() => import('./screens/Sanidad'));
+// MOCKUP — pantalla de preview del nuevo modelo de permisos (Rol + Override).
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
 // (Nota: Alertas ahora vive como tab dentro de Config.jsx, no como ruta propia)
@@ -120,21 +121,40 @@ function RedirectIfAuthed({ children }) {
   return children;
 }
 
-// ── Permission gate ────────────────────────────────────────────────────────────
-// perm: key en user.perms (ej. 'financiera')
-// adminOnly: true → solo role === 'admin'
-function RequirePermission({ perm, adminOnly, children }) {
+// ── Capability gate ────────────────────────────────────────────────────────────
+// 2026-06-23 F4: cutover del sistema viejo (`user.perms`) al capability-based.
+// Props:
+//   cap        — slug 'pantalla.capability' (ej. 'financiera.trabajar')
+//   adminOnly  — true → solo bypass por rol global o tenant_cap_rol=owner/admin
+//
+// Lógica:
+//   1. Admin global (users.role='admin') pasa todo.
+//   2. Owner/admin del tenant (user.tenant_cap_rol) pasa todo.
+//   3. adminOnly → Forbidden si no es bypass.
+//   4. cap chequea user.caps (array de slugs del response /login | /me).
+//      Si user.caps es null (bypass server-side), pasa.
+function RequirePermission({ cap, adminOnly, children }) {
   const { user } = useAuth();
   if (!user) return null;
 
-  // Admin bypasses all permission checks
+  // Admin global del sistema viejo — bypass total.
   if (user.role === 'admin') return children;
 
-  // Admin-only route
+  // Owner/admin del tenant — bypass total dentro del tenant.
+  if (user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin') {
+    return children;
+  }
+
+  // Admin-only route — solo bypass roles pasan.
   if (adminOnly) return <Forbidden />;
 
-  // Permission check
-  if (perm && !user.perms?.[perm]) return <Forbidden />;
+  // Capability check. user.caps es array de slugs activos o null (bypass).
+  if (cap) {
+    if (user.caps === null) return children; // bypass server-side
+    if (!Array.isArray(user.caps) || !user.caps.includes(cap)) {
+      return <Forbidden />;
+    }
+  }
 
   return children;
 }
@@ -211,118 +231,118 @@ export default function App() {
 
                   {/* ── Por permiso ── */}
                   <Route path="/cotizador" element={
-                    <RequirePermission perm="cotizador">
+                    <RequirePermission cap="cotizador.trabajar">
                       <ErrorBoundary><Cotizador /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/financiera/*" element={
-                    <RequirePermission perm="financiera">
+                    <RequirePermission cap="financiera.trabajar">
                       <ErrorBoundary><Financiera /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/cajas/*" element={
-                    <RequirePermission perm="cajas">
+                    <RequirePermission cap="cajas.ver">
                       <ErrorBoundary><Cajas /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/egresos" element={
-                    <RequirePermission perm="cajas">
+                    <RequirePermission cap="egresos.ver">
                       <ErrorBoundary><Egresos /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/sanidad" element={
-                    <RequirePermission perm="cajas">
+                    <RequirePermission cap="sanidad.trabajar">
                       <ErrorBoundary><Sanidad /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/capital" element={
-                    <RequirePermission perm="cajas">
+                    <RequirePermission cap="cajas.ver">
                       <ErrorBoundary><Capital /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/resumen" element={
-                    <RequirePermission perm="financiera">
+                    <RequirePermission cap="resumen.ver">
                       <ErrorBoundary><Resumen /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/conciliacion" element={
-                    <RequirePermission perm="cajas">
+                    <RequirePermission cap="cajas.conciliacion">
                       <ErrorBoundary><Conciliacion /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/envios" element={
-                    <RequirePermission perm="envios">
+                    <RequirePermission cap="envios.trabajar">
                       <ErrorBoundary><Envios /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/cuentas/*" element={
-                    <RequirePermission perm="cuentas">
+                    <RequirePermission cap="b2b.trabajar">
                       <ErrorBoundary><CuentasCC /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/usados" element={
-                    <RequirePermission perm="usados">
+                    <RequirePermission cap="usados.ver">
                       <ErrorBoundary><Usados /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/inventario" element={
-                    <RequirePermission perm="inventario">
+                    <RequirePermission cap="inventario.ver">
                       <ErrorBoundary><Inventario /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/inventario/desglose" element={
-                    <RequirePermission perm="inventario">
+                    <RequirePermission cap="inventario.ver">
                       <ErrorBoundary><Desglose360 /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/inventario/recepcion" element={
-                    <RequirePermission perm="inventario">
+                    <RequirePermission cap="inventario.ver">
                       <ErrorBoundary><RecepcionStock /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/ventas" element={
-                    <RequirePermission perm="ventas">
+                    <RequirePermission cap="ventas.trabajar">
                       <ErrorBoundary><Ventas /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/proveedores" element={
-                    <RequirePermission perm="proveedores">
+                    <RequirePermission cap="proveedores.trabajar">
                       <ErrorBoundary><Proveedores /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   <Route path="/proyectos" element={
-                    <RequirePermission perm="proyectos">
+                    <RequirePermission cap="proyectos.trabajar">
                       <ErrorBoundary><Proyectos /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   <Route path="/contactos" element={
-                    <RequirePermission perm="contactos">
+                    <RequirePermission cap="contactos.ver">
                       <ErrorBoundary><Contactos /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   <Route path="/cambios" element={
-                    <RequirePermission perm="cambios">
+                    <RequirePermission cap="cambios.trabajar">
                       <ErrorBoundary><Cambios /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   <Route path="/tarjetas" element={
-                    <RequirePermission perm="tarjetas">
+                    <RequirePermission cap="tarjetas.trabajar">
                       <ErrorBoundary><Tarjetas /></ErrorBoundary>
                     </RequirePermission>
                   } />
 
                   {/* ── Historial y Config requieren 'financiera' ── */}
                   <Route path="/historial" element={
-                    <RequirePermission perm="financiera">
+                    <RequirePermission cap="historial.ver">
                       <ErrorBoundary><Historial /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/config" element={
-                    <RequirePermission perm="financiera">
+                    <RequirePermission cap="config.general">
                       <ErrorBoundary><Config /></ErrorBoundary>
                     </RequirePermission>
                   } />

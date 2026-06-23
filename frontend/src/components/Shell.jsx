@@ -97,13 +97,14 @@ function UpdateBanner() {
   );
 }
 
-// Navigation structure — perm: key en user.perms, adminOnly: solo role=admin
-// null perm = siempre visible
+// Navigation structure — 2026-06-23 F4 cutover capability-based:
+//   cap: capability slug (ej. 'financiera.trabajar') del sistema nuevo.
+//   adminOnly: solo bypass roles (users.role='admin' global o
+//   tenant_cap_rol='owner'/'admin' del tenant).
+//   null cap = siempre visible (ej. Inicio).
+//
 // `group` agrupa visualmente el menú; cada grupo se renderiza con su título
 // (NAV_GROUPS) arriba del primer ítem visible del grupo.
-//
-// 2026-06-10: agrupación pedida por Lucas — etiquetas visibles para que el
-// menú se sienta más organizado y la navegación sea predecible.
 const NAV_GROUPS = {
   1: 'Comercial',
   2: 'Cajas y Proveedores',
@@ -114,42 +115,38 @@ const NAV_GROUPS = {
 };
 const NAV_MAIN = [
   // Comercial
-  { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       perm: null,          group: 1 },
-  { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  perm: 'financiera',  group: 1 },
-  { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', perm: 'ventas',      group: 1 },
-  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    perm: 'cuentas',     group: 1 },
-  { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      perm: 'contactos',   group: 1 },
+  { id: 'inicio',     path: '/inicio',     label: 'Inicio',     icon: 'Grid',       cap: null,                   group: 1 },
+  { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  cap: 'resumen.ver',        group: 1 },
+  { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', cap: 'ventas.trabajar',      group: 1 },
+  { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    cap: 'b2b.trabajar', group: 1 },
+  { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      cap: 'contactos.ver',        group: 1 },
   // Cajas y Proveedores
-  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     perm: 'cajas',       group: 2 },
-  // Sanidad del Negocio (feature 2026-06-23) — dashboard mensual de
-  // presupuesto vs ejecución. Ubicada entre Cajas y Conciliación porque
-  // cruza datos de cajas/egresos. Permiso 'cajas' — mismo gate.
-  { id: 'sanidad',    path: '/sanidad',    label: 'Sanidad del Negocio', icon: 'Trend', perm: 'cajas', group: 2 },
-  { id: 'conciliacion', path: '/conciliacion', label: 'Conciliación bancaria', icon: 'Refresh', perm: 'cajas', group: 2 },
-  { id: 'egresos',    path: '/egresos',    label: 'Egresos',    icon: 'ArrowDownRight', perm: 'cajas',   group: 2 },
-  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        perm: 'inventario',  group: 2 },
-  { id: 'proveedores',path: '/proveedores',label: 'Proveedores | Compras',icon: 'Building',   perm: 'proveedores', group: 2 },
-  // Opciones Financieras  (la ruta /financiera y el permiso siguen siendo
-  // `financiera` para no romper enlaces ni audit trail; solo cambia el label
-  // visible a "Transferencias", 2026-06-10.)
-  // Orden definido por Lucas 2026-06-14 — Cambios primero (flujo de obtener
+  { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },
+  { id: 'sanidad',    path: '/sanidad',    label: 'Sanidad del Negocio', icon: 'Trend', cap: 'sanidad.trabajar', group: 2 },
+  { id: 'conciliacion', path: '/conciliacion', label: 'Conciliación bancaria', icon: 'Refresh', cap: 'cajas.conciliacion', group: 2 },
+  { id: 'egresos',    path: '/egresos',    label: 'Egresos',    icon: 'ArrowDownRight', cap: 'egresos.ver',      group: 2 },
+  { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        cap: 'inventario.ver',       group: 2 },
+  { id: 'proveedores',path: '/proveedores',label: 'Proveedores | Compras',icon: 'Building',   cap: 'proveedores.trabajar', group: 2 },
+  // Opciones Financieras — el path /financiera y el slug `financiera.trabajar`
+  // siguen vivos (cambia solo el label visible a "Transferencias", 2026-06-10).
+  // Orden definido por Lucas 2026-06-14: Cambios primero (flujo de obtener
   // ARS), después Transferencias (cobrar), después Tarjetas (cobrar con crédito).
-  { id: 'cambios',    path: '/cambios',    label: 'Cambios de Divisa', icon: 'Dollar', perm: 'cambios',  group: 3 },
-  { id: 'financiera', path: '/financiera', label: 'Transferencias', icon: 'Trend',  perm: 'financiera',  group: 3 },
-  { id: 'tarjetas',   path: '/tarjetas',   label: 'Tarjetas de Crédito', icon: 'CreditCard', perm: 'tarjetas', group: 3 },
+  { id: 'cambios',    path: '/cambios',    label: 'Cambios de Divisa', icon: 'Dollar', cap: 'cambios.trabajar', group: 3 },
+  { id: 'financiera', path: '/financiera', label: 'Transferencias', icon: 'Trend',  cap: 'financiera.trabajar',  group: 3 },
+  { id: 'tarjetas',   path: '/tarjetas',   label: 'Tarjetas de Crédito', icon: 'CreditCard', cap: 'tarjetas.trabajar', group: 3 },
   // Otras herramientas
-  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', perm: 'cotizador',   group: 4 },
-  { id: 'usados',     path: '/usados',     label: 'Usados y Cotizador',            icon: 'Phone',      perm: 'usados',      group: 4 },
+  { id: 'cotizador',  path: '/cotizador',  label: 'Cotizador',  icon: 'Calculator', cap: 'cotizador.trabajar',   group: 4 },
+  { id: 'usados',     path: '/usados',     label: 'Usados y Cotizador',            icon: 'Phone', cap: 'usados.ver', group: 4 },
   // Logística
-  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      perm: 'envios',      group: 5 },
+  { id: 'envios',     path: '/envios',     label: 'Envíos',     icon: 'Truck',      cap: 'envios.trabajar',      group: 5 },
   // Proyectos
-  { id: 'proyectos',  path: '/proyectos',  label: 'Proyectos',  icon: 'Calendar',   perm: 'proyectos',   group: 6 },
+  { id: 'proyectos',  path: '/proyectos',  label: 'Proyectos',  icon: 'Calendar',   cap: 'proyectos.trabajar',   group: 6 },
 ];
 
 const NAV_SYS = [
-  { id: 'historial', path: '/historial', label: 'Historial', icon: 'Refresh',  perm: 'financiera'  },
-  { id: 'usuarios',  path: '/usuarios',  label: 'Usuarios',  icon: 'Users',    adminOnly: true      },
-  { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings', perm: 'financiera'  },
+  { id: 'historial', path: '/historial', label: 'Historial', icon: 'Refresh',  cap: 'historial.ver' },
+  { id: 'usuarios',  path: '/usuarios',  label: 'Usuarios',  icon: 'Users',    adminOnly: true       },
+  { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings', cap: 'config.general' },
 ];
 
 // Map path segment → display label for breadcrumb. 2026-06-10: actualizado a
@@ -189,15 +186,26 @@ function getInitials(name) {
     .toUpperCase();
 }
 
-// Filtra items de nav según los permisos del usuario actual
+// 2026-06-23 F4: filtra items de nav según las capabilities del user.
+// Bypass roles (users.role='admin' global + tenant_cap_rol='owner'/'admin')
+// ven todos los items. Resto chequea el slug en user.caps (array de slugs
+// activos del login response).
 function useVisibleNav(items) {
   const { user } = useAuth();
   if (!user) return [];
-  if (user.role === 'admin') return items; // admin ve todo
+  // Admin global del sistema viejo — bypass total.
+  if (user.role === 'admin') return items;
+  // Owner/admin del tenant — bypass total dentro del tenant.
+  const isBypass = user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin';
+  // Caps null = bypass server-side (ya se resolvió como acceso total).
+  const allCaps = isBypass || user.caps === null;
+
   return items.filter(n => {
-    if (n.adminOnly) return false;
-    if (!n.perm) return true; // siempre visible (ej. Inicio)
-    return user.perms?.[n.perm] === true;
+    if (n.adminOnly) return isBypass;
+    if (!n.cap) return true; // siempre visible (ej. Inicio).
+    if (allCaps) return true;
+    if (!Array.isArray(user.caps)) return false;
+    return user.caps.includes(n.cap);
   });
 }
 
@@ -425,12 +433,18 @@ export default function Shell() {
   }, []);
 
   // Refresca el contador de alertas cada 2 min. Best-effort: si falla
-  // (sin permiso financiera, sin sesión, etc.), se ignora silenciosamente.
+  // (sin capability, sin sesión, etc.), se ignora silenciosamente.
   // El badge solo se muestra si total_alertas > 0.
   useEffect(() => {
     if (!user) return;
-    const hasFinanciera = user.role === 'admin' || user.perms?.financiera === true;
-    if (!hasFinanciera) return;
+    // 2026-06-23 F4: el endpoint /api/alertas usa la capability `config.alertas`.
+    const isBypass = user.role === 'admin'
+      || user.tenant_cap_rol === 'owner'
+      || user.tenant_cap_rol === 'admin';
+    const hasAlertas = isBypass
+      || user.caps === null
+      || (Array.isArray(user.caps) && user.caps.includes('config.alertas'));
+    if (!hasAlertas) return;
     let cancelled = false;
     function refresh() {
       alertasApi.list()

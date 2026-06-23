@@ -41,7 +41,9 @@ const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { sendVerificationEmail, sendWelcomeEmail } = require('../lib/email');
 const { signupSchema, verifyEmailSchema } = require('../schemas/signup');
-const { TOOLS } = require('../lib/tools');
+// 2026-06-23 F4: TOOLS murió. El signup ahora crea al owner con rol='owner'
+// en tenant_user_roles, que en el nuevo sistema capability-based equivale
+// a bypass total (igual que admin global del sistema viejo).
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
 const captcha = require('../lib/captcha');
@@ -239,15 +241,17 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
       [tenant.id, user.id]
     );
 
-    // 4. Permissions: owner tiene todos los módulos activos. user_permissions
-    // SÍ tiene RLS — pasar tenant_id explícito (el último param, reutilizado
-    // como $7 para todas las TOOLS rows).
-    const permValues = TOOLS.map((_, i) =>
-      `($1, $${i + 2}, true, $${TOOLS.length + 2})`
-    ).join(', ');
+    // 4. 2026-06-23 F4 cutover capability-based: el owner del tenant recibe
+    // rol='owner' en tenant_user_roles. El middleware requireCapability ve
+    // ese rol y bypassa todo el gate. NO seedeamos user_capabilities — el
+    // rol 'owner' es bypass implícito (no necesita overrides).
+    //
+    // tenant_user_roles tiene FORCE RLS, así que el SET LOCAL del paso 1.5
+    // arriba ya satisface el WITH CHECK.
     await client.query(
-      `INSERT INTO user_permissions (user_id, tool, enabled, tenant_id) VALUES ${permValues}`,
-      [user.id, ...TOOLS, tenant.id]
+      `INSERT INTO tenant_user_roles (tenant_id, user_id, rol)
+         VALUES ($1, $2, 'owner')`,
+      [tenant.id, user.id]
     );
 
     // 5. Seed cajas default — metodos_pago SÍ tiene RLS, tenant_id explícito.

@@ -13,7 +13,11 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const { execSync } = require('child_process');
-const { TOOLS } = require('../../src/lib/tools');
+// 2026-06-23 F4: TOOLS array murió en el cutover capability-based.
+// El test admin (role='admin' global) bypassa todos los gates en el
+// middleware nuevo, así que no necesitamos seedear capabilities.
+// Tests que necesiten user no-admin con caps deben insertar filas en
+// tenant_user_roles + user_capabilities ellos mismos.
 
 const TEST_USER = {
   nombre:   'Test Admin',
@@ -70,7 +74,7 @@ async function setupTestDb() {
       comprobantes, pagos, vendedores,
       chat_messages, chat_conversations, chat_rate_limits,
       feature_flags,
-      user_permissions, users
+      users
     RESTART IDENTITY CASCADE
   `);
 
@@ -147,11 +151,26 @@ async function setupTestDb() {
     [userId]
   );
 
-  for (const tool of TOOLS) {
-    await pool.query(
-      'INSERT INTO user_permissions (user_id, tool, enabled) VALUES ($1,$2,$3)',
-      [userId, tool, true]
+  // 2026-06-23 F4: seedear rol del sistema nuevo (capability-based).
+  // El test admin tiene users.role='admin' global → bypassa middleware.
+  // Pero algunas pantallas leen tenant_user_roles para mostrar el rol —
+  // dejamos una fila explícita 'admin' para que GET /capabilities/users lo
+  // muestre con rol coherente.
+  //
+  // tenant_user_roles tiene FORCE RLS, así que necesitamos setear el
+  // tenant context dentro de una tx (igual que las migrations).
+  const setupClient = await pool.connect();
+  try {
+    await setupClient.query('BEGIN');
+    await setupClient.query(`SET LOCAL app.current_tenant = 1`);
+    await setupClient.query(
+      `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES (1, $1, 'admin')
+         ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'admin'`,
+      [userId]
     );
+    await setupClient.query('COMMIT');
+  } finally {
+    setupClient.release();
   }
 
   return pool;
@@ -174,7 +193,7 @@ async function teardownTestDb(pool) {
         envio_items, envios,
         movimientos_inversiones, movimientos_deudas, contactos,
         comprobantes, pagos, vendedores,
-        user_permissions, users
+        users
       RESTART IDENTITY CASCADE
     `);
   } catch { /* ignorar si la tabla no existe aún (migraciones no corridas) */ }
