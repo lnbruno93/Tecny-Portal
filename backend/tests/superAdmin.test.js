@@ -124,30 +124,38 @@ describe('Super-Admin auth (requireSuperAdmin)', () => {
 });
 
 describe('GET /api/super-admin/tenants', () => {
-  it('devuelve lista de TODOS los tenants (cross-tenant)', async () => {
+  // PERF-2 (audit 2026-06-22): el endpoint ahora devuelve
+  // { tenants, total, limit, offset, sort } en lugar del array crudo.
+  // Tests actualizados para leer desde `.tenants`.
+  it('devuelve { tenants, total, limit, offset, sort }', async () => {
+    // limit=200 garantiza que entren los tenants 1 y 777 aunque la DB de
+    // test tenga muchos otros (sort default es created_at DESC, los más
+    // viejos pueden caer fuera de la primera página).
     const r = await request(app)
-      .get('/api/super-admin/tenants')
+      .get('/api/super-admin/tenants?limit=200')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
-    expect(Array.isArray(r.body)).toBe(true);
-    // Al menos tenant 1 (default) + tenant 777 (test seed).
-    expect(r.body.length).toBeGreaterThanOrEqual(2);
-    const ids = r.body.map(t => t.id).sort();
+    expect(Array.isArray(r.body.tenants)).toBe(true);
+    expect(typeof r.body.total).toBe('number');
+    expect(typeof r.body.limit).toBe('number');
+    expect(typeof r.body.offset).toBe('number');
+    expect(r.body.sort).toMatchObject({ col: expect.any(String), dir: expect.any(String) });
+    expect(r.body.tenants.length).toBeGreaterThanOrEqual(2);
+    const ids = r.body.tenants.map(t => t.id).sort();
     expect(ids).toContain(1);
     expect(ids).toContain(777);
   });
 
   it('cada tenant incluye stats: mrr_usd, users_count, last_venta_at, signups_30d', async () => {
     const r = await request(app)
-      .get('/api/super-admin/tenants')
+      .get('/api/super-admin/tenants?limit=200')
       .set('Authorization', `Bearer ${superAdminToken}`);
-    const t = r.body.find(x => x.id === 1);
+    const t = r.body.tenants.find(x => x.id === 1);
     expect(t).toBeDefined();
     expect(typeof t.mrr_usd).toBe('number');
     expect(typeof t.users_count).toBe('number');
     expect(typeof t.signups_30d).toBe('number');
-    // last_venta_at puede ser null (sin ventas)
-    expect(['object', 'string']).toContain(typeof t.last_venta_at); // null o ISO string
+    expect(['object', 'string']).toContain(typeof t.last_venta_at);
   });
 
   it('filtro ?plan=pro devuelve solo plan pro', async () => {
@@ -155,8 +163,8 @@ describe('GET /api/super-admin/tenants', () => {
       .get('/api/super-admin/tenants?plan=pro')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
-    expect(r.body.every(t => t.plan === 'pro')).toBe(true);
-    expect(r.body.find(t => t.id === 777)).toBeDefined();
+    expect(r.body.tenants.every(t => t.plan === 'pro')).toBe(true);
+    expect(r.body.tenants.find(t => t.id === 777)).toBeDefined();
   });
 
   it('filtro ?plan=invalid es ignorado (no rompe la query)', async () => {
@@ -164,8 +172,7 @@ describe('GET /api/super-admin/tenants', () => {
       .get('/api/super-admin/tenants?plan=hackplan')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
-    // sin filtro → devuelve todos
-    expect(r.body.length).toBeGreaterThanOrEqual(2);
+    expect(r.body.tenants.length).toBeGreaterThanOrEqual(2);
   });
 
   it('filtro ?search=sa-test devuelve match por slug', async () => {
@@ -173,12 +180,11 @@ describe('GET /api/super-admin/tenants', () => {
       .get('/api/super-admin/tenants?search=sa-test')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
-    expect(r.body.length).toBeGreaterThanOrEqual(1);
-    expect(r.body.some(t => t.slug === 'sa-test')).toBe(true);
+    expect(r.body.tenants.length).toBeGreaterThanOrEqual(1);
+    expect(r.body.tenants.some(t => t.slug === 'sa-test')).toBe(true);
   });
 
   it('filtro ?suspended=true devuelve solo suspendidos', async () => {
-    // Suspender tenant 777 temporalmente
     await pool.query(
       `UPDATE tenants SET suspended_at = NOW(), suspended_reason = 'test' WHERE id = 777`
     );
@@ -186,13 +192,64 @@ describe('GET /api/super-admin/tenants', () => {
       .get('/api/super-admin/tenants?suspended=true')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
-    expect(r.body.every(t => t.suspended_at !== null)).toBe(true);
-    expect(r.body.find(t => t.id === 777)).toBeDefined();
+    expect(r.body.tenants.every(t => t.suspended_at !== null)).toBe(true);
+    expect(r.body.tenants.find(t => t.id === 777)).toBeDefined();
 
-    // Cleanup
     await pool.query(
       `UPDATE tenants SET suspended_at = NULL, suspended_reason = NULL WHERE id = 777`
     );
+  });
+
+  // PERF-2 nuevos tests — pagination + sort
+  it('?limit=1 acota a 1 fila pero total refleja el universo completo', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants?limit=1')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.tenants).toHaveLength(1);
+    expect(r.body.limit).toBe(1);
+    expect(r.body.total).toBeGreaterThanOrEqual(2);
+  });
+
+  it('?limit=999 clamps al MAX_LIMIT (200), no devuelve 999', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants?limit=999')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    // El backend debe degradar a default (50) o clamp a 200, NO usar 999.
+    expect(r.body.limit).toBeLessThanOrEqual(200);
+  });
+
+  it('?offset=N paginación funciona (segunda página no overlap con primera)', async () => {
+    const r1 = await request(app)
+      .get('/api/super-admin/tenants?limit=1&offset=0')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    const r2 = await request(app)
+      .get('/api/super-admin/tenants?limit=1&offset=1')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r1.body.tenants[0].id).not.toBe(r2.body.tenants[0].id);
+  });
+
+  it('?sort=nombre:asc ordena alfabéticamente ascendente', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants?sort=nombre:asc')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.sort).toMatchObject({ col: 'nombre', dir: 'asc' });
+    const names = r.body.tenants.map(t => t.nombre);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    expect(names).toEqual(sorted);
+  });
+
+  it('?sort=invalid_col:asc cae al default sin romper (whitelist)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants?sort=DROP_TABLE:asc')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    // Default: created_at desc — la whitelist filtra el input malicioso.
+    expect(r.body.sort.col).toBe('created_at');
   });
 });
 
