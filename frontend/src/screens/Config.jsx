@@ -8,6 +8,13 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import AlertasModule from './Alertas';
 import TwoFaSection from '../components/TwoFaSection';
 import MantenimientoSection from '../components/MantenimientoSection';
+// 2026-06-22: el perfil del negocio (ficha de Google que usa el Cotizador
+// para personalizar el mensaje generado) vive como tab "Configuración"
+// dentro de Cotizador, NO acá en Config global. Se hizo así para que el
+// dato esté al lado del lugar donde se usa — Lucas pidió evitar la confusión
+// de tener configuración "general del portal" mezclada con configuración
+// específica de un módulo. Por eso `BusinessProfileSection` no se importa
+// más desde acá.
 
 
 const SYSTEM_LIMITS = [

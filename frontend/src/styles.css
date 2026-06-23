@@ -349,10 +349,25 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  width: 280px;
+  /* 2026-06-22: bump de 280→320 + nowrap en el span (regla de abajo).
+     El placeholder "Buscar comprobantes, clientes, IMEIs…" se rompía a
+     2 líneas dentro de un box de 32px de alto, quedaba apretado. Ahora
+     entra en una línea y, si por algún breakpoint raro no entrara,
+     hace ellipsis en vez de wrappear. */
+  width: 320px;
   color: var(--text-muted);
   font-size: 13px;
   cursor: text;
+}
+/* El placeholder NO debe wrappear — el box es de altura fija (32px).
+   flex:1 + min-width:0 permite que el texto ocupe el espacio entre
+   el icono y el kbd y que ellipsee si por algún motivo no entra. */
+.search > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .search:hover { border-color: var(--border-strong); }
 .search kbd {
@@ -2206,4 +2221,288 @@ body.modal-open { overflow: hidden; }
   font-size: 10px;
   color: var(--text-muted);
   background: var(--surface);
+}
+
+/* ─── Sanidad del Negocio (feature 2026-06-23) ─────────────────────────── */
+/* V2 refactor: padding vertical generoso para que la hoja respire en
+   desktop. Las filas viven en ~46-56px de alto. Tipografía un poco más
+   grande que el dashboard estándar para que los montos sean legibles
+   desde lejos. */
+
+/* Tabla principal resumen mensual (4 filas: bruto / gastos / neto / daily).
+   table-layout: fixed → cada columna mide EXACTAMENTE lo definido en CSS,
+   sin importar si el contenido es "0" o "999.999". Sin esto el browser
+   distribuye anchos según el contenido y queda inconsistente entre meses. */
+.sanidad-resumen-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  table-layout: fixed;
+}
+.sanidad-resumen-table thead th {
+  position: sticky; top: 0;
+  background: var(--surface);
+  z-index: 2;
+  text-align: center;
+  font-weight: 600;
+  padding: 14px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.sanidad-th-concepto {
+  text-align: left !important;
+  position: sticky !important;
+  left: 0;
+  z-index: 3 !important;
+  background: var(--surface);
+  width: 220px;       /* width fijo — table-layout:fixed exige esto */
+  border-right: 1px solid var(--border);
+}
+.sanidad-th-mes {
+  border-left: 1px solid var(--hairline);
+  font-size: 13px;
+  width: 260px; /* 2 sub-cols × 130px — entra "999.999" cómodo */
+}
+.sanidad-th-sub {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: var(--text-muted) !important;
+  padding: 4px 12px 10px !important;
+  border-bottom: 1px solid var(--border);
+  width: 130px;
+}
+.sanidad-resumen-table tbody td {
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--hairline);
+  /* Font-size UNIFICADO en toda la tabla: 14px en todas las filas para que
+     "27.775" y "100.000" se vean del mismo tamaño tipográfico. La jerarquía
+     visual entre filas (bruto destacado, neto destacado, daily secundario)
+     se hace con peso/fondo/padding, NUNCA cambiando el font-size de los
+     números — eso produce ilusiones ópticas de tamaño según cuántos
+     dígitos tenga el monto. */
+  font-size: 14px;
+}
+.sanidad-td-concepto {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  z-index: 1;
+  width: 220px;
+}
+.sanidad-td-num {
+  text-align: right;
+  /* Fuente MONOESPACIADA para los números: cada dígito mide exactamente
+     lo mismo (el "1" no es más angosto que el "0"). Esto evita que
+     "27.775" y "100.000" se sientan de tamaños distintos.
+     Las fuentes sans del sistema técnicamente soportan tabular-nums
+     pero no todas lo respetan — el monospace es la garantía real. */
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  letter-spacing: -0.02em; /* ajuste fino: el monospace tiende a "respirar" más */
+  border-left: 1px dashed var(--hairline);
+  width: 130px;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sanidad-td-num:nth-of-type(odd) {
+  border-left: 1px solid var(--hairline);
+}
+.sanidad-resumen-table tbody tr:hover td:not(.sanidad-td-concepto) {
+  background: var(--surface-2);
+}
+/* TODOS los números de la tabla — mismo font-size y mismo font-weight para
+   coherencia óptica total. La jerarquía entre filas se hace SOLO con:
+     · Fondo (Bruto y Neto con surface-2)
+     · Padding vertical (Bruto y Neto más altos)
+     · Bold del LABEL (la columna de concepto a la izquierda)
+   El monto en sí no cambia de peso/tamaño nunca — Lucas pidió que se vean
+   100% iguales (2026-06-23). */
+.sanidad-row-bruto td {
+  background: var(--surface-2);
+  border-bottom: 2px solid var(--border);
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+.sanidad-row-neto td {
+  background: var(--surface-2);
+  border-top: 2px solid var(--border);
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+.sanidad-row-daily td {
+  background: var(--surface);
+  color: var(--text-muted);
+  padding-top: 14px;
+  padding-bottom: 16px;
+}
+/* Bold ÚNICAMENTE en el label del concepto (columna izquierda) de las
+   filas destacadas. NUNCA en el número. */
+.sanidad-row-bruto .sanidad-td-concepto,
+.sanidad-row-neto .sanidad-td-concepto {
+  font-weight: 600;
+}
+.sanidad-bold { font-weight: 600; }
+
+/* Render del monto con prefijo USD. Usamos display: inline-flex con
+   justify-content: flex-end → "USD" queda a la izquierda y el número
+   a la derecha de un bloque de ancho fijo. Esto unifica visualmente:
+   - "USD 100.000" y "USD 27.775" terminan ambos en el mismo eje derecho
+   - El número siempre ocupa la misma anchura mínima (`min-width: 6.5ch`
+     basado en monospace = ~6 chars = "100.000" cabe cómodo)
+   - "USD" siempre va alineado a la misma posición
+   Resultado: la grilla se ve perfectamente pareja. */
+.sanidad-money {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.sanidad-money-prefix {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+.sanidad-money-amount {
+  display: inline-block;
+  text-align: right;
+  min-width: 6.5ch; /* monospace: ~6.5 chars (cubre "999.999") */
+  font-variant-numeric: tabular-nums;
+}
+/* Monto negativo: número y prefijo en rojo, signo "−" inline al número.
+   Visualmente alarmante para que un Rdo Neto negativo se note al toque. */
+.sanidad-money-neg .sanidad-money-amount,
+.sanidad-money-neg .sanidad-money-prefix {
+  color: var(--neg);
+}
+/* Badge de variación % mes-a-mes — chiquito debajo del monto.
+   Verde si subió (en bruto/neto) o bajó (en gastos), rojo al revés.
+   Pedido por Lucas (2026-06-23): "ver la variación en porcentaje,
+   item por item". */
+.sanidad-pct {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  letter-spacing: -0.02em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.sanidad-pct-pos {
+  color: var(--pos);
+  background: color-mix(in oklab, var(--pos) 14%, transparent);
+}
+.sanidad-pct-neg {
+  color: var(--neg);
+  background: color-mix(in oklab, var(--neg) 14%, transparent);
+}
+.sanidad-edit-cell:hover {
+  background: var(--accent-soft, rgba(96,165,250,0.10));
+  outline: 1px dashed var(--accent);
+}
+
+/* Panel desplegable "Mis gastos proyectados" */
+.sanidad-panel-toggle {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 16px 18px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text);
+}
+.sanidad-panel-toggle:hover { background: var(--surface-2); }
+
+/* Wrapper con scroll INTERNO del panel — la página principal NO se estira.
+   max-height pensada para mostrar ~6-8 ítems sin scroll y a partir de ahí
+   habilitar scrollbar interna. */
+.sanidad-presupuesto-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+  border-top: 1px solid var(--hairline);
+}
+.sanidad-presupuesto-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  /* fixed layout: las columnas Monto $/USD/acciones tienen width definido
+     en el JSX vía inline-style. table-layout: fixed garantiza que respeten
+     ese ancho aunque el detalle tenga textos largos o cortos. */
+  table-layout: fixed;
+}
+.sanidad-presupuesto-table thead th {
+  /* Sticky: queda fijo en la parte de arriba mientras el contenido scrollea. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.sanidad-presupuesto-table tbody td {
+  padding: 14px 14px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+/* Mismas reglas tipográficas que la tabla resumen — números monospace
+   para coherencia visual en toda la pantalla. */
+.sanidad-presupuesto-table td.sanidad-num-cell,
+.sanidad-presupuesto-table tfoot td.sanidad-num-cell {
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  letter-spacing: -0.02em;
+}
+.sanidad-presupuesto-table tbody tr:hover td { background: var(--surface-2); }
+.sanidad-presupuesto-table tfoot td {
+  padding: 16px 14px;
+  border-top: 2px solid var(--border);
+  font-size: 14.5px;
+}
+/* Header de un grupo de categoría — se diferencia visualmente de los items.
+   El "padding-left" de los items hijos los hace ver indentados respecto al
+   header del grupo. */
+.sanidad-group-header td {
+  background: color-mix(in oklab, var(--accent) 5%, var(--surface));
+  border-bottom: 1px solid var(--border) !important;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+  user-select: none;
+}
+.sanidad-group-header td:first-child {
+  border-left: 3px solid var(--accent);
+}
+.sanidad-group-header:hover td {
+  background: color-mix(in oklab, var(--accent) 9%, var(--surface)) !important;
+}
+/* Barra horizontal mostrando el % del grupo respecto al total. width fijo
+   100% del td (que tiene width fijo desde colgroup), así todas las barras
+   miden lo mismo. */
+.sanidad-pct-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--hairline);
+  border-radius: 3px;
+  overflow: hidden;
+  display: block;
+}
+.sanidad-pct-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width .2s ease-out;
 }

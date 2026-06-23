@@ -313,6 +313,15 @@ export const egresos = {
   generar:          (periodo) => api('/api/egresos/generar', 'POST', { periodo }),
 };
 
+// Sanidad del Negocio (feature 2026-06-23) — dashboard de presupuesto vs real
+// mensual. El backend devuelve TODO cruzado en un solo GET.
+export const sanidad = {
+  list:             (meses = 6) => api(`/api/sanidad?meses=${meses}`),
+  upsertProyeccion: (periodo, bruto_proyectado_usd) =>
+    api('/api/sanidad/proyeccion', 'PUT', { periodo, bruto_proyectado_usd }),
+  deleteProyeccion: (periodo) => api(`/api/sanidad/proyeccion/${periodo}`, 'DELETE'),
+};
+
 export const cambios = {
   entidades:       () => api('/api/cambios/entidades'),
   // Saldo agregado en USD — consumido por 360 & Capital ({ saldo_usd }).
@@ -624,6 +633,16 @@ export const onboarding = {
 //   { text, content, model, tokens: { input, output, cached }, tool_calls }
 // El widget muestra `text`; los demás campos son para debugging / cost
 // dashboard futuro.
+// Perfil del tenant (2026-06-22 multi-tenant fix Cotizador).
+//   · get: lo lee el Cotizador para renderear la frase de Google solo si
+//     el tenant la tiene habilitada. También lo lee Config para mostrar
+//     el form de edición.
+//   · update: PUT que requiere adminOnly del tenant (backend lo verifica).
+export const tenantProfile = {
+  get:    () => api('/api/tenant-profile'),
+  update: (data) => api('/api/tenant-profile', 'PUT', data),
+};
+
 export const chat = {
   listConversations:  (limit = 30) => api('/api/chat/conversations?' + new URLSearchParams({ limit })),
   createConversation: () => api('/api/chat/conversations', 'POST', {}),
