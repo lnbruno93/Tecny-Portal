@@ -77,6 +77,7 @@ const ocrRoutes          = require('./routes/ocr');
 const contactosRoutes    = require('./routes/contactos');
 const cajasRoutes        = require('./routes/cajas');
 const egresosRoutes      = require('./routes/egresos');
+const sanidadRoutes      = require('./routes/sanidad');
 const cambiosRoutes      = require('./routes/cambios');
 const tarjetasRoutes     = require('./routes/tarjetas');
 const enviosRoutes       = require('./routes/envios');
@@ -614,6 +615,7 @@ app.use('/api/cajas',         requireAuth, requirePermission('cajas'), cajasRout
 // src/routes/metodos-pago.js para el rationale completo.
 app.use('/api/metodos-pago',  requireAuth, require('./routes/metodos-pago'));
 app.use('/api/egresos',       requireAuth, requirePermission('cajas'), egresosRoutes);
+app.use('/api/sanidad',       requireAuth, requirePermission('cajas'), sanidadRoutes);
 app.use('/api/cambios',       requireAuth, requirePermission('cambios'), cambiosRoutes);
 app.use('/api/tarjetas',      requireAuth, requirePermission('tarjetas'), tarjetasRoutes);
 
