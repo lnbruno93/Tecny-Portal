@@ -256,16 +256,21 @@ router.put('/proyeccion', validate(upsertProyeccionSchema), async (req, res, nex
   try {
     const { periodo, bruto_proyectado_usd } = req.body;
     const row = await db.withTenant(req.tenantId, async (client) => {
+      // Truco PG: `xmax = 0` cuando la fila se acaba de INSERTAR, distinto
+      // de 0 si fue UPDATE por ON CONFLICT. Permite distinguir INSERT vs
+      // UPDATE para el audit log (el CHECK constraint de audit_logs no
+      // acepta 'UPSERT', solo INSERT/UPDATE/DELETE).
       const { rows } = await client.query(
         `INSERT INTO proyecciones_mensuales (tenant_id, periodo, bruto_proyectado_usd)
          VALUES (current_setting('app.current_tenant')::int, $1, $2)
          ON CONFLICT (tenant_id, periodo) DO UPDATE
            SET bruto_proyectado_usd = EXCLUDED.bruto_proyectado_usd
-         RETURNING periodo, bruto_proyectado_usd, updated_at`,
+         RETURNING periodo, bruto_proyectado_usd, updated_at, (xmax = 0) AS inserted`,
         [periodo, bruto_proyectado_usd]
       );
-      await audit(client, 'proyecciones_mensuales', 'UPSERT', null, {
-        despues: rows[0],
+      const accion = rows[0].inserted ? 'INSERT' : 'UPDATE';
+      await audit(client, 'proyecciones_mensuales', accion, null, {
+        despues: { periodo: rows[0].periodo, bruto_proyectado_usd: rows[0].bruto_proyectado_usd },
         user_id: req.user.id,
       });
       return rows[0];
