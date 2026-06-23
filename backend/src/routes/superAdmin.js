@@ -78,7 +78,7 @@ router.get('/me', (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────
 // GET /tenants — lista con stats inline
 //
-// Devuelve TODOS los tenants (excluidos soft-deleted) con stats agregadas
+// Devuelve tenants paginados (excluidos soft-deleted) con stats agregadas
 // necesarias para la tabla del dashboard. Optimizada en una sola query con
 // subqueries correlacionadas + LATERAL — más rápido que N+1 desde Node.
 //
@@ -87,9 +87,46 @@ router.get('/me', (req, res) => {
 //   ?suspended=true|false              — solo activos o solo suspendidos
 //   ?search=texto                       — match en nombre OR slug (ILIKE)
 //
-// No paginamos en Fase 1 — esperamos < 100 tenants en el primer año. Cuando
-// crezca, agregamos LIMIT/OFFSET + count total.
+// Paginación + sort (PERF-2 audit 2026-06-22):
+//   ?limit=N       — default 50, max 200. Limita filas devueltas.
+//   ?offset=N      — default 0. Para paginación tipo "siguiente página".
+//   ?sort=col:dir  — default 'created_at:desc'. Whitelist:
+//                       col ∈ {created_at, nombre, plan, plan_order}
+//                       dir ∈ {asc, desc}
+//                    plan_order es alias para mantener trial → starter → pro
+//                    → enterprise estable; útil cuando el operador agrupa.
+//
+// Response shape: { tenants: [...], total: N, limit, offset }.
+// (Cambio desde array crudo — Fase 1 esperaba <100 tenants y no paginaba.
+// Frontends actualizados para consumir desde `.tenants`.)
 // ──────────────────────────────────────────────────────────────────────────
+const SORT_COLUMNS = {
+  created_at: 't.created_at',
+  nombre:     't.nombre',
+  plan:       't.plan',
+  // Para "ordenar por plan" con orden lógico (no alfabético: enterprise va
+  // último, no primero). CASE inline para no agregar una columna calculada.
+  plan_order: `CASE t.plan
+    WHEN 'trial' THEN 1
+    WHEN 'starter' THEN 2
+    WHEN 'pro' THEN 3
+    WHEN 'enterprise' THEN 4
+    ELSE 5 END`,
+};
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 50;
+
+function parseSort(raw) {
+  // Parser defensivo. Default: created_at desc (más reciente primero).
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return { sql: 't.created_at DESC', col: 'created_at', dir: 'desc' };
+  }
+  const [colRaw, dirRaw] = raw.split(':');
+  const col = SORT_COLUMNS[colRaw] ? colRaw : 'created_at';
+  const dir = dirRaw === 'asc' ? 'ASC' : 'DESC';
+  return { sql: `${SORT_COLUMNS[col]} ${dir}`, col, dir: dir.toLowerCase() };
+}
+
 router.get('/tenants', async (req, res, next) => {
   try {
     const { plan, suspended, search } = req.query;
@@ -107,7 +144,32 @@ router.get('/tenants', async (req, res, next) => {
       where.push(`(t.nombre ILIKE $${params.length} OR t.slug ILIKE $${params.length})`);
     }
 
-    const rows = await db.adminQuery(async (client) => {
+    // Pagination guards: clamp a [0, MAX_LIMIT] y [0, ∞). offset negativo
+    // o NaN → 0; limit fuera de rango → DEFAULT_LIMIT.
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= MAX_LIMIT
+      ? limitRaw : DEFAULT_LIMIT;
+    const offsetRaw = Number(req.query.offset);
+    const offset = Number.isInteger(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+
+    const sort = parseSort(req.query.sort);
+
+    const result = await db.adminQuery(async (client) => {
+      // COUNT separado del SELECT principal: necesario para que el frontend
+      // muestre "X de Y" y pueda calcular páginas totales. Misma WHERE clause
+      // para que sea consistente con el SELECT.
+      const countQ = await client.query(
+        `SELECT COUNT(*)::int AS total
+           FROM tenants t
+          WHERE ${where.join(' AND ')}`,
+        params
+      );
+      const total = countQ.rows[0]?.total ?? 0;
+
+      // SELECT principal con LIMIT/OFFSET. Los placeholders de limit/offset
+      // van AL FINAL del array params para no romper el numerado anterior.
+      const limitParam = params.length + 1;
+      const offsetParam = params.length + 2;
       const { rows } = await client.query(
         `SELECT
            t.id,
@@ -134,17 +196,24 @@ router.get('/tenants', async (req, res, next) => {
                AND u.created_at >= NOW() - INTERVAL '30 days') AS signups_30d
          FROM tenants t
          WHERE ${where.join(' AND ')}
-         ORDER BY t.created_at DESC`,
-        params
+         ORDER BY ${sort.sql}
+         LIMIT $${limitParam} OFFSET $${offsetParam}`,
+        [...params, limit, offset]
       );
-      return rows;
+      return { rows, total };
     });
 
-    // Calcular MRR per-tenant en Node (la fórmula vive en planPricing.js).
-    res.json(rows.map((t) => ({
-      ...t,
-      mrr_usd: getTenantMrr(t.plan, t.custom_mrr_usd),
-    })));
+    res.json({
+      // Calcular MRR per-tenant en Node (la fórmula vive en planPricing.js).
+      tenants: result.rows.map((t) => ({
+        ...t,
+        mrr_usd: getTenantMrr(t.plan, t.custom_mrr_usd),
+      })),
+      total: result.total,
+      limit,
+      offset,
+      sort: { col: sort.col, dir: sort.dir },
+    });
   } catch (err) {
     next(err);
   }

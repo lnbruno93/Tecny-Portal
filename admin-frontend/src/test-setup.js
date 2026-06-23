@@ -1,4 +1,13 @@
 import '@testing-library/jest-dom/vitest';
+import { expect } from 'vitest';
+import * as axeMatchers from 'vitest-axe/matchers';
+
+// Follow-up T-19 (audit 2026-06-22): expose `toHaveNoViolations` matcher
+// for a11y tests. Cada *.test.jsx puede llamar:
+//   import { axe } from 'vitest-axe';
+//   expect(await axe(container)).toHaveNoViolations();
+// Smoke tests por screen viven en src/__tests__/a11y.test.jsx.
+expect.extend(axeMatchers);
 
 // jsdom 29 dejó de incluir localStorage por default (https://github.com/jsdom/jsdom/pull/3669
 // y siguientes). Tampoco lo expone Node 22 sin --localstorage-file (es

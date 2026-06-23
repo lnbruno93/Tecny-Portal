@@ -60,10 +60,18 @@ export default function Clientes() {
     setLoading(true);
     setError('');
     adminApi.listTenants(filters)
-      .then((rows) => {
+      .then((res) => {
         // Descartar response viejo (usuario disparó request más nuevo).
         if (myId !== reqIdRef.current) return;
-        setData(Array.isArray(rows) ? rows : []);
+        // PERF-2 fix (audit 2026-06-22): el endpoint ahora paginate y devuelve
+        // { tenants, total, limit, offset, sort }. Defensive: aceptar shape
+        // viejo (array directo) por si un build cacheado del backend todavía
+        // devuelve crudo. Eliminar el fallback cuando todos los environments
+        // estén con el shape nuevo.
+        const list = Array.isArray(res)
+          ? res
+          : Array.isArray(res?.tenants) ? res.tenants : [];
+        setData(list);
         setLoading(false);
       })
       .catch((err) => {

@@ -77,7 +77,14 @@ export default function Resumen() {
       if (m.status === 'fulfilled') setMetrics(m.value);
       if (h.status === 'fulfilled') setHistory(h.value?.history || []);
       if (a.status === 'fulfilled') setActions(a.value?.recent_actions || []);
-      if (t.status === 'fulfilled') setTenants(Array.isArray(t.value) ? t.value : []);
+      // PERF-2 (audit 2026-06-22): listTenants ahora devuelve
+      // { tenants, total, ... }. Defensive: aceptar shape viejo (array).
+      if (t.status === 'fulfilled') {
+        const list = Array.isArray(t.value)
+          ? t.value
+          : Array.isArray(t.value?.tenants) ? t.value.tenants : [];
+        setTenants(list);
+      }
 
       // Si TODOS fallaron, mostramos error banner. Si alguno funcionó,
       // dejamos que el render parcial hable.

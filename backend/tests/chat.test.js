@@ -449,10 +449,10 @@ describe('Tools Tier 1 — get_ventas_periodo', () => {
     await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, comision_total_metodos, tenant_id)
        VALUES
-         ('o1', CURRENT_DATE, 'A', 'acreditado', 100, 30, 5,  1),
-         ('o2', CURRENT_DATE, 'B', 'acreditado', 200, 60, 10, 1),
-         ('o3', CURRENT_DATE, 'C', 'pendiente',  150, 40, 0,  1),
-         ('o4', CURRENT_DATE, 'D', 'cancelado',  999, 0,  0,  1)`
+         ('o1', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'A', 'acreditado', 100, 30, 5,  1),
+         ('o2', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'B', 'acreditado', 200, 60, 10, 1),
+         ('o3', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C', 'pendiente',  150, 40, 0,  1),
+         ('o4', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'D', 'cancelado',  999, 0,  0,  1)`
     );
     const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
     expect(r.retail.ventas_count).toBe(3); // cancelada no cuenta
@@ -469,9 +469,9 @@ describe('Tools Tier 1 — get_ventas_periodo', () => {
     await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, tenant_id)
        VALUES
-         ('hoy',  CURRENT_DATE,                       'X', 'acreditado', 100, 10, 1),
-         ('ayer', CURRENT_DATE - INTERVAL '1 day',    'Y', 'acreditado', 200, 20, 1),
-         ('viejo',CURRENT_DATE - INTERVAL '60 days',  'Z', 'acreditado', 999, 99, 1)`
+         ('hoy',  (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,                       'X', 'acreditado', 100, 10, 1),
+         ('ayer', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '1 day',    'Y', 'acreditado', 200, 20, 1),
+         ('viejo',(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '60 days',  'Z', 'acreditado', 999, 99, 1)`
     );
     const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
     expect(r.retail.ventas_count).toBe(1);
@@ -485,8 +485,8 @@ describe('Tools Tier 1 — get_ventas_periodo', () => {
     await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id, deleted_at)
        VALUES
-         ('live', CURRENT_DATE, 'L', 'acreditado', 50, 1, NULL),
-         ('dead', CURRENT_DATE, 'D', 'acreditado', 99, 1, NOW())`
+         ('live', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'L', 'acreditado', 50, 1, NULL),
+         ('dead', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'D', 'acreditado', 99, 1, NOW())`
     );
     const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
     expect(r.retail.ventas_count).toBe(1);
@@ -500,9 +500,9 @@ describe('Tools Tier 1 — get_ventas_periodo', () => {
     await pool.query(
       `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total)
        VALUES
-         ($1, CURRENT_DATE, 'compra', 300),
-         ($1, CURRENT_DATE, 'compra', 200),
-         ($1, CURRENT_DATE, 'pago',   100)  -- pago NO cuenta como venta`,
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 300),
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 200),
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'pago',   100)  -- pago NO cuenta como venta`,
       [cc[0].id]
     );
     const r = await executeTool('get_ventas_periodo', { periodo: 'hoy' }, T1_CTX);
@@ -541,10 +541,10 @@ describe('Tools Tier 1 — get_envios_activos', () => {
     await pool.query(
       `INSERT INTO envios (fecha, cliente, direccion, total_cobrado, estado, tenant_id)
        VALUES
-         (CURRENT_DATE, 'C1', 'd1', 100, 'Pendiente', 1),
-         (CURRENT_DATE, 'C2', 'd2', 200, 'En camino', 1),
-         (CURRENT_DATE, 'C3', 'd3', 300, 'Entregado', 1),
-         (CURRENT_DATE, 'C4', 'd4', 999, 'Cancelado', 1)`
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C1', 'd1', 100, 'Pendiente', 1),
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C2', 'd2', 200, 'En camino', 1),
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C3', 'd3', 300, 'Entregado', 1),
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C4', 'd4', 999, 'Cancelado', 1)`
     );
     const r = await executeTool('get_envios_activos', {}, T1_CTX);
     expect(r.resumen.total).toBe(2);
@@ -558,9 +558,9 @@ describe('Tools Tier 1 — get_envios_activos', () => {
     await pool.query(
       `INSERT INTO envios (fecha, cliente, direccion, total_cobrado, estado, prioridad, tenant_id)
        VALUES
-         (CURRENT_DATE,                    'media',  'x', 100, 'Pendiente', 'Media', 1),
-         (CURRENT_DATE - INTERVAL '5 days','alta',   'x', 100, 'Pendiente', 'Alta',  1),
-         (CURRENT_DATE,                    'normal', 'x', 100, 'Pendiente', NULL,    1)`
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,                    'media',  'x', 100, 'Pendiente', 'Media', 1),
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '5 days','alta',   'x', 100, 'Pendiente', 'Alta',  1),
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,                    'normal', 'x', 100, 'Pendiente', NULL,    1)`
     );
     const r = await executeTool('get_envios_activos', { limit: 10 }, T1_CTX);
     expect(r.items.map((e) => e.cliente)).toEqual(['alta', 'media', 'normal']);
@@ -568,7 +568,7 @@ describe('Tools Tier 1 — get_envios_activos', () => {
 
   it('respeta limit (default 10, max 50)', async () => {
     const inserts = Array.from({ length: 15 }, (_, i) =>
-      `(CURRENT_DATE, 'C${i}', 'd', 0, 'Pendiente', 1)`
+      `((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C${i}', 'd', 0, 'Pendiente', 1)`
     ).join(',');
     await pool.query(
       `INSERT INTO envios (fecha, cliente, direccion, total_cobrado, estado, tenant_id) VALUES ${inserts}`
@@ -593,8 +593,8 @@ describe('Tools Tier 1 — get_saldos_cajas', () => {
     await pool.query(
       `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto)
        VALUES
-         ($1, CURRENT_DATE, 'ingreso', 500, 500, 'ajuste', 'manual', 0, 'ing test'),
-         ($1, CURRENT_DATE, 'egreso',  200, 200, 'ajuste', 'manual', 0, 'eg test')`,
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'ingreso', 500, 500, 'ajuste', 'manual', 0, 'ing test'),
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'egreso',  200, 200, 'ajuste', 'manual', 0, 'eg test')`,
       [cajaId]
     );
     const r = await executeTool('get_saldos_cajas', {}, T1_CTX);
@@ -637,7 +637,7 @@ describe('Tools Tier 1 — get_alertas', () => {
     );
     await pool.query(
       `INSERT INTO caja_movimientos (caja_id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto)
-       VALUES ($1, CURRENT_DATE, 'egreso', 50, 50, 'ajuste', 'manual', 0, 'forzar negativo')`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'egreso', 50, 50, 'ajuste', 'manual', 0, 'forzar negativo')`,
       [cajaRows[0].id]
     );
     // Producto con stock bajo (umbral default 5, ponemos 2)
@@ -670,8 +670,8 @@ describe('Tools Tier 1 — get_dashboard_mensual', () => {
     await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, ganancia_usd, comision_total_metodos, tenant_id)
        VALUES
-         ('act', CURRENT_DATE,                            'A', 'acreditado', 200, 50, 5, 1),
-         ('ant', CURRENT_DATE - INTERVAL '35 days',       'B', 'acreditado', 100, 20, 0, 1)`
+         ('act', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,                            'A', 'acreditado', 200, 50, 5, 1),
+         ('ant', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '35 days',       'B', 'acreditado', 100, 20, 0, 1)`
     );
     const r = await executeTool('get_dashboard_mensual', {}, T1_CTX);
     expect(Number(r.mes_actual.ingresos_usd)).toBe(200);
@@ -685,7 +685,7 @@ describe('Tools Tier 1 — get_dashboard_mensual', () => {
   it('delta 100% si mes anterior fue 0 y mes actual > 0', async () => {
     await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
-       VALUES ('act', CURRENT_DATE, 'A', 'acreditado', 100, 1)`
+       VALUES ('act', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'A', 'acreditado', 100, 1)`
     );
     const r = await executeTool('get_dashboard_mensual', {}, T1_CTX);
     expect(r.deltas.ingresos_usd.porcentual).toBe(100);
@@ -704,7 +704,7 @@ describe('Tools Tier 2 — get_top_productos', () => {
   it('agrupa por descripcion y ordena por qty desc + ingreso desc', async () => {
     const { rows: [v] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
-       VALUES ('o1', CURRENT_DATE, 'C', 'acreditado', 500, 1) RETURNING id`
+       VALUES ('o1', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C', 'acreditado', 500, 1) RETURNING id`
     );
     await pool.query(
       `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
@@ -727,7 +727,7 @@ describe('Tools Tier 2 — get_top_productos', () => {
   it('skipea ventas canceladas', async () => {
     const { rows: [vCancel] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
-       VALUES ('cx', CURRENT_DATE, 'X', 'cancelado', 9999, 1) RETURNING id`
+       VALUES ('cx', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'X', 'cancelado', 9999, 1) RETURNING id`
     );
     await pool.query(
       `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
@@ -755,11 +755,11 @@ describe('Tools Tier 2 — get_top_vendedores', () => {
     );
     const { rows: [v1] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
-       VALUES ('o1', CURRENT_DATE, 'C1', 'acreditado', 100, 1) RETURNING id`
+       VALUES ('o1', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C1', 'acreditado', 100, 1) RETURNING id`
     );
     const { rows: [v2] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
-       VALUES ('o2', CURRENT_DATE, 'C2', 'acreditado', 100, 1) RETURNING id`
+       VALUES ('o2', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C2', 'acreditado', 100, 1) RETURNING id`
     );
     await pool.query(
       `INSERT INTO venta_items (venta_id, vendedor_id, descripcion, cantidad, precio_vendido, costo, moneda)
@@ -793,12 +793,12 @@ describe('Tools Tier 2 — get_cc_pendientes', () => {
     );
     await pool.query(
       `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total)
-       VALUES ($1, CURRENT_DATE, 'compra', 200), ($1, CURRENT_DATE, 'pago', 50)`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 200), ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'pago', 50)`,
       [c1.id]
     );
     await pool.query(
       `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total)
-       VALUES ($1, CURRENT_DATE, 'compra', 100), ($1, CURRENT_DATE, 'pago', 100)`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 100), ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'pago', 100)`,
       [c2.id]
     );
 
@@ -820,7 +820,7 @@ describe('Tools Tier 2 — get_cc_pendientes', () => {
     );
     await pool.query(
       `INSERT INTO movimientos_cc (cliente_cc_id, fecha, tipo, monto_total, caja_id)
-       VALUES ($1, CURRENT_DATE, 'compra', 500, $2)`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 500, $2)`,
       [c.id, caja.id]
     );
     const r = await executeTool('get_cc_pendientes', {}, T1_CTX);
@@ -844,8 +844,8 @@ describe('Tools Tier 2 — get_proveedores_pendientes', () => {
     await pool.query(
       `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd)
        VALUES
-         ($1, CURRENT_DATE, 'compra', 1000), ($1, CURRENT_DATE, 'pago', 200),
-         ($2, CURRENT_DATE, 'compra', 500)`,
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 1000), ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'pago', 200),
+         ($2, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 500)`,
       [p1.id, p2.id]
     );
     const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
@@ -865,10 +865,10 @@ describe('Tools Tier 2 — get_ventas_pendientes', () => {
     await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tenant_id)
        VALUES
-         ('p1', CURRENT_DATE - INTERVAL '5 days', 'PEND1', 'pendiente',  100, 1),
-         ('p2', CURRENT_DATE - INTERVAL '2 days', 'PEND2', 'pendiente',  200, 1),
-         ('ac', CURRENT_DATE,                     'AC',    'acreditado', 999, 1),
-         ('cn', CURRENT_DATE,                     'CN',    'cancelado',  999, 1)`
+         ('p1', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '5 days', 'PEND1', 'pendiente',  100, 1),
+         ('p2', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '2 days', 'PEND2', 'pendiente',  200, 1),
+         ('ac', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,                     'AC',    'acreditado', 999, 1),
+         ('cn', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,                     'CN',    'cancelado',  999, 1)`
     );
     const r = await executeTool('get_ventas_pendientes', {}, T1_CTX);
     expect(r.resumen.total_count).toBe(2);
@@ -893,9 +893,9 @@ describe('Tools Tier 2 — get_tarjetas_no_liquidadas', () => {
       `INSERT INTO tarjeta_movimientos
          (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, tenant_id)
        VALUES
-         ($1, CURRENT_DATE, 'cobro',       'ARS', 1000, 5, 50, 950, 1),
-         ($1, CURRENT_DATE, 'cobro',       'ARS', 500,  5, 25, 475, 1),
-         ($1, CURRENT_DATE, 'liquidacion', 'ARS', 500,  5, 25, 475, 1)`,
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'cobro',       'ARS', 1000, 5, 50, 950, 1),
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'cobro',       'ARS', 500,  5, 25, 475, 1),
+         ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'liquidacion', 'ARS', 500,  5, 25, 475, 1)`,
       [t.id]
     );
     const r = await executeTool('get_tarjetas_no_liquidadas', {}, T1_CTX);
@@ -976,8 +976,8 @@ describe('TANDA 1 fix — get_kpis_hoy excluye soft-deleted', () => {
     await pool.query(
       `INSERT INTO comprobantes (fecha, cliente, monto, monto_financiera, monto_neto, tenant_id, deleted_at)
        VALUES
-         (CURRENT_DATE, 'Vivo',    100, 5, 95,  1, NULL),
-         (CURRENT_DATE, 'Borrado', 999, 0, 999, 1, NOW())`
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'Vivo',    100, 5, 95,  1, NULL),
+         ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'Borrado', 999, 0, 999, 1, NOW())`
     );
     const r = await executeTool('get_kpis_hoy', {}, T1_CTX);
     expect(Number(r.bruto_hoy)).toBe(100); // 100, NO 1099
@@ -994,7 +994,7 @@ describe('TANDA 1 fix — get_top_productos convierte ARS→USD', () => {
   it('divide por v.tc_venta cuando vi.moneda=ARS', async () => {
     const { rows: [v] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tc_venta, tenant_id)
-       VALUES ('arsv', CURRENT_DATE, 'C', 'acreditado', 100, 1000, 1) RETURNING id`
+       VALUES ('arsv', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C', 'acreditado', 100, 1000, 1) RETURNING id`
     );
     // Item de $100.000 ARS @ TC 1000 = USD 100 (no USD 100.000)
     await pool.query(
@@ -1010,7 +1010,7 @@ describe('TANDA 1 fix — get_top_productos convierte ARS→USD', () => {
   it('mantiene precio en USD si moneda=USD (no divide)', async () => {
     const { rows: [v] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tc_venta, tenant_id)
-       VALUES ('usdv', CURRENT_DATE, 'C', 'acreditado', 500, 1000, 1) RETURNING id`
+       VALUES ('usdv', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C', 'acreditado', 500, 1000, 1) RETURNING id`
     );
     await pool.query(
       `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
@@ -1025,7 +1025,7 @@ describe('TANDA 1 fix — get_top_productos convierte ARS→USD', () => {
   it('fallback a precio_vendido si tc_venta=0 (no divide por cero)', async () => {
     const { rows: [v] } = await pool.query(
       `INSERT INTO ventas (order_id, fecha, cliente_nombre, estado, total_usd, tc_venta, tenant_id)
-       VALUES ('tczero', CURRENT_DATE, 'C', 'acreditado', 100, 0, 1) RETURNING id`
+       VALUES ('tczero', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'C', 'acreditado', 100, 0, 1) RETURNING id`
     );
     await pool.query(
       `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda)
@@ -1052,7 +1052,7 @@ describe('TANDA 1 fix — get_proveedores_pendientes saldo_inicial + caja_id', (
     );
     await pool.query(
       `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd)
-       VALUES ($1, CURRENT_DATE, 'saldo_inicial', 500)`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'saldo_inicial', 500)`,
       [p.id]
     );
     const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
@@ -1071,7 +1071,7 @@ describe('TANDA 1 fix — get_proveedores_pendientes saldo_inicial + caja_id', (
     );
     await pool.query(
       `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd, caja_id)
-       VALUES ($1, CURRENT_DATE, 'compra', 1000, $2)`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 1000, $2)`,
       [p.id, caja.id]
     );
     const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);
@@ -1084,8 +1084,8 @@ describe('TANDA 1 fix — get_proveedores_pendientes saldo_inicial + caja_id', (
     );
     await pool.query(
       `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, monto_usd)
-       VALUES ($1, CURRENT_DATE, 'compra', 1000),
-              ($1, CURRENT_DATE, 'pago',   400)`,
+       VALUES ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'compra', 1000),
+              ($1, (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, 'pago',   400)`,
       [p.id]
     );
     const r = await executeTool('get_proveedores_pendientes', {}, T1_CTX);

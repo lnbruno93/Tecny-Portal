@@ -235,7 +235,7 @@ export default function Planes() {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { load();   }, []);
 
   // Aplicar edits sobre rows para render. Esto es lo que ve el usuario:
   // base del backend + sus cambios en memoria. Sort por orden canónico.
