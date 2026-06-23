@@ -3,6 +3,7 @@ const db = require('../config/database');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
+const requireCapability = require('../middleware/requireCapability');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { createTenantScopedCache } = require('../lib/cacheTtl');
@@ -249,7 +250,10 @@ router.get('/cajas/negativas', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/cajas', validate(cajaSchema), async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. Crear una caja nueva (método de pago) es
+// config sensible — capability propia `cajas.crear`. Owner/admin del
+// tenant bypassean. El resto de los roles NO la tienen en default.
+router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const { nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct } = req.body;

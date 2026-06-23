@@ -15,6 +15,7 @@ const db       = require('../config/database');
 const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
+const requireCapability = require('../middleware/requireCapability');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2, computeNeto } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
@@ -336,7 +337,11 @@ router.get('/:id/movimientos', async (req, res, next) => {
 // El neto se calcula server-side: bruto * (1 - pct/100). pct opcional: si
 // no viene, se usa el comision_pct del método. Esto evita que el cliente
 // pueda manipular el neto sin pasar por el cálculo correcto.
-router.post('/cobros-iniciales', validate(createCobroInicialSchema), async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. Registrar un cobro previo (saldo previo al
+// sistema, sin venta_id asociada) es operación delicada — capability propia
+// `tarjetas.cobro_previo`. Encargado/lectura/vendedor NO la tienen en
+// default; owner/admin del tenant bypassean.
+router.post('/cobros-iniciales', requireCapability('tarjetas.cobro_previo'), validate(createCobroInicialSchema), async (req, res, next) => {
   // Audit-in-tx (patrón H6): si el INSERT se commitea pero el audit falla, el
   // movimiento quedaba sin traza. Envolvemos ambos en la misma tx con savepoint
   // (audit.js lo maneja cuando recibe el client). Mismo patrón que el resto
