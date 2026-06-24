@@ -832,16 +832,34 @@ export default function Ventas() {
   }
 
   // ── Venta rápida ──
-  const [rForm, setRForm] = useState({ vendedor_nombre: '', cliente_texto: '', detalle: '' });
+  // 2026-06-24 redesign: Lucas trajo referencia de otro proyecto con un solo
+  // textarea libre + datetime. Estrategia: en vez de pedirle campos
+  // estructurados (vendedor, cliente) en la captura "rápida", dejamos que
+  // escriba TODO en formato libre. La estructura aparece después cuando
+  // convertimos a venta completa con los pickers reales. Velocidad de
+  // captura > reuso de datos parciales.
+  //
+  // El backend ya acepta vendedor_nombre/cliente_texto como opcionales,
+  // así que no rompemos la API ni el storage — simplemente quedan null.
+  function nowLocalDt() {
+    const n = new Date();
+    const pad = (x) => String(x).padStart(2, '0');
+    return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}`;
+  }
+  const [rForm, setRForm] = useState(() => ({ fechaHora: nowLocalDt(), detalle: '' }));
   const [savingRapida, setSavingRapida] = useState(false);
   async function handleSaveRapida(e) {
     e.preventDefault();
     if (!rForm.detalle.trim()) return;
     setSavingRapida(true);
     try {
-      await ventas.createRapida({ fecha: todayStr(), detalle: rForm.detalle.trim(), cliente_texto: rForm.cliente_texto.trim() || null, vendedor_nombre: rForm.vendedor_nombre.trim() || null });
+      // Split datetime-local 'YYYY-MM-DDTHH:mm' → fecha + hora separados que
+      // espera el schema del backend (createVentaRapidaSchema).
+      const [fecha, hora] = rForm.fechaHora.split('T');
+      await ventas.createRapida({ fecha, hora, detalle: rForm.detalle.trim() });
       toast.success('Venta rápida guardada.');
-      setShowRapida(false); setRForm({ vendedor_nombre: '', cliente_texto: '', detalle: '' });
+      setShowRapida(false);
+      setRForm({ fechaHora: nowLocalDt(), detalle: '' });
       await loadRapidas();
     } catch (err) { toast.error(err.message); } finally { setSavingRapida(false); }
   }
@@ -988,7 +1006,7 @@ export default function Ventas() {
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
           <button className="btn" onClick={() => setShowGarantias(true)}><Icons.Shield size={14} /> Plantillas</button>
           <button className="btn" onClick={() => setShowEtiquetas(true)}><Icons.Tag size={14} /> Etiquetas</button>
-          <button className="btn" onClick={() => setShowRapida(true)}><Icons.Bolt size={14} /> Venta rápida</button>
+          <button className="btn" onClick={() => { setRForm({ fechaHora: nowLocalDt(), detalle: '' }); setShowRapida(true); }}><Icons.Bolt size={14} /> Venta rápida</button>
           <button className="btn" onClick={exportarExcel}><Icons.Download size={14} /> Exportar</button>
           <button className="btn btn-primary" onClick={() => openVenta(null)}><Icons.Plus size={14} /> Nueva venta</button>
         </div>
@@ -1588,20 +1606,67 @@ export default function Ventas() {
       )}
 
       {/* ── Modal Venta rápida ── */}
+      {/* 2026-06-24 redesign: 1 textarea libre + datetime, sin vendedor/cliente
+          estructurados (esos se llenan al convertir a venta completa). Inspirado
+          por referencia que trajo Lucas. Layout: instrucciones arriba, fecha y
+          notas debajo. Header con icon ⚡ para identidad visual. */}
       {showRapida && (
         <div ref={rapidaModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowRapida(false)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Venta rápida</h3><button type="button" className="icon-btn" onClick={() => setShowRapida(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Bolt size={18} /> Nueva Venta Rápida
+              </h3>
+              <button type="button" className="icon-btn" onClick={() => setShowRapida(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
+            </div>
             <form onSubmit={handleSaveRapida}>
               <div className="modal-body">
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Nota rápida para cargar después como venta completa.</p>
-                <div className="row">
-                  <div className="field" style={{ flex: 1 }}><label className="field-label">Vendedor</label><input className="input" value={rForm.vendedor_nombre} onChange={e => setRForm(f => ({ ...f, vendedor_nombre: e.target.value }))} /></div>
-                  <div className="field" style={{ flex: 1 }}><label className="field-label">Cliente</label><input className="input" value={rForm.cliente_texto} onChange={e => setRForm(f => ({ ...f, cliente_texto: e.target.value }))} /></div>
+                {/* Info box estilo "info" — bg sutil con accent-soft + border accent-ring. */}
+                <div style={{
+                  background: 'var(--accent-soft)',
+                  border: '1px solid var(--accent-ring)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  marginBottom: 14,
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                }}>
+                  <strong>Instrucciones:</strong> Escribí toda la info de la venta abajo —
+                  producto, accesorios, vendedor, cliente, precio, método de pago. Después la
+                  cargás como venta completa con los datos estructurados.
                 </div>
-                <div className="field"><label className="field-label">Detalle <span style={{ color: 'var(--neg)' }}>*</span></label><textarea className="input" rows={3} placeholder="iPhone 15 Pro 256 White — 500 efectivo + 338 transferencia" value={rForm.detalle} onChange={e => setRForm(f => ({ ...f, detalle: e.target.value }))} /></div>
+                <div className="field">
+                  <label className="field-label">Fecha y hora de la venta</label>
+                  <input
+                    type="datetime-local"
+                    className="input mono"
+                    value={rForm.fechaHora}
+                    onChange={e => setRForm(f => ({ ...f, fechaHora: e.target.value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Notas de la venta <span style={{ color: 'var(--neg)' }}>*</span></label>
+                  <textarea
+                    className="input"
+                    rows={9}
+                    style={{ height: 'auto', padding: 10, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical' }}
+                    placeholder={`Ejemplo:
+iPhone 14 Pro 128GB Azul - $850.000
+Funda + Vidrio templado - $15.000
+Vendedor: Juan Pérez
+Cliente: María González (11-2345-6789)
+Pago: Efectivo + Transferencia`}
+                    value={rForm.detalle}
+                    onChange={e => setRForm(f => ({ ...f, detalle: e.target.value }))}
+                  />
+                </div>
               </div>
-              <div className="modal-ft"><button type="button" className="btn btn-ghost" onClick={() => setShowRapida(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={savingRapida}>{savingRapida ? 'Guardando…' : 'Guardar'}</button></div>
+              <div className="modal-ft">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowRapida(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={savingRapida || !rForm.detalle.trim()}>
+                  <Icons.Bolt size={13} /> {savingRapida ? 'Guardando…' : 'Guardar Venta Rápida'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
