@@ -1,14 +1,13 @@
-// permissions.js — helper para resolver el tenant default de un usuario.
+// userTenant.js — helper para resolver el tenant default de un usuario.
 //
-// Historia: este archivo contenía además `loadUserPerms` y `loadUserPermsRows`
-// para el sistema viejo de 14 booleans (`user_permissions`). En F4 (cutover
-// capability-based, 2026-06-23) se retiraron. Lo único que sobrevive es
-// `resolveUserTenant` — sigue siendo el helper canónico para resolver el
-// tenant default del user y lo usan auth, capabilities, etc.
+// Renombrado desde `permissions.js` (junio 2026) tras el cutover capability-
+// based: el archivo original contenía además `loadUserPerms`/`loadUserPermsRows`
+// del sistema viejo de 14 booleans. Tras F4 quedó solo `resolveUserTenant` y
+// el nombre `permissions.js` confundía: el lector cold suponía que este era
+// el módulo del nuevo sistema de permisos.
 //
-// Si querés capabilities del user, usar `loadUserCaps` en
-// `backend/src/lib/capabilities.js` (paralelo a esto, mismo patrón
-// withTenant + fallback log).
+// Si querés capabilities del user, usar `loadUserCaps` en `lib/capabilities.js`
+// (paralelo a esto, mismo patrón withTenant + fallback log).
 
 const db = require('../config/database');
 const logger = require('./logger');

@@ -17,7 +17,7 @@ const db = require('../config/database');
 const logger = require('./logger');
 const { getRoleDefaultCaps, isBypassRole } = require('./roleDefaults');
 const { ALL_SLUGS } = require('./capabilityCatalog');
-const { resolveUserTenant } = require('./permissions');
+const { resolveUserTenant } = require('./userTenant');
 
 /**
  * Combina rol + overrides → set efectivo de capability slugs.
