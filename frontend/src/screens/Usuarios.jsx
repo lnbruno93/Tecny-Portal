@@ -182,13 +182,19 @@ export default function Usuarios() {
       // del tenant la maneja tenant_user_roles.rol. Esto evita que un admin
       // de tenant tenga bypass cross-tenant (el users.role='admin' es global,
       // peligroso).
+      // 2026-06-24 hotfix post-permisos: el campo `perms` se retiró del
+      // schema en F4 (createUsuarioSchema.strict() rechaza extras → 400).
+      // Antes mandábamos `perms: {}` con un comment "el sistema nuevo
+      // decide" — pero .strict() no perdona, y "Crear usuario" venía
+      // rompiendo silenciosamente en prod desde el cutover. El sistema
+      // nuevo decide igual: el step 2 (capsApi.update con rol elegido)
+      // genera las caps efectivas tras el INSERT.
       const created = await usuariosApi.create({
         nombre,
         username,
         email: newUser.email.trim() || null,
         password: newUser.password,
         role: 'op',
-        perms: {}, // todos los tools en false — el sistema nuevo decide.
       });
       // 2) Asignar el rol nuevo via PUT /capabilities/users/:id.
       // Si el rol elegido no es 'custom', basta con eso. Si es 'custom',
