@@ -199,3 +199,112 @@ describe('Migration #347 — el seed actual del archivo fixed', () => {
     ]));
   });
 });
+
+/**
+ * Incidente 2026-06-24 (segundo del mismo patrón):
+ *
+ * La migration 20260624000001_capability_roles_owner_admin_backfill.js hacía
+ * un UPDATE cross-tenant sobre tenant_user_roles (FORCE RLS) usando solo
+ * `SET LOCAL row_security = off` para "bypassear" RLS. Eso solo funciona
+ * para roles con BYPASSRLS — pero las migrations corren con ipro_app
+ * (NOSUPERUSER, sin BYPASSRLS) — el comment de la migration estaba mal.
+ * Resultado: ~10 deploys de Railway en FAILED hasta detectar.
+ *
+ * Este test reproduce el escenario contra tenant_user_roles bajo NOSUPERUSER
+ * y comprueba el patrón canónico que sí funciona. Si alguien rompe la
+ * migration de vuelta (o agrega una nueva con UPDATE cross-tenant directo),
+ * este test la atrapa antes del merge.
+ */
+describe('UPDATE cross-tenant en tenant_user_roles bajo NOSUPERUSER — bug 2026-06-24', () => {
+  // tenant_user_roles tiene FORCE RLS, no podemos cambiar ownership a
+  // mig_rls_tester sin romper otros tests. Pero el escenario clave es que
+  // el role NOSUPERUSER que escribe ES el mismo OWNER (en prod, ipro_app es
+  // OWNER de todas las tablas). El test de alertas_config arriba ya hizo
+  // ALTER TABLE alertas_config OWNER TO ${ROLE_NAME} — tomamos prestada esa
+  // condición y replicamos sobre tenant_user_roles para este describe.
+  beforeAll(async () => {
+    await pool.query(`ALTER TABLE tenant_user_roles OWNER TO ${ROLE_NAME}`);
+  });
+
+  afterAll(async () => {
+    try { await pool.query(`ALTER TABLE tenant_user_roles OWNER TO CURRENT_USER`); }
+    catch (_) {}
+  });
+
+  it('UPDATE cross-tenant SIN setear app.current_tenant FALLA con 42501', async () => {
+    // Patrón del bug: la versión pre-fix de 20260624000001 hacía esto.
+    // Sin app.current_tenant, current_setting devuelve NULL, la policy
+    // WITH CHECK falla en el primer row porque tenant_id != NULL.
+    const client = await pool.connect();
+    try {
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+      await client.query('BEGIN');
+      // Reset explícito por si una corrida previa dejó el setting.
+      await client.query(`SELECT set_config('app.current_tenant', '', false)`);
+      // SET LOCAL row_security = off — esto era el "fix" que no funcionaba.
+      // ipro_app es OWNER pero no tiene BYPASSRLS, así que es no-op bajo
+      // FORCE RLS.
+      await client.query(`SET LOCAL row_security = off`);
+
+      await expect(
+        client.query(`
+          UPDATE tenant_user_roles tur
+             SET rol = 'admin', updated_at = NOW()
+            FROM tenant_users tu
+           WHERE tur.tenant_id = tu.tenant_id
+             AND tur.user_id   = tu.user_id
+             AND tur.rol       = 'custom'
+             AND tu.rol IN ('owner', 'admin')
+        `)
+      ).rejects.toMatchObject({
+        code: '42501',
+        message: expect.stringMatching(/row-level security policy.*tenant_user_roles/i),
+      });
+      await client.query('ROLLBACK');
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+  });
+
+  it('UPDATE en DO loop con set_config por tenant PASA bajo NOSUPERUSER', async () => {
+    // Replica del patrón fixed (el que ahora vive en 20260624000001).
+    // No esperamos ningún row a fixear en CI (el seed test no crea owners
+    // con rol mismatch), pero queremos comprobar que el SQL no es rechazado
+    // por RLS.
+    const client = await pool.connect();
+    try {
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+      await client.query('BEGIN');
+      await client.query(`
+        DO $do$
+        DECLARE
+          t_id INT;
+          n    INT;
+        BEGIN
+          FOR t_id IN SELECT id FROM tenants WHERE deleted_at IS NULL ORDER BY id LOOP
+            PERFORM set_config('app.current_tenant', t_id::text, true);
+            WITH up AS (
+              UPDATE tenant_user_roles tur
+                 SET rol        = tu.rol,
+                     updated_at = NOW()
+                FROM tenant_users tu
+               WHERE tur.tenant_id = t_id
+                 AND tur.tenant_id = tu.tenant_id
+                 AND tur.user_id   = tu.user_id
+                 AND tur.rol       = 'custom'
+                 AND tu.rol IN ('owner', 'admin')
+              RETURNING 1
+            )
+            SELECT COUNT(*) INTO n FROM up;
+          END LOOP;
+        END $do$;
+      `);
+      await client.query('COMMIT');
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+    // Si llegamos acá sin throw → el patrón pasa RLS bajo NOSUPERUSER ✓
+  });
+});
