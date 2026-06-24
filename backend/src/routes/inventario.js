@@ -3,6 +3,9 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const requireCapability = require('../middleware/requireCapability');
+// hasCapability se usa en handlers para redactar campos sensibles
+// (response shaping post-F5b). El módulo expone ambos.
+const { hasCapability } = require('../middleware/requireCapability');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
@@ -298,7 +301,10 @@ const DIM_CONFIG = {
 //   valorizado_*    = SUM(precio_venta * cantidad) split por moneda de venta
 //   margen_usd/ars  = valorizado - inversión (sólo informativo dentro de
 //                     cada moneda; no hace conversión cruzada)
-router.get('/desglose', validate(queryDesgloseSchema, 'query'), async (req, res, next) => {
+// 2026-06-23 F5b: el endpoint /desglose es PURO breakdown de costos
+// (inv_usd, valorizado_usd, margen). Sin `inventario.ver_costos` no
+// hay shape parcial razonable — devolvemos 403 directo.
+router.get('/desglose', requireCapability('inventario.ver_costos'), validate(queryDesgloseSchema, 'query'), async (req, res, next) => {
   try {
     const { por, clase, estado, categoria_id, deposito_id, proveedor, solo_stock, buscar } = req.query;
     const dim = DIM_CONFIG[por];
@@ -453,7 +459,17 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
         client.query(dataQuery, [...params, limit, offset]),
       ]);
     });
-    res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));
+
+    // 2026-06-23 F5b: response shaping. Si el user no tiene
+    // `inventario.ver_costos`, sacamos `costo` y `costo_moneda` de cada
+    // fila. El frontend ya tiene la cap en JWT y oculta la columna —
+    // este es defense in depth + protege llamadas directas a la API.
+    const canSeeCostos = await hasCapability(req.user, 'inventario.ver_costos');
+    const rows = canSeeCostos
+      ? dataRes.rows
+      : dataRes.rows.map(({ costo, costo_moneda, ...rest }) => rest);
+
+    res.json(paginatedResponse(rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
 });
 
@@ -570,7 +586,30 @@ router.get('/productos/:id/historial', async (req, res, next) => {
       venta = cand[0];
     }
 
-    res.json({ compra, venta });
+    // 2026-06-23 F5b: response shaping.
+    //   - `inventario.ver_compras` controla si vemos el bloque compra.
+    //     Vendedor NO la tiene (no debería saber a qué proveedor le
+    //     compramos ni cuánto). Encargado SÍ.
+    //   - `inventario.ver_costos` controla los campos monetarios
+    //     (monto/valor_item) dentro del bloque. Encargado SÍ, vendedor NO.
+    // Hacemos check ANTES de construir el body para no exponer datos.
+    const [canSeeCompras, canSeeCostos] = await Promise.all([
+      hasCapability(req.user, 'inventario.ver_compras'),
+      hasCapability(req.user, 'inventario.ver_costos'),
+    ]);
+    let compraOut = null;
+    if (canSeeCompras && compra) {
+      if (canSeeCostos) {
+        compraOut = compra;
+      } else {
+        // Redacto montos pero conservo proveedor/fecha (info no-monetaria
+        // que igual es parte del historial visual).
+        const { monto, monto_usd, valor_item, moneda, ...rest } = compra;
+        compraOut = rest;
+      }
+    }
+
+    res.json({ compra: compraOut, venta });
   } catch (err) { next(err); }
 });
 
