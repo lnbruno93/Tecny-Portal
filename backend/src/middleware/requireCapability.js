@@ -1,17 +1,18 @@
-// requireCapability.js — middleware análogo a requirePermission, pero opera
-// sobre capability slugs (granulares) en lugar de tools (14 booleans).
+// requireCapability.js — middleware de autorización capability-based.
+// Sustituyó al viejo `requirePermission` (14 booleans flat) en el cutover
+// de junio 2026. Opera sobre slugs granulares del catálogo (45 capabilities,
+// 19 pantallas — ver lib/capabilityCatalog.js).
 //
-// 2026-06-23 F1: este middleware existe pero ninguna route lo usa todavía
-// (shadow mode). F3 hace el refactor de routes. F4 dropea requirePermission.
+// Estrategia:
+//   1. Bypass admin global (users.role='admin' — super-admin de plataforma).
+//   2. Bypass por rol del tenant en JWT (owner/admin del tenant).
+//   3. Fast path: caps embebidas en el JWT (objeto { slug: true }).
+//   4. Fallback DB: query loadUserCaps (tokens sin `caps` claim).
 //
-// Estrategia idéntica al middleware viejo:
-//   1. Owner/admin del tenant pasan siempre (bypass por rol).
-//   2. Fast path: JWT trae `caps` embebidas (objeto { slug: true }).
-//   3. Fallback: query DB con loadUserCaps (tokens legacy sin caps).
-//
-// El rol del tenant se embebe en JWT como `tenant_cap_rol` (separado de
-// `tenant_rol` que es el rol legacy de tenant_users). Eso permite el
-// bypass owner/admin sin hacer DB query.
+// El rol del tenant se embebe en JWT como `tenant_cap_rol`, separado de
+// `tenant_rol` (que es el rol viejo de tenant_users — mantenido para
+// adminOnly hasta cleanup completo). Eso permite el bypass owner/admin
+// sin hacer DB query.
 
 const { loadUserCaps } = require('../lib/capabilities');
 const { isBypassRole } = require('../lib/roleDefaults');
@@ -25,24 +26,16 @@ const { isBypassRole } = require('../lib/roleDefaults');
  * Uso:
  *   router.delete('/:id', requireAuth, requireCapability('ventas.eliminar'), handler);
  *
- * Combina bien con requirePermission durante el shadow mode (F1-F3):
- *   router.delete('/:id',
- *     requireAuth,
- *     requirePermission('ventas'),       // gate viejo
- *     requireCapability('ventas.eliminar'),  // gate nuevo
- *     handler);
- *
  * @param {string} slug — capability slug (formato 'pantalla.capability')
  */
 function requireCapability(slug) {
   return async function checkCapability(req, res, next) {
-    // 1) Bypass por rol legacy (admin global). Mantenemos compat con el
-    // sistema viejo durante shadow mode — un user con users.role='admin'
-    // tiene libre tránsito hasta F4.
+    // 1) Bypass admin global (users.role='admin'). Es el super-admin de la
+    // plataforma — distinto del owner/admin del tenant (sistema nuevo).
     if (req.user?.role === 'admin') return next();
 
-    // 2) Bypass por rol del tenant (owner/admin del tenant — sistema
-    // nuevo). Si el JWT embebió el rol nuevo, lo usamos.
+    // 2) Bypass por rol del tenant (owner/admin del tenant). Si el JWT
+    // embebió el rol, lo usamos sin pegar a DB.
     if (req.user?.tenant_cap_rol && isBypassRole(req.user.tenant_cap_rol)) {
       return next();
     }
@@ -55,9 +48,9 @@ function requireCapability(slug) {
       });
     }
 
-    // 4) Fallback DB para tokens legacy sin `caps` ni `tenant_cap_rol`.
-    // Resolución completa: rol + overrides. Costo equivalente a la
-    // query antigua de user_permissions — aceptable durante shadow mode.
+    // 4) Fallback DB para tokens sin `caps` ni `tenant_cap_rol` (legacy
+    // emitidos antes del cutover, o casos edge). Resolución completa:
+    // rol + overrides.
     try {
       const { rol, caps } = await loadUserCaps(req.user.id);
 

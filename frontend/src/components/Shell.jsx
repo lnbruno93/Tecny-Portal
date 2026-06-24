@@ -13,6 +13,7 @@ import UnverifiedBanner from './UnverifiedBanner';
 import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
 import { alertas as alertasApi } from '../lib/api';
+import { userHasCap, userHasAnyCap } from '../lib/userHasCap';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
@@ -193,27 +194,23 @@ function getInitials(name) {
 // Bypass roles (users.role='admin' global + tenant_cap_rol='owner'/'admin')
 // ven todos los items. Resto chequea el slug en user.caps (array de slugs
 // activos del login response).
+// 2026-06-24 TANDA 4 DRY: la lógica de bypass+cap delega en los helpers de
+// lib/userHasCap.js. Antes este filter reimplementaba los 3 paths de bypass
+// y eso hacía que un fix (ej. caps===null sentinel) tuviera que aplicarse
+// en 3 lugares. Ahora hay UNA source of truth.
 function useVisibleNav(items) {
   const { user } = useAuth();
   if (!user) return [];
-  // Admin global del sistema viejo — bypass total.
-  if (user.role === 'admin') return items;
-  // Owner/admin del tenant — bypass total dentro del tenant.
-  const isBypass = user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin';
-  // Caps null = bypass server-side (ya se resolvió como acceso total).
-  const allCaps = isBypass || user.caps === null;
+
+  const isBypass = user.role === 'admin'
+    || user.tenant_cap_rol === 'owner'
+    || user.tenant_cap_rol === 'admin';
 
   return items.filter(n => {
     if (n.adminOnly) return isBypass;
     if (!n.cap && !n.anyCap) return true; // siempre visible (ej. Inicio).
-    if (allCaps) return true;
-    if (!Array.isArray(user.caps)) return false;
-    // 2026-06-23 F5c: items con anyCap (array) son visibles si tiene
-    // AL MENOS UNA cap del set. Útil para items multi-tab (ej. Config).
-    if (n.anyCap && Array.isArray(n.anyCap)) {
-      return n.anyCap.some(c => user.caps.includes(c));
-    }
-    return user.caps.includes(n.cap);
+    if (n.anyCap && Array.isArray(n.anyCap)) return userHasAnyCap(user, n.anyCap);
+    return userHasCap(user, n.cap);
   });
 }
 

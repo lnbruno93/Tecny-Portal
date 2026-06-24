@@ -1,5 +1,5 @@
 /**
- * Tests del helper resolveUserTenant (lib/permissions.js).
+ * Tests del helper resolveUserTenant (lib/userTenant.js).
  *
  * 2026-06-18 #319 hygiene: el fallback `{ tenant_id: 1, rol: 'member' }`
  * cuando un user no tiene tenant_users row es un potencial data leak. Ahora
@@ -11,7 +11,7 @@
  */
 
 const { setupTestDb, teardownTestDb } = require('./helpers/setup');
-const { resolveUserTenant } = require('../src/lib/permissions');
+const { resolveUserTenant } = require('../src/lib/userTenant');
 const logger = require('../src/lib/logger');
 
 describe('resolveUserTenant', () => {

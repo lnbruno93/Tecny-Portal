@@ -11,6 +11,7 @@ import Shell from './components/Shell';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './screens/Login';
 import Forbidden from './screens/Forbidden';
+import { userHasCap, userHasAnyCap } from './lib/userHasCap';
 
 // Rutas públicas TANDA 2.2 — accesibles SIN sesión (no pasan por AuthGuard).
 const Signup = lazy(() => import('./screens/Signup'));
@@ -136,33 +137,26 @@ function RedirectIfAuthed({ children }) {
 //   3. adminOnly → Forbidden si no es bypass.
 //   4. cap/anyCap chequean user.caps (array de slugs del response /login | /me).
 //      Si user.caps es null (bypass server-side), pasa.
+// 2026-06-24 TANDA 4 DRY: delegamos los chequeos de bypass+cap a userHasCap/
+// userHasAnyCap (lib/userHasCap.js), que es la source of truth compartida
+// con useVisibleNav en Shell.jsx. Mantenemos `adminOnly` inline porque es la
+// única check que NO chequea cap — solo bypass por rol — y agregar un cuarto
+// helper en lib solo para eso sería overkill.
 function RequirePermission({ cap, anyCap, adminOnly, children }) {
   const { user } = useAuth();
   if (!user) return null;
 
-  // Admin global del sistema viejo — bypass total.
-  if (user.role === 'admin') return children;
-
-  // Owner/admin del tenant — bypass total dentro del tenant.
-  if (user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin') {
-    return children;
+  // adminOnly: solo pasan los bypass roles. Replicamos la check de los
+  // helpers (admin global + owner/admin del tenant) sin pasar por slug.
+  if (adminOnly) {
+    const isBypass = user.role === 'admin'
+      || user.tenant_cap_rol === 'owner'
+      || user.tenant_cap_rol === 'admin';
+    return isBypass ? children : <Forbidden />;
   }
 
-  // Admin-only route — solo bypass roles pasan.
-  if (adminOnly) return <Forbidden />;
-
-  // Server-side bypass sentinel (caps null).
-  if (user.caps === null) return children;
-  if (!Array.isArray(user.caps)) return <Forbidden />;
-
-  // Single capability check.
-  if (cap) {
-    if (!user.caps.includes(cap)) return <Forbidden />;
-  }
-  // OR-of-capabilities (al menos UNA del array).
-  if (anyCap && Array.isArray(anyCap)) {
-    if (!anyCap.some(c => user.caps.includes(c))) return <Forbidden />;
-  }
+  if (cap && !userHasCap(user, cap)) return <Forbidden />;
+  if (anyCap && !userHasAnyCap(user, anyCap)) return <Forbidden />;
 
   return children;
 }
