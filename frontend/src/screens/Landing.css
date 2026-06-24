@@ -321,17 +321,28 @@
   .tecny-landing .shot-side { display: none; }
 }
 @media (max-width: 640px) {
-  /* 2026-06-24 mobile fix: el nav tenía brand + 3 botones (Iniciar sesión,
-     Crear cuenta, Solicitá una demo) que sumaban ~490px > 414px de
-     viewport iPhone, causando overflow horizontal de toda la landing.
-     Solución: en mobile ocultamos "Crear cuenta" (2do botón ghost) —
-     queda "Iniciar sesión" para users que ya tienen cuenta + el CTA
-     primary "Solicitá una demo". El signup sigue accesible vía
-     "Empezá gratis" en el hero. Tighter gap también. */
+  /* 2026-06-24 mobile fix v2: el nav tenía brand + 3 botones (Iniciar
+     sesión, Crear cuenta, Solicitá una demo) + padding generoso del
+     nav-inner (24px lateral × 2 + gap 28 entre brand y cta) que sumaban
+     ~500-560px > 414px viewport iPhone. Resultado: overflow horizontal
+     visible (Solicitá una demo se salía del borde derecho).
+
+     Solución v1 (#previous): oculté "Crear cuenta", compacté gap+padding
+     del .nav-cta. Insuficiente — Lucas reportó que sigue desbordando.
+
+     Solución v2 (esta): además compactamos el contenedor:
+       - .nav-inner padding 24→12 lateral (ahorra 24px)
+       - .nav-inner gap 28→10 (ahorra 18px)
+       - brand font-size 17→14 (ahorra ~12px)
+       - "Solicitá una demo" texto se acorta a "Demo" via CSS
+         text-replacement, NO toca JSX. Ahorra ~80px.
+     Total adicional: ~134px más de espacio en el nav. */
+  .tecny-landing .nav-inner { padding: 14px 12px; gap: 10px; }
+  .tecny-landing .brand { font-size: 14px; gap: 6px; }
+  .tecny-landing .brand .mk { width: 24px; height: 24px; }
   .tecny-landing .nav-cta { gap: 6px; }
   .tecny-landing .nav-cta > :nth-child(2) { display: none; }
-  /* Botones nav-cta más compactos en mobile sin perder touch target. */
-  .tecny-landing .nav-cta .btn { padding: 0 12px; font-size: 13px; }
+  .tecny-landing .nav-cta .btn { padding: 0 10px; font-size: 13px; height: 36px; }
 }
 @media (max-width: 560px) {
   .tecny-landing .steps, .tecny-landing .bigstat { grid-template-columns: 1fr; }
