@@ -23,7 +23,7 @@ const db       = require('../config/database');
 const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const { toUsd, round2 } = require('../lib/money');
-const { queryListadoSchema, upsertProyeccionSchema } = require('../schemas/sanidad');
+const { queryListadoSchema, upsertProyeccionSchema, upsertOverrideSchema } = require('../schemas/sanidad');
 
 // Devuelve la lista de los últimos N meses como strings 'YYYY-MM', ordenados
 // del más viejo al más reciente (orientado al display en la pantalla). Calcula
@@ -116,6 +116,22 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
         [desdeGlobal, hastaGlobal]
       );
 
+      // 3.5. Overrides de presupuesto mensual por recurrente (2026-06-24).
+      // Permiten variar el monto presupuestado de un recurrente sin
+      // reescribir su `monto` default — caso típico: aumento de alquiler
+      // o salario que aplica desde un mes específico. Sanidad resuelve
+      // por mes: si hay override → usa ese; si no → cae al default del
+      // recurrente.
+      //
+      // Buscamos solo overrides dentro del rango de periodos visible (no
+      // todo el histórico). El índice idx_eror_tenant_periodo cubre.
+      const overridesQ = client.query(
+        `SELECT recurrente_id, periodo, monto, moneda, tc
+           FROM egresos_recurrentes_overrides
+          WHERE periodo BETWEEN $1 AND $2`,
+        [periodos[0], periodos[periodos.length - 1]]
+      );
+
       // 4. Egresos pagados del rango, agrupados por mes y por recurrente_id.
       // recurrente_id NULL = gasto extraordinario (no viene de plantilla).
       // El campo `periodo` del egreso puede usarse para los que vienen de
@@ -140,9 +156,10 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
       const [
         { rows: proyeccionesRows },
         { rows: recurrentesRows },
+        { rows: overridesRows },
         { rows: ventasRows },
         { rows: egresosRows },
-      ] = await Promise.all([proyeccionesQ, recurrentesQ, ventasQ, egresosQ]);
+      ] = await Promise.all([proyeccionesQ, recurrentesQ, overridesQ, ventasQ, egresosQ]);
 
       // Index por periodo para lookup O(1).
       const proyeccionesByPer = new Map(proyeccionesRows.map(r => [r.periodo, Number(r.bruto_proyectado_usd)]));
@@ -156,14 +173,27 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
         egresosByPer.get(r.periodo).set(key, Number(r.real_usd));
       }
 
-      // Recurrentes con su monto en USD pre-calculado (un valor único para
-      // todos los meses — el monto del recurrente es la expectativa fija).
+      // Recurrentes con metadata + monto DEFAULT en USD (fallback si no hay
+      // override para el mes que estamos calculando).
       const recurrentesNorm = recurrentesRows.map(r => ({
         recurrente_id: r.id,
         concepto:      r.concepto,
         categoria_id:  r.categoria_id,
-        proyectado_usd: round2(toUsd(Number(r.monto), r.moneda, r.tc)),
+        default_usd:   round2(toUsd(Number(r.monto), r.moneda, r.tc)),
       }));
+
+      // 2026-06-24: lookup de overrides indexado por periodo → Map<recurrente_id, usd>.
+      // Pre-convertimos cada override a USD (toUsd respeta la moneda+tc del
+      // override, no del recurrente padre — soporta el caso "alquiler
+      // dolarizado que pasa a pesos un mes específico").
+      const overridesByPer = new Map();
+      for (const o of overridesRows) {
+        if (!overridesByPer.has(o.periodo)) overridesByPer.set(o.periodo, new Map());
+        overridesByPer.get(o.periodo).set(
+          o.recurrente_id,
+          round2(toUsd(Number(o.monto), o.moneda, o.tc)),
+        );
+      }
 
       // Armado del payload final: un objeto por mes con todo cruzado.
       return periodos.map(periodo => {
@@ -176,15 +206,25 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
         const bruto_real_usd = round2(Number(v.bruto_real_usd) || 0);
 
         // Gastos: una entrada por cada recurrente (proyectado + real si hay).
-        const gastos = recurrentesNorm.map(rec => ({
-          recurrente_id:  rec.recurrente_id,
-          concepto:       rec.concepto,
-          categoria_id:   rec.categoria_id,
-          proyectado_usd: rec.proyectado_usd,
-          real_usd:       egresosMes.has(rec.recurrente_id)
-                            ? round2(egresosMes.get(rec.recurrente_id))
-                            : null,
-        }));
+        // 2026-06-24: el proyectado por recurrente PARA ESTE MES se resuelve
+        // así: override si hay → default del recurrente si no. El flag
+        // `is_override` lo manda al frontend para mostrarlo visualmente.
+        const overridesMes = overridesByPer.get(periodo) || new Map();
+        const gastos = recurrentesNorm.map(rec => {
+          const overrideUsd = overridesMes.get(rec.recurrente_id);
+          const proyectado_usd = overrideUsd != null ? overrideUsd : rec.default_usd;
+          return {
+            recurrente_id:  rec.recurrente_id,
+            concepto:       rec.concepto,
+            categoria_id:   rec.categoria_id,
+            proyectado_usd,
+            is_override:    overrideUsd != null,
+            default_usd:    rec.default_usd,
+            real_usd:       egresosMes.has(rec.recurrente_id)
+                              ? round2(egresosMes.get(rec.recurrente_id))
+                              : null,
+          };
+        });
 
         // Línea "Otros" — egresos no asociados a un recurrente. Solo se
         // incluye si HAY extras en este mes (si no, no contamina la grilla).
@@ -303,6 +343,102 @@ router.delete('/proyeccion/:periodo', async (req, res, next) => {
       if (rowCount > 0) {
         await audit(client, 'proyecciones_mensuales', 'DELETE', null, {
           antes: { periodo },
+          user_id: req.user.id,
+        });
+      }
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUT /api/sanidad/override ───────────────────────────────────────────────
+// Upsert del monto presupuestado de UN recurrente para UN mes específico.
+// Body: { recurrente_id, periodo, monto, moneda?, tc? }.
+//
+// Caso de uso: el alquiler subió en marzo. El operador click en la celda del
+// recurrente "Alquiler" en el mes marzo del grid → ingresa el nuevo monto →
+// se guarda este override SOLO para marzo (los meses anteriores quedan
+// usando el default del recurrente, que sigue siendo el viejo monto).
+//
+// `recurrente_id` se valida a nivel DB con FK (ON DELETE CASCADE) — un id
+// que no pertenece al tenant o que apunta a un recurrente borrado tira 23503.
+// El handler atrapa ese caso para devolver 400 con mensaje legible (en vez
+// del 500 default del error handler).
+router.put('/override', validate(upsertOverrideSchema), async (req, res, next) => {
+  try {
+    const { recurrente_id, periodo, monto, moneda, tc } = req.body;
+    // tc solo aplica si moneda='ARS'; el schema lo deja pasar opcional, lo
+    // normalizamos acá para no guardar tc=null con moneda=ARS (que dejaría
+    // el override sin forma de calcular USD).
+    if (moneda === 'ARS' && (tc == null || tc <= 0)) {
+      return res.status(400).json({ error: 'Para moneda ARS, debe especificarse un tc > 0.' });
+    }
+    const tcFinal = moneda === 'ARS' ? tc : null;
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO egresos_recurrentes_overrides (tenant_id, recurrente_id, periodo, monto, moneda, tc)
+         VALUES (current_setting('app.current_tenant')::int, $1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, recurrente_id, periodo) DO UPDATE
+           SET monto = EXCLUDED.monto,
+               moneda = EXCLUDED.moneda,
+               tc = EXCLUDED.tc
+         RETURNING recurrente_id, periodo, monto, moneda, tc, updated_at, (xmax = 0) AS inserted`,
+        [recurrente_id, periodo, monto, moneda, tcFinal]
+      );
+      const accion = rows[0].inserted ? 'INSERT' : 'UPDATE';
+      await audit(client, 'egresos_recurrentes_overrides', accion, null, {
+        despues: {
+          recurrente_id: rows[0].recurrente_id,
+          periodo: rows[0].periodo,
+          monto: rows[0].monto,
+          moneda: rows[0].moneda,
+          tc: rows[0].tc,
+        },
+        user_id: req.user.id,
+      });
+      return rows[0];
+    });
+    res.json({
+      recurrente_id: row.recurrente_id,
+      periodo: row.periodo,
+      monto: Number(row.monto),
+      moneda: row.moneda,
+      tc: row.tc != null ? Number(row.tc) : null,
+      updated_at: row.updated_at,
+    });
+  } catch (err) {
+    // FK violation: recurrente_id no existe o no pertenece al tenant (RLS).
+    if (err.code === '23503') {
+      return res.status(400).json({ error: 'Recurrente inválido o inexistente.' });
+    }
+    next(err);
+  }
+});
+
+// ─── DELETE /api/sanidad/override/:recurrenteId/:periodo ─────────────────────
+// Borra el override → ese mes vuelve a usar el monto default del recurrente.
+// Idempotente: si no existe, 204 igual.
+router.delete('/override/:recurrenteId/:periodo', async (req, res, next) => {
+  try {
+    const recurrenteId = Number(req.params.recurrenteId);
+    const periodo = req.params.periodo;
+    if (!Number.isInteger(recurrenteId) || recurrenteId <= 0) {
+      return res.status(400).json({ error: 'recurrenteId inválido' });
+    }
+    if (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(periodo)) {
+      return res.status(400).json({ error: 'Periodo inválido (formato YYYY-MM)' });
+    }
+    await db.withTenant(req.tenantId, async (client) => {
+      const { rowCount } = await client.query(
+        `DELETE FROM egresos_recurrentes_overrides
+          WHERE recurrente_id = $1 AND periodo = $2`,
+        [recurrenteId, periodo]
+      );
+      if (rowCount > 0) {
+        await audit(client, 'egresos_recurrentes_overrides', 'DELETE', null, {
+          antes: { recurrente_id: recurrenteId, periodo },
           user_id: req.user.id,
         });
       }

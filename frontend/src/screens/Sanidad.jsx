@@ -102,6 +102,92 @@ function MoneyCell({ value, className = '', placeholder = '—', variacion = nul
   );
 }
 
+// ─── Editable inline para el monto presupuestado de UN gasto recurrente en ──
+// UN mes específico. Wrapper sobre BrutoProyectadoEditable que agrega:
+//   · Indicador visual cuando el valor es un override (vs default del recurrente).
+//   · Acción "Restaurar default" (borra el override → cae al monto base).
+//
+// 2026-06-24: feature de presupuesto variable por mes. El backend resuelve
+// el monto efectivo (override si hay, default si no) y manda is_override +
+// default_usd en el payload de cada gasto, por mes.
+function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaultUsd, onSave, onReset }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  function startEdit() {
+    setDraft(value != null ? String(value) : '');
+    setEditing(true);
+  }
+  async function commit() {
+    const n = Number(draft);
+    setEditing(false);
+    if (!Number.isFinite(n) || n < 0) return;
+    if (n === value) return;
+    // Si el user borra el valor (NaN) o lo deja igual al default → reset.
+    // Si no → save override.
+    if (Math.abs(n - defaultUsd) < 0.005) {
+      if (isOverride) await onReset(recurrente_id, periodo);
+    } else {
+      await onSave(recurrente_id, periodo, n);
+    }
+  }
+  function cancel() { setEditing(false); setDraft(''); }
+
+  if (editing) {
+    return (
+      <div style={{ position: 'relative' }}>
+        <input
+          autoFocus
+          type="number" min="0" step="100"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+            if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+          }}
+          className="input mono"
+          style={{ width: '100%', maxWidth: 130, padding: '4px 8px', fontSize: 13, textAlign: 'right' }}
+        />
+        <div className="muted" style={{ fontSize: 9, marginTop: 2, textAlign: 'right' }}>
+          default USD {fmt(defaultUsd, 0)}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button" onClick={startEdit}
+      title={isOverride
+        ? `Override del default (USD ${fmt(defaultUsd, 0)}). Click para editar, dejá en el default para restaurar.`
+        : 'Click para editar el monto de este mes (no afecta los demás meses)'}
+      className="sanidad-edit-cell"
+      style={{
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        padding: '2px 6px', borderRadius: 4, textAlign: 'right', width: '100%',
+        font: 'inherit', color: 'inherit',
+        position: 'relative',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+        <span className="sanidad-money" style={{ fontSize: 13 }}>
+          <span className="sanidad-money-prefix">USD</span>
+          <span className="sanidad-money-amount">{fmt(value, 0)}</span>
+          {isOverride && (
+            <span
+              title="Este mes tiene un monto distinto al default del recurrente"
+              style={{
+                marginLeft: 4, fontSize: 8, verticalAlign: 'super',
+                color: 'var(--accent)', fontWeight: 700,
+              }}
+            >●</span>
+          )}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 // ─── Editable inline para el Bruto proyectado de un mes ──────────────────────
 function BrutoProyectadoEditable({ periodo, value, onSave, variacion = null, isGasto = false }) {
   const [editing, setEditing] = useState(false);
@@ -596,6 +682,9 @@ export default function Sanidad() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [panelOpen, setPanelOpen] = useState(true);
+  // 2026-06-24: toggle del desglose por gasto. Default colapsado para no
+  // saturar la vista resumen; el user lo abre para editar overrides puntuales.
+  const [showGastosDetail, setShowGastosDetail] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -634,6 +723,28 @@ export default function Sanidad() {
     } catch (err) {
       setError(err?.message || 'No pudimos guardar la proyección.');
       fetchData();
+    }
+  }
+
+  // 2026-06-24: handlers de override. Save/reset son simétricos en términos
+  // de UI: ambos refetch para que el backend recompute los totales agregados
+  // (total_gastos / neto / daily). Optimistic update de solo la celda
+  // editada quedaría inconsistente con los totales — al usuario lo confunde
+  // más que el refetch ágil.
+  async function handleSaveOverride(recurrente_id, periodo, monto) {
+    try {
+      await sanidadApi.upsertOverride(recurrente_id, periodo, monto);
+      await fetchData();
+    } catch (err) {
+      setError(err?.message || 'No pudimos guardar el override.');
+    }
+  }
+  async function handleResetOverride(recurrente_id, periodo) {
+    try {
+      await sanidadApi.deleteOverride(recurrente_id, periodo);
+      await fetchData();
+    } catch (err) {
+      setError(err?.message || 'No pudimos restaurar el default.');
     }
   }
 
@@ -738,7 +849,23 @@ export default function Sanidad() {
             </tr>
             {/* Gastos — subir = malo (rojo) / bajar = bueno (verde) */}
             <tr>
-              <td className="sanidad-td-concepto">Gastos e inversiones</td>
+              <td className="sanidad-td-concepto">
+                <button
+                  type="button"
+                  onClick={() => setShowGastosDetail(o => !o)}
+                  aria-expanded={showGastosDetail}
+                  title={showGastosDetail ? 'Ocultar detalle por gasto' : 'Ver detalle por gasto · permite editar el monto de un mes específico'}
+                  style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    padding: 0, font: 'inherit', color: 'inherit',
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <Icons.ChevronDown size={12}
+                    style={{ transform: showGastosDetail ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                  Gastos e inversiones
+                </button>
+              </td>
               {data.map((mes, idx) => {
                 const prev = data[idx - 1];
                 return (
@@ -761,6 +888,53 @@ export default function Sanidad() {
                 );
               })}
             </tr>
+            {/* 2026-06-24: detalle por recurrente cuando el toggle está abierto.
+                Cada fila muestra un recurrente; las celdas de "Proy" son
+                editables (override mensual). "Real" sigue siendo read-only
+                (sale de los egresos pagados). */}
+            {showGastosDetail && data[0]?.gastos
+              ?.filter(g => g.recurrente_id != null) // skip "Otros" (no se puede override)
+              .map(refGasto => (
+                <tr key={refGasto.recurrente_id} style={{ background: 'var(--surface-2)' }}>
+                  <td className="sanidad-td-concepto" style={{ paddingLeft: 24, fontSize: 12, fontWeight: 400 }}>
+                    {refGasto.concepto}
+                  </td>
+                  {data.map(mes => {
+                    // Buscamos el gasto correspondiente en cada mes. Si por
+                    // alguna razón no está (recurrente borrado entre meses),
+                    // mostramos placeholder.
+                    const g = mes.gastos.find(x => x.recurrente_id === refGasto.recurrente_id);
+                    if (!g) {
+                      return (
+                        <Fragment key={mes.periodo}>
+                          <td className="sanidad-td-num"><span className="muted tiny">—</span></td>
+                          <td className="sanidad-td-num"><span className="muted tiny">—</span></td>
+                        </Fragment>
+                      );
+                    }
+                    return (
+                      <Fragment key={mes.periodo}>
+                        <td className="sanidad-td-num">
+                          <GastoProyectadoCell
+                            periodo={mes.periodo}
+                            recurrente_id={g.recurrente_id}
+                            value={g.proyectado_usd}
+                            isOverride={!!g.is_override}
+                            defaultUsd={g.default_usd}
+                            onSave={handleSaveOverride}
+                            onReset={handleResetOverride}
+                          />
+                        </td>
+                        <td className="sanidad-td-num">
+                          {g.real_usd != null
+                            ? <MoneyCell value={g.real_usd} isGasto={true} />
+                            : <span className="muted tiny" style={{ opacity: 0.5 }}>—</span>}
+                        </td>
+                      </Fragment>
+                    );
+                  })}
+                </tr>
+              ))}
             {/* Neto — subir = bueno / bajar = malo */}
             <tr className="sanidad-row-neto">
               <td className="sanidad-td-concepto">

@@ -352,3 +352,126 @@ describe('DELETE /api/sanidad/proyeccion/:periodo', () => {
     expect(r.status).toBe(400);
   });
 });
+
+// ─── PUT/DELETE /api/sanidad/override (2026-06-24) ───────────────────────────
+// Verifica que el override REEMPLAZA al default del recurrente solo para el
+// periodo específico; el resto de los meses sigue usando el default.
+describe('Override mensual de gastos (egresos_recurrentes_overrides)', () => {
+  let recurrenteId;
+
+  // El beforeEach GLOBAL del archivo (línea ~101) hace
+  // `DELETE FROM egresos_recurrentes WHERE tenant_id = 1` antes de cada
+  // test → no podemos seedear el recurrente UNA vez en beforeAll.
+  // Lo recreamos por test. El cascade de la FK borra los overrides
+  // automáticamente cuando el recurrente se va.
+  beforeEach(async () => {
+    const ins = await pool.query(`
+      INSERT INTO egresos_recurrentes (tenant_id, concepto, monto, moneda, dia_del_mes, activo)
+      VALUES (1, 'Alquiler test override', 1000, 'USD', 1, true)
+      RETURNING id
+    `);
+    recurrenteId = ins.rows[0].id;
+  });
+
+  it('PUT crea un override nuevo y devuelve el row', async () => {
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 1200, moneda: 'USD' });
+    expect(r.status).toBe(200);
+    expect(r.body.recurrente_id).toBe(recurrenteId);
+    expect(r.body.periodo).toBe('2026-03');
+    expect(Number(r.body.monto)).toBe(1200);
+    expect(r.body.moneda).toBe('USD');
+  });
+
+  it('PUT update — re-PUT del mismo (recurrente, periodo) actualiza el monto (UPSERT)', async () => {
+    await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 1200, moneda: 'USD' });
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 1500, moneda: 'USD' });
+    expect(r.status).toBe(200);
+    expect(Number(r.body.monto)).toBe(1500);
+    const { rows } = await pool.query(
+      `SELECT * FROM egresos_recurrentes_overrides WHERE recurrente_id = $1 AND periodo = '2026-03'`,
+      [recurrenteId]
+    );
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].monto)).toBe(1500);
+  });
+
+  it('PUT con moneda=ARS y sin tc → 400', async () => {
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 1200000, moneda: 'ARS' });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/tc/i);
+  });
+
+  it('PUT con recurrente_id inexistente → 400 (FK violation atrapada)', async () => {
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: 999999, periodo: '2026-03', monto: 1200, moneda: 'USD' });
+    expect(r.status).toBe(400);
+  });
+
+  it('DELETE borra el override → 204; ya no figura en DB', async () => {
+    await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 1200, moneda: 'USD' });
+    const r = await request(app)
+      .delete(`/api/sanidad/override/${recurrenteId}/2026-03`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(204);
+    const { rows } = await pool.query(
+      `SELECT * FROM egresos_recurrentes_overrides WHERE recurrente_id = $1 AND periodo = '2026-03'`,
+      [recurrenteId]
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('DELETE de override inexistente → 204 (idempotente)', async () => {
+    const r = await request(app)
+      .delete(`/api/sanidad/override/${recurrenteId}/2099-12`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(204);
+  });
+
+  it('GET /api/sanidad refleja el override en el mes correcto y deja el default en los otros', async () => {
+    // Setup: override de USD 1500 para el mes actual (default es 1000).
+    const periodo = periodoActual();
+    await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo, monto: 1500, moneda: 'USD' });
+
+    const r = await request(app)
+      .get('/api/sanidad?meses=2')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+
+    // El mes con override → proyectado_usd=1500, is_override=true, default_usd=1000.
+    const mesActual = r.body.meses.find(m => m.periodo === periodo);
+    expect(mesActual).toBeDefined();
+    const gastoAlquiler = mesActual.gastos.find(g => g.recurrente_id === recurrenteId);
+    expect(gastoAlquiler).toBeDefined();
+    expect(gastoAlquiler.proyectado_usd).toBe(1500);
+    expect(gastoAlquiler.is_override).toBe(true);
+    expect(gastoAlquiler.default_usd).toBe(1000);
+
+    // El otro mes (sin override) mantiene el default.
+    const otroMes = r.body.meses.find(m => m.periodo !== periodo);
+    if (otroMes) {
+      const gastoOtro = otroMes.gastos.find(g => g.recurrente_id === recurrenteId);
+      expect(gastoOtro.proyectado_usd).toBe(1000);
+      expect(gastoOtro.is_override).toBe(false);
+    }
+  });
+});

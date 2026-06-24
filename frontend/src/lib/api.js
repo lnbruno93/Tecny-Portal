@@ -336,6 +336,14 @@ export const sanidad = {
   upsertProyeccion: (periodo, bruto_proyectado_usd) =>
     api('/api/sanidad/proyeccion', 'PUT', { periodo, bruto_proyectado_usd }),
   deleteProyeccion: (periodo) => api(`/api/sanidad/proyeccion/${periodo}`, 'DELETE'),
+  // Override del monto presupuestado de un recurrente para un mes específico.
+  // El backend usa este monto SI EXISTE para ese (recurrente, periodo); si no,
+  // cae al `monto` default del recurrente. Permite reflejar aumentos de
+  // alquiler/salario sin reescribir la historia.
+  upsertOverride: (recurrente_id, periodo, monto, moneda = 'USD', tc = null) =>
+    api('/api/sanidad/override', 'PUT', { recurrente_id, periodo, monto, moneda, tc }),
+  deleteOverride: (recurrente_id, periodo) =>
+    api(`/api/sanidad/override/${recurrente_id}/${periodo}`, 'DELETE'),
 };
 
 export const cambios = {
