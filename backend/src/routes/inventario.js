@@ -212,7 +212,35 @@ const { fetchMetricas, invalidateMetricas } = require('../lib/inventarioCache');
 router.get('/productos/metricas', async (req, res, next) => {
   // PR 4.9 (2026-06-15): cache per-tenant — fetchMetricas(req.tenantId).
   // Ver lib/inventarioCache.js.
-  try { res.json(await fetchMetricas(req.tenantId)); } catch (err) { next(err); }
+  //
+  // 2026-06-24 hotfix post-F5b: la auditoría post-permisos detectó que
+  // F5b shapeó GET /productos y /productos/:id/historial pero OLVIDÓ este
+  // endpoint, que devuelve SUM(costo*cantidad) para inv_equipos/accesorios
+  // + en_tecnico_usd/ars. Un vendedor sin `inventario.ver_costos` veía el
+  // valor total del inventario del tenant. Mismo patrón de redact que F5b:
+  // count fields quedan (stock_disponible, equipos_count, accesorios_count,
+  // en_tecnico_count) — un vendedor sí puede saber CUÁNTO stock hay sin
+  // saber CUÁNTA plata representa.
+  try {
+    const metricas = await fetchMetricas(req.tenantId);
+    const canSeeCostos = await hasCapability(req.user, 'inventario.ver_costos');
+    if (canSeeCostos) {
+      res.json(metricas);
+      return;
+    }
+    // Redact los 6 campos monetarios. Devolvemos null (no undefined ni
+    // delete) para que el frontend reconozca la ausencia y muestre "—" en
+    // vez de "$0" — bug U1 también detectado en la auditoría.
+    res.json({
+      ...metricas,
+      en_tecnico_usd:    null,
+      en_tecnico_ars:    null,
+      inv_equipos_usd:   null,
+      inv_equipos_ars:   null,
+      inv_accesorios_usd: null,
+      inv_accesorios_ars: null,
+    });
+  } catch (err) { next(err); }
 });
 
 // Proveedores únicos vistos en productos vivos. Insumo del combo de edición
