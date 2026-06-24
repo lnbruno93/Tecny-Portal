@@ -230,7 +230,8 @@ export default function Inicio() {
         {/* Tools column */}
         <div className="col">
           <div className="flex-between">
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>
+            {/* 2026-06-24 lote F: clamp para que en mobile no domine sobre el subtítulo. */}
+            <h2 style={{ margin: 0, fontSize: 'clamp(14px, 4vw, 16px)', fontWeight: 600, letterSpacing: '-0.01em' }}>
               Herramientas
             </h2>
             <div className="muted tiny">Acceso a los módulos del portal</div>

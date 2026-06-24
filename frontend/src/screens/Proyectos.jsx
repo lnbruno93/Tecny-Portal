@@ -318,7 +318,8 @@ export default function Proyectos() {
             <div className="card">
               <div className="flex-between" style={{ alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 18 }}>{detalle.nombre}</div>
+                  {/* 2026-06-24 lote F: clamp para nombres largos en mobile (ej. "Proyecto de construcción casa zona norte"). */}
+                  <div style={{ fontWeight: 700, fontSize: 'clamp(15px, 4.5vw, 18px)' }}>{detalle.nombre}</div>
                   {detalle.objetivo && <div className="muted" style={{ marginTop: 4, maxWidth: 600 }}>{detalle.objetivo}</div>}
                   <div className="muted tiny" style={{ marginTop: 6 }}>Creado el {fmtFecha(detalle.fecha_creacion)}</div>
                   {detalle.participantes?.length > 0 && (

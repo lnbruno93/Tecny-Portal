@@ -667,7 +667,8 @@ export default function Tarjetas() {
       )}
 
       {sinTarjetas ? (
-        <div className="card" style={{ padding: 24 }}>
+        // 2026-06-24 lote F: padding fluido — 14px mobile / 24px desktop.
+        <div className="card" style={{ padding: 'clamp(14px, 4vw, 24px)' }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no hay tarjetas configuradas</div>
           <div className="muted" style={{ fontSize: 13 }}>
             Creá los métodos de pago tarjeta en <b>Cajas → Config Cajas</b> (tildá "Es tarjeta" y poné su % de comisión).
