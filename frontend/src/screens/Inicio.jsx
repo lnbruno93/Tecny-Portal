@@ -85,11 +85,29 @@ export default function Inicio() {
     // 2026-06-23 F5c: solo pegamos a /api/historial si el user tiene la cap
     // `inicio.actividad_reciente` (la card de abajo gateada por la misma
     // cap). Sin esto, vendedores rebotaban con 403 y rompían el TTI inicial.
+    // 2026-06-24 TANDA 1 P1 fix: degradar cada fetch por separado en lugar
+    // de Promise.all + catch global. El patrón anterior rompía la home
+    // entera para LECTURA (no tiene envios.trabajar ni config.*) — el
+    // primer 403 de Promise.all hacía setError y desaparecían greeting +
+    // tools + activity. Ahora cada fetch falla a su propio fallback y la
+    // pantalla siempre renderiza con lo que pudo conseguir.
     const wantsHistorial = userHasCap(user, 'inicio.actividad_reciente');
+    const swallowForbidden = (fallback) => (err) => {
+      // 403 = falta cap. Degradamos silenciosamente (la UI ya esconde el
+      // bloque correspondiente). Otros errores también degradan, pero
+      // los logueamos para que sigan apareciendo en Sentry.
+      if (err?.status !== 403) {
+        // eslint-disable-next-line no-console
+        console.warn('[Inicio] fetch falló', err);
+      }
+      return fallback;
+    };
     Promise.all([
-      config.get(),
-      envios.list(),
-      wantsHistorial ? historial.list({ per_page: 6, page: 1 }) : Promise.resolve({ data: [] }),
+      config.get().catch(swallowForbidden({ pct_financiera: 0 })),
+      envios.list().catch(swallowForbidden({ data: [] })),
+      wantsHistorial
+        ? historial.list({ per_page: 6, page: 1 }).catch(swallowForbidden({ data: [] }))
+        : Promise.resolve({ data: [] }),
     ])
       .then(([cfg, envData, hData]) => {
         setData({ cfg, envData, hData });

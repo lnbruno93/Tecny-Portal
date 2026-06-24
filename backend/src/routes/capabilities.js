@@ -231,6 +231,21 @@ router.put('/users/:id', adminOnly, validate(updateUserCapabilitiesSchema), asyn
           [req.tenantId, id, rol],
         );
         rolFinal = rol;
+        // 2026-06-24 TANDA 1 P1 fix: sync con tenant_users.rol (sistema viejo
+        // que todavía usa adminOnly y otros middleware legacy hasta drop
+        // completo). Sin esto, un owner degradado a 'vendedor' en la UI nueva
+        // retenía acceso a endpoints adminOnly (que leen tenant_users.rol).
+        // tenant_users.rol tiene CHECK = ('owner' | 'admin' | 'member') —
+        // mapeamos owner/admin del sistema nuevo iguales, y el resto cae a
+        // 'member' (rol neutro del sistema viejo). El sistema viejo solo
+        // distingue owner/admin/member a efectos de adminOnly; la lógica
+        // granular vive en el sistema nuevo.
+        const tuRol = (rol === 'owner' || rol === 'admin') ? rol : 'member';
+        await client.query(
+          `UPDATE tenant_users SET rol = $1
+            WHERE tenant_id = $2 AND user_id = $3`,
+          [tuRol, req.tenantId, id],
+        );
       }
 
       // 2) Reemplazo total de overrides si vino la lista.
