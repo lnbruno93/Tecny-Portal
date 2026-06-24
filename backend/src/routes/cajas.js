@@ -57,7 +57,7 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
   }
 });
 
-router.post('/deudas', validate(createDeudaSchema), async (req, res, next) => {
+router.post('/deudas', requireCapability('cajas.crear'), validate(createDeudaSchema), async (req, res, next) => {
   // Mega-form transaccional (post-auditoría TANDA 0): si viene `contacto_nuevo`,
   // se crea el contacto + el movimiento en una sola tx. Si falla el INSERT del
   // movimiento, el contacto se revierte → no quedan contactos huérfanos. Antes
@@ -96,7 +96,7 @@ router.post('/deudas', validate(createDeudaSchema), async (req, res, next) => {
   } finally { client.release(); }
 });
 
-router.delete('/deudas/:id', async (req, res, next) => {
+router.delete('/deudas/:id', requireCapability('cajas.crear'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -155,7 +155,7 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
   }
 });
 
-router.post('/inversiones', validate(createInversionSchema), async (req, res, next) => {
+router.post('/inversiones', requireCapability('cajas.crear'), validate(createInversionSchema), async (req, res, next) => {
   // Mega-form transaccional (ver comentario equivalente en POST /deudas).
   const client = await db.connect();
   try {
@@ -190,7 +190,7 @@ router.post('/inversiones', validate(createInversionSchema), async (req, res, ne
   } finally { client.release(); }
 });
 
-router.delete('/inversiones/:id', async (req, res, next) => {
+router.delete('/inversiones/:id', requireCapability('cajas.crear'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -282,7 +282,7 @@ router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), as
   } finally { client.release(); }
 });
 
-router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
+router.put('/cajas/:id', requireCapability('cajas.crear'), validate(updateCajaSchema), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();
@@ -326,7 +326,7 @@ router.put('/cajas/:id', validate(updateCajaSchema), async (req, res, next) => {
   } finally { client.release(); }
 });
 
-router.delete('/cajas/:id', async (req, res, next) => {
+router.delete('/cajas/:id', requireCapability('cajas.crear'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -445,7 +445,7 @@ router.get('/cajas/:id/movimientos', async (req, res, next) => {
 //   SELECT saldo → (gap TOCTOU) → INSERT
 // Dos egresos concurrentes contra una caja con saldo justo podían ambos
 // pasar el check y dejarla en negativo. Ahora el lock serializa.
-router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, res, next) => {
+router.post('/cajas/:id/movimientos', requireCapability('cajas.crear'), validate(cajaAjusteSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -509,7 +509,7 @@ router.post('/cajas/:id/movimientos', validate(cajaAjusteSchema), async (req, re
 });
 
 // Borrar un movimiento manual (solo ajustes; los de otros módulos se revierten desde su módulo)
-router.delete('/cajas/movimientos/:id', async (req, res, next) => {
+router.delete('/cajas/movimientos/:id', requireCapability('cajas.crear'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });

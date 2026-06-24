@@ -7,6 +7,13 @@ const db       = require('../config/database');
 const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
+const requireCapability = require('../middleware/requireCapability');
+// 2026-06-24 TANDA 1 P1 fix: el módulo se monta con egresos.ver, lo que daba
+// vía libre a cualquier rol con read access (incluido lectura) para crear,
+// editar y borrar egresos, categorías y recurrentes. Los writes ahora exigen
+// egresos.cargar (que solo encargado+ tiene en defaults). Lectura mantiene
+// vista de read-only del módulo.
+const egresosCargar = requireCapability('egresos.cargar');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
@@ -38,7 +45,7 @@ router.get('/categorias', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/categorias', validate(createCategoriaSchema), async (req, res, next) => {
+router.post('/categorias', egresosCargar, validate(createCategoriaSchema), async (req, res, next) => {
   try {
     const row = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
@@ -54,7 +61,7 @@ router.post('/categorias', validate(createCategoriaSchema), async (req, res, nex
   }
 });
 
-router.put('/categorias/:id', validate(updateCategoriaSchema), async (req, res, next) => {
+router.put('/categorias/:id', egresosCargar, validate(updateCategoriaSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -75,7 +82,7 @@ router.put('/categorias/:id', validate(updateCategoriaSchema), async (req, res, 
   }
 });
 
-router.delete('/categorias/:id', async (req, res, next) => {
+router.delete('/categorias/:id', egresosCargar, async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -109,7 +116,7 @@ router.get('/recurrentes', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/recurrentes', validate(createRecurrenteSchema), async (req, res, next) => {
+router.post('/recurrentes', egresosCargar, validate(createRecurrenteSchema), async (req, res, next) => {
   try {
     const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
     const row = await db.withTenant(req.tenantId, async (client) => {
@@ -125,7 +132,7 @@ router.post('/recurrentes', validate(createRecurrenteSchema), async (req, res, n
   } catch (err) { next(err); }
 });
 
-router.put('/recurrentes/:id', validate(updateRecurrenteSchema), async (req, res, next) => {
+router.put('/recurrentes/:id', egresosCargar, validate(updateRecurrenteSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -154,7 +161,7 @@ router.put('/recurrentes/:id', validate(updateRecurrenteSchema), async (req, res
   } catch (err) { next(err); }
 });
 
-router.delete('/recurrentes/:id', async (req, res, next) => {
+router.delete('/recurrentes/:id', egresosCargar, async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -173,7 +180,7 @@ router.delete('/recurrentes/:id', async (req, res, next) => {
 
 // Genera egresos PENDIENTES de los recurrentes activos para un período (YYYY-MM).
 // Idempotente: el índice único (recurrente_id, periodo) evita duplicar.
-router.post('/generar', validate(generarPeriodoSchema), async (req, res, next) => {
+router.post('/generar', egresosCargar, validate(generarPeriodoSchema), async (req, res, next) => {
   try {
     const { periodo } = req.body;
     const [y, m] = periodo.split('-').map(Number);
@@ -235,7 +242,7 @@ router.get('/', validate(queryEgresosSchema, 'query'), async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
-router.post('/', validate(createEgresoSchema), async (req, res, next) => {
+router.post('/', egresosCargar, validate(createEgresoSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const { fecha, concepto, categoria_id, monto, moneda, tc, metodo_pago_id, estado, notas } = req.body;
@@ -258,7 +265,7 @@ router.post('/', validate(createEgresoSchema), async (req, res, next) => {
   } finally { client.release(); }
 });
 
-router.put('/:id', validate(updateEgresoSchema), async (req, res, next) => {
+router.put('/:id', egresosCargar, validate(updateEgresoSchema), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();
@@ -305,7 +312,7 @@ router.put('/:id', validate(updateEgresoSchema), async (req, res, next) => {
   } finally { client.release(); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', egresosCargar, async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();

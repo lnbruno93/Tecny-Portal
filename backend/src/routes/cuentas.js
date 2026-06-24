@@ -825,9 +825,17 @@ router.delete('/movimientos/:id', async (req, res, next) => {
       [id]
     );
     if (!pre[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
+    // 2026-06-24 TANDA 1 P1 fix: el chequeo previo era `req.user.role === 'admin'`
+    // (rol global). Post-F4 los owners self-signup NO son admin global (decisión
+    // de seguridad cross-tenant) → owners legítimos quedaban bloqueados de
+    // borrar movimientos B2B de su propio tenant. Replicamos el patrón ya
+    // usado en proveedores.js: bypass por tenant_cap_rol owner/admin además
+    // del admin global.
     const isOwner = pre[0].created_by_user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    const isBypass = req.user.role === 'admin'
+      || req.user.tenant_cap_rol === 'owner'
+      || req.user.tenant_cap_rol === 'admin';
+    if (!isOwner && !isBypass) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'No tenés permiso para borrar este movimiento (lo creó otro usuario).' });
     }
