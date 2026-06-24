@@ -857,21 +857,29 @@ export default function Envios() {
       )}
 
       {/* ── Split layout ── */}
+      {/* 2026-06-24 mobile fix: .split-master-detail con --master-width 340.
+          En <=720px colapsa a single column (la lista se ve full-width;
+          al seleccionar un envío el detalle reemplaza la vista). Antes
+          el grid inline `340px 1fr` dejaba ~10px de detalle en S20/SE
+          —inusable. */}
       {!loading && (
         <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '340px 1fr',
-            gap: 12,
-            alignItems: 'start',
-          }}
+          className="split-master-detail"
+          style={{ '--master-width': '340px', gap: 12 }}
         >
           {/* ── Left: envío list ── */}
           <div
             className="stack"
             style={{
               gap: 8,
-              maxHeight: 'calc(100vh - 340px)',
+              // svh (small viewport height) en lugar de vh: en iOS Safari
+              // el URL bar dinámico recorta vh cuando aparece y vuelve a
+              // expandirse al hacer scroll → la lista pegaba saltos.
+              // svh refleja el viewport mínimo (sin URL bar) y es estable.
+              // Browser support: Safari 15.4+, Chrome 108+, Firefox 101+
+              // (~98% global). El portal ya usa svh en otros lugares
+              // (styles.css:1788, 2047).
+              maxHeight: 'calc(100svh - 340px)',
               overflowY: 'auto',
               paddingRight: 2,
             }}
