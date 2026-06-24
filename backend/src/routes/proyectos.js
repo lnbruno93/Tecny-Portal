@@ -5,6 +5,7 @@ const db      = require('../config/database');
 const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
+const requireCapability = require('../middleware/requireCapability');
 const { toUsd, round2 } = require('../lib/money');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
@@ -142,7 +143,11 @@ router.put('/:id', validate(updateProyectoSchema), async (req, res, next) => {
   } finally { client.release(); }
 });
 
-router.delete('/:id', async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. El módulo está gateado por `proyectos.trabajar`
+// (encargado lo tiene), pero DELETE es destructivo: capability propia
+// `proyectos.eliminar`. Owner/admin del tenant bypassean; encargado NO la
+// tiene en default.
+router.delete('/:id', requireCapability('proyectos.eliminar'), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();

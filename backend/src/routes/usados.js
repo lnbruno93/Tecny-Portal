@@ -4,6 +4,7 @@ const db       = require('../config/database');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const validate = require('../lib/validate');
+const requireCapability = require('../middleware/requireCapability');
 const { createUsadoSchema, updateUsadoSchema, bulkUpdateUsadosSchema } = require('../schemas/usados');
 
 // ── GET /api/usados ──────────────────────────────────────────────────────────
@@ -52,7 +53,11 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // ── POST /api/usados ─────────────────────────────────────────────────────────
-router.post('/', validate(createUsadoSchema), async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. El módulo está gateado por `usados.ver`
+// (vendedor lo tiene = puede ver el catálogo). Agregar un equipo es
+// capability separada `usados.agregar_equipo` — encargado lo tiene en
+// default, vendedor NO. Owner/admin del tenant bypassean.
+router.post('/', requireCapability('usados.agregar_equipo'), validate(createUsadoSchema), async (req, res, next) => {
   try {
     const data = req.body;
     const rows = await db.withTenant(req.tenantId, async (client) => {

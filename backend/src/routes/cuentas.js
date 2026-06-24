@@ -23,6 +23,7 @@ const db      = require('../config/database');
 const validate  = require('../lib/validate');
 const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
+const requireCapability = require('../middleware/requireCapability');
 const { toUsd, round2 } = require('../lib/money');
 
 // Rate-limit específico para cobranza masiva: 10 req / 15 min por user.
@@ -1013,7 +1014,10 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
 //     negativo (a favor), descontable de la próxima compra.
 //   - Si una fila falla por cualquier motivo (cliente no existe, caja
 //     inválida, etc.) → rollback total: ninguna cobranza se aplica.
-router.post('/cobranzas-masivas', cobranzaLimiter, validate(cobranzaMasivaSchema), async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. El módulo está gateado por `b2b.trabajar`
+// (vendedor lo tiene), pero la cobranza masiva tiene su propia capability
+// `b2b.cobranza_masiva` — vendedor NO la tiene en default, encargado SÍ.
+router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobranzaLimiter, validate(cobranzaMasivaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
     const { cobranzas } = req.body;

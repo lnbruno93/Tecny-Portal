@@ -2,6 +2,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
+const requireCapability = require('../middleware/requireCapability');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
@@ -872,7 +873,11 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. El módulo está gateado por `ventas.trabajar`
+// (app.js), pero DELETE es destructivo: lo separamos en su propia capability
+// `ventas.eliminar`. Vendedor + encargado NO la tienen en su rol default;
+// owner/admin del tenant bypassean.
+router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, next) => {
   const client = await db.connect();
   try {
     const id = parseId(req.params.id);

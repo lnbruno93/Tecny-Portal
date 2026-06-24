@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
+const requireCapability = require('../middleware/requireCapability');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
@@ -789,7 +790,11 @@ router.delete('/productos/:id', async (req, res, next) => {
 //
 // Reversible: como todo en Tecny, es soft-delete (deleted_at = NOW()).
 // Para recuperar, hay que correr SQL directo en DB (no hay UI de undelete).
-router.post('/productos/bulk-delete-disponibles', bulkLimiter, async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. Vaciar el stock disponible es la operación
+// más destructiva del módulo (soft-borra todos los productos no vendidos
+// del filtro). Capability propia `inventario.vaciar_stock` — owner/admin
+// del tenant bypassean, todos los demás roles deberían no tenerla.
+router.post('/productos/bulk-delete-disponibles', requireCapability('inventario.vaciar_stock'), bulkLimiter, async (req, res, next) => {
   // Auditoría 2026-06-03: cambios respecto a la versión original:
   //
   // 1) Tx + audit-in-tx: antes UPDATE y audit eran queries separadas con el pool

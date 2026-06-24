@@ -12,6 +12,7 @@ const { toUsd, round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
 const adminOnly = require('../middleware/adminOnly');
+const requireCapability = require('../middleware/requireCapability');
 const { invalidateMetricas } = require('../lib/inventarioCache');
 const { invalidateCajas } = require('../lib/cajasCache');
 const {
@@ -819,7 +820,14 @@ router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMov
   } finally { client.release(); }
 });
 
-router.delete('/movimientos/:id', async (req, res, next) => {
+// 2026-06-23 F5a: gate inline. La capability `proveedores.eliminar_compra`
+// reemplaza el viejo check `req.user.role !== 'admin'` (global admin) que
+// se rompió con F4 — post-cutover los owners del tenant no son global admins.
+// Ahora owner/admin del tenant bypassean; vendedor/encargado/lectura NO la
+// tienen en default. La ownership check de abajo se mantiene como defensa
+// en depth (incluso con la cap, no podés borrar lo que NO creaste a menos
+// que seas owner/admin que bypassea ambos chequeos).
+router.delete('/movimientos/:id', requireCapability('proveedores.eliminar_compra'), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
   const client = await db.connect();
@@ -827,13 +835,18 @@ router.delete('/movimientos/:id', async (req, res, next) => {
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
-    // Ownership check (auditoría #B-07)
+    // Ownership check (auditoría #B-07) — defensa en depth además de la cap.
     const { rows: pre } = await client.query(
       'SELECT id, created_by_user_id FROM proveedor_movimientos WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [id]
     );
     if (!pre[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movimiento no encontrado' }); }
-    if (pre[0].created_by_user_id !== req.user.id && req.user.role !== 'admin') {
+    // 2026-06-23 F5a: bypass de ownership para roles owner/admin del tenant
+    // o admin global. El resto solo puede borrar lo que él mismo creó.
+    const isBypass = req.user.role === 'admin'
+      || req.user.tenant_cap_rol === 'owner'
+      || req.user.tenant_cap_rol === 'admin';
+    if (pre[0].created_by_user_id !== req.user.id && !isBypass) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'No tenés permiso para borrar este movimiento (lo creó otro usuario).' });
     }
