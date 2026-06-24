@@ -6,6 +6,7 @@ const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const parseId  = require('../lib/parseId');
 const requireCapability = require('../middleware/requireCapability');
+const { hasCapability } = require('../middleware/requireCapability');
 const { toUsd, round2 } = require('../lib/money');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
@@ -56,7 +57,15 @@ router.get('/', async (req, res, next) => {
       );
       return rows;
     });
-    res.json(rows);
+    // 2026-06-23 F5b: response shaping. Sin `proyectos.ver_costos`,
+    // ocultamos los totales monetarios (total_ars/total_usd). cant_movimientos
+    // queda visible porque es un contador no-monetario (útil para saber si
+    // hay actividad).
+    const canSeeCostos = await hasCapability(req.user, 'proyectos.ver_costos');
+    const out = canSeeCostos
+      ? rows
+      : rows.map(({ total_ars, total_usd, ...rest }) => rest);
+    res.json(out);
   } catch (err) { next(err); }
 });
 
@@ -84,7 +93,16 @@ router.get('/:id', async (req, res, next) => {
       return { proyecto: p[0], parts, tot: tot[0] };
     });
     if (data.notFound) return res.status(404).json({ error: 'Proyecto no encontrado' });
-    res.json({ ...data.proyecto, participantes: data.parts, resumen: data.tot });
+    // 2026-06-23 F5b: response shaping. Sin `proyectos.ver_costos`,
+    // sacamos los totales del bloque resumen (mantenemos cant_movimientos
+    // + desde/hasta porque son metadata no-monetaria).
+    const canSeeCostos = await hasCapability(req.user, 'proyectos.ver_costos');
+    let resumen = data.tot;
+    if (!canSeeCostos && resumen) {
+      const { total_ars, total_usd, ...rest } = resumen;
+      resumen = rest;
+    }
+    res.json({ ...data.proyecto, participantes: data.parts, resumen });
   } catch (err) { next(err); }
 });
 
@@ -198,7 +216,15 @@ router.get('/:id/movimientos', async (req, res, next) => {
       ]);
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
-    res.json(paginatedResponse(dataRows, count, { page, limit }));
+    // 2026-06-23 F5b: response shaping. Sin `proyectos.ver_costos`,
+    // sacamos los campos monetarios (monto/tc/monto_usd). Dejamos fecha,
+    // detalle, categoría, inversor_nombre — info no-monetaria que el user
+    // de bajo nivel puede ver (saber QUE hubo un movimiento, no CUÁNTO).
+    const canSeeCostos = await hasCapability(req.user, 'proyectos.ver_costos');
+    const out = canSeeCostos
+      ? dataRows
+      : dataRows.map(({ monto, tc, monto_usd, ...rest }) => rest);
+    res.json(paginatedResponse(out, count, { page, limit }));
   } catch (err) { next(err); }
 });
 
