@@ -116,7 +116,13 @@ export default function VentasList({
                     <div key={k} style={itemStyle}>
                       <div>
                         {i.descripcion}{i.cantidad > 1 ? ' ×' + i.cantidad : ''}
-                        {esB2B && i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>{i.imei}</span>}
+                        {/* 2026-06-24: IMEI ahora se muestra también para retail
+                            (antes solo B2B). El user pidió ver el IMEI en el
+                            listado de ventas para identificar el equipo de un
+                            vistazo, especialmente útil con canjes en parte de
+                            pago. Para batería de items retail necesitamos un
+                            backend join con productos (queda como follow-up). */}
+                        {i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>IMEI {i.imei}</span>}
                         {devuelto && (
                           <span style={{
                             marginLeft: 6, padding: '0 5px', borderRadius: 3,
@@ -135,11 +141,31 @@ export default function VentasList({
                     </div>
                   );
                 })}
-                {(v.canjes || []).map((c, k) => (
-                  <div key={'c' + k} style={{ color: 'var(--warn)', fontSize: 11 }}>
-                    ↺ {c.descripcion}
-                  </div>
-                ))}
+                {/* 2026-06-24: enriquecer la fila del canje con IMEI, batería y
+                    sobre todo el valor del Tomado (lo que pagaste por el equipo
+                    recibido). Antes solo se veía "↺ iPhone 17" sin precio —
+                    Lucas pidió ver "Tomado: $410" igual que su referencia. */}
+                {(v.canjes || []).map((c, k) => {
+                  const cMon    = c.moneda || 'USD';
+                  const cSufMon = cMon === 'USD' ? 'u$s' : (cMon === 'ARS' ? '$' : cMon + ' ');
+                  const valTom  = c.valor_toma != null ? Number(c.valor_toma) : 0;
+                  return (
+                    <div key={'c' + k} style={{ color: 'var(--warn)', fontSize: 11, marginTop: 4 }}>
+                      <div>
+                        ↺ {c.descripcion}
+                        {c.imei && <span className="muted tiny mono" style={{ marginLeft: 6, color: 'var(--warn)' }}>IMEI {c.imei}</span>}
+                        {c.bateria != null && c.bateria > 0 && (
+                          <span className="muted tiny" style={{ marginLeft: 6, color: 'var(--warn)' }}>· 🔋 {c.bateria}%</span>
+                        )}
+                      </div>
+                      {valTom > 0 && (
+                        <div className="tiny" style={{ marginTop: 1, fontWeight: 600 }}>
+                          Tomado: {cSufMon}{fmt(valTom)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </td>
               <td className="muted" style={{ fontSize: 12 }}>
                 {esB2B
