@@ -777,8 +777,11 @@ export default function Envios() {
       </div>
 
       {/* ── Date nav + search + filter ── */}
-      <div className="flex-between" style={{ marginBottom: 14 }}>
-        <div className="flex-row" style={{ gap: 8 }}>
+      {/* 2026-06-24 mobile lote E: flex-wrap + gap mayor para que en
+          <=414px las dos mitades (date nav + search/filtros) caigan a
+          líneas separadas en vez de squeezear horizontalmente. */}
+      <div className="flex-between" style={{ marginBottom: 14, flexWrap: 'wrap', rowGap: 10 }}>
+        <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button
             className="icon-btn"
             title="Día anterior"
@@ -809,8 +812,11 @@ export default function Envios() {
             </button>
           )}
         </div>
-        <div className="flex-row" style={{ gap: 8 }}>
-          <div className="input-group" style={{ width: 280 }}>
+        <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {/* 2026-06-24 mobile lote E: width 280 fijo no entra en 375px viewport
+              (junto con el Seg al lado). flex-grow + min-width 200 hace que
+              se estire en desktop pero achique a 200px mínimo en mobile. */}
+          <div className="input-group" style={{ flex: '1 1 200px', minWidth: 200, maxWidth: 280 }}>
             <span className="addon addon-l"><Icons.Search size={14} /></span>
             <input
               className="input"
