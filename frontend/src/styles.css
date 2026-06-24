@@ -1251,6 +1251,19 @@ body {
   /* Botón alternativo de búsqueda solo en mobile — reemplaza al .search
      ocultado arriba, mantiene acceso al CommandPalette desde touch. */
   .topbar-search-mobile { display: inline-flex; }
+  /* 2026-06-24 mobile sidebar drawer fix: la regla @<=880px colapsa el
+     sidebar a "icon rail" de 64px (sin labels). Bien para tablet/laptop
+     angosto. Pero en <=640px el sidebar deja de ser rail permanente y
+     pasa a drawer de 248px — ahí HAY espacio para los labels y los
+     necesitamos (sin texto, el usuario ve iconos huérfanos).
+     Restauramos el layout completo del sidebar dentro del drawer. */
+  .sidebar .brand-name { display: block; }
+  .sidebar .brand-sub { display: block; }
+  .sidebar .nav-item span:not(.ico):not(.badge) { display: inline; }
+  .sidebar .user-pill .name { display: block; }
+  .sidebar .user-pill .role { display: block; }
+  .sidebar .nav-item { justify-content: flex-start; padding: 7px 11px; }
+  .sidebar .user-pill { justify-content: flex-start; }
   .content { padding: 16px 14px 40px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .quote-grid { grid-template-columns: 1fr; }
