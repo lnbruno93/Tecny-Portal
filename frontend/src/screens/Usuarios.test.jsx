@@ -149,7 +149,11 @@ describe('Pantalla Usuarios — alta', () => {
       nombre: 'Test User', username: 'testuser',
       password: 'segura123', role: 'op',
     });
-    expect(payload.perms).toEqual({});
+    // 2026-06-24 hotfix post-permisos: el campo `perms` se removió del payload
+    // porque createUsuarioSchema es .strict() y rechaza extras desde F4. Antes
+    // mandábamos `perms:{}` que pasaba 400 silencioso. Ahora el sistema nuevo
+    // resuelve las caps en el step 2 (capsApi.update con el rol elegido).
+    expect(payload.perms).toBeUndefined();
 
     // 2) PUT /capabilities/users/:id con el rol elegido (vendedor por default).
     await waitFor(() => expect(capsApi.update).toHaveBeenCalledTimes(1));
