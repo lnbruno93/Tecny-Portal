@@ -8,6 +8,7 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import AlertasModule from './Alertas';
 import TwoFaSection from '../components/TwoFaSection';
 import MantenimientoSection from '../components/MantenimientoSection';
+import { userHasCap } from '../lib/userHasCap';
 // 2026-06-22: el perfil del negocio (ficha de Google que usa el Cotizador
 // para personalizar el mensaje generado) vive como tab "Configuración"
 // dentro de Cotizador, NO acá en Config global. Se hizo así para que el
@@ -29,15 +30,31 @@ const SYSTEM_LIMITS = [
 export default function Config() {
   const location = useLocation();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  // Tab inicial: si el hash es #alertas (deep-link desde el badge de alertas
-  // en el sidebar), arrancamos en esa tab. Si no, default general.
-  // #mantenimiento solo se respeta si el usuario es admin (de lo contrario
-  // cae a 'general'); el backend igual rechaza con 403 a no-admins.
-  const initialTab = location.hash === '#alertas' ? 'alertas'
-                    : location.hash === '#seguridad' ? 'seguridad'
-                    : (location.hash === '#mantenimiento' && isAdmin) ? 'mantenimiento'
-                    : 'general';
+  // 2026-06-23 F5c: gating per-tab basado en caps del sistema nuevo.
+  // El RequirePermission del route ya garantiza que el user tiene AL MENOS
+  // UNA de las 3 caps de Config — acá decidimos qué tabs renderear y a
+  // cuál arrancar.
+  const canGeneral       = userHasCap(user, 'config.general');
+  const canAlertas       = userHasCap(user, 'config.alertas');
+  const canMantenimiento = userHasCap(user, 'config.mantenimiento');
+
+  // Tab inicial: respeta el hash si el user puede ver esa tab, sino fallback
+  // a la primera tab visible. Seguridad (2FA propia) es siempre accesible
+  // — todo user logueado puede gestionar su propia 2FA.
+  const hashTab = location.hash.replace('#', '');
+  const wantedFromHash =
+    (hashTab === 'general'       && canGeneral)       ? 'general' :
+    (hashTab === 'alertas'       && canAlertas)       ? 'alertas' :
+    (hashTab === 'mantenimiento' && canMantenimiento) ? 'mantenimiento' :
+    (hashTab === 'seguridad')                         ? 'seguridad' :
+    null;
+  // Default: primera tab disponible (general → alertas → mantenimiento → seguridad).
+  const firstAvailableTab =
+    canGeneral       ? 'general' :
+    canAlertas       ? 'alertas' :
+    canMantenimiento ? 'mantenimiento' :
+    'seguridad';
+  const initialTab = wantedFromHash || firstAvailableTab;
   const [tab, setTab]           = useState(initialTab); // 'general' | 'alertas' | 'seguridad' | 'mantenimiento'
   // Sección unificada "Comisiones de métodos de pago" (2026-06-14, pedido Lucas):
   //   · `pct` / `inputVal`     — Financiera (= config.pct_financiera)
@@ -190,22 +207,26 @@ export default function Config() {
       {/* TANDA 5 trazab (UX L4): goToTab sincroniza el hash con el tab activo.
           Antes, si el usuario llegaba via #mantenimiento y luego cambiaba a
           General, el hash quedaba pegado y un F5 lo devolvía a Mantenimiento. */}
+      {/* 2026-06-23 F5c: tabs visibles según caps del user. Seguridad (2FA
+          propia) siempre visible — todo user puede gestionar su propia 2FA. */}
       <div className="flex-row" style={{ gap: 4, marginBottom: 16 }}>
-        <button className={'btn ' + (tab === 'general' ? 'btn-primary' : '')}
-                onClick={() => goToTab('general')}>
-          General
-        </button>
-        <button className={'btn ' + (tab === 'alertas' ? 'btn-primary' : '')}
-                onClick={() => goToTab('alertas')}>
-          <Icons.Bell size={14} /> Alertas
-        </button>
+        {canGeneral && (
+          <button className={'btn ' + (tab === 'general' ? 'btn-primary' : '')}
+                  onClick={() => goToTab('general')}>
+            General
+          </button>
+        )}
+        {canAlertas && (
+          <button className={'btn ' + (tab === 'alertas' ? 'btn-primary' : '')}
+                  onClick={() => goToTab('alertas')}>
+            <Icons.Bell size={14} /> Alertas
+          </button>
+        )}
         <button className={'btn ' + (tab === 'seguridad' ? 'btn-primary' : '')}
                 onClick={() => goToTab('seguridad')}>
           <Icons.Shield size={14} /> Seguridad
         </button>
-        {/* Tab admin-only: aparece solo si user.role === 'admin'. El backend
-            igual rechaza con 403 a no-admins si intentan hitear los endpoints. */}
-        {isAdmin && (
+        {canMantenimiento && (
           <button className={'btn ' + (tab === 'mantenimiento' ? 'btn-primary' : '')}
                   onClick={() => goToTab('mantenimiento')}>
             <Icons.Bolt size={14} /> Mantenimiento
@@ -213,11 +234,11 @@ export default function Config() {
         )}
       </div>
 
-      {tab === 'alertas' && <AlertasModule />}
+      {tab === 'alertas' && canAlertas && <AlertasModule />}
       {tab === 'seguridad' && <TwoFaSection />}
-      {tab === 'mantenimiento' && isAdmin && <MantenimientoSection />}
+      {tab === 'mantenimiento' && canMantenimiento && <MantenimientoSection />}
 
-      {tab === 'general' && (
+      {tab === 'general' && canGeneral && (
       <>
 
       {/* ── Split layout ──────────────────────────────────────────────────── */}

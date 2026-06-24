@@ -9,6 +9,7 @@ import { fmt as fmtMagnitud } from '../lib/format';
 // dismissa manualmente — no hay flag de "es user nuevo" porque es más
 // honesto basarse en el estado real del tenant.
 import OnboardingCard from '../components/OnboardingCard';
+import { userHasCap } from '../lib/userHasCap';
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 // Hygiene H2 auditoría 2026-06-06: usar lib/format como fuente única.
@@ -81,17 +82,21 @@ export default function Inicio() {
     // la TTI inicial sin aportar nada (uno tarda → TTI tarda, especialmente si
     // el backend está bajo presión). Si en el futuro queremos mostrarlas, hay
     // que re-agregarlas con su tile correspondiente.
+    // 2026-06-23 F5c: solo pegamos a /api/historial si el user tiene la cap
+    // `inicio.actividad_reciente` (la card de abajo gateada por la misma
+    // cap). Sin esto, vendedores rebotaban con 403 y rompían el TTI inicial.
+    const wantsHistorial = userHasCap(user, 'inicio.actividad_reciente');
     Promise.all([
       config.get(),
       envios.list(),
-      historial.list({ per_page: 6, page: 1 }),
+      wantsHistorial ? historial.list({ per_page: 6, page: 1 }) : Promise.resolve({ data: [] }),
     ])
       .then(([cfg, envData, hData]) => {
         setData({ cfg, envData, hData });
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   // Derived values (only when data is available)
   const pctFin = data ? Number(data.cfg.pct_financiera) : 0;
@@ -220,40 +225,44 @@ export default function Inicio() {
           </div>
         </div>
 
-        {/* Activity card */}
-        <div className="card card-flush">
-          <div className="card-hd">
-            <h3>Actividad reciente</h3>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/historial')}>
-              Ver todo
-            </button>
-          </div>
-          <div className="activity">
-            {activityItems.length === 0 && (
-              <div className="empty">Sin actividad reciente</div>
-            )}
-            {activityItems.map(a => {
-              const I = Icons[a.icon] || Icons.Bolt;
-              return (
-                <div key={a.id} className="activity-item">
-                  <div className="dot-ico">
-                    <I size={14} />
+        {/* Activity card — 2026-06-23 F5c: solo visible si el user tiene
+            la capability `inicio.actividad_reciente`. Vendedor sin la cap
+            ve el resto del Inicio sin esta card (greeting + tools grid). */}
+        {userHasCap(user, 'inicio.actividad_reciente') && (
+          <div className="card card-flush">
+            <div className="card-hd">
+              <h3>Actividad reciente</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => navigate('/historial')}>
+                Ver todo
+              </button>
+            </div>
+            <div className="activity">
+              {activityItems.length === 0 && (
+                <div className="empty">Sin actividad reciente</div>
+              )}
+              {activityItems.map(a => {
+                const I = Icons[a.icon] || Icons.Bolt;
+                return (
+                  <div key={a.id} className="activity-item">
+                    <div className="dot-ico">
+                      <I size={14} />
+                    </div>
+                    <div className="activity-msg">
+                      <span className="who">{a.who}</span>
+                      <span className="what">{a.what}</span>
+                      {a.ref && (
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: 12 }}>
+                          {a.ref}
+                        </span>
+                      )}
+                    </div>
+                    <div className="activity-time">{a.time}</div>
                   </div>
-                  <div className="activity-msg">
-                    <span className="who">{a.who}</span>
-                    <span className="what">{a.what}</span>
-                    {a.ref && (
-                      <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: 12 }}>
-                        {a.ref}
-                      </span>
-                    )}
-                  </div>
-                  <div className="activity-time">{a.time}</div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

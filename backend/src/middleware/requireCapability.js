@@ -101,5 +101,49 @@ async function hasCapability(user, slug) {
   return caps.has(slug);
 }
 
+/**
+ * 2026-06-23 F5c: variante OR de requireCapability. Pasa si el user tiene
+ * AL MENOS UNA de las capabilities del array. Útil para pantallas con tabs
+ * cada uno gateado por su propia cap (config: general/alertas/mantenimiento)
+ * — el route de la pantalla debería abrirse si el user puede ver CUALQUIERA
+ * de los tabs. Después la página interna esconde los tabs que el user no
+ * tiene.
+ *
+ * @param {string[]} slugs — array de capability slugs
+ */
+function requireAnyCapability(slugs) {
+  if (!Array.isArray(slugs) || slugs.length === 0) {
+    throw new Error('requireAnyCapability: slugs debe ser array no vacío');
+  }
+  return async function checkAny(req, res, next) {
+    // Mismos bypasses que requireCapability single.
+    if (req.user?.role === 'admin') return next();
+    if (req.user?.tenant_cap_rol && isBypassRole(req.user.tenant_cap_rol)) {
+      return next();
+    }
+
+    // Fast path: caps en JWT.
+    if (req.user?.caps && typeof req.user.caps === 'object') {
+      if (slugs.some(s => req.user.caps[s] === true)) return next();
+      return res.status(403).json({
+        error: 'No tenés permiso para esta acción',
+      });
+    }
+
+    // Fallback DB.
+    try {
+      const { rol, caps } = await loadUserCaps(req.user.id);
+      if (isBypassRole(rol)) return next();
+      if (slugs.some(s => caps.has(s))) return next();
+      return res.status(403).json({
+        error: 'No tenés permiso para esta acción',
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
 module.exports = requireCapability;
+module.exports.requireAnyCapability = requireAnyCapability;
 module.exports.hasCapability = hasCapability;

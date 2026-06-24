@@ -122,18 +122,21 @@ function RedirectIfAuthed({ children }) {
 }
 
 // ── Capability gate ────────────────────────────────────────────────────────────
-// 2026-06-23 F4: cutover del sistema viejo (`user.perms`) al capability-based.
+// 2026-06-23 F4 + F5c: cutover capability-based + soporte de OR-de-caps para
+// pantallas multi-tab.
 // Props:
-//   cap        — slug 'pantalla.capability' (ej. 'financiera.trabajar')
+//   cap        — slug único 'pantalla.capability' (ej. 'financiera.trabajar')
+//   anyCap     — array de slugs; pasa si tiene AL MENOS UNA. Útil para
+//                pantallas como /config con tabs de distintas caps.
 //   adminOnly  — true → solo bypass por rol global o tenant_cap_rol=owner/admin
 //
 // Lógica:
 //   1. Admin global (users.role='admin') pasa todo.
 //   2. Owner/admin del tenant (user.tenant_cap_rol) pasa todo.
 //   3. adminOnly → Forbidden si no es bypass.
-//   4. cap chequea user.caps (array de slugs del response /login | /me).
+//   4. cap/anyCap chequean user.caps (array de slugs del response /login | /me).
 //      Si user.caps es null (bypass server-side), pasa.
-function RequirePermission({ cap, adminOnly, children }) {
+function RequirePermission({ cap, anyCap, adminOnly, children }) {
   const { user } = useAuth();
   if (!user) return null;
 
@@ -148,12 +151,17 @@ function RequirePermission({ cap, adminOnly, children }) {
   // Admin-only route — solo bypass roles pasan.
   if (adminOnly) return <Forbidden />;
 
-  // Capability check. user.caps es array de slugs activos o null (bypass).
+  // Server-side bypass sentinel (caps null).
+  if (user.caps === null) return children;
+  if (!Array.isArray(user.caps)) return <Forbidden />;
+
+  // Single capability check.
   if (cap) {
-    if (user.caps === null) return children; // bypass server-side
-    if (!Array.isArray(user.caps) || !user.caps.includes(cap)) {
-      return <Forbidden />;
-    }
+    if (!user.caps.includes(cap)) return <Forbidden />;
+  }
+  // OR-of-capabilities (al menos UNA del array).
+  if (anyCap && Array.isArray(anyCap)) {
+    if (!anyCap.some(c => user.caps.includes(c))) return <Forbidden />;
   }
 
   return children;
@@ -341,8 +349,12 @@ export default function App() {
                       <ErrorBoundary><Historial /></ErrorBoundary>
                     </RequirePermission>
                   } />
+                  {/* 2026-06-23 F5c: Config tiene 3 tabs (general/alertas/
+                      mantenimiento), cada uno con su cap. El route abre si
+                      tenés AL MENOS UNA. Adentro Config.jsx esconde los tabs
+                      que no podés ver. */}
                   <Route path="/config" element={
-                    <RequirePermission cap="config.general">
+                    <RequirePermission anyCap={['config.general', 'config.alertas', 'config.mantenimiento']}>
                       <ErrorBoundary><Config /></ErrorBoundary>
                     </RequirePermission>
                   } />
