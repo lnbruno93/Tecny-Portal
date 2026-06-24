@@ -1171,7 +1171,12 @@ export default function Envios() {
               </button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* 2026-06-24 mobile fix: removido inline maxHeight 70vh y overflowY.
+                  El base .modal-body ya tiene flex:1 + overflow-y:auto y el .modal
+                  tiene max-height: calc(100svh - 48px). El override capeaba el
+                  body al 70vh innecesariamente, haciendo el form sentirse más
+                  apretado en mobile (especialmente con la barra de Safari). */}
+              <div className="modal-body">
                 <div className="stack" style={{ gap: 16 }}>
 
                   {/* Fila 1: fecha + estado + prioridad */}
