@@ -861,6 +861,21 @@ body {
 .col { display: flex; flex-direction: column; gap: var(--gap); }
 .split-2 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap); }
 .split-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--gap); }
+/* 2026-06-24 TANDA mobile A: layout master-detail reusable (lista a la
+   izquierda + detalle/preview a la derecha). El ancho del panel master
+   se configura con la CSS var --master-width (default 300px). Pantallas
+   que lo usan hoy: Cajas (300px), Envios (340px). En <= 720px colapsa
+   a single column — el detalle reemplaza la lista en lugar de quedar al
+   lado con 10-60px utilizables (caso reportado en SE/S20). Antes ambas
+   pantallas duplicaban este pattern inline con grid-template-columns
+   hardcodeado sin media query, lo cual rompía mobile. */
+.split-master-detail {
+  display: grid;
+  grid-template-columns: var(--master-width, 300px) 1fr;
+  gap: var(--gap);
+  align-items: start;
+}
+.split-master-detail.single { grid-template-columns: 1fr; }
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .gap-sm { gap: 8px; }
 .gap-md { gap: var(--gap); }
@@ -1152,6 +1167,12 @@ body {
   .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quote-grid { grid-template-columns: 1fr; }
   .topbar .search { display: none; }
+}
+/* Master-detail: colapsa a single col antes que .split-2 (a 720px) porque
+   el panel master suele ser 300-340px fijo, no proporcional — entra a
+   apretarse antes. Patrón master/detail típico de iOS Settings. */
+@media (max-width: 720px) {
+  .split-master-detail { grid-template-columns: 1fr; }
 }
 @media (max-width: 880px) {
   .app { grid-template-columns: 64px 1fr; }

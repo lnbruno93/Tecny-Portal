@@ -564,8 +564,15 @@ export default function Cajas() {
             ))}
           </div>
 
-          {/* Split: lista de contactos + detalle de movimientos */}
-          <div style={{ display: 'grid', gridTemplateColumns: selectedContactoId ? '300px 1fr' : '1fr', gap: 16 }}>
+          {/* Split: lista de contactos + detalle de movimientos.
+              2026-06-24 mobile fix: usa .split-master-detail (styles.css) que
+              colapsa a single column en <=720px. Antes el grid inline con
+              `300px 1fr` dejaba la columna derecha con 10-60px en SE/S20
+              cuando se seleccionaba un contacto. */}
+          <div
+            className={'split-master-detail' + (selectedContactoId ? '' : ' single')}
+            style={{ '--master-width': '300px' }}
+          >
             {/* Lista */}
             <div className="card card-flush">
               {/* Header del card con botón contextual de acción primaria.
