@@ -1321,7 +1321,10 @@ export default function Envios() {
                                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
                                     Producto seleccionado
                                   </div>
-                                  <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: -0.2, color: 'var(--text)' }}>
+                                  {/* 2026-06-24 lote F: clamp para que en mobile (375px viewport)
+                                      el título del producto seleccionado no domine sobre los chips
+                                      e info debajo. Min 15px asegura legibilidad. */}
+                                  <div style={{ fontSize: 'clamp(15px, 4vw, 17px)', fontWeight: 600, letterSpacing: -0.2, color: 'var(--text)' }}>
                                     {it._nombre || it.descripcion}
                                   </div>
                                 </div>
