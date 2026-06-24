@@ -188,3 +188,139 @@ describe('requireCapability — fallback DB', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── requireAnyCapability (F5c) ──────────────────────────────────────────────
+//
+// Variante OR del middleware: el user pasa si tiene AL MENOS una de las
+// capabilities del array. Lo usa /api/config que se monta con anyCap=
+// ['config.general', 'config.alertas', 'config.mantenimiento'] — cualquiera
+// que pueda ver alguno de los 3 tabs puede entrar al módulo.
+
+const { requireAnyCapability } = require('../src/middleware/requireCapability');
+
+describe('requireAnyCapability — guard contra mal uso', () => {
+  it('array vacío tira error sincrónico (no devuelve middleware)', () => {
+    expect(() => requireAnyCapability([])).toThrow(/array no vacío/);
+  });
+
+  it('argumento no-array tira error', () => {
+    expect(() => requireAnyCapability('config.general')).toThrow(/array no vacío/);
+  });
+});
+
+describe('requireAnyCapability — bypass por rol', () => {
+  it('admin global bypassea sin DB', async () => {
+    const mw = requireAnyCapability(['config.general', 'config.alertas']);
+    const req = { user: { id: 1, role: 'admin' } };
+    const res = makeRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('tenant_cap_rol owner bypassea sin DB', async () => {
+    const mw = requireAnyCapability(['config.general', 'config.alertas']);
+    const req = { user: { id: 2, role: 'op', tenant_cap_rol: 'owner' } };
+    const res = makeRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('requireAnyCapability — fast path JWT caps', () => {
+  it('0-de-N → 403', async () => {
+    const mw = requireAnyCapability(['config.general', 'config.alertas', 'config.mantenimiento']);
+    const req = {
+      user: { id: 3, role: 'op', tenant_cap_rol: 'vendedor',
+              caps: { 'ventas.trabajar': true } },
+    };
+    const res = makeRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('1-de-N (primera del array) → next()', async () => {
+    const mw = requireAnyCapability(['config.general', 'config.alertas', 'config.mantenimiento']);
+    const req = {
+      user: { id: 4, role: 'op', tenant_cap_rol: 'custom',
+              caps: { 'config.general': true } },
+    };
+    const res = makeRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('1-de-N en posición middle → next() (no toma solo el primero)', async () => {
+    const mw = requireAnyCapability(['config.general', 'config.alertas', 'config.mantenimiento']);
+    const req = {
+      user: { id: 5, role: 'op', tenant_cap_rol: 'custom',
+              caps: { 'config.alertas': true } },
+    };
+    const res = makeRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('N-de-N → next()', async () => {
+    const mw = requireAnyCapability(['config.general', 'config.alertas']);
+    const req = {
+      user: { id: 6, role: 'op', tenant_cap_rol: 'custom',
+              caps: { 'config.general': true, 'config.alertas': true } },
+    };
+    const res = makeRes();
+    const next = jest.fn();
+    await mw(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('requireAnyCapability — fallback DB', () => {
+  it('sin caps en JWT, rol con AL MENOS UNA cap → next()', async () => {
+    jest.resetModules();
+    jest.mock('../src/lib/capabilities', () => ({
+      loadUserCaps: jest.fn().mockResolvedValue({
+        rol: 'custom',
+        caps: new Set(['config.alertas']),
+        tenantId: 1,
+        overrides: [],
+      }),
+    }));
+    jest.mock('../src/lib/roleDefaults', () => ({
+      isBypassRole: (r) => r === 'owner' || r === 'admin',
+    }));
+    const { requireAnyCapability: mwFactory } = require('../src/middleware/requireCapability');
+    const req = { user: { id: 7, role: 'op' } };
+    const res = makeRes();
+    const next = jest.fn();
+    await mwFactory(['config.general', 'config.alertas', 'config.mantenimiento'])(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('sin caps en JWT, rol sin ninguna de las caps → 403', async () => {
+    jest.resetModules();
+    jest.mock('../src/lib/capabilities', () => ({
+      loadUserCaps: jest.fn().mockResolvedValue({
+        rol: 'vendedor',
+        caps: new Set(['ventas.trabajar']),
+        tenantId: 1,
+        overrides: [],
+      }),
+    }));
+    jest.mock('../src/lib/roleDefaults', () => ({
+      isBypassRole: (r) => r === 'owner' || r === 'admin',
+    }));
+    const { requireAnyCapability: mwFactory } = require('../src/middleware/requireCapability');
+    const req = { user: { id: 8, role: 'op' } };
+    const res = makeRes();
+    const next = jest.fn();
+    await mwFactory(['config.general', 'config.alertas', 'config.mantenimiento'])(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
