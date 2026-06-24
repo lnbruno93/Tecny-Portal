@@ -1273,6 +1273,27 @@ body {
      (ej. Inventario tiene 9 botones, en mobile solo dejamos Actualizar
      y Agregar producto + abrir el resto desde un menú futuro). */
   .mobile-hide { display: none !important; }
+
+  /* 2026-06-24 mobile modal density:
+     Los modales (Nueva venta, Nuevo envío, Cobranza B2B, etc.) usaban
+     padding 20px + .field gap 6px pensados para desktop. En mobile cada
+     campo ocupaba ~80-100px de alto, así que el user veía solo 5-6
+     campos por viewport y tenía que scrollear MUCHO para llenar el form.
+     Acá comprimimos sin tocar la jerarquía visual:
+       · header/footer: padding 12 14 (vs 16-20). Header sigue claro pero
+         no roba viewport.
+       · body: padding 14 (vs 20). Más data útil.
+       · .field gap: 4px (vs 6). Compacto pero legible.
+       · Box shadows en header/footer cuando el body scrollea ayuda al
+         user a saber que arriba/abajo hay UI sticky (no contenido). */
+  .modal-hd { padding: 12px 14px; }
+  .modal-body { padding: 14px; }
+  .modal-ft { padding: 10px 14px; }
+  .field { gap: 4px; }
+  /* Sombras sutiles que marcan que header/footer son zonas sticky
+     cuando el body scrollea (las usa flex-column del .modal). */
+  .modal-hd { box-shadow: 0 1px 0 0 var(--border); }
+  .modal-ft { box-shadow: 0 -1px 0 0 var(--border); }
 }
 
 /* Shipping rail */
@@ -1843,8 +1864,13 @@ body {
   z-index: 200;
   /* UX H2 auditoría 2026-06-06: padding fluido — en mobile (≤375px) el
      padding de 24px eat 48px del ancho útil del modal. Bajamos a 12px
-     en pantallas chicas manteniéndolo holgado en desktop. */
+     en pantallas chicas manteniéndolo holgado en desktop.
+     2026-06-24 mobile fix: agregamos env(safe-area-inset-*) para que en
+     iPhones con notch el modal NO se meta detrás del status bar (vimos
+     "Nueva venta" header recortado en screenshots). */
   padding: clamp(12px, 2.5vw, 24px);
+  padding-top: max(clamp(12px, 2.5vw, 24px), env(safe-area-inset-top));
+  padding-bottom: max(clamp(12px, 2.5vw, 24px), env(safe-area-inset-bottom));
 }
 .modal {
   background: var(--surface);
