@@ -742,7 +742,10 @@ export default function Envios() {
       </div>
 
       {/* ── KPI row ── */}
-      <div className="row" style={{ marginBottom: 18 }}>
+      {/* 2026-06-24 mobile lote D: usar .kpi-grid (no .row) — 5 cards en
+          .row colisionan en 375px exprimiendo cada card a ~70px ilegible.
+          .kpi-grid hereda los breakpoints del styles.css (2x2 en <=640px). */}
+      <div className="kpi-grid" style={{ marginBottom: 18 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Total</div>
           <div className="kpi-value mono">{kpiTotal}</div>
