@@ -52,15 +52,17 @@ export default function VerifyEmail() {
   //   'already'      → token ya consumido (segundo click del mismo link); el
   //                    email YA está verificado — tratamos como éxito amistoso.
   //   'error'        → token inválido o expirado.
-  const [status, setStatus] = useState('loading');
-  const [errorMsg, setErrorMsg] = useState('');
+  // 2026-06-24: el estado inicial se deriva sincrónicamente de `token` —
+  // si no hay token, arrancamos en 'error' directamente. Antes lo seteábamos
+  // dentro del useEffect, pero la nueva regla react-hooks/set-state-in-effect
+  // marca eso como anti-pattern (correctamente: era un re-render gratis).
+  const [status, setStatus] = useState(() => token ? 'loading' : 'error');
+  const [errorMsg, setErrorMsg] = useState(
+    () => token ? '' : 'El link no incluye token. Revisá el email que te enviamos.'
+  );
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error');
-      setErrorMsg('El link no incluye token. Revisá el email que te enviamos.');
-      return;
-    }
+    if (!token) return;
     async function verify() {
       try {
         await authApi.verifyEmail(token);

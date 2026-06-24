@@ -70,13 +70,14 @@ export default function Config() {
   const [loading, setLoading]   = useState(true);
 
   // Si el hash cambia mientras estamos en Config (ej: click al badge de
-  // alertas estando ya en Config), sincronizar la tab.
+  // alertas estando ya en Config), sincronizar la tab. F5c: gated por cap.
+  // Si el user no tiene la cap, ignoramos el hash (se queda en la tab actual).
   useEffect(() => {
-    if (location.hash === '#alertas') setTab('alertas');
+    if (location.hash === '#alertas' && canAlertas) setTab('alertas');
     else if (location.hash === '#seguridad') setTab('seguridad');
-    else if (location.hash === '#mantenimiento' && isAdmin) setTab('mantenimiento');
-    else if (location.hash === '#general') setTab('general');
-  }, [location.hash, isAdmin]);
+    else if (location.hash === '#mantenimiento' && canMantenimiento) setTab('mantenimiento');
+    else if (location.hash === '#general' && canGeneral) setTab('general');
+  }, [location.hash, canAlertas, canMantenimiento, canGeneral]);
 
   // TANDA 5 trazab (UX L4): cambiar tab actualiza el hash con replaceState (no
   // pushState — evita ensuciar el history). Permite copiar URL y compartir,
