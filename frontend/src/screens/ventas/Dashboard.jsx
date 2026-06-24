@@ -90,10 +90,12 @@ export default function Dashboard({ d }) {
         </div>
       </div>
 
-      {/* 2026-06-24 mobile: .row → .kpi-grid. Las 2 cards (Métodos de pago +
-          Ventas por horario) tienen tablas internas que se exprimen mucho
-          en <414px. .kpi-grid las apila en single col en mobile. */}
-      <div className="kpi-grid">
+      {/* 2026-06-24 mobile (corrige sobre-fix anterior): .row es correcto acá.
+          .kpi-grid es para FILAS de 4 KPIs simétricas — al usarlo con 2 cards
+          dejaba huecos en desktop (las 2 cards ocupaban solo 2 de 4 cols).
+          .row con flex-wrap + min-width:180 ya colapsa bien en mobile y
+          distribuye 50/50 en desktop. */}
+      <div className="row">
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label" style={{ marginBottom: 8 }}>Métodos de pago</div>
           <table className="table" style={{ fontSize: 12 }}>
@@ -133,8 +135,10 @@ export default function Dashboard({ d }) {
         </div>
       </div>
 
-      {/* 2026-06-24 mobile: .row → .kpi-grid. 3 cards (Ticket + Top productos + Top vendedores). */}
-      <div className="kpi-grid" style={{ marginTop: 12 }}>
+      {/* 2026-06-24 mobile (corrige sobre-fix anterior): .row es correcto acá.
+          Mismo razonamiento que arriba — 3 cards en grid-4 dejan hueco a la
+          derecha. .row distribuye 33/33/33 en desktop, colapsa en mobile. */}
+      <div className="row" style={{ marginTop: 12 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Ticket promedio</div>
           <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.ticket_promedio_usd)}</div>
