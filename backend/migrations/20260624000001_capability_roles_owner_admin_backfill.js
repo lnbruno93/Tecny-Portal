@@ -2,7 +2,7 @@
  * HOTFIX post-F4 — backfill correcto del rol 'owner'/'admin' del tenant
  * en tenant_user_roles.
  *
- * Bug: la migration 20260623220000_capability_catalog.js seedea
+ * Bug original: la migration 20260623220000_capability_catalog.js seedea
  * tenant_user_roles a partir de users.role:
  *     CASE WHEN users.role = 'admin' THEN 'admin' ELSE 'custom' END
  *
@@ -23,33 +23,68 @@
  * dos veces es no-op la segunda. Si un admin ya degradó manualmente a un
  * owner a 'vendedor' en la UI nueva, NO lo re-promueve.
  *
- * Migration data-only: sin DDL. RLS bypass via SET LOCAL row_security
- * (necesario porque tenant_user_roles tiene FORCE RLS y este UPDATE
- * abarca múltiples tenants en una sola transacción de migration).
+ * ──────────────────────────────────────────────────────────────────────
+ * 2026-06-24 INCIDENT FIX (rompió prod deploys ~11h, mismo patrón #347):
+ *
+ *   La versión original usaba `SET LOCAL row_security = off` creyendo que
+ *   las migrations corren con `tecny_admin` (BYPASSRLS). Estaba mal: las
+ *   migrations corren con el role app (`ipro_app`, NOSUPERUSER post
+ *   TANDA 0c #294). `tecny_admin` es un pool SEPARADO que solo accede vía
+ *   db.adminQuery() — node-pg-migrate usa DATABASE_URL = ipro_app.
+ *
+ *   Consecuencia:
+ *   - `tenant_user_roles` tiene FORCE RLS desde 20260623220000.
+ *   - El UPDATE cross-tenant sin app.current_tenant seteado falla con
+ *     42501 (new row violates row-level security policy) porque la policy
+ *     WITH CHECK requiere tenant_id = current_setting('app.current_tenant',
+ *     true)::int y sin setting devuelve NULL.
+ *   - `row_security = off` NO bypassea FORCE RLS si el role no es OWNER
+ *     con BYPASSRLS. ipro_app es OWNER pero NO tiene BYPASSRLS.
+ *
+ *   Fix: DO loop por tenant que setea app.current_tenant con set_config
+ *   antes del UPDATE scoped a ese tenant. Mismo patrón que la fix del
+ *   incidente anterior (20260620000002).
+ *
+ *   set_config(..., true) es transaction-local (3er arg) — se descarta al
+ *   COMMIT, no contamina el client pool.
+ * ──────────────────────────────────────────────────────────────────────
  */
 
 exports.up = async (pgm) => {
-  // RLS bypass — la connection de migrations corre como tecny_admin
-  // (NOSUPERUSER post-TANDA 0c). `row_security=off` solo afecta los
-  // SUPERUSERS y los miembros de roles con BYPASSRLS. tecny_admin tiene
-  // BYPASSRLS desde la migration 20260616000002_tenant_user_roles_force_rls.
-  // Acá lo activamos explícitamente por defensa, idempotente.
-  await pgm.db.query(`SET LOCAL row_security = off`);
+  // Hacemos un solo round-trip — todo el loop adentro de un único DO $$.
+  // Más eficiente que ida-y-vuelta JS↔PG, y la transacción del migration
+  // runner cubre el loop entero (rollback all-or-nothing si algo revienta).
+  await pgm.db.query(`
+    DO $body$
+    DECLARE
+      t_id  INT;
+      n     INT;
+      total INT := 0;
+    BEGIN
+      FOR t_id IN SELECT id FROM tenants WHERE deleted_at IS NULL ORDER BY id LOOP
+        PERFORM set_config('app.current_tenant', t_id::text, true);
 
-  // Backfill principal.
-  const result = await pgm.db.query(`
-    UPDATE tenant_user_roles tur
-       SET rol = tu.rol,
-           updated_at = NOW()
-      FROM tenant_users tu
-     WHERE tur.tenant_id = tu.tenant_id
-       AND tur.user_id   = tu.user_id
-       AND tur.rol       = 'custom'
-       AND tu.rol IN ('owner', 'admin')
+        WITH up AS (
+          UPDATE tenant_user_roles tur
+             SET rol        = tu.rol,
+                 updated_at = NOW()
+            FROM tenant_users tu
+           WHERE tur.tenant_id = t_id
+             AND tur.tenant_id = tu.tenant_id
+             AND tur.user_id   = tu.user_id
+             AND tur.rol       = 'custom'
+             AND tu.rol IN ('owner', 'admin')
+          RETURNING 1
+        )
+        SELECT COUNT(*) INTO n FROM up;
+
+        total := total + n;
+      END LOOP;
+
+      RAISE NOTICE '[migrate] capability_roles_owner_admin_backfill — % owner/admin fixed', total;
+    END
+    $body$;
   `);
-
-  // eslint-disable-next-line no-console
-  console.log(`[migrate] capability_roles_owner_admin_backfill — ${result.rowCount} owner/admin fixed`);
 };
 
 // Down: no-op. No rebajamos owners/admins a 'custom' porque destrozaría
