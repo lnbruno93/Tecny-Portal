@@ -1294,6 +1294,25 @@ body {
      cuando el body scrollea (las usa flex-column del .modal). */
   .modal-hd { box-shadow: 0 1px 0 0 var(--border); }
   .modal-ft { box-shadow: 0 -1px 0 0 var(--border); }
+
+  /* 2026-06-24 follow-up: Lucas reportó que el form de Nuevo envío sigue
+     viéndose "enorme" en mobile. Los issues son acumulativos:
+       1) inline `style={{ gap: 16 }}` en el `.stack` del form (override
+          desktop, no responsive) — 10+ secciones de form a 16px de gap
+          son ~150px desperdiciados sólo en separación
+       2) `.field-label` en MAYÚSCULAS a 11.5px feels tall — bajamos a
+          10.5px y achicamos letter-spacing
+       3) `.input` 36px de alto — comprimimos a 34px (sigue cumpliendo
+          touch target 44px+ con el padding del field)
+       4) Reducimos también gap en `.row` adentro de modal-body
+     Usamos `!important` solo donde necesario para vencer inline. */
+  .modal-body .stack { gap: 10px !important; }
+  .modal-body .field-label {
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+  .modal-body .input { height: 34px; font-size: 13px; }
+  .modal-body .row { gap: 10px; }
 }
 
 /* Shipping rail */
