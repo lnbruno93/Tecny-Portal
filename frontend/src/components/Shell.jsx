@@ -399,6 +399,18 @@ function Topbar({ onMenuClick, onSearchClick }) {
         <span>Buscar comprobantes, clientes, IMEIs…</span>
         <kbd>⌘K</kbd>
       </div>
+      {/* 2026-06-24 mobile: en <=640px el .search arriba se oculta (no entra
+          y ⌘K es inviable en touch). Reemplazamos por un icon-btn solo
+          visible en mobile que abre el mismo CommandPalette. */}
+      <button
+        type="button"
+        className="icon-btn topbar-search-mobile"
+        title="Buscar"
+        aria-label="Buscar"
+        onClick={onSearchClick}
+      >
+        <Icons.Search size={17} />
+      </button>
       {/* "Notificaciones" oculto hasta que tenga feature real. La auditoría
           detectó que aparecer sin onClick parecía bug. */}
       {/* <button className="icon-btn" title="Notificaciones"><Icons.Bell size={17} /></button> */}

@@ -380,6 +380,9 @@ body {
   border: 1px solid var(--hairline);
   margin-left: auto;
 }
+/* 2026-06-24 mobile: cuando .topbar .search se oculta (<=640px), aparece
+   este icon-btn alternativo para abrir el CommandPalette desde touch. */
+.topbar-search-mobile { display: none; }
 .icon-btn {
   width: 32px; height: 32px;
   display: grid; place-items: center;
@@ -1216,10 +1219,18 @@ body {
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .hamburger-btn { display: flex !important; }
   .topbar .search { display: none; }
+  /* Botón alternativo de búsqueda solo en mobile — reemplaza al .search
+     ocultado arriba, mantiene acceso al CommandPalette desde touch. */
+  .topbar-search-mobile { display: inline-flex; }
   .content { padding: 16px 14px 40px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .quote-grid { grid-template-columns: 1fr; }
   .page-head, .hello { flex-direction: column; align-items: flex-start; gap: 10px; }
+  /* Utilidad transversal: cualquier elemento con .mobile-hide desaparece
+     en <=640px. Útil para toolbars con muchas acciones secundarias
+     (ej. Inventario tiene 9 botones, en mobile solo dejamos Actualizar
+     y Agregar producto + abrir el resto desde un menú futuro). */
+  .mobile-hide { display: none !important; }
 }
 
 /* Shipping rail */

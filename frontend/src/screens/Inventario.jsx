@@ -734,26 +734,30 @@ export default function Inventario() {
 
       {/* Toolbar de acciones — fila dedicada, sin pelearse con el header.
           Los botones se distribuyen: refresh/data ops a la izquierda,
-          destructivos al medio, primary action a la derecha. */}
+          destructivos al medio, primary action a la derecha.
+          2026-06-24 mobile: en <=640px se ocultan los 7 botones secundarios
+          (plantillas, importar, exportar, categorías, vaciar stock) vía
+          .mobile-hide; quedan solo Actualizar + Agregar producto. El resto
+          se accede desde desktop hasta que decidamos un menú overflow. */}
       <div className="page-actions" style={{ marginBottom: 18, justifyContent: 'flex-start' }}>
         <button className="btn" onClick={() => { loadProductos(); loadMetricas(); }}>
           <Icons.Refresh size={14} /> Actualizar
         </button>
-        <button className="btn" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
-        <button className="btn" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
-        <button className="btn" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
+        <button className="btn mobile-hide" onClick={descargarPlantillaXlsx}><Icons.Download size={14} /> Plantilla .xlsx</button>
+        <button className="btn mobile-hide" onClick={descargarPlantillaCsv}><Icons.Download size={14} /> Plantilla .csv</button>
+        <button className="btn mobile-hide" onClick={openImport}><Icons.Upload size={14} /> Importar</button>
         {/* Recepción con scanner móvil: la pantalla (/inventario/recepcion)
             y el componente BarcodeScanner viven en el repo, accesibles por
             URL directa. Botón oculto a propósito hasta que decidamos retomar
             esa feature — primero validamos el resto del producto en la
             prueba con equipo (junio 2026). Para reactivar, descomentar el
             <Link/> y listo. */}
-        <button className="btn" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
-        <button className="btn" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
+        <button className="btn mobile-hide" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
+        <button className="btn mobile-hide" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
         {/* Acción destructiva — separada visualmente con color rojo del ícono y
             texto en variante ghost. El ConfirmModal con danger:true protege
             contra clicks accidentales. */}
-        <button className="btn btn-ghost" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
+        <button className="btn btn-ghost mobile-hide" style={{ color: 'var(--neg)' }} onClick={handleVaciarStock}>
           <Icons.Trash size={14} /> Vaciar stock
         </button>
         {/* Variante destructiva admin: stock + compras a proveedor. Sólo
@@ -761,7 +765,7 @@ export default function Inventario() {
             error — el backend igualmente revalida con adminOnly. */}
         {isAdmin && (
           <button
-            className="btn btn-ghost"
+            className="btn btn-ghost mobile-hide"
             style={{ color: 'var(--neg)' }}
             onClick={handleVaciarStockConCompras}
             title="Admin · vacía stock + borra compras a proveedores asociadas + revierte cajas"
@@ -775,7 +779,10 @@ export default function Inventario() {
       </div>
 
       {/* ── KPIs ── */}
-      <div className="row" style={{ marginBottom: 18 }}>
+      {/* 2026-06-24 mobile fix: usar .kpi-grid (no .row) — heredamos el
+          breakpoint <880px → repeat(2, 1fr) del styles.css:1150, que evita
+          que los 4 cards se exprimen a ~70px en SE/S20. */}
+      <div className="kpi-grid" style={{ marginBottom: 18 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">En técnico</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{metricas ? metricas.en_tecnico_count : '—'}</div>
