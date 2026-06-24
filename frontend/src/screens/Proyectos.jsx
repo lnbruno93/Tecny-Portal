@@ -276,7 +276,10 @@ export default function Proyectos() {
       )}
 
       {vista === 'detalle' && (
-      <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, alignItems: 'start' }}>
+      // 2026-06-24 mobile lote D: usar .split-master-detail (de Lote A) que
+      // colapsa a single col en <=720px. Sin esto, en 375px el master
+      // 320px = 85% del ancho y el detail queda con ~30px ilegible.
+      <div className="split-master-detail" style={{ '--master-width': '320px', alignItems: 'start' }}>
         {/* ── Lista ── */}
         <div className="card card-flush" style={{ maxHeight: '78vh', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: 10 }}>

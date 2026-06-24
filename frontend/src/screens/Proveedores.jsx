@@ -342,8 +342,11 @@ export default function Proveedores() {
       </div>
 
       {/* Split layout */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '240px 1fr',
+      {/* 2026-06-24 mobile lote D: usar .split-master-detail (de Lote A) que
+          colapsa a single col en <=720px. Sin esto, en 375px el master
+          240px = 64% del ancho y el detail queda inusable. */}
+      <div className="split-master-detail" style={{
+        '--master-width': '240px',
         background: 'var(--surface)', border: '1px solid var(--border)',
         borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 580,
       }}>

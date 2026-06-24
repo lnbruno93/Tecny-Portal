@@ -998,7 +998,10 @@ export default function Financiera() {
                 border: '1px solid var(--border)',
                 marginBottom: 16,
               }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                {/* 2026-06-24 mobile lote D: usar .kpi-grid que respeta el
+                    breakpoint <=640px (1 col en mobile) en vez de 3 fijas
+                    que truncan los valores numéricos. */}
+                <div className="kpi-grid" style={{ gap: 14 }}>
                   <div>
                     <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                       Total ingresado

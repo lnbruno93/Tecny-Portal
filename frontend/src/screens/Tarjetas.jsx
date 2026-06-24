@@ -795,7 +795,10 @@ export default function Tarjetas() {
           </div>
         </>
       ) : (
-        <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
+        // 2026-06-24 mobile lote D: usar .split-master-detail (de Lote A) que
+        // colapsa a single col en <=720px. Sin esto, en 375px el master
+        // 300px = 80% del ancho y el detail queda en 75px ilegible.
+        <div className="split-master-detail" style={{ '--master-width': '300px', alignItems: 'start' }}>
           {/* Lista de tarjetas (métodos de pago) + ítem virtual "Todas las
               tarjetas" al inicio para ver el resumen agregado y registrar
               la liquidación múltiple (un depósito que cubre N modalidades). */}
