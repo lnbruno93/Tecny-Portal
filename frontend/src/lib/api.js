@@ -89,7 +89,23 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
     window.dispatchEvent(new Event('session-expired'));
     throw new Error('NO_AUTH');
   }
-  if (res.status === 403) throw new Error('No tenés permiso para realizar esta acción.');
+  // 2026-06-24 TANDA 2 U0: preservar el mensaje custom del backend si lo trae
+  // (mismo patrón que 429 abajo). El middleware requireCapability devuelve
+  // "No tenés permiso para esta acción" — uniforme pero útil. Antes pisábamos
+  // TODO 403 con el genérico, lo que ocultaba info del backend y dejaba al
+  // admin sin pista de qué cap falta. Adjuntamos status para que el caller
+  // pueda distinguir (Inicio.jsx degrada silenciosamente los 403, otros
+  // muestran toast).
+  if (res.status === 403) {
+    let msg = 'No tenés permiso para realizar esta acción.';
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch (_) { /* sin body parsable, mensaje genérico */ }
+    const err = new Error(msg);
+    err.status = 403;
+    throw err;
+  }
   // 429: preservar el mensaje custom del backend si lo trae (ej. OCR dice
   // "Pasaste el límite, cargá a mano"; B2B bulk dice "Demasiadas cargas
   // masivas"). Cae al genérico solo si el body no parsea como JSON o no
