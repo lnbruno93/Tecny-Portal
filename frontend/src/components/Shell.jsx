@@ -146,7 +146,10 @@ const NAV_MAIN = [
 const NAV_SYS = [
   { id: 'historial', path: '/historial', label: 'Historial', icon: 'Refresh',  cap: 'historial.ver' },
   { id: 'usuarios',  path: '/usuarios',  label: 'Usuarios',  icon: 'Users',    adminOnly: true       },
-  { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings', cap: 'config.general' },
+  // 2026-06-23 F5c: visible si el user puede ver CUALQUIERA de los 3 tabs
+  // (general / alertas / mantenimiento). Dentro de Config.jsx se esconden
+  // los tabs sin cap.
+  { id: 'config',    path: '/config',    label: 'Config',    icon: 'Settings', anyCap: ['config.general', 'config.alertas', 'config.mantenimiento'] },
 ];
 
 // Map path segment → display label for breadcrumb. 2026-06-10: actualizado a
@@ -202,9 +205,14 @@ function useVisibleNav(items) {
 
   return items.filter(n => {
     if (n.adminOnly) return isBypass;
-    if (!n.cap) return true; // siempre visible (ej. Inicio).
+    if (!n.cap && !n.anyCap) return true; // siempre visible (ej. Inicio).
     if (allCaps) return true;
     if (!Array.isArray(user.caps)) return false;
+    // 2026-06-23 F5c: items con anyCap (array) son visibles si tiene
+    // AL MENOS UNA cap del set. Útil para items multi-tab (ej. Config).
+    if (n.anyCap && Array.isArray(n.anyCap)) {
+      return n.anyCap.some(c => user.caps.includes(c));
+    }
     return user.caps.includes(n.cap);
   });
 }

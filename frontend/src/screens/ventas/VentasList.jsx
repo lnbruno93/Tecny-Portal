@@ -15,9 +15,13 @@ import Badge from '../../components/Badge';
 import { fmt } from '../../lib/format';
 import { sym } from './utils';
 
+// 2026-06-24: removida la prop `estadoBadge` — el componente renderiza el
+// estado como <select> estilizado inline (línea ~58), no usa el helper Badge.
+// La prop seguía declarada como dead code desde el rediseño 2026-06-09/10
+// "estado editable inline". El caller (Ventas.jsx) sigue pasándola; React
+// ignora props extra — limpieza del caller queda como follow-up.
 export default function VentasList({
   lista,
-  estadoBadge,
   changeEstado,
   openEdit,
   comprobantePDF,

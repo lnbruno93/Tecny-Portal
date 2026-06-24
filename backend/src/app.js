@@ -108,7 +108,12 @@ const requireAuth       = require('./middleware/auth');
 // retiró en favor de `requireCapability('pantalla.capability')`. Capability
 // slugs en backend/src/lib/capabilityCatalog.js (45 caps en 19 pantallas).
 // Cualquier route nueva tiene que usar requireCapability.
+//
+// F5c agregó `requireAnyCapability([slugs])` para pantallas multi-tab
+// (Config: general/alertas/mantenimiento) — el route abre si tenés AL MENOS
+// UNA, después el frontend esconde los tabs sin cap.
 const requireCapability = require('./middleware/requireCapability');
+const { requireAnyCapability } = require('./middleware/requireCapability');
 
 const app = express();
 
@@ -599,7 +604,11 @@ app.use('/api/vendedores',    requireAuth, requireCapability('financiera.trabaja
 app.use('/api/comprobantes',  requireAuth, requireCapability('financiera.trabajar'), comprobantesRoutes);
 app.use('/api/pagos',         requireAuth, requireCapability('financiera.trabajar'), pagosRoutes);
 app.use('/api/historial',     requireAuth, requireCapability('historial.ver'),       historialRoutes);
-app.use('/api/config',        requireAuth, requireCapability('config.general'),      configRoutes);
+// 2026-06-23 F5c: /api/config sirve 3 secciones (general, alertas,
+// mantenimiento) — abrimos el route si el user tiene AL MENOS UNA cap.
+// El frontend (Config.jsx) esconde tabs sin cap. Cada handler interno
+// que muta config sensible sigue siendo adminOnly o tiene su propio gate.
+app.use('/api/config',        requireAuth, requireAnyCapability(['config.general', 'config.alertas', 'config.mantenimiento']),      configRoutes);
 // Perfil del tenant (datos públicos del negocio: ficha de Google, nombre, etc).
 // Sin requireCapability — cualquier user autenticado del tenant puede LEERLO
 // (el Cotizador lo consume y a Cotizador llegan vendedores comunes). La
