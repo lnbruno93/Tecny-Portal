@@ -13,14 +13,36 @@
 //
 // Si user es null/undefined devuelve false (caller debería estar en una
 // pantalla autenticada — si no, useAuth ya nos manda al login).
+//
+// 2026-06-24 TANDA 5 P1: cache Set por user.caps (WeakMap). Antes cada
+// llamada hacía Array.prototype.includes() que es O(N). En el Sidebar
+// useVisibleNav corre el helper por CADA nav item por CADA render → un
+// "encargado" con ~22 caps × 20 items = ~440 comparaciones por render del
+// Shell (que re-rendea con cada notification push, toast, route change).
+// Con un Set memoizado por identity del array .caps, cada lookup es O(1).
+// El WeakMap se invalida automáticamente cuando AuthContext setea un
+// user.caps nuevo (re-login, refresh de /me) — no necesitamos manage
+// lifetime explícito.
+
+const _capsSetCache = new WeakMap();
+
+function getCapsSet(caps) {
+  if (!Array.isArray(caps)) return null;
+  let set = _capsSetCache.get(caps);
+  if (!set) {
+    set = new Set(caps);
+    _capsSetCache.set(caps, set);
+  }
+  return set;
+}
 
 export function userHasCap(user, slug) {
   if (!user) return false;
   if (user.role === 'admin') return true;
   if (user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin') return true;
   if (user.caps === null) return true; // server-side bypass sentinel
-  if (Array.isArray(user.caps) && user.caps.includes(slug)) return true;
-  return false;
+  const set = getCapsSet(user.caps);
+  return set ? set.has(slug) : false;
 }
 
 // Conveniencia: chequea si tiene AL MENOS UNA de las caps del array.
@@ -31,6 +53,8 @@ export function userHasAnyCap(user, slugs) {
   if (user.role === 'admin') return true;
   if (user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin') return true;
   if (user.caps === null) return true;
-  if (!Array.isArray(user.caps) || !Array.isArray(slugs)) return false;
-  return slugs.some(s => user.caps.includes(s));
+  if (!Array.isArray(slugs)) return false;
+  const set = getCapsSet(user.caps);
+  if (!set) return false;
+  return slugs.some(s => set.has(s));
 }

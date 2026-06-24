@@ -237,7 +237,16 @@ function Sidebar({ badges = {}, open, onClose }) {
             NAV_GROUPS y se muestran arriba del primer item visible de cada
             grupo (sin separador horizontal — el título mismo marca el corte).
             2026-06-10. */}
-        <div className="nav-section">Herramientas</div>
+        {/* 2026-06-24 TANDA 5 U3: edge case del rol custom sin overrides
+            (0 caps efectivas). Sin esto el sidebar quedaba con brand +
+            spacer + UserPill — el user no sabía si era bug o si su rol
+            no tenía nada. Empty state honesto. */}
+        {visibleMain.length === 0 && visibleSys.length === 0 ? (
+          <div style={{ padding: '20px 16px', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Tu rol no tiene módulos asignados todavía. Pedile al admin que te habilite acceso.
+          </div>
+        ) : null}
+        {visibleMain.length > 0 && <div className="nav-section">Herramientas</div>}
         {visibleMain.map((n, i) => {
           const I = Icons[n.icon];
           const prev = visibleMain[i - 1];
