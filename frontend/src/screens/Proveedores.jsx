@@ -462,6 +462,9 @@ export default function Proveedores() {
             </div>
 
             {/* ── Tabla spreadsheet ── */}
+            {/* 2026-06-24 mobile lote E: tabla compras con minWidth: 860.
+                Hint visible solo en <=640px para indicar scroll horizontal. */}
+            <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
               <table style={{
                 width: '100%', borderCollapse: 'collapse',

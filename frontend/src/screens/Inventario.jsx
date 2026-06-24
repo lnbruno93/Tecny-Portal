@@ -872,6 +872,10 @@ export default function Inventario() {
       )}
 
       {/* ── Tabla ── */}
+      {/* 2026-06-24 mobile lote E: tabla con 15 columnas + minWidth implícito
+          ~1200px. Hint visible solo en <=640px (de Lote C) para que el user
+          mobile sepa que tiene que scrollear horizontalmente. */}
+      <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
       {loading ? (
         // Skeleton de la grilla: 5 filas con la cantidad de columnas reales
         // (15) para que el layout no salte al llegar el dato.

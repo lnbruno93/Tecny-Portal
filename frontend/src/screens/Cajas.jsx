@@ -548,8 +548,8 @@ export default function Cajas() {
       {/* ── DEUDAS TAB ─────────────────────────────────────────────────── */}
       {tab === 'deudas' && (
         <>
-          {/* KPIs */}
-          <div className="row" style={{ marginBottom: 20, gap: 12 }}>
+          {/* KPIs — 2026-06-24 mobile lote E: .row → .kpi-grid responsive */}
+          <div className="kpi-grid" style={{ marginBottom: 20, gap: 12 }}>
             {[
               { label: 'Total deuda · ARS', value: <><span className="ccy">ARS</span><span className="mono neg">{fmt(totalDeudaARS)}</span></>, sub: `${conDeuda} contactos` },
               { label: 'Total deuda · USD', value: <><span className="ccy">USD</span><span className="mono neg">{fmt(totalDeudaUSD)}</span></>, sub: 'en divisas' },
@@ -709,8 +709,8 @@ export default function Cajas() {
       {/* ── INVERSIONES TAB ────────────────────────────────────────────── */}
       {tab === 'inversiones' && (
         <>
-          {/* KPIs */}
-          <div className="row" style={{ marginBottom: 20, gap: 12 }}>
+          {/* KPIs — 2026-06-24 mobile lote E: .row → .kpi-grid responsive */}
+          <div className="kpi-grid" style={{ marginBottom: 20, gap: 12 }}>
             {[
               { label: 'Total invertido · USD', value: <><span className="ccy">USD</span><span className="mono">{fmt(totalInvUSD)}</span></>, sub: `${inversiones.length} movimientos` },
               { label: 'Inversores activos', value: <span className="mono">{inversoresActivos}</span>, sub: 'contactos únicos' },
