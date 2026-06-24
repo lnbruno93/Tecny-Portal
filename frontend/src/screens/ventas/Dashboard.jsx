@@ -37,7 +37,10 @@ export default function Dashboard({ d }) {
         </div>
       </div>
 
-      <div className="row" style={{ marginBottom: 12 }}>
+      {/* 2026-06-24 mobile fix: .row → .kpi-grid. Antes los 4 cards quedaban
+          exprimidos en 4 cols estrechas en <414px, los labels wrappeaban a
+          3 líneas y se veía horrible. Reportado por Lucas con screenshot. */}
+      <div className="kpi-grid" style={{ marginBottom: 12 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Unidades vendidas</div>
           <div className="kpi-value" style={{ fontSize: 17 }}>
@@ -87,7 +90,10 @@ export default function Dashboard({ d }) {
         </div>
       </div>
 
-      <div className="row">
+      {/* 2026-06-24 mobile: .row → .kpi-grid. Las 2 cards (Métodos de pago +
+          Ventas por horario) tienen tablas internas que se exprimen mucho
+          en <414px. .kpi-grid las apila en single col en mobile. */}
+      <div className="kpi-grid">
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label" style={{ marginBottom: 8 }}>Métodos de pago</div>
           <table className="table" style={{ fontSize: 12 }}>
@@ -127,7 +133,8 @@ export default function Dashboard({ d }) {
         </div>
       </div>
 
-      <div className="row" style={{ marginTop: 12 }}>
+      {/* 2026-06-24 mobile: .row → .kpi-grid. 3 cards (Ticket + Top productos + Top vendedores). */}
+      <div className="kpi-grid" style={{ marginTop: 12 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Ticket promedio</div>
           <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.ticket_promedio_usd)}</div>
