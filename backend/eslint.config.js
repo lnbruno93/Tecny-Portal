@@ -41,6 +41,31 @@ module.exports = [
       'require-atomic-updates': 'off', // demasiados falsos positivos en patrón con pool.connect()
       // Permitimos require dinámico (lo usamos en algunos casos).
       'no-process-exit': 'off', // server.js lo necesita para shutdown
+      // 2026-06-24 TANDA 5 H3: previene regresión al sistema viejo de permisos.
+      // `requirePermission` y `lib/tools` fueron borrados en F4 (cutover
+      // capability-based). Si alguien hace cherry-pick de una rama vieja o
+      // copy-paste de un PR archivado y vuelve a meterlos, ESLint lo flagea
+      // antes del CI. El sistema correcto es `requireCapability(slug)` en
+      // src/middleware/requireCapability.js.
+      'no-restricted-syntax': ['error', {
+        selector: 'CallExpression[callee.name="requirePermission"]',
+        message: 'requirePermission fue borrado en F4 (cutover capability-based). Usá requireCapability(slug) de middleware/requireCapability.js.',
+      }, {
+        selector: 'Identifier[name="loadUserPerms"]',
+        message: 'loadUserPerms fue borrado en F4. Usá loadUserCaps de lib/capabilities.js.',
+      }, {
+        selector: 'Identifier[name="loadUserPermsRows"]',
+        message: 'loadUserPermsRows fue borrado en F4. Usá loadUserCaps de lib/capabilities.js.',
+      }],
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '../lib/tools',
+          message: 'lib/tools fue borrado en F4. Usá lib/capabilityCatalog.js para el catálogo de capabilities.',
+        }, {
+          name: '../middleware/requirePermission',
+          message: 'requirePermission fue borrado en F4. Usá ../middleware/requireCapability.',
+        }],
+      }],
     },
   },
 ];

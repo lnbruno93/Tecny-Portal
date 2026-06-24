@@ -219,7 +219,14 @@ export default function Inicio() {
       </div>
 
       {/* Tools + Activity */}
-      <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
+      {/* 2026-06-24 TANDA 5 U2: si el user no puede ver "Actividad reciente"
+          (lectura/vendedor sin la cap), el split-2 dejaba whitespace muerto
+          a la derecha. Detectamos el caso y caemos a layout single-col
+          full-width — la grilla de tools ocupa todo el ancho disponible. */}
+      <div
+        className={userHasCap(user, 'inicio.actividad_reciente') ? 'split-2' : ''}
+        style={{ marginTop: 'var(--gap)' }}
+      >
         {/* Tools column */}
         <div className="col">
           <div className="flex-between">
