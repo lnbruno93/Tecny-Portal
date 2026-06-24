@@ -383,6 +383,35 @@ body {
 /* 2026-06-24 mobile: cuando .topbar .search se oculta (<=640px), aparece
    este icon-btn alternativo para abrir el CommandPalette desde touch. */
 .topbar-search-mobile { display: none; }
+
+/* 2026-06-24 mobile lote C: contenedor genérico para filas de items
+   (carrito Ventas, items de Envío). El usuario pasa columnas via
+   `--cols` CSS var; en mobile (<=520px) todas las columnas colapsan a
+   1fr (stack vertical) y el icon-btn de delete queda right-aligned. */
+.item-grid {
+  display: grid;
+  grid-template-columns: var(--cols);
+}
+@media (max-width: 520px) {
+  .item-grid { grid-template-columns: 1fr; gap: 6px; }
+  .item-grid > .icon-btn { justify-self: end; }
+}
+
+/* 2026-06-24 mobile lote C: hint visual arriba de tablas spreadsheet
+   con minWidth gigante (B2B 1400, Compra 1500, Cobranza 1200). En
+   mobile la tabla ya scrollea horizontalmente, pero sin pista visual
+   el usuario piensa que la UI está rota. Solo visible <=640px. */
+.bulk-spreadsheet-hint { display: none; }
+@media (max-width: 640px) {
+  .bulk-spreadsheet-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    padding: 4px 2px 8px;
+  }
+}
 .icon-btn {
   width: 32px; height: 32px;
   display: grid; place-items: center;

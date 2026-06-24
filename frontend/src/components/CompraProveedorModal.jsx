@@ -460,6 +460,9 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
           </div>
 
           {/* ── Planilla spreadsheet ── */}
+          {/* 2026-06-24 mobile lote C: planilla con minWidth 1500 (~16 columnas).
+              Hint visible solo en mobile para indicar scroll horizontal. */}
+          <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
           <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1500, tableLayout: 'fixed' }}>
               <colgroup>
