@@ -123,17 +123,24 @@ export default function Inicio() {
     ? (data.envData.data || []).filter(e => e.estado === 'Pendiente' || e.estado === 'En camino').length
     : 0;
 
-  const tools = [
-    { id: 'egresos',     name: 'Egresos',              desc: 'Gastos por categoría · recurrentes', icon: 'ArrowDownRight', tint: 'amber',  meta: 'Salidas de dinero' },
-    { id: 'inventario',  name: 'Inventario',           desc: 'Stock · costos · valorizado',         icon: 'Box',         tint: 'green',  meta: 'Equipos y accesorios' },
-    { id: 'proveedores', name: 'Proveedores | Compras',desc: 'Compras y cuenta corriente',          icon: 'Building',    tint: 'cyan',   meta: 'Cta. cte. con proveedores' },
-    { id: 'financiera',  name: 'Transferencias',       desc: 'Comprobantes, pagos y OCR',           icon: 'Trend',       tint: 'blue',   meta: 'Comprobantes y pagos' },
-    { id: 'cambios',     name: 'Cambios de Divisa',    desc: 'Conversión USD ↔ ARS ↔ USDT',         icon: 'Dollar',      tint: 'pink',   meta: 'Operaciones de cambio' },
-    { id: 'tarjetas',    name: 'Tarjetas de Crédito',  desc: 'Cobros y liquidaciones',              icon: 'CreditCard',  tint: 'purple', meta: 'Por método de pago' },
-    { id: 'cotizador',   name: 'Cotizador',            desc: 'Precios con cuotas y USD → ARS',      icon: 'Calculator',  tint: 'amber',  meta: 'Cotizar a clientes' },
-    { id: 'usados',      name: 'Usados | Cotizador',   desc: 'Catálogo de precios USD',             icon: 'Phone',       tint: 'pink',   meta: 'Equipos usados' },
-    { id: 'envios',      name: 'Envíos',               desc: 'Despachos a domicilio · prioridad',   icon: 'Truck',       tint: 'purple', meta: data ? `${activosCount} activos` : '—' },
+  // 2026-06-24 TANDA 2 U0: cada tool declara la cap que su pantalla destino
+  // exige (matchea exactamente el `cap` de NAV_MAIN en Shell.jsx). Antes el
+  // grid renderizaba los 9 sin filtrar — un vendedor veía Egresos / Cambios /
+  // Tarjetas / Transferencias y al clickear caía en Forbidden 🔒 cinco veces
+  // seguidas. Filtramos por userHasCap; si queda 0 tools visibles, mostramos
+  // empty state en lugar de un grid vacío.
+  const allTools = [
+    { id: 'egresos',     cap: 'egresos.ver',          name: 'Egresos',              desc: 'Gastos por categoría · recurrentes', icon: 'ArrowDownRight', tint: 'amber',  meta: 'Salidas de dinero' },
+    { id: 'inventario',  cap: 'inventario.ver',       name: 'Inventario',           desc: 'Stock · costos · valorizado',         icon: 'Box',         tint: 'green',  meta: 'Equipos y accesorios' },
+    { id: 'proveedores', cap: 'proveedores.trabajar', name: 'Proveedores | Compras',desc: 'Compras y cuenta corriente',          icon: 'Building',    tint: 'cyan',   meta: 'Cta. cte. con proveedores' },
+    { id: 'financiera',  cap: 'financiera.trabajar',  name: 'Transferencias',       desc: 'Comprobantes, pagos y OCR',           icon: 'Trend',       tint: 'blue',   meta: 'Comprobantes y pagos' },
+    { id: 'cambios',     cap: 'cambios.trabajar',     name: 'Cambios de Divisa',    desc: 'Conversión USD ↔ ARS ↔ USDT',         icon: 'Dollar',      tint: 'pink',   meta: 'Operaciones de cambio' },
+    { id: 'tarjetas',    cap: 'tarjetas.trabajar',    name: 'Tarjetas de Crédito',  desc: 'Cobros y liquidaciones',              icon: 'CreditCard',  tint: 'purple', meta: 'Por método de pago' },
+    { id: 'cotizador',   cap: 'cotizador.trabajar',   name: 'Cotizador',            desc: 'Precios con cuotas y USD → ARS',      icon: 'Calculator',  tint: 'amber',  meta: 'Cotizar a clientes' },
+    { id: 'usados',      cap: 'usados.ver',           name: 'Usados | Cotizador',   desc: 'Catálogo de precios USD',             icon: 'Phone',       tint: 'pink',   meta: 'Equipos usados' },
+    { id: 'envios',      cap: 'envios.trabajar',      name: 'Envíos',               desc: 'Despachos a domicilio · prioridad',   icon: 'Truck',       tint: 'purple', meta: data ? `${activosCount} activos` : '—' },
   ];
+  const tools = allTools.filter(t => userHasCap(user, t.cap));
 
   // Parse historial items
   const activityItems = data
@@ -222,6 +229,14 @@ export default function Inicio() {
             <div className="muted tiny">Acceso a los módulos del portal</div>
           </div>
           <div className="tool-grid">
+            {tools.length === 0 && (
+              // Edge case: user con un rol que NO tiene ninguna cap de tools
+              // (ej. custom recién creado sin overrides, o rol experimental).
+              // Honesto > misterio: explicamos por qué no hay nada visible.
+              <div className="empty" style={{ gridColumn: '1 / -1', padding: '24px 12px' }}>
+                Tu rol no tiene módulos asignados todavía — pedile al admin que te habilite acceso.
+              </div>
+            )}
             {tools.map(t => {
               const I = Icons[t.icon];
               return (
