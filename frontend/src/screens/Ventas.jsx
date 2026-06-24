@@ -1091,7 +1091,10 @@ export default function Ventas() {
                         // data-testid agregado para E2E (TANDA 5 venta retail) — scoping
                         // estable de los 4 inputs por fila (descripcion/cant/precio/moneda)
                         // sin atarse a CSS frágil del grid.
-                        <div key={i} data-testid="venta-item-row" style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
+                        // 2026-06-24 mobile lote C: class .item-grid + CSS var --cols
+                        // hace que en <=520px todas las columnas colapsen a 1fr
+                        // (stack vertical, delete right-aligned). Desktop sin cambios.
+                        <div key={i} data-testid="venta-item-row" className="item-grid" style={{ '--cols': '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
                           <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(i, 'descripcion', e.target.value)} />
                           <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)} />
                           <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(i, 'precio_vendido', e.target.value)} />

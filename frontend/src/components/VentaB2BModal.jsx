@@ -290,6 +290,10 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
           </div>
 
           {/* ── Planilla ── */}
+          {/* 2026-06-24 mobile lote C: la planilla tiene minWidth 1400 con
+              12 columnas. En mobile el modal ya scrollea horizontalmente,
+              pero sin indicador el usuario asume que está roto. */}
+          <div className="bulk-spreadsheet-hint">↔ Desliza horizontalmente para ver todas las columnas</div>
           <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1400, tableLayout: 'fixed' }}>
               <colgroup>

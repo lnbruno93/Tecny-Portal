@@ -1265,7 +1265,8 @@ export default function Envios() {
                                   → línea IMEI tenue
                                   → fila de controles (precio venta + moneda + ✕). */}
                           {!it.producto_id ? (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
+                            // 2026-06-24 mobile lote C: .item-grid responsive
+                            <div className="item-grid" style={{ '--cols': '1fr 140px 90px auto', gap: 8, alignItems: 'end' }}>
                               <div className="field" style={{ marginBottom: 0, position: 'relative' }}>
                                 <label className="field-label">Buscar producto del inventario <span className="muted tiny">(nombre, IMEI, color, GB…)</span></label>
                                 <input className="input" placeholder="Empezá a tipear…"
@@ -1319,10 +1320,10 @@ export default function Envios() {
                               </div>
                               {/* Fila única: chips + IMEI a la izquierda, Precio + Moneda + ✕ a la
                                   derecha. Los chips quedan baseline-alineados con los inputs
-                                  gracias al paddingBottom que compensa la altura del label. */}
-                              <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr 140px 90px auto',
+                                  gracias al paddingBottom que compensa la altura del label.
+                                  2026-06-24 mobile lote C: .item-grid responsive en <=520px. */}
+                              <div className="item-grid" style={{
+                                '--cols': '1fr 140px 90px auto',
                                 gap: 10, alignItems: 'end',
                               }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingBottom: 7 }}>
