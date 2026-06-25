@@ -965,6 +965,14 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
 
     // 5. Restaurar stock — incrementar cantidad y volver a 'disponible' si
     //    el producto había quedado vendido. Mismo CASE que cancelMovimientoCC.
+    //    2026-06-25 SOL-5 (audit pre-live): `AND deleted_at IS NULL` para
+    //    NO resucitar productos soft-deleted. Antes, si entre la venta y la
+    //    devolución alguien borraba el producto del inventario, la
+    //    devolución le sumaba stock y lo reactivaba implícitamente —
+    //    productos borrados aparecían "vivos" con stock fantasma. Si el
+    //    producto está deleted, la devolución solo marca el item como
+    //    devuelto (paso 6 abajo); el stock queda sin restaurar (el operador
+    //    puede recrear el producto manualmente si quiere reusarlo).
     await client.query(
       `UPDATE productos
           SET cantidad = cantidad + $2,
@@ -973,7 +981,8 @@ router.post('/movimientos/:movId/items/:itemId/devolver', async (req, res, next)
                 WHEN cantidad + $2 > 0  AND estado = 'vendido'       THEN 'disponible'
                 ELSE estado
               END
-        WHERE id = $1`,
+        WHERE id = $1
+          AND deleted_at IS NULL`,
       [item.producto_id, cantidad]
     );
 
