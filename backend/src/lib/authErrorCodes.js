@@ -54,6 +54,16 @@ const CODES = Object.freeze({
   // próxima request. Frontend debería forzar logout.
   USER_NOT_FOUND:             'USER_NOT_FOUND',
 
+  // ─── Multi-tenant resolution (SEG-2 audit pre-live 2026-06-24) ────────
+  // 401 — el user autenticó pero NO tiene fila en `tenant_users` (no podemos
+  // resolver su tenant default). Antes fallback silencioso a tenant_id=1 →
+  // potencial data-leak (el user veía data del owner del SaaS). Ahora
+  // rechazamos. El frontend debe forzar logout y mostrar mensaje claro
+  // "Tu cuenta no está asignada a una organización — contactá soporte".
+  // También se dispara cuando un JWT legacy (pre-multitenant PR3) no trae
+  // tenant_id — esos tokens caducaron hace meses, ya no hay grace period.
+  NO_TENANT:                  'NO_TENANT',
+
   // ─── Forgot / Reset password (TANDA 0 #321) ───────────────────────────
   // 401 — el token de reset no existe en la tabla (mal copiado del email, o
   // formato inválido que pasó el regex zod pero no matchea ninguna row).

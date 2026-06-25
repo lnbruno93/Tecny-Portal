@@ -17,7 +17,7 @@
  */
 const request = require('supertest');
 const app     = require('../src/app');
-const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
+const { setupTestDb, teardownTestDb, TEST_USER, createTestUser } = require('./helpers/setup');
 
 let pool, adminToken, opToken, catId, cajaUsdId;
 const auth = (t = adminToken) => ({ Authorization: `Bearer ${t}` });
@@ -28,12 +28,13 @@ beforeAll(async () => {
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   adminToken = a.body.token;
 
-  const bcrypt = require('bcrypt');
-  const hash = await bcrypt.hash('op_orph_pass', 10);
-  await pool.query(
-    'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5)',
-    ['Op Orph', 'oporph', 'oporph@test.local', hash, 'op']
-  );
+  // SEG-2: usar createTestUser para que el non-admin tenga tenant_users +
+  // tenant_user_roles. Sin esto el login devuelve 401 NO_TENANT.
+  await createTestUser(pool, {
+    nombre: 'Op Orph', username: 'oporph',
+    email: 'oporph@test.local', password: 'op_orph_pass',
+    role: 'op',
+  });
   const o = await request(app).post('/api/auth/login')
     .send({ username: 'oporph', password: 'op_orph_pass' });
   opToken = o.body.token;
