@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { contactos as contactosApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import useModal from '../lib/useModal';
 
 // Origen: de qué módulo provino el contacto. 'manual' = cargado en la agenda.
 const ORIGENES = [
@@ -37,6 +38,8 @@ export default function Contactos() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const formModalRef = useRef(null);
+  useModal({ open: showForm, onClose: () => setShowForm(false), overlayRef: formModalRef });
 
   function loadList() {
     setLoading(true);
@@ -154,7 +157,7 @@ export default function Contactos() {
 
       {/* ── Modal: alta / edición ── */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div ref={formModalRef} className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>{editId ? 'Editar contacto' : 'Nuevo contacto'}</h3>

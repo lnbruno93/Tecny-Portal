@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { proyectos as proyApi, contactos as contactosApi, cajas as cajasApi } from '../lib/api';
 import CajaSelectHint from '../components/CajaSelectHint';
@@ -8,6 +8,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import useModal from '../lib/useModal';
 
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
@@ -39,6 +40,8 @@ export default function Proyectos() {
   const [form, setForm] = useState(EMPTY_PROY);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const createModalRef = useRef(null);
+  useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
   // Quick-add de contacto desde el modal de proyecto
   const [nuevoContacto, setNuevoContacto] = useState('');
   const [addingContacto, setAddingContacto] = useState(false);
@@ -462,7 +465,7 @@ export default function Proyectos() {
 
       {/* ── Modal: nuevo proyecto ── */}
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+        <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Nuevo proyecto</h3><button className="icon-btn" onClick={() => setShowCreate(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleCreate}>
