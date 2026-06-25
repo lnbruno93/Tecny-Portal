@@ -97,7 +97,10 @@ export default function ResetPassword() {
     try {
       await authApi.resetPassword(token, newPassword);
       setStatus('success');
-      setTimeout(() => navigate('/', { replace: true }), 2500);
+      // 2026-06-25 ONB-5 (audit pre-live): redirige a /login en lugar de /.
+      // Post-#331 la raíz es la landing comercial pública — un user que acaba
+      // de resetear su password necesita el form de login, no marketing.
+      setTimeout(() => navigate('/login', { replace: true }), 2500);
     } catch (err) {
       const status = err?.status;
       const body = err?.responseBody || {};
@@ -158,7 +161,7 @@ export default function ResetPassword() {
           <p className="auth-card-cta">
             <Link to="/forgot-password">Pedir un link nuevo</Link>
             {' · '}
-            <Link to="/">Volver al login</Link>
+            <Link to="/login">Volver al login</Link>
           </p>
         </div>
       </div>
@@ -244,7 +247,7 @@ export default function ResetPassword() {
         </form>
 
         <p className="auth-card-cta" style={{ marginTop: 20 }}>
-          <Link to="/">Volver al login</Link>
+          <Link to="/login">Volver al login</Link>
         </p>
       </div>
     </div>

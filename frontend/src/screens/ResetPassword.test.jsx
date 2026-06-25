@@ -34,7 +34,10 @@ function renderRP({ token = 'valid-hex-token-1234567890abcdef1234567890abcdef' }
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/" element={<div>LOGIN_HOME</div>} />
+        {/* 2026-06-25 ONB-5: el redirect post-reset ahora va a /login en
+            lugar de / (raíz es landing comercial). LOGIN_HOME montado en
+            /login para que los tests sigan validando el destino. */}
+        <Route path="/login" element={<div>LOGIN_HOME</div>} />
         <Route path="/forgot-password" element={<div>FORGOT</div>} />
       </Routes>
     </MemoryRouter>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { onboarding as onboardingApi } from '../lib/api';
+import { onboarding as onboardingApi, auth as authApi } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * OnboardingCard — TANDA 1 H3 #323 (audit E2E 2026-06-18).
@@ -77,10 +78,21 @@ const IconX = () => (
 );
 
 export default function OnboardingCard() {
+  // 2026-06-25 ONB-7 (audit pre-live): incluimos el step "Verificá tu email"
+  // como step 0 (visible solo si el user todavía no verificó). Antes el
+  // OnboardingCard listaba 3 pasos pero ninguno era email — y el bloqueo
+  // blando del backend impedía completarlos: el user clickeaba "Agregá tu
+  // primer producto" → submit → 403 "Verificá tu email…" que no se
+  // relacionaba con el checklist. Confusión doble. Ahora el step 0 hace el
+  // flow unificado y permite "Reenviar link" inline.
+  const { user } = useAuth();
+  const emailVerified = !!user?.email_verified;
   const [status, setStatus] = useState(null);  // null = loading, {} = loaded
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem(DISMISS_KEY) === '1'
   );
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
 
   useEffect(() => {
     if (dismissed) return;
@@ -96,16 +108,32 @@ export default function OnboardingCard() {
     setDismissed(true);
   }
 
+  async function handleResendVerification() {
+    setResending(true);
+    setResendMsg('');
+    try {
+      await authApi.resendVerification();
+      // Incluimos el email al que se reenvió — antes solo decía "Email
+      // reenviado" sin confirmar destinatario. Si el user signupeó con
+      // typo en el mail, ahora puede notarlo (ver UnverifiedBanner).
+      setResendMsg(user?.email ? `Reenviado a ${user.email}` : 'Email reenviado.');
+    } catch (err) {
+      setResendMsg(err.message || 'No se pudo reenviar. Intentá en unos minutos.');
+    } finally {
+      setResending(false);
+    }
+  }
+
   // Don't render si:
   //   - Dismissed (user clickeó saltar).
   //   - Aún loading (status === null).
   //   - Error fetcheando — fallar silencioso, el user no necesita ver eso.
-  //   - Los 3 items ya están listos.
+  //   - Los 4 items ya están listos (email verified + 3 pasos del CRUD).
   if (dismissed) return null;
   if (!status) return null;
   if (status.error) return null;
 
-  const allDone = ITEMS.every(item => status[item.key]);
+  const allDone = emailVerified && ITEMS.every(item => status[item.key]);
   if (allDone) return null;
 
   return (
@@ -150,6 +178,41 @@ export default function OnboardingCard() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* 2026-06-25 ONB-7: step 0 "Verificá tu email" — visible solo si el
+            user todavía no verificó. NO es un Link (no hay pantalla destino),
+            sino una row con CTA inline "Reenviar". */}
+        {!emailVerified && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 12px',
+              borderRadius: 8,
+            }}
+          >
+            <IconCheckCircle done={false} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                Verificá tu email
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                {resendMsg
+                  ? resendMsg
+                  : 'Hasta que verifiques, no podés crear ni editar datos. Revisá tu casilla — el link vence en 24 h.'}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={handleResendVerification}
+              disabled={resending}
+              style={{ flexShrink: 0 }}
+            >
+              {resending ? 'Reenviando…' : 'Reenviar link'}
+            </button>
+          </div>
+        )}
         {ITEMS.map(item => {
           const done = !!status[item.key];
           return (

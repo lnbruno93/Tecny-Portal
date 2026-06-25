@@ -139,9 +139,17 @@ export default function Landing() {
           <div className="nav-cta">
             <Link to="/login" className="btn btn-ghost">Iniciar sesión</Link>
             <Link to="/signup" className="btn btn-ghost">Crear cuenta</Link>
-            {/* "Solicitá una demo": placeholder a #precios hasta que Lucas
-                configure Calendly o un mailto:. */}
-            <a href="#precios" className="btn btn-primary">Solicitá una demo</a>
+            {/* 2026-06-25 ONB-8 (audit pre-live): "Solicitá una demo" abre
+                mailto: a hola@tecnyapp.com con subject pre-completado.
+                Antes apuntaba a #precios (anchor del mismo page) — un visitor
+                con intent de venta serio quedaba sin canal claro de contacto.
+                Cuando Lucas tenga Calendly configurado, swappear este href. */}
+            <a
+              href="mailto:hola@tecnyapp.com?subject=Demo%20de%20Tecny%20Portal"
+              className="btn btn-primary"
+            >
+              Solicitá una demo
+            </a>
           </div>
         </div>
       </nav>
@@ -578,7 +586,13 @@ export default function Landing() {
             <p>Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.</p>
             <div className="hero-actions">
               <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
-              <a href="#precios" className="btn btn-lg">Agendá una demo</a>
+              {/* 2026-06-25 ONB-8: mailto: en lugar de #precios. */}
+              <a
+                href="mailto:hola@tecnyapp.com?subject=Demo%20de%20Tecny%20Portal"
+                className="btn btn-lg"
+              >
+                Agendá una demo
+              </a>
             </div>
           </div>
         </div>
