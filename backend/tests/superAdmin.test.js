@@ -476,6 +476,94 @@ describe('POST /api/super-admin/tenants/:id/suspend + /reactivate', () => {
   });
 });
 
+describe('POST /api/super-admin/tenants/:id/set-paid-until (TANDA 4.B)', () => {
+  beforeEach(async () => {
+    await pool.query(`UPDATE tenants SET paid_until = NULL WHERE id = 777`);
+    await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = 777`);
+  });
+
+  it('setea paid_until a una fecha futura', async () => {
+    const fechaFutura = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: fechaFutura, reason: 'transferencia $189 USD recibida 2026-06-25' });
+
+    expect(r.status).toBe(200);
+    expect(r.body.paid_until).toContain(fechaFutura.slice(0, 10));
+
+    const { rows } = await pool.query(`SELECT paid_until FROM tenants WHERE id = 777`);
+    expect(rows[0].paid_until).not.toBeNull();
+  });
+
+  it('setea paid_until a NULL (grandfather)', async () => {
+    // Primero ponemos una fecha, después la borramos.
+    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE + 30 WHERE id = 777`);
+
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: null });
+
+    expect(r.status).toBe(200);
+    expect(r.body.paid_until).toBeNull();
+
+    const { rows } = await pool.query(`SELECT paid_until FROM tenants WHERE id = 777`);
+    expect(rows[0].paid_until).toBeNull();
+  });
+
+  it('reason requerido cuando paid_until es una fecha', async () => {
+    const fechaFutura = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: fechaFutura });
+    expect(r.status).toBe(400);
+  });
+
+  it('reason opcional cuando paid_until es null (grandfathering)', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: null });
+    expect(r.status).toBe(200);
+  });
+
+  it('formato inválido de fecha → 400', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants/777/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: '25/06/2026', reason: 'x' });
+    expect(r.status).toBe(400);
+  });
+
+  it('tenant inexistente → 404', async () => {
+    const fechaFutura = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+    const r = await request(app)
+      .post('/api/super-admin/tenants/999999/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: fechaFutura, reason: 'test' });
+    expect(r.status).toBe(404);
+  });
+
+  it('graba audit trail con action=paid_until_update + before/after', async () => {
+    const fechaFutura = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+    await request(app)
+      .post('/api/super-admin/tenants/777/set-paid-until')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ paid_until: fechaFutura, reason: 'transferencia $39' });
+
+    const { rows } = await pool.query(
+      `SELECT action, before_state, after_state, reason FROM tenant_admin_actions
+        WHERE tenant_id = 777 ORDER BY created_at DESC LIMIT 1`
+    );
+    expect(rows[0].action).toBe('paid_until_update');
+    expect(rows[0].before_state.paid_until).toBeNull();
+    expect(rows[0].after_state.paid_until).toContain(fechaFutura.slice(0, 10));
+    expect(rows[0].reason).toBe('transferencia $39');
+  });
+});
+
 describe('GET /api/super-admin/tenants/:id/activity', () => {
   it('?type=ventas devuelve items (vacío en este test)', async () => {
     const r = await request(app)

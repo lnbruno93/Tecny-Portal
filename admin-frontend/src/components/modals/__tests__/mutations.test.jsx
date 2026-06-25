@@ -16,6 +16,7 @@ vi.mock('../../../lib/api.js', () => ({
     suspendTenant: vi.fn(),
     reactivateTenant: vi.fn(),
     extendTrial: vi.fn(),
+    setPaidUntil: vi.fn(),
   },
   getToken: vi.fn(() => null),
   saveToken: vi.fn(),
@@ -28,6 +29,7 @@ import EditTenantModal from '../EditTenantModal.jsx';
 import SuspendTenantModal from '../SuspendTenantModal.jsx';
 import ReactivateTenantModal from '../ReactivateTenantModal.jsx';
 import ExtendTrialModal from '../ExtendTrialModal.jsx';
+import SetPaidUntilModal from '../SetPaidUntilModal.jsx';
 
 function makeTenant(overrides = {}) {
   return {
@@ -269,5 +271,79 @@ describe('ExtendTrialModal', () => {
       });
     });
     expect(onSaved).toHaveBeenCalled();
+  });
+});
+
+// ── SetPaidUntilModal (TANDA 4.B) ────────────────────────────────────────
+describe('SetPaidUntilModal', () => {
+  it('submit con fecha + reason llama setPaidUntil con paid_until + reason', async () => {
+    adminApi.setPaidUntil.mockResolvedValue({ paid_until: '2026-07-25' });
+    const onSaved = vi.fn();
+
+    render(
+      <SetPaidUntilModal
+        tenant={makeTenant({ paid_until: null })}
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+      />
+    );
+
+    // Cambiar fecha default (+30d) por una explícita
+    const dateInput = screen.getByLabelText(/nueva fecha de vencimiento/i);
+    fireEvent.change(dateInput, { target: { value: '2026-12-31' } });
+
+    // Reason obligatorio
+    fireEvent.change(screen.getByLabelText(/motivo \/ referencia/i), {
+      target: { value: 'transferencia $189 USD recibida' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^marcar pago$/i }));
+
+    await waitFor(() => {
+      expect(adminApi.setPaidUntil).toHaveBeenCalledWith(12, {
+        paid_until: '2026-12-31',
+        reason: 'transferencia $189 USD recibida',
+      });
+    });
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('botón "Marcar pago" deshabilitado sin reason', async () => {
+    render(
+      <SetPaidUntilModal
+        tenant={makeTenant({ paid_until: null })}
+        open
+        onClose={() => {}}
+        onSaved={() => {}}
+      />
+    );
+
+    const submitBtn = screen.getByRole('button', { name: /^marcar pago$/i });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it('grandfather button llama setPaidUntil con paid_until=null tras confirm', async () => {
+    // jsdom no implementa window.confirm; mockeamos a true.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    adminApi.setPaidUntil.mockResolvedValue({ paid_until: null });
+    const onSaved = vi.fn();
+
+    render(
+      <SetPaidUntilModal
+        tenant={makeTenant({ paid_until: '2026-08-01' })}
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /grandfather/i }));
+
+    await waitFor(() => {
+      expect(adminApi.setPaidUntil).toHaveBeenCalledWith(12, { paid_until: null });
+    });
+    expect(onSaved).toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

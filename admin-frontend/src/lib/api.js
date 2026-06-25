@@ -256,6 +256,13 @@ export const adminApi = {
   reactivateTenant: (id, body = {}) =>
     api(`/api/super-admin/tenants/${id}/reactivate`, 'POST', body),
 
+  // POST /tenants/:id/set-paid-until — body { paid_until: 'YYYY-MM-DD'|null, reason? }.
+  // TANDA 4.B billing pre-live: Lucas marca aquí el período cubierto por la
+  // transferencia recibida. reason obligatorio cuando paid_until es una fecha
+  // (justificación monto cobrado). paid_until=null → grandfather (sin enforcement).
+  setPaidUntil: (id, body) =>
+    api(`/api/super-admin/tenants/${id}/set-paid-until`, 'POST', body),
+
   // ── Plan Prices (C.1.2 #353) ──────────────────────────────────────────
   // GET /plan-prices — lista los 4 planes con precio + notas + updated_by.
   // Devuelve { plan_prices: [{ plan, price_usd, active, notes, updated_at,
