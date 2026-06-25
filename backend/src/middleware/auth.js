@@ -118,6 +118,48 @@ module.exports = async function requireAuth(req, res, next) {
   req.tenantId  = decoded.tenant_id;
   req.tenantRol = decoded.tenant_rol ?? 'member';
 
+  // TANDA 4 (billing pre-live 2026-06-25): bloqueo blando de WRITES en tenants
+  // expirados (paid_until < hoy) o suspendidos.
+  //
+  // Diseño paralelo al gate de email_verified de arriba — mismas mecánicas:
+  //   - GET / HEAD / OPTIONS pasan siempre (read-only state permite
+  //     exportar comprobantes, ver, navegar — defendemos a un cliente vencido
+  //     que no quedó "sin acceso a sus propios datos").
+  //   - /api/auth/* (logout, change-password, etc.) pasan siempre.
+  //   - /api/super-admin/* pasa siempre (el operador necesita poder PATCH
+  //     paid_until aunque el tenant esté suspendido por él mismo).
+  //   - Write methods en cualquier otro path → 402 Payment Required.
+  //
+  // El check pega al cache TENANT_STATUS (5min TTL, invalidate cross-instance
+  // via Redis al PATCH paid-until del admin). Si Redis está down, fail-OPEN
+  // (next()) — preferimos no bloquear toda la operación del tenant por un
+  // problema de infra. El audit log igual registra cada acción.
+  const isSuperAdminRoute = req.originalUrl.startsWith('/api/super-admin/');
+  if (isWriteMethod && !isAuthRoute && !isSuperAdminRoute) {
+    try {
+      const { getTenantStatus } = require('../lib/tenantStatus');
+      const status = await getTenantStatus(req.tenantId);
+      if (status && !status.is_active) {
+        const reason = status.suspended_at ? 'suspended' : 'expired';
+        return res.status(402).json({
+          error: reason === 'suspended'
+            ? 'Tu cuenta está suspendida. Contactá soporte.'
+            : 'Tu cuenta venció. Renová para seguir operando.',
+          code: reason === 'suspended' ? 'TENANT_SUSPENDED' : 'TENANT_EXPIRED',
+          paid_until: status.paid_until,
+        });
+      }
+    } catch (err) {
+      // Fail-open en error de infra (DB / Redis). Log pero no bloqueamos —
+      // bloquear toda la operación del tenant por un problema infraestructural
+      // sería peor que un breve período sin enforcement (que el cron de
+      // warning igual va a alertarle al operador via mail).
+      const logger = require('../lib/logger');
+      logger.error({ err: err.message, tenantId: req.tenantId },
+        'requireAuth: lookup tenant_status falló, fail-open');
+    }
+  }
+
   // Asociar el usuario autenticado al scope de Sentry para este request.
   // Así todos los errores capturados incluyen quién los triggereó.
   if (process.env.SENTRY_DSN) {

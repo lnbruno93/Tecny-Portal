@@ -78,4 +78,15 @@ module.exports = {
     ttlMs: 20_000,
     maxFetchers: 256,
   },
+
+  // TANDA 4 (billing pre-live 2026-06-25): status del tenant (paid_until).
+  // El middleware requireActiveTenant lo lee en cada request no-GET. TTL
+  // corto (5min) — cuando el admin actualiza paid_until vía PATCH se
+  // invalida explícitamente, así que el TTL es solo backup contra cache
+  // huérfano en réplicas que no recibieron la invalidación Redis.
+  TENANT_STATUS: {
+    keyPrefix: 'cache:tenant_status:t',
+    ttlMs: 300_000, // 5 min
+    maxFetchers: 256,
+  },
 };
