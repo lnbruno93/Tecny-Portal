@@ -34,9 +34,24 @@ if (envErrors.length) {
 // incluso cuando SENTRY_DSN no está configurado (Sentry es no-op sin DSN).
 const Sentry = require('@sentry/node');
 if (process.env.SENTRY_DSN) {
+  // OPS-3 (auditoría pre-live 2026-06): tag de `release` con el commit SHA
+  // del deploy. Antes el backend reportaba errores sin release → en Sentry
+  // todos los errores aparecían en una única release "(no release)",
+  // imposible bisecar regresiones por deploy. Ahora cada error queda
+  // bookmarkeado al SHA exacto que estaba activo. Mismo identifier (short
+  // SHA) que usa el frontend (vite.config.js + reportError.js), así Sentry
+  // junta backend+frontend bajo la misma release.
+  //
+  // Source: RAILWAY_GIT_COMMIT_SHA (lo provee Railway en cada deploy).
+  // Si falta (raro), pasamos undefined → Sentry vuelve al fallback "(no release)"
+  // pero al menos no rompe el init.
+  const release = process.env.RAILWAY_GIT_COMMIT_SHA
+    ? process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7)
+    : undefined;
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV || 'production',
+    ...(release && { release }),
     tracesSampleRate: 0, // solo errores, sin performance tracing (menor overhead)
   });
 }
