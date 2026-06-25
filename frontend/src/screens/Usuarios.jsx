@@ -13,12 +13,13 @@
 //   post-cutover), no los flat — el owner ve el estado deseado, no el
 //   actual. Decisión explícita: la UI viejos perms se va a F4.
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { usuarios as usuariosApi, capabilities as capsApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import Badge from '../components/Badge';
+import useModal from '../lib/useModal';
 
 // Labels descriptivos de cada rol. Tienen que matchear ROLES_VALIDOS del
 // backend (`backend/src/lib/capabilityCatalog.js`). El backend acepta el
@@ -123,6 +124,8 @@ export default function Usuarios() {
   const [newUser, setNewUser]         = useState(EMPTY_NEW);
   const [creating, setCreating]       = useState(false);
   const [createError, setCreateError] = useState('');
+  const createModalRef = useRef(null);
+  useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
 
   // ── Load inicial ─────────────────────────────────────────────────────────
   function refresh() {
@@ -416,7 +419,7 @@ export default function Usuarios() {
 
       {/* ── Modal: nuevo usuario ──────────────────────────────────────────── */}
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+        <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Nuevo usuario</h3>

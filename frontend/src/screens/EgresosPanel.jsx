@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { egresos as egresosApi, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
@@ -7,6 +7,7 @@ import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
+import useModal from '../lib/useModal';
 
 
 const thisMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -35,6 +36,8 @@ export default function EgresosPanel() {
   const [formError, setFormError] = useState('');
   const [showCats, setShowCats] = useState(false);
   const [showRec, setShowRec] = useState(false);
+  const formModalRef = useRef(null);
+  useModal({ open: showForm, onClose: () => setShowForm(false), overlayRef: formModalRef });
 
   const loadList = useCallback(() => {
     setLoading(true);
@@ -189,7 +192,7 @@ export default function EgresosPanel() {
 
       {/* Modal alta/edición */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div ref={formModalRef} className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>{editId ? 'Editar egreso' : 'Nuevo egreso'}</h3><button className="icon-btn" onClick={() => setShowForm(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleSubmit}>
@@ -251,6 +254,8 @@ export default function EgresosPanel() {
 // ── Sub-modal: categorías ──
 function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
   const [nombre, setNombre] = useState('');
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose, overlayRef });
   async function add() {
     if (!nombre.trim()) return;
     try { await egresosApi.createCategoria({ nombre: nombre.trim() }); setNombre(''); onChange(); }
@@ -262,7 +267,7 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
     try { await egresosApi.deleteCategoria(c.id); onChange(); } catch (e) { toast.error(e.message); }
   }
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div ref={overlayRef} className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd"><h3>Categorías de egreso</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
@@ -289,6 +294,8 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
 function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, toast, confirm }) {
   const EMPTY_R = { concepto: '', categoria_id: '', monto: '', moneda: 'USD', tc: '', metodo_pago_id: '', dia_del_mes: 1 };
   const [form, setForm] = useState(EMPTY_R);
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose, overlayRef });
   async function add() {
     if (!form.concepto.trim()) return;
     try {
@@ -306,7 +313,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
     try { await egresosApi.deleteRecurrente(r.id); onChange(); } catch (e) { toast.error(e.message); }
   }
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div ref={overlayRef} className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd"><h3>Egresos recurrentes (mensuales)</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
