@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { usados as usadosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -6,6 +6,7 @@ import { exportCsv } from '../lib/exportCsv';
 import { useToast } from '../contexts/ToastContext';
 import { fmt } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import useModal from '../lib/useModal';
 
 
 function relDate(iso) {
@@ -38,6 +39,8 @@ export default function Usados() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState('');
+  const createModalRef = useRef(null);
+  useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -289,7 +292,7 @@ export default function Usados() {
 
       {/* ── Create modal ────────────────────────────────────────────────── */}
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+        <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <h3>Nuevo equipo</h3>

@@ -3,6 +3,7 @@ import { Icons } from '../components/Icons';
 import { historial as historialApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { fmt } from '../lib/format';
+import useModal from '../lib/useModal';
 
 function rel(iso) {
   if (!iso) return '—';
@@ -73,6 +74,8 @@ export default function Historial() {
 
   // Detail modal
   const [detail, setDetail] = useState(null);
+  const detailModalRef = useRef(null);
+  useModal({ open: !!detail, onClose: () => setDetail(null), overlayRef: detailModalRef });
 
   // ── Debounce del campo de búsqueda ───────────────────────────────────────
   useEffect(() => {
@@ -354,7 +357,7 @@ export default function Historial() {
 
       {/* ── Detail modal ──────────────────────────────────────────────────── */}
       {detail && (
-        <div className="modal-overlay" onClick={() => setDetail(null)}>
+        <div ref={detailModalRef} className="modal-overlay" onClick={() => setDetail(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <span style={{ fontWeight: 600 }}>Detalle del evento #{detail.id}</span>

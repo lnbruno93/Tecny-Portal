@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { cambios as cambiosApi, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -9,6 +9,7 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useLoadingAction from '../lib/useLoadingAction';
 import TcWarning from '../components/TcWarning';
 import CajaSelectHint from '../components/CajaSelectHint';
+import useModal from '../lib/useModal';
 
 
 
@@ -32,6 +33,8 @@ export default function Cambios() {
   const [nombre, setNombre] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const createModalRef = useRef(null);
+  useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
 
   const [mov, setMov] = useState(EMPTY_MOV);
   // Post-audit: migración a useLoadingAction (DRY + anti-click-spam free).
@@ -241,7 +244,7 @@ export default function Cambios() {
 
       {/* Modal nueva financiera */}
       {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+        <div ref={createModalRef} className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Nueva financiera de cambio</h3><button className="icon-btn" onClick={() => setShowCreate(false)}><Icons.X size={16} /></button></div>
             <form onSubmit={handleCreate}>

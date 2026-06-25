@@ -13,6 +13,7 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
+import useModal from '../lib/useModal';
 import Seg from '../components/Seg';
 
 
@@ -56,6 +57,8 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const set = f => e => setForm(p => ({ ...p, [f]: e.target.value }));
+  const editClienteModalRef = useRef(null);
+  useModal({ open: true, onClose, overlayRef: editClienteModalRef });
 
   async function handleSave() {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio.'); return; }
@@ -87,7 +90,7 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div ref={editClienteModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 520 }}>
         <div className="modal-hd">
           <h3>Editar cliente</h3>
@@ -436,6 +439,8 @@ export default function CuentasCC() {
   const [clienteForm, setClienteForm]       = useState(EMPTY_CLIENTE);
   const [clienteCreating, setClienteCreating] = useState(false);
   const [clienteError, setClienteError]     = useState('');
+  const clienteModalRef = useRef(null);
+  useModal({ open: showClienteModal, onClose: () => setShowClienteModal(false), overlayRef: clienteModalRef });
 
   const { setPrimaryAction } = usePageActions();
   const notasTimerRef = useRef(null);
@@ -1146,7 +1151,7 @@ export default function CuentasCC() {
 
       {/* Nuevo cliente */}
       {showClienteModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowClienteModal(false)}>
+        <div ref={clienteModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowClienteModal(false)}>
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-hd">
               <h3>Nuevo cliente</h3>
