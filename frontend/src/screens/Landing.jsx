@@ -13,8 +13,8 @@
 //
 // CTAs:
 //   · "Iniciar sesión" / "Crear cuenta" / "Empezá gratis" → <Link to="/login"|"/signup">
-//   · "Solicitá una demo" / "Agendá una demo" / "Contactar ventas" → placeholder
-//     a /signup hasta que Lucas configure un Calendly o mailto. Comentado abajo.
+//   · "Solicitá una demo" / "Agendá una demo" / "Contactar ventas" → Calendly
+//     (constante CALENDLY_BASE_URL abajo + utm_source por CTA para tracking).
 //
 // Anchors internos (#como, #modulos, etc.): se mantienen como <a href="#...">
 // porque el CSS tiene scroll-behavior: smooth y funciona sin tocar el router.
@@ -24,6 +24,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { resolveApiBase } from '../lib/api';
 import './Landing.css';
+
+// Link público del evento "Demo Tecny — Conocé el sistema" en Calendly.
+// Si Lucas cambia el slug en Calendly (Booking page options), actualizar acá
+// en UN SOLO lugar — los 3 CTAs apuntan a esta constante.
+//
+// Helper `calendlyHref(source)`: añade utm_source para que el dashboard de
+// Calendly muestre qué CTA convirtió cada booking (nav vs cta-final vs
+// plan-multi-local). Calendly trackea utm_* nativamente desde plan Standard,
+// pero los params no hacen daño en Free y quedan listos para el upgrade.
+const CALENDLY_BASE_URL = 'https://calendly.com/hola-tecnyapp/demo-tecny';
+const calendlyHref = (source) =>
+  `${CALENDLY_BASE_URL}?utm_source=landing&utm_medium=cta&utm_campaign=${encodeURIComponent(source)}`;
 
 // Helper visual — checkmark de los bullets de pricing. Repetido tantas veces
 // en el HTML original que vale la pena un sub-component.
@@ -139,13 +151,16 @@ export default function Landing() {
           <div className="nav-cta">
             <Link to="/login" className="btn btn-ghost">Iniciar sesión</Link>
             <Link to="/signup" className="btn btn-ghost">Crear cuenta</Link>
-            {/* 2026-06-25 ONB-8 (audit pre-live): "Solicitá una demo" abre
-                mailto: a hola@tecnyapp.com con subject pre-completado.
-                Antes apuntaba a #precios (anchor del mismo page) — un visitor
-                con intent de venta serio quedaba sin canal claro de contacto.
-                Cuando Lucas tenga Calendly configurado, swappear este href. */}
+            {/* 2026-06-25 ONB-8 → 2026-06-25 Calendly: "Solicitá una demo" pasa
+                a abrir el booking de Calendly (utm_campaign=nav para tracking).
+                Histórico: antes era mailto: a hola@tecnyapp.com (fallback
+                temporal). Antes de eso era anchor a #precios (peor UX).
+                target=_blank deja la landing abierta atrás — si el visitor no
+                completa el booking puede volver a leer info sin perder contexto. */}
             <a
-              href="mailto:hola@tecnyapp.com?subject=Demo%20de%20Tecny%20Portal"
+              href={calendlyHref('nav')}
+              target="_blank"
+              rel="noopener noreferrer"
               className="btn btn-primary"
             >
               Solicitá una demo
@@ -506,9 +521,19 @@ export default function Landing() {
                 <li><Check /> Soporte prioritario</li>
                 <li><Check /> Onboarding dedicado</li>
               </ul>
-              {/* "Contactar ventas": placeholder a /signup hasta que Lucas
-                  configure mailto: o Calendly. */}
-              <Link to="/signup" className="btn">Contactar ventas</Link>
+              {/* "Contactar ventas" del plan Multi-local: directo a Calendly
+                  con utm_campaign=plan-multi-local. Es el CTA más caro y de
+                  conversión más alta — usar Calendly evita perder leads serios
+                  por mandarlos a un signup genérico que no calza con su intent
+                  (un cliente multi-local NO se auto-onboardea desde /signup). */}
+              <a
+                href={calendlyHref('plan-multi-local')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+              >
+                Contactar ventas
+              </a>
             </div>
           </div>
           {/* UX-34 fix (audit 2026-06-22): se eliminó "Precios a confirmar" del
@@ -586,9 +611,14 @@ export default function Landing() {
             <p>Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.</p>
             <div className="hero-actions">
               <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
-              {/* 2026-06-25 ONB-8: mailto: en lugar de #precios. */}
+              {/* 2026-06-25 ONB-8 → Calendly: era mailto: como fallback temporal.
+                  Ahora abre el booking de Calendly con utm_campaign=cta-final
+                  para que sepamos si la sección final convierte más que el CTA
+                  del nav (insight para iterar copy/posicionamiento). */}
               <a
-                href="mailto:hola@tecnyapp.com?subject=Demo%20de%20Tecny%20Portal"
+                href={calendlyHref('cta-final')}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn btn-lg"
               >
                 Agendá una demo
