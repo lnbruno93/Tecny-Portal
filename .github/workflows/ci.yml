@@ -118,14 +118,54 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  admin-frontend-test:
+    # REP-1 (auditoría pre-live 2026-06): admin-frontend tenía paridad de stack
+    # con frontend (Vite + Vitest + React + ESLint) pero ningún job de CI lo
+    # cubría — un PR podía romper la consola admin sin que CI lo detectara.
+    # Mismas steps que frontend-test pero contra admin-frontend/.
+    name: Admin Frontend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: admin-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: admin-frontend
+        run: npm ci
+
+      - name: Audit dependencies
+        working-directory: admin-frontend
+        run: npm audit --audit-level=moderate
+
+      - name: Lint
+        working-directory: admin-frontend
+        run: npm run lint
+
+      - name: Run admin-frontend tests
+        working-directory: admin-frontend
+        run: npm test
+
+      - name: Build (smoke test)
+        working-directory: admin-frontend
+        run: npm run build
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
-    # 2026-06-11 TANDA 5 Playwright: este job es la primera iteración del E2E.
-    # Lo dejamos en continue-on-error mientras estabilizamos timings y selectores
-    # en CI (puede ser distinto de local). Cuando 3 corridas consecutivas pasen
-    # verde, sacar el continue-on-error y marcarlo required en branch protection.
-    continue-on-error: true
+    # REP-6 (auditoría pre-live 2026-06): E2E ahora es required gate. Antes
+    # tenía `continue-on-error: true` como soft-gate "mientras estabilizamos
+    # timings". 10 specs (1518 LOC) maintained activamente + 9 PRs de fix
+    # entre 2026-06-10 y 2026-06-17 — los breakages ya están remediados. Si
+    # un test flakea post-merge, el fix correcto es el test (no re-enable del
+    # bypass). Branch protection en GitHub: marcar este job como required.
 
     services:
       postgres:
