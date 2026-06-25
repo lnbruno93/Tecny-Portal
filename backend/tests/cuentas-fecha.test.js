@@ -6,7 +6,10 @@
  */
 const { createMovimientoCCSchema } = require('../src/schemas/cuentas');
 
-const base = { cliente_cc_id: 1, tipo: 'pago', monto_total: 100 };
+// SOL-2 (TANDA 1.B): pago/parte_de_pago ahora exigen caja_id en el refine del
+// schema. Para que este test siga aislando la validación de fecha (no la de
+// caja_id), incluimos un caja_id stub válido en el base.
+const base = { cliente_cc_id: 1, tipo: 'pago', monto_total: 100, caja_id: 1 };
 const parse = (fecha) => createMovimientoCCSchema.safeParse({ ...base, fecha });
 
 describe('validación de fecha (timezone-safe)', () => {
