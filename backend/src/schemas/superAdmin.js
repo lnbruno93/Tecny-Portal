@@ -65,6 +65,29 @@ const reactivateTenantSchema = z.object({
   reason: z.string().max(500).optional(),
 }).strict();
 
+// POST /api/super-admin/tenants/:id/set-paid-until — marca paid_until manual
+// (TANDA 4.B billing pre-live 2026-06-25).
+//
+// Trigger: el operador recibió una transferencia y quiere extender el
+// período pagado. Setea paid_until a una fecha futura.
+//
+// paid_until: fecha en formato YYYY-MM-DD. NULL permitido para "grandfather"
+// un tenant (sin enforcement — útil para el tenant interno o enterprise con
+// contrato papel anual).
+//
+// reason: obligatorio cuando paid_until es una fecha (require justificar el
+// monto cobrado para audit) y opcional cuando es null (grandfathering manual).
+const setPaidUntilSchema = z.object({
+  paid_until: z.union([
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'paid_until debe ser YYYY-MM-DD'),
+    z.null(),
+  ]),
+  reason: z.string().max(500).optional(),
+}).strict().refine(
+  d => d.paid_until == null || (typeof d.reason === 'string' && d.reason.length > 0),
+  { message: 'reason requerido cuando paid_until es una fecha', path: ['reason'] }
+);
+
 // PATCH /api/super-admin/plan-prices/:plan — cambiar precio de un plan (C.1.2 #353).
 //
 // price_usd: número >= 0 o null (para enterprise, que no tiene precio fijo).
@@ -87,5 +110,6 @@ module.exports = {
   extendTrialSchema,
   suspendTenantSchema,
   reactivateTenantSchema,
+  setPaidUntilSchema,
   patchPlanPriceSchema,
 };

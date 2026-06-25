@@ -35,6 +35,7 @@ import EditTenantModal from '../components/modals/EditTenantModal.jsx';
 import SuspendTenantModal from '../components/modals/SuspendTenantModal.jsx';
 import ReactivateTenantModal from '../components/modals/ReactivateTenantModal.jsx';
 import ExtendTrialModal from '../components/modals/ExtendTrialModal.jsx';
+import SetPaidUntilModal from '../components/modals/SetPaidUntilModal.jsx';
 
 // ── Helpers locales ───────────────────────────────────────────────────
 
@@ -302,6 +303,9 @@ export default function Ficha() {
                 Extender trial
               </Btn>
             )}
+            <Btn icon="DollarSign" onClick={() => setOpenModal('set-paid-until')}>
+              Marcar pago
+            </Btn>
             <Btn icon="Sliders" onClick={() => setOpenModal('edit')}>
               Editar
             </Btn>
@@ -340,6 +344,46 @@ export default function Ficha() {
             <span>
               Trial activo hasta <strong>{fmtDate(tenant.trial_until)}</strong>
               {' '}({delta} {delta === 1 ? 'día' : 'días'} restantes)
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* Banner paid_until (TANDA 4.B billing). Solo se muestra para
+         non-trial tenants con paid_until set. Trial usa su propio banner
+         arriba — paid_until y trial_until conviven pero conceptualmente
+         se usa uno u otro según el plan. */}
+      {!isTrial && tenant.paid_until && (() => {
+        const delta = trialDaysDelta(tenant.paid_until);
+        if (delta == null) return null;
+        if (delta < 0) {
+          return (
+            <div className="banner banner-neg">
+              <Icons.DollarSign size={16} />
+              <span>
+                <strong>Pago vencido</strong> hace {Math.abs(delta)} días
+                ({fmtDate(tenant.paid_until)}) — el tenant está en read-only
+              </span>
+            </div>
+          );
+        }
+        if (delta <= 7) {
+          return (
+            <div className="banner banner-warn">
+              <Icons.DollarSign size={16} />
+              <span>
+                Pago vence en {delta} {delta === 1 ? 'día' : 'días'}
+                {' '}(<strong>{fmtDate(tenant.paid_until)}</strong>)
+              </span>
+            </div>
+          );
+        }
+        return (
+          <div className="banner banner-info">
+            <Icons.DollarSign size={16} />
+            <span>
+              Pagado hasta <strong>{fmtDate(tenant.paid_until)}</strong>
+              {' '}({delta} días)
             </span>
           </div>
         );
@@ -497,6 +541,12 @@ export default function Ficha() {
       <ExtendTrialModal
         tenant={tenant}
         open={openModal === 'extend-trial'}
+        onClose={() => setOpenModal(null)}
+        onSaved={handleSaved}
+      />
+      <SetPaidUntilModal
+        tenant={tenant}
+        open={openModal === 'set-paid-until'}
         onClose={() => setOpenModal(null)}
         onSaved={handleSaved}
       />

@@ -51,9 +51,11 @@ const {
   extendTrialSchema,
   suspendTenantSchema,
   reactivateTenantSchema,
+  setPaidUntilSchema,
   patchPlanPriceSchema,
   PLANES,
 } = require('../schemas/superAdmin');
+const { invalidateTenantStatus } = require('../lib/tenantStatus');
 const logger = require('../lib/logger');
 
 // Todos los endpoints de este módulo requieren super-admin.
@@ -553,6 +555,13 @@ router.post('/tenants/:id/suspend', validate(suspendTenantSchema), async (req, r
     });
 
     if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    // Invalidar cache cross-instance — suspend pasa el tenant a is_active=false.
+    // Sin invalidate, los writes en el tenant siguen pasando hasta el TTL (5min).
+    invalidateTenantStatus(id).catch(err =>
+      logger.warn({ err: err.message, tenantId: id }, 'suspend: invalidate cache falló')
+    );
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -604,7 +613,87 @@ router.post('/tenants/:id/reactivate', validate(reactivateTenantSchema), async (
     });
 
     if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    // Invalidar cache cross-instance — reactivar quita suspended_at, así que
+    // el tenant pasa de inactive a active. Sin invalidate, las réplicas con
+    // cache caliente siguen viendo "suspended" hasta el TTL natural (5min).
+    invalidateTenantStatus(id).catch(err =>
+      logger.warn({ err: err.message, tenantId: id }, 'reactivate: invalidate cache falló')
+    );
+
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /tenants/:id/set-paid-until — marca paid_until manual (TANDA 4.B
+// billing pre-live 2026-06-25).
+//
+// Trigger: el operador recibió una transferencia y extiende el período pagado.
+// Setea paid_until a una fecha YYYY-MM-DD. NULL permitido para grandfather.
+//
+// Atomicidad: read FOR UPDATE → UPDATE → audit en una tx. Si dos super-admins
+// pisan paid_until concurrentemente, el lock serializa y el audit refleja la
+// secuencia real.
+//
+// Invalidate cache: invalidateTenantStatus() después del COMMIT. Si falla
+// (Redis down), no rollbackeamos — el TTL natural de 5min recuperará.
+// ──────────────────────────────────────────────────────────────────────────
+router.post('/tenants/:id/set-paid-until', validate(setPaidUntilSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { paid_until, reason } = req.body;
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT paid_until FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        const updateRow = await client.query(
+          `UPDATE tenants SET paid_until = $1::date WHERE id = $2 RETURNING paid_until`,
+          [paid_until, id]
+        );
+        const newPaidUntil = updateRow.rows[0].paid_until;
+
+        await insertAdminAction(client, {
+          tenantId: id,
+          superAdminUserId: req.user.id,
+          action: 'paid_until_update',
+          beforeState: { paid_until: before.paid_until },
+          afterState:  { paid_until: newPaidUntil },
+          reason,
+        });
+        await client.query('COMMIT');
+        return { paid_until: newPaidUntil };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
+        throw err;
+      }
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    // Invalidar cache cross-instance — best-effort. Si falla, el TTL natural
+    // (5min) recuperará. No rollbackeamos el UPDATE por un Redis error.
+    invalidateTenantStatus(id).catch(err =>
+      logger.warn({ err: err.message, tenantId: id }, 'set-paid-until: invalidate cache falló')
+    );
+
+    res.json({ paid_until: result.paid_until });
   } catch (err) {
     next(err);
   }
