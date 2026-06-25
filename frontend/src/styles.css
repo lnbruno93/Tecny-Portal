@@ -1872,6 +1872,65 @@ body {
   margin-left: 6px;
 }
 
+/* ── ExpiredBanner (TANDA 4.C billing pre-live 2026-06-25) ─────────────
+   Mismo shape que .unverified-banner pero con 2 modificadores de tono:
+   --warn (amarillo, dismissable) — paid_until ∈ [hoy, hoy+7d]
+   --neg  (rojo, permanente)      — paid_until vencido o suspended_at set */
+.expired-banner {
+  position: sticky;
+  top: 0;
+  z-index: 49;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  color: var(--text);
+  font-size: 13.5px;
+  flex-wrap: wrap;
+}
+.expired-banner--warn {
+  background: var(--warn-soft, rgba(251,191,36,0.14));
+  border-bottom: 1px solid rgba(251,191,36,0.30);
+}
+.expired-banner--warn .expired-banner-icon { color: var(--warn, #fbbf24); }
+.expired-banner--neg {
+  background: rgba(239,68,68,0.14);
+  border-bottom: 1px solid rgba(239,68,68,0.35);
+}
+.expired-banner--neg .expired-banner-icon { color: var(--neg, #ef4444); }
+.expired-banner-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.expired-banner-text {
+  flex: 1;
+  min-width: 220px;
+  color: var(--text);
+}
+.expired-banner-text strong { color: var(--text); }
+.expired-banner-text a {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.expired-banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.expired-banner-btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.expired-banner-btn-ghost:hover { color: var(--text); }
+
 /* ── Modal ────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;
