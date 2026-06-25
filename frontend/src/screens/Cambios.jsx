@@ -6,6 +6,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import { Skeleton } from '../components/Skeleton';
 import useLoadingAction from '../lib/useLoadingAction';
 import TcWarning from '../components/TcWarning';
 import CajaSelectHint from '../components/CajaSelectHint';
@@ -134,7 +135,19 @@ export default function Cambios() {
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
         {/* Lista de financieras */}
         <div className="card card-flush" style={{ maxHeight: '78vh', overflow: 'auto' }}>
-          {loadingList ? <div className="empty">Cargando…</div>
+          {/* 2026-06-25 UX-3 (audit pre-live): skeleton bars en lugar del
+              "Cargando…" plano. Mantiene la altura del card estable mientras
+              llega la lista, evita el "salto" visual al renderizar. */}
+          {loadingList ? (
+            <div style={{ padding: 8 }}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} style={{ padding: '10px 13px', borderBottom: i < 4 ? '1px solid var(--hairline)' : 0 }}>
+                  <Skeleton width="60%" height={14} />
+                  <div style={{ marginTop: 6 }}><Skeleton width="40%" height={11} /></div>
+                </div>
+              ))}
+            </div>
+          )
             : list.length === 0 ? <div className="empty">Sin financieras. Creá la primera con "Nueva financiera".</div>
             : list.map((e, i) => (
               <div key={e.id} onClick={() => setSelectedId(e.id)} style={{

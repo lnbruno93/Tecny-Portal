@@ -915,7 +915,42 @@ export default function Inventario() {
           </table>
         </div>
       ) : productos.length === 0 ? (
-        <div className="empty">Sin productos</div>
+        // 2026-06-25 UX-2 (audit pre-live): empty state con CTA en lugar del
+        // texto mudo "Sin productos". Distingue dos casos:
+        //  · Hay filtros activos → "Limpiar filtros" como acción primaria.
+        //  · Inventario vacío de verdad → "Agregar producto" + texto guía.
+        // El primer caso es lo que ve un user con stock que se equivocó al
+        // filtrar. El segundo es lo que ve un cliente nuevo en su primer login.
+        (() => {
+          const hasFilters = !!(dSearch || vistaFiltro !== 'todos' || hasDrillDown);
+          if (hasFilters) {
+            return (
+              <div className="empty" style={{ padding: '28px 16px' }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
+                <div className="muted tiny" style={{ marginBottom: 14 }}>
+                  No hay productos que coincidan con los filtros aplicados.
+                </div>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => { setSearch(''); setVistaFiltro('todos'); setSearchParams({}); }}
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            );
+          }
+          return (
+            <div className="empty" style={{ padding: '32px 16px' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste productos</div>
+              <div className="muted tiny" style={{ marginBottom: 14 }}>
+                Empezá con tu primer equipo o accesorio — necesitás al menos uno para registrar ventas.
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={openCreate}>
+                <Icons.Plus size={13} /> Agregar producto
+              </button>
+            </div>
+          );
+        })()
       ) : (
         <div className="card card-flush" style={{ overflowX: 'auto' }}>
           <table className="table">

@@ -894,7 +894,38 @@ export default function Envios() {
             }}
           >
             {filtered.length === 0 && (
-              <div className="empty">Sin envíos</div>
+              // 2026-06-25 UX-2 (audit pre-live): empty state con CTA + distinción
+              // entre "sin envíos cargados" y "sin resultados para los filtros".
+              (() => {
+                const hasFilters = !!(search || estadoFilter !== 'todos' || dateFilter);
+                if (hasFilters) {
+                  return (
+                    <div className="empty" style={{ padding: '24px 16px' }}>
+                      <div style={{ fontWeight: 600, marginBottom: 6 }}>Sin resultados</div>
+                      <div className="muted tiny" style={{ marginBottom: 14 }}>
+                        No hay envíos que coincidan con los filtros aplicados.
+                      </div>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => { setSearch(''); setEstadoFilter('todos'); setDateFilter(null); }}
+                      >
+                        Limpiar filtros
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="empty" style={{ padding: '28px 16px' }}>
+                    <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste envíos</div>
+                    <div className="muted tiny" style={{ marginBottom: 14 }}>
+                      Los envíos a domicilio se cargan acá. Cada uno puede luego acreditarse como venta.
+                    </div>
+                    <button className="btn btn-primary btn-sm" onClick={openCreate}>
+                      <Icons.Plus size={13} /> Nuevo envío
+                    </button>
+                  </div>
+                );
+              })()
             )}
             {filtered.map(e => {
               const productos = (e.items || []).filter(i => i.tipo === 'producto');
