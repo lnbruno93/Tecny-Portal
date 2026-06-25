@@ -11,7 +11,7 @@
  */
 const request = require('supertest');
 const app     = require('../src/app');
-const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
+const { setupTestDb, teardownTestDb, TEST_USER, createTestUser } = require('./helpers/setup');
 
 let pool, adminToken;
 const auth = () => ({ Authorization: `Bearer ${adminToken}` });
@@ -86,13 +86,12 @@ describe('GET /api/admin/backfill-caja-financiera (dry-run)', () => {
   });
 
   it('rechaza usuario sin role=admin → 403', async () => {
-    // Crear un usuario operador.
-    const bcrypt = require('bcrypt');
-    const hash = await bcrypt.hash('op123', 10);
-    const { rows } = await pool.query(
-      `INSERT INTO users (nombre, username, email, password_hash, role) VALUES ('Op', 'opbackfill', 'opbackfill@test.local', $1, 'op') RETURNING id`,
-      [hash]
-    );
+    // SEG-2: createTestUser seedea tenant_users + tenant_user_roles.
+    const created = await createTestUser(pool, {
+      nombre: 'Op', username: 'opbackfill',
+      email: 'opbackfill@test.local', password: 'op123',
+      role: 'op',
+    });
     const opLogin = await request(app).post('/api/auth/login').send({ username: 'opbackfill', password: 'op123' });
     const opToken = opLogin.body.token;
 
@@ -100,7 +99,7 @@ describe('GET /api/admin/backfill-caja-financiera (dry-run)', () => {
     expect(r.status).toBe(403);
 
     // Cleanup.
-    await pool.query('DELETE FROM users WHERE id = $1', [rows[0].id]);
+    await pool.query('DELETE FROM users WHERE id = $1', [created.id]);
   });
 
   it('rechaza sin auth → 401', async () => {
