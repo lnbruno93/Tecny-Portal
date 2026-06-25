@@ -10,6 +10,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { Icons } from './Icons';
 import CommandPalette from './CommandPalette';
 import UnverifiedBanner from './UnverifiedBanner';
+import ExpiredBanner from './ExpiredBanner';
 import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
 import { alertas as alertasApi } from '../lib/api';
@@ -497,6 +498,7 @@ export default function Shell() {
         />
         <UpdateBanner />
         <UnverifiedBanner />
+        <ExpiredBanner />
         <div className="content">
           <Outlet />
         </div>

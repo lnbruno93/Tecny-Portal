@@ -79,6 +79,27 @@ describe('GET /api/auth/me', () => {
     // existe en el response shape.
     expect(res.body).toHaveProperty('caps');
   });
+
+  // TANDA 4.C (billing pre-live 2026-06-25): el response de /me incluye
+  // info del tenant para que el frontend pueda mostrar banners de
+  // paid_until / suspended state.
+  it('TANDA 4.C: incluye tenant {id, plan, paid_until, is_active}', async () => {
+    const res = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('tenant');
+    expect(res.body.tenant).toMatchObject({
+      id:        expect.any(Number),
+      plan:      expect.any(String),
+      is_active: true, // tenant test default: paid_until NULL → grandfathered → active
+    });
+    // paid_until puede ser null (grandfathered) o una fecha — el shape debe
+    // estar definido para que el frontend renderice consistente.
+    expect('paid_until' in res.body.tenant).toBe(true);
+    expect('suspended_at' in res.body.tenant).toBe(true);
+  });
 });
 
 // ─── Rutas protegidas ─────────────────────────────────────────

@@ -376,6 +376,40 @@ router.get('/me', requireAuth, async (req, res, next) => {
     // que el frontend sepa si mostrar el banner de verificación. Excluimos
     // email_verified_at (timestamp) del response — el cliente solo necesita el bool.
     const { email_verified_at, is_super_admin, ...rest } = userRow;
+
+    // TANDA 4.C (billing pre-live 2026-06-25): incluir tenant.paid_until +
+    // is_active en la respuesta para que el frontend pueda mostrar:
+    //   - Banner rojo permanente si is_active=false (suspended o expired)
+    //   - Banner amarillo de warning si paid_until ∈ [hoy, hoy+7d]
+    //   - Nada si grandfathered (paid_until=null) o lejos del vencimiento
+    //
+    // Pega al cache TENANT_STATUS (5min, cross-instance) — el costo extra es
+    // imperceptible. Si el lookup falla (Redis/DB hiccup), devolvemos tenant
+    // null y el frontend asume "activo" (fail-open en lectura, igual que el
+    // middleware en writes).
+    let tenantInfo = null;
+    if (req.tenantId) {
+      try {
+        const { getTenantStatus } = require('../lib/tenantStatus');
+        const status = await getTenantStatus(req.tenantId);
+        if (status) {
+          tenantInfo = {
+            id:           status.id,
+            plan:         status.plan,
+            paid_until:   status.paid_until,
+            suspended_at: status.suspended_at,
+            is_active:    status.is_active,
+          };
+        }
+      } catch (e) {
+        // Fail-open: si el helper falla, no rompemos /me. El usuario sigue
+        // pudiendo usar el portal; el banner simplemente no se muestra hasta
+        // el próximo /me que recupere el status.
+        logger.warn({ err: e.message, tenantId: req.tenantId },
+          '/me: getTenantStatus falló, devuelve sin tenant info');
+      }
+    }
+
     res.json({
       ...rest,
       email_verified: !!email_verified_at,
@@ -383,6 +417,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
       is_super_admin: !!is_super_admin,
       tenant_cap_rol: rolResponse,
       caps: capsResponse,
+      tenant: tenantInfo,
     });
   } catch (err) {
     next(err);
