@@ -383,6 +383,113 @@ async function sendPasswordResetEmail({ to, name, resetUrl, ttlHours }) {
   }
 }
 
+// ── Paid-until warning (TANDA 4.D billing pre-live 2026-06-25) ──────────
+
+function _paidUntilWarningHtml({ name, daysLeft, paidUntilDate, tenantName }) {
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  const venceTxt = daysLeft === 0 ? 'vence <strong>hoy</strong>'
+                 : daysLeft === 1 ? 'vence <strong>mañana</strong>'
+                 : `vence en <strong>${daysLeft} días</strong>`;
+  const tenantBlock = tenantName
+    ? `<p style="margin: 8px 0; color: #6b7280; font-size: 14px;">Cuenta: <strong>${_esc(tenantName)}</strong></p>`
+    : '';
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
+  <h2 style="color: #b45309; margin-top: 0;">Tu cuenta de Tecny Portal ${venceTxt}</h2>
+  <p>${greeting}</p>
+  ${tenantBlock}
+  <p>Te avisamos que tu período pagado ${venceTxt}, el <strong>${_esc(paidUntilDate)}</strong>.</p>
+  <p>Para seguir operando sin interrupciones, escribinos a <a href="mailto:hola@tecnyapp.com?subject=Renovaci%C3%B3n%20Tecny%20Portal">hola@tecnyapp.com</a> y coordinamos la renovación.</p>
+  <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Si ya pagaste y no procesamos el cobro todavía, ignorá este mensaje — te avisamos cuando lo veamos.</p>
+  <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 28px 0 16px;">
+  <p style="color: #6b7280; font-size: 12px;">Tecny — Portal de gestión para revendedores de tecnología.</p>
+</body></html>`;
+}
+
+function _paidUntilWarningText({ name, daysLeft, paidUntilDate, tenantName }) {
+  const greeting = name ? `Hola ${name},` : 'Hola,';
+  const venceTxt = daysLeft === 0 ? 'vence HOY'
+                 : daysLeft === 1 ? 'vence MAÑANA'
+                 : `vence en ${daysLeft} días`;
+  const tenantLine = tenantName ? `\nCuenta: ${tenantName}\n` : '\n';
+  return `${greeting}
+${tenantLine}
+Te avisamos que tu período pagado de Tecny Portal ${venceTxt}, el ${paidUntilDate}.
+
+Para seguir operando sin interrupciones, escribinos a hola@tecnyapp.com
+y coordinamos la renovación.
+
+Si ya pagaste y no procesamos el cobro todavía, ignorá este mensaje —
+te avisamos cuando lo veamos.
+
+—
+Tecny — Portal de gestión para revendedores de tecnología.`;
+}
+
+/**
+ * Email de warning "tu cuenta vence en N días".
+ *
+ * @param {object} opts
+ * @param {string} opts.to            — email destinatario.
+ * @param {string} [opts.name]        — nombre del user (opcional, para personalizar).
+ * @param {number} opts.daysLeft      — días restantes hasta paid_until (0=hoy, 1=mañana, ...).
+ * @param {string} opts.paidUntilDate — fecha formateada DD/MM/YYYY para el cuerpo.
+ * @param {string} [opts.tenantName]  — nombre del tenant (opcional, para clarificar cuando el user tiene acceso a varios).
+ * @returns {Promise<{ok, deliveryId, error?}>}
+ */
+async function sendPaidUntilWarningEmail({ to, name, daysLeft, paidUntilDate, tenantName }) {
+  if (!to || daysLeft == null || !paidUntilDate) {
+    throw new Error('sendPaidUntilWarningEmail: `to`, `daysLeft`, `paidUntilDate` requeridos');
+  }
+  const payload = {
+    type:           'paid_until_warning',
+    from:           _emailFrom(),
+    to,
+    name:           name || null,
+    daysLeft,
+    paidUntilDate,
+    tenantName:     tenantName || null,
+    sentAt:         new Date().toISOString(),
+  };
+
+  if (isTest()) {
+    _testQueue.push(payload);
+    return { ok: true, deliveryId: 'test-' + Date.now() };
+  }
+
+  const resend = _getResend();
+  if (!resend) {
+    logger.warn({ to, daysLeft }, '[email] RESEND_API_KEY no seteada — paid_until warning no se envió (modo stub)');
+    return { ok: true, deliveryId: 'stub-' + Date.now() };
+  }
+
+  const subject = daysLeft === 0
+    ? 'Tu cuenta de Tecny vence hoy'
+    : daysLeft === 1
+      ? 'Tu cuenta de Tecny vence mañana'
+      : `Tu cuenta de Tecny vence en ${daysLeft} días`;
+
+  try {
+    const result = await resend.emails.send({
+      from:    _emailFrom(),
+      to,
+      subject,
+      html:    _paidUntilWarningHtml({ name, daysLeft, paidUntilDate, tenantName }),
+      text:    _paidUntilWarningText({ name, daysLeft, paidUntilDate, tenantName }),
+    });
+    if (result.error) {
+      logger.error({ err: result.error, to }, '[email] Resend error en paid_until warning');
+      return { ok: false, deliveryId: null, error: result.error.message || 'Resend error' };
+    }
+    logger.info({ to, daysLeft, deliveryId: result.data?.id }, '[email] paid_until warning enviado');
+    return { ok: true, deliveryId: result.data?.id };
+  } catch (err) {
+    logger.error({ err, to }, '[email] excepción al enviar paid_until warning');
+    return { ok: false, deliveryId: null, error: err.message };
+  }
+}
+
 /** Para tests: snapshot read-only de los emails enviados en la suite. */
 function _getTestQueue() { return _testQueue.slice(); }
 
@@ -393,6 +500,7 @@ module.exports = {
   sendVerificationEmail,
   sendWelcomeEmail,
   sendPasswordResetEmail,
+  sendPaidUntilWarningEmail,
   _getTestQueue,
   _resetTestQueue,
   // Helpers exportados solo para que los tests puedan snapshotear el HTML
@@ -401,4 +509,5 @@ module.exports = {
   _verificationHtml,
   _welcomeHtml,
   _passwordResetHtml,
+  _paidUntilWarningHtml,
 };
