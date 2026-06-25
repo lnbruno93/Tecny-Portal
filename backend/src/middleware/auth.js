@@ -100,13 +100,22 @@ module.exports = async function requireAuth(req, res, next) {
   // 2026-06-15 multi-tenant PR 3: decorar req.tenantId / req.tenantRol.
   // - JWTs emitidos post-PR3 incluyen tenant_id (resuelto al login vía
   //   tenant_users del user).
-  // - JWTs viejos (pre-PR3, en cache de browser de users actuales) NO los
-  //   tienen → default a tenant 1 (Tecny, el tenant histórico — ex "iPro
-  //   Original") hasta el próximo login que regenera el JWT con el nuevo
-  //   formato.
-  // - PR 4 usará estos campos en endpoints; PR 6 agrega tests de aislamiento
-  //   exhaustivos.
-  req.tenantId  = decoded.tenant_id ?? 1;
+  // - JWTs viejos (pre-PR3) tenían fallback silencioso a tenant 1 — esos
+  //   tokens caducaron meses atrás (TTL 8h) y el grace period terminó.
+  //
+  // 2026-06-24 SEG-2 (audit pre-live): rechazamos ahora cualquier token sin
+  // tenant_id explícito. Misma razón que userTenant.js — fail-CLOSED contra
+  // el riesgo de servir data de tenant 1 a un user sin tenant resuelto.
+  // El frontend recibe 401 + code=NO_TENANT y fuerza re-login (que va a
+  // emitir un JWT con tenant_id válido, o rechazar con NO_TENANT si el
+  // user realmente no tiene tenant_users row).
+  if (decoded.tenant_id == null) {
+    return res.status(401).json({
+      error: 'Sesión expirada. Ingresá de nuevo.',
+      code: 'NO_TENANT',
+    });
+  }
+  req.tenantId  = decoded.tenant_id;
   req.tenantRol = decoded.tenant_rol ?? 'member';
 
   // Asociar el usuario autenticado al scope de Sentry para este request.

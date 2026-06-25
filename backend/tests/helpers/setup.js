@@ -176,6 +176,58 @@ async function setupTestDb() {
   return pool;
 }
 
+/**
+ * Helper para crear un user de test con tenant_users + tenant_user_roles
+ * — los 3 INSERTs que el endpoint POST /api/usuarios hace en una sola tx,
+ * pero accesible desde tests que necesitan crear users non-admin.
+ *
+ * 2026-06-24 SEG-2 (audit pre-live): antes los tests podían hacer
+ * `INSERT INTO users` sin tenant_users y el login funcionaba (fallback
+ * silencioso a tenant 1). Ahora resolveUserTenant tira NO_TENANT si no
+ * hay row → el login devuelve 401 y los tests fallan.
+ *
+ * @param {Pool} pool — el pool devuelto por setupTestDb.
+ * @param {object} opts
+ * @param {string} opts.nombre
+ * @param {string} opts.username
+ * @param {string} opts.email
+ * @param {string} opts.password — plaintext, se hashea con bcrypt aquí.
+ * @param {string} [opts.role='op'] — 'admin' o 'op' (global).
+ * @param {number} [opts.tenantId=1] — tenant a vincular.
+ * @param {string} [opts.tenantRol='member'] — rol de tenant (member/admin/owner).
+ * @param {string} [opts.capRol='custom'] — rol capability (custom/vendedor/admin/owner...).
+ * @returns {Promise<{id: number}>}
+ */
+async function createTestUser(pool, opts) {
+  const bcrypt = require('bcrypt');
+  const {
+    nombre, username, email, password,
+    role = 'op',
+    tenantId = 1,
+    tenantRol = 'member',
+    capRol = 'custom',
+  } = opts;
+
+  const hash = await bcrypt.hash(password, 10);
+  const { rows } = await pool.query(
+    `INSERT INTO users (nombre, username, email, password_hash, role)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [nombre, username, email, hash, role]
+  );
+  const userId = rows[0].id;
+
+  await pool.query(
+    `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, $3)`,
+    [tenantId, userId, tenantRol]
+  );
+  await pool.query(
+    `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES ($1, $2, $3)`,
+    [tenantId, userId, capRol]
+  );
+
+  return { id: userId };
+}
+
 async function teardownTestDb(pool) {
   if (!pool) return;
   // Limpiar datos al finalizar para que el próximo `jest` arranque con DB vacía,
@@ -200,4 +252,4 @@ async function teardownTestDb(pool) {
   await pool.end();
 }
 
-module.exports = { setupTestDb, teardownTestDb, TEST_USER };
+module.exports = { setupTestDb, teardownTestDb, TEST_USER, createTestUser };

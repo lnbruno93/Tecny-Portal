@@ -252,7 +252,23 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // Admin global (users.role='admin') bypassea: no necesita caps embebidas.
     // Si la resolución de caps falla por algún edge, NO rompemos login —
     // logueamos y el middleware hace fallback a DB en el primer request.
-    const tenant = await resolveUserTenant(user.id);
+    //
+    // 2026-06-24 SEG-2: resolveUserTenant ahora puede tirar NO_TENANT si
+    // el user NO tiene row en tenant_users. Antes era fallback silencioso
+    // a tenant 1 (data-leak risk). El login devuelve 401 con código
+    // estable — el frontend puede mostrar mensaje específico al user.
+    let tenant;
+    try {
+      tenant = await resolveUserTenant(user.id);
+    } catch (e) {
+      if (e.code === 'NO_TENANT') {
+        return res.status(401).json({
+          error: 'Tu cuenta no está asignada a una organización. Contactá soporte.',
+          code: CODES.NO_TENANT,
+        });
+      }
+      throw e;
+    }
 
     let capInfo;
     let capsResponse = null; // para el response.user.caps (frontend)
@@ -322,6 +338,15 @@ router.get('/me', requireAuth, async (req, res, next) => {
         rolResponse = rol;
         capsResponse = caps === null ? null : Array.from(caps);
       } catch (e) {
+        // 2026-06-24 SEG-2: NO_TENANT no debe devolver caps vacíos y 200 —
+        // forzar re-login. Otros errores (DB hiccup, etc.) siguen logueando
+        // warn y devolviendo el user sin caps (igual que antes).
+        if (e.code === 'NO_TENANT') {
+          return res.status(401).json({
+            error: 'Tu cuenta no está asignada a una organización. Contactá soporte.',
+            code: CODES.NO_TENANT,
+          });
+        }
         logger.warn({ err: e, userId: req.user.id },
           '/me: error resolviendo capabilities — devuelve sin caps');
       }

@@ -1,13 +1,15 @@
 /**
  * Tests del helper resolveUserTenant (lib/userTenant.js).
  *
- * 2026-06-18 #319 hygiene: el fallback `{ tenant_id: 1, rol: 'member' }`
- * cuando un user no tiene tenant_users row es un potencial data leak. Ahora
- * se loggea como WARN para que dispare alerta en Sentry. Estos tests lockean:
+ * 2026-06-24 SEG-2 (audit pre-live): el fallback fail-OPEN
+ * `{ tenant_id: 1, rol: 'member' }` se convirtió en throw NO_TENANT.
+ * Antes el user sin tenant_users podía leer data del tenant del owner
+ * (data leak). Ahora la función falla cerrada con 401.
  *
+ * Tests lockean:
  *   1. Happy path: user con tenant_users devuelve la row, sin warn.
- *   2. Edge path: user sin tenant_users devuelve fallback + emite warn con
- *      el userId, para que OPS pueda identificar al user afectado.
+ *   2. Edge path: user sin tenant_users → throw con status=401 y
+ *      code='NO_TENANT'. El warn sigue emitiéndose (para Sentry).
  */
 
 const { setupTestDb, teardownTestDb } = require('./helpers/setup');
@@ -49,24 +51,21 @@ describe('resolveUserTenant', () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('#319 user sin tenant_users → devuelve fallback + emite warn con userId', async () => {
+  it('SEG-2 user sin tenant_users → throw NO_TENANT (fail-closed)', async () => {
     // Usamos un user_id que sabemos que NO existe (no creamos tenant_users
-    // para él). El fallback debe disparar.
+    // para él). El throw debe dispararse.
     const NONEXISTENT_USER_ID = 999999;
 
-    const result = await resolveUserTenant(NONEXISTENT_USER_ID);
+    await expect(resolveUserTenant(NONEXISTENT_USER_ID)).rejects.toMatchObject({
+      status: 401,
+      code: 'NO_TENANT',
+    });
 
-    expect(result).toEqual({ tenant_id: 1, rol: 'member' });
-
-    // El warn debe haberse llamado UNA vez con el userId que falló y el
-    // tenant_id de fallback. El mensaje debe mencionar "tenant_users" o
-    // "data leak" para que OPS lo identifique en logs/Sentry.
+    // El warn sigue emitiéndose para alerta en Sentry — el caller (login)
+    // se encarga de convertir el throw en 401 al cliente.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const [payload, msg] = warnSpy.mock.calls[0];
-    expect(payload).toMatchObject({
-      userId: NONEXISTENT_USER_ID,
-      fallback_tenant_id: 1,
-    });
-    expect(msg).toMatch(/tenant_users|data leak/i);
+    expect(payload).toMatchObject({ userId: NONEXISTENT_USER_ID });
+    expect(msg).toMatch(/tenant_users|NO_TENANT/i);
   });
 });
