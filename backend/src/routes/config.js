@@ -4,7 +4,6 @@ const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { updateConfigSchema } = require('../schemas/config');
-const { recalcComprobantesFinancieraByTenant } = require('../lib/financiera');
 
 
 router.get('/', async (req, res, next) => {
@@ -37,11 +36,18 @@ router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) 
     // siempre debería hacer UPDATE en la práctica. El INSERT branch queda como
     // safety net para tenants legacy que se crearon antes de este fix.
     //
-    // Después del UPDATE: re-calcular monto_financiera y monto_neto de TODOS
-    // los comprobantes activos del tenant con el nuevo %. Esto cubre el caso
-    // "owner cambia el % después de cargar comprobantes" que el usuario espera
-    // intuitivamente. Sin esto, las ventas históricas quedan con el % viejo
-    // cacheado y el dashboard miente.
+    // NOTA sobre recalc retroactivo: NO lo aplicamos automáticamente desde acá.
+    // Decisión durable: cambiar el % NO toca comprobantes históricos. Preserva
+    // el snapshot del cálculo al momento de la venta (auditabilidad + acuerdo
+    // con el contrato implícito que se documentó al original release de la
+    // Financiera). Si el operador necesita aplicar el nuevo % a comprobantes
+    // existentes, puede:
+    //   · Editar/recrear el comprobante manualmente (dispara syncFinanciera
+    //     Comprobante que lee el pct ACTUAL).
+    //   · Pedir un script de admin que invoque `recalcComprobantesFinancieraByTenant`
+    //     desde `lib/financiera.js` (helper exportado, ver tests/config-recalc.test.js).
+    // Si en el futuro UX pide un botón "Aplicar a histórico", agregar acá un
+    // opt-in (ej: `recalc_retroactivo: true` en el body).
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `INSERT INTO config (id, tenant_id, pct_financiera) VALUES (1, $1, $2)
@@ -49,16 +55,7 @@ router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) 
          RETURNING *`,
         [req.tenantId, pct_financiera]
       );
-
-      // Recalc retroactivo: actualizar monto_financiera y monto_neto de los
-      // comprobantes activos con el nuevo pct. Devuelve count para el audit log.
-      const recalcCount = await recalcComprobantesFinancieraByTenant(client, pct_financiera);
-
-      await audit(client, 'config', 'UPDATE', 1, {
-        despues: rows[0],
-        recalc_comprobantes_count: recalcCount,
-        user_id: req.user.id,
-      });
+      await audit(client, 'config', 'UPDATE', 1, { despues: rows[0], user_id: req.user.id });
       return rows;
     });
     res.json(rows[0]);
