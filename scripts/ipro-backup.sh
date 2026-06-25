@@ -19,8 +19,10 @@
 #        cp scripts/ipro-backup.sh ~/bin/ipro-backup.sh && chmod +x ~/bin/ipro-backup.sh
 #   5. Crear ~/.ipro-backup.env (NO commit) con las 4 variables del check de abajo
 #   6. chmod 600 ~/.ipro-backup.env
-#   7. (Opcional) cron mensual en crontab:
-#        0 9 1 * * /Users/<vos>/bin/ipro-backup.sh >> /Users/<vos>/.ipro-backup.log 2>&1
+#   7. Cron diario en crontab (todos los días, 9 AM):
+#        0 9 * * * /Users/<vos>/bin/ipro-backup.sh >> /Users/<vos>/.ipro-backup.log 2>&1
+#      (Historial: era mensual `0 9 1 * *` hasta 2026-06-25. Cambiado a diario
+#       después del rehearsal — ver docs/DISASTER_RECOVERY.md §5.)
 #
 # Si algo falla (versión de pg_dump < server, network, credenciales), el script
 # aborta con error legible (set -e) y NO sube backup roto a Backblaze.
