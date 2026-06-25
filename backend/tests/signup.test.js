@@ -108,6 +108,32 @@ describe('POST /api/auth/signup', () => {
     }
   });
 
+  it('ONB-3 seedea 4 categorías default en el tenant nuevo', async () => {
+    // 2026-06-24 audit pre-live: sin esto, el primer producto que el owner
+    // intenta crear desde el OnboardingCard rebota con "La categoría es
+    // obligatoria" (productos.categoria_id requerido). Estas 4 cubren el
+    // ~90% de los negocios de revendedores tech.
+    const { res, body } = await signup({ email: `cat_${Date.now()}@example.com` });
+    expect(res.status).toBe(200);
+    const u = await fetchUserByEmail(body.email);
+    const tenantId = u.tenant_id;
+
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+      const { rows } = await c.query(
+        'SELECT nombre FROM categorias WHERE deleted_at IS NULL ORDER BY id'
+      );
+      expect(rows.map(r => r.nombre)).toEqual(
+        expect.arrayContaining(['Celulares', 'Accesorios', 'Servicios', 'Otros'])
+      );
+      await c.query('COMMIT');
+    } finally {
+      c.release();
+    }
+  });
+
   it('TANDA 2.4 fix BLOCKER privesc: signup crea user con role=op (NO admin)', async () => {
     // Antes: signup INSERT con role='admin' → cualquier signup público obtenía
     // rol admin global, bypaseando RequirePermission del frontend y abriendo
