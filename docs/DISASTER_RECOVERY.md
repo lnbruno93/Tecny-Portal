@@ -239,3 +239,177 @@ Esto valida:
 - No surprises bajo presión real.
 
 **Documentá el drill** — fecha + qué falló (si algo) en un commit a este doc.
+
+---
+
+## 5. Rehearsal pre-launch (TANDA 4.E — antes del primer cliente)
+
+> **Por qué**: hasta acá el procedure de restore es papel. Una "auditoría
+> excelente" exige rehearsearlo al menos una vez antes de tener clientes
+> reales, midiendo el tiempo real, y dejando documentado qué funcionó y qué
+> rompió. Sin esto, los RTO/RPO declarados son aspiracionales.
+>
+> **Cuándo**: 1x antes del primer cliente. Después se vuelve drill semestral.
+>
+> **Tiempo target**: < 30 minutos end-to-end. Si te lleva más, hay un problema
+> de tooling que mejor descubrir ahora que en una emergencia real.
+
+### Pre-requisitos en tu Mac
+
+Verificar que tenés instalado (debería estar todo si seguiste el setup de §1):
+
+```bash
+psql --version          # >= 16.x
+pg_restore --version    # match con psql
+b2 version              # Backblaze CLI
+```
+
+### Procedure step-by-step (cronometralo)
+
+**Etapa 1: Bajar un backup real (5 min)**
+
+```bash
+# Cargar credenciales B2 desde tu ~/.ipro-backup.env
+set -a; source ~/.ipro-backup.env; set +a
+
+# Autorizar
+b2 account authorize "$B2_KEY_ID" "$B2_APP_KEY"
+
+# Listar lo disponible (deberías ver al menos 1 archivo si el cron mensual corrió)
+b2 ls "b2://$B2_BUCKET"
+
+# Bajar el más reciente
+b2 file download "b2://$B2_BUCKET/<NOMBRE_DUMP>" ~/dr-rehearsal-$(date +%Y%m%d).dump
+```
+
+**Etapa 2: Crear DB sandbox local (3 min)**
+
+> No usar prod ni staging. Sandbox 100% local — descartable cuando termines.
+
+```bash
+# Crear DB vacía
+createdb dr_rehearsal_$(date +%Y%m%d)
+
+# Anotá el nombre exacto, lo vas a usar varias veces:
+export REHEARSAL_DB="postgres://$USER@localhost:5432/dr_rehearsal_$(date +%Y%m%d)"
+```
+
+**Etapa 3: Restore (variable, depende del tamaño — esperá 5-15 min)**
+
+```bash
+# Cronometrá ESTO. Si toma >30 min para un dump <500MB, hay un problema
+# (probablemente pgmigrations corriendo dentro del dump). Anotá el wall-clock.
+time pg_restore --no-owner --no-privileges -d "$REHEARSAL_DB" \
+  ~/dr-rehearsal-$(date +%Y%m%d).dump
+```
+
+**Etapa 4: Verificar con el script (1 min)**
+
+```bash
+# Desde la raíz del repo:
+DATABASE_URL="$REHEARSAL_DB" ./scripts/dr-verify.sh
+```
+
+Esperás `✅ TODOS LOS CHECKS PASARON`. Si alguno falla, anotá cuál y por qué.
+Los checks típicos:
+- Conectividad, versión Postgres
+- Tablas críticas con datos (users, tenants, tenant_users)
+- RLS policies + FORCE activos
+- Migrations al día (>=30)
+- Extensions
+- Sample query end-to-end (login simulado)
+
+**Etapa 5: Smoke test con backend (5 min)**
+
+```bash
+# Apuntar el backend local a la DB sandbox y arrancarlo.
+cd backend
+DATABASE_URL="$REHEARSAL_DB" \
+  ADMIN_DATABASE_URL="$REHEARSAL_DB" \
+  JWT_SECRET=anything-min-32-chars-only-for-rehearsal \
+  TWOFA_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+  NODE_ENV=development \
+  npm run dev
+```
+
+En otra terminal o el navegador:
+1. Levantar el frontend (`cd frontend && npm run dev`)
+2. Login con un user que sepas que estaba en el backup (ej: tu cuenta de Tecny)
+3. Browse Inventario — ¿aparecen productos?
+4. Browse Cajas — ¿aparecen los métodos de pago y saldos?
+5. Browse Cuentas Corrientes — ¿aparecen los clientes B2B?
+
+**Si todo se ve correcto**: el restore funcionó end-to-end. Anotá el tiempo total.
+
+**Etapa 6: Cleanup (1 min)**
+
+```bash
+# Cerrar el backend (Ctrl+C)
+# Borrar la DB sandbox
+dropdb dr_rehearsal_$(date +%Y%m%d)
+
+# Borrar el dump local (es data sensible)
+rm ~/dr-rehearsal-$(date +%Y%m%d).dump
+```
+
+### Checklist de rehearsal (printable)
+
+Marcá cada paso al ejecutarlo. Esto se vuelve el registro auditable.
+
+```
+Fecha del rehearsal: ____________________
+Operador:            ____________________
+Backup usado (filename): ____________________
+Tamaño del dump (MB): ____________________
+
+Etapa                        Wall-clock       Resultado
+─────────────────────────────────────────────────────────
+[ ] 1. b2 download             ___ min      OK / Falló: _____
+[ ] 2. createdb sandbox        ___ min      OK / Falló: _____
+[ ] 3. pg_restore              ___ min      OK / Falló: _____
+[ ] 4. dr-verify.sh PASS       ___ min      OK / Falló: _____
+[ ] 5. backend + login + UI    ___ min      OK / Falló: _____
+[ ] 6. cleanup                 ___ min      OK / Falló: _____
+─────────────────────────────────────────────────────────
+TIEMPO TOTAL:                  ___ min
+
+Notas / sorpresas / improvements:
+_____________________________________________________________
+_____________________________________________________________
+_____________________________________________________________
+```
+
+### Qué hacer si algo falla durante el rehearsal
+
+**Es EL momento de descubrir bugs del procedure, no producción.** Si algo no
+funciona como esperás:
+
+1. **NO improvises arreglos** — el objetivo es validar el procedure ACTUAL.
+2. **Documentá la falla exacta** (comando ejecutado, error printed).
+3. **Continuá si podés** (skip el step roto, anotalo).
+4. **Después del rehearsal**: actualizá este doc + scripts/dr-verify.sh con
+   los fixes. Próximo rehearsal valida que están resueltos.
+
+Los issues comunes en una primera ejecución:
+- **b2 account authorize falla** → key expiró, regenerar en Backblaze UI
+- **pg_restore "version mismatch"** → instalar Postgres major version del dump
+- **dr-verify.sh "0 users / 0 tenants"** → restore "exitoso" pero vacío,
+  probablemente el dump se cortó en pg_dump (ver tamaño vs prod actual)
+- **Backend no levanta** → falta alguna env var nueva post-rehearsal
+  (typical: NUEVA migration agregó secret nuevo)
+- **Login funciona pero RLS bloquea queries** → el restore perdió GRANTs
+  al role `ipro_app`. Re-correr migrations recupera los GRANTs.
+
+### Después del rehearsal: actualizar este doc
+
+Reemplazá la línea de abajo con los resultados reales del primer rehearsal:
+
+```
+Último rehearsal exitoso: ____________________
+Wall-clock total: ____ minutos
+Bugs encontrados + resueltos: ____________________
+Próximo drill programado (6 meses): ____________________
+```
+
+> **Status actual**: Rehearsal pre-launch NO ejecutado todavía. Es el último
+> ítem bloqueante antes de invitar al primer cliente.
