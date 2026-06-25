@@ -8,6 +8,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmt, fmtFecha } from '../lib/format';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
+import { Skeleton, SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
 import ContactoPickerEmbedded from '../components/ContactoPickerEmbedded';
 import Badge from '../components/Badge';
@@ -657,8 +658,24 @@ export default function Cajas() {
                     </button>
                   </div>
                 </div>
+                {/* 2026-06-25 UX-3 (audit pre-live): skeleton rows en lugar
+                    de "Cargando…" plano. */}
                 {loadingContactoMovs ? (
-                  <div className="empty">Cargando…</div>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th className="num">Monto ARS</th>
+                        <th className="num">Monto USD</th>
+                        <th>Concepto</th>
+                        <th style={{ width: 40 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} columns={6} />)}
+                    </tbody>
+                  </table>
                 ) : (
                   <table className="tbl">
                     <thead>

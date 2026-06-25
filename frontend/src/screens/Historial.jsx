@@ -3,6 +3,7 @@ import { Icons } from '../components/Icons';
 import { historial as historialApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { fmt } from '../lib/format';
+import { SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
 
 function rel(iso) {
@@ -279,7 +280,23 @@ export default function Historial() {
         </div>
 
         {loading ? (
-          <div className="empty">Cargando historial…</div>
+          // 2026-06-25 UX-3 (audit pre-live): skeleton rows en lugar del
+          // "Cargando historial…" plano. Mantiene la estructura visible.
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Acción</th>
+                <th>Módulo</th>
+                <th>Detalle</th>
+                <th style={{ width: 40 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} columns={6} />)}
+            </tbody>
+          </table>
         ) : rows.length === 0 ? (
           <div className="empty">Sin eventos para los filtros seleccionados.</div>
         ) : (

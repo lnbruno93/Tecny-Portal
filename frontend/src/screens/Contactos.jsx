@@ -5,6 +5,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
 
 // Origen: de qué módulo provino el contacto. 'manual' = cargado en la agenda.
@@ -127,8 +128,20 @@ export default function Contactos() {
       </div>
 
       <div className="card card-flush">
-        {loading ? <div className="empty">Cargando…</div>
-          : list.length === 0 ? <div className="empty">Sin contactos. Creá el primero con "Nuevo contacto".</div>
+        {/* 2026-06-25 UX-3 (audit pre-live): skeleton rows en lugar de "Cargando…"
+            plano. Reduce perceived loading time y mantiene el layout estable. */}
+        {loading ? (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Nombre y Apellido</th><th>Contacto</th><th>DNI</th><th>Mail</th><th>De dónde vino</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} columns={6} />)}
+            </tbody>
+          </table>
+        ) : list.length === 0 ? <div className="empty">Sin contactos. Creá el primero con "Nuevo contacto".</div>
           : (
             <table className="tbl">
               <thead>
