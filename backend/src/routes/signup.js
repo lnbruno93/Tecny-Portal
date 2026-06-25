@@ -275,12 +275,24 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     // del OnboardingCard ("Agregá tu primer producto") rebota con 400 porque
     // productos.categoria_id es obligatorio. Mismo patrón que cajas — tenant_id
     // explícito porque categorias tiene RLS.
-    for (const nombre of DEFAULT_CATEGORIAS) {
+    for (const catNombre of DEFAULT_CATEGORIAS) {
       await client.query(
         `INSERT INTO categorias (nombre, tenant_id) VALUES ($1, $2)`,
-        [nombre, tenant.id]
+        [catNombre, tenant.id]
       );
     }
+
+    // 5c. 2026-06-25 ONB-6 (audit pre-live): seed de un vendedor con el nombre
+    // del owner. Cuando el user nuevo abre el modal "Nueva venta" del Onboarding-
+    // Card, el dropdown Vendedor estaba vacío con un "—" — confuso para el
+    // owner solitario (caso típico early adopter). Con el seed, el dropdown
+    // ya muestra su propio nombre seleccionable, sin obligar a configurar
+    // antes. El user puede editarlo / agregar más cuando quiera.
+    // `nombre` viene del destructure del req.body en línea 139.
+    await client.query(
+      `INSERT INTO vendedores (nombre, tenant_id) VALUES ($1, $2)`,
+      [nombre, tenant.id]
+    );
 
     // 6. Token de verificación con TTL 24h.
     const token = generateToken();

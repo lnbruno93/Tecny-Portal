@@ -17,10 +17,23 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockStatus = vi.fn();
+const mockResendVerification = vi.fn();
 vi.mock('../lib/api', () => ({
   onboarding: {
     status: () => mockStatus(),
   },
+  auth: {
+    resendVerification: () => mockResendVerification(),
+  },
+}));
+
+// 2026-06-25 ONB-7: OnboardingCard ahora usa useAuth() para mostrar/ocultar
+// el step "Verificá tu email". Mockeamos el context con user.email_verified=true
+// para que los tests existentes (que no testean el step 0) sigan funcionando.
+// Test específico de ONB-7 abajo overrides este mock con email_verified=false.
+let mockUser = { email_verified: true, email: 'lucas@example.com' };
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: mockUser }),
 }));
 
 import OnboardingCard from './OnboardingCard';
@@ -119,5 +132,61 @@ describe('OnboardingCard', () => {
     expect(hrefs).toContain('/inventario');
     expect(hrefs).toContain('/contactos');
     expect(hrefs).toContain('/ventas');
+  });
+
+  // 2026-06-25 ONB-7 (audit pre-live): step 0 "Verificá tu email" para users
+  // unverified. Antes el OnboardingCard listaba 3 pasos pero ninguno era email;
+  // el bloqueo blando del backend impedía completarlos sin que el card lo
+  // explicara. Ahora se incluye con CTA "Reenviar link" inline.
+  describe('ONB-7: step "Verificá tu email"', () => {
+    beforeEach(() => {
+      // Reset mock entre tests del describe (otros tests usan email_verified=true).
+      mockUser = { email_verified: false, email: 'lucas@example.com' };
+      mockResendVerification.mockReset();
+    });
+
+    it('user unverified → step "Verificá tu email" visible con CTA', async () => {
+      mockStatus.mockResolvedValue({
+        has_productos: false, has_contactos: false, has_ventas: false,
+      });
+      renderCard();
+      expect(await screen.findByText(/verificá tu email/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reenviar link/i })).toBeInTheDocument();
+    });
+
+    it('clickear "Reenviar link" llama API + muestra confirm con email', async () => {
+      mockStatus.mockResolvedValue({
+        has_productos: false, has_contactos: false, has_ventas: false,
+      });
+      mockResendVerification.mockResolvedValue({});
+      renderCard();
+      const btn = await screen.findByRole('button', { name: /reenviar link/i });
+
+      const user = userEvent.setup();
+      await user.click(btn);
+
+      await waitFor(() => expect(mockResendVerification).toHaveBeenCalledTimes(1));
+      // Confirm mensaje incluye el email del user (anti-typo guard).
+      expect(await screen.findByText(/lucas@example\.com/i)).toBeInTheDocument();
+    });
+
+    it('los 4 items completos (email + 3 CRUD) → card NO renderiza', async () => {
+      mockUser = { email_verified: true, email: 'lucas@example.com' };
+      mockStatus.mockResolvedValue({
+        has_productos: true, has_contactos: true, has_ventas: true,
+      });
+      const { container } = renderCard();
+      await waitFor(() => expect(mockStatus).toHaveBeenCalled());
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('3 CRUD completos pero email no verificado → card SIGUE visible', async () => {
+      // Acá mockUser ya está unverified por el beforeEach del describe.
+      mockStatus.mockResolvedValue({
+        has_productos: true, has_contactos: true, has_ventas: true,
+      });
+      renderCard();
+      expect(await screen.findByText(/verificá tu email/i)).toBeInTheDocument();
+    });
   });
 });

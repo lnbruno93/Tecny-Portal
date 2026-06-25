@@ -22,6 +22,7 @@ const origEnv = {
   HCAPTCHA_SECRET: process.env.HCAPTCHA_SECRET,
   HCAPTCHA_FORCE_IN_TESTS: process.env.HCAPTCHA_FORCE_IN_TESTS,
   HCAPTCHA_VERIFY_URL: process.env.HCAPTCHA_VERIFY_URL,
+  HCAPTCHA_OUTAGE_BYPASS: process.env.HCAPTCHA_OUTAGE_BYPASS,
 };
 
 afterEach(() => {
@@ -30,6 +31,8 @@ afterEach(() => {
   process.env.HCAPTCHA_SECRET = origEnv.HCAPTCHA_SECRET;
   process.env.HCAPTCHA_FORCE_IN_TESTS = origEnv.HCAPTCHA_FORCE_IN_TESTS;
   process.env.HCAPTCHA_VERIFY_URL = origEnv.HCAPTCHA_VERIFY_URL;
+  process.env.HCAPTCHA_OUTAGE_BYPASS = origEnv.HCAPTCHA_OUTAGE_BYPASS;
+  if (origEnv.HCAPTCHA_OUTAGE_BYPASS === undefined) delete process.env.HCAPTCHA_OUTAGE_BYPASS;
   jest.restoreAllMocks();
 });
 
@@ -45,13 +48,39 @@ describe('verifyCaptcha — bypass paths', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('HCAPTCHA_ENABLED!=true bypass (incluso fuera de test)', async () => {
+  // SEG-4 (auditoría pre-live 2026-06): el bypass anterior dejaba el signup
+  // abierto a bots en prod si HCAPTCHA_ENABLED no estaba seteado. Ahora
+  // fail-closed en NODE_ENV=production.
+  it('SEG-4: HCAPTCHA_ENABLED!=true en NODE_ENV=production → config_error (fail-closed)', async () => {
     process.env.NODE_ENV = 'production';
     process.env.HCAPTCHA_ENABLED = 'false';
     process.env.HCAPTCHA_SECRET = 'secret';
+    process.env.HCAPTCHA_FORCE_IN_TESTS = '1'; // forzar que NODE_ENV=test no bypasse
     const fetchSpy = jest.spyOn(global, 'fetch');
     const r = await verifyCaptcha('any', '1.2.3.4');
-    expect(r).toEqual({ success: true, bypassed: true });
+    expect(r).toEqual({ success: false, error: 'config_error' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('SEG-4: HCAPTCHA_ENABLED!=true en NODE_ENV=development → bypass (dev_bypass)', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.HCAPTCHA_ENABLED = 'false';
+    delete process.env.HCAPTCHA_FORCE_IN_TESTS;
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const r = await verifyCaptcha('any', '1.2.3.4');
+    expect(r).toMatchObject({ success: true, bypassed: true, reason: 'dev_bypass' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('SEG-4: HCAPTCHA_OUTAGE_BYPASS=true → bypass aunque NODE_ENV=production (kill-switch deliberado)', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.HCAPTCHA_ENABLED = 'true';
+    process.env.HCAPTCHA_SECRET = 'secret';
+    process.env.HCAPTCHA_OUTAGE_BYPASS = 'true';
+    process.env.HCAPTCHA_FORCE_IN_TESTS = '1';
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const r = await verifyCaptcha('any', '1.2.3.4');
+    expect(r).toMatchObject({ success: true, bypassed: true, reason: 'outage_bypass' });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

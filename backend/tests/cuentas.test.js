@@ -27,6 +27,7 @@ let adminToken;
 let opToken;     // usuario sin permiso cuentas
 let clienteId;
 let movCompraId;
+let cajaUsdId;   // SOL-2: pago/parte_de_pago requieren caja_id
 
 beforeAll(async () => {
   pool = await setupTestDb();
@@ -48,6 +49,13 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ username: 'opcc', password: 'op_cc_pass123' });
   opToken = r2.body.token;
+
+  // SOL-2: caja USD para los tests que registran pagos. El schema ahora exige
+  // caja_id para tipo='pago'/'parte_de_pago' (antes se aceptaba null).
+  const cajasRes = await request(app)
+    .get('/api/cajas/cajas')
+    .set('Authorization', `Bearer ${adminToken}`);
+  cajaUsdId = (cajasRes.body || []).find(c => c.moneda === 'USD')?.id;
 });
 
 afterAll(async () => {
@@ -110,7 +118,7 @@ describe('POST /api/cuentas/clientes', () => {
 
     // un pago posterior reduce el saldo
     await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
-      .send({ cliente_cc_id: res.body.id, fecha: '2026-05-26', tipo: 'pago', monto_total: 500 });
+      .send({ cliente_cc_id: res.body.id, fecha: '2026-05-26', tipo: 'pago', monto_total: 500, caja_id: cajaUsdId });
     const det2 = await request(app).get(`/api/cuentas/clientes/${res.body.id}`).set('Authorization', `Bearer ${adminToken}`);
     expect(Number(det2.body.saldo)).toBe(1000); // 1500 - 500
   });
@@ -300,7 +308,7 @@ describe('POST /api/cuentas/movimientos — saldo (secuencial)', () => {
     const pago = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
       .send({
         cliente_cc_id: clienteId, fecha: '2026-03-10', tipo: 'pago', monto_total: 20000,
-        items: [{ producto: 'ignorado' }],
+        caja_id: cajaUsdId, items: [{ producto: 'ignorado' }],
       });
     expect(pago.status).toBe(201);
     expect(pago.body.items).toEqual([]); // pago no tiene items
@@ -308,7 +316,7 @@ describe('POST /api/cuentas/movimientos — saldo (secuencial)', () => {
 
     // 3) PARTE_DE_PAGO 5000 → saldo 25000
     const pp = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
-      .send({ cliente_cc_id: clienteId, fecha: '2026-03-15', tipo: 'parte_de_pago', monto_total: 5000 });
+      .send({ cliente_cc_id: clienteId, fecha: '2026-03-15', tipo: 'parte_de_pago', monto_total: 5000, caja_id: cajaUsdId });
     expect(pp.status).toBe(201);
     expect(await detalle()).toBe(25000);
 
@@ -1320,7 +1328,7 @@ describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
   it('item de movimiento que NO es tipo "compra" → 409', async () => {
     // Crear un pago y intentar devolver "su item" (no tiene, pero el mov no es compra)
     const pago = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
-      .send({ cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'pago', monto_total: 500 });
+      .send({ cliente_cc_id: cliId, fecha: '2026-06-09', tipo: 'pago', monto_total: 500, caja_id: cajaUsdId });
     expect(pago.status).toBe(201);
     // No tiene items pero igual probamos con un id cualquiera; el endpoint
     // valida el tipo del movimiento ANTES de buscar el item.
