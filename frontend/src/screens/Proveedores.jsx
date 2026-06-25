@@ -7,6 +7,7 @@ import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { useAuth } from '../contexts/AuthContext';
+import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner gating
 import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
@@ -47,7 +48,10 @@ export default function Proveedores() {
   // el componente sin AuthProvider. En prod siempre hay user (RequireAuth
   // gate-keep arriba en App.jsx).
   const { user }  = useAuth() || {};
-  const isAdmin   = user?.role === 'admin';
+  // 2026-06-25 Bug #1: usar isTenantAdmin (incluye tenant_cap_rol owner+admin).
+  // Antes el owner no podía usar el bulk-delete cascade de proveedores, aunque
+  // el backend (adminOnly middleware) sí lo autorizaba.
+  const isAdmin   = isTenantAdmin(user);
   const { setPrimaryAction } = usePageActions();
 
   const [search, setSearch]   = useState('');

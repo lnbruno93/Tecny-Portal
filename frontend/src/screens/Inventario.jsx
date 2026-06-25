@@ -9,6 +9,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner gating
 import { useConfirm } from '../components/ConfirmModal';
 import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
@@ -101,7 +102,10 @@ export default function Inventario() {
   // el componente sin AuthProvider. En prod siempre hay user (RequireAuth
   // gate-keep arriba en App.jsx).
   const { user } = useAuth() || {};
-  const isAdmin = user?.role === 'admin';
+  // 2026-06-25 Bug #1: usar isTenantAdmin (incluye tenant_cap_rol owner+admin)
+  // en vez de solo `user?.role === 'admin'`. Antes el owner del tenant NO veía
+  // el botón "Vaciar stock + compras" porque su role global no es 'admin'.
+  const isAdmin = isTenantAdmin(user);
   const { setPrimaryAction } = usePageActions();
 
   const [productos, setProductos] = useState([]);
