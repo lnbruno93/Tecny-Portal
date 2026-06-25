@@ -65,7 +65,7 @@ function daysUntil(paidUntilDate) {
 async function runPaidUntilWarning() {
   const startedAt = Date.now();
   let sentCount = 0;
-  let candidateCount = 0;
+  let candidateCount;
 
   try {
     // 1. Candidatos: tenants con paid_until en ventana [hoy, hoy+3] que NO
