@@ -16,10 +16,11 @@
 // los recurrentes que se editan abajo. Cuando Lucas agrega/edita/borra un
 // gasto en el panel desplegable, refrescamos el dashboard.
 
-import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { Icons } from '../components/Icons';
 import { sanidad as sanidadApi, egresos as egresosApi } from '../lib/api';
 import { fmt } from '../lib/format';
+import useModal from '../lib/useModal';
 
 // Helper: nombre del mes corto a partir de 'YYYY-MM'.
 function labelMes(periodo) {
@@ -581,17 +582,42 @@ function ProyeccionGastosPanel({ onChange }) {
 
 // Sub-componente: row editable (crear nuevo o editar existente).
 function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onSave, onCancel }) {
-  async function handleCategoriaChange(value) {
+  // 2026-06-25 UX-4 (audit pre-live): reemplazamos `window.prompt()` por un
+  // mini-modal in-app. El prompt nativo rompe el theme dark (popup blanco) y
+  // no soporta validación. Ahora: select "+ Nueva categoría…" abre el modal,
+  // el user tipea el nombre, Crear llama onCreateCategoria y setea draft.
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatNombre, setNewCatNombre] = useState('');
+  const [creatingCat, setCreatingCat] = useState(false);
+  const newCatModalRef = useRef(null);
+  useModal({ open: showNewCat, onClose: () => setShowNewCat(false), overlayRef: newCatModalRef });
+
+  function handleCategoriaChange(value) {
     if (value === '__new__') {
-      const nombre = prompt('Nombre de la nueva categoría:');
-      if (!nombre) return;
-      const newId = await onCreateCategoria(nombre);
-      if (newId) setDraft({ ...draft, categoria_id: String(newId) });
+      setNewCatNombre('');
+      setShowNewCat(true);
     } else {
       setDraft({ ...draft, categoria_id: value });
     }
   }
+
+  async function handleCreateCat(e) {
+    e?.preventDefault?.();
+    const nombre = newCatNombre.trim();
+    if (!nombre) return;
+    setCreatingCat(true);
+    try {
+      const newId = await onCreateCategoria(nombre);
+      if (newId) setDraft({ ...draft, categoria_id: String(newId) });
+      setShowNewCat(false);
+      setNewCatNombre('');
+    } finally {
+      setCreatingCat(false);
+    }
+  }
+
   return (
+    <Fragment>
     <tr style={{ background: 'var(--surface-2)' }}>
       <td>
         <div className="flex-row" style={{ gap: 6, flexDirection: 'column', alignItems: 'stretch' }}>
@@ -672,6 +698,45 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
         </div>
       </td>
     </tr>
+    {showNewCat && (
+      <tr><td colSpan={4} style={{ padding: 0 }}>
+        <div
+          ref={newCatModalRef}
+          className="modal-overlay"
+          onClick={e => e.target === e.currentTarget && setShowNewCat(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sanidad-new-cat-title"
+        >
+          <form className="modal" style={{ maxWidth: 360 }} onSubmit={handleCreateCat} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd">
+              <h3 id="sanidad-new-cat-title">Nueva categoría</h3>
+              <button type="button" className="icon-btn" onClick={() => setShowNewCat(false)} aria-label="Cerrar">
+                <Icons.X size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <label className="lbl">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
+              <input
+                className="input"
+                autoFocus
+                value={newCatNombre}
+                onChange={e => setNewCatNombre(e.target.value)}
+                placeholder='ej: "Servicios", "Comisiones"'
+                maxLength={60}
+              />
+            </div>
+            <div className="modal-ft">
+              <button type="button" className="btn btn-ghost" onClick={() => setShowNewCat(false)}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={creatingCat || !newCatNombre.trim()}>
+                {creatingCat ? 'Creando…' : 'Crear'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </td></tr>
+    )}
+    </Fragment>
   );
 }
 
