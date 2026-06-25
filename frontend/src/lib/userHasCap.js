@@ -58,3 +58,19 @@ export function userHasAnyCap(user, slugs) {
   if (!set) return false;
   return slugs.some(s => set.has(s));
 }
+
+// 2026-06-25 Bug #1 (primer cliente real): centraliza el check de "admin"
+// para UI gating. Antes había `user?.role === 'admin'` esparcido en
+// Cotizador/Inventario/Proveedores/Shell — pero ese chequea SOLO el rol
+// GLOBAL, ignorando el rol POR TENANT. Resultado: un owner del tenant
+// veía secciones read-only y botones admin escondidos, cuando el backend
+// SÍ lo autorizaba (adminOnly middleware acepta owner+admin tenant_cap_rol).
+//
+// Usar este helper en cualquier UI gating tipo "solo admin/owner ve esto".
+// El bypass para super-admin global (role='admin') se preserva — ese rol
+// existe para soporte/debugging de Tecny, no es un rol cliente.
+export function isTenantAdmin(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true; // super-admin global de la plataforma
+  return user.tenant_cap_rol === 'owner' || user.tenant_cap_rol === 'admin';
+}

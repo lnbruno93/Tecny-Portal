@@ -4,6 +4,7 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
 import { tenantProfile } from '../lib/api'; // 2026-06-22 fix multi-tenant Google profile
 import { useAuth } from '../contexts/AuthContext'; // 2026-06-22 tab Configuración (Mi negocio)
+import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner edit
 import BusinessProfileSection from '../components/BusinessProfileSection'; // idem
 
 // 2026-06-22 fix: arma la oración "Nos encontrás en Google como..." dinámicamente
@@ -677,7 +678,12 @@ export default function Cotizador() {
   // se preste a menos confusión. El form completo aparece solo a admins; los
   // vendedores comunes ven una vista read-only desde la misma tab.
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  // 2026-06-25 Bug #1: usar isTenantAdmin que también acepta tenant_cap_rol
+  // ∈ {owner, admin}. Antes era `user?.role === 'admin'` (rol GLOBAL), lo
+  // que bloqueaba al owner del tenant de editar el nombre del negocio.
+  // El backend (tenant-profile.js) acepta owner via adminOnly middleware —
+  // el bug era 100% frontend. Reportado por primer cliente real.
+  const isAdmin = isTenantAdmin(user);
 
   return (
     <div>

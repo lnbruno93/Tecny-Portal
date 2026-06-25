@@ -14,7 +14,7 @@ import ExpiredBanner from './ExpiredBanner';
 import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
 import { alertas as alertasApi } from '../lib/api';
-import { userHasCap, userHasAnyCap } from '../lib/userHasCap';
+import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
@@ -319,7 +319,10 @@ function UserPill() {
 
   const initials = getInitials(user.nombre || user.username);
   const displayName = user.nombre || user.username;
-  const roleLabel = user.role === 'admin' ? 'Admin' : 'Operador';
+  // 2026-06-25 Bug #1: el label del avatar mostraba "Operador" al owner del
+  // tenant — desconcertante para un dueño de negocio. Ahora usa isTenantAdmin
+  // que también acepta tenant_cap_rol=owner/admin. Un owner verá "Admin".
+  const roleLabel = isTenantAdmin(user) ? 'Admin' : 'Operador';
 
   return (
     <>

@@ -6,7 +6,7 @@
 // caps===null (server-side bypass) que era el más fácil de romper.
 
 import { describe, it, expect } from 'vitest';
-import { userHasCap, userHasAnyCap } from './userHasCap';
+import { userHasCap, userHasAnyCap, isTenantAdmin } from './userHasCap';
 
 describe('userHasCap', () => {
   it('user null → false', () => {
@@ -94,5 +94,38 @@ describe('userHasAnyCap', () => {
 
   it('caps undefined → false sin bypass', () => {
     expect(userHasAnyCap({ role: 'op' }, ['config.general'])).toBe(false);
+  });
+});
+
+// 2026-06-25 Bug #1 (primer cliente real): isTenantAdmin centraliza el check
+// "puede hacer cosas de admin" para gating de UI. Antes había `user.role
+// === 'admin'` esparcido que ignoraba tenant_cap_rol y bloqueaba owners.
+describe('isTenantAdmin', () => {
+  it('user null/undefined → false', () => {
+    expect(isTenantAdmin(null)).toBe(false);
+    expect(isTenantAdmin(undefined)).toBe(false);
+  });
+
+  it('role admin global → true (super-admin de la plataforma)', () => {
+    expect(isTenantAdmin({ role: 'admin' })).toBe(true);
+  });
+
+  it('tenant_cap_rol owner → true (caso del primer cliente real)', () => {
+    expect(isTenantAdmin({ role: 'op', tenant_cap_rol: 'owner' })).toBe(true);
+  });
+
+  it('tenant_cap_rol admin → true', () => {
+    expect(isTenantAdmin({ role: 'op', tenant_cap_rol: 'admin' })).toBe(true);
+  });
+
+  it('tenant_cap_rol vendedor/encargado/custom → false', () => {
+    expect(isTenantAdmin({ role: 'op', tenant_cap_rol: 'vendedor' })).toBe(false);
+    expect(isTenantAdmin({ role: 'op', tenant_cap_rol: 'encargado' })).toBe(false);
+    expect(isTenantAdmin({ role: 'op', tenant_cap_rol: 'invitado' })).toBe(false);
+    expect(isTenantAdmin({ role: 'op', tenant_cap_rol: 'custom' })).toBe(false);
+  });
+
+  it('role no-admin y sin tenant_cap_rol → false', () => {
+    expect(isTenantAdmin({ role: 'op' })).toBe(false);
   });
 });
