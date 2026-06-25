@@ -760,16 +760,21 @@ app.use((err, req, res, _next) => {
   // en el response (mensaje + stack truncado + code SQL si lo hay). Esto permite
   // debuggear bugs de staging sin pelear con logs de Railway.
   //
-  // Detección: NODE_ENV != 'production' Ó el host contiene 'staging'/'localhost'.
-  // El check de host cubre el caso Railway: por default Railway setea
-  // NODE_ENV=production en TODOS los environments (staging y prod), así que el
-  // check basado solo en NODE_ENV no distingue entre ambos. El host sí
+  // Detección: el HOST debe contener 'staging' / 'localhost' / '127.'. Railway
+  // setea NODE_ENV=production en TODOS los environments (staging y prod), así
+  // que el host es la única señal confiable que distingue ambos
   // (tecny-backend-staging.up.railway.app vs tecny-backend-production.up.railway.app).
   //
-  // Seguridad: el detalle solo se expone si (a) el caller es admin, (b) el host
-  // NO es production. En el host de producción real siempre se devuelve el
-  // mensaje genérico, sin importar NODE_ENV. Defensa en profundidad: aunque
-  // alguien cambie NODE_ENV en prod, el host gatekeeps.
+  // Seguridad: el detalle solo se expone si (a) el caller es admin Y (b) el
+  // host NO es production. En el host de producción real siempre se devuelve
+  // el mensaje genérico.
+  //
+  // SEG-5 (auditoría pre-live 2026-06): antes el gate era
+  //   isNonProdHost || NODE_ENV !== 'production'
+  // un OR que creaba una vía fail-open: si por alguna razón NODE_ENV terminaba
+  // != 'production' en el host real de prod (CI bug, env override, rollback
+  // con config vieja), el debug leakeaba a un admin atacante. Ahora usamos
+  // SÓLO el host (señal autoritativa) — NODE_ENV ya no afecta la decisión.
   const body = { error: status >= 500 ? 'Error interno' : (err.message || 'Error') };
   const host = req.headers?.host || '';
   const isNonProdHost = host.includes('staging')
@@ -777,7 +782,7 @@ app.use((err, req, res, _next) => {
                      || host.startsWith('127.');
   const exposeDebug = status >= 500
                    && req.user?.role === 'admin'
-                   && (isNonProdHost || process.env.NODE_ENV !== 'production');
+                   && isNonProdHost;
   if (exposeDebug) {
     body._debug = {
       message: err.message,
