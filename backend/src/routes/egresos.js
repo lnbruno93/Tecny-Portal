@@ -292,6 +292,15 @@ router.put('/:id', egresosCargar, validate(updateEgresoSchema), async (req, res,
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Para marcar un egreso como pagado hay que indicar de qué caja sale' });
     }
+    // 2026-06-24 SOL-1 (audit pre-live): validar el merged result. Si moneda
+    // queda en ARS, tc TIENE que ser > 0 — sin esto, toUsd(monto, 'ARS', null)
+    // devuelve 0 y el dashboard descuenta USD 0 de la ganancia neta (silent).
+    // El schema valida shape (`tc` undefined → ok porque hidrata de fila vieja),
+    // pero post-merge hay que re-chequear.
+    if (next_.moneda === 'ARS' && (!next_.tc || Number(next_.tc) <= 0)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'TC requerido para egresos en ARS', path: ['tc'] });
+    }
     const monto_usd = round2(toUsd(Number(next_.monto), next_.moneda, next_.tc));
     const { rows } = await client.query(
       `UPDATE egresos SET fecha=$1, concepto=$2, categoria_id=$3, monto=$4, moneda=$5, tc=$6,

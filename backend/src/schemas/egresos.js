@@ -28,6 +28,11 @@ const updateRecurrenteSchema = createRecurrenteSchema.partial().refine(
 );
 
 // ── Egresos ──
+// 2026-06-24 SOL-1 (audit pre-live): TC obligatorio cuando moneda='ARS'.
+// Antes: si el operador cargaba un egreso en ARS sin tc, `toUsd(monto, 'ARS', null)`
+// devolvía 0 silenciosamente → el dashboard descontaba USD 0 de la ganancia
+// neta, dejando ganancia inflada. El operador no veía error, los KPIs mentían.
+// El mismo patrón ya existe en cobranzaItemSchema (cuentas.js:91).
 const createEgresoSchema = z.object({
   fecha,
   concepto:       z.string().trim().min(1, 'Concepto requerido').max(200),
@@ -38,12 +43,25 @@ const createEgresoSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   estado:         z.enum(['pendiente', 'pagado']).default('pendiente'),
   notas:          z.string().trim().max(1000).optional().nullable(),
-}).strict().refine(d => d.estado !== 'pagado' || d.metodo_pago_id, {
-  message: 'Para marcar un egreso como pagado hay que indicar de qué caja sale',
-  path: ['metodo_pago_id'],
-});
+}).strict()
+  .refine(d => d.estado !== 'pagado' || d.metodo_pago_id, {
+    message: 'Para marcar un egreso como pagado hay que indicar de qué caja sale',
+    path: ['metodo_pago_id'],
+  })
+  .refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
+    message: 'TC requerido para egresos en ARS',
+    path: ['tc'],
+  });
 
 // Update: todos opcionales (incluye cambiar estado pendiente↔pagado).
+// SOL-1: TC obligatorio en updates que dejan moneda ARS sin tc seteado.
+// Como en el partial puede venir solo `moneda` o solo `tc` o solo `monto`,
+// el refine es defensivo: si la moneda explícitamente queda en 'ARS', tc
+// también tiene que estar (o ya venir != null/>0). El handler de la ruta
+// hidrata `tc` desde la fila vieja cuando el partial no lo manda — pero
+// no podemos saberlo en el schema. Aceptamos un poco de laxitud: solo
+// rechazamos cuando el caller pasa `moneda: 'ARS'` Y `tc` explícitamente
+// null/0. Si pasa solo `moneda: 'ARS'` sin tc, el handler debe re-validar.
 const updateEgresoSchema = z.object({
   fecha:          fecha.optional(),
   concepto:       z.string().trim().min(1).max(200).optional(),
@@ -54,7 +72,12 @@ const updateEgresoSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   estado:         z.enum(['pendiente', 'pagado']).optional(),
   notas:          z.string().trim().max(1000).optional().nullable(),
-}).strict().refine(d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' });
+}).strict()
+  .refine(d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' })
+  .refine(d => d.moneda !== 'ARS' || d.tc === undefined || (d.tc && d.tc > 0), {
+    message: 'TC requerido para egresos en ARS',
+    path: ['tc'],
+  });
 
 const queryEgresosSchema = z.object({
   desde:        z.string().date().optional(),

@@ -295,7 +295,17 @@ app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' 
 app.use(pinoHttp({
   logger,
   genReqId: () => require('crypto').randomUUID(),
-  customProps: (req) => ({ userId: req.user?.id, request_id: req.id }),
+  // 2026-06-24 OPS-2 (audit pre-live): agregamos tenantId al customProps.
+  // Antes el log solo llevaba userId + request_id — debugging multi-tenant
+  // requería mapear user_id → tenant_id offline. Con tenantId acá, grep en
+  // Railway logs ahora puede filtrar directo por cliente: { tenantId: 42 }.
+  // req.tenantId queda decorado por el middleware requireAuth (auth.js:109).
+  // Endpoints públicos (signup, login, /health, /ready) no lo tienen → undefined.
+  customProps: (req) => ({
+    userId:    req.user?.id,
+    tenantId:  req.tenantId,
+    request_id: req.id,
+  }),
   autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' },
   serializers: {
     req: (req) => ({ method: req.method, url: req.url, id: req.id }),

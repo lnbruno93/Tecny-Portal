@@ -59,6 +59,45 @@ describe('Egresos — estado y ledger', () => {
     expect(e.status).toBe(400);
   });
 
+  // 2026-06-24 SOL-1 (audit pre-live): TC obligatorio cuando moneda='ARS'.
+  // Antes: el operador podía cargar un egreso en ARS sin tc, monto_usd quedaba
+  // en 0, el dashboard descontaba USD 0 de la ganancia neta → KPI inflado
+  // silenciosamente. Estos tests lockean el guard.
+  describe('SOL-1: TC obligatorio en egresos ARS', () => {
+    it('POST con moneda=ARS sin tc → 400 con mensaje claro', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Alquiler ARS', monto: 100000, moneda: 'ARS' });
+      expect(e.status).toBe(400);
+      expect(JSON.stringify(e.body)).toMatch(/TC.*requerido.*ARS/i);
+    });
+
+    it('POST con moneda=ARS con tc=0 → 400', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Servicios ARS', monto: 50000, moneda: 'ARS', tc: 0 });
+      expect(e.status).toBe(400);
+    });
+
+    it('POST con moneda=ARS con tc>0 → 201 (happy path)', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Internet ARS', monto: 142500, moneda: 'ARS', tc: 1425 });
+      expect(e.status).toBe(201);
+      // monto_usd debe ser ~100 USD (142500 / 1425), no 0.
+      expect(Number(e.body.monto_usd)).toBeCloseTo(100, 1);
+    });
+
+    it('PUT cambiando a moneda=ARS sin tc → 400', async () => {
+      // Creamos uno en USD primero.
+      const created = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Gasto USD', monto: 100, moneda: 'USD' });
+      expect(created.status).toBe(201);
+      // Intentamos cambiarle moneda a ARS sin proveer tc.
+      const upd = await request(app).put(`/api/egresos/${created.body.id}`).set(auth())
+        .send({ moneda: 'ARS' });
+      expect(upd.status).toBe(400);
+      expect(JSON.stringify(upd.body)).toMatch(/TC.*requerido.*ARS/i);
+    });
+  });
+
   it('borrar un egreso pagado revierte la caja', async () => {
     const saldoAntes = await saldoDe(cajaId);
     const e = await request(app).post('/api/egresos').set(auth())
