@@ -196,8 +196,12 @@ export default function EgresosPanel() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 12 }}>
                   <div className="row" style={{ gap: 12 }}>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha *</label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
-                    <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto *</label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
+                    {/* 2026-06-25 UX-6 (audit pre-live): marker `*` rojo consistente
+                        con el patrón usado en el resto del proyecto (Contactos,
+                        Usuarios, CuentasCC). EgresosPanel era el único que usaba
+                        `*` plano sin estilizar — desprolijo visto lado a lado. */}
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
+                    <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Categoría</label>

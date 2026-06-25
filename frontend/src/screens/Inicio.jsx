@@ -73,8 +73,15 @@ export default function Inicio() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // 2026-06-25 UX-9 (audit pre-live): contador para forzar re-fetch desde el
+  // botón "Reintentar" del error state. El useEffect lo lee como dep y cuando
+  // crece se re-ejecuta toda la carga.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    // Al re-disparar (cambio en reloadKey), volvemos a estado de carga limpio.
+    setLoading(true);
+    setError(null);
     // 2026-06-10 U-04: eliminados los fetches a `comprobantes.totales()` y
     // `cuentas.resumenGeneral()`. Las variables derivadas que dependían de ellos
     // (`comprobantesHoy`, `montoNeto`, `totalDeuda`, `cantClientes`) estaban
@@ -114,7 +121,7 @@ export default function Inicio() {
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, reloadKey]);
 
   // Derived values (only when data is available)
   const pctFin = data ? Number(data.cfg.pct_financiera) : 0;
@@ -193,8 +200,28 @@ export default function Inicio() {
             <div className="sub">{fmtFecha()}</div>
           </div>
         </div>
-        <div style={{ color: 'var(--neg)', fontSize: 13, padding: '12px 0' }}>
-          Error al cargar datos: {error}
+        {/* 2026-06-25 UX-9 (audit pre-live): error state con CTA reintentar.
+            Antes era solo "Error al cargar datos: X" plano — el user veía la
+            pantalla rota sin acción posible salvo refrescar el browser entero.
+            Ahora ofrecemos retry inline (bumpea reloadKey → useEffect re-corre). */}
+        <div className="card card-tight" style={{ borderColor: 'var(--neg)', marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: 'var(--neg)', fontWeight: 600, fontSize: 14 }}>
+                No pudimos cargar el inicio
+              </div>
+              <div className="muted tiny" style={{ marginTop: 4 }}>
+                {error}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => setReloadKey(k => k + 1)}
+            >
+              Reintentar
+            </button>
+          </div>
         </div>
       </div>
     );

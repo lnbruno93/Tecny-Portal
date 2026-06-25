@@ -305,6 +305,17 @@ export default function Login() {
             )}
           </form>
 
+          {/* 2026-06-25 ONB-4 (audit pre-live): link "Crear cuenta" para users
+              que llegan a /login directo (ej. link de invitación) y no tienen
+              cuenta todavía. Antes solo se llegaba a /signup vía Landing — si
+              alguien compartía /login al invitar, el invitado quedaba atrapado. */}
+          {!twofaRequired && (
+            <div className="lg-signup-row" style={{ marginTop: 18, textAlign: 'center', fontSize: 13 }}>
+              <span className="muted">¿No tenés cuenta? </span>
+              <Link to="/signup" className="lg-link">Crear cuenta nueva</Link>
+            </div>
+          )}
+
           <div className="lg-foot">
             <IconCheck />
             Conexión segura · tu sesión queda protegida
