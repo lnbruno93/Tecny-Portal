@@ -58,7 +58,8 @@ const createMovimientoCCSchema = z.object({
   // Hard cap: 10M USD por movimiento. Previene overflow JS Number en sumas
   // de saldos cuando alguien envía 1e18 por error o malicia (auditoría #B-04).
   monto_total:   z.number().positive('El monto debe ser mayor a 0').max(10_000_000, 'El monto excede el máximo permitido (10M USD)'),
-  // Caja donde ingresa el pago (solo aplica a tipos 'pago'/'parte_de_pago')
+  // Caja donde ingresa el pago. Schema permite null/undefined acá; el refine
+  // de abajo lo exige cuando tipo=pago/parte_de_pago/compra (ver SOL-2).
   caja_id:       z.coerce.number().int().positive().optional().nullable(),
   notas:         z.string().trim().max(1000).optional().nullable(),
   // 2026-06-10: estado visual de la venta. Default 'acreditado' (la venta
@@ -67,7 +68,27 @@ const createMovimientoCCSchema = z.object({
   estado:        z.enum(['acreditado', 'pendiente']).optional().default('acreditado'),
   // items solo aplica a compra/devolucion — la ruta ignora items en otros tipos
   items:         z.array(itemMovimientoCCSchema).max(200, 'Máximo 200 ítems por movimiento').optional().default([]),
-}).strict();
+}).strict()
+  // 2026-06-25 SOL-2 (audit pre-live): caja_id obligatorio cuando el
+  // movimiento implica un ingreso/egreso de dinero. Antes el schema lo
+  // permitía null para TODOS los tipos — un POST con tipo='pago' sin caja_id
+  // bajaba la deuda del cliente PERO no acreditaba ninguna caja física. El
+  // dinero "entraba al sistema fantasma" — saldo CC correcto pero el libro
+  // de cajas no veía el cobro, reconciliación rota silenciosamente.
+  //
+  // Tipos que requieren caja_id:
+  //   - 'pago'           — el cliente paga su deuda. Cobramos en alguna caja.
+  //   - 'parte_de_pago'  — pago parcial. Mismo razonamiento.
+  //   - 'compra'         — venta a crédito. Si hay caja, registra el cobro
+  //                        inicial; si no, queda totalmente a crédito. Acá
+  //                        SÍ aceptamos caja_id null (es por diseño).
+  //
+  // El refine valida los 2 primeros casos; 'compra' y otros tipos
+  // ('devolucion', 'ajuste') siguen aceptando caja_id null.
+  .refine(
+    d => !['pago', 'parte_de_pago'].includes(d.tipo) || (d.caja_id != null && d.caja_id > 0),
+    { message: 'caja_id requerido para tipo pago/parte_de_pago', path: ['caja_id'] }
+  );
 
 // PATCH /movimientos/:id/estado — alternar entre acreditado/pendiente desde la grilla.
 const updateEstadoMovimientoCCSchema = z.object({
