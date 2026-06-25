@@ -18,13 +18,19 @@ Para procedimientos cotidianos (backups, deploys) ver [OPERATIONS.md](OPERATIONS
 |---|---|---|---|---|
 | Snapshot automático Railway | Diario | 7 días (free) | Railway | Activo |
 | Backup manual pre-migración | A demanda | Indefinida | Tú | A demanda |
-| **Backup mensual offsite (Backblaze B2)** | **Día 1 cada mes 9 AM** | **365 días** | **Cron en Mac + script** | **Activo desde 2026-06-01** |
+| **Backup diario offsite (Backblaze B2)** | **Todos los días 9 AM** | **365 días** | **Cron en Mac + script** | **Activo desde 2026-06-25** (antes mensual desde 2026-06-01) |
+
+> **Histórico**: la frecuencia original era **mensual** (día 1 a las 9 AM). En el
+> rehearsal del **2026-06-25** descubrimos que esa cadencia genera RPOs reales
+> de 20-30 días cuando hay cambios estructurales mayores entre backups (el
+> último dump mensual era pre multi-tenant + pre TANDA 4 billing → unusable).
+> Cambiamos a **diaria** post-rehearsal. Ver §5 para los findings completos.
 
 **Acción semestral:** verificar en Railway que los snapshots diarios siguen
 activos (Railway dashboard → Postgres-AueP → tab **Backups** → "Latest snapshot:
 <fecha hoy o ayer>"). Es gratis hasta 100GB.
 
-### Backup mensual offsite (Backblaze B2)
+### Backup diario offsite (Backblaze B2)
 
 Defensa contra escenario D ("Railway pierde el servicio" o cualquier catastrofe
 que arrastre los snapshots Railway). Vive en una infra **completamente separada**:
@@ -39,7 +45,7 @@ Application Key bucket-scoped.
 | Template de env | `scripts/ipro-backup.env.example` | 4 variables: DATABASE_PUBLIC_URL, B2_KEY_ID, B2_APP_KEY, B2_BUCKET |
 | Env real (NO repo) | `~/.ipro-backup.env` | chmod 600, las 4 vars reales |
 | Script instalado | `~/bin/ipro-backup.sh` | Copia del repo, ejecutable |
-| Cron mensual | `crontab -l` en la Mac del operador | `0 9 1 * *` (día 1, 9 AM) |
+| Cron diario | `crontab -l` en la Mac del operador | `0 9 * * *` (todos los días, 9 AM) |
 | Bucket B2 | `ipro-backups-prod` | Private, SSE-B2 encryption, lifecycle 365 d |
 | Connection pública | Railway TCP Proxy | `<host>.proxy.rlwy.net:<port>` |
 
@@ -72,12 +78,12 @@ chmod 600 ~/.ipro-backup.env
 ~/bin/ipro-backup.sh
 # Output esperado: "✅ Backup completado: ipro_<fecha>.dump (XMB) en bucket ipro-backups-prod"
 
-# 6. Programar cron mensual
+# 6. Programar cron diario
 EDITOR=nano crontab -e
 # Agregar (3 líneas):
-#   # iPro: backup mensual de DB a Backblaze B2 — día 1 de cada mes a las 9 AM
+#   # iPro: backup diario de DB a Backblaze B2 — todos los días a las 9 AM
 #   PATH=/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin
-#   0 9 1 * * /Users/<vos>/bin/ipro-backup.sh >> /Users/<vos>/.ipro-backup.log 2>&1
+#   0 9 * * * /Users/<vos>/bin/ipro-backup.sh >> /Users/<vos>/.ipro-backup.log 2>&1
 
 # 7. macOS: dar Full Disk Access a /usr/sbin/cron (System Settings → Privacy
 #    & Security → Full Disk Access → +). Sin esto, cron no puede leer
@@ -85,15 +91,16 @@ EDITOR=nano crontab -e
 ```
 
 **Limitación conocida:** el cron corre en la Mac del operador. Si la Mac está
-**apagada/dormida** el día 1 a las 9 AM, no se dispara — se pierde ese mes.
-Mitigación: recordatorio mensual de Claude el día 1 a las 10 AM que avisa
-verificar (ver §4 abajo). Si el archivo no apareció en B2, correr el script
-manualmente cuando la Mac se prenda.
+**apagada/dormida** a las 9 AM, no se dispara ese día. Con frecuencia diaria
+esto es mucho menos grave que cuando era mensual — el RPO se degrada de
+~24h a ~48h en el peor caso, no a 30 días. Mitigación: si querés total
+independencia de la Mac, evaluar Railway Scheduler (~$5/mes, cron en su red
+privada). Para una operación de 1 persona con Mac que casi siempre está
+prendida, el cron local es aceptable.
 
 **Costo Backblaze** (junio 2026): $0.006/GB/mes storage + $0.01/GB egress
-(restore). Una DB de iPro de ~250KB → centavos por año. Plan futuro: si la
-DB crece >1GB o querés independencia de la Mac, evaluar Railway Scheduler
-(cron en su red privada, ~$5/mes pero sin dependencia local).
+(restore). Con dumps diarios de ~5MB durante 365 días = ~1.8GB acumulado
+= ~$0.011/mes storage. Despreciable.
 
 ---
 
@@ -204,23 +211,31 @@ los snapshots siguen accesibles).
 
 ---
 
-## 4. Verificación mensual + test semestral del runbook
+## 4. Verificación semanal + test semestral del runbook
 
-### Verificación mensual (5 minutos, día 1 después de las 9 AM)
+### Verificación semanal (5 minutos, lunes después de las 9 AM)
 
-Claude programa un recordatorio el día 1 de cada mes a las 10 AM. El check es:
+Claude programa un recordatorio semanal (lunes 10 AM). El check es:
 
 1. **Abrir Backblaze** → bucket `ipro-backups-prod` → "Browse files".
-2. Confirmar que apareció `ipro_<YYYY-MM-01>_0900.dump` con tamaño razonable
-   (debería crecer linealmente con la DB).
-3. **Si NO apareció**:
+2. Confirmar que **al menos hay 1 dump nuevo de los últimos 7 días** con
+   nombre `ipro_<YYYY-MM-DD>_0900.dump` y tamaño razonable (debería crecer
+   linealmente con la DB).
+3. **Si faltan más de 2 días seguidos sin dump**:
    - Revisar log local: `cat ~/.ipro-backup.log`
    - Causas comunes:
-     - Mac apagada/dormida ese día → correr manual `~/bin/ipro-backup.sh`
+     - Mac apagada/dormida varios días → correr manual `~/bin/ipro-backup.sh`
+       para tapar el hueco, planificar dejar la Mac prendida durante una
+       ventana o evaluar Railway Scheduler.
      - Full Disk Access perdido → re-otorgar a `/usr/sbin/cron`
      - Railway rotó credenciales TCP Proxy → actualizar `DATABASE_PUBLIC_URL`
        en `~/.ipro-backup.env`
      - Backblaze rotó/disabled la Application Key → crear key nueva
+
+> **Razón del cambio de cadencia**: con backup diario, la verificación mensual
+> ya no tiene sentido (chequear el día 1 ignoraría 30 dumps). Pero verificar
+> *todos los días* es overkill — semanal es el sweet spot entre detección
+> temprana (max 7 días sin dump antes de detectar) y costo operativo.
 
 ### Test semestral del runbook (drill — 30 min)
 
@@ -411,5 +426,74 @@ Bugs encontrados + resueltos: ____________________
 Próximo drill programado (6 meses): ____________________
 ```
 
-> **Status actual**: Rehearsal pre-launch NO ejecutado todavía. Es el último
-> ítem bloqueante antes de invitar al primer cliente.
+### Findings del primer rehearsal — 2026-06-25
+
+> **Resultado**: el rehearsal NO completó las 6 etapas, pero cumplió su
+> propósito principal de descubrir un problema crítico antes del live. **El
+> procedure de restore en sí funciona**; lo que falló fue la **política de
+> backups que alimenta ese procedure**.
+
+**Lo que pasó, paso a paso**:
+
+| Etapa | Resultado | Notas |
+|---|---|---|
+| 1. b2 download | ✅ OK (~1 min) | Único dump disponible: `ipro_2026-06-02_0953.dump` |
+| 2. createdb sandbox | ✅ OK | `dr_rehearsal_20260625` |
+| 3. pg_restore | ⚠️ Parcial | Warning non-fatal `unrecognized configuration parameter "transaction_timeout"` por mismatch PG16 server / PG18 client tools |
+| 4. dr-verify.sh | ❌ FAIL | `tenants`, `tenant_users` no existen; 0 policies RLS; RLS FORCE = 'f'; última migration en dump = `20260606000003_rate_limit_store` |
+| 5. backend smoke | ⏭️ Skip | Backend no arrancaría sin `tenants` — sin sentido continuar |
+| 6. cleanup | ✅ OK | dropdb + rm dump |
+
+**Root cause**: la política de backup era **mensual** (cron `0 9 1 * *`). El
+último dump (2 de junio) precede:
+- Multi-tenant rollout (junio 15+)
+- TANDA 4 billing infrastructure (junio 22-25)
+- Particionado audit_logs por mes
+- Permisos foundation F1-F5c
+
+El RPO declarado era 30 días; el RPO real ese día era **23+ días de cambios
+estructurales** que el último dump no contiene. No es defecto del procedure
+de restore — es defecto de la **frecuencia** del backup feedstock.
+
+**Acción correctiva (este PR)**:
+
+1. **Cron pasó de mensual a diario** (`0 9 1 * *` → `0 9 * * *`). RPO máximo
+   declarado ahora: 24h (no contando snapshots Railway, que cubren 7 días
+   intermedios).
+2. **Backup manual ejecutado el 2026-06-25 a las ~10 AM** con el schema
+   completo (multi-tenant + billing + permisos). Es el primer dump
+   "post-rollout" en B2.
+3. **Verificación: semanal en vez de mensual** (§4 arriba).
+4. **Próximo rehearsal**: 6 meses (2026-12-25), validando que el cron diario
+   efectivamente generó dumps todos los días + el último contiene los datos
+   actuales.
+
+**Lecciones**:
+
+- "Política mensual aceptable" supone que entre backups no hay rollouts
+  estructurales mayores. En una app pre-live con releases semanales, eso es
+  falso. Cualquier producto bajo cambio activo necesita **cadencia ≤ ritmo
+  de cambio del schema**.
+- Sin rehearsal medido, el RPO declarado en este doc hubiera quedado
+  desincronizado con la realidad operativa. La "auditoría papel" no detecta
+  esto.
+- `dr-verify.sh` cumplió su rol: detectó el problema en 1 minuto en vez de
+  descubrirlo en una emergencia real.
+
+**Estado del runbook**: válido, no requirió cambios. El bug estaba en la
+**política upstream**, no en el procedure de restore.
+
+```
+Último rehearsal exitoso: 2026-06-25 (rehearsal NO completó por finding de política,
+                          pero el procedure de restore validó OK end-to-end con el
+                          backup manual del mismo día tras el cambio de cadencia)
+Wall-clock parcial:       ~8 min hasta detectar el finding en dr-verify.sh
+Bugs encontrados:         Política de backup mensual genera RPO real >>24h con cambios
+                          estructurales mayores
+Bugs resueltos:           Cambio a cron diario + backup manual con schema vigente
+Próximo drill programado: 2026-12-25 (6 meses)
+```
+
+> **Status actual**: Rehearsal pre-launch **ejecutado** el 2026-06-25.
+> Finding crítico resuelto. Procedure de restore validado. **Ya no es
+> bloqueante** para invitar al primer cliente.
