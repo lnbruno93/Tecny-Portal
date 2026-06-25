@@ -96,6 +96,13 @@ async function setupTestDb() {
   // Sin esto, el TRUNCATE de arriba deja la tabla vacía y todos los endpoints
   // que leen pct_financiera caen al fallback 0 — rompe tests de comprobantes
   // manuales, ventas con financiera, caja-ledger.
+  //
+  // NOTA: `tenants` deliberadamente NO está en el TRUNCATE. Truncarla con
+  // CASCADE arrastra todas las tablas que FK a tenants (~30 tablas) y rompe
+  // RLS y assumptions de muchos suites. Los tests del superAdmin que asumen
+  // tenant=1 fallan por acumulación de tenants de runs viejos — eso queda
+  // como follow-up (task #437) en un PR separado con migration de cleanup
+  // o estrategia distinta.
   await pool.query(`
     INSERT INTO config (id, tenant_id, pct_financiera) VALUES (1, 1, 0)
     ON CONFLICT (tenant_id, id) DO NOTHING
