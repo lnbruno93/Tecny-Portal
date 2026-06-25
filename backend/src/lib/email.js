@@ -84,7 +84,7 @@ function _verificationHtml({ name, verifyUrl }) {
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
         <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
-          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
+          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:18px;letter-spacing:-0.04em;">T</div>
           <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny</span>
         </td></tr>
         <tr><td style="padding:36px 36px 12px;">
@@ -132,7 +132,7 @@ function _welcomeHtml({ name }) {
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
         <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
-          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
+          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:18px;letter-spacing:-0.04em;">T</div>
           <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny</span>
         </td></tr>
         <tr><td style="padding:36px 36px 24px;">
@@ -286,7 +286,7 @@ function _passwordResetHtml({ name, resetUrl, ttlHours }) {
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
         <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
-          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:14px;letter-spacing:-0.04em;">iP</div>
+          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:18px;letter-spacing:-0.04em;">T</div>
           <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny</span>
         </td></tr>
         <tr><td style="padding:36px 36px 12px;">
@@ -395,4 +395,10 @@ module.exports = {
   sendPasswordResetEmail,
   _getTestQueue,
   _resetTestQueue,
+  // Helpers exportados solo para que los tests puedan snapshotear el HTML
+  // (ONB-1 audit pre-live 2026-06-24: verificamos que el logo refleja Tecny,
+  // no "iP" residual del rebrand). No usar fuera de tests.
+  _verificationHtml,
+  _welcomeHtml,
+  _passwordResetHtml,
 };

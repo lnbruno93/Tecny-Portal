@@ -29,28 +29,27 @@ async function resolveUserTenant(userId) {
 
   if (rows[0]) return rows[0];
 
-  // 2026-06-18 #319 hygiene: el fallback NO debería dispararse en producción.
-  // Todos los users post-multitenant-PR1 tienen row en tenant_users (backfill
-  // + signup endpoint los crea siempre, en la misma tx que crea el user).
-  // Si llegamos acá, es un edge case sospechoso:
-  //   - Race condition raro en alguna tx (no debería ocurrir).
-  //   - User legacy pre-PR1 que escapó al backfill (tampoco debería existir).
-  //   - Bug nuevo en algún flow que crea users sin bridge.
+  // 2026-06-24 SEG-2 (audit pre-live, perfeccionismo go-live):
+  // antes devolvíamos un fallback silencioso `{ tenant_id: 1, rol: 'member' }`
+  // con WARN log. El problema: fail-OPEN en una decisión de aislamiento.
+  // Si un user llegaba acá (race en signup parcial, backfill incompleto,
+  // bug en algún flow que crea users sin bridge), terminaba viendo datos
+  // de tenant 1 (Tecny, el tenant del owner del SaaS).
   //
-  // Log como WARN: el sistema NO se rompe (el fallback funciona), pero hay
-  // que investigar. WARN dispara alerta en Sentry/observabilidad sin afectar
-  // al user. El equipo OPS revisa y decide: mover al tenant correcto, o
-  // deshabilitar el user si es zombi.
+  // Ahora fail-CLOSED: throw 401 con código NO_TENANT. El caller (login,
+  // /me) lo convierte en respuesta 401 al cliente, que debe forzar logout.
+  // El user queda bloqueado hasta que OPS lo asigne manualmente a un tenant.
   //
-  // SEGURIDAD: el fallback asigna al user a tenant 1 (Tecny, el tenant
-  // histórico — ex "iPro Original"). En este escenario, el user vería data
-  // del owner del SaaS — potencial data leak. Por eso la alerta tiene que
-  // llegar rápido.
+  // Se sigue emitiendo el WARN para que aparezca en Sentry/observabilidad
+  // (incidente operacional que requiere intervención humana).
   logger.warn(
-    { userId, fallback_tenant_id: 1 },
-    'resolveUserTenant: user sin row en tenant_users — fallback a tenant 1 (potencial data leak)'
+    { userId },
+    'resolveUserTenant: user sin row en tenant_users — fail-closed 401 NO_TENANT'
   );
-  return { tenant_id: 1, rol: 'member' };
+  const err = new Error('El usuario no está asignado a una organización. Contactá soporte.');
+  err.status = 401;
+  err.code = 'NO_TENANT';
+  throw err;
 }
 
 module.exports = { resolveUserTenant };

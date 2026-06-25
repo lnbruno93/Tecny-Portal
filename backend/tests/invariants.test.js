@@ -14,7 +14,7 @@
  */
 const request = require('supertest');
 const app = require('../src/app');
-const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
+const { setupTestDb, teardownTestDb, TEST_USER, createTestUser } = require('./helpers/setup');
 const { evaluarTodos, INVARIANTES, resumir } = require('../src/lib/checkInvariants');
 
 let pool, token;
@@ -150,16 +150,15 @@ describe('checkInvariants — endpoint admin', () => {
   });
 
   it('Con user no-admin → 403', async () => {
-    // Crear usuario non-admin
-    const bcrypt = require('bcrypt');
-    const hash = await bcrypt.hash('userpass123', 10);
+    // SEG-2: createTestUser seedea tenant_users + tenant_user_roles
+    // para que el login no rebote NO_TENANT.
     // No hay UNIQUE en username; limpiamos previo por las dudas.
     await pool.query(`DELETE FROM users WHERE username = 'testuser_inv'`);
-    await pool.query(
-      `INSERT INTO users (nombre, username, email, password_hash, role)
-       VALUES ('Test User', 'testuser_inv', 'testuser_inv@test.local', $1, 'op')`,
-      [hash]
-    );
+    await createTestUser(pool, {
+      nombre: 'Test User', username: 'testuser_inv',
+      email: 'testuser_inv@test.local', password: 'userpass123',
+      role: 'op',
+    });
     const login = await request(app).post('/api/auth/login')
       .send({ username: 'testuser_inv', password: 'userpass123' });
     const userToken = login.body.token;

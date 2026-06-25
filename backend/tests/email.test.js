@@ -209,4 +209,28 @@ describe('lib/email.js — TANDA 2.2 Fase B', () => {
       expect(html).toContain('&lt;script&gt;');
     });
   });
+
+  // ── ONB-1: branding Tecny (no residuo "iP" del rebrand) ────────────────
+  // 2026-06-24 audit pre-live: el logo del header de los emails decía "iP"
+  // hardcoded (residuo del rebrand iPro → Tecny). Primer mensaje que un
+  // early adopter recibe → marca el email como sospechoso/phishing. Estos
+  // tests lockean el branding.
+  describe('ONB-1 branding Tecny en logos de emails', () => {
+    const cases = [
+      ['_verificationHtml',  () => ({ name: 'Lucas', verifyUrl: 'https://tecnyapp.com/v?t=x' })],
+      ['_welcomeHtml',       () => ({ name: 'Lucas' })],
+      ['_passwordResetHtml', () => ({ name: 'Lucas', resetUrl: 'https://tecnyapp.com/r?t=x', ttlHours: 1 })],
+    ];
+
+    test.each(cases)('%s NO contiene logo "iP" (residuo rebrand)', (fnName, makeArgs) => {
+      jest.resetModules();
+      const email = require('../src/lib/email');
+      const html = email[fnName](makeArgs());
+      // El logo era <div ...>iP</div>. Ahora debe ser "T". Si alguien
+      // revierte el cambio el test atrapa la regresión inmediatamente.
+      expect(html).not.toMatch(/>iP</);
+      // Debe mencionar Tecny en algún lado (subject/title/header).
+      expect(html).toMatch(/Tecny/i);
+    });
+  });
 });

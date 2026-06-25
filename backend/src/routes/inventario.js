@@ -106,14 +106,16 @@ router.post('/categorias/bulk', validate(nombresBulkSchema), async (req, res, ne
     // 2026-06-15 multi-tenant: SET LOCAL después del BEGIN para que la tx
     // respete RLS. Aplica solo a esta tx — el client vuelve al pool limpio.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
-    // ON CONFLICT con el índice parcial idx_categorias_nombre (LOWER(nombre) WHERE
-    // deleted_at IS NULL). Para evitar el límite de la inferencia con predicado
-    // — algunas versiones requieren WHERE — usamos el constraint inference por
-    // expresión. Los nombres que ya existen se ignoran (DO NOTHING).
+    // ON CONFLICT con el índice parcial idx_categorias_tenant_nombre
+    // (tenant_id, LOWER(nombre) WHERE deleted_at IS NULL). 2026-06-24 ONB-3:
+    // el índice cambió de global a per-tenant en migration
+    // 20260624110000_categorias_unique_per_tenant — antes era LOWER(nombre)
+    // global. El INSERT no necesita tenant_id explícito porque la dynamic
+    // default de RLS lo setea (current_setting('app.current_tenant')).
     await client.query(
       `INSERT INTO categorias (nombre)
        SELECT unnest($1::text[])
-       ON CONFLICT (LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING`,
+       ON CONFLICT (tenant_id, LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING`,
       [inputDedup]
     );
     // SELECT para obtener id de TODOS (recién creados + ya existentes).

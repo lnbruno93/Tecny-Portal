@@ -61,6 +61,14 @@ const DEFAULT_CAJAS = [
   { nombre: 'Banco Pesos',    moneda: 'ARS', orden: 3, es_financiera: false },
 ];
 
+// 2026-06-24 ONB-3 (audit pre-live): 4 categorías default. Sin esto, el primer
+// producto que el owner intenta cargar desde el OnboardingCard rebota con
+// "La categoría es obligatoria" (productos.categoria_id requerido por
+// inventario.js:65). El user debía cerrar el modal, ir a "Categorías &
+// Depósitos", crear una, volver al modal — fricción en el step #1 del flow.
+// Estas 4 cubren el ~90% de los negocios de revendedores tech.
+const DEFAULT_CATEGORIAS = ['Celulares', 'Accesorios', 'Servicios', 'Otros'];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 /** Slugifica un texto: lowercase, sin diacríticos, [^a-z0-9-] → '-', trim. */
@@ -260,6 +268,17 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
         `INSERT INTO metodos_pago (nombre, moneda, orden, es_financiera, tenant_id)
            VALUES ($1, $2, $3, $4, $5)`,
         [caja.nombre, caja.moneda, caja.orden, caja.es_financiera, tenant.id]
+      );
+    }
+
+    // 5b. 2026-06-24 ONB-3: seed de categorías default. Sin esto, el step #1
+    // del OnboardingCard ("Agregá tu primer producto") rebota con 400 porque
+    // productos.categoria_id es obligatorio. Mismo patrón que cajas — tenant_id
+    // explícito porque categorias tiene RLS.
+    for (const nombre of DEFAULT_CATEGORIAS) {
+      await client.query(
+        `INSERT INTO categorias (nombre, tenant_id) VALUES ($1, $2)`,
+        [nombre, tenant.id]
       );
     }
 

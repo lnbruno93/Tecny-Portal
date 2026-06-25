@@ -19,7 +19,7 @@
  */
 const request = require('supertest');
 const app     = require('../src/app');
-const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
+const { setupTestDb, teardownTestDb, TEST_USER, createTestUser } = require('./helpers/setup');
 const bcrypt  = require('bcrypt');
 
 let pool;
@@ -37,12 +37,13 @@ beforeAll(async () => {
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   adminToken = r1.body.token;
 
-  // Crear usuario op sin permisos para testear 403
-  const hash = await bcrypt.hash('op_cc_pass123', 10);
-  await pool.query(
-    'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5)',
-    ['Op CC', 'opcc', 'opcc@test.local', hash, 'op']
-  );
+  // Crear usuario op sin permisos para testear 403. SEG-2: createTestUser
+  // seedea tenant_users + tenant_user_roles para que el login no rebote NO_TENANT.
+  await createTestUser(pool, {
+    nombre: 'Op CC', username: 'opcc',
+    email: 'opcc@test.local', password: 'op_cc_pass123',
+    role: 'op',
+  });
   const r2 = await request(app)
     .post('/api/auth/login')
     .send({ username: 'opcc', password: 'op_cc_pass123' });
