@@ -151,17 +151,33 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       // el response 401 al cliente.
       if (user) {
         try {
-          const nuevo = (user.failed_login_count || 0) + 1;
+          // 2026-06-25 SOL-3 (audit pre-live): UPDATE atómico en lugar de
+          // read-then-write. Antes el patrón era `nuevo = user.count + 1;
+          // UPDATE SET count = $nuevo` — bajo brute-force concurrente
+          // (50 requests paralelas), todas leían el mismo valor y escribían
+          // N+1, perdiendo updates. El contador subía mucho más lento que
+          // los intentos reales → el lockout disparaba mucho después del
+          // threshold configurado.
+          //
+          // Ahora `failed_login_count + 1` en SQL es atómico (el server
+          // serializa el UPDATE por row lock). El CASE setea lockout_until
+          // en el mismo statement si el nuevo valor cruza el threshold,
+          // sin race entre el incremento y la decisión.
+          const { rows } = await db.query(
+            `UPDATE users
+                SET failed_login_count = failed_login_count + 1,
+                    lockout_until = CASE
+                      WHEN failed_login_count + 1 >= $1
+                      THEN NOW() + INTERVAL '${LOCKOUT_DURATION_MIN} minutes'
+                      ELSE lockout_until
+                    END
+              WHERE id = $2
+              RETURNING failed_login_count`,
+            [LOCKOUT_THRESHOLD, user.id]
+          );
+          const nuevo = rows[0]?.failed_login_count;
           if (nuevo >= LOCKOUT_THRESHOLD) {
-            await db.query(
-              `UPDATE users SET failed_login_count = $1,
-                      lockout_until = NOW() + INTERVAL '${LOCKOUT_DURATION_MIN} minutes'
-                 WHERE id = $2`,
-              [nuevo, user.id]
-            );
             logger.warn({ user_id: user.id, intentos: nuevo }, 'usuario bloqueado por lockout');
-          } else {
-            await db.query('UPDATE users SET failed_login_count = $1 WHERE id = $2', [nuevo, user.id]);
           }
         } catch (e) {
           logger.error({ err: e }, 'no se pudo actualizar failed_login_count');
@@ -209,20 +225,24 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       const { ok } = await verifyAndConsume(user.id, String(code));
       if (!ok) {
         logger.warn({ user_id: user.id, ip: req.ip }, 'login 2FA fallido');
-        // Incrementar contador y disparar lockout si llegamos al threshold.
-        // Best-effort (no bloquea response). Misma lógica que el fallo de password.
+        // 2026-06-25 SOL-3: mismo UPDATE atómico que el fallo de password
+        // arriba. Race condition idéntica si la única dim de attack es 2FA.
         try {
-          const nuevo = (user.failed_login_count || 0) + 1;
+          const { rows } = await db.query(
+            `UPDATE users
+                SET failed_login_count = failed_login_count + 1,
+                    lockout_until = CASE
+                      WHEN failed_login_count + 1 >= $1
+                      THEN NOW() + INTERVAL '${LOCKOUT_DURATION_MIN} minutes'
+                      ELSE lockout_until
+                    END
+              WHERE id = $2
+              RETURNING failed_login_count`,
+            [LOCKOUT_THRESHOLD, user.id]
+          );
+          const nuevo = rows[0]?.failed_login_count;
           if (nuevo >= LOCKOUT_THRESHOLD) {
-            await db.query(
-              `UPDATE users SET failed_login_count = $1,
-                      lockout_until = NOW() + INTERVAL '${LOCKOUT_DURATION_MIN} minutes'
-                 WHERE id = $2`,
-              [nuevo, user.id]
-            );
             logger.warn({ user_id: user.id, intentos: nuevo }, 'usuario bloqueado por lockout (2FA)');
-          } else {
-            await db.query('UPDATE users SET failed_login_count = $1 WHERE id = $2', [nuevo, user.id]);
           }
         } catch (e) {
           logger.error({ err: e }, 'no se pudo actualizar failed_login_count (2FA)');
