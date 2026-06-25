@@ -22,38 +22,20 @@ router.get('/', async (req, res, next) => {
 router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) => {
   try {
     const { pct_financiera } = req.body;
-    // 2026-06-25 Bug #2 (primer cliente iDeals Ar tenant=12):
-    //
-    // ANTES (PR 4 olvidado del proyecto multi-tenant): el INSERT no especificaba
-    // tenant_id y confiaba en el DEFAULT dinámico (current_setting('app.current
-    // _tenant')). Diagnóstico real en prod confirmó que para tenant=12, la fila
-    // de config NUNCA se persistió aunque el cliente apretó "Guardar" varias
-    // veces. Resultado: pct_financiera nunca se aplicaba a sus comprobantes.
-    //
-    // AHORA: tenant_id explícito desde req.tenantId. Defense-in-depth — no
-    // confiamos en el DEFAULT dinámico, lo seteamos directo. Además el signup
-    // ya siembra la fila inicial (ver signup.js §5d), entonces el ON CONFLICT
-    // siempre debería hacer UPDATE en la práctica. El INSERT branch queda como
-    // safety net para tenants legacy que se crearon antes de este fix.
-    //
-    // NOTA sobre recalc retroactivo: NO lo aplicamos automáticamente desde acá.
-    // Decisión durable: cambiar el % NO toca comprobantes históricos. Preserva
-    // el snapshot del cálculo al momento de la venta (auditabilidad + acuerdo
-    // con el contrato implícito que se documentó al original release de la
-    // Financiera). Si el operador necesita aplicar el nuevo % a comprobantes
-    // existentes, puede:
-    //   · Editar/recrear el comprobante manualmente (dispara syncFinanciera
-    //     Comprobante que lee el pct ACTUAL).
-    //   · Pedir un script de admin que invoque `recalcComprobantesFinancieraByTenant`
-    //     desde `lib/financiera.js` (helper exportado, ver tests/config-recalc.test.js).
-    // Si en el futuro UX pide un botón "Aplicar a histórico", agregar acá un
-    // opt-in (ej: `recalc_retroactivo: true` en el body).
+    // 2026-06-15 multi-tenant PR 1: la PK de config es (tenant_id, id).
+    // El INSERT no especifica tenant_id — depende del DEFAULT dinámico
+    // (current_setting('app.current_tenant')::int con fallback a 1).
+    // Combinado con SET LOCAL adentro de withTenant, persiste la fila al
+    // tenant correcto. Lo que ASEGURA que esta fila siempre exista para
+    // tenants nuevos es el seed inicial en signup.js §5d (2026-06-25 Bug #2).
+    // Tenants legacy creados antes de ese fix necesitan SQL manual de seed
+    // — ver hot-fix instrucciones en docs/.
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
-        `INSERT INTO config (id, tenant_id, pct_financiera) VALUES (1, $1, $2)
-         ON CONFLICT (tenant_id, id) DO UPDATE SET pct_financiera = $2, updated_at = NOW()
+        `INSERT INTO config (id, pct_financiera) VALUES (1, $1)
+         ON CONFLICT (tenant_id, id) DO UPDATE SET pct_financiera = $1, updated_at = NOW()
          RETURNING *`,
-        [req.tenantId, pct_financiera]
+        [pct_financiera]
       );
       await audit(client, 'config', 'UPDATE', 1, { despues: rows[0], user_id: req.user.id });
       return rows;

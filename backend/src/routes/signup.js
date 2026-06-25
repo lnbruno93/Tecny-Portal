@@ -312,7 +312,8 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     // si la fila existe (ON CONFLICT hace UPDATE). El INSERT del PUT también
     // está blindado en este PR con tenant_id explícito como defense-in-depth.
     await client.query(
-      `INSERT INTO config (id, pct_financiera, tenant_id) VALUES (1, 0, $1)`,
+      `INSERT INTO config (id, pct_financiera, tenant_id) VALUES (1, 0, $1)
+       ON CONFLICT (tenant_id, id) DO NOTHING`,
       [tenant.id]
     );
 
