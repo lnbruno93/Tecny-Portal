@@ -19,15 +19,11 @@ const NAV = [
       { id: 'planes',   label: 'Planes',   icon: 'Tag',      path: '/planes' },
     ],
   },
-  {
-    sec: 'Operación',
-    items: [
-      { id: 'facturacion', label: 'Facturación', icon: 'CreditCard', path: '/facturacion' },
-      { id: 'onboarding',  label: 'Onboarding',  icon: 'Bolt',       path: '/onboarding' },
-      { id: 'uso',         label: 'Uso',         icon: 'TrendUp',    path: '/uso' },
-      { id: 'soporte',     label: 'Soporte',     icon: 'Bell',       path: '/soporte' },
-    ],
-  },
+  // #450 (2026-06-26): se removió la sección "Operación" del sidebar.
+  // Tenía 4 items (Facturación / Onboarding / Uso / Soporte) que linkeaban
+  // a páginas ComingSoon, ofuscando que las 3 secciones REALES (Gestión)
+  // son lo único implementado. Cuando se construya alguna de esas features
+  // (probablemente Facturación cuando integremos Stripe), se agrega de nuevo.
 ];
 
 // Mapa flat para derivar el label del breadcrumb desde la ruta. Mantenido

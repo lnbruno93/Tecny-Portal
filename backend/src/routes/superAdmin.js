@@ -279,6 +279,137 @@ router.get('/tenants', async (req, res, next) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// GET /tenants/export — exportar listado completo a CSV (#450)
+//
+// Mismos filtros que GET /tenants (plan, suspended, search) pero SIN paginación.
+// Devuelve todas las filas matcheadas en formato CSV (RFC 4180).
+//
+// Hardcap: 10.000 filas. Si el universo es más grande, devolvemos 400 — más
+// allá de eso, el operador debería filtrar antes (no tiene sentido ver 10k
+// tenants en una sola hoja). Hoy con <100 tenants este límite es académico.
+//
+// Encoding: UTF-8 con BOM (U+FEFF prefix) para que Excel lo abra bien con
+// tildes y acentos sin que el usuario tenga que cambiar el encoding manual.
+// ──────────────────────────────────────────────────────────────────────────
+const EXPORT_CAP = 10000;
+
+// CSV escaping per RFC 4180: si el valor tiene coma, comilla doble o newline,
+// se envuelve en comillas dobles y las comillas internas se duplican.
+function csvCell(val) {
+  if (val == null) return '';
+  const s = String(val);
+  if (/[",\n\r]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+router.get('/tenants/export', async (req, res, next) => {
+  try {
+    const { plan, suspended, search } = req.query;
+    const where = ['t.deleted_at IS NULL'];
+    const params = [];
+
+    if (plan && ['trial', 'starter', 'pro', 'enterprise'].includes(String(plan))) {
+      params.push(plan);
+      where.push(`t.plan = $${params.length}`);
+    }
+    if (suspended === 'true') where.push('t.suspended_at IS NOT NULL');
+    if (suspended === 'false') where.push('t.suspended_at IS NULL');
+    if (search && typeof search === 'string' && search.trim().length > 0) {
+      params.push(`%${search.trim()}%`);
+      where.push(`(t.nombre ILIKE $${params.length} OR t.slug ILIKE $${params.length})`);
+    }
+
+    const result = await db.adminQuery(async (client) => {
+      // Count primero para enforce el cap antes de pegar el SELECT grande.
+      const countQ = await client.query(
+        `SELECT COUNT(*)::int AS total
+           FROM tenants t
+          WHERE ${where.join(' AND ')}`,
+        params
+      );
+      const total = countQ.rows[0]?.total ?? 0;
+      if (total > EXPORT_CAP) return { tooBig: true, total };
+
+      const { rows } = await client.query(
+        `SELECT
+           t.id, t.nombre, t.slug, t.plan, t.custom_mrr_usd,
+           t.suspended_at, t.suspended_reason,
+           t.trial_until, t.paid_until, t.created_at, t.notes,
+           (SELECT COUNT(*)::int FROM tenant_users tu WHERE tu.tenant_id = t.id) AS users_count,
+           (SELECT MAX(created_at) FROM ventas v
+              WHERE v.tenant_id = t.id AND v.deleted_at IS NULL) AS last_venta_at,
+           ${HEALTH_STATS_SQL}
+         FROM tenants t
+         WHERE ${where.join(' AND ')}
+         ORDER BY t.id ASC`,
+        params
+      );
+      return { rows };
+    });
+
+    if (result.tooBig) {
+      return res.status(400).json({
+        error: `El filtro matchea ${result.total} tenants (máximo ${EXPORT_CAP}). Restringí con ?plan o ?search.`,
+      });
+    }
+
+    const headers = [
+      'id', 'nombre', 'slug', 'plan', 'mrr_usd',
+      'custom_mrr_usd', 'suspended_at', 'suspended_reason',
+      'trial_until', 'paid_until', 'created_at',
+      'users_count', 'last_venta_at',
+      'health_score', 'health_category',
+      'notes',
+    ];
+
+    // BOM (U+FEFF) para que Excel decode UTF-8 sin que el usuario configure
+    // encoding. Sin BOM, Excel asume Windows-1252 y rompe tildes/ñ.
+    // Usamos escape form para que el linter no rechace whitespace irregular.
+    const BOM = String.fromCharCode(0xFEFF);
+    let csv = BOM + headers.join(',') + '\r\n';
+    for (const t of result.rows) {
+      const enriched = enrichTenantWithHealth({
+        ...t,
+        mrr_usd: getTenantMrr(t.plan, t.custom_mrr_usd),
+      });
+      const row = [
+        enriched.id,
+        enriched.nombre,
+        enriched.slug,
+        enriched.plan,
+        enriched.mrr_usd,
+        enriched.custom_mrr_usd,
+        enriched.suspended_at ? new Date(enriched.suspended_at).toISOString() : '',
+        enriched.suspended_reason,
+        enriched.trial_until,
+        enriched.paid_until,
+        enriched.created_at ? new Date(enriched.created_at).toISOString() : '',
+        enriched.users_count,
+        enriched.last_venta_at ? new Date(enriched.last_venta_at).toISOString() : '',
+        enriched.health_score,
+        enriched.health_category,
+        enriched.notes,
+      ].map(csvCell).join(',');
+      csv += row + '\r\n';
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="tenants_${today}.csv"`);
+    res.send(csv);
+
+    logger.info(
+      { super_admin: req.user.id, rows: result.rows.length },
+      '[super-admin] GET /tenants/export'
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // GET /tenants/:id — detalle de un tenant
 //
 // Devuelve datos completos del tenant + últimas 10 acciones admin

@@ -12,7 +12,6 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
-import { PageHead } from './components/primitives/index.jsx';
 
 // PERF-3 fix (audit 2026-06-22): code-split de rutas autenticadas con
 // React.lazy + Suspense. El user que aterriza en /login NO necesita el
@@ -65,21 +64,6 @@ function ProtectedRoute({ children }) {
         {children}
       </Suspense>
     </Layout>
-  );
-}
-
-function ComingSoon({ title, label }) {
-  return (
-    <>
-      <PageHead
-        label={label}
-        title={title}
-        subtitle="Esta sección se implementa en la próxima fase."
-      />
-      <div className="card">
-        <p className="muted" style={{ margin: 0 }}>Próximamente.</p>
-      </div>
-    </>
   );
 }
 
@@ -146,38 +130,9 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/facturacion"
-        element={
-          <ProtectedRoute>
-            <ComingSoon label="Facturación" title="Facturación y cobros" />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/onboarding"
-        element={
-          <ProtectedRoute>
-            <ComingSoon label="Onboarding" title="Onboarding" />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/uso"
-        element={
-          <ProtectedRoute>
-            <ComingSoon label="Uso" title="Uso de la plataforma" />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/soporte"
-        element={
-          <ProtectedRoute>
-            <ComingSoon label="Soporte" title="Soporte" />
-          </ProtectedRoute>
-        }
-      />
+      {/* #450 (2026-06-26): rutas /facturacion, /onboarding, /uso, /soporte
+          eliminadas. Eran páginas ComingSoon — confundían más de lo que ayudaban.
+          Bookmarks viejos caen al NotFound (que tiene un botón "Ir a Resumen"). */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

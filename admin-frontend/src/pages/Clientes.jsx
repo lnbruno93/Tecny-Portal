@@ -45,6 +45,9 @@ export default function Clientes() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState('todas');
+  // #450: lock UI mientras se descarga el CSV (puede tomar 1-2s con muchos
+  // tenants). Sin lock, click repetido dispararía descargas paralelas.
+  const [exporting, setExporting] = useState(false);
 
   // Race condition guard — cada request lleva un id incremental.
   // Cuando llega la respuesta, si su id no es el último (porque el
@@ -126,7 +129,28 @@ export default function Clientes() {
           : `${data.length} ${data.length === 1 ? 'empresa' : 'empresas'} ${hasFilters ? 'en los filtros actuales' : 'suscriptas'}`}
         actions={
           <>
-            <Btn icon="Download" disabled title="Próximamente">Exportar</Btn>
+            {/* #450: Exportar usa los filtros activos (modo + búsqueda) — el
+                operador exporta exactamente lo que está viendo en pantalla.
+                CSV con BOM UTF-8, abre en Excel/Numbers/Sheets sin config. */}
+            <Btn
+              icon="Download"
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await adminApi.exportTenants({
+                    ...modeParams(mode),
+                    ...(search.trim() ? { search: search.trim() } : {}),
+                  });
+                } catch (err) {
+                  alert(err?.message || 'No pudimos exportar.');
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting}
+            >
+              {exporting ? 'Exportando…' : 'Exportar'}
+            </Btn>
             <Btn kind="primary" icon="Plus" disabled title="Próximamente">
               Invitar cliente
             </Btn>
