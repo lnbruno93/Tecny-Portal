@@ -171,7 +171,27 @@ export default function Inicio() {
       })
     : [];
 
-  const nombreCorto = user?.nombre ? user.nombre.split(' ')[0] : 'Lucas';
+  // #442: el fallback era 'Lucas' (hardcoded del primer tenant, ipro/Celnyx)
+  // — para cualquier otro tenant aparecía "Buen día, Lucas" cuando user.nombre
+  // estaba vacío, lo cual es desorientador. Derivación en cascada:
+  //   1. user.nombre split en primer espacio (caso ideal)
+  //   2. username (siempre presente en el JWT, formato 'maria_garcia' → 'Maria')
+  //   3. email prefix (último recurso pre-auth)
+  //   4. string vacío — el saludo queda "Buen día" sin nombre, no se rompe
+  function deriveFirstName(u) {
+    if (u?.nombre) return u.nombre.split(' ')[0];
+    if (u?.username) {
+      const first = String(u.username).split(/[._-]/)[0] || u.username;
+      return first.charAt(0).toUpperCase() + first.slice(1);
+    }
+    if (u?.email) {
+      const local = String(u.email).split('@')[0];
+      const first = local.split(/[._-]/)[0] || local;
+      return first.charAt(0).toUpperCase() + first.slice(1);
+    }
+    return '';
+  }
+  const nombreCorto = deriveFirstName(user);
   const horaActual  = new Date().getHours();
   const saludo      = horaActual < 13 ? 'Buen día' : horaActual < 20 ? 'Buenas tardes' : 'Buenas noches';
 
@@ -181,7 +201,7 @@ export default function Inicio() {
       <div>
         <div className="hello">
           <div className="greet">
-            <h1>{saludo}, {nombreCorto}</h1>
+            <h1>{nombreCorto ? `${saludo}, ${nombreCorto}` : saludo}</h1>
             <div className="sub">{fmtFecha()} · cargando datos…</div>
           </div>
         </div>
@@ -196,7 +216,7 @@ export default function Inicio() {
       <div>
         <div className="hello">
           <div className="greet">
-            <h1>{saludo}, {nombreCorto}</h1>
+            <h1>{nombreCorto ? `${saludo}, ${nombreCorto}` : saludo}</h1>
             <div className="sub">{fmtFecha()}</div>
           </div>
         </div>
