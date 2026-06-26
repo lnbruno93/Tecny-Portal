@@ -482,6 +482,167 @@ describe('POST /api/super-admin/tenants/:id/suspend + /reactivate', () => {
   });
 });
 
+describe('DELETE /api/super-admin/tenants/:id (feature #438)', () => {
+  beforeEach(async () => {
+    // Reset tenant 777 a estado limpio (no eliminado) antes de cada test.
+    // El slug debe ser estable porque los tests usan ?confirm=sa-test.
+    await pool.query(
+      `UPDATE tenants SET deleted_at = NULL, slug = 'sa-test' WHERE id = 777`
+    );
+    await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = 777`);
+  });
+
+  it('happy path: ?confirm=<slug> setea deleted_at y devuelve 200', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'cleanup post-onboarding' });
+
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.alreadyDeleted).toBeUndefined();
+
+    const { rows } = await pool.query(
+      `SELECT deleted_at FROM tenants WHERE id = 777`
+    );
+    expect(rows[0].deleted_at).not.toBeNull();
+  });
+
+  it('400 si falta el query param ?confirm', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'sin confirm' });
+
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/confirm requerido/);
+
+    // No debe haber tocado deleted_at.
+    const { rows } = await pool.query(
+      `SELECT deleted_at FROM tenants WHERE id = 777`
+    );
+    expect(rows[0].deleted_at).toBeNull();
+  });
+
+  it('400 si el slug confirm no coincide con el real', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=slug-equivocado')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'oops typo' });
+
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/confirm slug no coincide/);
+    expect(r.body.detail).toContain('sa-test');
+
+    const { rows } = await pool.query(
+      `SELECT deleted_at FROM tenants WHERE id = 777`
+    );
+    expect(rows[0].deleted_at).toBeNull();
+  });
+
+  it('404 si el tenant no existe', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/999999?confirm=cualquiera')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'test' });
+
+    expect(r.status).toBe(404);
+  });
+
+  it('idempotente: re-DELETE devuelve 200 con alreadyDeleted=true', async () => {
+    // Setup: ya estaba soft-deleted.
+    await pool.query(
+      `UPDATE tenants SET deleted_at = NOW() WHERE id = 777`
+    );
+
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'doble click' });
+
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.alreadyDeleted).toBe(true);
+
+    // No debió grabar nueva fila de audit (no es acción nueva).
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM tenant_admin_actions
+        WHERE tenant_id = 777 AND action = 'delete'`
+    );
+    expect(rows[0].c).toBe(0);
+  });
+
+  it('audit trail: graba action=delete con before/after + reason', async () => {
+    await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'cuenta de prueba thinklab' });
+
+    const { rows } = await pool.query(
+      `SELECT action, before_state, after_state, reason, super_admin_user_id
+         FROM tenant_admin_actions
+        WHERE tenant_id = 777 ORDER BY created_at DESC LIMIT 1`
+    );
+    expect(rows[0].action).toBe('delete');
+    expect(rows[0].before_state.deleted_at).toBeNull();
+    expect(rows[0].before_state.slug).toBe('sa-test');
+    expect(rows[0].after_state.deleted_at).toBe('NOW()');
+    expect(rows[0].reason).toBe('cuenta de prueba thinklab');
+    expect(rows[0].super_admin_user_id).toBe(1);
+  });
+
+  it('reason es opcional (delete sin reason no falla)', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({});
+
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+  });
+
+  it('rechaza body con campos extra (.strict)', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'x', malicious_field: 'pwn' });
+
+    expect(r.status).toBe(400);
+  });
+
+  it('400 si id inválido en la URL', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/abc?confirm=cualquiera')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ reason: 'test' });
+
+    expect(r.status).toBe(400);
+  });
+
+  it('401 sin JWT', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .send({ reason: 'test' });
+
+    expect(r.status).toBe(401);
+  });
+
+  it('403 cuando user no es super-admin', async () => {
+    const r = await request(app)
+      .delete('/api/super-admin/tenants/777?confirm=sa-test')
+      .set('Authorization', `Bearer ${regularUserToken}`)
+      .send({ reason: 'test' });
+
+    expect(r.status).toBe(403);
+
+    // Crucial: el tenant NO fue tocado.
+    const { rows } = await pool.query(
+      `SELECT deleted_at FROM tenants WHERE id = 777`
+    );
+    expect(rows[0].deleted_at).toBeNull();
+  });
+});
+
 describe('POST /api/super-admin/tenants/:id/set-paid-until (TANDA 4.B)', () => {
   beforeEach(async () => {
     await pool.query(`UPDATE tenants SET paid_until = NULL WHERE id = 777`);

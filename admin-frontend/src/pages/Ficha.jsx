@@ -36,6 +36,7 @@ import SuspendTenantModal from '../components/modals/SuspendTenantModal.jsx';
 import ReactivateTenantModal from '../components/modals/ReactivateTenantModal.jsx';
 import ExtendTrialModal from '../components/modals/ExtendTrialModal.jsx';
 import SetPaidUntilModal from '../components/modals/SetPaidUntilModal.jsx';
+import DeleteTenantModal from '../components/modals/DeleteTenantModal.jsx';
 
 // ── Helpers locales ───────────────────────────────────────────────────
 
@@ -309,6 +310,17 @@ export default function Ficha() {
             <Btn icon="Sliders" onClick={() => setOpenModal('edit')}>
               Editar
             </Btn>
+            {/* Eliminar (#438): destructivo crítico, va último en la fila
+                para alejarlo visualmente de las acciones rutinarias. kind="danger"
+                lo pinta rojo — combinado con el modal bloqueante (slug-confirm)
+                hace falta intención clara para llegar a borrar. */}
+            <Btn
+              kind="danger"
+              icon="Trash"
+              onClick={() => setOpenModal('delete')}
+            >
+              Eliminar
+            </Btn>
           </>
         }
       />
@@ -549,6 +561,28 @@ export default function Ficha() {
         open={openModal === 'set-paid-until'}
         onClose={() => setOpenModal(null)}
         onSaved={handleSaved}
+      />
+      <DeleteTenantModal
+        tenant={tenant}
+        open={openModal === 'delete'}
+        onClose={() => setOpenModal(null)}
+        // onDeleted: a diferencia de onSaved, después de borrar el tenant
+        // YA NO existe (o es soft-deleted), no tiene sentido recargarlo
+        // y quedar viendo la misma ficha. Mandamos al user al listado con
+        // un flag en navigate.state para que /clientes pueda mostrar un
+        // toast/banner "Tenant X eliminado" si quiere.
+        onDeleted={(meta) => {
+          setOpenModal(null);
+          navigate('/clientes', {
+            state: {
+              deletedTenant: {
+                id: tenant?.id,
+                nombre: tenant?.nombre,
+                alreadyDeleted: !!meta?.alreadyDeleted,
+              },
+            },
+          });
+        }}
       />
     </>
   );

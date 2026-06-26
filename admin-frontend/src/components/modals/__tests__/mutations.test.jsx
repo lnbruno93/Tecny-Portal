@@ -17,6 +17,7 @@ vi.mock('../../../lib/api.js', () => ({
     reactivateTenant: vi.fn(),
     extendTrial: vi.fn(),
     setPaidUntil: vi.fn(),
+    deleteTenant: vi.fn(),
   },
   getToken: vi.fn(() => null),
   saveToken: vi.fn(),
@@ -30,6 +31,7 @@ import SuspendTenantModal from '../SuspendTenantModal.jsx';
 import ReactivateTenantModal from '../ReactivateTenantModal.jsx';
 import ExtendTrialModal from '../ExtendTrialModal.jsx';
 import SetPaidUntilModal from '../SetPaidUntilModal.jsx';
+import DeleteTenantModal from '../DeleteTenantModal.jsx';
 
 function makeTenant(overrides = {}) {
   return {
@@ -345,5 +347,138 @@ describe('SetPaidUntilModal', () => {
     });
     expect(onSaved).toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+});
+
+// ── DeleteTenantModal (feature #438) ────────────────────────────────────
+describe('DeleteTenantModal', () => {
+  it('botón "Eliminar" deshabilitado mientras el slug no coincida', () => {
+    render(
+      <DeleteTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onDeleted={() => {}}
+      />
+    );
+
+    const btn = screen.getByRole('button', { name: /eliminar cuenta definitivamente/i });
+    expect(btn).toBeDisabled();
+
+    const slugInput = screen.getByLabelText(/escribí el slug/i);
+
+    // Slug parcial — sigue disabled.
+    fireEvent.change(slugInput, { target: { value: 'aurora' } });
+    expect(btn).toBeDisabled();
+
+    // Slug case-incorrecto — sigue disabled (match exacto).
+    fireEvent.change(slugInput, { target: { value: 'AURORA-MOBILE' } });
+    expect(btn).toBeDisabled();
+
+    // Slug exacto — habilita.
+    fireEvent.change(slugInput, { target: { value: 'aurora-mobile' } });
+    expect(btn).not.toBeDisabled();
+  });
+
+  it('submit con slug match llama deleteTenant(id, slug, { reason }) y dispara onDeleted', async () => {
+    adminApi.deleteTenant.mockResolvedValue({ ok: true });
+    const onDeleted = vi.fn();
+
+    render(
+      <DeleteTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onDeleted={onDeleted}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/escribí el slug/i), {
+      target: { value: 'aurora-mobile' },
+    });
+    fireEvent.change(screen.getByLabelText(/motivo/i), {
+      target: { value: 'cuenta de prueba thinklab' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /eliminar cuenta definitivamente/i }));
+
+    await waitFor(() => {
+      expect(adminApi.deleteTenant).toHaveBeenCalledWith(12, 'aurora-mobile', {
+        reason: 'cuenta de prueba thinklab',
+      });
+    });
+    expect(onDeleted).toHaveBeenCalledWith({ alreadyDeleted: false });
+  });
+
+  it('reason vacío → body sin reason (objeto vacío)', async () => {
+    adminApi.deleteTenant.mockResolvedValue({ ok: true });
+    const onDeleted = vi.fn();
+
+    render(
+      <DeleteTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onDeleted={onDeleted}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/escribí el slug/i), {
+      target: { value: 'aurora-mobile' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /eliminar cuenta definitivamente/i }));
+
+    await waitFor(() => {
+      expect(adminApi.deleteTenant).toHaveBeenCalledWith(12, 'aurora-mobile', {});
+    });
+  });
+
+  it('alreadyDeleted=true del backend se propaga a onDeleted', async () => {
+    adminApi.deleteTenant.mockResolvedValue({ ok: true, alreadyDeleted: true });
+    const onDeleted = vi.fn();
+
+    render(
+      <DeleteTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onDeleted={onDeleted}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/escribí el slug/i), {
+      target: { value: 'aurora-mobile' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /eliminar cuenta definitivamente/i }));
+
+    await waitFor(() => {
+      expect(onDeleted).toHaveBeenCalledWith({ alreadyDeleted: true });
+    });
+  });
+
+  it('error del backend muestra mensaje en el modal y NO dispara onDeleted', async () => {
+    const err = new Error('confirm slug no coincide');
+    adminApi.deleteTenant.mockRejectedValue(err);
+    const onDeleted = vi.fn();
+
+    render(
+      <DeleteTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onDeleted={onDeleted}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/escribí el slug/i), {
+      target: { value: 'aurora-mobile' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /eliminar cuenta definitivamente/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/confirm slug no coincide/i);
+    });
+    expect(onDeleted).not.toHaveBeenCalled();
   });
 });
