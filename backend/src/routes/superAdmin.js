@@ -52,13 +52,72 @@ const {
   suspendTenantSchema,
   reactivateTenantSchema,
   deleteTenantSchema,
+  createTenantSchema,
   setPaidUntilSchema,
   patchPlanPriceSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
 const { computeHealthScore } = require('../lib/tenantHealth');
+const { sendPasswordResetEmail } = require('../lib/email');
+const { randomBytes } = require('crypto');
 const logger = require('../lib/logger');
+
+// #452: TTL del token de set-initial-password (mismo que password reset
+// común). 24h da margen al owner para abrir el email sin presión, suficiente
+// corto para limitar window de abuso si el email fue interceptado.
+const SET_PASSWORD_TOKEN_TTL_HOURS = 24;
+
+// 3 cajas default sembradas para cada tenant nuevo (igual que signup público).
+// Mantener sincronizado con signup.js — si Lucas agrega más al signup público,
+// también acá. Idealmente extraer a un módulo shared en una sub-fase futura.
+const DEFAULT_CAJAS = [
+  { nombre: 'Efectivo Pesos', moneda: 'ARS', orden: 1, es_financiera: true },
+  { nombre: 'Efectivo USD',   moneda: 'USD', orden: 2, es_financiera: false },
+  { nombre: 'Banco Pesos',    moneda: 'ARS', orden: 3, es_financiera: false },
+];
+const DEFAULT_CATEGORIAS = ['Celulares', 'Accesorios', 'Servicios', 'Otros'];
+
+// Helpers locales (réplica de signup.js — extracción a shared en sub-fase
+// futura cuando agreguemos un 3er camino de creación, ej. invite-to-existing).
+function slugify(text) {
+  const slug = String(text || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return slug.length >= 2 ? slug : 'tenant';
+}
+function deriveUsername(email) {
+  const local = String(email).split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+  return local.length >= 2 ? local : 'user';
+}
+async function uniqueSlug(client, base) {
+  for (let n = 0; n < 100; n++) {
+    const candidate = n === 0 ? base : `${base}-${n + 1}`;
+    const { rows } = await client.query('SELECT 1 FROM tenants WHERE slug = $1', [candidate]);
+    if (rows.length === 0) return candidate;
+  }
+  throw new Error('No se pudo generar un slug único después de 100 intentos');
+}
+async function uniqueUsername(client, base) {
+  for (let n = 0; n < 100; n++) {
+    const candidate = n === 0 ? base : `${base}_${n + 1}`;
+    const { rows } = await client.query(
+      'SELECT 1 FROM users WHERE username = $1 AND deleted_at IS NULL', [candidate]
+    );
+    if (rows.length === 0) return candidate;
+  }
+  throw new Error('No se pudo generar un username único después de 100 intentos');
+}
+function frontendUrl() {
+  return process.env.FRONTEND_URL || 'http://localhost:5173';
+}
 
 // SQL fragment con las stats necesarias para computeHealthScore. Se reusa
 // en listTenants y getTenant para que el cálculo sea consistente. Cada
@@ -408,6 +467,260 @@ router.get('/tenants/export', async (req, res, next) => {
     next(err);
   }
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /tenants — crear tenant manual desde el back office (#452).
+//
+// Caso de uso: super-admin onboardea un cliente desde la UI. Típico: demo
+// cerrada en sales call → tenant pre-creado antes del primer login del owner.
+// Esto reemplaza el workflow ad-hoc "darle el link de signup público y rezar".
+//
+// Flow:
+//   1. Validar body con createTenantSchema (Zod .strict()).
+//   2. Anti-conflict: si el email ya pertenece a un user (cualquier tenant),
+//      devolver 409. NO hay anti-enum acá — el endpoint es admin-only, el
+//      super-admin necesita saber por qué no se creó.
+//   3. INSERT tenant + user + tenant_users + tenant_user_roles + seeds
+//      (cajas/categorías/vendedor/config) — EXACTAMENTE el mismo flow que
+//      signup público, salvo que email_verified_at=NOW() (admin-vouched).
+//   4. Generar password_reset_token con TTL 24h e INSERT.
+//   5. Audit a tenant_admin_actions con action='create'.
+//   6. Post-commit, fire-and-forget: enviar email "elegí tu password" usando
+//      sendPasswordResetEmail (reusa el template existente — semánticamente
+//      "set initial password" y "reset password" son el mismo flow: clickeás
+//      el link y elegís una contraseña).
+//
+// Diseño durable:
+//   - email_verified_at=NOW(): el super-admin ya verificó identidad por
+//     teléfono/Calendly antes de crear. No imponemos al owner clickear un
+//     verification link extra solo para activar la cuenta.
+//   - Sin password inicial: el owner LO elige via reset link. Esto evita
+//     que el admin tenga que generar una temp password segura y compartirla
+//     por canal inseguro (Slack, email plano).
+//   - SET LOCAL app.current_tenant es crítico para RLS en metodos_pago,
+//     categorias, vendedores, config, user_capabilities (tablas con RLS).
+//
+// Tradeoffs:
+//   - Si Resend falla, el owner no recibe el email. El admin puede
+//     reintentar via "Enviar invitación" (sub-fase futura) o decirle al
+//     owner que use /forgot-password con su email.
+//   - El token reset tiene TTL 24h. Si el owner no clickea en 24h, debe
+//     usar /forgot-password (rate-limited).
+// ──────────────────────────────────────────────────────────────────────────
+router.post('/tenants', validate(createTenantSchema), async (req, res, next) => {
+  const { tenant_nombre, nombre, email, plan, custom_mrr_usd, reason } = req.body;
+
+  // Anti-conflict: email ya en uso. CASE-INSENSITIVE (matchea unique index
+  // LOWER(email) creado en TANDA 1).
+  const existing = await db.query(
+    'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL',
+    [email]
+  );
+  if (existing.rows.length > 0) {
+    return res.status(409).json({
+      error: 'Ese email ya está registrado en otro tenant.',
+      reason: 'email_taken',
+    });
+  }
+
+  // Usamos adminQuery (BYPASSRLS) para el INSERT en `users` (que no tiene
+  // RLS) + el INSERT en tablas RLS-scoped vía SET LOCAL al tenant nuevo.
+  // BYPASSRLS evita necesitar permisos especiales pero el SET LOCAL sigue
+  // ejecutándose como guardrail de defense-in-depth.
+  //
+  // db.adminQuery NO auto-wraps en tx (por diseño — la mayoría de admin queries
+  // son reads). Acá necesitamos atomicidad explícita: tenant + user + audit
+  // viven o mueren juntos. Manejamos BEGIN/COMMIT/ROLLBACK manualmente.
+  let result;
+  try {
+    result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const out = await createTenantTx(client, req, {
+          tenant_nombre, nombre, email, plan, custom_mrr_usd, reason,
+        });
+        await client.query('COMMIT');
+        return out;
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw e;
+      }
+    });
+  } catch (err) {
+    // Race condition: alguien creó el email/username/slug entre el SELECT
+    // anti-conflict y los INSERTs. PG enforcea con UNIQUE → 23505 → 409.
+    if (err.code === '23505') {
+      return res.status(409).json({
+        error: 'Email o slug ya en uso (race condition). Reintentá.',
+        reason: 'unique_conflict',
+      });
+    }
+    return next(err);
+  }
+
+  // Post-commit: enviar email "elegí tu password". Fire-and-forget — si
+  // Resend falla el endpoint igual devuelve 201 (el admin puede reenviar
+  // o decirle al owner que use /forgot-password). Loggeamos para Sentry.
+  setImmediate(async () => {
+    try {
+      const resetUrl = `${frontendUrl()}/reset-password?token=${result.token}`;
+      await sendPasswordResetEmail({
+        to: result.user.email,
+        name: result.user.nombre,
+        resetUrl,
+        ttlHours: SET_PASSWORD_TOKEN_TTL_HOURS,
+      });
+      logger.info(
+        { user_id: result.user.id, tenant_id: result.tenant.id },
+        '[super-admin] create-tenant: password setup email enviado'
+      );
+    } catch (e) {
+      logger.error(
+        { err: e, user_id: result.user.id, tenant_id: result.tenant.id },
+        '[super-admin] create-tenant: password setup email falló — owner debe usar /forgot-password'
+      );
+    }
+  });
+
+  // Response: incluimos el tenant + user para que el frontend pueda
+  // redirigir directo a la Ficha. NO incluimos el token (excepto en test/dev,
+  // mismo patrón que /signup).
+  logger.info(
+    {
+      super_admin_id: req.user.id,
+      tenant_id: result.tenant.id,
+      tenant_nombre: result.tenant.nombre,
+      tenant_slug: result.tenant.slug,
+      tenant_plan: result.tenant.plan,
+      owner_email: result.user.email,
+    },
+    '[super-admin] tenant manual creado'
+  );
+
+  const response = {
+    tenant: {
+      ...result.tenant,
+      mrr_usd: getTenantMrr(result.tenant.plan, result.tenant.custom_mrr_usd),
+    },
+    owner: result.user,
+    password_setup_url_ttl_hours: SET_PASSWORD_TOKEN_TTL_HOURS,
+  };
+
+  // Mismo gate dual que signup.js (NODE_ENV + EXPOSE_VERIFICATION_TOKEN).
+  // Defense in depth para evitar leak en staging/preview mal configurados.
+  const exposeToken = process.env.NODE_ENV === 'test'
+    || (process.env.NODE_ENV !== 'production' && process.env.EXPOSE_VERIFICATION_TOKEN === '1');
+  if (exposeToken) {
+    response._password_setup_token = result.token;
+  }
+
+  return res.status(201).json(response);
+});
+
+// Helper que encapsula la transacción de createTenant. Se ejecuta DENTRO
+// del BEGIN/COMMIT del handler — no abre tx por sí mismo.
+async function createTenantTx(client, req, body) {
+  const { tenant_nombre, nombre, email, plan, custom_mrr_usd, reason } = body;
+      // 1. Tenant nuevo. Plan validado por Zod.
+      const slug = await uniqueSlug(client, slugify(tenant_nombre));
+      const { rows: [tenant] } = await client.query(
+        `INSERT INTO tenants (nombre, slug, plan, custom_mrr_usd)
+           VALUES ($1, $2, $3, $4)
+         RETURNING id, nombre, slug, plan, custom_mrr_usd, created_at`,
+        // custom_mrr_usd solo para enterprise. Defensive: clamp a null si no
+        // aplica (Zod ya validó que si es enterprise está presente).
+        [tenant_nombre, slug, plan, plan === 'enterprise' ? custom_mrr_usd : null]
+      );
+
+      // 1.5. SET LOCAL antes de cualquier INSERT en tabla RLS-protegida.
+      // Para BYPASSRLS, el SET LOCAL es defense-in-depth (no requerido por
+      // RLS pero útil si en el futuro algún UPDATE consulta current_setting).
+      await client.query(`SET LOCAL app.current_tenant = ${tenant.id}`);
+
+      // 2. User owner — email_verified_at=NOW() (admin-vouched).
+      // password_hash queda con un placeholder NO-USABLE: 60 chars con
+      // formato bcrypt válido pero que jamás matcheará bcrypt.compare (porque
+      // el "hash" es derivado de un random que se descarta). El owner DEBE
+      // setear su pass via el link de set-password antes del primer login.
+      const username = await uniqueUsername(client, deriveUsername(email));
+      // bcrypt-shaped placeholder: 60 chars, no es un hash válido de ninguna
+      // password conocida. Garantizamos que SI el owner no clickea el link
+      // y trata de loguearse, bcrypt.compare devuelve false (bloqueado).
+      const unusablePasswordHash = '$2b$12$' + randomBytes(40).toString('base64url').slice(0, 53);
+      const { rows: [user] } = await client.query(
+        `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
+           VALUES ($1, $2, $3, $4, 'op', NOW())
+         RETURNING id, nombre, username, email, email_verified_at`,
+        [nombre, username, email, unusablePasswordHash]
+      );
+
+      // 3. tenant_users (bridge) — sin RLS.
+      await client.query(
+        `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'owner')`,
+        [tenant.id, user.id]
+      );
+
+      // 4. tenant_user_roles (capability-based, post-F4 cutover).
+      await client.query(
+        `INSERT INTO tenant_user_roles (tenant_id, user_id, rol)
+           VALUES ($1, $2, 'owner')`,
+        [tenant.id, user.id]
+      );
+
+      // 5. Seeds defaults — cajas, categorías, vendedor, config (#452 réplica
+      // de signup.js — mantener sincronizado).
+      for (const caja of DEFAULT_CAJAS) {
+        await client.query(
+          `INSERT INTO metodos_pago (nombre, moneda, orden, es_financiera, tenant_id)
+             VALUES ($1, $2, $3, $4, $5)`,
+          [caja.nombre, caja.moneda, caja.orden, caja.es_financiera, tenant.id]
+        );
+      }
+      for (const catNombre of DEFAULT_CATEGORIAS) {
+        await client.query(
+          `INSERT INTO categorias (nombre, tenant_id) VALUES ($1, $2)`,
+          [catNombre, tenant.id]
+        );
+      }
+      await client.query(
+        `INSERT INTO vendedores (nombre, tenant_id) VALUES ($1, $2)`,
+        [nombre, tenant.id]
+      );
+      await client.query(
+        `INSERT INTO config (id, pct_financiera, tenant_id) VALUES (1, 0, $1)
+         ON CONFLICT (tenant_id, id) DO NOTHING`,
+        [tenant.id]
+      );
+
+      // 6. password_reset_token con TTL 24h. Reusamos la tabla del flow
+      // forgot-password — semánticamente "set initial password" = "reset password".
+      const token = randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + SET_PASSWORD_TOKEN_TTL_HOURS * 60 * 60 * 1000);
+      await client.query(
+        `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)`,
+        [user.id, token, expiresAt]
+      );
+
+      // 7. Audit. action='create' (migration 20260626100000 agregó al CHECK).
+      // tenant_id ahora apunta al tenant recién creado — natural para forensic
+      // queries ("dame todo lo que se hizo a tenant X").
+      await client.query(
+        `INSERT INTO tenant_admin_actions
+           (tenant_id, super_admin_user_id, action, reason, before_state, after_state)
+         VALUES ($1, $2, 'create', $3, NULL, $4::jsonb)`,
+        [
+          tenant.id,
+          req.user.id,
+          reason || null,
+          JSON.stringify({
+            tenant: { id: tenant.id, nombre: tenant.nombre, slug: tenant.slug, plan: tenant.plan },
+            owner:  { id: user.id, email: user.email, username },
+          }),
+        ]
+      );
+
+      return { tenant, user, token };
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // GET /tenants/:id — detalle de un tenant

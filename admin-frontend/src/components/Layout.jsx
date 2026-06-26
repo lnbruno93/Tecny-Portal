@@ -6,9 +6,11 @@
 // cablear contra endpoints reales cuando existan. Logout sí funciona,
 // porque es la única forma de salir de un estado de sesión roto.
 
+import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Icon, Icons } from './Icons.jsx';
+import CreateTenantModal from './modals/CreateTenantModal.jsx';
 
 const NAV = [
   {
@@ -56,6 +58,10 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  // #452: estado del modal "Crear tenant manual" disparado desde el botón
+  // "+" del topbar. Vive en Layout para que esté disponible desde cualquier
+  // ruta autenticada — el usuario puede invocarlo sin estar en Clientes.
+  const [createOpen, setCreateOpen] = useState(false);
 
   const onLogout = () => {
     logout();
@@ -175,13 +181,15 @@ export default function Layout({ children }) {
             <Icons.Bell size={16} />
             <span className="dot" aria-hidden="true" />
           </button>
+          {/* #452: botón "+" del topbar abre el modal Crear tenant manual.
+              Antes estaba en wait-state ("Próximamente"); ahora dispara el flow
+              de onboarding manual desde cualquier ruta del back office. */}
           <button
             type="button"
             className="icon-btn"
-            aria-label="Crear (próximamente)"
-            title="Crear — próximamente"
-            disabled
-            style={{ opacity: 0.4, cursor: 'not-allowed' }}
+            aria-label="Crear tenant manual"
+            title="Crear tenant manual"
+            onClick={() => setCreateOpen(true)}
           >
             <Icons.Plus size={16} />
           </button>
@@ -201,6 +209,21 @@ export default function Layout({ children }) {
           <div className="content-narrow">{children}</div>
         </div>
       </main>
+
+      {/* #452: modal de creación de tenant manual, accesible desde el "+"
+          del topbar. Vive a nivel Layout para que esté siempre montable
+          (no requiere estar en Clientes ni Resumen). Después de crear,
+          navegamos a la ficha del tenant nuevo. */}
+      <CreateTenantModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(res) => {
+          setCreateOpen(false);
+          if (res?.tenant?.id) {
+            navigate(`/clientes/${res.tenant.id}`);
+          }
+        }}
+      />
     </div>
   );
 }
