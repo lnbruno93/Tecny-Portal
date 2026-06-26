@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import { fmt } from '../lib/format'; // Hygiene H2 auditoría 2026-06-06
-import { tenantProfile } from '../lib/api'; // 2026-06-22 fix multi-tenant Google profile
+import { tenantProfile, config as configApi } from '../lib/api'; // 2026-06-22 + #445 lastTc
 import { useAuth } from '../contexts/AuthContext'; // 2026-06-22 tab Configuración (Mi negocio)
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner edit
 import BusinessProfileSection from '../components/BusinessProfileSection'; // idem
@@ -81,6 +81,11 @@ const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(c >= 0.1 ? 2 : 2);
 // ─── Tab: Tarjetas de crédito ────────────────────────────────────────────────
 
 function TabTarjetas() {
+  // #445: TC default = último cambio del tenant (de venta más reciente en 90d).
+  // El backend devuelve 1400 como fallback si no hay venta con TC reciente,
+  // así que el initial state arranca con 1400 y se actualiza si el fetch
+  // devuelve algo distinto. Sin esto el operador siempre arranca con 1400
+  // y debe pisarlo manualmente cada vez que el TC se mueve.
   const [tc, setTc]         = useState(1400);
   // Nombre por defecto como hint (el placeholder del input igual lo muestra),
   // pero precio en 0 para que el operador NO lo confunda con un valor real.
@@ -100,6 +105,13 @@ function TabTarjetas() {
     tenantProfile.get()
       .then((p) => { if (alive) setProfile(p); })
       .catch(() => { /* silent: el mensaje sale sin la frase de Google */ });
+    // #445: hidratar TC default desde el backend. Failure mode aceptable:
+    // si el endpoint falla, queda en 1400 (mismo behavior que antes).
+    configApi.lastTc()
+      .then((res) => {
+        if (alive && res && Number.isFinite(Number(res.tc))) setTc(Number(res.tc));
+      })
+      .catch(() => { /* silent: fallback al hardcoded */ });
     return () => { alive = false; };
   }, []);
 
@@ -347,6 +359,7 @@ function TabTarjetas() {
 // nombre + precio USD c/u, y el mensaje al cliente sale enumerado.
 
 function TabUsd() {
+  // #445: igual que TabTarjetas — TC default desde backend, 1400 como fallback.
   const [tc, setTc]         = useState(1400);
   const [prods, setProds]   = useState([
     { id: 1, nom: '', usd: 0 },
@@ -363,6 +376,11 @@ function TabUsd() {
     let alive = true;
     tenantProfile.get()
       .then((p) => { if (alive) setProfile(p); })
+      .catch(() => { /* silent */ });
+    configApi.lastTc()
+      .then((res) => {
+        if (alive && res && Number.isFinite(Number(res.tc))) setTc(Number(res.tc));
+      })
       .catch(() => { /* silent */ });
     return () => { alive = false; };
   }, []);

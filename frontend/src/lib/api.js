@@ -583,6 +583,15 @@ export const capabilities = {
 export const config = {
   get: () => api('/api/config'),
   update: (data) => api('/api/config', 'PUT', data),
+  // #443: límites informativos del sistema. Devuelve { limits: [{t, d}] }.
+  // Antes vivía hardcoded en Config.jsx desincronizado de la realidad.
+  systemLimits: () => api('/api/config/system-limits'),
+  // #445: último TC usado por el tenant (de venta más reciente en 90d).
+  // Devuelve { tc, source: 'venta'|'fallback', computed_at }. Antes el
+  // Cotizador tenía un default de 1400 hardcoded que se desactualizaba mes
+  // a mes. Si no hay venta con TC reciente, devuelve fallback=1400 igual
+  // para mantener el behavior viejo en tenants sin data.
+  lastTc: () => api('/api/config/last-tc'),
 };
 
 // Endpoints admin (rol=admin requerido server-side). Pantalla Config →
