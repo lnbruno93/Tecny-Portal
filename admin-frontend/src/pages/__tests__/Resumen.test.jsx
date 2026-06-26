@@ -81,6 +81,8 @@ function happyMetrics(overrides = {}) {
 
 function happyHistory() {
   // 90 días con valores chicos. El chart debe renderizar 90 columnas.
+  // mrr_usd: serie creciente de $500 a $1050 (#451) — el sparkbar pinta
+  // los últimos 30 días en la KPI MRR.
   const items = [];
   for (let i = 89; i >= 0; i--) {
     const d = new Date();
@@ -89,6 +91,8 @@ function happyHistory() {
       date: d.toISOString().slice(0, 10),
       signups: i % 7 === 0 ? 1 : 0,
       suspensions: i % 15 === 0 ? 1 : 0,
+      // MRR crece 5/día → de $500 a $945 a lo largo de los 90 días.
+      mrr_usd: 500 + (89 - i) * 5,
     });
   }
   return { history: items };
@@ -216,6 +220,38 @@ describe('Resumen', () => {
     });
     expect(screen.getByText(/lucas reactivó boreal saas/i)).toBeInTheDocument();
     expect(screen.getByText(/lucas extendió trial de cumbre tech/i)).toBeInTheDocument();
+  });
+
+  it('renderiza sparkbar de MRR (#451) cuando hay history con mrr_usd', async () => {
+    adminApi.getMetrics.mockResolvedValue(happyMetrics());
+    adminApi.getMetricsHistory.mockResolvedValue(happyHistory());
+    adminApi.getRecentActions.mockResolvedValue(happyActions());
+    adminApi.listTenants.mockResolvedValue(happyTenants());
+
+    renderResumen();
+
+    // El sparkbar tiene role="img" con aria-label específico.
+    const spark = await screen.findByRole('img', { name: /MRR últimos \d+ días/i });
+    expect(spark).toBeInTheDocument();
+    // 30 barras (slice de los últimos 30 días del fixture de 90).
+    expect(spark.querySelectorAll('i').length).toBe(30);
+  });
+
+  it('NO renderiza sparkbar de MRR si precios están pendientes (#451)', async () => {
+    adminApi.getMetrics.mockResolvedValue(happyMetrics({
+      plan_prices_usd: { trial: 0, starter: 0, pro: 0, enterprise: 0 },
+    }));
+    adminApi.getMetricsHistory.mockResolvedValue(happyHistory());
+    adminApi.getRecentActions.mockResolvedValue(happyActions());
+    adminApi.listTenants.mockResolvedValue(happyTenants());
+
+    renderResumen();
+
+    // El nudge "precios pendientes" gana — el sparkbar no se monta.
+    await waitFor(() => {
+      expect(screen.getByText(/precios pendientes de configurar/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('img', { name: /MRR últimos/i })).not.toBeInTheDocument();
   });
 
   it('click en row de "Top clientes" navega a /clientes/:id', async () => {

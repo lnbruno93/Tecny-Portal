@@ -167,6 +167,26 @@ export default function Resumen() {
     return (p.starter ?? 0) === 0 && (p.pro ?? 0) === 0 && (p.enterprise ?? 0) === 0;
   }, [metrics]);
 
+  // #451: serie MRR para el sparkbar de la KPI. Tomamos los últimos 30 días
+  // de los 90 que devuelve /metrics/history — el card es chico y 90 barras
+  // de 1px se ven como ruido. 30 da una lectura "último mes" útil para
+  // intuir tendencia (subiendo / plano / bajando).
+  const mrrSpark = useMemo(() => {
+    if (!Array.isArray(history) || history.length === 0) return [];
+    return history.slice(-30).map((d) => ({
+      date: d.date,
+      mrr: Number(d.mrr_usd) || 0,
+    }));
+  }, [history]);
+  // Max para escalar las barras al 100% del alto del card. Default a 1
+  // (mismo defensivo que ColChart) — si todo es 0 las barras quedan en
+  // min-height: 1px y el card no se ve roto.
+  const mrrSparkMax = useMemo(() => {
+    let m = 0;
+    for (const it of mrrSpark) if (it.mrr > m) m = it.mrr;
+    return Math.max(1, m);
+  }, [mrrSpark]);
+
   // Top 5 tenants por usuarios, excluyendo suspendidos. Lo recalculamos
   // solo cuando cambia el array de tenants — `useMemo` evita rehacer
   // el sort en cada render.
@@ -257,12 +277,36 @@ export default function Resumen() {
             <div className={'kpi-trend' + (k.tone === 'pos' ? ' t-pos' : k.tone === 'neg' ? ' t-neg' : '')}>
               <span className="muted">{k.sub}</span>
             </div>
-            {/* Sparkbar visual placeholder — MRR histórico no existe aún
-                en el endpoint. Lo dejamos vacío para mantener el ritmo
-                visual del grid sin engañar con datos fake. */}
+            {/* #451: sparkbar de MRR (últimos 30 días) en la KPI #0 (MRR).
+                Si los precios están en 0 (placeholders), mostramos el nudge
+                en vez del spark — un sparkbar de ceros sería peor que nada.
+                Para las otras KPIs no tenemos serie histórica todavía (no es
+                tan crítico como MRR), mantenemos el slot vacío para no romper
+                el ritmo visual del grid. */}
             {i === 0 && pricesPending ? (
               <div className="muted tiny" style={{ marginTop: 4 }}>
                 (precios pendientes de configurar)
+              </div>
+            ) : i === 0 && mrrSpark.length > 0 ? (
+              <div
+                className="kpi-spark"
+                role="img"
+                aria-label={`MRR últimos ${mrrSpark.length} días: tendencia visual`}
+                title={`Último día: ${fmtMoney(mrrSpark[mrrSpark.length - 1]?.mrr || 0)}/mes`}
+              >
+                {mrrSpark.map((d, idx) => {
+                  const h = (d.mrr / mrrSparkMax) * 100;
+                  // Últimos 7 días con más opacidad para enfatizar "hoy".
+                  const recent = idx >= mrrSpark.length - 7;
+                  return (
+                    <i
+                      key={d.date}
+                      className={recent ? 'recent' : ''}
+                      style={{ height: `${Math.max(h, 4)}%` }}
+                      title={`${d.date} · ${fmtMoney(d.mrr)}`}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div className="kpi-sparkbar" />
@@ -288,8 +332,11 @@ export default function Resumen() {
               Suspensiones
             </span>
           </div>
+          {/* #451: el MRR histórico se visualiza en la KPI MRR arriba (últimos
+              30 días). Acá no lo dibujamos para no duplicar — este card es
+              sobre cambios de cohort (altas/bajas), no sobre dinero. */}
           <div className="muted tiny" style={{ marginTop: 8 }}>
-            MRR histórico próximamente.
+            MRR histórico: ver mini-gráfico en la KPI MRR arriba.
           </div>
         </Card>
 

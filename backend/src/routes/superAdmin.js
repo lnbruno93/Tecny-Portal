@@ -1259,11 +1259,24 @@ router.get('/metrics', async (_req, res, next) => {
 //
 // Para gráficos: MRR diario + signups diarios + suspensions diarias.
 // generate_series garantiza N días continuos (sin gaps cuando hay 0).
+//
+// MRR diario (#451): para cada día calculamos la suma de MRR de los tenants
+// que estaban "activos" ese día (created_at <= día, no eliminados, no
+// suspendidos al cierre del día). Usamos los precios ACTUALES de cada plan
+// + custom_mrr_usd actual — es una aproximación documentada porque no
+// guardamos historial de precios (sub-fase futura: tabla plan_prices_history
+// + tenants.plan_history). Sirve para visualizar la tendencia de crecimiento
+// (forma de la curva), NO para reporting financiero exacto retroactivo.
+//
+// Implementación: una sola query agrupa (día, plan, custom_mrr_usd) — el
+// universo de pares distintos es chico (≤4 planes × N enterprise distintos)
+// y getTenantMrr() en Node consolida la lógica de pricing en un solo lugar.
 // ──────────────────────────────────────────────────────────────────────────
 router.get('/metrics/history', async (_req, res, next) => {
   try {
     const data = await db.adminQuery(async (client) => {
-      const { rows } = await client.query(`
+      // Query 1: signups + suspensions diarias (igual que antes).
+      const { rows: dailyRows } = await client.query(`
         WITH days AS (
           SELECT generate_series(
             CURRENT_DATE - INTERVAL '89 days',
@@ -1280,7 +1293,55 @@ router.get('/metrics/history', async (_req, res, next) => {
           FROM days
          ORDER BY d ASC
       `);
-      return { history: rows };
+
+      // Query 2: tenants activos por día agrupados por (plan, custom_mrr_usd).
+      // CROSS JOIN días × tenants filtrado por las 3 condiciones de "activo en
+      // ese día". Postgres lo resuelve eficientemente con merge join sobre el
+      // pequeño universo de tenants. Para 30 tenants × 90 días = 2700 evaluaciones,
+      // ridículo. Si llegamos a 5000 tenants × 90 días = 450k, agregamos índice
+      // funcional o particionamos por mes.
+      const { rows: mrrBreakdown } = await client.query(`
+        WITH days AS (
+          SELECT generate_series(
+            CURRENT_DATE - INTERVAL '89 days',
+            CURRENT_DATE,
+            INTERVAL '1 day'
+          )::date AS d
+        )
+        SELECT
+          d.d::text AS date,
+          t.plan,
+          t.custom_mrr_usd,
+          COUNT(*)::int AS cnt
+          FROM days d
+          JOIN tenants t ON
+                t.created_at::date <= d.d
+            AND (t.deleted_at IS NULL OR t.deleted_at::date > d.d)
+            AND (t.suspended_at IS NULL OR t.suspended_at::date > d.d)
+         GROUP BY d.d, t.plan, t.custom_mrr_usd
+      `);
+
+      // Consolidar MRR por día en JS — getTenantMrr() es la fuente única de
+      // verdad para el cálculo y queremos que el endpoint use exactamente la
+      // misma fórmula que /metrics (el current MRR del KPI). Si en el futuro
+      // hay una promoción que descuenta X% sobre el price del plan, vive ahí.
+      const mrrByDay = new Map();
+      for (const r of mrrBreakdown) {
+        const prev = mrrByDay.get(r.date) || 0;
+        mrrByDay.set(r.date, prev + getTenantMrr(r.plan, r.custom_mrr_usd) * r.cnt);
+      }
+
+      // Merge: el array final tiene exactamente N=90 elementos (uno por día
+      // continuo). Si un día no aparece en mrrByDay (no había tenants) ponemos
+      // 0 — la gráfica muestra "valle" honesto y no NaN.
+      const history = dailyRows.map((row) => ({
+        date: row.date,
+        signups: row.signups,
+        suspensions: row.suspensions,
+        mrr_usd: Math.round((mrrByDay.get(row.date) || 0) * 100) / 100,
+      }));
+
+      return { history };
     });
     res.json(data);
   } catch (err) {

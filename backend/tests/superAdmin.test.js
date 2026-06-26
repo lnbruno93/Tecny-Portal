@@ -1013,14 +1013,45 @@ describe('GET /api/super-admin/metrics/history', () => {
     expect(r.status).toBe(200);
     expect(Array.isArray(r.body.history)).toBe(true);
     expect(r.body.history).toHaveLength(90);
-    // Cada item tiene date, signups, suspensions
+    // Cada item tiene date, signups, suspensions, mrr_usd (#451).
     expect(r.body.history[0]).toEqual(
       expect.objectContaining({
         date: expect.any(String),
         signups: expect.any(Number),
         suspensions: expect.any(Number),
+        mrr_usd: expect.any(Number),
       })
     );
+  });
+
+  it('mrr_usd diario >= 0 en todos los días (#451)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/metrics/history')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    for (const day of r.body.history) {
+      expect(typeof day.mrr_usd).toBe('number');
+      expect(day.mrr_usd).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(day.mrr_usd)).toBe(true);
+    }
+  });
+
+  it('mrr_usd del último día coincide con /metrics actual (#451)', async () => {
+    // El MRR del día de hoy en el array debe igualar el mrr_total_usd
+    // que devuelve /metrics — son la misma fórmula sobre el mismo universo
+    // de tenants activos. Si divergen, hay drift de lógica (regresión).
+    const [hist, met] = await Promise.all([
+      request(app)
+        .get('/api/super-admin/metrics/history')
+        .set('Authorization', `Bearer ${superAdminToken}`),
+      request(app)
+        .get('/api/super-admin/metrics')
+        .set('Authorization', `Bearer ${superAdminToken}`),
+    ]);
+    expect(hist.status).toBe(200);
+    expect(met.status).toBe(200);
+    const today = hist.body.history[hist.body.history.length - 1];
+    expect(today.mrr_usd).toBe(met.body.mrr_total_usd);
   });
 });
 
