@@ -683,6 +683,32 @@ a { color: inherit; text-decoration: none; }
   height: 100%;
   background: var(--accent);
 }
+/* #451: sparkbar de N barras (típicamente últimos 30 días de MRR). Distinto
+   del .kpi-sparkbar de arriba que es una progress-bar simple; este es una
+   serie temporal en miniatura. Layout flex con barras de igual ancho. */
+.kpi-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 22px;
+  margin-top: 6px;
+  width: 100%;
+}
+.kpi-spark > i {
+  flex: 1 1 0;
+  background: var(--accent);
+  opacity: 0.55;
+  border-radius: 1px;
+  min-height: 1px;
+  transition: opacity 0.15s ease;
+}
+/* Las últimas barras se ven con más contraste para enfatizar "qué pasó hace poco". */
+.kpi-spark > i.recent {
+  opacity: 0.95;
+}
+.kpi-spark:hover > i {
+  opacity: 0.85;
+}
 
 /* ── Layout utilities ────────────────────────────────────────────── */
 .split-2 {
