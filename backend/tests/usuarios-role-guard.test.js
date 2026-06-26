@@ -62,6 +62,7 @@ describe('SEG-1: role=admin guard en endpoints públicos', () => {
       .send({
         nombre: 'Operador 1',
         username: 'op1',
+        email: 'op1@test.local',
         password: 'Operador123!',
         role: 'op',
       });
@@ -77,6 +78,7 @@ describe('SEG-1: role=admin guard en endpoints públicos', () => {
       .send({
         nombre: 'Operador 2',
         username: 'op2',
+        email: 'op2@test.local',
         password: 'Operador123!',
       });
 
@@ -92,6 +94,7 @@ describe('SEG-1: role=admin guard en endpoints públicos', () => {
       .send({
         nombre: 'Operador 3',
         username: 'op3',
+        email: 'op3@test.local',
         password: 'Operador123!',
         role: 'op',
       });

@@ -29,7 +29,13 @@ const createUsuarioSchema = z.object({
   nombre:   z.string().trim().min(1, 'Nombre requerido').max(100),
   username: z.string().trim().min(2, 'Username mínimo 2 caracteres').max(50)
               .regex(/^[a-z0-9_]+$/, 'Username: solo minúsculas, números y guión bajo'),
-  email:    z.string().trim().toLowerCase().email('Email inválido').optional().nullable(),
+  // 2026-06-26 (#446): email pasa a ser OBLIGATORIO. Antes era opcional y
+  // generábamos `user_<id>@placeholder.local` cuando faltaba — implementación
+  // interna expuesta si alguien miraba la DB. Mejor UX forzar email real
+  // (que el user pueda recibir invitaciones, resets de password, etc.).
+  // Tenants legacy con placeholders quedan tal cual; un banner en Usuarios.jsx
+  // les sugiere completar el email de los users afectados.
+  email:    z.string().trim().toLowerCase().email('Email inválido'),
   password: passwordField(),
   // role queda fijo en 'op'. Si el cliente manda 'admin', zod rechaza con 400.
   role:     z.literal('op').default('op'),

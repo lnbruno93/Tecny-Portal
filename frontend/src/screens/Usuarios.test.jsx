@@ -122,6 +122,8 @@ describe('Pantalla Usuarios — alta', () => {
 
     await userEvent.type(screen.getByPlaceholderText('Juan Pérez'), 'Test User');
     await userEvent.type(screen.getByPlaceholderText('juanp'), 'testuser');
+    // 2026-06-26 (#446): email pasó a obligatorio.
+    await userEvent.type(screen.getByPlaceholderText('juan@empresa.com'), 'test@user.com');
     await userEvent.type(screen.getByPlaceholderText('••••••••'), 'abc'); // <8 chars
     await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }));
 
@@ -139,6 +141,8 @@ describe('Pantalla Usuarios — alta', () => {
 
     await userEvent.type(screen.getByPlaceholderText('Juan Pérez'), 'Test User');
     await userEvent.type(screen.getByPlaceholderText('juanp'), 'testuser');
+    // 2026-06-26 (#446): email pasó a obligatorio.
+    await userEvent.type(screen.getByPlaceholderText('juan@empresa.com'), 'test@user.com');
     await userEvent.type(screen.getByPlaceholderText('••••••••'), 'segura123');
     await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }));
 
@@ -147,6 +151,7 @@ describe('Pantalla Usuarios — alta', () => {
     const payload = usuariosApi.create.mock.calls[0][0];
     expect(payload).toMatchObject({
       nombre: 'Test User', username: 'testuser',
+      email: 'test@user.com',
       password: 'segura123', role: 'op',
     });
     // 2026-06-24 hotfix post-permisos: el campo `perms` se removió del payload

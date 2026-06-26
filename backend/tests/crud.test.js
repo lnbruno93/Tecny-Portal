@@ -89,18 +89,37 @@ describe('POST /api/usuarios', () => {
     // 2026-06-23 F4: el POST /usuarios ya no recibe `perms` (schema .strict()
     // lo rechaza). Capabilities se asignan post-create vía PUT
     // /api/capabilities/users/:id.
+    // 2026-06-26 (#446): email pasa a ser OBLIGATORIO.
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         nombre:   'Nuevo Vendedor',
         username: 'vendedor01',
+        email:    'vendedor01@test.local',
         password: 'pass12345',
         role:     'op',
       });
     expect(res.status).toBe(201);
     expect(res.body.username).toBe('vendedor01');
+    expect(res.body.email).toBe('vendedor01@test.local');
     nuevoUserId = res.body.id;
+  });
+
+  it('#446: rechaza creación sin email → 400 (email obligatorio)', async () => {
+    const res = await request(app)
+      .post('/api/usuarios')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        nombre:   'Sin Email',
+        username: 'noemail01',
+        password: 'pass12345',
+        role:     'op',
+      });
+    expect(res.status).toBe(400);
+    // El user NO debe haberse creado (verificación defensiva)
+    const check = await pool.query(`SELECT id FROM users WHERE username='noemail01'`);
+    expect(check.rows).toHaveLength(0);
   });
 
   it('rechaza username duplicado → 409', async () => {
@@ -108,7 +127,7 @@ describe('POST /api/usuarios', () => {
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        nombre: 'Otro', username: 'vendedor01', password: 'pass12345', role: 'op',
+        nombre: 'Otro', username: 'vendedor01', email: 'otro@test.local', password: 'pass12345', role: 'op',
       });
     expect(res.status).toBe(409);
   });
@@ -127,7 +146,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: '', username: 'x_user', password: 'pass12345', role: 'op' });
+      .send({ nombre: '', username: 'x_user', email: 'x@test.local', password: 'pass12345', role: 'op' });
     expect(res.status).toBe(400);
   });
 
@@ -135,7 +154,7 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Alguien', username: 'a_user', password: '123', role: 'op' });
+      .send({ nombre: 'Alguien', username: 'a_user', email: 'a@test.local', password: '123', role: 'op' });
     expect(res.status).toBe(400);
   });
 
@@ -143,7 +162,15 @@ describe('POST /api/usuarios', () => {
     const res = await request(app)
       .post('/api/usuarios')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nombre: 'Alguien', username: 'UserBad', password: 'pass12345', role: 'op' });
+      .send({ nombre: 'Alguien', username: 'UserBad', email: 'b@test.local', password: 'pass12345', role: 'op' });
+    expect(res.status).toBe(400);
+  });
+
+  it('#446: rechaza email mal formado → 400', async () => {
+    const res = await request(app)
+      .post('/api/usuarios')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Alguien', username: 'bademail', email: 'no-es-email', password: 'pass12345', role: 'op' });
     expect(res.status).toBe(400);
   });
 });
