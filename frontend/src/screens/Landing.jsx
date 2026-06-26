@@ -237,20 +237,20 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* ── LOGO STRIP ───────────────────────────────────── */}
-      <div className="strip">
-        <div className="wrap">
-          <div className="strip-label">Equipos que ya operan con Tecny</div>
-          <div className="strip-logos">
-            <span className="lg">Tech Reseller</span>
-            <span className="lg">Celnyx</span>
-            <span className="lg">Mac Center</span>
-            <span className="lg">iSell</span>
-            <span className="lg">Movilink</span>
-            <span className="lg">Phone Lab</span>
-          </div>
-        </div>
-      </div>
+      {/*
+        ── LOGO STRIP — REMOVIDO #441 ───────────────────────────────────────
+        2026-06-26: la franja "Equipos que ya operan con Tecny" listaba 6
+        empresas (Tech Reseller, Celnyx, Mac Center, iSell, Movilink, Phone
+        Lab). La mayoría eran nombres inventados — solo Celnyx es real (el
+        tenant interno de Lucas / iPro). Mostrar logos fake engaña al
+        prospecto sobre tracción real y rompe la confianza apenas un visitante
+        google-ea cualquiera de los nombres.
+        Cuando tengamos 3+ clientes con permiso explícito para mostrar el
+        nombre, agregamos el strip de vuelta — con los reales únicamente.
+        El CSS de .strip queda en el bundle sin uso (cleanup en otra pasada
+        — el costo del CSS no usado es ~80 bytes minificados, no vale el
+        riesgo de regresión visual en otras pantallas que pudieran reusarlo).
+      */}
 
       {/* ── CÓMO FUNCIONA ────────────────────────────────── */}
       <section className="s" id="como">
@@ -431,38 +431,27 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── TESTIMONIOS ──────────────────────────────────── */}
-      <section className="s" id="testimonios" style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)' }}>
-        <div className="wrap">
-          <div className="s-head center">
-            <div className="s-kicker">Lo que dicen</div>
-            <h2 className="s-title">Equipos que dejaron el caos atrás</h2>
-          </div>
-          <div className="tests">
-            <div className="test">
-              <div className="stars">★★★★★</div>
-              <p className="q">"Antes cada vendedor cotizaba distinto. Ahora todos sacan el mismo precio en segundos y yo veo todo desde un solo lugar. Cambió cómo trabajamos."</p>
-              <div className="who"><div className="av">AM</div><div><div className="nm">Ariel Méndez</div><div className="rl">Mac Center · CABA</div></div></div>
-            </div>
-            <div className="test">
-              <div className="stars">★★★★★</div>
-              <p className="q">"El OCR de comprobantes me ahorra horas. Saco la foto de la transferencia y el monto ya queda cargado. Las cuentas corrientes nunca estuvieron tan claras."</p>
-              <div className="who"><div className="av">RS</div><div><div className="nm">Romina Saro</div><div className="rl">Celular Express</div></div></div>
-            </div>
-            <div className="test">
-              <div className="stars">★★★★★</div>
-              <p className="q">"Manejo tres sucursales y con el historial de auditoría sé exactamente quién tocó qué. Los envíos con cobro en la puerta nos ordenaron la logística entera."</p>
-              <div className="who"><div className="av">FV</div><div><div className="nm">Federico Vidal</div><div className="rl">iSell · 3 locales</div></div></div>
-            </div>
-          </div>
-          <div className="bigstat">
-            <div><div className="v">+2.800</div><div className="l">reseñas 5★ en Google</div></div>
-            <div><div className="v">18k</div><div className="l">cotizaciones por mes</div></div>
-            <div><div className="v">94%</div><div className="l">precisión del OCR</div></div>
-            <div><div className="v">7</div><div className="l">módulos integrados</div></div>
-          </div>
-        </div>
-      </section>
+      {/*
+        ── TESTIMONIOS + BIGSTAT — REMOVIDO #441 ────────────────────────────
+        2026-06-26: la sección listaba 3 testimonials con nombres y empresas
+        inventadas (Ariel Méndez / Mac Center, Romina Saro / Celular Express,
+        Federico Vidal / iSell) — strict fabrication, ningún cliente real dijo
+        eso. La bigstat agregaba 4 métricas no auditables o directamente
+        falsas:
+          · "+2.800 reseñas 5★ en Google" — Tecny no tiene perfil de Google
+            Business con 2.800 reseñas.
+          · "18k cotizaciones por mes" — imposible con ~3-4 clientes reales.
+          · "94% precisión del OCR" — número arbitrario no medido.
+          · "7 módulos integrados" — verdadero, pero solo se sostiene si lo
+            anclamos a un anchor verificable (la sección Módulos los lista).
+        Mostrar todo esto a un prospecto que después abre la app y ve un
+        portal vacío destruye la confianza. Cuando tengamos 3 clientes que
+        firmen testimonios reales + Google Reviews activo, el patrón vuelve
+        — con quotes auténticos y nombres reales que el prospecto puede
+        verificar.
+        Footer "Clientes" link al anchor #testimonios también removido — el
+        anchor no existe más.
+      */}
 
       {/* ── PRECIOS ──────────────────────────────────────── */}
       <section className="s" id="precios">
@@ -646,7 +635,9 @@ export default function Landing() {
             <div className="foot-col">
               <h5>Empresa</h5>
               <SoonLink>Sobre nosotros</SoonLink>
-              <a href="#testimonios">Clientes</a>
+              {/* #441: "Clientes" linkeaba a #testimonios — anchor removido
+                  porque la sección era fake. Cuando tengamos testimonios
+                  reales, restaurar tanto la sección como el link. */}
               <SoonLink>Contacto</SoonLink>
               <SoonLink>Soporte</SoonLink>
             </div>
@@ -661,7 +652,10 @@ export default function Landing() {
             </div>
           </div>
           <div className="foot-bottom">
-            <div className="cr">© 2026 Tecny · Tech Reseller & Celnyx · Buenos Aires, Argentina</div>
+            {/* #441: removido "Tech Reseller" del crédito — era un nombre
+                inventado de la franja de logos fake. Celnyx es el tenant
+                interno real (ex-iPro, ver #449). */}
+            <div className="cr">© 2026 Tecny · Celnyx · Buenos Aires, Argentina</div>
             <div className="soc">
               <SoonLink label="Instagram">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-label="Instagram">
