@@ -294,6 +294,29 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
       [nombre, tenant.id]
     );
 
+    // 5d. 2026-06-25 Bug #2 (primer cliente real iDeals Ar tenant=12):
+    // seed de la fila de config con pct_financiera=0. Sin esto, cuando el
+    // owner intenta cambiar el % de retención en la pantalla Config, el INSERT
+    // en `/api/config` PUT confiaba en el DEFAULT dinámico de tenant_id (que
+    // genera el valor de current_setting('app.current_tenant')) — pero por
+    // alguna razón ese path no persistía la fila para tenants nuevos. Resultado:
+    // el cliente ve 3% en la UI pero `syncFinancieraComprobante` lee
+    // `SELECT pct_financiera FROM config LIMIT 1` y la RLS filtra a 0 filas
+    // → `monto_financiera = 0` en TODOS los comprobantes financieros del tenant.
+    //
+    // Diagnóstico real con SQL en prod (2026-06-25 18:55 AR):
+    //   SELECT * FROM config WHERE tenant_id = 12 → (0 filas)
+    //
+    // Con este seed garantizamos que la fila SIEMPRE existe desde el momento
+    // del signup. El UPDATE de pct_financiera vía PUT /api/config ya funciona
+    // si la fila existe (ON CONFLICT hace UPDATE). El INSERT del PUT también
+    // está blindado en este PR con tenant_id explícito como defense-in-depth.
+    await client.query(
+      `INSERT INTO config (id, pct_financiera, tenant_id) VALUES (1, 0, $1)
+       ON CONFLICT (tenant_id, id) DO NOTHING`,
+      [tenant.id]
+    );
+
     // 6. Token de verificación con TTL 24h.
     const token = generateToken();
     const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);

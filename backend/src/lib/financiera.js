@@ -165,4 +165,54 @@ async function postCajaMovimientoFinanciera(client, {
   });
 }
 
-module.exports = { syncFinancieraComprobante, postCajaMovimientoFinanciera };
+/**
+ * recalcComprobantesFinancieraByTenant — recalcula monto_financiera y monto_neto
+ * de TODOS los comprobantes activos del tenant actual con el nuevo `pctNuevo`.
+ *
+ * 2026-06-25 Bug #2 (primer cliente real iDeals Ar tenant=12): cuando el owner
+ * cambia el % de retención de la financiera en Config, los comprobantes ya
+ * existentes quedaban con el cálculo congelado del % viejo (o 0 si nunca se
+ * configuró). El owner espera intuitivamente que cambiar el % afecte sus
+ * ventas históricas — si no, el dashboard miente y la trazabilidad financiera
+ * pierde sentido.
+ *
+ * Diseño:
+ *  · Idempotente: re-correr con el mismo pct no cambia nada (los valores ya
+ *    están consistentes con ese pct).
+ *  · Solo toca filas activas (deleted_at IS NULL).
+ *  · Asume que `client` ya está dentro de withTenant(tenantId) — la RLS de
+ *    `comprobantes` filtra automáticamente al tenant actual; NO necesitamos
+ *    WHERE tenant_id explícito.
+ *  · Devuelve la cantidad de filas afectadas — útil para audit logging.
+ *  · Mantiene la invariante: monto_neto = monto - monto_financiera (round2).
+ *
+ * Por qué un UPDATE en SQL en vez de iterar en JS: 1 query atómica que afecta
+ * N filas es O(1) network roundtrips. Iterar en JS sería O(N) y abriría una
+ * ventana donde algunas filas tienen el pct nuevo y otras el viejo.
+ *
+ * NOTA sobre postCajaMovimientoFinanciera: cuando cambia monto_neto, también
+ * debería actualizarse el caja_movimiento asociado (porque el movimiento usa
+ * el neto como monto). NO lo hacemos en este helper porque el flujo de
+ * caja_movimientos es append-only + reverse, no UPDATE in-place. Para esta
+ * primera iteración aceptamos que el SALDO de la caja FV puede quedar levemente
+ * desincronizado del nuevo neto hasta que se edite/recree el comprobante.
+ * TODO follow-up: si esto resulta confuso para el operador, sumar reverso +
+ * post nuevo del movimiento con el delta. Por ahora documentamos.
+ */
+async function recalcComprobantesFinancieraByTenant(client, pctNuevo) {
+  const pct = Number(pctNuevo) || 0;
+  const { rowCount } = await client.query(
+    `UPDATE comprobantes
+        SET monto_financiera = ROUND(monto * $1 / 100, 2),
+            monto_neto       = ROUND(monto - (monto * $1 / 100), 2)
+      WHERE deleted_at IS NULL`,
+    [pct]
+  );
+  return rowCount;
+}
+
+module.exports = {
+  syncFinancieraComprobante,
+  postCajaMovimientoFinanciera,
+  recalcComprobantesFinancieraByTenant,
+};

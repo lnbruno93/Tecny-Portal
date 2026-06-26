@@ -58,6 +58,18 @@ async function setupTestDb() {
   // Limpiar todas las tablas de datos y reiniciar secuencias
   // 2026-06-20 #340: chat_messages + chat_conversations + chat_rate_limits
   // agregados para que tests del bot arranquen siempre limpios.
+  // 2026-06-25 Bug #2 (post-mortem del PR de financiera): `config` agregada al
+  // TRUNCATE porque la migration 20260615000001 cambió la tabla de singleton
+  // a 1 row por tenant. Tests que usan signup público crean tenants nuevos +
+  // (con el seed nuevo en signup.js) cada signup persiste una fila en config.
+  // Después de varios runs locales, la tabla tenía 50+ filas residuales de
+  // tenants viejos. La query `SELECT pct_financiera FROM config LIMIT 1` del
+  // endpoint POST /comprobantes/manuales era no-determinística en presencia
+  // de múltiples filas — devolvía una fila random (pct=0 de algún tenant
+  // viejo) en vez de la del tenant del request. Tests asumían pct=5 y
+  // recibían 0, fallando en local + CI. El TRUNCATE acá garantiza DB limpia
+  // entre suites; el re-seed inmediato abajo (línea 92) restaura la fila
+  // singleton que la migration inicial creó (id=1, tenant_id=1, pct=0).
   await pool.query(`
     TRUNCATE TABLE
       audit_logs, audit_queue,
@@ -73,9 +85,27 @@ async function setupTestDb() {
       movimientos_inversiones, movimientos_deudas, contactos,
       comprobantes, pagos, vendedores,
       chat_messages, chat_conversations, chat_rate_limits,
-      feature_flags,
+      feature_flags, config,
       users
     RESTART IDENTITY CASCADE
+  `);
+
+  // 2026-06-25 Bug #2: re-seed de config con la fila singleton del tenant 1.
+  // Réplica del INSERT de la migration inicial 20260521000001 + el tenant_id=1
+  // que la migration 20260615000001_multitenant_schema le agregó (línea 220).
+  // Sin esto, el TRUNCATE de arriba deja la tabla vacía y todos los endpoints
+  // que leen pct_financiera caen al fallback 0 — rompe tests de comprobantes
+  // manuales, ventas con financiera, caja-ledger.
+  //
+  // NOTA: `tenants` deliberadamente NO está en el TRUNCATE. Truncarla con
+  // CASCADE arrastra todas las tablas que FK a tenants (~30 tablas) y rompe
+  // RLS y assumptions de muchos suites. Los tests del superAdmin que asumen
+  // tenant=1 fallan por acumulación de tenants de runs viejos — eso queda
+  // como follow-up (task #437) en un PR separado con migration de cleanup
+  // o estrategia distinta.
+  await pool.query(`
+    INSERT INTO config (id, tenant_id, pct_financiera) VALUES (1, 1, 0)
+    ON CONFLICT (tenant_id, id) DO NOTHING
   `);
 
   // M-08 feature flags: re-seed del demo_flag para que los tests que asumen

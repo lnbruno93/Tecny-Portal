@@ -22,11 +22,14 @@ router.get('/', async (req, res, next) => {
 router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) => {
   try {
     const { pct_financiera } = req.body;
-    // 2026-06-15 multi-tenant PR 1: la PK de config pasó a ser (tenant_id, id).
-    // El INSERT acá no especifica tenant_id porque la columna tiene DEFAULT 1
-    // (cubre el caso single-tenant actual). El ON CONFLICT necesita reflejar
-    // la nueva PK compuesta. En PR 4 reemplazamos por tenant_id explícito del
-    // request scope.
+    // 2026-06-15 multi-tenant PR 1: la PK de config es (tenant_id, id).
+    // El INSERT no especifica tenant_id — depende del DEFAULT dinámico
+    // (current_setting('app.current_tenant')::int con fallback a 1).
+    // Combinado con SET LOCAL adentro de withTenant, persiste la fila al
+    // tenant correcto. Lo que ASEGURA que esta fila siempre exista para
+    // tenants nuevos es el seed inicial en signup.js §5d (2026-06-25 Bug #2).
+    // Tenants legacy creados antes de ese fix necesitan SQL manual de seed
+    // — ver hot-fix instrucciones en docs/.
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `INSERT INTO config (id, pct_financiera) VALUES (1, $1)
