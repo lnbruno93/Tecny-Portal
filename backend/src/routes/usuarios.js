@@ -1,6 +1,5 @@
 const router = require('express').Router();
 const bcrypt = require('bcrypt');
-const { randomUUID } = require('crypto');
 const db = require('../config/database');
 const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
@@ -48,17 +47,14 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
     // 2026-06-23 F4: ya no recibimos `perms`. Capabilities + rol se asignan
     // post-creación vía PUT /api/capabilities/users/:id (lo hace el frontend
     // en la pantalla nueva de Usuarios, después de un POST exitoso acá).
+    //
+    // 2026-06-26 (#446): email pasa a ser obligatorio en el schema.
+    // Se quitó la rama que generaba `user_<id>@placeholder.local` cuando
+    // faltaba — los users existentes con esos emails legacy siguen funcionando,
+    // solo prevenimos crear nuevos con placeholders. El banner en Usuarios.jsx
+    // sugiere al admin actualizar los antiguos.
     const { nombre, username, email, password, role } = req.body;
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
-    // 2026-06-16 TANDA 1: email es NOT NULL. Si el admin no lo provee (flow
-    // legacy donde el user no tiene email todavía), generamos un placeholder
-    // único `user_<id>@placeholder.local` alineado con el backfill de la
-    // migration 20260616000003. Como no tenemos el id hasta después del
-    // INSERT, primero usamos un placeholder UUID-based para el INSERT, y
-    // después UPDATE al patrón final. Todo dentro de la misma tx — atómico.
-    const adminCreatedWithoutEmail = !email;
-    const insertEmail = email || `temp_${randomUUID()}@placeholder.local`;
 
     const client = await db.connect();
     try {
@@ -66,15 +62,9 @@ router.post('/', validate(createUsuarioSchema), async (req, res, next) => {
       await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
       const { rows } = await client.query(
         'INSERT INTO users (nombre, username, email, password_hash, role) VALUES ($1,$2,$3,$4,$5) RETURNING id, nombre, username, email, role',
-        [nombre, username, insertEmail, hash, role]
+        [nombre, username, email, hash, role]
       );
       const user = rows[0];
-
-      if (adminCreatedWithoutEmail) {
-        const finalEmail = `user_${user.id}@placeholder.local`;
-        await client.query('UPDATE users SET email = $1 WHERE id = $2', [finalEmail, user.id]);
-        user.email = finalEmail;
-      }
 
       // TANDA 2.4 fix BLOCKER auditoría 2026-06-17: link el user nuevo al tenant
       // actual como member. Sin esto, el user creado por admin queda huérfano

@@ -169,9 +169,19 @@ export default function Usuarios() {
     e.preventDefault();
     const nombre = newUser.nombre.trim();
     const username = newUser.username.trim().toLowerCase();
+    const email = newUser.email.trim();
     if (!nombre) { setCreateError('El nombre es obligatorio.'); return; }
     if (username.length < 2) { setCreateError('El usuario debe tener al menos 2 caracteres.'); return; }
     if (!/^[a-z0-9_]+$/.test(username)) { setCreateError('Usuario: solo minúsculas, números y guión bajo.'); return; }
+    // 2026-06-26 (#446): email obligatorio + formato válido. Validación
+    // cliente-side para feedback inmediato; el backend rechaza igual con 400.
+    // Regex razonable (no RFC-5322 completo — Zod del backend usa el built-in
+    // que es más estricto, pero el simple cubre 99% de typos comunes).
+    if (!email) { setCreateError('El email es obligatorio.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setCreateError('Email inválido. Debe tener formato nombre@dominio.com');
+      return;
+    }
     if (newUser.password.length < 8 || !/[A-Za-z]/.test(newUser.password) || !/[0-9]/.test(newUser.password)) {
       setCreateError('La contraseña debe tener mínimo 8 caracteres, con al menos una letra y un número.');
       return;
@@ -195,7 +205,7 @@ export default function Usuarios() {
       const created = await usuariosApi.create({
         nombre,
         username,
-        email: newUser.email.trim() || null,
+        email, // 2026-06-26 (#446): obligatorio, ya validado arriba.
         password: newUser.password,
         role: 'op',
       });
@@ -255,6 +265,27 @@ export default function Usuarios() {
           </button>
         </div>
       </div>
+
+      {/* 2026-06-26 (#446): banner para users legacy con email placeholder.
+          Antes el alta permitía no enviar email y el backend generaba
+          `user_<id>@placeholder.local`. Esos users no pueden recibir
+          invitaciones / resets de password / notificaciones. El banner
+          es informativo (no force) — el owner los completa cuando puede
+          editando cada user. */}
+      {users.filter(u => (u.email || '').endsWith('@placeholder.local')).length > 0 && (
+        <div className="banner banner-warn" style={{ marginBottom: 14 }}>
+          <Icons.Bell size={16} />
+          <span>
+            <strong>
+              {users.filter(u => (u.email || '').endsWith('@placeholder.local')).length} usuario
+              {users.filter(u => (u.email || '').endsWith('@placeholder.local')).length === 1 ? '' : 's'} sin email real
+            </strong>
+            {' — '}
+            actualizá su email haciendo click en su fila. Sin email no pueden recibir
+            invitaciones, resets de contraseña ni notificaciones.
+          </span>
+        </div>
+      )}
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
       <div className="row" style={{ marginBottom: 16 }}>
@@ -446,9 +477,12 @@ export default function Usuarios() {
 
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Email <span className="muted">(opcional)</span></label>
+                      {/* 2026-06-26 (#446): email pasa de opcional a obligatorio.
+                          Sin email no podemos invitarlo, mandarle resets de pass,
+                          ni notificaciones. */}
+                      <label className="field-label">Email <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="email" className="input" placeholder="juan@empresa.com" value={newUser.email}
-                        onChange={e => setNU('email', e.target.value)} />
+                        onChange={e => setNU('email', e.target.value)} required />
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
