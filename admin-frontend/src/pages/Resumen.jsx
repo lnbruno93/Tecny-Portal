@@ -20,6 +20,7 @@ import { fmt, fmtMoney, fmtPct, ago } from '../lib/format.js';
 import { planTone, planLabel, tenantInitials } from '../lib/uiHelpers.js';
 import { describeAction, actionLongText } from '../lib/actionDescriptors.js';
 import ColChart from '../components/charts/ColChart.jsx';
+import CreateTenantModal from '../components/modals/CreateTenantModal.jsx';
 
 // ── Helpers locales (no se reusan fuera de Resumen) ──────────────────
 
@@ -53,6 +54,8 @@ export default function Resumen() {
   const [metrics, setMetrics] = useState(null);
   // #450: lock UI mientras se descarga el CSV (puede tomar 1-2s con muchos tenants).
   const [exporting, setExporting] = useState(false);
+  // #452: estado del modal "Crear tenant manual" disparado desde "Invitar cliente".
+  const [createOpen, setCreateOpen] = useState(false);
   const [history, setHistory] = useState([]);
   const [actions, setActions] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -238,7 +241,14 @@ export default function Resumen() {
           >
             {exporting ? 'Exportando…' : 'Exportar'}
           </Btn>
-          <Btn kind="primary" icon="Plus" disabled title="Próximamente">
+          {/* #452: "Invitar cliente" abre el modal Crear tenant manual.
+              Antes estaba en wait-state ("Próximamente"). */}
+          <Btn
+            kind="primary"
+            icon="Plus"
+            onClick={() => setCreateOpen(true)}
+            title="Crear tenant manual"
+          >
             Invitar cliente
           </Btn>
         </div>
@@ -495,6 +505,20 @@ export default function Resumen() {
           </div>
         </Card>
       </div>
+
+      {/* #452: modal Crear tenant manual, abierto desde "Invitar cliente" del hero.
+          Después de crear, navegamos a la Ficha del tenant nuevo para que el
+          admin pueda revisar/editar antes de avisar al owner. */}
+      <CreateTenantModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(res) => {
+          setCreateOpen(false);
+          if (res?.tenant?.id) {
+            navigate(`/clientes/${res.tenant.id}`);
+          }
+        }}
+      />
     </>
   );
 }

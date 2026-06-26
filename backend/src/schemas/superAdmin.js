@@ -104,6 +104,45 @@ const setPaidUntilSchema = z.object({
   { message: 'reason requerido cuando paid_until es una fecha', path: ['reason'] }
 );
 
+// POST /api/super-admin/tenants — crear tenant manual (#452).
+//
+// Caso de uso: el super-admin onboardea un cliente desde el back office
+// (típico: demo cerrada en sales call, tenant pre-creado antes del primer
+// login del owner). Genera tenant + owner user + password setup token y
+// envía email "elegí tu password" via Resend.
+//
+// Validaciones:
+//   - tenant_nombre: display del tenant (lo verá el owner en su portal).
+//     Length 1-255 (matchea NOT NULL tenants.nombre). El slug se deriva
+//     automáticamente con uniqueSlug() — admin no lo elige.
+//   - nombre: nombre completo del owner (lo verá en su perfil).
+//   - email: del owner, valid email. Normalizado a lowercase + trim.
+//   - plan: opcional, default 'trial'. Si es 'enterprise' se requiere
+//     custom_mrr_usd (validado en .refine abajo).
+//   - custom_mrr_usd: solo válido si plan='enterprise'. Si plan != enterprise,
+//     se descarta silenciosamente (defense — la columna se setea null en el
+//     INSERT cuando plan != enterprise).
+//   - reason: nota libre del admin, va a tenant_admin_actions.reason. Útil
+//     para "cerrado en demo del 15/jun" o similar.
+const createTenantSchema = z.object({
+  tenant_nombre:  z.string().trim().min(1, 'nombre de empresa requerido').max(255),
+  nombre:         z.string().trim().min(1, 'nombre del owner requerido').max(255),
+  email:          z.string().trim().toLowerCase().email('email inválido').max(255),
+  plan:           z.enum(PLANES).default('trial'),
+  custom_mrr_usd: z.number().nonnegative().max(99999999.99).optional(),
+  reason:         z.string().max(500).optional(),
+}).strict().refine(
+  (data) => {
+    // Enterprise sin custom_mrr_usd no tiene sentido — el MRR del tenant
+    // sería 0 silenciosamente (PLAN_PRICES.enterprise = null) y el dashboard
+    // mostraría "$0 MRR" para un cliente que en realidad paga. Mejor fail-fast
+    // con 400 acá. Si admin quiere "enterprise gratis", puede setear 0
+    // explícitamente.
+    return data.plan !== 'enterprise' || typeof data.custom_mrr_usd === 'number';
+  },
+  { message: 'custom_mrr_usd es requerido para plan enterprise', path: ['custom_mrr_usd'] }
+);
+
 // DELETE /api/super-admin/tenants/:id — soft-delete tenant.
 //
 // Solo body — el slug de confirmación va por query param `?confirm=<slug>`
@@ -140,5 +179,6 @@ module.exports = {
   reactivateTenantSchema,
   setPaidUntilSchema,
   deleteTenantSchema,
+  createTenantSchema,
   patchPlanPriceSchema,
 };

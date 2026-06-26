@@ -340,6 +340,267 @@ describe('GET /api/super-admin/tenants/:id', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// POST /api/super-admin/tenants — crear tenant manual (#452)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/super-admin/tenants (#452)', () => {
+  const createdTenantIds = [];
+  const createdUserIds = [];
+
+  afterAll(async () => {
+    // Cleanup: borrar todo lo creado por los tests. Orden importa por FKs:
+    // password_reset_tokens → tenant_admin_actions → tenant_user_roles →
+    // tenant_users → users → metodos_pago/categorias/vendedores/config → tenants.
+    if (createdUserIds.length > 0) {
+      await pool.query(
+        'DELETE FROM password_reset_tokens WHERE user_id = ANY($1)',
+        [createdUserIds]
+      );
+    }
+    if (createdTenantIds.length > 0) {
+      await pool.query(
+        'DELETE FROM tenant_admin_actions WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query(
+        'DELETE FROM tenant_user_roles WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query(
+        'DELETE FROM tenant_users WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query(
+        'DELETE FROM metodos_pago WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query(
+        'DELETE FROM categorias WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query(
+        'DELETE FROM vendedores WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query(
+        'DELETE FROM config WHERE tenant_id = ANY($1)',
+        [createdTenantIds]
+      );
+      await pool.query('DELETE FROM tenants WHERE id = ANY($1)', [createdTenantIds]);
+    }
+    if (createdUserIds.length > 0) {
+      await pool.query('DELETE FROM users WHERE id = ANY($1)', [createdUserIds]);
+    }
+  });
+
+  it('crea tenant + owner user + seeds + token + audit', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Aurora Demo Tenant 452',
+        nombre: 'Lucas Owner',
+        email: 'lucas-452-create@example.com',
+        plan: 'starter',
+        reason: 'cerrado en demo del 26/jun',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.tenant).toEqual(
+      expect.objectContaining({
+        nombre: 'Aurora Demo Tenant 452',
+        plan: 'starter',
+        slug: expect.stringMatching(/^aurora-demo-tenant-452/),
+      })
+    );
+    expect(r.body.owner).toEqual(
+      expect.objectContaining({
+        email: 'lucas-452-create@example.com',
+        nombre: 'Lucas Owner',
+      })
+    );
+    expect(r.body.owner.email_verified_at).not.toBeNull();
+    expect(r.body.password_setup_url_ttl_hours).toBe(24);
+    // En NODE_ENV=test el token viene en la response para que E2E puedan
+    // verificar el flow set-password.
+    expect(r.body._password_setup_token).toMatch(/^[a-f0-9]{64}$/);
+
+    createdTenantIds.push(r.body.tenant.id);
+    createdUserIds.push(r.body.owner.id);
+
+    // Verificar seeds (cajas, categorías, vendedor, config).
+    const cajas = await pool.query(
+      'SELECT nombre FROM metodos_pago WHERE tenant_id = $1 ORDER BY orden',
+      [r.body.tenant.id]
+    );
+    expect(cajas.rows.length).toBe(3);
+    expect(cajas.rows.map((c) => c.nombre)).toEqual([
+      'Efectivo Pesos', 'Efectivo USD', 'Banco Pesos',
+    ]);
+
+    const cats = await pool.query(
+      'SELECT nombre FROM categorias WHERE tenant_id = $1 ORDER BY nombre',
+      [r.body.tenant.id]
+    );
+    expect(cats.rows.length).toBe(4);
+
+    const vendedores = await pool.query(
+      'SELECT nombre FROM vendedores WHERE tenant_id = $1',
+      [r.body.tenant.id]
+    );
+    expect(vendedores.rows[0]?.nombre).toBe('Lucas Owner');
+
+    // Verificar tenant_users + tenant_user_roles (owner).
+    const tu = await pool.query(
+      'SELECT rol FROM tenant_users WHERE tenant_id = $1 AND user_id = $2',
+      [r.body.tenant.id, r.body.owner.id]
+    );
+    expect(tu.rows[0]?.rol).toBe('owner');
+
+    // Verificar audit trail con action='create'.
+    const audit = await pool.query(
+      `SELECT action, super_admin_user_id, reason
+         FROM tenant_admin_actions
+        WHERE tenant_id = $1`,
+      [r.body.tenant.id]
+    );
+    expect(audit.rows[0]?.action).toBe('create');
+    expect(audit.rows[0]?.reason).toBe('cerrado en demo del 26/jun');
+
+    // Verificar password_reset_token creado con TTL futuro.
+    const tokens = await pool.query(
+      'SELECT expires_at, used_at FROM password_reset_tokens WHERE user_id = $1',
+      [r.body.owner.id]
+    );
+    expect(tokens.rows[0]?.used_at).toBeNull();
+    expect(new Date(tokens.rows[0].expires_at).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('plan default es trial cuando no se pasa', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Default Trial Tenant 452',
+        nombre: 'Trial Owner',
+        email: 'trial-452-default@example.com',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.tenant.plan).toBe('trial');
+    createdTenantIds.push(r.body.tenant.id);
+    createdUserIds.push(r.body.owner.id);
+  });
+
+  it('plan enterprise requiere custom_mrr_usd (400 sin él)', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Enterprise Test 452',
+        nombre: 'Ent Owner',
+        email: 'ent-452-test@example.com',
+        plan: 'enterprise',
+        // sin custom_mrr_usd → debe rebotar
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/custom_mrr_usd/i);
+  });
+
+  it('plan enterprise con custom_mrr_usd se guarda', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Enterprise Custom 452',
+        nombre: 'Ent Owner',
+        email: 'ent-452-custom@example.com',
+        plan: 'enterprise',
+        custom_mrr_usd: 850.50,
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.tenant.plan).toBe('enterprise');
+    expect(Number(r.body.tenant.custom_mrr_usd)).toBe(850.50);
+    expect(r.body.tenant.mrr_usd).toBe(850.50);
+    createdTenantIds.push(r.body.tenant.id);
+    createdUserIds.push(r.body.owner.id);
+  });
+
+  it('email duplicado devuelve 409 (anti-conflict, NO anti-enum)', async () => {
+    // Setup: crear primero
+    const r1 = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Dup Test 452 Original',
+        nombre: 'Dup Owner',
+        email: 'dup-452@example.com',
+      });
+    expect(r1.status).toBe(201);
+    createdTenantIds.push(r1.body.tenant.id);
+    createdUserIds.push(r1.body.owner.id);
+
+    // Segundo intento mismo email — debe rebotar 409
+    const r2 = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Dup Test 452 Conflict',
+        nombre: 'Dup Owner 2',
+        email: 'dup-452@example.com',
+      });
+    expect(r2.status).toBe(409);
+    expect(r2.body.reason).toBe('email_taken');
+  });
+
+  it('email duplicado case-insensitive también rebota 409', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Case Test 452',
+        nombre: 'Case Owner',
+        // Email previo era 'dup-452@example.com' — esto debe matchear LOWER().
+        email: 'DUP-452@example.com',
+      });
+    expect(r.status).toBe(409);
+  });
+
+  it('400 si falta tenant_nombre', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        nombre: 'X',
+        email: 'missing-tenant@example.com',
+      });
+    expect(r.status).toBe(400);
+  });
+
+  it('400 si email es inválido', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        tenant_nombre: 'Bad Email Test',
+        nombre: 'X',
+        email: 'no-es-email',
+      });
+    expect(r.status).toBe(400);
+  });
+
+  it('regular user (no super-admin) recibe 403', async () => {
+    const r = await request(app)
+      .post('/api/super-admin/tenants')
+      .set('Authorization', `Bearer ${regularUserToken}`)
+      .send({
+        tenant_nombre: 'Forbidden Test',
+        nombre: 'X',
+        email: 'forbidden@example.com',
+      });
+    expect(r.status).toBe(403);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Fase 2 — Mutations + Activity + Metrics
 // ─────────────────────────────────────────────────────────────────────────
 

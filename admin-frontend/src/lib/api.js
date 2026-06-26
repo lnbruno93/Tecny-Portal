@@ -334,6 +334,22 @@ export const adminApi = {
       body
     ),
 
+  // POST /tenants — crear tenant manual (#452). Onboarding desde el back office.
+  // body: {
+  //   tenant_nombre: string (1-255),
+  //   nombre: string (1-255, nombre del owner),
+  //   email: string (email del owner, normaliza a lowercase),
+  //   plan: 'trial' | 'starter' | 'pro' | 'enterprise' (default 'trial'),
+  //   custom_mrr_usd?: number  // REQUERIDO si plan='enterprise'
+  //   reason?: string  // nota libre para audit trail
+  // }
+  // Response 201: { tenant: {...}, owner: {...}, password_setup_url_ttl_hours }
+  // 409: email ya registrado (reason='email_taken')
+  // 400: validation (Zod)
+  // Backend envía email al owner con link "elegí tu password" (TTL 24h).
+  createTenant: (body) =>
+    api('/api/super-admin/tenants', 'POST', body),
+
   // ── Plan Prices (C.1.2 #353) ──────────────────────────────────────────
   // GET /plan-prices — lista los 4 planes con precio + notas + updated_by.
   // Devuelve { plan_prices: [{ plan, price_usd, active, notes, updated_at,

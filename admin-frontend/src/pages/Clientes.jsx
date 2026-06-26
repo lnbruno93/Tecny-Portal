@@ -23,6 +23,7 @@ import {
   healthProxy,
   healthColor,
 } from '../lib/uiHelpers.js';
+import CreateTenantModal from '../components/modals/CreateTenantModal.jsx';
 
 // Mapping del segmented control → filtros del backend. Centralizado
 // acá para que un cambio de label o de filter shape no toque dos lugares.
@@ -48,6 +49,8 @@ export default function Clientes() {
   // #450: lock UI mientras se descarga el CSV (puede tomar 1-2s con muchos
   // tenants). Sin lock, click repetido dispararía descargas paralelas.
   const [exporting, setExporting] = useState(false);
+  // #452: estado del modal "Crear tenant manual" disparado desde "Invitar cliente".
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Race condition guard — cada request lleva un id incremental.
   // Cuando llega la respuesta, si su id no es el último (porque el
@@ -151,7 +154,14 @@ export default function Clientes() {
             >
               {exporting ? 'Exportando…' : 'Exportar'}
             </Btn>
-            <Btn kind="primary" icon="Plus" disabled title="Próximamente">
+            {/* #452: "Invitar cliente" abre el modal Crear tenant manual.
+                Antes estaba en wait-state ("Próximamente"). */}
+            <Btn
+              kind="primary"
+              icon="Plus"
+              onClick={() => setCreateOpen(true)}
+              title="Crear tenant manual"
+            >
               Invitar cliente
             </Btn>
           </>
@@ -312,6 +322,27 @@ export default function Clientes() {
           </tbody>
         </table>
       </Card>
+
+      {/* #452: modal Crear tenant manual abierto desde "Invitar cliente".
+          Tras crear, refrescamos el listado para que el tenant nuevo aparezca
+          inmediato (sin tener que recargar página) Y navegamos a su Ficha. */}
+      <CreateTenantModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(res) => {
+          setCreateOpen(false);
+          // Refresh del listado: el tenant nuevo aparece de inmediato si el
+          // user vuelve a /clientes desde la ficha. loadList con filtros
+          // actuales para no perder el contexto de búsqueda.
+          const params = searchTrim
+            ? { ...modeParams(mode), search: searchTrim }
+            : modeParams(mode);
+          loadList(params);
+          if (res?.tenant?.id) {
+            navigate(`/clientes/${res.tenant.id}`);
+          }
+        }}
+      />
     </>
   );
 }

@@ -18,6 +18,7 @@ vi.mock('../../../lib/api.js', () => ({
     extendTrial: vi.fn(),
     setPaidUntil: vi.fn(),
     deleteTenant: vi.fn(),
+    createTenant: vi.fn(),
   },
   getToken: vi.fn(() => null),
   saveToken: vi.fn(),
@@ -32,6 +33,7 @@ import ReactivateTenantModal from '../ReactivateTenantModal.jsx';
 import ExtendTrialModal from '../ExtendTrialModal.jsx';
 import SetPaidUntilModal from '../SetPaidUntilModal.jsx';
 import DeleteTenantModal from '../DeleteTenantModal.jsx';
+import CreateTenantModal from '../CreateTenantModal.jsx';
 
 function makeTenant(overrides = {}) {
   return {
@@ -591,5 +593,123 @@ describe('DeleteTenantModal', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/confirm slug no coincide/i);
     });
     expect(onDeleted).not.toHaveBeenCalled();
+  });
+});
+
+// ── CreateTenantModal (#452) ────────────────────────────────────────────
+describe('CreateTenantModal (#452)', () => {
+  function fillBasics() {
+    fireEvent.change(screen.getByPlaceholderText(/Aurora Mobile/i), {
+      target: { value: 'Aurora Mobile SRL' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/María García/i), {
+      target: { value: 'María García' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/maria@auroramobile/i), {
+      target: { value: 'maria@auroramobile.com.ar' },
+    });
+  }
+
+  it('submit con plan starter envía body correcto y llama onCreated', async () => {
+    adminApi.createTenant.mockResolvedValue({
+      tenant: { id: 42, nombre: 'Aurora Mobile SRL', slug: 'aurora-mobile-srl', plan: 'starter' },
+      owner: { id: 99, email: 'maria@auroramobile.com.ar' },
+      password_setup_url_ttl_hours: 24,
+    });
+    const onCreated = vi.fn();
+    const onClose = vi.fn();
+
+    render(<CreateTenantModal open onClose={onClose} onCreated={onCreated} />);
+
+    fillBasics();
+    fireEvent.change(screen.getByDisplayValue('Trial'), { target: { value: 'starter' } });
+    fireEvent.change(screen.getByPlaceholderText(/cerrado en demo/i), {
+      target: { value: 'cerrado en demo del 26/jun' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /crear tenant/i }));
+
+    await waitFor(() => {
+      expect(adminApi.createTenant).toHaveBeenCalledTimes(1);
+    });
+    expect(adminApi.createTenant).toHaveBeenCalledWith({
+      tenant_nombre: 'Aurora Mobile SRL',
+      nombre: 'María García',
+      email: 'maria@auroramobile.com.ar',
+      plan: 'starter',
+      reason: 'cerrado en demo del 26/jun',
+    });
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalledTimes(1);
+    });
+    expect(onCreated.mock.calls[0][0].tenant.id).toBe(42);
+  });
+
+  it('plan enterprise muestra el campo MRR custom y lo incluye en el body', async () => {
+    adminApi.createTenant.mockResolvedValue({
+      tenant: { id: 43, nombre: 'Enterprise Co', slug: 'enterprise-co', plan: 'enterprise' },
+      owner: { id: 100 },
+      password_setup_url_ttl_hours: 24,
+    });
+
+    render(<CreateTenantModal open onClose={() => {}} onCreated={() => {}} />);
+
+    fillBasics();
+    fireEvent.change(screen.getByDisplayValue('Trial'), { target: { value: 'enterprise' } });
+
+    // El campo MRR custom aparece solo cuando plan=enterprise.
+    const mrrInput = await screen.findByPlaceholderText(/Ej: 250/i);
+    fireEvent.change(mrrInput, { target: { value: '850' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /crear tenant/i }));
+
+    await waitFor(() => {
+      expect(adminApi.createTenant).toHaveBeenCalledTimes(1);
+    });
+    expect(adminApi.createTenant.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        plan: 'enterprise',
+        custom_mrr_usd: 850,
+      })
+    );
+  });
+
+  it('email inválido bloquea submit y muestra error', async () => {
+    render(<CreateTenantModal open onClose={() => {}} onCreated={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Aurora Mobile/i), {
+      target: { value: 'Aurora' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/María García/i), {
+      target: { value: 'María' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/maria@auroramobile/i), {
+      target: { value: 'no-es-email' },
+    });
+
+    // El botón debe estar disabled por formValid=false (email no pasa regex).
+    const btn = screen.getByRole('button', { name: /crear tenant/i });
+    expect(btn).toBeDisabled();
+
+    // El input mismo muestra error inline cuando se digita algo inválido.
+    expect(screen.getByText(/Email inválido\./i)).toBeInTheDocument();
+
+    // adminApi.createTenant NO se debe haber llamado.
+    expect(adminApi.createTenant).not.toHaveBeenCalled();
+  });
+
+  it('error del backend (email_taken) se muestra al user', async () => {
+    const err = new Error('Ese email ya está registrado en otro tenant.');
+    err.status = 409;
+    adminApi.createTenant.mockRejectedValue(err);
+
+    render(<CreateTenantModal open onClose={() => {}} onCreated={() => {}} />);
+
+    fillBasics();
+    fireEvent.click(screen.getByRole('button', { name: /crear tenant/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/ya está registrado/i);
+    });
   });
 });
