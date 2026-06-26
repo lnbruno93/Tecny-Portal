@@ -4,7 +4,69 @@ const adminOnly = require('../middleware/adminOnly');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const { updateConfigSchema } = require('../schemas/config');
+const { getSystemLimits } = require('../lib/systemLimits');
 
+
+// GET /api/config/system-limits — lista informativa para Config.jsx (#443).
+// Antes el frontend tenía un SYSTEM_LIMITS hardcoded que se había desincronizado
+// de la realidad (decía 10 OCR/hora, son 60). Lo centralizamos acá.
+// No requiere adminOnly: todo user logueado debería poder ver los límites
+// operacionales del sistema (es información compartida, no sensible).
+router.get('/system-limits', (req, res) => {
+  res.json({ limits: getSystemLimits() });
+});
+
+// GET /api/config/last-tc — último TC usado por el tenant (#445).
+// Sirve como default sensato para el Cotizador. Antes estaba hardcoded
+// a 1400 ARS, que es un valor "razonable pero estancado" que se desactualiza
+// mes a mes.
+//
+// Heurística: tomamos el TC de la venta más reciente en últimos 90 días
+// que tenga tc_venta NOT NULL. Si no hay (tenant nuevo, sin ventas con TC),
+// fallback a 1400.
+//
+// Por qué 90 días: TC se mueve mucho — un TC de hace 6 meses sería peor
+// default que el hardcoded. 90 días balancea "tener algo" vs "que sea
+// reciente".
+//
+// Devuelve: { tc, source, computed_at }
+//   · source = 'venta'    cuando viene de una venta
+//   · source = 'fallback' cuando se usa el default
+router.get('/last-tc', async (req, res, next) => {
+  try {
+    const tc = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT tc_venta
+           FROM ventas
+          WHERE tc_venta IS NOT NULL
+            AND deleted_at IS NULL
+            AND created_at >= NOW() - INTERVAL '90 days'
+          ORDER BY created_at DESC
+          LIMIT 1`
+      );
+      return rows[0]?.tc_venta || null;
+    });
+
+    if (tc != null) {
+      return res.json({
+        tc: Number(tc),
+        source: 'venta',
+        computed_at: new Date().toISOString(),
+      });
+    }
+    // Fallback. 1400 es el valor histórico que estaba hardcoded. Mantenerlo
+    // como fallback significa que si por algún motivo este endpoint falla
+    // o devuelve algo raro, el frontend sigue pudiendo usarlo de la misma
+    // forma que antes (sin downgrade visible al user).
+    res.json({
+      tc: 1400,
+      source: 'fallback',
+      computed_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', async (req, res, next) => {
   try {

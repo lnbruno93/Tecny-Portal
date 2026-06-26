@@ -18,13 +18,17 @@ import { userHasCap } from '../lib/userHasCap';
 // más desde acá.
 
 
-const SYSTEM_LIMITS = [
-  { t: 'OCR rate-limit',   d: '10 solicitudes/hora por usuario' },
-  { t: 'Archivos',         d: 'Máximo 5 MB por comprobante' },
-  { t: 'Soft delete',      d: 'Los registros nunca se borran físicamente' },
-  { t: 'Admin bypass',     d: 'Admins tienen acceso a todos los módulos' },
-  { t: 'Auditoría',        d: 'Cada cambio queda registrado en el historial' },
-  { t: 'Cotizador',        d: 'Client-side sin persistencia en DB' },
+// Fallback usado si /api/config/system-limits falla (red caída, deploy mid-flight).
+// Los VALORES REALES vienen del backend (#443). Mantenemos este fallback
+// porque la sección es informativa — preferible mostrar algo a romper el
+// render. Sincronizar a mano con backend/src/lib/systemLimits.js si cambia.
+const SYSTEM_LIMITS_FALLBACK = [
+  { t: 'OCR rate-limit',  d: '60 solicitudes/hora por usuario' },
+  { t: 'Tamaño máximo archivos', d: 'Máximo 10 MB por archivo subido' },
+  { t: 'Soft delete',     d: 'Los registros nunca se borran físicamente' },
+  { t: 'Permisos',        d: 'Owner + Admin bypassean checks; otros según permisos' },
+  { t: 'Auditoría',       d: 'Cambios registrados por 90 días' },
+  { t: 'Cotizador',       d: 'Client-side, TC default = último cambio del tenant' },
 ];
 
 export default function Config() {
@@ -68,6 +72,17 @@ export default function Config() {
   const [saved, setSaved]       = useState(false);
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(true);
+  // #443: System limits ahora vienen del backend (antes hardcoded). Fallback
+  // al array local si el fetch falla — no rompemos render por una llamada
+  // informativa.
+  const [systemLimits, setSystemLimits] = useState(SYSTEM_LIMITS_FALLBACK);
+  useEffect(() => {
+    let alive = true;
+    configApi.systemLimits()
+      .then((res) => { if (alive && Array.isArray(res?.limits)) setSystemLimits(res.limits); })
+      .catch(() => { /* silent: ya tenemos fallback */ });
+    return () => { alive = false; };
+  }, []);
 
   // Si el hash cambia mientras estamos en Config (ej: click al badge de
   // alertas estando ya en Config), sincronizar la tab. F5c: gated por cap.
@@ -426,7 +441,7 @@ export default function Config() {
             gap: 12,
             padding: '0 0 16px',
           }}>
-            {SYSTEM_LIMITS.map(({ t, d }) => (
+            {systemLimits.map(({ t, d }) => (
               <div
                 key={t}
                 style={{

@@ -262,6 +262,86 @@ describe('GET /api/config', () => {
   });
 });
 
+// ── #443: system-limits + #445: last-tc ────────────────────────────────
+describe('GET /api/config/system-limits (#443)', () => {
+  it('devuelve la lista de límites informativos', async () => {
+    const res = await request(app)
+      .get('/api/config/system-limits')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.limits)).toBe(true);
+    expect(res.body.limits.length).toBeGreaterThan(0);
+    // Cada item tiene { t, d } (title, description)
+    for (const item of res.body.limits) {
+      expect(typeof item.t).toBe('string');
+      expect(typeof item.d).toBe('string');
+    }
+  });
+
+  it('OCR rate-limit muestra el valor REAL (60/hora, no el 10 viejo)', async () => {
+    const res = await request(app)
+      .get('/api/config/system-limits')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const ocr = res.body.limits.find((l) => l.t.toLowerCase().includes('ocr'));
+    expect(ocr).toBeDefined();
+    expect(ocr.d).toContain('60');
+  });
+
+  it('401 sin JWT', async () => {
+    const res = await request(app).get('/api/config/system-limits');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/config/last-tc (#445)', () => {
+  it('devuelve fallback 1400 cuando no hay ventas con TC en últimos 90d', async () => {
+    // setup: borrar cualquier venta con TC en últimos 90d del tenant 1
+    // (las otras suites pueden crear ventas — limpiamos para test determinístico)
+    await pool.query(
+      `UPDATE ventas SET tc_venta = NULL
+        WHERE tenant_id = 1 AND created_at >= NOW() - INTERVAL '90 days'`
+    );
+
+    const res = await request(app)
+      .get('/api/config/last-tc')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.tc).toBe(1400);
+    expect(res.body.source).toBe('fallback');
+  });
+
+  it('devuelve el TC de la venta más reciente cuando existe', async () => {
+    // Insertar venta directa con tc_venta = 1750. Necesitamos un cliente para FK.
+    const { rows: clienteRows } = await pool.query(
+      `SELECT id FROM contactos WHERE tenant_id = 1 AND deleted_at IS NULL LIMIT 1`
+    );
+    if (!clienteRows[0]) {
+      // Skip si no hay contactos seeded.
+      return;
+    }
+    await pool.query(
+      `INSERT INTO ventas (cliente_id, fecha, total, tc_venta, tenant_id)
+       VALUES ($1, CURRENT_DATE, 100000, 1750, 1)`,
+      [clienteRows[0].id]
+    );
+
+    const res = await request(app)
+      .get('/api/config/last-tc')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(Number(res.body.tc)).toBe(1750);
+    expect(res.body.source).toBe('venta');
+
+    // Cleanup
+    await pool.query(`DELETE FROM ventas WHERE tc_venta = 1750 AND tenant_id = 1`);
+  });
+
+  it('401 sin JWT', async () => {
+    const res = await request(app).get('/api/config/last-tc');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('PUT /api/config', () => {
   it('admin actualiza pct_financiera → 200', async () => {
     const res = await request(app)
