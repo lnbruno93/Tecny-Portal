@@ -23,10 +23,16 @@ import { planLabel } from '../../lib/uiHelpers.js';
 
 const PLAN_OPTIONS = ['trial', 'starter', 'pro', 'enterprise'];
 
+// Slug regex sincronizado con backend (schemas/superAdmin.js). Cliente-side
+// damos feedback inmediato; el server valida igual con la misma regla.
+const SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
+
 // Form state inicial derivado del tenant. Lo extraemos a una función
 // para resetear el form cuando se reabre el modal (efecto en open).
 function initialState(tenant) {
   return {
+    nombre: tenant?.nombre || '',
+    slug: tenant?.slug || '',
     plan: tenant?.plan || 'trial',
     customMrr: tenant?.custom_mrr_usd != null ? String(tenant.custom_mrr_usd) : '',
     notes: tenant?.notes || '',
@@ -39,6 +45,8 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   // IDs estables para asociar label↔input (a11y básico).
+  const nombreId = useId();
+  const slugId = useId();
   const planId = useId();
   const mrrId = useId();
   const notesId = useId();
@@ -57,11 +65,23 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Validación del slug: vacío NO está permitido (lo seedea el server al
+  // signup, siempre hay uno). Si el operador limpia el input, mostramos
+  // error en vez de mandar al server.
+  const trimmedNombre = (form.nombre || '').trim();
+  const trimmedSlug = (form.slug || '').trim();
+  const slugIsValid = trimmedSlug === '' || SLUG_REGEX.test(trimmedSlug);
+  const nombreIsValid = trimmedNombre.length >= 1;
+  const slugChanged = tenant && trimmedSlug !== (tenant.slug || '');
+  const nombreChanged = tenant && trimmedNombre !== (tenant.nombre || '');
+
   // Diff vs tenant original. Solo enviamos lo que cambió → backend audit
   // queda limpio (no "plan_change" cuando solo se editaron notas).
   const buildBody = () => {
     if (!tenant) return null;
     const body = {};
+    if (nombreChanged && nombreIsValid) body.nombre = trimmedNombre;
+    if (slugChanged && slugIsValid && trimmedSlug !== '') body.slug = trimmedSlug;
     if (form.plan !== tenant.plan) body.plan = form.plan;
     if ((form.notes || '') !== (tenant.notes || '')) body.notes = form.notes;
 
@@ -84,6 +104,16 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
 
   const handleSubmit = async () => {
     if (!tenant) return;
+    // Guard de validación cliente-side. El server enforcea igual, pero
+    // queremos feedback inmediato sin round-trip.
+    if (!nombreIsValid) {
+      setError('Nombre no puede estar vacío.');
+      return;
+    }
+    if (!slugIsValid) {
+      setError('Slug inválido: lowercase, números y hyphens; sin hyphens al inicio/fin; 2-100 chars.');
+      return;
+    }
     const body = buildBody();
     // Si solo viene `reason` pero ningún campo material cambió, no
     // tiene sentido pegarle al backend — un audit entry "edit con reason"
@@ -150,6 +180,60 @@ export default function EditTenantModal({ tenant, open, onClose, onSaved }) {
       )}
 
       <div className="stack" style={{ gap: 14 }}>
+        {/* Nombre — display, sin restricciones más allá de no-vacío. */}
+        <div>
+          <label className="form-label" htmlFor={nombreId}>Nombre de la empresa</label>
+          <input
+            id={nombreId}
+            className="input"
+            type="text"
+            value={form.nombre}
+            onChange={(e) => update('nombre', e.target.value)}
+            placeholder="Ej: iPro / Celnyx"
+            maxLength={255}
+            disabled={submitting}
+          />
+          {!nombreIsValid && (
+            <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+              Nombre no puede estar vacío.
+            </div>
+          )}
+        </div>
+
+        {/* Slug — URL-safe identifier. Warning fuerte si se cambia porque
+            es referenciado en audit trail histórico y posibles links externos. */}
+        <div>
+          <label className="form-label" htmlFor={slugId}>
+            Slug (URL identifier)
+          </label>
+          <input
+            id={slugId}
+            className="input mono"
+            type="text"
+            value={form.slug}
+            onChange={(e) => update('slug', e.target.value)}
+            placeholder="ej: ipro-celnyx"
+            maxLength={100}
+            spellCheck={false}
+            autoComplete="off"
+            disabled={submitting}
+          />
+          {!slugIsValid && (
+            <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+              Inválido: lowercase, números y hyphens; sin hyphens al inicio/fin.
+            </div>
+          )}
+          {slugChanged && slugIsValid && (
+            <div className="banner banner-warn" style={{ marginTop: 6, padding: 8 }}>
+              <span className="tiny">
+                <strong>Cambiar slug es delicado.</strong> El slug actual queda
+                guardado en el audit trail histórico, pero links externos o
+                bookmarks que lo referencien dejarán de funcionar.
+              </span>
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="form-label" htmlFor={planId}>Plan</label>
           <select
