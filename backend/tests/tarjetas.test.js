@@ -573,23 +573,29 @@ describe('Tarjetas — PATCH /movimientos/:id casos límite', () => {
 // H1 (auditoría 2026-06-06): cuando una liquidación se registró con conversión
 // USD (tc IS NOT NULL en el row), el PATCH actual NO sabe cómo editarla — el
 // código repostaba a caja con monto=ARS y tc=null, lo que en una caja USD
-// rompe por mismatch de moneda. La defensa rechaza el PATCH con mensaje
-// operativo hasta que se implemente edición completa.
-describe('Tarjetas — PATCH de liquidación USD-convertida (H1 defensa)', () => {
+// rompe por mismatch de moneda. La defensa rechazaba el PATCH con mensaje
+// operativo hasta que se implementara edición completa.
+//
+// #444 (2026-06-26): edición ahora ESTÁ implementada (PATCH soporta editar
+// fecha, monto ARS, caja_id USD/USDT, tc, monto_usd, comentarios). Los tests
+// del comportamiento completo viven en tarjetas-trazabilidad-caja.test.js.
+// Acá dejamos un smoke test minimal de que el PATCH NO rebota más con 400
+// para edits inofensivos (regression guard contra reintroducir el rechazo).
+describe('Tarjetas — PATCH de liquidación USD-convertida (#444 implementado)', () => {
   let tarjetaUSDTest, cajaUsdTest;
   beforeAll(async () => {
     const mt = await request(app).post('/api/cajas/cajas').set(auth())
-      .send({ nombre: 'TC USD Patch Defensa', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+      .send({ nombre: 'TC USD Patch #444', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
     tarjetaUSDTest = mt.body.id;
     const cu = await request(app).post('/api/cajas/cajas').set(auth())
-      .send({ nombre: 'Caja USD Patch Defensa', moneda: 'USD', saldo_inicial: 0 });
+      .send({ nombre: 'Caja USD Patch #444', moneda: 'USD', saldo_inicial: 0 });
     cajaUsdTest = cu.body.id;
     // Cargar saldo ARS para tener algo que liquidar.
     await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
       .send({ metodo_pago_id: tarjetaUSDTest, fecha: hoy, monto_bruto: 110000, pct: 0 });
   });
 
-  it('PATCH cualquier campo de una liquidación USD-convertida → 400 con mensaje operativo', async () => {
+  it('PATCH comentarios de una liquidación USD-convertida → 200 (regression guard)', async () => {
     // Crear liquidación múltiple con conversión USD.
     const liq = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
       .send({
@@ -599,12 +605,11 @@ describe('Tarjetas — PATCH de liquidación USD-convertida (H1 defensa)', () =>
       });
     expect(liq.status).toBe(201);
     const movId = liq.body.movimientos[0].id;
-    // Intentar editar SOLO el comentario (un edit "inofensivo") → 400.
+    // Editar SOLO el comentario — antes del #444 rechazaba con 400.
     const r = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
       .send({ comentarios: 'arreglo' });
-    expect(r.status).toBe(400);
-    expect(r.body.error).toMatch(/conversión USD/i);
-    expect(r.body.error).toMatch(/eliminala/i);
+    expect(r.status).toBe(200);
+    expect(r.body.comentarios).toBe('arreglo');
   });
 
   it('PATCH a liquidación NO convertida sigue funcionando (no rompe el flujo viejo)', async () => {

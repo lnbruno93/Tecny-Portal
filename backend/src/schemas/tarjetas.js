@@ -32,7 +32,9 @@ const createCobroInicialSchema = z.object({
 
 // Editar un movimiento existente. El handler valida según el tipo:
 //   - cobro previo (venta_id IS NULL): usa fecha, monto_bruto, pct, comentarios
-//   - liquidación: usa fecha, monto, caja_id, comentarios (revierte caja + repone)
+//   - liquidación (sin USD): fecha, monto, caja_id, comentarios
+//   - liquidación USD (tc != null): fecha, monto (ARS), caja_id (USD/USDT),
+//     tc, monto_usd, comentarios  — feature #444 (2026-06-26)
 //   - cobro de venta (venta_id != NULL): se rechaza (se ajusta editando la venta)
 // Schema laxo a propósito — el dispatch real está en el route handler.
 const updateMovimientoSchema = z.object({
@@ -41,6 +43,12 @@ const updateMovimientoSchema = z.object({
   pct:          z.coerce.number().min(0).max(100).optional().nullable(),
   monto:        z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
   caja_id:      z.coerce.number().int().positive('Elegí la caja donde entra').optional(),
+  // #444: campos USD para edición de liquidaciones con conversión. El handler
+  // los lee solo cuando mov.tc IS NOT NULL — sino son no-op (ignorados).
+  // tc requiere ser >0; monto_usd también >0. Ambos opcionales: si no vienen,
+  // se mantiene el valor actual (lo lee el handler de mov.tc).
+  tc:           z.coerce.number().positive('TC debe ser mayor a 0').optional(),
+  monto_usd:    z.coerce.number().positive('Monto USD debe ser mayor a 0').optional(),
   comentarios:  z.string().trim().max(1000).optional().nullable(),
 }).strict().refine(
   // TANDA 3 post-auditoría: rechazar PATCH con body vacío {}. Antes hacía 200

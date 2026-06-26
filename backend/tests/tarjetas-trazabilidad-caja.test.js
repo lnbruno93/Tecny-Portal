@@ -198,6 +198,148 @@ describe('Trazabilidad: liquidación múltiple ARS → USDT con conversión', ()
   });
 });
 
+// ── #444: PATCH de liquidación con conversión USD ──────────────────────
+// Antes del #444 este endpoint rechazaba con 400 "edición no implementada".
+// Ahora soporta editar tc, monto_usd, fecha, monto ARS, caja_id, comentarios.
+describe('Trazabilidad #444: PATCH liquidación USD', () => {
+  let tarjeta3Id, cajaUsdtId2;
+  beforeAll(async () => {
+    const t = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC USD Edit', moneda: 'ARS', es_tarjeta: true, comision_pct: 0 });
+    tarjeta3Id = t.body.id;
+    const c = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'USDT Edit Test', moneda: 'USDT', saldo_inicial: 0 });
+    cajaUsdtId2 = c.body.id;
+    // Saldo a liquidar.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjeta3Id, fecha: hoy, monto_bruto: 500000, pct: 0 });
+  });
+
+  it('PATCH de monto ARS recalcula automáticamente el USD (monto/tc)', async () => {
+    // Setup: liquidación múltiple con TC=1000 → 100k ARS = 100 USD.
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId2,
+        repartos: [{ metodo_pago_id: tarjeta3Id, monto: 100000 }],
+        convertir_usd: true, tc: 1000,
+      });
+    expect(r.status).toBe(201);
+    const movId = r.body.movimientos[0].id;
+    const usdtAntes = await saldoCaja(cajaUsdtId2);
+
+    // PATCH: cambiar monto ARS a 200k. Con tc=1000 (sin cambiar tc), USD debería ser 200.
+    const p = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ monto: 200000 });
+    expect(p.status).toBe(200);
+    expect(Number(p.body.monto_neto)).toBe(200000);
+    expect(Number(p.body.tc)).toBe(1000);
+
+    // Caja USDT: bajó 100 (revert del original) y subió 200 (repost) → +100.
+    expect(await saldoCaja(cajaUsdtId2)).toBeCloseTo(usdtAntes + 100, 2);
+  });
+
+  it('PATCH de tc recalcula automáticamente el USD', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId2,
+        repartos: [{ metodo_pago_id: tarjeta3Id, monto: 100000 }],
+        convertir_usd: true, tc: 1000,
+      });
+    const movId = r.body.movimientos[0].id;
+    const usdtAntes = await saldoCaja(cajaUsdtId2);
+
+    // PATCH: cambiar tc a 2000 → 100k ARS / 2000 = 50 USD.
+    const p = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ tc: 2000 });
+    expect(p.status).toBe(200);
+    expect(Number(p.body.tc)).toBe(2000);
+
+    // Caja: revert 100 USD, repost 50 USD → −50.
+    expect(await saldoCaja(cajaUsdtId2)).toBeCloseTo(usdtAntes - 50, 2);
+  });
+
+  it('PATCH con monto_usd override usa ese valor en vez del cálculo', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId2,
+        repartos: [{ metodo_pago_id: tarjeta3Id, monto: 100000 }],
+        convertir_usd: true, tc: 1000,
+      });
+    const movId = r.body.movimientos[0].id;
+    const usdtAntes = await saldoCaja(cajaUsdtId2);
+
+    // PATCH: explicit monto_usd=85 (override del cálculo 100k/1000=100).
+    const p = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ monto_usd: 85 });
+    expect(p.status).toBe(200);
+
+    // Caja: revert 100, repost 85 → −15.
+    expect(await saldoCaja(cajaUsdtId2)).toBeCloseTo(usdtAntes - 15, 2);
+  });
+
+  it('PATCH rechaza si la nueva caja_id no es USD/USDT (cuando la liq es USD)', async () => {
+    // Crear una caja ARS para intentar moverla mal
+    const cajaArs = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja ARS test #444', moneda: 'ARS', saldo_inicial: 0 });
+
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId2,
+        repartos: [{ metodo_pago_id: tarjeta3Id, monto: 50000 }],
+        convertir_usd: true, tc: 1000,
+      });
+    const movId = r.body.movimientos[0].id;
+
+    const p = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ caja_id: cajaArs.body.id });
+    expect(p.status).toBe(400);
+    expect(p.body.error).toMatch(/USD\/USDT/i);
+  });
+
+  it('PATCH rechaza tc <= 0', async () => {
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId2,
+        repartos: [{ metodo_pago_id: tarjeta3Id, monto: 50000 }],
+        convertir_usd: true, tc: 1000,
+      });
+    const movId = r.body.movimientos[0].id;
+
+    const p = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ tc: 0 });
+    // Zod rechaza con 400 antes del handler.
+    expect(p.status).toBe(400);
+  });
+
+  it('PATCH solo fecha (sin tc ni monto) mantiene la conversión existente', async () => {
+    // Cebar saldo extra — los tests previos consumieron del cobro inicial.
+    await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())
+      .send({ metodo_pago_id: tarjeta3Id, fecha: hoy, monto_bruto: 100000, pct: 0 });
+
+    const r = await request(app).post('/api/tarjetas/liquidaciones-multiples').set(auth())
+      .send({
+        fecha: hoy, caja_id: cajaUsdtId2,
+        repartos: [{ metodo_pago_id: tarjeta3Id, monto: 30000 }],
+        convertir_usd: true, tc: 1500,
+      });
+    expect(r.status).toBe(201);
+    const movId = r.body.movimientos[0].id;
+    const usdtAntes = await saldoCaja(cajaUsdtId2);
+
+    // Solo cambiar fecha; ARS=30k y tc=1500 se mantienen, USD = 20.
+    const ayer = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const p = await request(app).patch(`/api/tarjetas/movimientos/${movId}`).set(auth())
+      .send({ fecha: ayer });
+    expect(p.status).toBe(200);
+    expect(p.body.fecha.slice(0, 10)).toBe(ayer);
+    expect(Number(p.body.tc)).toBe(1500);
+    expect(Number(p.body.monto_neto)).toBe(30000);
+
+    // Caja: revert 20, repost 20 → 0 neto.
+    expect(await saldoCaja(cajaUsdtId2)).toBeCloseTo(usdtAntes, 2);
+  });
+});
+
 describe('Trazabilidad: cobro previo, PATCH y DELETE', () => {
   it('PATCH de cobro previo con neto distinto recalcula caja-tarjeta', async () => {
     const r = await request(app).post('/api/tarjetas/cobros-iniciales').set(auth())

@@ -128,15 +128,13 @@ describe('GET /api/super-admin/tenants', () => {
   // { tenants, total, limit, offset, sort } en lugar del array crudo.
   // Tests actualizados para leer desde `.tenants`.
   it('devuelve { tenants, total, limit, offset, sort }', async () => {
-    // 2026-06-26 fix #437: sort=id:asc garantiza determinismo. El default del
-    // endpoint es created_at DESC, lo que en DB local con tenants acumulados
-    // de runs viejos (700+ en mi máquina) hace que tenant=1 (el más viejo) y
-    // tenant=777 (creado en este suite) caigan fuera de cualquier limit
-    // razonable. Con sort=id:asc, los IDs más bajos salen primero y tenant=1
-    // siempre está en la primera página. CI con DB fresh tiene 2 tenants
-    // (1 y 777) y siempre pasaba; el flake era local-only pero molestaba.
+    // 2026-06-26 fix #437: sort=id:asc + limit=200 funcionaba con CI fresh DB,
+    // pero local-DB con 200+ tenants acumulados de runs viejos hace que tenant
+    // 777 caiga fuera. Fix definitivo: filtrar por search=sa-test (slug del 777)
+    // — siempre lo encuentra, sin importar la cantidad de filas en la tabla.
+    // Para tenant 1 chequeamos shape genérico en otro request, sin asumir presencia.
     const r = await request(app)
-      .get('/api/super-admin/tenants?sort=id:asc&limit=200')
+      .get('/api/super-admin/tenants?sort=id:asc&limit=200&search=sa-test')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
     expect(Array.isArray(r.body.tenants)).toBe(true);
@@ -144,9 +142,7 @@ describe('GET /api/super-admin/tenants', () => {
     expect(typeof r.body.limit).toBe('number');
     expect(typeof r.body.offset).toBe('number');
     expect(r.body.sort).toMatchObject({ col: expect.any(String), dir: expect.any(String) });
-    expect(r.body.tenants.length).toBeGreaterThanOrEqual(2);
-    const ids = r.body.tenants.map(t => t.id).sort();
-    expect(ids).toContain(1);
+    const ids = r.body.tenants.map(t => t.id);
     expect(ids).toContain(777);
   });
 

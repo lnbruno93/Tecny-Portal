@@ -696,25 +696,18 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
         });
       }
     } else if (mov.tipo === 'liquidacion') {
-      // H1 (auditoría 2026-06-06): si la liquidación se hizo con conversión
-      // USD (tc IS NOT NULL), el PATCH actual NO soporta editarla — el bloque
-      // de abajo reposteria a la caja con monto=ARS y tc=null, corrompiendo
-      // la caja USD (mismatch de moneda) o, mejor caso, fallando con error
-      // técnico confuso. Hasta que se implemente edición completa con tc/
-      // monto_usd, rechazamos explícitamente con un mensaje operativo.
-      //
-      // Workaround para el operador: anular (DELETE) la liquidación USD y
-      // crearla de nuevo con los datos correctos.
-      if (mov.tc != null) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          error: 'Esta liquidación se registró con conversión USD. Para corregirla, eliminala y registrá una nueva (la edición de liquidaciones USD aún no está implementada).',
-        });
-      }
       // Liquidación: si cambia fecha/monto/caja_id, hay que actualizar el ledger
       // de cajas. Estrategia: revert (soft-delete del caja_movimiento existente
       // con validación de saldo) + repost (con la nueva caja_id/monto/fecha).
       // Es la misma mecánica que usa el DELETE de venta cuando hay cobros.
+      //
+      // #444 (2026-06-26): cuando la liquidación tiene conversión USD (mov.tc
+      // IS NOT NULL), aceptamos editar tc y monto_usd además de los campos
+      // ARS. El ingreso a la caja destino va en USD (monto_usd o monto_ars/tc).
+      // Si no se manda tc/monto_usd en el body, se mantienen los valores
+      // actuales — permite cambios parciales (ej. solo la fecha).
+      const isUsd = mov.tc != null;
+
       const fecha   = body.fecha   ?? mov.fecha;
       const monto   = round2(Number(body.monto ?? mov.monto_neto));
       const caja_id = body.caja_id != null ? Number(body.caja_id) : Number(mov.caja_id);
@@ -722,10 +715,49 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       const caja = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]);
       if (!caja.rows[0]) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'La caja seleccionada no existe.' }); }
       const moneda = caja.rows[0].moneda;
-      if (grupoMoneda(moneda) !== grupoMoneda(mov.metodo_moneda)) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: `La caja (${moneda}) no coincide con la moneda de la tarjeta (${mov.metodo_moneda}).` });
+
+      // Reglas de coherencia caja↔tarjeta:
+      //   · liquidación sin USD: caja y tarjeta deben coincidir en grupoMoneda
+      //   · liquidación USD: caja debe ser USD/USDT y tarjeta ARS (mismo
+      //     criterio que el POST /liquidaciones-multiples con convertir_usd).
+      //     Si el operador cambia la caja a una ARS, rechazamos — debería
+      //     usar el DELETE+recrear path en ese caso (cambia toda la operación).
+      if (isUsd) {
+        if (grupoMoneda(moneda) !== 'USD') {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `Esta liquidación es con conversión USD; la caja destino debe ser USD/USDT (la elegida es ${moneda}).` });
+        }
+        if (grupoMoneda(mov.metodo_moneda) === 'USD') {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Inconsistencia: la tarjeta está en USD pero el movimiento tiene tc — no debería existir.' });
+        }
+      } else {
+        if (grupoMoneda(moneda) !== grupoMoneda(mov.metodo_moneda)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `La caja (${moneda}) no coincide con la moneda de la tarjeta (${mov.metodo_moneda}).` });
+        }
       }
+
+      // #444: TC y monto_usd. Si no vienen en body, mantenemos los actuales.
+      // El monto_usd se calcula automáticamente como ARS/TC si no se manda
+      // override explícito — mismo comportamiento que el POST multiple.
+      let tcNuevo = null;
+      let montoUsdParaCaja = null;
+      if (isUsd) {
+        tcNuevo = body.tc != null ? Number(body.tc) : Number(mov.tc);
+        if (!(tcNuevo > 0)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'TC debe ser mayor a 0.' });
+        }
+        montoUsdParaCaja = body.monto_usd != null
+          ? round2(Number(body.monto_usd))
+          : round2(monto / tcNuevo);
+        if (!(montoUsdParaCaja > 0)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Monto USD calculado quedó en 0 o negativo (revisá TC y monto ARS).' });
+        }
+      }
+
       const comentarios = body.comentarios === undefined ? mov.comentarios : (body.comentarios ?? null);
 
       // 1) Soft-delete de TODOS los caja_movimientos del mov (ingreso destino
@@ -734,20 +766,29 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       //    Si el egreso reverse dejara la caja-tarjeta en negativo, throwea 409.
       await reverseCajaMovimientos(client, 'tarjeta_movimientos', id);
 
-      // 2) Update del movimiento de tarjeta con los nuevos valores.
+      // 2) Update del movimiento de tarjeta con los nuevos valores. moneda en
+      //    tarjeta_movimientos sigue siendo la de la tarjeta (no de la caja
+      //    destino) — el monto_neto sigue en ARS para liquidaciones USD,
+      //    consistente con el POST.
+      const monedaTarjetaMov = isUsd ? mov.metodo_moneda : moneda;
       const { rows } = await client.query(
         `UPDATE tarjeta_movimientos
-            SET fecha = $2, monto_bruto = $3, monto_neto = $3, caja_id = $4, moneda = $5, comentarios = $6
+            SET fecha = $2, monto_bruto = $3, monto_neto = $3, caja_id = $4,
+                moneda = $5, comentarios = $6, tc = $7
           WHERE id = $1 AND deleted_at IS NULL
           RETURNING *`,
-        [id, fecha, monto, caja_id, moneda, comentarios]
+        [id, fecha, monto, caja_id, monedaTarjetaMov, comentarios, isUsd ? tcNuevo : null]
       );
       updated = rows[0];
 
       // 3) Postear de nuevo AMBOS caja_movimientos: ingreso destino + egreso
-      //    caja-tarjeta (trazabilidad junio 2026).
+      //    caja-tarjeta (trazabilidad junio 2026). Si USD: ingreso en USD
+      //    usando monto_usd, egreso en ARS usando monto.
       await postCajaMovimiento(client, {
-        caja_id, fecha, tipo: 'ingreso', monto, moneda, tc: null,
+        caja_id, fecha, tipo: 'ingreso',
+        monto: isUsd ? montoUsdParaCaja : monto,
+        moneda,
+        tc: isUsd ? tcNuevo : null,
         origen: 'tarjeta', ref_tabla: 'tarjeta_movimientos', ref_id: id,
         concepto: 'Liquidación tarjeta', user_id: req.user.id,
       });
