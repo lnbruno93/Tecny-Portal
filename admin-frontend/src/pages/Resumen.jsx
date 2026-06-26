@@ -51,6 +51,8 @@ export default function Resumen() {
   const { user } = useAuth();
 
   const [metrics, setMetrics] = useState(null);
+  // #450: lock UI mientras se descarga el CSV (puede tomar 1-2s con muchos tenants).
+  const [exporting, setExporting] = useState(false);
   const [history, setHistory] = useState([]);
   const [actions, setActions] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -197,7 +199,25 @@ export default function Resumen() {
           </div>
         </div>
         <div className="quick">
-          <Btn icon="Download" disabled title="Próximamente">Exportar</Btn>
+          {/* #450: Exportar todos los tenants en CSV. Sin filtros aplicados —
+              en el Resumen siempre exporta el universo completo (la pantalla
+              Clientes tiene el botón con filtros activos). */}
+          <Btn
+            icon="Download"
+            onClick={async () => {
+              setExporting(true);
+              try {
+                await adminApi.exportTenants();
+              } catch (err) {
+                alert(err?.message || 'No pudimos exportar.');
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting}
+          >
+            {exporting ? 'Exportando…' : 'Exportar'}
+          </Btn>
           <Btn kind="primary" icon="Plus" disabled title="Próximamente">
             Invitar cliente
           </Btn>

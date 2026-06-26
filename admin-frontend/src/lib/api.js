@@ -263,6 +263,59 @@ export const adminApi = {
   setPaidUntil: (id, body) =>
     api(`/api/super-admin/tenants/${id}/set-paid-until`, 'POST', body),
 
+  // GET /tenants/export?[plan|suspended|search] — descarga CSV (#450).
+  // Streamea el archivo via blob — diferente del wrapper api() que devuelve JSON.
+  // Triggers download del browser usando object URL temporal.
+  exportTenants: async (filters = {}) => {
+    const qs = buildQs(filters);
+    const controller = new AbortController();
+    inFlightControllers.add(controller);
+    try {
+      const token = getToken();
+      const res = await fetch(BASE + '/api/super-admin/tenants/export' + qs, {
+        method: 'GET',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        signal: controller.signal,
+      });
+      if (res.status === 401) {
+        clearToken();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('admin-session-expired'));
+        }
+        const err = new Error('NO_AUTH');
+        err.status = 401;
+        throw err;
+      }
+      if (!res.ok) {
+        // Errores devuelven JSON, no CSV — parsear.
+        let msg = 'No pudimos exportar';
+        try {
+          const j = await res.json();
+          msg = j?.error || msg;
+        } catch (_) { /* swallow */ }
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      const blob = await res.blob();
+      // Disparar download: anchor invisible + click + revoke URL.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Sacamos nombre del header si vino, sino default.
+      const cd = res.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename="([^"]+)"/);
+      a.download = m ? m[1] : `tenants_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return { ok: true };
+    } finally {
+      inFlightControllers.delete(controller);
+    }
+  },
+
   // DELETE /tenants/:id?confirm=<slug> — soft-delete tenant (feature #438).
   //
   // Anti-clicaccidental estilo GitHub: el caller debe pasar el slug del
