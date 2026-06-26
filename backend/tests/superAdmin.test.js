@@ -150,6 +150,57 @@ describe('GET /api/super-admin/tenants', () => {
     expect(ids).toContain(777);
   });
 
+  it('cada tenant incluye health_score + breakdown + category (#440)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants?limit=5&sort=id:asc')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.tenants.length).toBeGreaterThan(0);
+    const t = r.body.tenants[0];
+    expect(typeof t.health_score).toBe('number');
+    expect(t.health_score).toBeGreaterThanOrEqual(0);
+    expect(t.health_score).toBeLessThanOrEqual(100);
+    expect(t.health_breakdown).toEqual(expect.objectContaining({
+      actividad: expect.any(Number),
+      cobros:    expect.any(Number),
+      adopcion:  expect.any(Number),
+      asientos:  expect.any(Number),
+    }));
+    expect([
+      'excellent', 'healthy', 'at-risk', 'cold', 'onboarding', 'suspended',
+    ]).toContain(t.health_category);
+  });
+
+  it('GET /tenants/:id incluye health_score + breakdown + category (#440)', async () => {
+    const r = await request(app)
+      .get('/api/super-admin/tenants/1')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(typeof r.body.health_score).toBe('number');
+    expect(r.body.health_breakdown).toHaveProperty('actividad');
+    expect(r.body.health_breakdown).toHaveProperty('cobros');
+    expect(r.body.health_breakdown).toHaveProperty('adopcion');
+    expect(r.body.health_breakdown).toHaveProperty('asientos');
+    expect(typeof r.body.health_category).toBe('string');
+  });
+
+  it('tenant suspendido → health_score=0 y category=suspended', async () => {
+    // Setup: suspender tenant 777, verificar el cálculo, después limpiar.
+    await pool.query(
+      `UPDATE tenants SET suspended_at = NOW(), suspended_reason = 'test #440' WHERE id = 777`
+    );
+    const r = await request(app)
+      .get('/api/super-admin/tenants/777')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.health_score).toBe(0);
+    expect(r.body.health_category).toBe('suspended');
+    // Cleanup
+    await pool.query(
+      `UPDATE tenants SET suspended_at = NULL, suspended_reason = NULL WHERE id = 777`
+    );
+  });
+
   it('cada tenant incluye stats: mrr_usd, users_count, last_venta_at, signups_30d', async () => {
     // 2026-06-26 fix #437: mismo patrón que el test de arriba. sort=id:asc
     // garantiza que tenant=1 esté en la primera página del response.

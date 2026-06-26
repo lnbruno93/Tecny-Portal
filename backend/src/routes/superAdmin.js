@@ -57,7 +57,58 @@ const {
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
+const { computeHealthScore } = require('../lib/tenantHealth');
 const logger = require('../lib/logger');
+
+// SQL fragment con las stats necesarias para computeHealthScore. Se reusa
+// en listTenants y getTenant para que el cálculo sea consistente. Cada
+// stat es una subquery — ~7 subqueries por row del listing es costoso pero
+// aceptable mientras tenemos <100 tenants. Si escala, mover a una vista
+// materializada con refresh nocturno.
+//
+// Nota nomenclatura: la "cajas" del UI es `metodos_pago` en la DB.
+// chat_messages tiene tenant_id directo (no necesita join con conversations).
+const HEALTH_STATS_SQL = `
+  (SELECT COUNT(*)::int FROM ventas v
+    WHERE v.tenant_id = t.id AND v.deleted_at IS NULL
+      AND v.created_at >= NOW() - INTERVAL '30 days')             AS ventas_30d,
+  (SELECT COUNT(*)::int FROM ventas v
+    WHERE v.tenant_id = t.id AND v.deleted_at IS NULL)            AS ventas_total,
+  (SELECT COUNT(*)::int FROM chat_messages cm
+    WHERE cm.tenant_id = t.id
+      AND cm.created_at >= NOW() - INTERVAL '30 days')            AS bot_msgs_30d,
+  (SELECT COUNT(*)::int FROM productos p
+    WHERE p.tenant_id = t.id AND p.deleted_at IS NULL)            AS productos_count,
+  (SELECT COUNT(*)::int FROM contactos c
+    WHERE c.tenant_id = t.id AND c.deleted_at IS NULL)            AS contactos_count,
+  (SELECT COUNT(*)::int FROM metodos_pago mp
+    WHERE mp.tenant_id = t.id AND mp.deleted_at IS NULL)          AS cajas_count,
+  (SELECT COUNT(*)::int FROM alertas_config ac
+    WHERE ac.tenant_id = t.id AND ac.activa = true)               AS alertas_count
+`;
+
+// Helper: enrichTenantWithHealth — proyecta health_score + breakdown +
+// category sobre un tenant ya hidratado con stats. Usado tras ambas queries
+// (list + detail) para mantener una sola fuente de verdad para el cálculo.
+function enrichTenantWithHealth(tenant) {
+  const stats = {
+    ventas_30d:      tenant.ventas_30d,
+    ventas_total:    tenant.ventas_total,
+    bot_msgs_30d:    tenant.bot_msgs_30d,
+    productos_count: tenant.productos_count,
+    contactos_count: tenant.contactos_count,
+    cajas_count:     tenant.cajas_count,
+    alertas_count:   tenant.alertas_count,
+    users_count:     tenant.users_count,
+  };
+  const health = computeHealthScore({ tenant, stats });
+  return {
+    ...tenant,
+    health_score:     health.score,
+    health_breakdown: health.breakdown,
+    health_category:  health.category,
+  };
+}
 
 // Todos los endpoints de este módulo requieren super-admin.
 router.use(requireSuperAdmin);
@@ -196,7 +247,9 @@ router.get('/tenants', async (req, res, next) => {
            (SELECT COUNT(*)::int FROM users u
              INNER JOIN tenant_users tu ON tu.user_id = u.id
              WHERE tu.tenant_id = t.id
-               AND u.created_at >= NOW() - INTERVAL '30 days') AS signups_30d
+               AND u.created_at >= NOW() - INTERVAL '30 days') AS signups_30d,
+           -- Health score stats (#440)
+           ${HEALTH_STATS_SQL}
          FROM tenants t
          WHERE ${where.join(' AND ')}
          ORDER BY ${sort.sql}
@@ -207,8 +260,11 @@ router.get('/tenants', async (req, res, next) => {
     });
 
     res.json({
-      // Calcular MRR per-tenant en Node (la fórmula vive en planPricing.js).
-      tenants: result.rows.map((t) => ({
+      // Calcular MRR + health per-tenant en Node. La fórmula de salud vive
+      // en lib/tenantHealth.js — calculamos acá (no en SQL) porque la lógica
+      // es compleja (4 sub-scorers + onboarding override + suspended bypass)
+      // y queremos tests unitarios puros sin DB.
+      tenants: result.rows.map((t) => enrichTenantWithHealth({
         ...t,
         mrr_usd: getTenantMrr(t.plan, t.custom_mrr_usd),
       })),
@@ -245,7 +301,9 @@ router.get('/tenants/:id', async (req, res, next) => {
                 (SELECT COUNT(*)::int FROM users u
                    INNER JOIN tenant_users tu ON tu.user_id = u.id
                    WHERE tu.tenant_id = t.id
-                     AND u.created_at >= NOW() - INTERVAL '30 days') AS signups_30d
+                     AND u.created_at >= NOW() - INTERVAL '30 days') AS signups_30d,
+                -- Health score stats (#440)
+                ${HEALTH_STATS_SQL}
            FROM tenants t
           WHERE t.id = $1 AND t.deleted_at IS NULL`,
         [id]
@@ -269,9 +327,15 @@ router.get('/tenants/:id', async (req, res, next) => {
 
     if (!result) return res.status(404).json({ error: 'Tenant no encontrado' });
 
-    res.json({
+    // Enriquecemos con MRR + health antes de devolver. El health_breakdown
+    // se proyecta para que el frontend pueda mostrar las 4 barras del tab
+    // Resumen con valores reales (no derivaciones débiles del proxy viejo).
+    const enriched = enrichTenantWithHealth({
       ...result.tenant,
       mrr_usd: getTenantMrr(result.tenant.plan, result.tenant.custom_mrr_usd),
+    });
+    res.json({
+      ...enriched,
       recent_admin_actions: result.recent_admin_actions,
     });
   } catch (err) {

@@ -29,6 +29,7 @@ import {
   TENANT_STATUS,
   healthProxy,
   healthColor,
+  healthCategoryLabel,
 } from '../lib/uiHelpers.js';
 import { describeAction, actionShortText } from '../lib/actionDescriptors.js';
 import EditTenantModal from '../components/modals/EditTenantModal.jsx';
@@ -40,24 +41,14 @@ import DeleteTenantModal from '../components/modals/DeleteTenantModal.jsx';
 
 // ── Helpers locales ───────────────────────────────────────────────────
 
-// Texto descriptivo del rango de salud — para el sub del stat card.
-function healthDescriptor(h) {
-  if (h >= 80) return 'excelente';
-  if (h >= 55) return 'estable';
-  if (h >= 40) return 'en riesgo';
+// Descriptor textual de la salud — usa la category del backend (#440) si
+// está, sino cae al threshold del score viejo para retro-compat.
+function healthDescriptor(score, category) {
+  if (category) return healthCategoryLabel(category);
+  if (score >= 80) return 'excelente';
+  if (score >= 55) return 'estable';
+  if (score >= 40) return 'en riesgo';
   return 'frío';
-}
-
-// Proxy "actividad reciente 30d" (0–100). Heurística simple basada en
-// cuánto hace que no hay venta. TODO (salud real): fórmula combinada.
-function activityProxy(lastActivityAt) {
-  if (!lastActivityAt) return 20;
-  const ts = new Date(lastActivityAt).getTime();
-  if (isNaN(ts)) return 20;
-  const days = (Date.now() - ts) / 86400000;
-  if (days < 7) return 90;
-  if (days < 30) return 50;
-  return 20;
 }
 
 // Cuántos días faltan / pasaron del trial_until.
@@ -255,10 +246,18 @@ export default function Ficha() {
   // tenant existe a partir de acá.
   const statusKey = getTenantStatus(tenant);
   const statusMeta = TENANT_STATUS[statusKey] || TENANT_STATUS.active;
-  const health = healthProxy(tenant?.last_venta_at);
-  const hColor = healthColor(health);
-  const hDesc = healthDescriptor(health);
-  const activity30 = activityProxy(tenant?.last_venta_at);
+  // Health real (#440): preferimos lo que devuelve el backend.
+  // Si el backend aún no lo manda (cache stale tras deploy), cae al
+  // proxy legacy via healthProxy(tenant).
+  const health = healthProxy(tenant);
+  const hCategory = tenant?.health_category;
+  const hColor = healthColor(health, hCategory);
+  const hDesc = healthDescriptor(health, hCategory);
+  // Breakdown del backend para las 4 barras del tab Resumen. Si falta,
+  // usamos defaults visualmente útiles (no cero — sería confuso).
+  const breakdown = tenant?.health_breakdown || {
+    actividad: 0, cobros: 50, adopcion: 0, asientos: 0,
+  };
   const isSuspended = !!tenant?.suspended_at;
   const isTrial = tenant?.plan === 'trial';
 
@@ -450,32 +449,50 @@ export default function Ficha() {
 
       {activeTab === 'resumen' && (
         <div className="split-2" style={{ marginTop: 'var(--gap)' }}>
-          {/* Salud de la cuenta — 4 barras derivadas (proxies). TODO: salud real. */}
-          <Card title="Salud de la cuenta" subtitle="Señales de uso y riesgo">
+          {/* Salud de la cuenta — 4 componentes del score (#440). El backend
+              calcula cada uno y los devuelve en tenant.health_breakdown. La
+              suma ponderada (30/30/20/20) da el score total. */}
+          <Card title="Salud de la cuenta" subtitle="Componentes del score (ponderado)">
             <HealthBar
-              label="Salud del tenant"
-              value={health}
-              color={hColor}
-            />
-            <HealthBar
-              label="Asientos ocupados"
-              value={Math.min(100, Math.round(((tenant.users_count || 0) / 10) * 100))}
-              color="var(--accent)"
-            />
-            <HealthBar
-              label="Actividad reciente (30d)"
-              value={activity30}
+              label="Actividad (30%) — ventas + bot últimos 30d"
+              value={breakdown.actividad}
               color="var(--info)"
             />
             <HealthBar
-              label="Cobros al día"
-              value={isSuspended ? 0 : 95}
-              color={isSuspended ? 'var(--neg)' : 'var(--pos)'}
+              label="Cobros al día (30%) — días hasta vencer pago"
+              value={breakdown.cobros}
+              color={breakdown.cobros >= 60 ? 'var(--pos)' : breakdown.cobros >= 30 ? 'var(--warn)' : 'var(--neg)'}
             />
-            {/* Nota explícita al user: las 4 son derivaciones, no señales reales. */}
+            <HealthBar
+              label="Adopción (20%) — features que usa el tenant"
+              value={breakdown.adopcion}
+              color="var(--accent)"
+            />
+            <HealthBar
+              label="Asientos (20%) — users vs capacity del plan"
+              value={breakdown.asientos}
+              color="var(--accent)"
+            />
             <div className="muted tiny" style={{ marginTop: 12 }}>
-              Estos proxies se van a reemplazar por señales reales (uso de
-              producto + cobros + adopción de features).
+              {hCategory === 'onboarding' && (
+                <>
+                  <strong>Onboarding:</strong> tenant nuevo (&lt;7 días). El score
+                  tiene piso de 50 hasta que el cliente tenga oportunidad de
+                  generar actividad.
+                </>
+              )}
+              {hCategory === 'suspended' && (
+                <>
+                  <strong>Suspendida:</strong> el score se fuerza a 0 porque
+                  el tenant está bloqueado operativamente.
+                </>
+              )}
+              {hCategory !== 'onboarding' && hCategory !== 'suspended' && (
+                <>
+                  Score total = 0.3 × Actividad + 0.3 × Cobros + 0.2 × Adopción
+                  {' '}+ 0.2 × Asientos.
+                </>
+              )}
             </div>
           </Card>
 
