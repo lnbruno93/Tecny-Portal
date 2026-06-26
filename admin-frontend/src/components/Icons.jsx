@@ -134,6 +134,16 @@ export const Icons = {
     </ICO>
   ),
   Bolt: (p) => <ICO {...p}><path d="M13 2 4 14h7l-1 8 9-12h-7Z" /></ICO>,
+  // Trash (feature #438): para acciones destructivas. Lucide-style: tapa
+  // arriba con manija + cuerpo del bote con 2 líneas verticales internas.
+  Trash: (p) => (
+    <ICO {...p}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14" />
+      <path d="M10 11v6M14 11v6" />
+    </ICO>
+  ),
 };
 
 // Helper para resolver iconos por nombre (string). Las primitivas Btn/Tab

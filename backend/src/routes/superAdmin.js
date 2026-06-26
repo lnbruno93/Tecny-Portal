@@ -51,6 +51,7 @@ const {
   extendTrialSchema,
   suspendTenantSchema,
   reactivateTenantSchema,
+  deleteTenantSchema,
   setPaidUntilSchema,
   patchPlanPriceSchema,
   PLANES,
@@ -619,6 +620,114 @@ router.post('/tenants/:id/reactivate', validate(reactivateTenantSchema), async (
     // cache caliente siguen viendo "suspended" hasta el TTL natural (5min).
     invalidateTenantStatus(id).catch(err =>
       logger.warn({ err: err.message, tenantId: id }, 'reactivate: invalidate cache falló')
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// DELETE /tenants/:id — soft-delete tenant (2026-06-26 feature #438).
+//
+// Trigger: el super-admin quiere limpiar tenants de prueba / cancelados
+// desde la UI del back office, en vez de SQL manual.
+//
+// Soft-delete: UPDATE tenants SET deleted_at = NOW(). NO toca las tablas
+// hijas (productos, ventas, cajas, etc.) — quedan huérfanas pero recuperables
+// si revertimos el deleted_at. Un cron futuro (>30d) puede hard-deletear con
+// CASCADE para limpieza definitiva, dando ventana de "deshacer".
+//
+// Seguridad anti-clicaccidental: query param `?confirm=<slug>` debe matchear
+// exactamente el slug del tenant. Mismo patrón que GitHub repo delete —
+// obliga a tipear el nombre antes de habilitar el botón rojo.
+//
+// Idempotencia: si el tenant ya está soft-deleted, devolvemos 200 (no fail).
+// Esto facilita doble-click o reintento tras timeout sin error confuso.
+//
+// Cache invalidation: igual que suspend, invalidamos tenantStatus después
+// del COMMIT para que las réplicas no devuelvan al tenant como activo.
+// ──────────────────────────────────────────────────────────────────────────
+router.delete('/tenants/:id', validate(deleteTenantSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { reason } = req.body;
+    const confirmSlug = req.query.confirm;
+    if (!confirmSlug || typeof confirmSlug !== 'string') {
+      return res.status(400).json({
+        error: 'confirm requerido',
+        detail: 'Para eliminar, pasá ?confirm=<slug-del-tenant> en la URL',
+      });
+    }
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT slug, nombre, plan, deleted_at FROM tenants
+            WHERE id = $1 FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        // Validar slug confirm contra el real (anti-click accidental).
+        if (before.slug !== confirmSlug) {
+          await client.query('ROLLBACK');
+          return { slugMismatch: true, expected: before.slug };
+        }
+
+        // Idempotencia: si ya está soft-deleted, no hacemos nada (no fail).
+        // Audit tampoco se loguea — no es una acción nueva.
+        if (before.deleted_at !== null) {
+          await client.query('ROLLBACK');
+          return { alreadyDeleted: true };
+        }
+
+        await client.query(
+          `UPDATE tenants SET deleted_at = NOW() WHERE id = $1`,
+          [id]
+        );
+        await insertAdminAction(client, {
+          tenantId: id,
+          superAdminUserId: req.user.id,
+          action: 'delete',
+          beforeState: { deleted_at: null, slug: before.slug, nombre: before.nombre, plan: before.plan },
+          afterState:  { deleted_at: 'NOW()' },
+          reason,
+        });
+        await client.query('COMMIT');
+        return { ok: true };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow — error original ya se propaga */ }
+        throw err;
+      }
+    });
+
+    if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+    if (result.slugMismatch) {
+      return res.status(400).json({
+        error: 'confirm slug no coincide',
+        detail: `El tenant tiene slug "${result.expected}" — pasá ese valor en ?confirm=`,
+      });
+    }
+    if (result.alreadyDeleted) {
+      // Devolvemos 200 igual — idempotente. El frontend puede mostrar "ya estaba borrado".
+      return res.json({ ok: true, alreadyDeleted: true });
+    }
+
+    // Invalidar cache cross-instance — delete pasa el tenant a is_active=false
+    // (tenantStatus chequea deleted_at). Sin invalidate, las réplicas con cache
+    // caliente siguen sirviéndolo como activo hasta el TTL natural (5min).
+    invalidateTenantStatus(id).catch(err =>
+      logger.warn({ err: err.message, tenantId: id }, 'delete: invalidate cache falló')
     );
 
     res.json({ ok: true });

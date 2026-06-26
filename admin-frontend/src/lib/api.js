@@ -263,6 +263,24 @@ export const adminApi = {
   setPaidUntil: (id, body) =>
     api(`/api/super-admin/tenants/${id}/set-paid-until`, 'POST', body),
 
+  // DELETE /tenants/:id?confirm=<slug> — soft-delete tenant (feature #438).
+  //
+  // Anti-clicaccidental estilo GitHub: el caller debe pasar el slug del
+  // tenant como query param `?confirm=`. El backend valida que coincida con
+  // tenant.slug, sino devuelve 400. Esto fuerza al user a tipear el nombre
+  // del tenant antes de habilitar el botón rojo (lo enforcea el modal).
+  //
+  // Idempotente: si ya estaba soft-deleted, responde 200 con
+  // { ok: true, alreadyDeleted: true } (no falla doble-click).
+  //
+  // body: { reason?: string } — opcional pero recomendado para audit trail.
+  deleteTenant: (id, slug, body = {}) =>
+    api(
+      `/api/super-admin/tenants/${id}?confirm=${encodeURIComponent(slug)}`,
+      'DELETE',
+      body
+    ),
+
   // ── Plan Prices (C.1.2 #353) ──────────────────────────────────────────
   // GET /plan-prices — lista los 4 planes con precio + notas + updated_by.
   // Devuelve { plan_prices: [{ plan, price_usd, active, notes, updated_at,

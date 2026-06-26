@@ -88,6 +88,18 @@ const setPaidUntilSchema = z.object({
   { message: 'reason requerido cuando paid_until es una fecha', path: ['reason'] }
 );
 
+// DELETE /api/super-admin/tenants/:id — soft-delete tenant.
+//
+// Solo body — el slug de confirmación va por query param `?confirm=<slug>`
+// validado en el handler (estilo GitHub repo delete: tipear el slug para
+// confirmar la intención, evita clicks accidentales en el botón rojo).
+//
+// reason: opcional pero recomendado. Para "borré las cuentas de prueba
+// del onboarding inicial" o similar. Va al audit trail.
+const deleteTenantSchema = z.object({
+  reason: z.string().max(500).optional(),
+}).strict();
+
 // PATCH /api/super-admin/plan-prices/:plan — cambiar precio de un plan (C.1.2 #353).
 //
 // price_usd: número >= 0 o null (para enterprise, que no tiene precio fijo).
@@ -111,5 +123,6 @@ module.exports = {
   suspendTenantSchema,
   reactivateTenantSchema,
   setPaidUntilSchema,
+  deleteTenantSchema,
   patchPlanPriceSchema,
 };
