@@ -113,6 +113,117 @@ describe('EditTenantModal', () => {
     expect(adminApi.patchTenant).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
   });
+
+  // ── Rename feature (#439) ────────────────────────────────────────────
+  it('cambio de nombre llama patchTenant con { nombre }', async () => {
+    adminApi.patchTenant.mockResolvedValue({ ok: true });
+    const onSaved = vi.fn();
+
+    render(
+      <EditTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/nombre de la empresa/i), {
+      target: { value: 'iPro / Celnyx' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    await waitFor(() => {
+      expect(adminApi.patchTenant).toHaveBeenCalledWith(12, {
+        nombre: 'iPro / Celnyx',
+      });
+    });
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('cambio de slug muestra warning + llama patchTenant con { slug }', async () => {
+    adminApi.patchTenant.mockResolvedValue({ ok: true });
+
+    render(
+      <EditTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onSaved={() => {}}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/slug/i), {
+      target: { value: 'ipro-celnyx' },
+    });
+
+    // El warning de "cambiar slug es delicado" debe aparecer.
+    expect(screen.getByText(/cambiar slug es delicado/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    await waitFor(() => {
+      expect(adminApi.patchTenant).toHaveBeenCalledWith(12, {
+        slug: 'ipro-celnyx',
+      });
+    });
+  });
+
+  it('slug con formato inválido (uppercase) muestra error inline y bloquea submit', async () => {
+    render(
+      <EditTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onSaved={() => {}}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/slug/i), {
+      target: { value: 'IproCelnyx' },
+    });
+
+    expect(screen.getByText(/inválido: lowercase/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    // No debe haber llamado al backend.
+    expect(adminApi.patchTenant).not.toHaveBeenCalled();
+  });
+
+  it('nombre + slug + reason juntos llaman patchTenant con todos los campos', async () => {
+    adminApi.patchTenant.mockResolvedValue({ ok: true });
+
+    render(
+      <EditTenantModal
+        tenant={makeTenant()}
+        open
+        onClose={() => {}}
+        onSaved={() => {}}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/nombre de la empresa/i), {
+      target: { value: 'iPro / Celnyx' },
+    });
+    fireEvent.change(screen.getByLabelText(/slug/i), {
+      target: { value: 'ipro-celnyx' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/upgrade pactado/i), {
+      target: { value: 'rebrand completo' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    await waitFor(() => {
+      expect(adminApi.patchTenant).toHaveBeenCalledWith(12, {
+        nombre: 'iPro / Celnyx',
+        slug: 'ipro-celnyx',
+        reason: 'rebrand completo',
+      });
+    });
+  });
 });
 
 // ── SuspendTenantModal ─────────────────────────────────────────────

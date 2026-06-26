@@ -14,10 +14,26 @@ const { z } = require('zod');
 
 const PLANES = ['trial', 'starter', 'pro', 'enterprise'];
 
+// Slug regex: lowercase, números y hyphens. Sin hyphens consecutivos ni
+// al principio/fin. Length 2-100. Mismo formato que el slug que genera
+// signup.js a partir del nombre de la empresa — mantener consistencia
+// permite rename a un valor que el sistema mismo habría generado.
+const SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
+
 // PATCH /api/super-admin/tenants/:id — mutate genérico.
 // Todos los campos opcionales (al menos uno debe estar set, validado abajo).
 const patchTenantSchema = z.object({
   plan:             z.enum(PLANES).optional(),
+  // nombre: display del tenant en UI. Acepta cualquier string razonable
+  // (incluye espacios, /, mayúsculas). Length 1-255 (matchea NOT NULL de DB).
+  nombre:           z.string().trim().min(1, 'nombre no puede ser vacío').max(255).optional(),
+  // slug: identificador URL-safe. Acción más delicada — está en UNIQUE
+  // constraint y se referencia en audit trail histórico. Validamos formato
+  // estricto acá para fail-fast antes de pegarle a PG (que rebotaría 23505).
+  slug:             z.string().regex(
+    SLUG_REGEX,
+    'slug inválido: lowercase, números y hyphens; sin hyphens al inicio/fin; 2-100 chars'
+  ).optional(),
   // suspended_at: aceptamos null (reactivar) o un ISO date (suspender ahora).
   // El frontend mandará null para reactivar; para suspender usa el shortcut.
   suspended_at:     z.string().datetime().nullable().optional(),
@@ -36,7 +52,7 @@ const patchTenantSchema = z.object({
   (data) => {
     // Al menos UN campo mutable (no contando reason) debe estar set.
     // Sin esto, un PATCH {} sería no-op silencioso — peor UX.
-    const mutables = ['plan', 'suspended_at', 'suspended_reason',
+    const mutables = ['plan', 'nombre', 'slug', 'suspended_at', 'suspended_reason',
                        'trial_until', 'custom_mrr_usd', 'notes'];
     return mutables.some((k) => k in data);
   },

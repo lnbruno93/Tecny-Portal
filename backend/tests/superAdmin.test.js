@@ -299,10 +299,13 @@ describe('GET /api/super-admin/tenants/:id', () => {
 describe('PATCH /api/super-admin/tenants/:id', () => {
   beforeEach(async () => {
     // Reset estado del tenant 777 — los tests muteán esto.
+    // Incluimos nombre+slug para que los tests de rename (#439) tengan
+    // valores conocidos como punto de partida.
     await pool.query(
       `UPDATE tenants
           SET plan='pro', suspended_at=NULL, suspended_reason=NULL,
-              trial_until=NULL, custom_mrr_usd=NULL, notes=NULL
+              trial_until=NULL, custom_mrr_usd=NULL, notes=NULL,
+              nombre='SA Test Tenant', slug='sa-test'
         WHERE id=777`
     );
     await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = 777`);
@@ -388,6 +391,135 @@ describe('PATCH /api/super-admin/tenants/:id', () => {
       .set('Authorization', `Bearer ${regularUserToken}`)
       .send({ notes: 'x' });
     expect(r.status).toBe(403);
+  });
+
+  // ── Rename feature (#439) ────────────────────────────────────────────────
+  describe('rename (nombre + slug, feature #439)', () => {
+    it('cambia nombre solo (sin tocar slug)', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ nombre: 'iPro / Celnyx', reason: 'rebrand interno' });
+
+      expect(r.status).toBe(200);
+      expect(r.body.nombre).toBe('iPro / Celnyx');
+      expect(r.body.slug).toBe('sa-test'); // slug intacto
+
+      const { rows } = await pool.query(
+        `SELECT action, before_state, after_state, reason
+           FROM tenant_admin_actions WHERE tenant_id = 777`
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].action).toBe('rename');
+      expect(rows[0].before_state.nombre).toBe('SA Test Tenant');
+      expect(rows[0].after_state.nombre).toBe('iPro / Celnyx');
+      expect(rows[0].reason).toBe('rebrand interno');
+    });
+
+    it('cambia slug solo (lowercase + hyphens válido)', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: 'ipro-celnyx', reason: 'matchear nombre nuevo' });
+
+      expect(r.status).toBe(200);
+      expect(r.body.slug).toBe('ipro-celnyx');
+
+      const { rows } = await pool.query(
+        `SELECT action FROM tenant_admin_actions WHERE tenant_id = 777`
+      );
+      expect(rows[0].action).toBe('rename');
+
+      // Cleanup: dejar slug 'sa-test' para no romper otros tests del archivo
+      // que usan ese valor en el setup. (afterAll también limpia.)
+      await pool.query(`UPDATE tenants SET slug='sa-test' WHERE id=777`);
+    });
+
+    it('cambia nombre + slug juntos en un solo PATCH', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ nombre: 'iPro / Celnyx', slug: 'ipro-celnyx', reason: 'full rebrand' });
+
+      expect(r.status).toBe(200);
+      expect(r.body.nombre).toBe('iPro / Celnyx');
+      expect(r.body.slug).toBe('ipro-celnyx');
+
+      await pool.query(`UPDATE tenants SET slug='sa-test' WHERE id=777`);
+    });
+
+    it('rechaza slug con formato inválido (uppercase)', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: 'IproCelnyx', reason: 'x' });
+      expect(r.status).toBe(400);
+    });
+
+    it('rechaza slug con caracteres especiales', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: 'ipro/celnyx', reason: 'x' });
+      expect(r.status).toBe(400);
+    });
+
+    it('rechaza slug que empieza/termina con hyphen', async () => {
+      const r1 = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: '-ipro' });
+      expect(r1.status).toBe(400);
+
+      const r2 = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: 'ipro-' });
+      expect(r2.status).toBe(400);
+    });
+
+    it('rechaza nombre vacío (después de trim)', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ nombre: '   ' });
+      expect(r.status).toBe(400);
+    });
+
+    it('409 si slug colisiona con otro tenant existente', async () => {
+      // tenant id=1 ya existe con slug 'iprotest' o el que sea — usamos uno
+      // distinto al de 777 para que la colisión sea con otro tenant.
+      // Levantamos el slug del tenant 1 dinámicamente para evitar fragilidad.
+      const { rows: t1 } = await pool.query(`SELECT slug FROM tenants WHERE id=1`);
+      const otherSlug = t1[0].slug;
+
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: otherSlug, reason: 'intencional para test' });
+
+      expect(r.status).toBe(409);
+      expect(r.body.error).toMatch(/slug ya en uso/);
+      expect(r.body.detail).toContain(otherSlug);
+
+      // Verificar que el tenant 777 no fue tocado.
+      const { rows: t777 } = await pool.query(`SELECT slug FROM tenants WHERE id=777`);
+      expect(t777[0].slug).toBe('sa-test');
+    });
+
+    it('cambiar slug al mismo valor actual → no-op (sin nueva fila de audit)', async () => {
+      const r = await request(app)
+        .patch('/api/super-admin/tenants/777')
+        .set('Authorization', `Bearer ${superAdminToken}`)
+        .send({ slug: 'sa-test', nombre: 'SA Test Tenant' });
+
+      expect(r.status).toBe(200);
+
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM tenant_admin_actions WHERE tenant_id=777`
+      );
+      expect(rows[0].c).toBe(0);
+    });
   });
 });
 

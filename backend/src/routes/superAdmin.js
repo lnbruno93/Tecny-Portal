@@ -342,8 +342,9 @@ router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next)
       await client.query('BEGIN');
       try {
         // 1. Estado actual (locked para evitar race con otros PATCHes).
+        //    Incluimos nombre+slug porque ahora son mutables (#439).
         const beforeRow = await client.query(
-          `SELECT plan, suspended_at, suspended_reason, trial_until,
+          `SELECT nombre, slug, plan, suspended_at, suspended_reason, trial_until,
                   custom_mrr_usd, notes
              FROM tenants
             WHERE id = $1 AND deleted_at IS NULL
@@ -379,13 +380,30 @@ router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next)
           return { tenant: before, noop: true };
         }
         params.push(id);
-        const updateRow = await client.query(
-          `UPDATE tenants SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
-          params
-        );
+        // Slug UNIQUE constraint: si el nuevo slug ya existe en otro tenant,
+        // PG rebota con code 23505 (unique_violation). Lo cacheamos abajo
+        // en el catch para devolver 409 limpio en vez de 500.
+        let updateRow;
+        try {
+          updateRow = await client.query(
+            `UPDATE tenants SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+            params
+          );
+        } catch (pgErr) {
+          if (pgErr && pgErr.code === '23505') {
+            await client.query('ROLLBACK');
+            return { slugConflict: true, attemptedSlug: after.slug };
+          }
+          throw pgErr;
+        }
         const updatedTenant = updateRow.rows[0];
 
         // 4. Decidir el `action` más específico.
+        //    Prioridad: plan_change > suspend/reactivate > trial_extend >
+        //    custom_mrr_update > rename > note_update.
+        //    rename va antes de note_update porque cuando el operador cambia
+        //    nombre/slug suele venir sin tocar notes — querer ver "rename"
+        //    en el feed es más útil que "note_update".
         let action = 'note_update';
         if (mutables.plan !== undefined && mutables.plan !== before.plan) {
           action = 'plan_change';
@@ -395,6 +413,11 @@ router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next)
           action = 'trial_extend';
         } else if (mutables.custom_mrr_usd !== undefined) {
           action = 'custom_mrr_update';
+        } else if (
+          (mutables.nombre !== undefined && mutables.nombre !== before.nombre) ||
+          (mutables.slug   !== undefined && mutables.slug   !== before.slug)
+        ) {
+          action = 'rename';
         }
 
         // 5. Audit trail.
@@ -416,6 +439,12 @@ router.patch('/tenants/:id', validate(patchTenantSchema), async (req, res, next)
     });
 
     if (result.notFound) return res.status(404).json({ error: 'Tenant no encontrado' });
+    if (result.slugConflict) {
+      return res.status(409).json({
+        error: 'slug ya en uso',
+        detail: `El slug "${result.attemptedSlug}" ya pertenece a otro tenant. Elegí otro.`,
+      });
+    }
 
     logger.info(
       { tenant_id: id, super_admin: req.user.id, noop: !!result.noop },
