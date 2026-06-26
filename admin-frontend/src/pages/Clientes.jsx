@@ -237,8 +237,11 @@ export default function Clientes() {
               data.map((t) => {
                 const statusKey = getTenantStatus(t);
                 const statusMeta = TENANT_STATUS[statusKey] || TENANT_STATUS.active;
-                const health = healthProxy(t.last_venta_at);
-                const hColor = healthColor(health);
+                // #440: pasamos el tenant entero — healthProxy preferirá
+                // t.health_score si viene del backend; fallback al proxy viejo
+                // basado en last_venta_at para cache stale tras deploy.
+                const health = healthProxy(t);
+                const hColor = healthColor(health, t.health_category);
                 return (
                   <tr
                     key={t.id}
