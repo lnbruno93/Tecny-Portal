@@ -128,11 +128,15 @@ describe('GET /api/super-admin/tenants', () => {
   // { tenants, total, limit, offset, sort } en lugar del array crudo.
   // Tests actualizados para leer desde `.tenants`.
   it('devuelve { tenants, total, limit, offset, sort }', async () => {
-    // limit=200 garantiza que entren los tenants 1 y 777 aunque la DB de
-    // test tenga muchos otros (sort default es created_at DESC, los más
-    // viejos pueden caer fuera de la primera página).
+    // 2026-06-26 fix #437: sort=id:asc garantiza determinismo. El default del
+    // endpoint es created_at DESC, lo que en DB local con tenants acumulados
+    // de runs viejos (700+ en mi máquina) hace que tenant=1 (el más viejo) y
+    // tenant=777 (creado en este suite) caigan fuera de cualquier limit
+    // razonable. Con sort=id:asc, los IDs más bajos salen primero y tenant=1
+    // siempre está en la primera página. CI con DB fresh tiene 2 tenants
+    // (1 y 777) y siempre pasaba; el flake era local-only pero molestaba.
     const r = await request(app)
-      .get('/api/super-admin/tenants?limit=200')
+      .get('/api/super-admin/tenants?sort=id:asc&limit=200')
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(r.status).toBe(200);
     expect(Array.isArray(r.body.tenants)).toBe(true);
@@ -147,8 +151,10 @@ describe('GET /api/super-admin/tenants', () => {
   });
 
   it('cada tenant incluye stats: mrr_usd, users_count, last_venta_at, signups_30d', async () => {
+    // 2026-06-26 fix #437: mismo patrón que el test de arriba. sort=id:asc
+    // garantiza que tenant=1 esté en la primera página del response.
     const r = await request(app)
-      .get('/api/super-admin/tenants?limit=200')
+      .get('/api/super-admin/tenants?sort=id:asc&limit=200')
       .set('Authorization', `Bearer ${superAdminToken}`);
     const t = r.body.tenants.find(x => x.id === 1);
     expect(t).toBeDefined();
