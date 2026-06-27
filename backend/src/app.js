@@ -103,6 +103,10 @@ const chatRoutes         = require('./routes/chat');
 const redB2bPartnershipsRoutes = require('./routes/redB2b/partnerships');
 // 2026-06-28 #455 Red B2B F2: productos pending review (buyer-side).
 const redB2bProductosPendingReviewRoutes = require('./routes/redB2b/productosPendingReview');
+// 2026-06-28 #456 Red B2B F3: operations CORE — POST crea venta + compra
+// espejada cross-tenant atómicamente. GET listado/detalle. POST cancel +
+// PATCH notes.
+const redB2bOperationsRoutes = require('./routes/redB2b/operations');
 // 2026-06-21 #353 Fase 1: Super-Admin app (admin.tecnyapp.com). DISTINTO de
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
@@ -736,6 +740,13 @@ app.use('/api/red-b2b/partnerships',
 // productos del propio tenant del caller. Mismo gate de capability.
 app.use('/api/red-b2b/productos-pending-review',
   requireAuth, requireCapability('cross_tenant.write'), redB2bProductosPendingReviewRoutes);
+
+// 2026-06-28 #456 Red B2B F3: operations CORE — venta cross-tenant + compra
+// espejada atómicamente, GET listado/detalle, cancel y PATCH notes. Toda
+// operación pasa por cap `cross_tenant.write`. Internamente usa adminQuery
+// para escribir en ambos tenants en la misma tx con SET LOCAL switching.
+app.use('/api/red-b2b/operations',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bOperationsRoutes);
 
 // 2026-06-20 #340 Fase 1: Bot conversacional analítico.
 // Disponible para todos los users autenticados de cualquier tenant (todos los

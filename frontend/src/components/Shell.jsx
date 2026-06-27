@@ -130,6 +130,11 @@ const NAV_MAIN = [
   // los productos auto-creados. El badge se setea desde el useEffect del
   // Shell que polea el endpoint cada 2 min (mismo patrón que alertas).
   { id: 'red_b2b_pending', path: '/red-b2b/pending-review', label: 'Red B2B — Pendientes', icon: 'Bell', cap: 'cross_tenant.write', group: 1 },
+  // 2026-06-28 #456 Red B2B F3: operaciones cross-tenant (CORE). Item separado
+  // del principal para acceso rápido al feed de operaciones (venta/compra
+  // espejadas). Lucas pidió que quede al lado de "Red B2B" — el item
+  // principal es el listado de partners, este es el de transacciones.
+  { id: 'red_b2b_operaciones', path: '/red-b2b/operaciones', label: 'Red B2B — Operaciones', icon: 'Receipt', cap: 'cross_tenant.write', group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      cap: 'contactos.ver',        group: 1 },
   // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },
@@ -185,6 +190,7 @@ const SCREEN_LABELS = {
   inventario: 'Inventario',
   'red-b2b':  'Red B2B',
   'pending-review': 'Pendientes de revisión',
+  'operaciones': 'Operaciones',
   proyectos:  'Proyectos',
   ventas:     'Ventas',
   historial:  'Historial',

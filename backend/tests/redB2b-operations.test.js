@@ -1,0 +1,885 @@
+/**
+ * Tests integration para Red B2B operations (F3 #456).
+ *
+ * Cobertura (28 tests críticos):
+ *
+ *   Capability gate (2):
+ *     · sin cross_tenant.write → 403 en POST
+ *     · sin cross_tenant.write → 403 en GET
+ *
+ *   Happy path POST (5):
+ *     · 201 con operation_id + my_side='seller'
+ *     · stock del seller decremento
+ *     · auto-create de productos en el buyer (pending_cross_tenant_review=true)
+ *     · movimientos_cc creado del seller (B2B venta)
+ *     · proveedor_movimientos creado del buyer (compra)
+ *
+ *   Validation POST (5):
+ *     · partnership_id no existe → 404
+ *     · partnership revocada → 409 partnership_not_active
+ *     · producto del seller no existe → 404
+ *     · total_usd no matchea suma items → 400 total_usd_mismatch
+ *     · seller suspended (suspended_at) → 409 seller_suspended
+ *
+ *   Atomicity (3):
+ *     · stock insuficiente revierte TODO (no se crean rows en ninguna tabla)
+ *     · cross_tenant_operations.id se enlaza correctamente a venta+compra
+ *     · COMMIT solo si todo OK
+ *
+ *   RLS leak (4):
+ *     · Tenant C intenta POST con partnership A↔B → 403 caller_not_in_partnership
+ *     · Tenant C intenta GET /:id de op A↔B → 404
+ *     · GET / no retorna ops ajenas
+ *     · Tenant C intenta cancel op A↔B → 404
+ *
+ *   Cancel (4):
+ *     · POST /:id/cancel revierte stock del seller (suma cantidades)
+ *     · POST /:id/cancel idempotente → 409 already_cancelled
+ *     · Solo seller puede cancelar (buyer → 403 only_seller_can_cancel)
+ *     · Notif al buyer creada
+ *
+ *   PATCH /:id (2):
+ *     · PATCH notes solo seller (buyer → 403)
+ *     · PATCH actualiza last_modified
+ *
+ *   GET /:id (2):
+ *     · Devuelve detalle full con items + my_side
+ *     · 404 si no existe
+ *
+ *   Stock edge (1):
+ *     · multi-item con un producto insuficiente → rollback completo
+ *
+ * Setup similar a F1/F2 — 3 tenants (A, B, C) + users con/sin cap.
+ */
+
+const request = require('supertest');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+
+const app = require('../src/app');
+const { setupTestDb, teardownTestDb } = require('./helpers/setup');
+
+const TENANT_A = { slug: 'red-b2b-op-test-a', nombre: 'RedB2B Op Test A', plan: 'starter' };
+const TENANT_B = { slug: 'red-b2b-op-test-b', nombre: 'RedB2B Op Test B', plan: 'pro' };
+const TENANT_C = { slug: 'red-b2b-op-test-c', nombre: 'RedB2B Op Test C', plan: 'starter' };
+
+let pool;
+let tenantAId, tenantBId, tenantCId;
+let userAId, userBId, userCId, userANoCapId;
+let tokenA, tokenB, tokenC, tokenANoCap;
+
+function signToken({ id, username, email, tenant_id, caps = {} }) {
+  return jwt.sign(
+    {
+      id, username, email,
+      role: 'op',
+      tenant_id,
+      tenant_rol: 'admin',
+      tenant_cap_rol: 'custom',
+      caps,
+      iat_ms: Date.now(),
+    },
+    process.env.JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: '1h' }
+  );
+}
+
+async function createTenant({ slug, nombre, plan }) {
+  const r = await pool.query(
+    `INSERT INTO tenants (nombre, slug, plan) VALUES ($1, $2, $3)
+     ON CONFLICT (slug) DO UPDATE SET nombre = EXCLUDED.nombre, plan = EXCLUDED.plan, suspended_at = NULL
+     RETURNING id`,
+    [nombre, slug, plan]
+  );
+  return r.rows[0].id;
+}
+
+async function createUserForTenant(tenantId, { username, email }) {
+  const hash = await bcrypt.hash('testpass1234', 10);
+  const u = await pool.query(
+    `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
+     VALUES ($1, $2, $3, $4, 'op', NOW()) RETURNING id`,
+    [username, username, email, hash]
+  );
+  const userId = u.rows[0].id;
+  await pool.query(
+    `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'admin')
+     ON CONFLICT DO NOTHING`,
+    [tenantId, userId]
+  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    await client.query(
+      `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES ($1, $2, 'custom')
+       ON CONFLICT DO NOTHING`,
+      [tenantId, userId]
+    );
+    await client.query('COMMIT');
+  } finally {
+    client.release();
+  }
+  return userId;
+}
+
+// Inserta un producto del seller con stock = `cantidad`.
+async function insertSellerProducto(tenantId, opts = {}) {
+  const { nombre = `Producto Test ${Date.now()}`, cantidad = 10, costo = 100, precio = 150 } = opts;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    const r = await client.query(
+      `INSERT INTO productos
+         (tenant_id, nombre, cantidad, costo, costo_moneda, precio_venta, precio_moneda, estado)
+       VALUES ($1, $2, $3, $4, 'USD', $5, 'USD', 'disponible')
+       RETURNING id`,
+      [tenantId, nombre, cantidad, costo, precio]
+    );
+    await client.query('COMMIT');
+    return r.rows[0].id;
+  } finally {
+    client.release();
+  }
+}
+
+// Crea una partnership ACTIVA entre two tenants (insert directo, sin pasar
+// por endpoint invite/accept que ya están testeados en F1).
+async function createActivePartnership(tenantAId_, tenantBId_, invitedBy) {
+  const [a, b] = tenantAId_ < tenantBId_ ? [tenantAId_, tenantBId_] : [tenantBId_, tenantAId_];
+  const r = await pool.query(
+    `INSERT INTO tenant_partnerships
+       (tenant_a_id, tenant_b_id, status,
+        invited_by_tenant_id, invited_by_user_id,
+        accepted_by_user_id, accepted_at)
+     VALUES ($1, $2, 'active', $3, $4, $4, NOW())
+     RETURNING id`,
+    [a, b, invitedBy, userAId]
+  );
+  return r.rows[0].id;
+}
+
+beforeAll(async () => {
+  pool = await setupTestDb();
+
+  tenantAId = await createTenant(TENANT_A);
+  tenantBId = await createTenant(TENANT_B);
+  tenantCId = await createTenant(TENANT_C);
+
+  userAId = await createUserForTenant(tenantAId, {
+    username: 'rb2b-op-user-a', email: 'rb2b-op-a@test.local',
+  });
+  userBId = await createUserForTenant(tenantBId, {
+    username: 'rb2b-op-user-b', email: 'rb2b-op-b@test.local',
+  });
+  userCId = await createUserForTenant(tenantCId, {
+    username: 'rb2b-op-user-c', email: 'rb2b-op-c@test.local',
+  });
+  userANoCapId = await createUserForTenant(tenantAId, {
+    username: 'rb2b-op-user-a-nocap', email: 'rb2b-op-a-nocap@test.local',
+  });
+
+  const capsOn = { 'cross_tenant.write': true };
+  tokenA = signToken({
+    id: userAId, username: 'rb2b-op-user-a', email: 'rb2b-op-a@test.local',
+    tenant_id: tenantAId, caps: capsOn,
+  });
+  tokenB = signToken({
+    id: userBId, username: 'rb2b-op-user-b', email: 'rb2b-op-b@test.local',
+    tenant_id: tenantBId, caps: capsOn,
+  });
+  tokenC = signToken({
+    id: userCId, username: 'rb2b-op-user-c', email: 'rb2b-op-c@test.local',
+    tenant_id: tenantCId, caps: capsOn,
+  });
+  tokenANoCap = signToken({
+    id: userANoCapId, username: 'rb2b-op-user-a-nocap',
+    email: 'rb2b-op-a-nocap@test.local',
+    tenant_id: tenantAId, caps: {},
+  });
+});
+
+beforeEach(async () => {
+  const ids = [tenantAId, tenantBId, tenantCId];
+
+  // Order matters por FKs. cross_tenant_operation_items → CASCADE de operations.
+  // movimientos_cc / proveedor_movimientos referencian cross_tenant_operations
+  // (FK con NULL allowed) → primero los unlinkeamos, luego dropeamos las ops.
+  await pool.query(
+    `UPDATE movimientos_cc SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE proveedor_movimientos SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE productos SET created_from_cross_tenant_op_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+
+  await pool.query(
+    `DELETE FROM cross_tenant_notifications WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM tenant_partnerships
+       WHERE tenant_a_id = ANY($1::int[]) OR tenant_b_id = ANY($1::int[])`,
+    [ids]
+  );
+
+  // Limpiar movimientos y productos para empezar limpio.
+  await pool.query(`DELETE FROM items_movimiento_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM movimientos_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM clientes_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimiento_items WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedores WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM productos WHERE tenant_id = ANY($1::int[])`, [ids]);
+
+  // Reset suspended_at por si algún test lo seteó.
+  await pool.query(
+    `UPDATE tenants SET suspended_at = NULL, paid_until = NULL WHERE id = ANY($1::int[])`,
+    [ids]
+  );
+});
+
+afterAll(async () => {
+  const ids = [tenantAId, tenantBId, tenantCId];
+  const userIds = [userAId, userBId, userCId, userANoCapId];
+
+  await pool.query(
+    `UPDATE movimientos_cc SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE proveedor_movimientos SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE productos SET created_from_cross_tenant_op_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+
+  await pool.query(`DELETE FROM cross_tenant_notifications WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM tenant_partnerships
+       WHERE tenant_a_id = ANY($1::int[]) OR tenant_b_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(`DELETE FROM items_movimiento_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM movimientos_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM clientes_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimiento_items WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedores WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM productos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM contactos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM user_capabilities WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM tenant_user_roles WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM tenant_users WHERE user_id = ANY($1::int[])`, [userIds]);
+  await pool.query(`DELETE FROM users WHERE id = ANY($1::int[])`, [userIds]);
+  await pool.query(`DELETE FROM tenants WHERE id = ANY($1::int[])`, [ids]);
+
+  await teardownTestDb(pool);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Capability gate
+// ──────────────────────────────────────────────────────────────────────────
+describe('cross_tenant.write gate', () => {
+  it('user SIN cap → 403 en POST /operations', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenANoCap}`)
+      .send({});
+    expect(r.status).toBe(403);
+  });
+
+  it('user SIN cap → 403 en GET /operations', async () => {
+    const r = await request(app)
+      .get('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenANoCap}`);
+    expect(r.status).toBe(403);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Happy path POST /
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /api/red-b2b/operations — happy path', () => {
+  let partnershipId;
+  let prodId;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    prodId = await insertSellerProducto(tenantAId, { nombre: 'iPhone Test', cantidad: 10, costo: 800 });
+  });
+
+  it('201 con operation_id + my_side=seller', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 3, precio_usd: 1000 }],
+        tc: 1000,
+        total_usd: 3000,
+        total_ars: 3000000,
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.operation).toBeDefined();
+    expect(r.body.operation.my_side).toBe('seller');
+    expect(r.body.operation.status).toBe('active');
+    expect(r.body.operation.total_usd).toBe(3000);
+    expect(r.body.operation.items_count).toBe(1);
+  });
+
+  it('stock del seller decrementa por la cantidad vendida', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 3, precio_usd: 1000 }],
+        tc: 1000, total_usd: 3000, total_ars: 3000000,
+      });
+    expect(r.status).toBe(201);
+    const row = await pool.query(
+      `SELECT cantidad FROM productos WHERE id = $1`,
+      [prodId]
+    );
+    expect(Number(row.rows[0].cantidad)).toBe(7); // 10 - 3
+  });
+
+  it('auto-create de producto en el buyer con pending_cross_tenant_review=true', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 3, precio_usd: 1000 }],
+        tc: 1000, total_usd: 3000, total_ars: 3000000,
+      });
+    expect(r.status).toBe(201);
+    const buyerProds = await pool.query(
+      `SELECT id, nombre, cantidad, pending_cross_tenant_review, created_from_cross_tenant_op_id
+         FROM productos WHERE tenant_id = $1`,
+      [tenantBId]
+    );
+    expect(buyerProds.rows.length).toBe(1);
+    expect(buyerProds.rows[0].nombre).toBe('iPhone Test');
+    expect(Number(buyerProds.rows[0].cantidad)).toBe(3);
+    expect(buyerProds.rows[0].pending_cross_tenant_review).toBe(true);
+    expect(buyerProds.rows[0].created_from_cross_tenant_op_id).toBeTruthy();
+  });
+
+  it('crea movimientos_cc en el seller con cross_tenant_operation_id', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 2, precio_usd: 1000 }],
+        tc: 1000, total_usd: 2000, total_ars: 2000000,
+      });
+    expect(r.status).toBe(201);
+    const movQ = await pool.query(
+      `SELECT id, tipo, monto_total, cross_tenant_operation_id, estado
+         FROM movimientos_cc WHERE tenant_id = $1`,
+      [tenantAId]
+    );
+    expect(movQ.rows.length).toBe(1);
+    expect(movQ.rows[0].tipo).toBe('compra');
+    expect(Number(movQ.rows[0].monto_total)).toBe(2000);
+    expect(movQ.rows[0].cross_tenant_operation_id).toBeTruthy();
+    expect(movQ.rows[0].estado).toBe('pendiente');
+  });
+
+  it('crea proveedor_movimientos en el buyer con cross_tenant_operation_id', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 2, precio_usd: 1000 }],
+        tc: 1000, total_usd: 2000, total_ars: 2000000,
+      });
+    expect(r.status).toBe(201);
+    const movQ = await pool.query(
+      `SELECT id, tipo, monto_usd, cross_tenant_operation_id
+         FROM proveedor_movimientos WHERE tenant_id = $1`,
+      [tenantBId]
+    );
+    expect(movQ.rows.length).toBe(1);
+    expect(movQ.rows[0].tipo).toBe('compra');
+    expect(Number(movQ.rows[0].monto_usd)).toBe(2000);
+    expect(movQ.rows[0].cross_tenant_operation_id).toBeTruthy();
+  });
+
+  it('crea notification operation_received en el buyer', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 1500 }],
+        tc: 1000, total_usd: 1500, total_ars: 1500000,
+      });
+    expect(r.status).toBe(201);
+    const notifQ = await pool.query(
+      `SELECT type, payload FROM cross_tenant_notifications WHERE tenant_id = $1`,
+      [tenantBId]
+    );
+    expect(notifQ.rows.length).toBe(1);
+    expect(notifQ.rows[0].type).toBe('operation_received');
+    expect(notifQ.rows[0].payload.partner).toBeDefined();
+    expect(notifQ.rows[0].payload.total_usd).toBe(1500);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Validation POST /
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /api/red-b2b/operations — validation', () => {
+  it('partnership_id que no existe → 404', async () => {
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: 9999999,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('partnership_not_active');
+  });
+
+  it('partnership revocada → 409 partnership_not_active', async () => {
+    const [a, b] = tenantAId < tenantBId ? [tenantAId, tenantBId] : [tenantBId, tenantAId];
+    const ins = await pool.query(
+      `INSERT INTO tenant_partnerships
+         (tenant_a_id, tenant_b_id, status,
+          invited_by_tenant_id, invited_by_user_id,
+          revoked_by_tenant_id, revoked_by_user_id, revoked_at)
+       VALUES ($1, $2, 'revoked', $3, $4, $3, $4, NOW())
+       RETURNING id`,
+      [a, b, tenantAId, userAId]
+    );
+    const partnershipId = ins.rows[0].id;
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('partnership_not_active');
+  });
+
+  it('producto que no existe → 404 producto_not_found', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: 9999999, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('producto_not_found');
+  });
+
+  it('total_usd no matchea suma items → 400 total_usd_mismatch', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 2, precio_usd: 500 }],
+        tc: 1000, total_usd: 9999, total_ars: 9999000, // wrong (should be 1000)
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.reason).toBe('total_usd_mismatch');
+  });
+
+  it('seller suspended → bloqueado (4XX)', async () => {
+    // Cuando el tenant está suspended, el middleware requireActiveTenant
+    // global del portal rechaza CUALQUIER write con 402 (Payment Required)
+    // antes incluso de llegar a nuestro endpoint. Nuestra propia validación
+    // de seller_suspended (en validateOperationPrecondition) es defense
+    // in depth — se ejecutaría si el middleware fuera bypaseado.
+    // Aceptamos 402 (middleware) o 409 (validación nuestra) — ambos
+    // bloquean la operación, que es el invariant que importa.
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    await pool.query(`UPDATE tenants SET suspended_at = NOW() WHERE id = $1`, [tenantAId]);
+    try {
+      const r = await request(app)
+        .post('/api/red-b2b/operations')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          partnership_id: partnershipId,
+          items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+          tc: 1000, total_usd: 100, total_ars: 100000,
+        });
+      expect([402, 409]).toContain(r.status);
+      // Verificar nada se persistió.
+      const ops = await pool.query(`SELECT COUNT(*) FROM cross_tenant_operations WHERE seller_tenant_id = $1`, [tenantAId]);
+      expect(Number(ops.rows[0].count)).toBe(0);
+    } finally {
+      await pool.query(`UPDATE tenants SET suspended_at = NULL WHERE id = $1`, [tenantAId]);
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Atomicity: stock_insufficient revierte TODO
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /api/red-b2b/operations — atomicity', () => {
+  it('stock_insufficient revierte TODO (sin filas en ninguna tabla)', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 2 }); // solo 2
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 5, precio_usd: 100 }],
+        tc: 1000, total_usd: 500, total_ars: 500000,
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('stock_insufficient');
+
+    // Verify nada se persistió.
+    const opsQ = await pool.query(`SELECT COUNT(*) FROM cross_tenant_operations WHERE seller_tenant_id = $1`, [tenantAId]);
+    expect(Number(opsQ.rows[0].count)).toBe(0);
+
+    const movsSellerQ = await pool.query(`SELECT COUNT(*) FROM movimientos_cc WHERE tenant_id = $1`, [tenantAId]);
+    expect(Number(movsSellerQ.rows[0].count)).toBe(0);
+
+    const movsBuyerQ = await pool.query(`SELECT COUNT(*) FROM proveedor_movimientos WHERE tenant_id = $1`, [tenantBId]);
+    expect(Number(movsBuyerQ.rows[0].count)).toBe(0);
+
+    const buyerProdsQ = await pool.query(`SELECT COUNT(*) FROM productos WHERE tenant_id = $1`, [tenantBId]);
+    expect(Number(buyerProdsQ.rows[0].count)).toBe(0);
+
+    // Stock del seller intacto.
+    const sellerProdQ = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [prodId]);
+    expect(Number(sellerProdQ.rows[0].cantidad)).toBe(2);
+  });
+
+  it('cross_tenant_operations.id se enlaza correctamente a venta + compra', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    const opId = r.body.operation.id;
+    const sellerMovQ = await pool.query(
+      `SELECT cross_tenant_operation_id FROM movimientos_cc WHERE tenant_id = $1`,
+      [tenantAId]
+    );
+    const buyerMovQ = await pool.query(
+      `SELECT cross_tenant_operation_id FROM proveedor_movimientos WHERE tenant_id = $1`,
+      [tenantBId]
+    );
+    expect(Number(sellerMovQ.rows[0].cross_tenant_operation_id)).toBe(Number(opId));
+    expect(Number(buyerMovQ.rows[0].cross_tenant_operation_id)).toBe(Number(opId));
+  });
+
+  it('multi-item con un producto insuficiente → rollback completo', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodOkId = await insertSellerProducto(tenantAId, { nombre: 'OK', cantidad: 100 });
+    const prodLowId = await insertSellerProducto(tenantAId, { nombre: 'LOW', cantidad: 1 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [
+          { producto_id: prodOkId,  cantidad: 5, precio_usd: 50 },
+          { producto_id: prodLowId, cantidad: 5, precio_usd: 50 }, // solo hay 1
+        ],
+        tc: 1000, total_usd: 500, total_ars: 500000,
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('stock_insufficient');
+    // Stock del producto OK NO debe haberse decrementado.
+    const okStockQ = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [prodOkId]);
+    expect(Number(okStockQ.rows[0].cantidad)).toBe(100);
+    const lowStockQ = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [prodLowId]);
+    expect(Number(lowStockQ.rows[0].cantidad)).toBe(1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// RLS leak attempts
+// ──────────────────────────────────────────────────────────────────────────
+describe('RLS leak attempts', () => {
+  it('Tenant C POST con partnership A↔B → 403/404 caller_not_in_partnership', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantCId, { cantidad: 10 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    // getActivePartnershipById no encuentra la partnership porque tenant C no
+    // participa → result.error = 'partnership_not_active' (status 404).
+    expect([403, 404]).toContain(r.status);
+    expect(['partnership_not_active', 'caller_not_in_partnership']).toContain(r.body.reason);
+  });
+
+  it('Tenant C GET /:id de op A↔B → 404', async () => {
+    // Crear op entre A y B.
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    expect(created.status).toBe(201);
+    const opId = created.body.operation.id;
+
+    // Tenant C intenta leer.
+    const r = await request(app)
+      .get(`/api/red-b2b/operations/${opId}`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(r.status).toBe(404);
+  });
+
+  it('GET / no retorna ops ajenas (tenant C lista, no ve la op A↔B)', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    const r = await request(app)
+      .get('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(r.status).toBe(200);
+    expect(r.body.operations).toEqual([]);
+  });
+
+  it('Tenant C intenta cancel op A↔B → 404', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    expect(created.status).toBe(201);
+    const opId = created.body.operation.id;
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({ reason: 'hack attempt' });
+    expect(r.status).toBe(404);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /:id
+// ──────────────────────────────────────────────────────────────────────────
+describe('GET /api/red-b2b/operations/:id', () => {
+  it('devuelve detalle full con items + my_side', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 2, precio_usd: 250 }],
+        tc: 1200, total_usd: 500, total_ars: 600000, notes: 'Test note',
+      });
+    expect(created.status).toBe(201);
+    const opId = created.body.operation.id;
+    const r = await request(app)
+      .get(`/api/red-b2b/operations/${opId}`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(200);
+    expect(r.body.operation.id).toBeDefined();
+    expect(r.body.operation.my_side).toBe('seller');
+    expect(r.body.operation.items.length).toBe(1);
+    expect(Number(r.body.operation.items[0].cantidad)).toBe(2);
+    expect(r.body.operation.partner).toBeTruthy();
+
+    // El buyer también puede leer y my_side='buyer'.
+    const rb = await request(app)
+      .get(`/api/red-b2b/operations/${opId}`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(rb.status).toBe(200);
+    expect(rb.body.operation.my_side).toBe('buyer');
+  });
+
+  it('404 si la op no existe', async () => {
+    const r = await request(app)
+      .get('/api/red-b2b/operations/9999999')
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(404);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /:id/cancel
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /api/red-b2b/operations/:id/cancel', () => {
+  async function createOp() {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { nombre: 'Cancel test', cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 3, precio_usd: 100 }],
+        tc: 1000, total_usd: 300, total_ars: 300000,
+      });
+    expect(created.status).toBe(201);
+    return { opId: created.body.operation.id, sellerProdId: prodId };
+  }
+
+  it('revierte stock del seller (suma cantidades)', async () => {
+    const { opId, sellerProdId } = await createOp();
+    // Stock del seller debería ser 7 (10 - 3).
+    const before = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [sellerProdId]);
+    expect(Number(before.rows[0].cantidad)).toBe(7);
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ reason: 'test cancel' });
+    expect(r.status).toBe(200);
+
+    // Stock del seller debería volver a 10.
+    const after = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [sellerProdId]);
+    expect(Number(after.rows[0].cantidad)).toBe(10);
+  });
+
+  it('idempotente: segundo cancel → 409 already_cancelled', async () => {
+    const { opId } = await createOp();
+    await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({});
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({});
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('already_cancelled');
+  });
+
+  it('solo seller puede cancelar (buyer → 403 only_seller_can_cancel)', async () => {
+    const { opId } = await createOp();
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({});
+    expect(r.status).toBe(403);
+    expect(r.body.reason).toBe('only_seller_can_cancel');
+  });
+
+  it('notif operation_cancelled al buyer', async () => {
+    const { opId } = await createOp();
+    // Limpiar notifs previas del buyer (la de operation_received).
+    await pool.query(`DELETE FROM cross_tenant_notifications WHERE tenant_id = $1 AND type = 'operation_received'`, [tenantBId]);
+    await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ reason: 'mistake' });
+    const notifQ = await pool.query(
+      `SELECT type, payload FROM cross_tenant_notifications WHERE tenant_id = $1 AND type = 'operation_cancelled'`,
+      [tenantBId]
+    );
+    expect(notifQ.rows.length).toBe(1);
+    expect(notifQ.rows[0].payload.reason).toBe('mistake');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /:id (solo notes)
+// ──────────────────────────────────────────────────────────────────────────
+describe('PATCH /api/red-b2b/operations/:id', () => {
+  async function createOp() {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    return created.body.operation.id;
+  }
+
+  it('PATCH notes solo seller (buyer → 403)', async () => {
+    const opId = await createOp();
+    const r = await request(app)
+      .patch(`/api/red-b2b/operations/${opId}`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ notes: 'Buyer trying to edit' });
+    expect(r.status).toBe(403);
+    expect(r.body.reason).toBe('only_seller_can_edit');
+  });
+
+  it('PATCH actualiza last_modified_at', async () => {
+    const opId = await createOp();
+    const before = await pool.query(`SELECT last_modified_at FROM cross_tenant_operations WHERE id = $1`, [opId]);
+    expect(before.rows[0].last_modified_at).toBeNull();
+
+    const r = await request(app)
+      .patch(`/api/red-b2b/operations/${opId}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ notes: 'Updated note' });
+    expect(r.status).toBe(200);
+
+    const after = await pool.query(`SELECT last_modified_at, last_modified_by_user_id FROM cross_tenant_operations WHERE id = $1`, [opId]);
+    expect(after.rows[0].last_modified_at).not.toBeNull();
+    expect(after.rows[0].last_modified_by_user_id).toBe(userAId);
+  });
+});

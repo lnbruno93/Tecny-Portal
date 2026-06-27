@@ -737,4 +737,26 @@ export const redB2b = {
       api(`/api/red-b2b/productos-pending-review/${id}/merge-into`, 'POST',
         { target_producto_id }),
   },
+  // 2026-06-28 #456 F3: operaciones cross-tenant (CORE — venta + compra espejada).
+  // Todos los endpoints requieren `cross_tenant.write`. Listado retorna ops donde
+  // mi tenant participa (como seller o buyer). Detalle incluye items + my_side
+  // calculado en server. Cancel y PATCH solo seller (server enforce).
+  operations: {
+    list:    (filters = {}) => {
+      const qs = new URLSearchParams();
+      if (filters.partnership_id) qs.set('partnership_id', filters.partnership_id);
+      if (filters.status)         qs.set('status', filters.status);
+      if (filters.from)           qs.set('from', filters.from);
+      if (filters.to)             qs.set('to', filters.to);
+      const s = qs.toString();
+      return api(`/api/red-b2b/operations${s ? `?${s}` : ''}`);
+    },
+    get:     (id) => api(`/api/red-b2b/operations/${id}`),
+    create:  (body) => api('/api/red-b2b/operations', 'POST', body),
+    cancel:  (id, reason) =>
+      api(`/api/red-b2b/operations/${id}/cancel`, 'POST',
+        reason ? { reason } : {}),
+    patch:   (id, notes) =>
+      api(`/api/red-b2b/operations/${id}`, 'PATCH', { notes }),
+  },
 };

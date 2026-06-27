@@ -54,6 +54,8 @@ const Egresos    = lazy(() => import('./screens/Egresos'));
 const Sanidad    = lazy(() => import('./screens/Sanidad'));
 // 2026-06-27 #454 Red B2B F1: gestión de partnerships cross-tenant.
 const RedB2B     = lazy(() => import('./screens/RedB2B'));
+const RedB2BOperaciones        = lazy(() => import('./screens/RedB2BOperaciones'));
+const RedB2BOperacionDetalle   = lazy(() => import('./screens/RedB2BOperacionDetalle'));
 // 2026-06-28 #455 Red B2B F2: pantalla buyer-side de productos pendientes.
 const RedB2BPendingReview = lazy(() => import('./screens/RedB2BPendingReview'));
 // MOCKUP — pantalla de preview del nuevo modelo de permisos (Rol + Override).
@@ -271,6 +273,17 @@ export default function App() {
                   <Route path="/red-b2b/pending-review" element={
                     <RequirePermission cap="cross_tenant.write">
                       <ErrorBoundary><RedB2BPendingReview /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  {/* 2026-06-28 #456 Red B2B F3: operaciones cross-tenant (CORE) */}
+                  <Route path="/red-b2b/operaciones" element={
+                    <RequirePermission cap="cross_tenant.write">
+                      <ErrorBoundary><RedB2BOperaciones /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="/red-b2b/operaciones/:id" element={
+                    <RequirePermission cap="cross_tenant.write">
+                      <ErrorBoundary><RedB2BOperacionDetalle /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/capital" element={
