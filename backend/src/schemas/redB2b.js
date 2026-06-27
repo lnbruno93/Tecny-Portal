@@ -37,9 +37,45 @@ const mergeIntoSchema = z.object({
   target_producto_id: z.coerce.number().int().positive(),
 }).strict();
 
+// F3 (#456): crear operación cross-tenant. items min 1 max 100 — uppercase
+// es paranoico pero los partners realistas no van a mandar más de 100 items
+// en una sola venta B2B (caso típico: 1-20 unidades).
+//
+// total_usd / total_ars son redundantes (el server recalcula como sanity
+// check) — vienen del frontend que ya hizo la cuenta. El server tolera
+// diferencia ±0.01 por rounding entre JS y SQL (sum de N items con 2 decimales).
+const createOperationSchema = z.object({
+  partnership_id: z.coerce.number().int().positive(),
+  items: z.array(z.object({
+    producto_id: z.coerce.number().int().positive(),
+    cantidad:    z.coerce.number().int().positive(),
+    precio_usd:  z.coerce.number().nonnegative(),
+  })).min(1).max(100),
+  tc:        z.coerce.number().positive(),
+  notes:     z.string().trim().max(1000).optional(),
+  total_usd: z.coerce.number().positive(),
+  total_ars: z.coerce.number().positive(),
+}).strict();
+
+// F3: cancelación de operación cross-tenant. Solo el seller. reason opcional
+// con tope 500 chars para evitar payload abuse.
+const cancelOperationSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+}).strict();
+
+// F3: PATCH de operación. F3 SOLO permite editar `notes` (decisión del doc
+// sección 5.2 — items editable es F3.5). Si más adelante se agrega items
+// edición, se hace por endpoint separado o extiende este schema.
+const patchOperationSchema = z.object({
+  notes: z.string().trim().max(1000),
+}).strict();
+
 module.exports = {
   inviteSchema,
   revokeSchema,
   rejectSchema,
   mergeIntoSchema,
+  createOperationSchema,
+  cancelOperationSchema,
+  patchOperationSchema,
 };
