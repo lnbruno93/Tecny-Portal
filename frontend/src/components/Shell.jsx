@@ -121,6 +121,9 @@ const NAV_MAIN = [
   { id: 'resumen',    path: '/resumen',    label: 'Resumen del mes', icon: 'Trend',  cap: 'resumen.ver',        group: 1 },
   { id: 'ventas',     path: '/ventas',     label: 'Ventas',     icon: 'CreditCard', cap: 'ventas.trabajar',      group: 1 },
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    cap: 'b2b.trabajar', group: 1 },
+  // 2026-06-27 #454 Red B2B F1: pantalla gateada por cap cross_tenant.write.
+  // Default OFF — el owner del tenant la activa por vendedor desde Usuarios.
+  { id: 'red_b2b',    path: '/red-b2b',    label: 'Red B2B',    icon: 'Building',   cap: 'cross_tenant.write',   group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      cap: 'contactos.ver',        group: 1 },
   // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },
@@ -174,6 +177,7 @@ const SCREEN_LABELS = {
   proveedores: 'Proveedores | Compras',
   usados:     'Usados y Cotizador',
   inventario: 'Inventario',
+  'red-b2b':  'Red B2B',
   proyectos:  'Proyectos',
   ventas:     'Ventas',
   historial:  'Historial',

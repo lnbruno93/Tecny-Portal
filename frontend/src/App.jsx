@@ -52,6 +52,8 @@ const Proyectos  = lazy(() => import('./screens/Proyectos'));
 const Contactos  = lazy(() => import('./screens/Contactos'));
 const Egresos    = lazy(() => import('./screens/Egresos'));
 const Sanidad    = lazy(() => import('./screens/Sanidad'));
+// 2026-06-27 #454 Red B2B F1: gestión de partnerships cross-tenant.
+const RedB2B     = lazy(() => import('./screens/RedB2B'));
 // MOCKUP — pantalla de preview del nuevo modelo de permisos (Rol + Override).
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
@@ -255,6 +257,12 @@ export default function App() {
                   <Route path="/sanidad" element={
                     <RequirePermission cap="sanidad.trabajar">
                       <ErrorBoundary><Sanidad /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  {/* 2026-06-27 #454 Red B2B F1: gateado por cap cross_tenant.write */}
+                  <Route path="/red-b2b" element={
+                    <RequirePermission cap="cross_tenant.write">
+                      <ErrorBoundary><RedB2B /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/capital" element={
