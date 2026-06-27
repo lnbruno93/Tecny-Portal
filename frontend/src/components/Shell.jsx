@@ -13,7 +13,7 @@ import UnverifiedBanner from './UnverifiedBanner';
 import ExpiredBanner from './ExpiredBanner';
 import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
-import { alertas as alertasApi } from '../lib/api';
+import { alertas as alertasApi, redB2b as redB2bApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
@@ -124,6 +124,12 @@ const NAV_MAIN = [
   // 2026-06-27 #454 Red B2B F1: pantalla gateada por cap cross_tenant.write.
   // Default OFF — el owner del tenant la activa por vendedor desde Usuarios.
   { id: 'red_b2b',    path: '/red-b2b',    label: 'Red B2B',    icon: 'Building',   cap: 'cross_tenant.write',   group: 1 },
+  // 2026-06-28 #455 Red B2B F2: pendientes de revisión (buyer-side). Item
+  // separado del principal para que el badge sea inmediatamente visible —
+  // el sub-tab dentro de Red B2B quedaba sepultado y el operador se perdía
+  // los productos auto-creados. El badge se setea desde el useEffect del
+  // Shell que polea el endpoint cada 2 min (mismo patrón que alertas).
+  { id: 'red_b2b_pending', path: '/red-b2b/pending-review', label: 'Red B2B — Pendientes', icon: 'Bell', cap: 'cross_tenant.write', group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      cap: 'contactos.ver',        group: 1 },
   // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },
@@ -178,6 +184,7 @@ const SCREEN_LABELS = {
   usados:     'Usados y Cotizador',
   inventario: 'Inventario',
   'red-b2b':  'Red B2B',
+  'pending-review': 'Pendientes de revisión',
   proyectos:  'Proyectos',
   ventas:     'Ventas',
   historial:  'Historial',
@@ -465,6 +472,35 @@ export default function Shell() {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   }, []);
+
+  // 2026-06-28 #455 F2: contador de productos pending review en sidebar.
+  // Polling cada 2 min (mismo intervalo que alertas). Solo se ejecuta si el
+  // user tiene cap cross_tenant.write — sino, no tiene sentido pegarle al
+  // endpoint que rebotaría con 403. El badge se setea en el item
+  // 'red_b2b_pending' y muestra un counter pequeño si > 0.
+  useEffect(() => {
+    if (!user) return;
+    const isBypass = user.role === 'admin'
+      || user.tenant_cap_rol === 'owner'
+      || user.tenant_cap_rol === 'admin';
+    const hasCap = isBypass
+      || user.caps === null
+      || (Array.isArray(user.caps) && user.caps.includes('cross_tenant.write'));
+    if (!hasCap) return;
+    let cancelled = false;
+    function refresh() {
+      redB2bApi.productosPendingReview.list()
+        .then((r) => {
+          if (cancelled) return;
+          const n = Array.isArray(r.pendientes) ? r.pendientes.length : 0;
+          setBadges((b) => ({ ...b, red_b2b_pending: n > 0 ? n : null }));
+        })
+        .catch(() => { /* best-effort: 403/network/etc. silenciado */ });
+    }
+    refresh();
+    const id = setInterval(refresh, 2 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
 
   // Refresca el contador de alertas cada 2 min. Best-effort: si falla
   // (sin capability, sin sesión, etc.), se ignora silenciosamente.
