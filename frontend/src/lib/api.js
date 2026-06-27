@@ -561,7 +561,8 @@ export const usuarios = {
 };
 
 // 2026-06-23 Permisos F2: endpoints del sistema capability-based.
-// Catalog = 45 capabilities agrupadas en 19 pantallas (lectura libre).
+// Catalog = 46 capabilities agrupadas en 20 pantallas (lectura libre).
+// (2026-06-27 #454: +1 capability + 1 pantalla por Red B2B 'cross_tenant.write')
 // Users = lista enriquecida con rol + overrides + caps efectivas.
 // Update = PUT con `rol` y/o `overrides` (reemplazo total de overrides).
 //

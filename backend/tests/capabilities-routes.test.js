@@ -76,16 +76,21 @@ beforeEach(async () => {
 });
 
 describe('GET /api/capabilities/catalog', () => {
-  it('devuelve 19 pantallas con 45 capabilities en total', async () => {
+  it('devuelve 20 pantallas con 46 capabilities en total', async () => {
+    // 2026-06-27 #454 (Red B2B F1): catálogo ahora tiene 20 pantallas
+    // (era 19) y 46 capabilities (era 45) tras agregar 'cross_tenant.write'
+    // bajo la nueva pantalla 'cross_tenant' (módulo Red B2B).
+    // Cuando agreguemos más capabilities en F2-F5 o features futuras,
+    // bumpear estos numeros (son sanity checks de "el seed corrió OK").
     const r = await request(app)
       .get('/api/capabilities/catalog')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(r.body.pantallas).toBeInstanceOf(Array);
-    expect(r.body.pantallas.length).toBe(19);
+    expect(r.body.pantallas.length).toBe(20);
     const total = r.body.pantallas.reduce((acc, p) => acc + p.capabilities.length, 0);
-    expect(total).toBe(45);
+    expect(total).toBe(46);
     expect(r.body.roles).toContain('owner');
     expect(r.body.roles).toContain('custom');
   });
