@@ -183,7 +183,11 @@ async function findOrCreateBuyerProducto(client, buyerTenantId, sellerProducto) 
  * @returns {Promise<{ movimientoCcId, clienteCcId, productosUsados }>}
  */
 async function createSellerVenta(client, sellerTenantId, args) {
-  const { items, tc, total_usd, notes, callerUserId, buyerTenant } = args;
+  // tc viene en args para futura columna en items (F4 multi-divisa
+  // bilateral); por ahora no se persiste — el seller fija TC pero los
+  // valores se guardan en USD (moneda neutra interna). El TC se rescata
+  // del cross_tenant_operations.tc_used en F4.
+  const { items, total_usd, notes, callerUserId, buyerTenant } = args;
 
   // ── 1. Resolver cliente_cc del seller para este partner ───────────────────
   // Buscar uno con el mismo nombre. Si no existe, crear.
