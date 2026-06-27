@@ -561,7 +561,8 @@ export const usuarios = {
 };
 
 // 2026-06-23 Permisos F2: endpoints del sistema capability-based.
-// Catalog = 45 capabilities agrupadas en 19 pantallas (lectura libre).
+// Catalog = 46 capabilities agrupadas en 20 pantallas (lectura libre).
+// (2026-06-27 #454: +1 capability + 1 pantalla por Red B2B 'cross_tenant.write')
 // Users = lista enriquecida con rol + overrides + caps efectivas.
 // Update = PUT con `rol` y/o `overrides` (reemplazo total de overrides).
 //
@@ -702,4 +703,28 @@ export const chat = {
   getConversation:    (id) => api(`/api/chat/conversations/${id}`),
   sendMessage:        (id, text) => api(`/api/chat/conversations/${id}/messages`, 'POST', { text }, 60000),
   deleteConversation: (id) => api(`/api/chat/conversations/${id}`, 'DELETE'),
+};
+
+// 2026-06-27 #454 Red B2B F1: partnerships lifecycle.
+// Todos los endpoints requieren capability `cross_tenant.write` server-side.
+// El frontend esconde el sidebar item si el user no la tiene — pero igual el
+// backend chequea, así que cualquier llamada hardcoded sin cap rebota 403.
+export const redB2b = {
+  partnerships: {
+    list:    (status) => {
+      const qs = status ? '?' + new URLSearchParams({ status }) : '';
+      return api(`/api/red-b2b/partnerships${qs}`);
+    },
+    get:     (id) => api(`/api/red-b2b/partnerships/${id}`),
+    invite:  (target_tenant_slug, message) =>
+      api('/api/red-b2b/partnerships/invite', 'POST',
+        message ? { target_tenant_slug, message } : { target_tenant_slug }),
+    accept:  (id) => api(`/api/red-b2b/partnerships/${id}/accept`, 'POST'),
+    reject:  (id, reason) =>
+      api(`/api/red-b2b/partnerships/${id}/reject`, 'POST',
+        reason ? { reason } : {}),
+    revoke:  (id, reason) =>
+      api(`/api/red-b2b/partnerships/${id}/revoke`, 'POST',
+        reason ? { reason } : {}),
+  },
 };

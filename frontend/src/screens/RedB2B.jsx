@@ -1,0 +1,411 @@
+// Red B2B (F1 #454) — pantalla de gestión de partnerships cross-tenant.
+//
+// Scope F1: solo lifecycle de partnerships (invite/accept/reject/revoke +
+// listado). No hay operaciones, ni pagos, ni notificaciones todavía — esas
+// pantallas vienen en F2-F5. La pantalla está gateada por la capability
+// `cross_tenant.write` (sidebar item se esconde, ruta vía RequirePermission).
+//
+// Tabs:
+//   · Activos:               status='active' (lo más común — partnerships vigentes)
+//   · Invitaciones recibidas: status='pending' + invited_by_tenant_id !== mio
+//   · Invitaciones enviadas:  status='pending' + invited_by_tenant_id === mio
+//   · Revocados:             status='revoked' (histórico)
+//
+// Botones contextuales por fila según status + my_side:
+//   · pending recibida → [Aceptar] [Rechazar]
+//   · pending enviada  → [Cancelar invitación]
+//   · active           → [Revocar]
+//   · revoked          → (sin acciones)
+
+import { useState, useEffect, useCallback } from 'react';
+import { redB2b } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../components/ConfirmModal';
+import { Icons } from '../components/Icons';
+
+const TABS = [
+  { id: 'active',             label: 'Activos',                  status: 'active',  filterMine: null },
+  { id: 'pending_received',   label: 'Invitaciones recibidas',   status: 'pending', filterMine: 'received' },
+  { id: 'pending_sent',       label: 'Invitaciones enviadas',    status: 'pending', filterMine: 'sent' },
+  { id: 'revoked',            label: 'Revocados',                status: 'revoked', filterMine: null },
+];
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
+function planLabel(plan) {
+  const map = { trial: 'Trial', starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' };
+  return map[plan] || plan || '—';
+}
+
+export default function RedB2B() {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  const [activeTab, setActiveTab] = useState('active');
+  const [counts, setCounts] = useState({
+    active_count: 0,
+    pending_received_count: 0,
+    pending_sent_count: 0,
+    revoked_count: 0,
+  });
+  const [partnerships, setPartnerships] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState(null); // partnership id currently being acted on
+
+  const tab = TABS.find((t) => t.id === activeTab) || TABS[0];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await redB2b.partnerships.list(tab.status);
+      setCounts(r.counts || {});
+      // Filtramos el lado en el front porque el endpoint devuelve TODAS las
+      // partnerships con el status filter (no separa sent/received). El
+      // filtro es trivial sobre 4-100 filas — no vale la pena un endpoint
+      // dedicado.
+      const filtered = (r.partnerships || []).filter((p) => {
+        if (!tab.filterMine) return true;
+        return p.my_side === tab.filterMine;
+      });
+      setPartnerships(filtered);
+    } catch (err) {
+      toast.error(err.message || 'No pudimos cargar las partnerships');
+      setPartnerships([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [tab.status, tab.filterMine, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAccept(p) {
+    const ok = await confirm({
+      title: 'Aceptar invitación',
+      message: `¿Aceptás la partnership con ${p.partner?.nombre || 'el partner'}?`,
+      confirmLabel: 'Aceptar',
+    });
+    if (!ok) return;
+    setActing(p.id);
+    try {
+      await redB2b.partnerships.accept(p.id);
+      toast.success('Partnership aceptada');
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'No pudimos aceptar la invitación');
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function handleReject(p) {
+    const ok = await confirm({
+      title: 'Rechazar invitación',
+      message: `¿Rechazás la invitación de ${p.partner?.nombre || 'el partner'}? Esto la marca como revocada con motivo "rechazado".`,
+      confirmLabel: 'Rechazar',
+      danger: true,
+    });
+    if (!ok) return;
+    setActing(p.id);
+    try {
+      await redB2b.partnerships.reject(p.id);
+      toast.success('Invitación rechazada');
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'No pudimos rechazar la invitación');
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function handleRevoke(p, opts = {}) {
+    const { isPending = false } = opts;
+    const ok = await confirm({
+      title: isPending ? 'Cancelar invitación' : 'Revocar partnership',
+      message: isPending
+        ? `¿Cancelás la invitación enviada a ${p.partner?.nombre || 'el partner'}? Podrás reinvitar pasadas 24h.`
+        : `¿Revocás la partnership con ${p.partner?.nombre || 'el partner'}? Las operaciones existentes quedan como histórico; no se pueden crear nuevas hasta firmar de nuevo.`,
+      confirmLabel: isPending ? 'Cancelar invitación' : 'Revocar',
+      danger: true,
+    });
+    if (!ok) return;
+    setActing(p.id);
+    try {
+      await redB2b.partnerships.revoke(p.id);
+      toast.success(isPending ? 'Invitación cancelada' : 'Partnership revocada');
+      await load();
+    } catch (err) {
+      toast.error(err.message || 'No pudimos revocar la partnership');
+    } finally {
+      setActing(null);
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-head" style={{ marginBottom: 20 }}>
+        <h1>Red B2B</h1>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => setInviteOpen(true)}
+        >
+          <Icons.Plus /> Invitar partner
+        </button>
+      </div>
+
+      <p className="muted" style={{ marginTop: -12, marginBottom: 16 }}>
+        Conectá tu cuenta con otros tenants Tecny para operar B2B con sincronización
+        automática de inventario, cuentas corrientes y pagos.
+      </p>
+
+      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
+        {TABS.map((t) => {
+          const count = (
+            t.id === 'active'           ? counts.active_count :
+            t.id === 'pending_received' ? counts.pending_received_count :
+            t.id === 'pending_sent'     ? counts.pending_sent_count :
+            t.id === 'revoked'          ? counts.revoked_count : 0
+          );
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === t.id}
+              className={`tab ${activeTab === t.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+              {count > 0 && (
+                <span className="badge" style={{ marginLeft: 8 }}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div className="muted" style={{ padding: 24, textAlign: 'center' }}>
+          Cargando partnerships...
+        </div>
+      ) : partnerships.length === 0 ? (
+        <EmptyState tab={tab} onInvite={() => setInviteOpen(true)} />
+      ) : (
+        <div className="list">
+          {partnerships.map((p) => (
+            <PartnershipRow
+              key={p.id}
+              p={p}
+              acting={acting === p.id}
+              onAccept={() => handleAccept(p)}
+              onReject={() => handleReject(p)}
+              onRevoke={(opts) => handleRevoke(p, opts)}
+            />
+          ))}
+        </div>
+      )}
+
+      {inviteOpen && (
+        <InvitePartnerModal
+          onClose={() => setInviteOpen(false)}
+          onSuccess={() => {
+            setInviteOpen(false);
+            // Saltamos al tab "Invitaciones enviadas" porque ahí va a aparecer
+            // la nueva invitación.
+            setActiveTab('pending_sent');
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ tab, onInvite }) {
+  const messages = {
+    active:           { title: 'Sin partnerships activas todavía', body: 'Invitá a otro tenant Tecny para empezar a operar B2B sin tipear.' },
+    pending_received: { title: 'No tenés invitaciones pendientes', body: 'Cuando un partner te invite, aparecerá acá para que aceptes o rechaces.' },
+    pending_sent:     { title: 'No enviaste invitaciones', body: 'Invitá a un partner por su slug — recibirá una notificación in-app.' },
+    revoked:          { title: 'No hay partnerships revocadas', body: 'Las partnerships canceladas o rechazadas aparecen acá para histórico.' },
+  };
+  const msg = messages[tab.id] || messages.active;
+  return (
+    <div className="empty-state" style={{ padding: 32, textAlign: 'center' }}>
+      <p style={{ fontWeight: 600, marginBottom: 4 }}>{msg.title}</p>
+      <p className="muted" style={{ marginBottom: 16 }}>{msg.body}</p>
+      {(tab.id === 'active' || tab.id === 'pending_sent') && (
+        <button type="button" className="btn btn-primary" onClick={onInvite}>
+          Invitar partner
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PartnershipRow({ p, acting, onAccept, onReject, onRevoke }) {
+  const partner = p.partner || {};
+  const isReceived = p.my_side === 'received';
+
+  let dateLabel = '';
+  let dateValue = '';
+  if (p.status === 'active') {
+    dateLabel = 'Aceptada';
+    dateValue = formatDate(p.accepted_at);
+  } else if (p.status === 'pending') {
+    dateLabel = isReceived ? 'Te invitaron' : 'Invitaste';
+    dateValue = formatDate(p.invited_at);
+  } else {
+    dateLabel = 'Revocada';
+    dateValue = formatDate(p.revoked_at);
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 12, padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 600, fontSize: '1.05em' }}>
+            {partner.nombre || '— sin nombre —'}
+            {' '}
+            <span className="muted" style={{ fontWeight: 400, fontSize: '0.85em' }}>
+              ({partner.slug || '?'})
+            </span>
+          </div>
+          <div className="muted tiny" style={{ marginTop: 4 }}>
+            Plan {planLabel(partner.plan)} · {dateLabel}: {dateValue}
+          </div>
+          {p.invitation_message && (
+            <div className="tiny" style={{ marginTop: 6, fontStyle: 'italic' }}>
+              “{p.invitation_message}”
+            </div>
+          )}
+          {p.revoked_reason && (
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              Motivo: {p.revoked_reason}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {p.status === 'pending' && isReceived && (
+            <>
+              <button type="button" className="btn btn-primary" disabled={acting} onClick={onAccept}>
+                Aceptar
+              </button>
+              <button type="button" className="btn btn-danger" disabled={acting} onClick={onReject}>
+                Rechazar
+              </button>
+            </>
+          )}
+          {p.status === 'pending' && !isReceived && (
+            <button type="button" className="btn btn-danger" disabled={acting} onClick={() => onRevoke({ isPending: true })}>
+              Cancelar
+            </button>
+          )}
+          {p.status === 'active' && (
+            <button type="button" className="btn btn-danger" disabled={acting} onClick={() => onRevoke({ isPending: false })}>
+              Revocar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal: input slug + textarea mensaje opcional.
+// Validación cliente espejada del schema Zod backend (regex slug). El backend
+// igual valida — esto solo dispara errores antes del round-trip.
+const SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
+
+export function InvitePartnerModal({ onClose, onSuccess }) {
+  const { toast } = useToast();
+  const [slug, setSlug] = useState('');
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  function validate() {
+    const trimmed = slug.trim();
+    if (!trimmed) return 'Ingresá el slug del tenant a invitar.';
+    if (!SLUG_REGEX.test(trimmed)) {
+      return 'Slug inválido. Usá minúsculas, números y guiones (ej. tekhaus o tek-haus).';
+    }
+    return '';
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const v = validate();
+    if (v) { setError(v); return; }
+    setError('');
+    setSubmitting(true);
+    try {
+      await redB2b.partnerships.invite(slug.trim(), message.trim() || undefined);
+      toast.success('Invitación enviada');
+      onSuccess?.();
+    } catch (err) {
+      toast.error(err.message || 'No pudimos enviar la invitación');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="invite-modal-title">
+        <h2 id="invite-modal-title">Invitar partner</h2>
+        <p className="muted" style={{ marginTop: -8, marginBottom: 12 }}>
+          Ingresá el slug del tenant Tecny al que querés invitar.
+        </p>
+        <form onSubmit={handleSubmit}>
+          <label htmlFor="invite-slug" style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>
+            Slug del partner
+          </label>
+          <input
+            id="invite-slug"
+            type="text"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder="ej. tekhaus"
+            autoFocus
+            disabled={submitting}
+            style={{ width: '100%', marginBottom: 12 }}
+          />
+          <label htmlFor="invite-message" style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>
+            Mensaje (opcional)
+          </label>
+          <textarea
+            id="invite-message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Hola, somos X y nos gustaría operar con ustedes vía Red B2B..."
+            rows={3}
+            maxLength={500}
+            disabled={submitting}
+            style={{ width: '100%', marginBottom: 8 }}
+          />
+          <div className="muted tiny" style={{ marginBottom: 12 }}>
+            {message.length}/500 caracteres
+          </div>
+          {error && (
+            <div className="neg tiny" style={{ marginBottom: 12 }}>{error}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn" onClick={onClose} disabled={submitting}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? 'Enviando...' : 'Enviar invitación'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

@@ -97,6 +97,10 @@ const adminRoutes        = require('./routes/admin');
 const featureFlagsRoutes = require('./routes/feature-flags');
 const onboardingRoutes   = require('./routes/onboarding');
 const chatRoutes         = require('./routes/chat');
+// 2026-06-27 #454 Red B2B F1: partnerships lifecycle (invite/accept/revoke).
+// Solo el sub-router de partnerships — F2-F5 agregarán routers hermanos
+// (operations, pagos, notifications) bajo el mismo namespace /api/red-b2b.
+const redB2bPartnershipsRoutes = require('./routes/redB2b/partnerships');
 // 2026-06-21 #353 Fase 1: Super-Admin app (admin.tecnyapp.com). DISTINTO de
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
@@ -717,6 +721,13 @@ app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
 // del tenant puede consultar (no requiere permission — es read-only check
 // del estado del tenant).
 app.use('/api/onboarding', requireAuth, onboardingRoutes);
+
+// 2026-06-27 #454 Red B2B F1: partnerships lifecycle. Gateado por
+// capability `cross_tenant.write` (default OFF — el owner del tenant la
+// activa por vendedor desde Usuarios). F2-F5 agregan operations, pagos,
+// notifications bajo el mismo prefijo /api/red-b2b.
+app.use('/api/red-b2b/partnerships',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bPartnershipsRoutes);
 
 // 2026-06-20 #340 Fase 1: Bot conversacional analítico.
 // Disponible para todos los users autenticados de cualquier tenant (todos los
