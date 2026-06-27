@@ -1,10 +1,10 @@
 # Red B2B — Operaciones cross-tenant entre clientes Tecny
 
-**Estado**: 📐 DISEÑO (no implementado todavía)
-**Fecha**: 2026-06-27
+**Estado**: 📐 DISEÑO — 16/16 decisiones cerradas, listo para implementación F1.
+**Fecha**: 2026-06-27 (creación), 2026-06-27 actualización con decisiones 11-16
 **Origen**: idea de Lucas tras cerrar el 6to cliente — convertir a Tecny en una red B2B con efectos de red, donde los tenants se invitan entre sí y operan digitalmente.
-**Effort estimado**: 14-21 días bien hechos, partido en 5 fases mergeables.
-**Decisiones cerradas con Lucas**: ver sección 3.
+**Effort estimado**: 14-21 días bien hechos, partido en 5 fases mergeables. Multi-divisa F4 +1-2 días (decisión #16).
+**Decisiones cerradas con Lucas**: ver sección 3 (16 decisiones).
 
 ---
 
@@ -88,10 +88,16 @@ Por eso este doc cierra 10 decisiones antes de tocar código, propone esquema DB
 | 9 | **Permisos** | Nueva capability `cross_tenant.write`. Default OFF — el owner del tenant la activa por vendedor desde Usuarios. Sin esta cap, el botón "enviar a partner" no aparece. |
 | 10 | **Cancelaciones unilaterales** | **NO existen**. Si el buyer quiere "deshacer" una operación cross-tenant del lado suyo, la única ruta es pedirle al seller que cancele la venta original (que entonces propaga a B), o cargar una devolución / ajuste bilateral con audit. Esto evita que los saldos diverjan misteriosamente. |
 
-**Open decisions** (no críticas para F1 pero hay que cerrarlas antes de F4):
-- ¿Cómo se manejan las devoluciones cross-tenant exactamente? (probablemente igual flow que venta, pero negativo + items a devolver)
-- ¿Vista de "conciliación bilateral" muestra automáticamente las diferencias o requiere refresh manual?
-- ¿Notificaciones por email además del in-app inbox? (default no en F1, sí en F5)
+**Decisiones cerradas en follow-up (2026-06-27)**:
+
+| # | Tema | Decisión |
+|---|---|---|
+| 11 | **Devoluciones cross-tenant** | Mismo flow que venta, con monto negativo + items a devolver. Reverso de stock + reverso de CC en ambos lados. Endpoint dedicado en F4. |
+| 12 | **Conciliación auto-diff** | La vista pre-computa diferencias automáticamente en cada page load. Cache 60s con invalidación al insertar op/pago nueva (para evitar recompute pesado en partnerships con muchas ops). |
+| 13 | **Email cross-tenant** | Sí, para 5 eventos críticos: `invitation_received`, `invitation_accepted`, `operation_received`, `operation_cancelled`, `payment_received`. Default en F5, gate por config del tenant. |
+| 14 | **Comprobantes adjuntos cross-tenant** | NO. Comprobantes visuales son para Financiera retail (OCR). B2B cross-tenant tiene la operación completa estructurada — no necesita comprobante adjunto. |
+| 15 | **Trial cross-tenant** | Trial puede ENVIAR Y RECIBIR operaciones cross-tenant (maximiza viralidad y conversión trial→paid). Cap de 5 partnerships activas en trial (vs 20 starter, 100 pro, ilimitado enterprise). Sin cap de operaciones por partnership. |
+| 16 | **Multi-divisa en pagos** | Re-cálculo bilateral: si venta fue en USD pero pago se hace en ARS al TC del día del pago (≠ TC de la venta), el sistema recalcula. `cross_tenant_pagos` guarda `moneda_pago`, `tc_pago`, `diferencia_cambiaria`. La diferencia cambiaria impacta como movimiento en el módulo Cambios de Divisa existente del lado del seller. Trade-off: +1-2 días en F4 vs flexibilidad real para el negocio. |
 
 ---
 
@@ -824,14 +830,18 @@ Entregables:
 
 ## 10. Open questions / decisiones diferidas
 
-Estas NO bloquean F1-F2. Se pueden cerrar en el design de F3+ o iterar.
+**Cerradas en follow-up 2026-06-27** (ver sección 3, decisiones 11-16):
+- ~~Devoluciones cross-tenant~~ → mismo flow que venta, negativo
+- ~~Comprobantes adjuntos~~ → NO
+- ~~Multi-divisa fina~~ → re-cálculo bilateral con tracking de diferencia cambiaria
+- ~~Modelo de plan / monetización~~ → trial puede enviar y recibir, cap 5 partnerships
+- ~~Conciliación auto-diff~~ → automático, cache 60s
+- ~~Emails cross-tenant~~ → sí, 5 eventos críticos en F5
 
-1. **Matching de productos por código/EAN** — F1 es solo auto-create + merge manual. ¿Vale agregar matching automático por código en F4?
-2. **Comprobantes adjuntos cross-tenant** — Lucas decidió que no. Pero si los clientes piden adjuntar facturas formales (no comprobantes de OCR), ¿reabrimos?
-3. **Multi-divisa fina** — ¿qué pasa si seller opera en USD y buyer en ARS pero el pago se hace en USD efectivo en mano? La conversión bilateral puede ser dolor de cabeza. F1 asume "TC fijado por seller, ambos usan ese TC para conciliar"; en la práctica puede haber mismatch.
-4. **Devoluciones cross-tenant** — F3 captura cancelación full. ¿Devolución parcial (3 de 5 iPhones vuelven al seller)? F4 o F5.
-5. **API pública para integraciones** — si un tenant quiere exponer su catálogo a otros tenants vía API directa (sin Tecny UI), ¿es feature pago?
-6. **Modelo de plan / monetización** — ¿la feature es solo de planes pagos? ¿O trial también puede recibir (no enviar) operaciones para experimentar?
+**Diferidas para F4+** (no bloquean F1-F3):
+
+1. **Matching de productos por código/EAN** — F1-F3 es solo auto-create + merge manual. En F4 evaluar agregar matching automático por código si el feedback de los clientes muestra fricción.
+2. **API pública para integraciones** — si un tenant quiere exponer su catálogo a otros tenants vía API directa (sin Tecny UI), ¿es feature pago? Decisión post-MVP con datos reales de uso.
 
 ---
 
