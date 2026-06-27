@@ -727,4 +727,14 @@ export const redB2b = {
       api(`/api/red-b2b/partnerships/${id}/revoke`, 'POST',
         reason ? { reason } : {}),
   },
+  // 2026-06-28 #455 F2: productos pending review (buyer-side).
+  // Mismo gate cross_tenant.write — el sidebar item "Pendientes" se esconde
+  // si el user no tiene la cap, pero el backend igual rechaza con 403.
+  productosPendingReview: {
+    list:        ()                            => api('/api/red-b2b/productos-pending-review'),
+    confirmNew:  (id)                          => api(`/api/red-b2b/productos-pending-review/${id}/confirm-new`, 'POST'),
+    mergeInto:   (id, target_producto_id)      =>
+      api(`/api/red-b2b/productos-pending-review/${id}/merge-into`, 'POST',
+        { target_producto_id }),
+  },
 };
