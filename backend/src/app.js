@@ -101,6 +101,8 @@ const chatRoutes         = require('./routes/chat');
 // Solo el sub-router de partnerships — F2-F5 agregarán routers hermanos
 // (operations, pagos, notifications) bajo el mismo namespace /api/red-b2b.
 const redB2bPartnershipsRoutes = require('./routes/redB2b/partnerships');
+// 2026-06-28 #455 Red B2B F2: productos pending review (buyer-side).
+const redB2bProductosPendingReviewRoutes = require('./routes/redB2b/productosPendingReview');
 // 2026-06-21 #353 Fase 1: Super-Admin app (admin.tecnyapp.com). DISTINTO de
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
@@ -728,6 +730,12 @@ app.use('/api/onboarding', requireAuth, onboardingRoutes);
 // notifications bajo el mismo prefijo /api/red-b2b.
 app.use('/api/red-b2b/partnerships',
   requireAuth, requireCapability('cross_tenant.write'), redB2bPartnershipsRoutes);
+
+// 2026-06-28 #455 Red B2B F2: productos pending review del lado buyer.
+// GET / lista; POST /:id/confirm-new + POST /:id/merge-into operan sobre
+// productos del propio tenant del caller. Mismo gate de capability.
+app.use('/api/red-b2b/productos-pending-review',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bProductosPendingReviewRoutes);
 
 // 2026-06-20 #340 Fase 1: Bot conversacional analítico.
 // Disponible para todos los users autenticados de cualquier tenant (todos los

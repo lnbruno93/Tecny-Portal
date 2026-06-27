@@ -1,5 +1,5 @@
 /**
- * Schemas Zod para Red B2B (F1 — partnerships).
+ * Schemas Zod para Red B2B (F1 — partnerships, F2 — productos pending review).
  *
  * .strict() en todos: rechaza campos extra para frenar typos en frontend
  * que silenciosamente no harían nada. Mismo patrón que el resto del portal.
@@ -29,8 +29,17 @@ const rejectSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 }).strict();
 
+// F2 (#455): merge-into de un producto pending review en uno existente del
+// catálogo del buyer. target_producto_id debe ser un producto del propio
+// tenant (validado inline en el handler). z.coerce.number() para tolerar
+// IDs viniendo como strings desde el frontend.
+const mergeIntoSchema = z.object({
+  target_producto_id: z.coerce.number().int().positive(),
+}).strict();
+
 module.exports = {
   inviteSchema,
   revokeSchema,
   rejectSchema,
+  mergeIntoSchema,
 };
