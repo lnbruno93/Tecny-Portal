@@ -690,6 +690,11 @@ Backend:
   D. Pagos pendientes de operaciones existentes SÍ se pueden seguir cargando (sino sería problema legal: te debo plata y no te puedo pagar porque me bloqueás).
   E. Cooldown: 24h antes de poder re-invitar al mismo tenant (anti-spam).
   F. Notification 'partnership_revoked' al otro lado.
+  G. Devoluciones de operaciones existentes SÍ se pueden seguir registrando
+     (analogía a D — la merca podría ser defectuosa post-revoke). Validación:
+     la op original tuvo que existir bajo partnership active, así que la
+     pre-condición ya está implícita. Decisión durable Lucas 2026-06-28
+     (issue #462 PR-C).
 ```
 
 ---

@@ -672,6 +672,15 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
   const { items: devItems, motivo } = req.body;
 
   try {
+    // DECISIÓN durable (Lucas, 2026-06-28 — PR-C P1-5, issue #462): NO
+    // validamos partnership_active acá, consistente con POST /pagos
+    // (decisión doc 6.6.D). Razón: una devolución es cleanup financiero/de
+    // mercadería de una op pre-existente — bloquearla post-revoke crea un
+    // problema legal (te entregué merca rota, no podés devolvérmela porque
+    // me bloqueaste). El buyer es el único que puede iniciar devolución
+    // (validación `only_buyer_can_devolucion` más abajo) y la op original
+    // tuvo que existir bajo partnership active → la pre-condición ya está
+    // implícita. Ver docs/design/red-b2b-cross-tenant.md sección 6.6.G.
     const result = await db.adminQuery(async (client) => {
       await client.query('BEGIN');
       try {
