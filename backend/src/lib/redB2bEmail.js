@@ -80,6 +80,12 @@ async function resolveOwnerEmail(tenantId) {
     //   4. Cualquier admin (no verificado)
     // Sin email NOT NULL en users (legacy users podrían tener NULL — la
     // migration #295 dropea NULL pero defensive: ignoramos rows sin email).
+    //
+    // PR-C P0-4 (issue #462): filtrar u.deleted_at IS NULL — un owner
+    // soft-deleted podría seguir teniendo tenant_users.rol='owner' (esa
+    // tabla NO tiene deleted_at propio; el cascade real ocurre via FK ON
+    // DELETE CASCADE cuando se hace HARD delete de users, no en soft).
+    // Sin el filtro, mandábamos emails a ex-dueños tras un cambio de mando.
     const uQ = await client.query(
       `SELECT u.id, u.nombre, u.email, u.email_verified_at, tu.rol
          FROM users u
@@ -87,6 +93,7 @@ async function resolveOwnerEmail(tenantId) {
         WHERE tu.tenant_id = $1
           AND tu.rol IN ('owner', 'admin')
           AND u.email IS NOT NULL
+          AND u.deleted_at IS NULL
         ORDER BY
           CASE tu.rol WHEN 'owner' THEN 0 ELSE 1 END,
           CASE WHEN u.email_verified_at IS NOT NULL THEN 0 ELSE 1 END,
