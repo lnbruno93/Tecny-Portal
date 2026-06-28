@@ -47,7 +47,8 @@ const {
 } = require('../../lib/crossTenantPagos');
 const { round2 } = require('../../lib/money');
 const { invalidateMetricas } = require('../../lib/inventarioCache');
-const { invalidateConciliationCache } = require('./conciliation');
+// PR-D #463: conciliation no tiene cache (multi-instance bug + frecuencia
+// baja). Antes invalidábamos via invalidateConciliationCache(partnershipId).
 // 2026-06-29 #458 F5: dispatch fire-and-forget de emails Red B2B.
 const redB2bEmail = require('../../lib/redB2bEmail');
 
@@ -492,8 +493,8 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
       });
     }
 
-    // Invalidar caches.
-    invalidateConciliationCache(result.partnershipId);
+    // PR-D #463: conciliation ya no tiene cache (decisión Lucas — multi-instance bug
+    // + frecuencia baja de hit). El próximo GET conciliation recomputa fresh.
 
     // F5 #458: email al lado opuesto del que registró (gated por payment_received).
     //
@@ -1058,8 +1059,8 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
       });
     }
 
-    // Invalidar caches.
-    invalidateConciliationCache(result.partnershipId);
+    // Invalidar caches de inventario en ambos tenants (cantidad cambió).
+    // PR-D #463: conciliation ya no tiene cache (decisión Lucas).
     invalidateMetricas(result.sellerTenantId).catch(() => {});
     invalidateMetricas(result.buyerTenantId).catch(() => {});
 

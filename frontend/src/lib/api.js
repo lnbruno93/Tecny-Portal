@@ -774,8 +774,12 @@ export const redB2b = {
       api(`/api/red-b2b/operations/${opId}/devolucion`, 'POST', body),
   },
   conciliacion: {
-    get: (partnershipId, opts = {}) =>
-      api(`/api/red-b2b/partnerships/${partnershipId}/conciliation${opts.refresh ? '?refresh=true' : ''}`),
+    // PR-D #463: el cache server-side fue eliminado, ya no soportamos
+    // `?refresh=true`. La signature mantiene `opts` por compat con el
+    // caller existente, pero se ignora.
+    // eslint-disable-next-line no-unused-vars
+    get: (partnershipId, _opts = {}) =>
+      api(`/api/red-b2b/partnerships/${partnershipId}/conciliation`),
   },
   config: {
     get: () => api('/api/red-b2b/config'),

@@ -75,7 +75,7 @@ const {
 } = require('../../lib/partnership');
 const {
   validateOperationPrecondition,
-  findOrCreateBuyerProducto,
+  findOrCreateBuyerProductos,  // PR-D #463: bulk version (N+1 → 1 query)
   createSellerVenta,
   createBuyerCompra,
 } = require('../../lib/crossTenantOps');
@@ -255,24 +255,32 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         const sellerProdMap = new Map(sellerProdsQ.rows.map((p) => [Number(p.id), p]));
 
         // G. SET LOCAL buyer → auto-create productos (uno por item, sin dedup).
+        // PR-D #463: bulkificado. Antes hacía N round-trips (loop +
+        // findOrCreateBuyerProducto singular). Ahora 1 INSERT con UNNEST.
         await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
-        const mappedItems = [];
-        for (const it of body.items) {
+
+        const itemsParaCrear = body.items.map((it) => {
           const sellerProd = sellerProdMap.get(Number(it.producto_id));
-          const buyerProdId = await findOrCreateBuyerProducto(client, buyerTenantId, {
+          return {
             nombre: sellerProd.nombre,
             descripcion: sellerProd.observaciones,
             costo_usd: it.precio_usd,
             cantidad: it.cantidad,
-          });
-          mappedItems.push({
+          };
+        });
+        const buyerProdIds = await findOrCreateBuyerProductos(
+          client, buyerTenantId, itemsParaCrear
+        );
+        const mappedItems = body.items.map((it, idx) => {
+          const sellerProd = sellerProdMap.get(Number(it.producto_id));
+          return {
             seller_producto_id: Number(it.producto_id),
-            buyer_producto_id: buyerProdId,
+            buyer_producto_id: buyerProdIds[idx],
             cantidad: Number(it.cantidad),
             precio_usd: Number(it.precio_usd),
             nombre: sellerProd.nombre,
-          });
-        }
+          };
+        });
 
         // H. createBuyerCompra (proveedor_movimientos + items del buyer).
         // Stock NO se incrementa acá: findOrCreateBuyerProducto ya creó los

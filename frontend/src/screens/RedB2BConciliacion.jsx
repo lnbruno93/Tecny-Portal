@@ -2,8 +2,9 @@
 // partnership. Si no hay partnershipId en la URL, lista todos los partners
 // del tenant + permite drill-down. Si hay :partnershipId, muestra detalle.
 //
-// Decisión #12 del doc: cache 60s en server. Frontend NO hace polling — el
-// usuario hace click en "Recargar" si quiere bypasear el cache.
+// PR-D #463: el cache in-memory de 60s del server fue eliminado (multi-instance
+// bug + frecuencia de hit baja). Cada GET recomputa fresh. El botón "Recargar"
+// se mantiene como acción explícita del usuario para refetchear.
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -113,7 +114,7 @@ export default function RedB2BConciliacion() {
     );
   }
 
-  const { partnership, totales, saldos_bilaterales, ops_diferencias, cached, cached_at } = conciliacion;
+  const { partnership, totales, saldos_bilaterales, ops_diferencias } = conciliacion;
   const partner = partnership?.partner;
 
   return (
@@ -125,16 +126,14 @@ export default function RedB2BConciliacion() {
           </Link>
           <h1 style={{ marginBottom: 4 }}>Conciliación con {partner?.nombre || '—'}</h1>
           <div className="muted" style={{ fontSize: 13 }}>
-            Partnership #{partnership.id} · {cached
-              ? `Cacheado a las ${cached_at ? new Date(cached_at).toLocaleTimeString() : ''} (TTL 60s)`
-              : 'Datos en vivo'}
+            Partnership #{partnership.id} · Datos en vivo
           </div>
         </div>
         <button
           type="button"
           className="btn-secondary"
-          onClick={() => loadConciliacion(true)}
-          aria-label="Recargar conciliación (bypassa cache)"
+          onClick={() => loadConciliacion()}
+          aria-label="Recargar conciliación"
         >
           Recargar
         </button>

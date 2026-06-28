@@ -1022,3 +1022,232 @@ describe('PR-B Bug H2: cancel guard cuando op tiene pagos', () => {
     expect(Number(after.rows[0].cantidad)).toBe(7);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-D #463 — Bulk auto-create de productos del buyer (N+1 → 1 query)
+//
+// Verifica que la nueva findOrCreateBuyerProductos:
+//   1. Crea N productos del buyer en orden correcto cuando hay N items.
+//   2. Maneja correctamente items con MISMO nombre (sin dedup, ambos creados).
+//   3. Reduce drásticamente el query count en POST /operations.
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-D Bulk B3: auto-create productos buyer en una query', () => {
+  let partnershipId;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+  });
+
+  it('10 items distintos → 10 productos del buyer en ORDEN correcto', async () => {
+    // Crear 10 productos del seller con nombres distintos y costos distintos
+    // (para poder asociar cada producto del buyer con su seller_producto_id
+    // específico via cross_tenant_operation_items).
+    const prods = [];
+    for (let i = 1; i <= 10; i++) {
+      const id = await insertSellerProducto(tenantAId, {
+        nombre: `BulkProd-${String(i).padStart(2, '0')}`,  // BulkProd-01..BulkProd-10
+        cantidad: 50,
+        costo: 100 + i,  // distinto por item
+      });
+      prods.push({ id, nombre: `BulkProd-${String(i).padStart(2, '0')}`, costo: 100 + i });
+    }
+
+    // Construir 10 items con cantidad distinta por item (1..10) y precio
+    // distinto (200..209) para poder verificar el mapping post-insert.
+    const items = prods.map((p, idx) => ({
+      producto_id: p.id,
+      cantidad: idx + 1,
+      precio_usd: 200 + idx,
+    }));
+    const total_usd = items.reduce((acc, it) => acc + it.cantidad * it.precio_usd, 0);
+
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items,
+        tc: 1000,
+        total_usd,
+        total_ars: total_usd * 1000,
+      });
+    expect(r.status).toBe(201);
+
+    // Verificar que se crearon EXACTAMENTE 10 productos del buyer, con
+    // mapping correcto: seller_producto_id ↔ buyer_producto_id según cantidad
+    // y costo (nombre + cantidad son identificadores únicos por item).
+    const buyerProds = await pool.query(
+      `SELECT id, nombre, cantidad, costo, created_from_cross_tenant_op_id
+         FROM productos WHERE tenant_id = $1 ORDER BY id`,
+      [tenantBId]
+    );
+    expect(buyerProds.rows.length).toBe(10);
+
+    // Verificar el mapping leyendo cross_tenant_operation_items y matcheando
+    // por seller_producto_id → seller.nombre y seller.costo.
+    const itemsQ = await pool.query(
+      `SELECT cti.seller_producto_id, cti.buyer_producto_id, cti.cantidad,
+              cti.precio_unitario_usd, bp.nombre AS buyer_nombre, bp.costo AS buyer_costo
+         FROM cross_tenant_operation_items cti
+         JOIN productos bp ON bp.id = cti.buyer_producto_id
+         WHERE cti.cross_tenant_operation_id = $1
+         ORDER BY cti.id`,
+      [r.body.operation.id]
+    );
+    expect(itemsQ.rows.length).toBe(10);
+
+    // Para cada item input, verificar que el buyer_producto tiene el
+    // nombre y costo correctos derivados del seller_producto correspondiente.
+    for (let idx = 0; idx < 10; idx++) {
+      const row = itemsQ.rows[idx];
+      const sellerProd = prods[idx];
+      // El seller_producto_id en cti debe matchear el del input.
+      expect(Number(row.seller_producto_id)).toBe(sellerProd.id);
+      // El buyer_producto.nombre debe ser el nombre del seller correspondiente.
+      expect(row.buyer_nombre).toBe(sellerProd.nombre);
+      // El buyer_producto.costo debe ser el precio_usd del item (regla F3).
+      expect(Number(row.buyer_costo)).toBe(200 + idx);
+      // La cantidad en cti debe matchear el input.
+      expect(Number(row.cantidad)).toBe(idx + 1);
+    }
+  });
+
+  it('2 items con seller_prods de MISMO nombre → 2 productos buyer separados (sin dedup)', async () => {
+    // Dos productos del seller con NOMBRE igual pero costos distintos.
+    // (En el catálogo retail nada impide nombres duplicados.)
+    const prodAId = await insertSellerProducto(tenantAId, {
+      nombre: 'Mismo Nombre',
+      cantidad: 5,
+      costo: 100,
+    });
+    const prodBId = await insertSellerProducto(tenantAId, {
+      nombre: 'Mismo Nombre',
+      cantidad: 5,
+      costo: 200,
+    });
+
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [
+          { producto_id: prodAId, cantidad: 2, precio_usd: 150 },
+          { producto_id: prodBId, cantidad: 3, precio_usd: 250 },
+        ],
+        tc: 1000,
+        total_usd: 2 * 150 + 3 * 250,
+        total_ars: (2 * 150 + 3 * 250) * 1000,
+      });
+    expect(r.status).toBe(201);
+
+    // El buyer debe tener 2 productos creados (SIN dedup por nombre).
+    const buyerProds = await pool.query(
+      `SELECT id, nombre, cantidad, costo
+         FROM productos WHERE tenant_id = $1
+         ORDER BY id`,
+      [tenantBId]
+    );
+    expect(buyerProds.rows.length).toBe(2);
+    expect(buyerProds.rows[0].nombre).toBe('Mismo Nombre');
+    expect(buyerProds.rows[1].nombre).toBe('Mismo Nombre');
+
+    // Verificar el orden + mapeo via cti.
+    const itemsQ = await pool.query(
+      `SELECT cti.seller_producto_id, cti.buyer_producto_id, cti.cantidad,
+              bp.costo AS buyer_costo
+         FROM cross_tenant_operation_items cti
+         JOIN productos bp ON bp.id = cti.buyer_producto_id
+         WHERE cti.cross_tenant_operation_id = $1
+         ORDER BY cti.id`,
+      [r.body.operation.id]
+    );
+    expect(itemsQ.rows.length).toBe(2);
+    expect(Number(itemsQ.rows[0].seller_producto_id)).toBe(prodAId);
+    expect(Number(itemsQ.rows[0].cantidad)).toBe(2);
+    expect(Number(itemsQ.rows[0].buyer_costo)).toBe(150);  // primer item precio_usd
+    expect(Number(itemsQ.rows[1].seller_producto_id)).toBe(prodBId);
+    expect(Number(itemsQ.rows[1].cantidad)).toBe(3);
+    expect(Number(itemsQ.rows[1].buyer_costo)).toBe(250);  // segundo item precio_usd
+  });
+
+  it('smoke perf: 10 items hace 1 sola sentencia INSERT INTO productos del buyer', async () => {
+    // Contamos las sentencias `INSERT INTO productos` ejecutadas durante el
+    // request, instrumentando `pool.connect` (mismo pattern que el repo usa
+    // internamente para el int-cast logger). Cada client devuelto por el pool
+    // tiene su `query` patcheado por la instrumentación; lo sobre-patcheamos
+    // para contar también.
+    //
+    // Si volvemos a N+1 (loop singular), este test detecta 10 inserts en
+    // lugar de 1.
+    // `db` ES el pool (module.exports = pool en database.js). Ya tiene
+    // .connect instrumentado. Replicamos el mismo pattern (soporta callback
+    // y promise styles) para contar los INSERT INTO productos sin romper la
+    // instrumentación previa.
+    const db = require('../src/config/database');
+    const originalConnect = db.connect.bind(db);
+    const inserts = [];
+
+    function patchClientForCount(client) {
+      if (!client || client.__bulkCountPatched) return client;
+      const origClientQuery = client.query.bind(client);
+      client.query = function countingQuery(text, values, ...rest) {
+        const sql = typeof text === 'string' ? text : (text && text.text) || '';
+        if (/insert\s+into\s+productos\b/i.test(sql)) {
+          inserts.push(sql.replace(/\s+/g, ' ').slice(0, 120));
+        }
+        return origClientQuery(text, values, ...rest);
+      };
+      client.__bulkCountPatched = true;
+      return client;
+    }
+
+    db.connect = function instrumentedConnectForCount(...args) {
+      const last = args[args.length - 1];
+      if (typeof last === 'function') {
+        const userCb = last;
+        const newArgs = args.slice(0, -1);
+        return originalConnect(...newArgs, (err, client, done) => {
+          if (!err) patchClientForCount(client);
+          userCb(err, client, done);
+        });
+      }
+      return originalConnect(...args).then(patchClientForCount);
+    };
+
+    try {
+      const prods = [];
+      for (let i = 1; i <= 10; i++) {
+        const id = await insertSellerProducto(tenantAId, {
+          nombre: `SmokePerf-${i}`, cantidad: 20, costo: 50,
+        });
+        prods.push(id);
+      }
+      // Reset counter — solo nos interesan los INSERT durante el request,
+      // no los del setup (insertSellerProducto hace INSERT INTO productos
+      // del seller).
+      inserts.length = 0;
+
+      const items = prods.map((id, idx) => ({
+        producto_id: id, cantidad: 1, precio_usd: 100 + idx,
+      }));
+      const total_usd = items.reduce((a, it) => a + it.cantidad * it.precio_usd, 0);
+
+      const r = await request(app)
+        .post('/api/red-b2b/operations')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          partnership_id: partnershipId,
+          items, tc: 1000, total_usd, total_ars: total_usd * 1000,
+        });
+      expect(r.status).toBe(201);
+
+      // Exactamente 1 sentencia INSERT INTO productos del buyer (la CTE bulk).
+      // Antes del PR-D era N=10 (loop singular). Test guardia contra
+      // regresión a N+1.
+      expect(inserts.length).toBe(1);
+    } finally {
+      db.connect = originalConnect;
+    }
+  });
+});

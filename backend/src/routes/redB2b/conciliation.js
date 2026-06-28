@@ -13,20 +13,21 @@
  *     proveedor_movimientos del buyer
  *   - Diferencias: si los dos saldos no matchean, lista las ops con diff
  *
- * Cache in-memory 60s por partnership_id (decisión #12 doc). Invalidación
- * desde otros endpoints (POST /pagos, POST /operations, POST /:id/cancel,
- * POST /:id/devolucion) via invalidateConciliationCache(partnershipId).
- *
- * CACHE STRATEGY decision:
- *   F4 usa Map<partnership_id, {data, expiresAt}> EN MEMORIA del proceso.
- *   Razones:
- *     - Multi-proceso (Railway puede tener réplicas), pero el ratio de hit
- *       en una sola partnership es bajo (1 user mira su conciliación cada
- *       vez). El TTL de 60s ya es bajo — multi-proceso da N inflows en
- *       lugar de 1, no cuesta nada.
- *     - El portal tiene Redis (P-04 implementación), pero importar cacheTtl
- *       acá agrega complejidad sin valor proporcional a F4. Si en F5+ se
- *       demuestra ratio de hit alto, migramos.
+ * NO CACHE (decisión PR-D #463):
+ *   F4 originalmente usaba Map<partnership_id, {data, expiresAt}> EN MEMORIA
+ *   del proceso con TTL 60s. Lucas decidió eliminarlo en PR-D por:
+ *     1. Multi-instance bug REAL — Railway puede tener N réplicas; la
+ *        invalidación local desde POST /pagos no propaga a las otras
+ *        réplicas, así que un usuario puede ver datos stale post-pago según
+ *        en qué réplica le toque (race entre invalidate y siguiente GET).
+ *     2. Ratio de hit muy bajo — endpoint visitado ~1x/sesión por admin,
+ *        no es hot path. Las 4-5 queries que ahorra el cache no son
+ *        catastróficas; el query plan es sano (queries por partnership_id +
+ *        índices en cross_tenant_operations, movimientos_cc, etc.).
+ *     3. Simpler code wins. Migrar a Redis (cacheTtl wrapper) era opción
+ *        pero agregaba un punto de coordinación (cache key, TTL, invalidate
+ *        coordinator) sin valor real dado el ratio de hit. Si en el futuro
+ *        el volumen lo justifica, se reintroduce con Redis.
  *
  * Multi-tenant:
  *   Usa adminQuery (BYPASSRLS) porque debe leer movimientos_cc del seller
@@ -39,32 +40,6 @@ const db = require('../../config/database');
 const parseId = require('../../lib/parseId');
 const { getActivePartnershipById } = require('../../lib/partnership');
 const { round2 } = require('../../lib/money');
-
-// In-memory cache.
-const CONCILIATION_TTL_MS = 60 * 1000;
-const conciliationCache = new Map(); // partnership_id → { data, expiresAt }
-
-function invalidateConciliationCache(partnershipId) {
-  if (partnershipId == null) return;
-  conciliationCache.delete(Number(partnershipId));
-}
-
-function getCached(partnershipId) {
-  const entry = conciliationCache.get(Number(partnershipId));
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    conciliationCache.delete(Number(partnershipId));
-    return null;
-  }
-  return entry.data;
-}
-
-function setCached(partnershipId, data) {
-  conciliationCache.set(Number(partnershipId), {
-    data,
-    expiresAt: Date.now() + CONCILIATION_TTL_MS,
-  });
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // GET /api/red-b2b/partnerships/:id/conciliation
@@ -84,35 +59,18 @@ function setCached(partnershipId, data) {
 //       diferencia_usd: N,
 //     },
 //     ops_diferencias: [...]  // sólo si difieren
-//     cached: bool, cached_at: ISO|null
 //   }
 //
-// Soporta query param ?refresh=true para forzar bypass del cache.
+// Sin cache — cada GET recomputa (decisión PR-D #463). Frontend conserva
+// botón "Recargar" como acción explícita del usuario; ya no hay
+// `?refresh=true` ni `cached` / `cached_at` en el response.
 // ──────────────────────────────────────────────────────────────────────────
 router.get('/:id/conciliation', async (req, res, next) => {
   const myTenantId = req.tenantId;
   const partnershipId = parseId(req.params.id);
   if (!partnershipId) return res.status(400).json({ error: 'id inválido' });
 
-  const refresh = req.query.refresh === 'true' || req.query.refresh === '1';
-
   try {
-    // Cache check primero (antes de cualquier query).
-    if (!refresh) {
-      const cached = getCached(partnershipId);
-      if (cached) {
-        // Verify caller participates in the cached partnership.
-        if (cached._sellerTenantId !== myTenantId && cached._buyerTenantId !== myTenantId) {
-          return res.status(404).json({ error: 'Partnership no encontrada', reason: 'not_found' });
-        }
-        return res.json({
-          ...cached.payload,
-          cached: true,
-          cached_at: new Date(cached._cachedAt).toISOString(),
-        });
-      }
-    }
-
     const data = await db.adminQuery(async (client) => {
       // A. Lookup partnership + verificar caller participa.
       const partnership = await getActivePartnershipById(client, partnershipId, myTenantId);
@@ -366,25 +324,10 @@ router.get('/:id/conciliation', async (req, res, next) => {
       ops_diferencias: data.opsDiferencias,
     };
 
-    // Save to cache (with metadata for verification).
-    setCached(partnershipId, {
-      payload,
-      _sellerTenantId: data.partnership.tenant_a_id,
-      _buyerTenantId: data.partnership.tenant_b_id,
-      _cachedAt: Date.now(),
-    });
-
-    return res.json({
-      ...payload,
-      cached: false,
-      cached_at: null,
-    });
+    return res.json(payload);
   } catch (err) {
     return next(err);
   }
 });
 
 module.exports = router;
-module.exports.invalidateConciliationCache = invalidateConciliationCache;
-// Test-only: clear all cache.
-module.exports._clearCache = () => conciliationCache.clear();
