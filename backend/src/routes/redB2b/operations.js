@@ -730,6 +730,50 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
           return { error: 'only_seller_can_cancel', status: 403 };
         }
 
+        // PR-B Bug H2: rechazar cancel si la op ya tiene pagos cross-tenant.
+        //
+        // Rationale (consistente con decisión #10 — sin cancelaciones
+        // unilaterales que rompan saldos):
+        //   Si la op ya tiene pagos parciales en cross_tenant_pagos, el flow
+        //   de cancel soft-deletea movimientos_cc/proveedor_movimientos de la
+        //   COMPRA original pero NO toca los movimientos tipo='pago' previos
+        //   ni los registros de cross_tenant_pagos. Resultado:
+        //     · seller: cliente CC recibió plata por una compra que ya no
+        //       "existe" → saldo a favor fantasma del partner.
+        //     · buyer:  proveedor pagado por una compra que ya no "existe"
+        //       → egreso huérfano, sin reverso automático.
+        //
+        // Decisión: 409 estricto. Para "deshacer" una op con pagos, el
+        // operador puede:
+        //   1. Pedir devolución bilateral (POST /devolucion — decisión #11),
+        //      que sí queda asentada con reversos de stock + CC.
+        //   2. Coordinar manualmente con el partner para registrar pagos
+        //      reverso (monto negativo via la entrada normal de pagos).
+        //
+        // Se valoró un override `force=true` pero se descartó porque (a) deja
+        // la decisión "agresiva" en manos del operador sin guard adicional,
+        // (b) la devolución bilateral cubre el caso real y deja audit trail
+        // completo. Si en el futuro Lucas pide override explícito, se agrega
+        // como flag separado con doble confirmación en la UI.
+        const pagosCountQ = await client.query(
+          `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(monto_usd), 0) AS pagado_usd
+             FROM cross_tenant_pagos
+             WHERE cross_tenant_operation_id = $1`,
+          [opId]
+        );
+        const pagosCount = pagosCountQ.rows[0].cnt;
+        const pagadoUsd = Number(pagosCountQ.rows[0].pagado_usd) || 0;
+        if (pagosCount > 0) {
+          await client.query('ROLLBACK');
+          return {
+            error: 'op_has_pagos', status: 409,
+            details: {
+              pagos_count: pagosCount,
+              pagado_usd: Number(pagadoUsd.toFixed(2)),
+            },
+          };
+        }
+
         // Cargar items para reverso de stock.
         const itemsQ = await client.query(
           `SELECT seller_producto_id, buyer_producto_id, cantidad
@@ -874,6 +918,9 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
       return res.status(result.status).json({
         error: errorMessage(result.error),
         reason: result.error,
+        // PR-B Bug H2: incluir details cuando el handler los provee (ej. op_has_pagos
+        // necesita pagos_count + pagado_usd para que el UI muestre mensaje útil).
+        ...(result.details ? { details: result.details } : {}),
       });
     }
 
@@ -1031,6 +1078,8 @@ function errorMessage(reason) {
     already_cancelled:        'Esta operación ya está cancelada.',
     only_seller_can_cancel:   'Solo el seller puede cancelar la operación.',
     only_seller_can_edit:     'Solo el seller puede editar la operación.',
+    // PR-B Bug H2: cancel rebote cuando hay pagos previos.
+    op_has_pagos:             'Esta operación tiene pagos cross-tenant registrados. Para deshacerla pedile al buyer que registre una devolución (POST /devolucion) o coordiná un reverso de pago manual con el partner.',
   };
   return map[reason] || 'Acción inválida.';
 }

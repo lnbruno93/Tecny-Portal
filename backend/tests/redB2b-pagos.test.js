@@ -850,6 +850,19 @@ describe('POST /operations/:id/devolucion', () => {
     );
     const stockBefore = Number(stockBeforeQ.rows[0].cantidad);
 
+    // PR-B Bug H3: para que la devolución pase la guard `devolucion_excede_pagado`,
+    // el buyer tiene que haber pagado al menos lo que se va a devolver. Op es
+    // 5*100=500 USD; vamos a devolver 2 items × 100 = 200 USD. Registramos un
+    // pago de 200 USD primero.
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
     const r = await request(app)
       .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
       .set('Authorization', `Bearer ${tokenB}`) // buyer
@@ -992,6 +1005,302 @@ describe('GET/PATCH /config', () => {
       .send({ caja_id: 99999 });
     expect(r.status).toBe(404);
     expect(r.body.reason).toBe('caja_not_found');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-B Bug B1 — caja resolve único + no doble call con SET LOCAL incorrecto
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('seller pago con red_b2b_caja_default_id configurada → caja_buyer_id matchea default', async () => {
+    // Setear caja default cross-tenant del buyer = cajaUsdId.
+    await pool.query(
+      `UPDATE tenants SET red_b2b_caja_default_id = $1 WHERE id = $2`,
+      [cajaUsdId, tenantBId]
+    );
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+
+    const cp = await pool.query(
+      `SELECT caja_seller_id, caja_buyer_id FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(cp.rows.length).toBe(1);
+    // Caller is seller → caja_seller_id = body.caja_id.
+    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdId);
+    // Default del buyer → caja_buyer_id = default configurado.
+    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdId);
+    // Ambos NOT NULL (defensa contra el bug original).
+    expect(cp.rows[0].caja_seller_id).not.toBeNull();
+    expect(cp.rows[0].caja_buyer_id).not.toBeNull();
+  });
+
+  it('buyer pago con red_b2b_caja_default_id del seller configurada → caja_seller_id matchea', async () => {
+    await pool.query(
+      `UPDATE tenants SET red_b2b_caja_default_id = $1 WHERE id = $2`,
+      [cajaUsdId, tenantAId]
+    );
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'buyer',
+      });
+    expect(r.status).toBe(201);
+
+    const cp = await pool.query(
+      `SELECT caja_seller_id, caja_buyer_id FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdId);
+    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdId);
+  });
+
+  it('sin caja default → fallback a primera caja con moneda compatible', async () => {
+    // No setear red_b2b_caja_default_id (default null por beforeEach).
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+
+    const cp = await pool.query(
+      `SELECT caja_seller_id, caja_buyer_id FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    // caja_buyer_id viene del fallback (primera USD/USDT en metodos_pago).
+    expect(cp.rows[0].caja_buyer_id).not.toBeNull();
+    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdId);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-B Bug B2 — monto_pago se persiste tal como lo declaró el operador
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-B Bug B2: monto_pago declarado vs recomputado (drift contable)', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    // Op de 200 USD a TC venta = 1000 → total_ars = 200000.
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('ARS con monto_pago = monto_usd × tc_pago exacto → persiste igual (sin drift)', async () => {
+    // 100 USD × 1000 TC = 100000 ARS exacto.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'ARS', monto_pago: 100000,
+        tc_pago: 1000, caja_id: cajaArsId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+
+    const cp = await pool.query(
+      `SELECT monto_usd, monto_ars FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(Number(cp.rows[0].monto_usd)).toBe(100);
+    expect(Number(cp.rows[0].monto_ars)).toBe(100000);
+  });
+
+  it('ARS con monto_pago distinto (dentro de tolerancia 1 ARS) → persiste el DECLARADO, no recomputado', async () => {
+    // 100 USD × 1000 TC = 100000 ARS esperado. Operador declara 99999.5.
+    // Tolerancia refine es 1 ARS → válido.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'ARS', monto_pago: 99999.5,
+        tc_pago: 1000, caja_id: cajaArsId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+
+    const cp = await pool.query(
+      `SELECT monto_ars FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    // CRÍTICO: monto_ars persiste el monto_pago declarado (99999.5),
+    // NO la multiplicación recomputada (100000).
+    expect(Number(cp.rows[0].monto_ars)).toBe(99999.5);
+    expect(Number(cp.rows[0].monto_ars)).not.toBe(100000);
+  });
+
+  it('ARS con drift: diferencia_cambiaria_ars = monto_pago − (monto_usd × tc_venta)', async () => {
+    // tc_venta = 1000 (de la op), tc_pago = 1100, monto_pago declarado = 109999.5
+    // (≈ 100 × 1100 = 110000, drift de 0.5 ARS dentro de tolerancia <1.0).
+    //
+    // diferencia esperada = 109999.5 − (100 × 1000) = 109999.5 − 100000 = 9999.5.
+    //
+    // (Si se calculara contra monto_usd × tc_pago daría 10000, lo cual
+    // ignoraría el drift de 0.5 ARS que el operador asentó).
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'ARS', monto_pago: 109999.5,
+        tc_pago: 1100, caja_id: cajaArsId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.pago.diferencia_cambiaria_ars).toBe(9999.5);
+
+    const cp = await pool.query(
+      `SELECT monto_ars, diferencia_cambiaria_ars FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(Number(cp.rows[0].monto_ars)).toBe(109999.5);
+    expect(Number(cp.rows[0].diferencia_cambiaria_ars)).toBe(9999.5);
+  });
+
+  it('USD: monto_ars = monto_usd × tc_pago (retro-compat — no hay drift posible)', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+
+    const cp = await pool.query(
+      `SELECT monto_ars FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    // USD path: monto_ars = monto_usd × tc_pago (no drift posible).
+    expect(Number(cp.rows[0].monto_ars)).toBe(100000);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-B Bug H3 — devolución no puede exceder lo pagado (saldo a favor solo
+// si hubo pagos previos)
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-B Bug H3: devolución validada contra pagos efectivos', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 5, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('sin pagos previos → 409 devolucion_excede_pagado', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`) // buyer
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('devolucion_excede_pagado');
+    expect(r.body.details.pagado_usd).toBe(0);
+    expect(r.body.details.intentado_usd).toBe(100);
+    expect(r.body.details.max_devolvible_usd).toBe(0);
+  });
+
+  it('pago parcial → puede devolver hasta lo pagado, no más', async () => {
+    // Pago de 200 USD (de 500 total).
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    // Devolver 2 items × 100 = 200 USD → OK (matchea lo pagado).
+    const ok = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 2 }],
+      });
+    expect(ok.status).toBe(201);
+  });
+
+  it('pago parcial 100 USD, intento devolver 300 USD → 409', async () => {
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    // Intento devolver 3 items × 100 = 300 USD > 100 pagado.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 3 }],
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('devolucion_excede_pagado');
+    expect(r.body.details.pagado_usd).toBe(100);
+    expect(r.body.details.max_devolvible_usd).toBe(100);
+    expect(r.body.details.intentado_usd).toBe(300);
+  });
+
+  it('pago total + devolución total → OK (caso ideal saldo 0)', async () => {
+    // Pago total 500 USD.
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 500, moneda_pago: 'USD', monto_pago: 500,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    // Devolver 5 items × 100 = 500.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 5 }],
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.devolucion.total_usd_devuelto).toBe(500);
   });
 });
 
