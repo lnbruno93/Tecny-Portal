@@ -21,7 +21,7 @@
  */
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Icons } from './Icons';
-import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi } from '../lib/api';
+import { cuentas as cuentasApi, inventario as invApi, cajas as cajasApi, redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from './ConfirmModal';
 import AutocompletePicker from './AutocompletePicker';
@@ -98,11 +98,52 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [catalogosError, setCatalogosError] = useState(null); // #H-12
 
+  // 2026-06-28 PR-A audit Red B2B (UX-1 BLOCKER): pre-fetch active
+  // partnerships para detectar si el cliente seleccionado es un partner
+  // cross-tenant. Match exact-case por nombre (mismo criterio que
+  // partnerships.accept en backend al linkear contactos). Si matchea,
+  // el modal switchea el endpoint POST a /api/red-b2b/operations (en
+  // lugar de /api/cuentas/movimientos) y muestra banner explicando la
+  // replicación al partner.
+  //
+  // Por qué pre-fetch en el mount y no en backend resumen:
+  //   - clientes_cc no tiene linked_tenant_id (es contactos quien lo
+  //     tiene), y agregar un JOIN al resumen requiere tocar backend.
+  //   - partnerships.list ya existe, está tenant-scoped y es barato
+  //     (typical < 20 partners por tenant).
+  //   - Si el partner se suspende mid-modal, el backend
+  //     validateOperationPrecondition rebota con 409 al POST — lo
+  //     surface en el toast.
+  const [partnerships, setPartnerships] = useState([]);
+  const [partnershipsError, setPartnershipsError] = useState(false);
+
   useEffect(() => {
     cajasApi.listCajas()
       .then(r => setCajas((r || []).filter(c => c.activo !== false)))
       .catch(() => { setCajas([]); setCatalogosError(['cajas']); });
+    // Best-effort: si falla (user sin cap cross_tenant.write, server
+    // error, etc.), el modal sigue funcionando como venta CC normal.
+    // partnershipsError solo controla un warning visual leve si UNA
+    // venta a un partner conocido falla por el fetch.
+    redB2b.partnerships.list('active')
+      .then(r => setPartnerships(r?.partnerships || []))
+      .catch(() => { setPartnerships([]); setPartnershipsError(true); });
   }, []);
+
+  // Detección de partner cross-tenant. Compara cliente.nombre (clientes_cc)
+  // contra cada partner.nombre (tenants linked). Match exact-case porque
+  // accept-partnership también es exact-case al linkear contactos (evita
+  // colisiones accidentales tipo "TekHaus" vs "tekhaus").
+  const matchedPartnership = useMemo(() => {
+    if (!cliente?.nombre) return null;
+    const clienteName = String(cliente.nombre).trim();
+    if (!clienteName) return null;
+    return partnerships.find(p =>
+      p?.partner?.nombre && String(p.partner.nombre).trim() === clienteName
+    ) || null;
+  }, [cliente, partnerships]);
+
+  const isCrossTenant = !!matchedPartnership;
 
   const monedaCaja = useMemo(() => {
     if (!cajaId) return 'USD';
@@ -169,6 +210,11 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
       return `Cargá el TC para convertir ${monedaCaja} → USD`;
     const used = rows.filter(isUsedRow);
     if (used.length === 0) return 'Cargá al menos un item';
+    // Cross-tenant requiere TC > 0 sí o sí (el backend exige `tc` para
+    // calcular total_ars del lado del buyer, schema z.coerce.number().positive()).
+    if (isCrossTenant && (!Number(tc) || Number(tc) <= 0)) {
+      return 'Esta venta se replica en el partner. Cargá el TC para convertir USD → ARS.';
+    }
     // Chequeo de duplicados PRIMERO — mensaje específico con los IMEIs.
     if (hayDuplicados) {
       const dupRows = rows
@@ -198,6 +244,45 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
     try {
       const used = rows.filter(isUsedRow);
       const tcN = Number(tc) || null;
+
+      // 2026-06-28 PR-A audit Red B2B (UX-1 BLOCKER): switch del endpoint.
+      // Si el cliente es un partner cross-tenant, POST a
+      // /api/red-b2b/operations (crea ambos lados — venta del seller +
+      // compra del buyer — atómico). Sino, POST normal a /api/cuentas
+      // (movimientos CC local sin replicación).
+      if (isCrossTenant) {
+        // Mapeo del payload al schema createOperationSchema:
+        //   { partnership_id, items: [{producto_id, cantidad, precio_usd}],
+        //     tc, total_usd, total_ars, notes? }
+        // total_ars = total_usd * tc (el server valida ±0.01 USD coherencia).
+        const items = used.map(r => {
+          const precioUsd = r.precio_moneda === 'USD'
+            ? Number(r.precio_unit)
+            : Number(r.precio_unit) / (tcN || 1);
+          return {
+            producto_id: Number(r.producto_id),
+            cantidad:    Number(r.cantidad),
+            precio_usd:  Number(precioUsd.toFixed(2)),
+          };
+        });
+        const totalUsdN = Number(totalUsd.toFixed(2));
+        const totalArsN = Number((totalUsdN * tcN).toFixed(2));
+        const payload = {
+          partnership_id: matchedPartnership.id,
+          items,
+          tc:        tcN,
+          total_usd: totalUsdN,
+          total_ars: totalArsN,
+          notes:     descripcion.trim() || undefined,
+        };
+        const res = await redB2b.operations.create(payload);
+        toast.success(
+          `Venta cross-tenant registrada · ${used.length} ítem${used.length > 1 ? 's' : ''} · replicada en ${matchedPartnership.partner?.nombre || 'partner'}`
+        );
+        onSaved?.(res);
+        onClose();
+        return;
+      }
 
       const payload = {
         cliente_cc_id: cliente.id,
@@ -243,11 +328,83 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
       <div className="modal" style={{ maxWidth: 1700, width: '98vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
-          <h3 id="b2b-modal-title">Cargar venta B2B · {cliente.nombre} {cliente.apellido || ''}</h3>
+          <h3 id="b2b-modal-title">
+            Cargar venta B2B · {cliente.nombre} {cliente.apellido || ''}
+            {/* PR-A audit Red B2B (UX-1): badge inline en el header cuando el
+                cliente es un partner cross-tenant. Title attr explica el
+                comportamiento al hover. */}
+            {isCrossTenant && (
+              <span
+                data-testid="b2b-cross-tenant-badge"
+                title="Esta venta se va a replicar automáticamente en el partner Red B2B"
+                style={{
+                  marginLeft: 8,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: '0.02em',
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  background: 'var(--accent-bg, rgba(59, 130, 246, 0.12))',
+                  color: 'var(--accent, #2563eb)',
+                  border: '1px solid var(--accent, #2563eb)',
+                  verticalAlign: 'middle',
+                }}
+              >
+                Red B2B
+              </span>
+            )}
+          </h3>
           <button className="icon-btn" onClick={tryClose} aria-label="Cerrar modal"><Icons.X size={16} /></button>
         </div>
 
         <div className="modal-body" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+          {/* PR-A audit Red B2B (UX-1 BLOCKER): banner inline cuando el
+              cliente es un partner cross-tenant. Explica al seller que la
+              operación se replicará al partner (inventario + CC bilateral). */}
+          {isCrossTenant && (
+            <div
+              data-testid="b2b-cross-tenant-banner"
+              role="status"
+              style={{
+                background: 'var(--accent-bg, rgba(59, 130, 246, 0.08))',
+                border: '1px solid var(--accent, #2563eb)',
+                color: 'var(--accent, #2563eb)',
+                padding: '10px 12px',
+                borderRadius: 8,
+                marginBottom: 12,
+                fontSize: 13,
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+              }}
+            >
+              <strong style={{ flexShrink: 0 }}>Red B2B:</strong>
+              <span>
+                Esta venta se va a replicar automáticamente en{' '}
+                <strong>{matchedPartnership.partner?.nombre || 'el partner'}</strong>.
+                Su inventario va a aumentar y la cuenta corriente bilateral va a ajustarse.
+                {/* Caja_id local NO se postea: el endpoint cross-tenant
+                    arma la mov_cc del seller sin caja (queda como CC pura,
+                    se cobra después vía /pagos). Avisamos para que el
+                    operador no espere ver egreso/ingreso en una caja. */}
+                <br />
+                <span className="muted" style={{ fontSize: 12 }}>
+                  La cobranza se registra después desde Operaciones → Detalle.
+                  El campo "Cobrar en" se ignora para esta venta.
+                </span>
+              </span>
+            </div>
+          )}
+          {partnershipsError && cliente?.nombre && (
+            <div
+              data-testid="b2b-partnerships-fetch-warn"
+              className="muted"
+              style={{ fontSize: 11, marginBottom: 8 }}
+            >
+              No se pudo verificar partnerships Red B2B (sin permiso o error). La venta se guardará como CC local.
+            </div>
+          )}
           {/* #H-12: banner si catálogos fallaron */}
           {catalogosError && (
             <div style={catalogosErrorBanner}>

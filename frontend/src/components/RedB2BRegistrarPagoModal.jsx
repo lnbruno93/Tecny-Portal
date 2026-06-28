@@ -10,11 +10,21 @@
 //
 // Side se infiere de op.my_side. Preview de diferencia cambiaria si
 // moneda_pago=ARS y tc_pago≠tc_venta (resaltar gain/loss).
+//
+// 2026-06-28 PR-A audit Red B2B (UX-2 BLOCKER): chrome del modal migrado
+// del legacy `modal-backdrop / modal-content` (clases inexistentes en
+// styles.css → render roto) al pattern del design system
+// `modal-overlay > modal` con `modal-hd / modal-body / modal-ft` (mismo
+// patrón que ConfirmModal/VentaB2BModal). Inputs/labels usan `field-label`
+// + `input` para tipografía coherente. useModal aplicado para Esc cerrar
+// + body scroll lock + focus trap (a11y W3C APG Dialog).
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { redB2b, cajas as cajasApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { fmtMoney } from '../lib/format';
+import { Icons } from './Icons';
+import useModal from '../lib/useModal';
 
 const TODAY_ISO = () => new Date().toISOString().slice(0, 10);
 
@@ -98,169 +108,192 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
     }
   }
 
-  return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rb2b-pago-title">
-      <div className="modal-content" style={{ maxWidth: 520 }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 id="rb2b-pago-title" style={{ margin: 0, fontSize: 18 }}>
-            Registrar pago de operación #{operation?.id}
-          </h2>
-          <button type="button" onClick={onClose} className="btn-icon" aria-label="Cerrar">×</button>
-        </header>
+  // useModal: Esc cierra + body scroll lock + focus trap. Mismo patrón
+  // que VentaB2BModal/ConfirmModal — sin esto el modal era inaccesible
+  // por teclado (foco se perdía al sidebar).
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose, overlayRef });
 
-        <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-          Saldo restante: <strong>{fmtMoney(restanteUsd, 'USD')}</strong>{' '}
-          (de {fmtMoney(operation?.total_usd, 'USD')}, TC venta: {operation?.tc_used})
-        </p>
+  return (
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rb2b-pago-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd">
+          <h3 id="rb2b-pago-title">
+            Registrar pago · operación #{operation?.id}
+          </h3>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar modal">
+            <Icons.X size={16} />
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="monto-usd" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              Monto a pagar (USD)
-            </label>
-            <input
-              id="monto-usd"
-              type="number"
-              step="0.01"
-              min="0"
-              max={restanteUsd}
-              value={montoUsd}
-              onChange={(e) => setMontoUsd(e.target.value)}
-              required
-              style={{ width: '100%', padding: 8 }}
-            />
-          </div>
+          <div className="modal-body">
+            <p className="muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+              Saldo restante: <strong>{fmtMoney(restanteUsd, 'USD')}</strong>{' '}
+              (de {fmtMoney(operation?.total_usd, 'USD')}, TC venta: {operation?.tc_used})
+            </p>
 
-          <div style={{ marginBottom: 12 }}>
-            <span style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Moneda del pago</span>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input
-                  type="radio"
-                  name="moneda_pago"
-                  value="USD"
-                  checked={monedaPago === 'USD'}
-                  onChange={() => setMonedaPago('USD')}
-                />
-                USD (sin re-cálculo)
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label" htmlFor="monto-usd">
+                Monto a pagar (USD)
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input
-                  type="radio"
-                  name="moneda_pago"
-                  value="ARS"
-                  checked={monedaPago === 'ARS'}
-                  onChange={() => setMonedaPago('ARS')}
-                />
-                ARS (re-cálculo con TC del día)
-              </label>
+              <input
+                id="monto-usd"
+                className="input"
+                type="number"
+                step="0.01"
+                min="0"
+                max={restanteUsd}
+                value={montoUsd}
+                onChange={(e) => setMontoUsd(e.target.value)}
+                required
+              />
             </div>
-          </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="tc-pago" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              TC del pago {monedaPago === 'USD' && <span className="muted">(no aplica)</span>}
-            </label>
-            <input
-              id="tc-pago"
-              type="number"
-              step="0.0001"
-              min="0"
-              value={tcPago}
-              onChange={(e) => setTcPago(e.target.value)}
-              disabled={monedaPago === 'USD'}
-              required
-              style={{ width: '100%', padding: 8 }}
-            />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              Monto a cobrar/pagar ({monedaPago})
-            </label>
-            <input
-              type="text"
-              value={fmtMoney(montoPagoCalc, monedaPago)}
-              readOnly
-              style={{ width: '100%', padding: 8, background: 'var(--bg-subtle, #f9fafb)' }}
-            />
-          </div>
-
-          {monedaPago === 'ARS' && Math.abs(diferenciaPreview) >= 0.01 && (
-            <div
-              style={{
-                padding: 10,
-                background: diferenciaPreview > 0 ? 'var(--green-bg, #f0fdf4)' : 'var(--red-bg, #fef2f2)',
-                color: diferenciaPreview > 0 ? 'var(--green-fg, #166534)' : 'var(--red-fg, #991b1b)',
-                borderRadius: 4,
-                marginBottom: 12,
-                fontSize: 13,
-              }}
-            >
-              <strong>{diferenciaPreview > 0 ? 'Ganancia cambiaria' : 'Pérdida cambiaria'}: </strong>
-              {fmtMoney(Math.abs(diferenciaPreview), 'ARS')}
-              <div style={{ marginTop: 4, fontSize: 12 }}>
-                Se asentará un movimiento en el módulo Cambios de Divisa de tu tenant.
+            <div className="field" style={{ marginBottom: 12 }}>
+              <span className="field-label">Moneda del pago</span>
+              <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <input
+                    type="radio"
+                    name="moneda_pago"
+                    value="USD"
+                    checked={monedaPago === 'USD'}
+                    onChange={() => setMonedaPago('USD')}
+                  />
+                  USD (sin re-cálculo)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <input
+                    type="radio"
+                    name="moneda_pago"
+                    value="ARS"
+                    checked={monedaPago === 'ARS'}
+                    onChange={() => setMonedaPago('ARS')}
+                  />
+                  ARS (re-cálculo con TC del día)
+                </label>
               </div>
             </div>
-          )}
 
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="caja-id" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              Caja {operation?.my_side === 'seller' ? 'receptora (donde entra el dinero)' : 'emisora (de donde sale)'}
-            </label>
-            <select
-              id="caja-id"
-              value={cajaId}
-              onChange={(e) => setCajaId(e.target.value)}
-              required
-              style={{ width: '100%', padding: 8 }}
-            >
-              <option value="">— Seleccioná una caja —</option>
-              {cajasCompat.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
-              ))}
-            </select>
-            {cajasCompat.length === 0 && (
-              <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                No tenés cajas {monedaPago === 'ARS' ? 'ARS' : 'USD/USDT'} activas.
-              </p>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label" htmlFor="tc-pago">
+                TC del pago {monedaPago === 'USD' && <span className="muted">(no aplica)</span>}
+              </label>
+              <input
+                id="tc-pago"
+                className="input mono"
+                type="number"
+                step="0.0001"
+                min="0"
+                value={tcPago}
+                onChange={(e) => setTcPago(e.target.value)}
+                disabled={monedaPago === 'USD'}
+                required
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label">
+                Monto a cobrar/pagar ({monedaPago})
+              </label>
+              <input
+                className="input mono"
+                type="text"
+                value={fmtMoney(montoPagoCalc, monedaPago)}
+                readOnly
+                style={{ background: 'var(--bg-subtle, var(--surface-2))' }}
+              />
+            </div>
+
+            {monedaPago === 'ARS' && Math.abs(diferenciaPreview) >= 0.01 && (
+              <div
+                style={{
+                  padding: 10,
+                  background: diferenciaPreview > 0
+                    ? 'var(--green-bg, rgba(34, 197, 94, 0.08))'
+                    : 'var(--red-bg, rgba(239, 68, 68, 0.08))',
+                  color: diferenciaPreview > 0
+                    ? 'var(--pos, #16a34a)'
+                    : 'var(--neg, #dc2626)',
+                  borderRadius: 6,
+                  marginBottom: 12,
+                  fontSize: 13,
+                }}
+              >
+                <strong>{diferenciaPreview > 0 ? 'Ganancia cambiaria' : 'Pérdida cambiaria'}: </strong>
+                {fmtMoney(Math.abs(diferenciaPreview), 'ARS')}
+                <div style={{ marginTop: 4, fontSize: 12 }}>
+                  Se asentará un movimiento en el módulo Cambios de Divisa de tu tenant.
+                </div>
+              </div>
             )}
+
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label" htmlFor="caja-id">
+                Caja {operation?.my_side === 'seller' ? 'receptora (donde entra el dinero)' : 'emisora (de donde sale)'}
+              </label>
+              <select
+                id="caja-id"
+                className="input"
+                value={cajaId}
+                onChange={(e) => setCajaId(e.target.value)}
+                required
+              >
+                <option value="">— Seleccioná una caja —</option>
+                {cajasCompat.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+                ))}
+              </select>
+              {cajasCompat.length === 0 && (
+                <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  No tenés cajas {monedaPago === 'ARS' ? 'ARS' : 'USD/USDT'} activas.
+                </p>
+              )}
+            </div>
+
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label" htmlFor="fecha-pago">
+                Fecha
+              </label>
+              <input
+                id="fecha-pago"
+                className="input"
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="field-label" htmlFor="notas-pago">
+                Notas (opcional)
+              </label>
+              <textarea
+                id="notas-pago"
+                className="input"
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                maxLength={500}
+                rows={2}
+                style={{ fontFamily: 'inherit', resize: 'vertical' }}
+              />
+            </div>
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor="fecha-pago" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              Fecha
-            </label>
-            <input
-              id="fecha-pago"
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              required
-              style={{ width: '100%', padding: 8 }}
-            />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="notas-pago" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              Notas (opcional)
-            </label>
-            <textarea
-              id="notas-pago"
-              value={notas}
-              onChange={(e) => setNotas(e.target.value)}
-              maxLength={500}
-              rows={2}
-              style={{ width: '100%', padding: 8, fontFamily: 'inherit', fontSize: 14 }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
+          <div className="modal-ft">
+            <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
               Cancelar
             </button>
-            <button type="submit" className="btn-primary" disabled={saving || !cajaId}>
+            <button type="submit" className="btn btn-primary" disabled={saving || !cajaId}>
               {saving ? 'Registrando…' : 'Registrar pago'}
             </button>
           </div>
