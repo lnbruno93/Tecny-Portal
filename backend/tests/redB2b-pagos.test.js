@@ -25,10 +25,10 @@
  *     · op cancelled → 409
  *     · side body !== caller real side → 403 side_mismatch
  *
- *   Conciliation (3):
+ *   Conciliation (1):
  *     · GET /conciliation devuelve saldos coherentes (sin diff)
- *     · GET /conciliation con segunda llamada en <60s devuelve cached=true
- *     · invalidateConciliationCache fuerza recompute
+ *       (PR-D #463: cache in-memory eliminado — multi-instance bug + frecuencia
+ *       de hit baja. Cada GET recomputa fresh. Tests legacy de cache borrados.)
  *
  *   Devolución (4):
  *     · devolución parcial revierte stock + crea nueva op con parent_op_id
@@ -47,7 +47,7 @@ const bcrypt = require('bcrypt');
 
 const app = require('../src/app');
 const { setupTestDb, teardownTestDb } = require('./helpers/setup');
-const conciliationRouter = require('../src/routes/redB2b/conciliation');
+// PR-D #463: conciliation ya no tiene cache — no requiere helper de clear.
 
 const TENANT_A = { slug: 'red-b2b-pago-test-a', nombre: 'RedB2B Pago Test A', plan: 'starter' };
 const TENANT_B = { slug: 'red-b2b-pago-test-b', nombre: 'RedB2B Pago Test B', plan: 'pro' };
@@ -344,8 +344,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   const ids = [tenantAId, tenantBId, tenantCId];
 
-  // Clear cache between tests.
-  conciliationRouter._clearCache();
+  // PR-D #463: ya no hay cache que limpiar — conciliación recomputa fresh cada GET.
 
   // Unlink FKs first.
   await pool.query(
@@ -802,29 +801,27 @@ describe('GET /partnerships/:id/conciliation', () => {
     expect(r.body.saldos_bilaterales.difieren).toBe(false);
   });
 
-  it('cache: segunda llamada en <60s devuelve cached=true', async () => {
+  // PR-D #463: el cache in-memory fue eliminado (multi-instance bug + frecuencia
+  // de hit baja). Verificamos que el response shape ya no expone `cached` ni
+  // `cached_at`, y que dos GETs consecutivos devuelven el mismo payload (sin
+  // depender de un flag de cache).
+  it('PR-D: response no incluye cached ni cached_at (cache eliminado)', async () => {
     const r1 = await request(app)
       .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
       .set('Authorization', `Bearer ${tokenA}`);
-    expect(r1.body.cached).toBe(false);
+    expect(r1.status).toBe(200);
+    expect(r1.body).not.toHaveProperty('cached');
+    expect(r1.body).not.toHaveProperty('cached_at');
 
     const r2 = await request(app)
       .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
       .set('Authorization', `Bearer ${tokenA}`);
-    expect(r2.body.cached).toBe(true);
-    expect(r2.body.cached_at).toBeTruthy();
-  });
-
-  it('?refresh=true bypasea cache', async () => {
-    await request(app)
-      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
-      .set('Authorization', `Bearer ${tokenA}`)
-      .expect(200);
-
-    const r = await request(app)
-      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation?refresh=true`)
-      .set('Authorization', `Bearer ${tokenA}`);
-    expect(r.body.cached).toBe(false);
+    expect(r2.status).toBe(200);
+    expect(r2.body).not.toHaveProperty('cached');
+    expect(r2.body).not.toHaveProperty('cached_at');
+    // Mismo data (sin cambios de estado entre calls).
+    expect(r2.body.totales).toEqual(r1.body.totales);
+    expect(r2.body.saldos_bilaterales).toEqual(r1.body.saldos_bilaterales);
   });
 });
 
