@@ -223,6 +223,23 @@ beforeEach(async () => {
     `DELETE FROM cross_tenant_notifications WHERE tenant_id = ANY($1::int[])`,
     [ids]
   );
+  // PR-B Bug H2 tests: cross_tenant_pagos referencia cross_tenant_operations
+  // con FK NOT NULL → hay que borrar pagos antes de operations. También las
+  // ops de devolución (parent_op_id self-ref) bloquean si están vivas.
+  await pool.query(
+    `DELETE FROM cross_tenant_pagos
+       WHERE cross_tenant_operation_id IN (
+         SELECT id FROM cross_tenant_operations
+          WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE parent_op_id IN (
+         SELECT id FROM cross_tenant_operations
+          WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]
+  );
   await pool.query(
     `DELETE FROM cross_tenant_operations
        WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[])`,
@@ -234,6 +251,11 @@ beforeEach(async () => {
     [ids]
   );
 
+  // Limpiar cambios de divisa (PR-B Bug H2 tests pueden insertar acá vía
+  // pagos ARS con diferencia cambiaria).
+  await pool.query(`DELETE FROM cambio_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM cambio_entidades WHERE tenant_id = ANY($1::int[])`, [ids]);
+
   // Limpiar movimientos y productos para empezar limpio.
   await pool.query(`DELETE FROM items_movimiento_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM movimientos_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
@@ -243,9 +265,11 @@ beforeEach(async () => {
   await pool.query(`DELETE FROM proveedores WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM productos WHERE tenant_id = ANY($1::int[])`, [ids]);
 
-  // Reset suspended_at por si algún test lo seteó.
+  // Reset suspended_at + red_b2b_caja_default_id por si algún test lo seteó.
   await pool.query(
-    `UPDATE tenants SET suspended_at = NULL, paid_until = NULL WHERE id = ANY($1::int[])`,
+    `UPDATE tenants SET suspended_at = NULL, paid_until = NULL,
+                        red_b2b_caja_default_id = NULL
+       WHERE id = ANY($1::int[])`,
     [ids]
   );
 });
@@ -268,6 +292,21 @@ afterAll(async () => {
   );
 
   await pool.query(`DELETE FROM cross_tenant_notifications WHERE tenant_id = ANY($1::int[])`, [ids]);
+  // PR-B Bug H2 tests: borrar pagos antes de operations (FK NOT NULL).
+  await pool.query(
+    `DELETE FROM cross_tenant_pagos
+       WHERE cross_tenant_operation_id IN (
+         SELECT id FROM cross_tenant_operations
+          WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE parent_op_id IN (
+         SELECT id FROM cross_tenant_operations
+          WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]
+  );
   await pool.query(
     `DELETE FROM cross_tenant_operations
        WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[])`,
@@ -278,6 +317,8 @@ afterAll(async () => {
        WHERE tenant_a_id = ANY($1::int[]) OR tenant_b_id = ANY($1::int[])`,
     [ids]
   );
+  await pool.query(`DELETE FROM cambio_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM cambio_entidades WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM items_movimiento_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM movimientos_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM clientes_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
@@ -881,5 +922,103 @@ describe('PATCH /api/red-b2b/operations/:id', () => {
     const after = await pool.query(`SELECT last_modified_at, last_modified_by_user_id FROM cross_tenant_operations WHERE id = $1`, [opId]);
     expect(after.rows[0].last_modified_at).not.toBeNull();
     expect(after.rows[0].last_modified_by_user_id).toBe(userAId);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-B Bug H2: cancel rebote cuando hay pagos cross-tenant previos.
+//
+// Decisión #10 (cancelaciones unilaterales NO permitidas que rompan saldos).
+// Si la op tiene pagos en cross_tenant_pagos, el cancel:
+//   - soft-deletea movimientos_cc/proveedor_movimientos de la COMPRA original
+//   - pero NO toca los pagos previos ni los movimientos tipo='pago'
+//   - resultado: cliente CC con plata fantasma + proveedor pagado sin compra
+//
+// Fix: 409 op_has_pagos con detalle. Sin override. El operador usa devolución
+// bilateral o coordina reverso manual.
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-B Bug H2: cancel guard cuando op tiene pagos', () => {
+  // Lookup cajas seedeadas (catálogo global) — re-usado en estos tests.
+  let cajaUsdIdOps;
+
+  beforeAll(async () => {
+    const cQ = await pool.query(
+      `SELECT id, moneda FROM metodos_pago WHERE activo = true AND moneda = 'USD' ORDER BY orden LIMIT 1`
+    );
+    cajaUsdIdOps = cQ.rows[0]?.id;
+  });
+
+  async function createOpAndPay(montoUsd) {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { nombre: `H2 test ${Date.now()}`, cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 3, precio_usd: 100 }],
+        tc: 1000, total_usd: 300, total_ars: 300000,
+      });
+    expect(created.status).toBe(201);
+    const opId = created.body.operation.id;
+
+    if (montoUsd && montoUsd > 0) {
+      const pago = await request(app)
+        .post(`/api/red-b2b/operations/${opId}/pagos`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          monto_usd: montoUsd, moneda_pago: 'USD', monto_pago: montoUsd,
+          tc_pago: 1000, caja_id: cajaUsdIdOps, side: 'seller',
+        });
+      expect(pago.status).toBe(201);
+    }
+    return { opId, sellerProdId: prodId };
+  }
+
+  it('op SIN pagos → cancel 200 OK (regresión: comportamiento normal)', async () => {
+    const { opId } = await createOpAndPay(0);
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ reason: 'no pagos previos' });
+    expect(r.status).toBe(200);
+    expect(r.body.status).toBe('cancelled');
+  });
+
+  it('op CON pagos → 409 op_has_pagos + payload con pagos_count y pagado_usd', async () => {
+    const { opId } = await createOpAndPay(100);
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ reason: 'intent to cancel with pagos' });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('op_has_pagos');
+    expect(r.body.details.pagos_count).toBe(1);
+    expect(r.body.details.pagado_usd).toBe(100);
+
+    // Verificar que la op SIGUE active (no se cancelled).
+    const opStatus = await pool.query(
+      `SELECT status FROM cross_tenant_operations WHERE id = $1`, [opId]
+    );
+    expect(opStatus.rows[0].status).toBe('active');
+  });
+
+  it('op CON pagos: stock del seller NO se revierte (guard antes del SET LOCAL stock)', async () => {
+    const { opId, sellerProdId } = await createOpAndPay(100);
+
+    // Stock pre-cancel: 10 inicial - 3 vendidos = 7.
+    const before = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [sellerProdId]);
+    expect(Number(before.rows[0].cantidad)).toBe(7);
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${opId}/cancel`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({});
+    expect(r.status).toBe(409);
+
+    // Stock NO se revirtió (el guard frenó antes del UPDATE productos).
+    const after = await pool.query(`SELECT cantidad FROM productos WHERE id = $1`, [sellerProdId]);
+    expect(Number(after.rows[0].cantidad)).toBe(7);
   });
 });
