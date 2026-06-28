@@ -196,11 +196,34 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         }
 
         // F. Calcular diferencia cambiaria (snapshot tc_venta = op.tc_used).
+        //
+        // PR-B Bug B2 (drift contable):
+        // Cuando moneda_pago === 'ARS', el body.monto_pago puede diferir de
+        // monto_usd × tc_pago dentro de la tolerancia de 1 ARS del refine.
+        // El operador asienta lo que efectivamente entró a caja (monto_pago),
+        // no la multiplicación recomputada. Persistimos `monto_pago` declarado
+        // y recalculamos `diferencia_cambiaria_ars` contra `monto_usd × tc_venta`
+        // — ese es el ARS "esperado al momento de vender". La diferencia incluye
+        // tanto el delta de TC como cualquier drift de redondeo dentro de la
+        // tolerancia, pero el saldo CC del cliente queda exacto.
         const tc_venta = Number(op.tc_used);
         const tc_pago = Number(body.tc_pago);
-        const { diferencia_ars } = calcularDiferenciaCambiaria(
-          monto_usd, tc_venta, tc_pago, body.moneda_pago
-        );
+        const monto_pago_persist = body.moneda_pago === 'ARS'
+          ? round2(Number(body.monto_pago))
+          : round2(monto_usd);
+
+        let diferencia_ars;
+        if (body.moneda_pago === 'USD') {
+          diferencia_ars = 0;
+        } else if (tc_venta > 0) {
+          // Diferencia = ARS realmente recibido − ARS esperado por TC de venta.
+          // Si tc_pago > tc_venta o monto_pago > monto_usd × tc_venta → ganancia.
+          diferencia_ars = round2(monto_pago_persist - (monto_usd * tc_venta));
+        } else {
+          // Fallback al helper puro (tc_venta inválido — sin diff calculable).
+          const r = calcularDiferenciaCambiaria(monto_usd, tc_venta, tc_pago, body.moneda_pago);
+          diferencia_ars = r.diferencia_ars;
+        }
 
         // G. Lookup caja del propio tenant (validar que existe + moneda
         // compatible con el moneda_pago).
@@ -226,6 +249,47 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           };
         }
 
+        // ── PR-B Bug B1: resolver AMBAS cajas UNA SOLA VEZ ──────────────────
+        // Antes había hasta TRES resolveCajaParaTenant: uno acá (propagación)
+        // + dos inline en el INSERT cross_tenant_pagos (líneas 354-355). Cada
+        // call podía devolver NULL si la caja default fue desactivada entre
+        // llamadas, persistiendo NULL en caja_seller_id/caja_buyer_id (NOT
+        // NULL en schema F1) → INSERT fallaba y revertía toda la tx.
+        //
+        // Fix: resolver ambas cajas acá, ANTES del bloque registrar+propagar,
+        // bajo SET LOCAL del tenant correcto para cada una. Validar de una vez
+        // y usar las variables resueltas en TODO el flujo posterior.
+        let sellerCajaPersistId, buyerCajaPersistId;
+        if (callerIsSeller) {
+          // Caller es seller → su caja_id va al lado seller.
+          sellerCajaPersistId = body.caja_id;
+          await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
+          buyerCajaPersistId = await resolveCajaParaTenant(
+            client, buyerTenantId, body.moneda_pago, buyerTenant.red_b2b_caja_default_id
+          );
+          if (!buyerCajaPersistId) {
+            await client.query('ROLLBACK');
+            return {
+              error: 'buyer_no_caja_compatible', status: 409,
+              details: { buyer_tenant_id: buyerTenantId, moneda_pago: body.moneda_pago },
+            };
+          }
+        } else {
+          // Caller es buyer → su caja_id va al lado buyer.
+          buyerCajaPersistId = body.caja_id;
+          await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
+          sellerCajaPersistId = await resolveCajaParaTenant(
+            client, sellerTenantId, body.moneda_pago, sellerTenant.red_b2b_caja_default_id
+          );
+          if (!sellerCajaPersistId) {
+            await client.query('ROLLBACK');
+            return {
+              error: 'seller_no_caja_compatible', status: 409,
+              details: { seller_tenant_id: sellerTenantId, moneda_pago: body.moneda_pago },
+            };
+          }
+        }
+
         // ── REGISTRAR LADO QUE LLAMA ─────────────────────────────────────
         let sellerResult, buyerResult;
         if (callerIsSeller) {
@@ -236,10 +300,10 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
             buyerTenant,
             monto_usd,
             moneda_pago: body.moneda_pago,
-            monto_pago: body.monto_pago,
+            monto_pago: monto_pago_persist,   // B2: usar valor persistido
             tc_pago,
             tc_venta,
-            caja_id: body.caja_id,
+            caja_id: sellerCajaPersistId,
             fecha,
             callerUserId: userId,
             diferencia_cambiaria_ars: diferencia_ars,
@@ -253,9 +317,9 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
             sellerTenant,
             monto_usd,
             moneda_pago: body.moneda_pago,
-            monto_pago: body.monto_pago,
+            monto_pago: monto_pago_persist,   // B2: usar valor persistido
             tc_pago,
-            caja_id: body.caja_id,
+            caja_id: buyerCajaPersistId,
             fecha,
             callerUserId: userId,
             notas: body.notas,
@@ -263,58 +327,34 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         }
 
         // ── PROPAGAR AL OTRO LADO ─────────────────────────────────────────
-        // El monto_pago del otro lado puede ser distinto si las monedas son
-        // distintas — el otro lado siempre recibe en USD (moneda canónica),
-        // re-convertido si la caja del otro lado es ARS. Estrategia simple:
-        // - Si la caja default del otro lado es ARS, el monto_pago propagado
-        //   es monto_usd * tc_pago (el TC usado, que ya conocemos).
-        // - Si es USD, monto_pago propagado = monto_usd, sin TC.
+        // Las cajas ya están resueltas (B1). Solo necesitamos cambiar el SET
+        // LOCAL al tenant del otro lado y registrar.
         if (callerIsSeller) {
-          // Propagar al BUYER: necesitamos su caja default.
+          // Propagar al BUYER.
           await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
-          const buyerCajaId = await resolveCajaParaTenant(
-            client, buyerTenantId, body.moneda_pago, buyerTenant.red_b2b_caja_default_id
-          );
-          if (!buyerCajaId) {
-            await client.query('ROLLBACK');
-            return {
-              error: 'buyer_no_caja_compatible', status: 409,
-              details: { buyer_tenant_id: buyerTenantId, moneda_pago: body.moneda_pago },
-            };
-          }
           buyerResult = await registerBuyerPago(client, buyerTenantId, {
             opId,
             sellerTenant,
             monto_usd,
             moneda_pago: body.moneda_pago,
-            monto_pago: body.monto_pago,
+            monto_pago: monto_pago_persist,   // B2: usar valor persistido
             tc_pago,
-            caja_id: buyerCajaId,
+            caja_id: buyerCajaPersistId,
             fecha,
             callerUserId: userId,
           });
         } else {
-          // Propagar al SELLER: necesita caja default + diferencia cambiaria.
+          // Propagar al SELLER: necesita caja + diferencia cambiaria.
           await client.query(`SET LOCAL app.current_tenant = ${Number(sellerTenantId)}`);
-          const sellerCajaId = await resolveCajaParaTenant(
-            client, sellerTenantId, body.moneda_pago, sellerTenant.red_b2b_caja_default_id
-          );
-          if (!sellerCajaId) {
-            await client.query('ROLLBACK');
-            return {
-              error: 'seller_no_caja_compatible', status: 409,
-              details: { seller_tenant_id: sellerTenantId, moneda_pago: body.moneda_pago },
-            };
-          }
           sellerResult = await registerSellerCobro(client, sellerTenantId, {
             opId,
             buyerTenant,
             monto_usd,
             moneda_pago: body.moneda_pago,
-            monto_pago: body.monto_pago,
+            monto_pago: monto_pago_persist,   // B2: usar valor persistido
             tc_pago,
             tc_venta,
-            caja_id: sellerCajaId,
+            caja_id: sellerCajaPersistId,
             fecha,
             callerUserId: userId,
             diferencia_cambiaria_ars: diferencia_ars,
@@ -323,6 +363,20 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
 
         // ── INSERT cross_tenant_pagos maestro ─────────────────────────────
         // No tiene RLS propio. Llenar TODOS los snapshots.
+        //
+        // PR-B Bug B2: `monto_ars` persiste el monto_pago declarado por el
+        // operador cuando moneda_pago === 'ARS' (la fuente de verdad es lo
+        // que entró a caja, no la multiplicación recomputada). Cuando es USD,
+        // mantenemos monto_usd × tc_pago para no romper retro-compat de
+        // reportes que asumen monto_ars siempre poblado.
+        //
+        // PR-B Bug B1: caja_seller_id / caja_buyer_id usan las variables ya
+        // resueltas arriba (no más resolveCajaParaTenant inline que podía
+        // devolver NULL y romper la tx por NOT NULL constraint).
+        const monto_ars_persist = body.moneda_pago === 'ARS'
+          ? monto_pago_persist
+          : round2(monto_usd * tc_pago);
+
         const cpQ = await client.query(
           `INSERT INTO cross_tenant_pagos
              (cross_tenant_operation_id,
@@ -347,12 +401,11 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
             sellerResult.movimiento_id,
             buyerResult.movimiento_id,
             monto_usd,
-            // monto_ars: el monto del pago en ARS (sea que sea moneda_pago)
-            round2(monto_usd * tc_pago),
+            monto_ars_persist,
             // tc_used: F1 legacy column — guardamos tc_pago para retrocompat
             tc_pago,
-            callerIsSeller ? body.caja_id : (await resolveCajaParaTenant(client, sellerTenantId, body.moneda_pago, sellerTenant.red_b2b_caja_default_id)),
-            callerIsSeller ? (await resolveCajaParaTenant(client, buyerTenantId, body.moneda_pago, buyerTenant.red_b2b_caja_default_id)) : body.caja_id,
+            sellerCajaPersistId,
+            buyerCajaPersistId,
             callerSide,
             userId,
             body.moneda_pago,
@@ -377,7 +430,7 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           pago_id: crossPago.id,
           monto_usd,
           moneda_pago: body.moneda_pago,
-          monto_pago: round2(body.monto_pago),
+          monto_pago: monto_pago_persist,
           tc_pago,
           from_user_id: userId,
           from_username: req.user.username,
@@ -720,6 +773,58 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         totalUsdDev = round2(totalUsdDev);
         totalArsDev = round2(totalArsDev);
 
+        // PR-B Bug H3: validar que la devolución no exceda lo efectivamente
+        // pagado (incluyendo devoluciones previas como crédito).
+        //
+        // Bug original: si el buyer devolvía 100% sin haber pagado nada, el
+        // mov_cc tipo='devolucion' del lado seller (con monto positivo)
+        // descontaba del saldo del cliente, dejándolo NEGATIVO (cliente le
+        // debe al seller por una compra que se devolvió). Doc 6.6 dice
+        // "saldo a favor del buyer" pero ese concepto solo tiene sentido si
+        // hubo pagos previos; sin pagos no hay deuda que descontar.
+        //
+        // Suma de pagos cross-tenant + suma de devoluciones previas.
+        // - cross_tenant_pagos.monto_usd: contractual USD pagado por la op.
+        //   Si en el futuro se permiten reversos como pagos con monto_usd
+        //   negativo, este SUM ya los incluye natural (positivo + negativo).
+        // - SUM(cantidad × precio_unitario_usd) de devoluciones previas: el
+        //   crédito acumulado por mercadería ya devuelta. Cada devolución
+        //   previa "consumió" una porción del pago.
+        const pagosQ = await client.query(
+          `SELECT COALESCE(SUM(monto_usd), 0) AS pagado_usd
+             FROM cross_tenant_pagos
+             WHERE cross_tenant_operation_id = $1`,
+          [opId]
+        );
+        const totalPagadoUsd = Number(pagosQ.rows[0].pagado_usd) || 0;
+
+        // Devoluciones previas: total USD ya devuelto (suma items × precio).
+        const prevDevTotalQ = await client.query(
+          `SELECT COALESCE(SUM(items.cantidad * items.precio_unitario_usd), 0) AS dev_usd
+             FROM cross_tenant_operation_items items
+             JOIN cross_tenant_operations devops
+               ON devops.id = items.cross_tenant_operation_id
+             WHERE devops.parent_op_id = $1`,
+          [opId]
+        );
+        const totalDevPreviasUsd = Number(prevDevTotalQ.rows[0].dev_usd) || 0;
+
+        // Lo que el buyer puede devolver = lo pagado − lo ya devuelto.
+        // Tolerancia 1 centavo para floating point.
+        const maxDevolvibleUsd = round2(totalPagadoUsd - totalDevPreviasUsd);
+        if (totalUsdDev > maxDevolvibleUsd + 0.01) {
+          await client.query('ROLLBACK');
+          return {
+            error: 'devolucion_excede_pagado', status: 409,
+            details: {
+              pagado_usd: round2(totalPagadoUsd),
+              ya_devuelto_usd: round2(totalDevPreviasUsd),
+              max_devolvible_usd: maxDevolvibleUsd,
+              intentado_usd: totalUsdDev,
+            },
+          };
+        }
+
         // Lookup tenants para descripciones.
         const tenantsQ = await client.query(
           `SELECT id, nombre, slug, plan FROM tenants WHERE id = ANY($1::int[])`,
@@ -985,6 +1090,9 @@ function errorMessage(reason) {
     cannot_return_a_return:      'No se puede devolver una devolución — devolvé sobre la operación original.',
     item_not_in_op:              'Alguno de los items no pertenece a la operación.',
     devolucion_excede_cantidad:  'La cantidad a devolver excede lo disponible (cantidad original menos lo ya devuelto).',
+    // PR-B Bug H3: devolución solo hasta lo pagado (incluyendo crédito de
+    // devoluciones previas).
+    devolucion_excede_pagado:    'La devolución supera lo efectivamente pagado por esta operación. Sin pagos previos no hay deuda que descontar — pedile al seller que cancele la op o registrá el pago primero.',
   };
   return map[reason] || 'Acción inválida.';
 }
