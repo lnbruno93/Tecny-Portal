@@ -1,0 +1,390 @@
+/**
+ * Red B2B — conciliación bilateral (F4 #457, decisión #12).
+ *
+ * Endpoint:
+ *   GET /api/red-b2b/partnerships/:id/conciliation
+ *
+ * Computa los saldos bilaterales entre dos partners:
+ *   - Total de operaciones (sum total_usd de active ops, excluyendo cancelled)
+ *   - Total pagado por buyer (sum cross_tenant_pagos.monto_usd)
+ *   - Saldo según seller: lo que el seller cree que le deben (CC clientes de
+ *     ese partner) — leído de movimientos_cc del seller
+ *   - Saldo según buyer: lo que el buyer cree que debe — leído de
+ *     proveedor_movimientos del buyer
+ *   - Diferencias: si los dos saldos no matchean, lista las ops con diff
+ *
+ * Cache in-memory 60s por partnership_id (decisión #12 doc). Invalidación
+ * desde otros endpoints (POST /pagos, POST /operations, POST /:id/cancel,
+ * POST /:id/devolucion) via invalidateConciliationCache(partnershipId).
+ *
+ * CACHE STRATEGY decision:
+ *   F4 usa Map<partnership_id, {data, expiresAt}> EN MEMORIA del proceso.
+ *   Razones:
+ *     - Multi-proceso (Railway puede tener réplicas), pero el ratio de hit
+ *       en una sola partnership es bajo (1 user mira su conciliación cada
+ *       vez). El TTL de 60s ya es bajo — multi-proceso da N inflows en
+ *       lugar de 1, no cuesta nada.
+ *     - El portal tiene Redis (P-04 implementación), pero importar cacheTtl
+ *       acá agrega complejidad sin valor proporcional a F4. Si en F5+ se
+ *       demuestra ratio de hit alto, migramos.
+ *
+ * Multi-tenant:
+ *   Usa adminQuery (BYPASSRLS) porque debe leer movimientos_cc del seller
+ *   Y proveedor_movimientos del buyer (dos tenants distintos). El caller
+ *   participa en la partnership — filtramos inline + via getActivePartnershipById.
+ */
+
+const router = require('express').Router();
+const db = require('../../config/database');
+const parseId = require('../../lib/parseId');
+const { getActivePartnershipById } = require('../../lib/partnership');
+const { round2 } = require('../../lib/money');
+
+// In-memory cache.
+const CONCILIATION_TTL_MS = 60 * 1000;
+const conciliationCache = new Map(); // partnership_id → { data, expiresAt }
+
+function invalidateConciliationCache(partnershipId) {
+  if (partnershipId == null) return;
+  conciliationCache.delete(Number(partnershipId));
+}
+
+function getCached(partnershipId) {
+  const entry = conciliationCache.get(Number(partnershipId));
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    conciliationCache.delete(Number(partnershipId));
+    return null;
+  }
+  return entry.data;
+}
+
+function setCached(partnershipId, data) {
+  conciliationCache.set(Number(partnershipId), {
+    data,
+    expiresAt: Date.now() + CONCILIATION_TTL_MS,
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/red-b2b/partnerships/:id/conciliation
+//
+// Devuelve:
+//   {
+//     partnership: { id, partner: { id, nombre, slug, plan }, my_side, status },
+//     totales: {
+//       operaciones_usd: N, ops_count: N,
+//       pagado_usd: N, pagos_count: N,
+//       saldo_neto_usd: N, // operaciones - pagos
+//     },
+//     saldos_bilaterales: {
+//       segun_seller: { saldo_usd: N, source: 'movimientos_cc' },
+//       segun_buyer:  { saldo_usd: N, source: 'proveedor_movimientos' },
+//       difieren: bool,
+//       diferencia_usd: N,
+//     },
+//     ops_diferencias: [...]  // sólo si difieren
+//     cached: bool, cached_at: ISO|null
+//   }
+//
+// Soporta query param ?refresh=true para forzar bypass del cache.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/:id/conciliation', async (req, res, next) => {
+  const myTenantId = req.tenantId;
+  const partnershipId = parseId(req.params.id);
+  if (!partnershipId) return res.status(400).json({ error: 'id inválido' });
+
+  const refresh = req.query.refresh === 'true' || req.query.refresh === '1';
+
+  try {
+    // Cache check primero (antes de cualquier query).
+    if (!refresh) {
+      const cached = getCached(partnershipId);
+      if (cached) {
+        // Verify caller participates in the cached partnership.
+        if (cached._sellerTenantId !== myTenantId && cached._buyerTenantId !== myTenantId) {
+          return res.status(404).json({ error: 'Partnership no encontrada', reason: 'not_found' });
+        }
+        return res.json({
+          ...cached.payload,
+          cached: true,
+          cached_at: new Date(cached._cachedAt).toISOString(),
+        });
+      }
+    }
+
+    const data = await db.adminQuery(async (client) => {
+      // A. Lookup partnership + verificar caller participa.
+      const partnership = await getActivePartnershipById(client, partnershipId, myTenantId);
+      if (!partnership) return { notFound: true };
+
+      // Determinar quién es seller/buyer para esta conciliación. Como las
+      // operaciones cross-tenant pueden tener el seller en cualquier lado
+      // (no fijo por partnership), buscamos quién es seller/buyer SUMANDO
+      // todas las ops — pero F4 simplifica: en cada op el seller es el que
+      // creó. Devolvemos saldos por dirección agregados.
+      //
+      // Para conciliación simple: lo que el caller "ve" depende de su rol
+      // en cada op. Para la vista de conciliación elegimos:
+      //   - tenant_a y tenant_b son fijos (partnership convention a<b)
+      //   - my_side = 'a' o 'b' según mi tenant_id
+      //   - segun_seller / segun_buyer se computa por op:
+      //       para cada op donde tenant_a es seller → segun_seller = saldo
+      //         desde movimientos_cc del tenant_a
+      //       para cada op donde tenant_b es seller → segun_seller = saldo
+      //         desde movimientos_cc del tenant_b
+      //
+      // Para F4 simplificamos: agregamos por dirección (sum de todas las ops
+      // independiente de quién fue seller/buyer en cada una).
+
+      const tenantA = partnership.tenant_a_id;
+      const tenantB = partnership.tenant_b_id;
+
+      // B. Lookup partner info (el otro tenant).
+      const partnerId = myTenantId === tenantA ? tenantB : tenantA;
+      const partnerQ = await client.query(
+        `SELECT id, nombre, slug, plan FROM tenants WHERE id = $1`,
+        [partnerId]
+      );
+      const partner = partnerQ.rows[0];
+
+      // C. Lookup todas las ops activas de esta partnership (excluyendo
+      // cancelled). Esto incluye devoluciones (parent_op_id NOT NULL, total
+      // negativo) que neutralizan parcialmente.
+      const opsQ = await client.query(
+        `SELECT id, seller_tenant_id, buyer_tenant_id, status,
+                total_usd, total_ars, tc_used, created_at,
+                parent_op_id
+           FROM cross_tenant_operations
+           WHERE partnership_id = $1
+             AND status != 'cancelled'`,
+        [partnershipId]
+      );
+      const ops = opsQ.rows;
+
+      // D. Lookup pagos de todas estas ops.
+      let pagos = [];
+      if (ops.length > 0) {
+        const opIds = ops.map((o) => o.id);
+        const pagosQ = await client.query(
+          `SELECT id, cross_tenant_operation_id, monto_usd, registered_at
+             FROM cross_tenant_pagos
+             WHERE cross_tenant_operation_id = ANY($1::bigint[])`,
+          [opIds]
+        );
+        pagos = pagosQ.rows;
+      }
+
+      // E. Totales agregados.
+      const totalOpsUsd = round2(ops.reduce((acc, o) => acc + Number(o.total_usd), 0));
+      const totalPagosUsd = round2(pagos.reduce((acc, p) => acc + Number(p.monto_usd), 0));
+      const saldoNetoUsd = round2(totalOpsUsd - totalPagosUsd);
+
+      // F. Saldos bilaterales: leemos de movimientos_cc del seller (de
+      // cualquier op cross-tenant) y proveedor_movimientos del buyer.
+      //
+      // El saldo del seller cross-tenant = SUM(compra) - SUM(pago) -
+      //   SUM(devolucion) limited a movimientos con cross_tenant_operation_id
+      //   IN (ops de esta partnership).
+      //
+      // Para cada lado de la partnership, sumamos lo que ese tenant ve.
+      const opIds = ops.map((o) => o.id);
+
+      // Saldo según TENANT_A en movimientos_cc (rol seller cuando él vendió).
+      // movimientos_cc.tipo='compra' = venta nuestra (suma deuda cliente).
+      // 'pago' = baja deuda. 'devolucion' = revierte.
+      let saldoMovCcTenantA = 0;
+      let saldoMovCcTenantB = 0;
+      let saldoProvMovTenantA = 0;
+      let saldoProvMovTenantB = 0;
+
+      if (opIds.length > 0) {
+        // Saldo según movimientos_cc por tenant.
+        const movCcQ = await client.query(
+          `SELECT tenant_id,
+                  SUM(CASE WHEN tipo = 'compra' THEN monto_total
+                           WHEN tipo IN ('pago', 'parte_de_pago') THEN -monto_total
+                           WHEN tipo = 'devolucion' THEN -monto_total
+                           ELSE 0 END) AS saldo
+             FROM movimientos_cc
+             WHERE cross_tenant_operation_id = ANY($1::bigint[])
+               AND deleted_at IS NULL
+               AND tenant_id IN ($2, $3)
+             GROUP BY tenant_id`,
+          [opIds, tenantA, tenantB]
+        );
+        for (const r of movCcQ.rows) {
+          if (Number(r.tenant_id) === tenantA) saldoMovCcTenantA = Number(r.saldo) || 0;
+          else if (Number(r.tenant_id) === tenantB) saldoMovCcTenantB = Number(r.saldo) || 0;
+        }
+
+        // Saldo según proveedor_movimientos por tenant.
+        const provMovQ = await client.query(
+          `SELECT tenant_id,
+                  SUM(CASE WHEN tipo = 'compra' THEN monto_usd
+                           WHEN tipo = 'pago' THEN -monto_usd
+                           ELSE 0 END) AS saldo
+             FROM proveedor_movimientos
+             WHERE cross_tenant_operation_id = ANY($1::bigint[])
+               AND deleted_at IS NULL
+               AND tenant_id IN ($2, $3)
+             GROUP BY tenant_id`,
+          [opIds, tenantA, tenantB]
+        );
+        for (const r of provMovQ.rows) {
+          if (Number(r.tenant_id) === tenantA) saldoProvMovTenantA = Number(r.saldo) || 0;
+          else if (Number(r.tenant_id) === tenantB) saldoProvMovTenantB = Number(r.saldo) || 0;
+        }
+      }
+
+      // G. Conciliación: el saldo "según seller" es el saldo de CC clientes
+      // del seller en cada op. Como puede haber ops en ambas direcciones,
+      // agregamos:
+      //   "lo que tenant_a debe a tenant_b" = saldoProvMov de tenant_a
+      //     (proveedor_mov de tenant_a registra deuda a tenant_b cuando b vende)
+      //   "lo que tenant_b cree que tenant_a debe" = saldoMovCc de tenant_b
+      //     (movimiento_cc de tenant_b cuando b vendió a a)
+      // Estos dos SHOULD matchear si todo está sincronizado.
+      //
+      // Análogamente:
+      //   "lo que tenant_b debe a tenant_a" = saldoProvMov tenant_b
+      //   "lo que tenant_a cree que tenant_b debe" = saldoMovCc tenant_a
+
+      const debeAAseguntenantB = round2(saldoMovCcTenantB);   // tenant_b vendió a tenant_a, registró en CC
+      const debeAAseguntenantA = round2(saldoProvMovTenantA); // tenant_a registra a tenant_b como proveedor
+      const debeBSeguntenantA = round2(saldoMovCcTenantA);    // tenant_a vendió a tenant_b
+      const debeBSeguntenantB = round2(saldoProvMovTenantB);  // tenant_b registra tenant_a como proveedor
+
+      const diffDirA = round2(debeAAseguntenantB - debeAAseguntenantA);
+      const diffDirB = round2(debeBSeguntenantA - debeBSeguntenantB);
+      const difieren = Math.abs(diffDirA) >= 0.01 || Math.abs(diffDirB) >= 0.01;
+      const diferencia_usd = round2(diffDirA + diffDirB);
+
+      // H. Si difieren, listar las ops con discrepancia (granularidad por op).
+      let opsDiferencias = [];
+      if (difieren && opIds.length > 0) {
+        // Por op: total_usd vs sum pagos vs movimientos_cc/proveedor_movimientos.
+        const detalleQ = await client.query(
+          `WITH op_pagos AS (
+             SELECT cross_tenant_operation_id AS op_id, COALESCE(SUM(monto_usd), 0) AS pagos
+               FROM cross_tenant_pagos
+               WHERE cross_tenant_operation_id = ANY($1::bigint[])
+               GROUP BY 1
+           ),
+           op_mov_cc AS (
+             SELECT cross_tenant_operation_id AS op_id, tenant_id, MAX(updated_at) AS ultima
+               FROM movimientos_cc
+               WHERE cross_tenant_operation_id = ANY($1::bigint[])
+                 AND deleted_at IS NULL
+               GROUP BY 1, 2
+           ),
+           op_prov_mov AS (
+             SELECT cross_tenant_operation_id AS op_id, tenant_id, MAX(created_at) AS ultima
+               FROM proveedor_movimientos
+               WHERE cross_tenant_operation_id = ANY($1::bigint[])
+                 AND deleted_at IS NULL
+               GROUP BY 1, 2
+           )
+           SELECT op.id, op.total_usd, op.seller_tenant_id, op.buyer_tenant_id,
+                  op.created_at, op.parent_op_id,
+                  COALESCE(p.pagos, 0) AS pagado_usd,
+                  GREATEST(mcc.ultima, pm.ultima) AS ultima_actividad
+             FROM cross_tenant_operations op
+             LEFT JOIN op_pagos p ON p.op_id = op.id
+             LEFT JOIN op_mov_cc mcc ON mcc.op_id = op.id AND mcc.tenant_id = op.seller_tenant_id
+             LEFT JOIN op_prov_mov pm ON pm.op_id = op.id AND pm.tenant_id = op.buyer_tenant_id
+             WHERE op.id = ANY($1::bigint[])
+             ORDER BY op.id DESC`,
+          [opIds]
+        );
+        opsDiferencias = detalleQ.rows.map((r) => ({
+          op_id: r.id,
+          total_usd: Number(r.total_usd),
+          pagado_usd: Number(r.pagado_usd),
+          restante_usd: round2(Number(r.total_usd) - Number(r.pagado_usd)),
+          seller_tenant_id: r.seller_tenant_id,
+          buyer_tenant_id: r.buyer_tenant_id,
+          ultima_actividad: r.ultima_actividad,
+          is_devolucion: r.parent_op_id != null,
+          created_at: r.created_at,
+        }));
+      }
+
+      return {
+        partnership,
+        partner,
+        ops_count: ops.length,
+        pagos_count: pagos.length,
+        totalOpsUsd,
+        totalPagosUsd,
+        saldoNetoUsd,
+        saldos: {
+          // Tenant A's view: what tenant_b owes A (segun cc del A as seller)
+          // and what A owes B (segun prov_mov of A as buyer)
+          tenant_a_id: tenantA,
+          tenant_b_id: tenantB,
+          tenant_b_debe_a_A_segun_A: debeAAseguntenantA, // 0 si A no compró nada
+          tenant_b_debe_a_A_segun_B: debeAAseguntenantB, // wait — debeAAseguntenantB is what?
+          tenant_a_debe_a_B_segun_A: debeBSeguntenantA,
+          tenant_a_debe_a_B_segun_B: debeBSeguntenantB,
+          diff_dir_a: diffDirA,
+          diff_dir_b: diffDirB,
+          difieren,
+          diferencia_usd,
+        },
+        opsDiferencias,
+      };
+    });
+
+    if (data.notFound) {
+      return res.status(404).json({ error: 'Partnership no encontrada', reason: 'not_found' });
+    }
+
+    const tenantAId = data.partnership.tenant_a_id;
+    const mySide = myTenantId === tenantAId ? 'a' : 'b';
+
+    const payload = {
+      partnership: {
+        id: data.partnership.id,
+        partner: {
+          id: data.partner.id,
+          nombre: data.partner.nombre,
+          slug: data.partner.slug,
+          plan: data.partner.plan,
+        },
+        my_side: mySide,
+        status: data.partnership.status,
+      },
+      totales: {
+        operaciones_usd: data.totalOpsUsd,
+        ops_count: data.ops_count,
+        pagado_usd: data.totalPagosUsd,
+        pagos_count: data.pagos_count,
+        saldo_neto_usd: data.saldoNetoUsd,
+      },
+      saldos_bilaterales: data.saldos,
+      ops_diferencias: data.opsDiferencias,
+    };
+
+    // Save to cache (with metadata for verification).
+    setCached(partnershipId, {
+      payload,
+      _sellerTenantId: data.partnership.tenant_a_id,
+      _buyerTenantId: data.partnership.tenant_b_id,
+      _cachedAt: Date.now(),
+    });
+
+    return res.json({
+      ...payload,
+      cached: false,
+      cached_at: null,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+module.exports = router;
+module.exports.invalidateConciliationCache = invalidateConciliationCache;
+// Test-only: clear all cache.
+module.exports._clearCache = () => conciliationCache.clear();

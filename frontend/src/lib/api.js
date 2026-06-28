@@ -759,4 +759,27 @@ export const redB2b = {
     patch:   (id, notes) =>
       api(`/api/red-b2b/operations/${id}`, 'PATCH', { notes }),
   },
+
+  // 2026-06-28 #457 F4: pagos cross-tenant (multi-divisa) + devoluciones.
+  // Mismo gate `cross_tenant.write`. POST /pagos crea la fila en ambos lados
+  // atomico + diferencia cambiaria opcional. POST /devolucion crea nueva op
+  // con parent_op_id (solo buyer).
+  pagos: {
+    listByOperation: (opId) => api(`/api/red-b2b/operations/${opId}/pagos`),
+    register: (opId, body) =>
+      api(`/api/red-b2b/operations/${opId}/pagos`, 'POST', body),
+  },
+  devoluciones: {
+    create: (opId, body) =>
+      api(`/api/red-b2b/operations/${opId}/devolucion`, 'POST', body),
+  },
+  conciliacion: {
+    get: (partnershipId, opts = {}) =>
+      api(`/api/red-b2b/partnerships/${partnershipId}/conciliation${opts.refresh ? '?refresh=true' : ''}`),
+  },
+  config: {
+    get: () => api('/api/red-b2b/config'),
+    setCajaDefault: (cajaId) =>
+      api('/api/red-b2b/config/caja-default', 'PATCH', { caja_id: cajaId }),
+  },
 };

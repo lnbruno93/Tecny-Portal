@@ -135,6 +135,9 @@ const NAV_MAIN = [
   // espejadas). Lucas pidió que quede al lado de "Red B2B" — el item
   // principal es el listado de partners, este es el de transacciones.
   { id: 'red_b2b_operaciones', path: '/red-b2b/operaciones', label: 'Red B2B — Operaciones', icon: 'Receipt', cap: 'cross_tenant.write', group: 1 },
+  // 2026-06-28 #457 Red B2B F4: conciliación bilateral por partner. Permite
+  // detectar saldos divergentes entre seller y buyer en cada operación.
+  { id: 'red_b2b_conciliacion', path: '/red-b2b/conciliacion', label: 'Red B2B — Conciliación', icon: 'Refresh', cap: 'cross_tenant.write', group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      cap: 'contactos.ver',        group: 1 },
   // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },

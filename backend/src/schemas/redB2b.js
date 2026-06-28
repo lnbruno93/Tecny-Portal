@@ -70,6 +70,59 @@ const patchOperationSchema = z.object({
   notes: z.string().trim().max(1000),
 }).strict();
 
+// F4 (#457): registrar pago de operación cross-tenant con multi-divisa.
+//
+// Body completo del POST /api/red-b2b/operations/:id/pagos.
+// monto_usd es el monto del pago expresado en USD (la moneda interna).
+// Si moneda_pago=ARS, monto_pago debe coincidir aproximadamente con
+// monto_usd * tc_pago (tolerancia 1 centavo, refine al final).
+// side indica quién registra primero — el OTRO lado recibe propagado.
+const registrarPagoSchema = z.object({
+  monto_usd:   z.coerce.number().positive(),
+  moneda_pago: z.enum(['USD', 'ARS']),
+  monto_pago:  z.coerce.number().positive(),    // monto en la moneda_pago
+  tc_pago:     z.coerce.number().positive(),    // TC al momento del pago
+  caja_id:     z.coerce.number().int().positive(),
+  side:        z.enum(['seller', 'buyer']),
+  fecha:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  notas:       z.string().trim().max(500).optional(),
+}).strict()
+  .refine(
+    (d) => {
+      // Validación de coherencia monto_pago vs monto_usd * tc_pago.
+      // Solo aplica si moneda_pago === 'ARS' (en USD ambos deberían ser iguales,
+      // pero permitimos que tc_pago sea cualquier valor en USD — sin re-cálculo).
+      if (d.moneda_pago === 'USD') {
+        // En USD el monto_pago debe ser igual a monto_usd (tolerancia 1 centavo).
+        return Math.abs(d.monto_pago - d.monto_usd) < 0.01;
+      }
+      // ARS: monto_pago ≈ monto_usd * tc_pago.
+      const expected = d.monto_usd * d.tc_pago;
+      return Math.abs(d.monto_pago - expected) < 1.0; // tolerancia 1 ARS (montos grandes en ARS)
+    },
+    {
+      message: 'monto_pago no coincide con monto_usd × tc_pago (tolerancia 1 ARS / 0.01 USD)',
+      path: ['monto_pago'],
+    }
+  );
+
+// F4: configurar caja default cross-tenant del tenant.
+// caja_id puede ser null (limpia la configuración).
+const setCajaDefaultSchema = z.object({
+  caja_id: z.coerce.number().int().positive().nullable(),
+}).strict();
+
+// F4: devolución cross-tenant (decisión #11).
+// Solo el buyer puede iniciar — el endpoint enforcea.
+// items: array de items a devolver con cantidad parcial.
+const devolucionSchema = z.object({
+  items: z.array(z.object({
+    cross_tenant_operation_item_id: z.coerce.number().int().positive(),
+    cantidad: z.coerce.number().int().positive(),
+  })).min(1).max(100),
+  motivo: z.string().trim().max(500).optional(),
+}).strict();
+
 module.exports = {
   inviteSchema,
   revokeSchema,
@@ -78,4 +131,8 @@ module.exports = {
   createOperationSchema,
   cancelOperationSchema,
   patchOperationSchema,
+  // F4
+  registrarPagoSchema,
+  setCajaDefaultSchema,
+  devolucionSchema,
 };
