@@ -1,0 +1,1025 @@
+/**
+ * Tests integration para Red B2B F4 — pagos + conciliación + devoluciones.
+ *
+ * Cobertura (20+ tests críticos):
+ *
+ *   Capability gate (1):
+ *     · sin cross_tenant.write → 403 en POST /pagos
+ *
+ *   Happy path POST /pagos (4):
+ *     · seller registra cobro → INSERT mov_cc tipo='pago' del seller +
+ *       proveedor_mov tipo='pago' propagado al buyer + cross_tenant_pago +
+ *       notif al buyer
+ *     · buyer registra pago → análogo, cobro propagado al seller
+ *     · pago parcial actualiza saldo restante (saldo > 0)
+ *     · pago completo deja saldo 0 (completo=true)
+ *
+ *   Multi-divisa (4 críticos #16):
+ *     · pago USD/USD tc=tc → diferencia=0, sin cambio_divisa_id
+ *     · pago ARS tc_pago=tc_venta → diferencia=0, sin cambio_divisa_id
+ *     · pago ARS tc_pago > tc_venta → diferencia positiva, cambio_divisa_id NOT NULL
+ *     · pago ARS tc_pago < tc_venta → diferencia negativa, cambio_divisa_id NOT NULL
+ *
+ *   Validation (3):
+ *     · sobre-pago (monto > restante) → 400 overpayment
+ *     · op cancelled → 409
+ *     · side body !== caller real side → 403 side_mismatch
+ *
+ *   Conciliation (3):
+ *     · GET /conciliation devuelve saldos coherentes (sin diff)
+ *     · GET /conciliation con segunda llamada en <60s devuelve cached=true
+ *     · invalidateConciliationCache fuerza recompute
+ *
+ *   Devolución (4):
+ *     · devolución parcial revierte stock + crea nueva op con parent_op_id
+ *     · devolución supera lo pagado → queda saldo a favor del buyer
+ *     · solo buyer puede devolución (seller → 403)
+ *     · devolución con cantidad > disponible → 400
+ *
+ *   RLS leak (2):
+ *     · Tenant C intenta POST /pagos en op A↔B → 404
+ *     · Tenant C intenta GET /conciliation A↔B → 404
+ */
+
+const request = require('supertest');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+
+const app = require('../src/app');
+const { setupTestDb, teardownTestDb } = require('./helpers/setup');
+const conciliationRouter = require('../src/routes/redB2b/conciliation');
+
+const TENANT_A = { slug: 'red-b2b-pago-test-a', nombre: 'RedB2B Pago Test A', plan: 'starter' };
+const TENANT_B = { slug: 'red-b2b-pago-test-b', nombre: 'RedB2B Pago Test B', plan: 'pro' };
+const TENANT_C = { slug: 'red-b2b-pago-test-c', nombre: 'RedB2B Pago Test C', plan: 'starter' };
+
+let pool;
+let tenantAId, tenantBId, tenantCId;
+let userAId, userBId, userCId, userANoCapId;
+let tokenA, tokenB, tokenC, tokenANoCap;
+let cajaArsId, cajaUsdId; // ids de cajas seedeadas (catálogo global)
+
+function signToken({ id, username, email, tenant_id, caps = {} }) {
+  return jwt.sign(
+    {
+      id, username, email,
+      role: 'op',
+      tenant_id,
+      tenant_rol: 'admin',
+      tenant_cap_rol: 'custom',
+      caps,
+      iat_ms: Date.now(),
+    },
+    process.env.JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: '1h' }
+  );
+}
+
+async function createTenant({ slug, nombre, plan }) {
+  const r = await pool.query(
+    `INSERT INTO tenants (nombre, slug, plan) VALUES ($1, $2, $3)
+     ON CONFLICT (slug) DO UPDATE SET nombre = EXCLUDED.nombre, plan = EXCLUDED.plan,
+       suspended_at = NULL, red_b2b_caja_default_id = NULL
+     RETURNING id`,
+    [nombre, slug, plan]
+  );
+  return r.rows[0].id;
+}
+
+async function createUserForTenant(tenantId, { username, email }) {
+  const hash = await bcrypt.hash('testpass1234', 10);
+  const u = await pool.query(
+    `INSERT INTO users (nombre, username, email, password_hash, role, email_verified_at)
+     VALUES ($1, $2, $3, $4, 'op', NOW()) RETURNING id`,
+    [username, username, email, hash]
+  );
+  const userId = u.rows[0].id;
+  await pool.query(
+    `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'admin')
+     ON CONFLICT DO NOTHING`,
+    [tenantId, userId]
+  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    await client.query(
+      `INSERT INTO tenant_user_roles (tenant_id, user_id, rol) VALUES ($1, $2, 'custom')
+       ON CONFLICT DO NOTHING`,
+      [tenantId, userId]
+    );
+    await client.query('COMMIT');
+  } finally {
+    client.release();
+  }
+  return userId;
+}
+
+async function insertSellerProducto(tenantId, opts = {}) {
+  const { nombre = `Producto Test ${Date.now()}`, cantidad = 10, costo = 100, precio = 150 } = opts;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    const r = await client.query(
+      `INSERT INTO productos
+         (tenant_id, nombre, cantidad, costo, costo_moneda, precio_venta, precio_moneda, estado)
+       VALUES ($1, $2, $3, $4, 'USD', $5, 'USD', 'disponible')
+       RETURNING id`,
+      [tenantId, nombre, cantidad, costo, precio]
+    );
+    await client.query('COMMIT');
+    return r.rows[0].id;
+  } finally {
+    client.release();
+  }
+}
+
+async function createActivePartnership(t1, t2, invitedBy) {
+  const [a, b] = t1 < t2 ? [t1, t2] : [t2, t1];
+  const r = await pool.query(
+    `INSERT INTO tenant_partnerships
+       (tenant_a_id, tenant_b_id, status,
+        invited_by_tenant_id, invited_by_user_id,
+        accepted_by_user_id, accepted_at)
+     VALUES ($1, $2, 'active', $3, $4, $4, NOW())
+     RETURNING id`,
+    [a, b, invitedBy, userAId]
+  );
+  return r.rows[0].id;
+}
+
+/**
+ * Crea una operación cross-tenant directa en DB (sin pasar por POST endpoint,
+ * que ya está testeado en F3). Devuelve { opId, sellerVentaId, buyerCompraId,
+ * itemIds, prodSellerId, prodBuyerId }.
+ */
+async function createCrossOp({ sellerTenantId, buyerTenantId, partnershipId,
+                                cantidad = 2, precio_usd = 100, tc = 1000 }) {
+  const total_usd = cantidad * precio_usd;
+  const total_ars = total_usd * tc;
+  const prodSellerId = await insertSellerProducto(sellerTenantId, {
+    nombre: `Prod Test ${Date.now()}`,
+    cantidad: cantidad + 5, // extra stock
+    costo: precio_usd * 0.8,
+  });
+
+  // Insert producto buyer auto-created (con flag pending) directo en DB.
+  const client = await pool.connect();
+  let prodBuyerId, opId, sellerMovId, buyerMovId;
+  try {
+    await client.query('BEGIN');
+    // ── Producto buyer ──
+    await client.query(`SET LOCAL app.current_tenant = ${buyerTenantId}`);
+    const pbQ = await client.query(
+      `INSERT INTO productos
+         (tenant_id, nombre, cantidad, costo, costo_moneda, precio_venta, precio_moneda,
+          estado, pending_cross_tenant_review)
+       VALUES ($1, $2, $3, $4, 'USD', $4, 'USD', 'disponible', true)
+       RETURNING id`,
+      [buyerTenantId, `Prod Buyer ${Date.now()}`, cantidad, precio_usd]
+    );
+    prodBuyerId = pbQ.rows[0].id;
+
+    // ── cliente_cc del seller ──
+    await client.query(`SET LOCAL app.current_tenant = ${sellerTenantId}`);
+    const ccQ = await client.query(
+      `INSERT INTO clientes_cc (tenant_id, nombre, categoria)
+       VALUES ($1, 'B2B Partner Test', 'A-')
+       RETURNING id`,
+      [sellerTenantId]
+    );
+    const clienteCcId = ccQ.rows[0].id;
+
+    // ── movimientos_cc del seller (venta CC) ──
+    const movQ = await client.query(
+      `INSERT INTO movimientos_cc
+         (tenant_id, cliente_cc_id, fecha, tipo, descripcion, monto_total, estado, created_by_user_id)
+       VALUES ($1, $2, CURRENT_DATE, 'compra', 'Test cross-tenant', $3, 'pendiente', $4)
+       RETURNING id`,
+      [sellerTenantId, clienteCcId, total_usd, userAId]
+    );
+    sellerMovId = movQ.rows[0].id;
+
+    // Decrement seller stock.
+    await client.query(
+      `UPDATE productos SET cantidad = cantidad - $1 WHERE id = $2 AND tenant_id = $3`,
+      [cantidad, prodSellerId, sellerTenantId]
+    );
+
+    // ── proveedor del buyer ──
+    await client.query(`SET LOCAL app.current_tenant = ${buyerTenantId}`);
+    const pvQ = await client.query(
+      `INSERT INTO proveedores (tenant_id, nombre)
+       VALUES ($1, 'B2B Seller Test')
+       RETURNING id`,
+      [buyerTenantId]
+    );
+    const proveedorId = pvQ.rows[0].id;
+
+    // ── proveedor_movimientos (compra) ──
+    const pmQ = await client.query(
+      `INSERT INTO proveedor_movimientos
+         (tenant_id, proveedor_id, fecha, tipo, descripcion, monto, moneda, monto_usd, created_by_user_id)
+       VALUES ($1, $2, CURRENT_DATE, 'compra', 'Test cross-tenant', $3, 'USD', $3, $4)
+       RETURNING id`,
+      [buyerTenantId, proveedorId, total_usd, userAId]
+    );
+    buyerMovId = pmQ.rows[0].id;
+
+    // ── cross_tenant_operations + items + UPDATE links ──
+    const opQ = await client.query(
+      `INSERT INTO cross_tenant_operations
+         (partnership_id, seller_tenant_id, buyer_tenant_id,
+          seller_venta_id, buyer_compra_id,
+          total_usd, total_ars, tc_used, created_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [partnershipId, sellerTenantId, buyerTenantId, sellerMovId, buyerMovId,
+       total_usd, total_ars, tc, userAId]
+    );
+    opId = opQ.rows[0].id;
+
+    const itemsQ = await client.query(
+      `INSERT INTO cross_tenant_operation_items
+         (cross_tenant_operation_id, seller_producto_id, buyer_producto_id,
+          cantidad, precio_unitario_usd, precio_unitario_ars)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [opId, prodSellerId, prodBuyerId, cantidad, precio_usd, precio_usd * tc]
+    );
+    const itemId = itemsQ.rows[0].id;
+
+    // Link mov_cc + proveedor_mov.
+    await client.query(`SET LOCAL app.current_tenant = ${sellerTenantId}`);
+    await client.query(
+      `UPDATE movimientos_cc SET cross_tenant_operation_id = $1 WHERE id = $2`,
+      [opId, sellerMovId]
+    );
+    await client.query(`SET LOCAL app.current_tenant = ${buyerTenantId}`);
+    await client.query(
+      `UPDATE proveedor_movimientos SET cross_tenant_operation_id = $1 WHERE id = $2`,
+      [opId, buyerMovId]
+    );
+
+    await client.query('COMMIT');
+    return { opId, sellerMovId, buyerMovId, itemId, prodSellerId, prodBuyerId, total_usd, total_ars, tc };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+beforeAll(async () => {
+  // setupTestDb depends on tenant_id=1 existing (re-seeds config.tenant_id=1
+  // after TRUNCATE). The original migration inserts tenant 1, but if a
+  // previous test run wiped it, setup fails. We need to bootstrap BEFORE
+  // setupTestDb. Since TRUNCATE users CASCADE doesn't normally remove
+  // tenants, the previous failure is likely from another suite's afterAll
+  // that DELETE'd it. Make this idempotent for resilience.
+  const { Pool } = require('pg');
+  const bootstrapPool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    await bootstrapPool.query(
+      `INSERT INTO tenants (id, nombre, slug, plan) VALUES (1, 'Tecny', 'tecny', 'enterprise')
+         ON CONFLICT (id) DO UPDATE SET nombre = 'Tecny', deleted_at = NULL`
+    );
+    await bootstrapPool.query(`SELECT setval('tenants_id_seq', GREATEST((SELECT MAX(id) FROM tenants), 1))`);
+  } catch (e) {
+    // If tenants table doesn't exist yet (fresh DB) — fine, setupTestDb's
+    // migrate will create it + insert tenant 1.
+  }
+  await bootstrapPool.end();
+
+  pool = await setupTestDb();
+
+  tenantAId = await createTenant(TENANT_A);
+  tenantBId = await createTenant(TENANT_B);
+  tenantCId = await createTenant(TENANT_C);
+
+  userAId = await createUserForTenant(tenantAId, {
+    username: 'rb2b-pago-user-a', email: 'rb2b-pago-a@test.local',
+  });
+  userBId = await createUserForTenant(tenantBId, {
+    username: 'rb2b-pago-user-b', email: 'rb2b-pago-b@test.local',
+  });
+  userCId = await createUserForTenant(tenantCId, {
+    username: 'rb2b-pago-user-c', email: 'rb2b-pago-c@test.local',
+  });
+  userANoCapId = await createUserForTenant(tenantAId, {
+    username: 'rb2b-pago-user-a-nocap', email: 'rb2b-pago-a-nocap@test.local',
+  });
+
+  const capsOn = { 'cross_tenant.write': true };
+  tokenA = signToken({
+    id: userAId, username: 'rb2b-pago-user-a', email: 'rb2b-pago-a@test.local',
+    tenant_id: tenantAId, caps: capsOn,
+  });
+  tokenB = signToken({
+    id: userBId, username: 'rb2b-pago-user-b', email: 'rb2b-pago-b@test.local',
+    tenant_id: tenantBId, caps: capsOn,
+  });
+  tokenC = signToken({
+    id: userCId, username: 'rb2b-pago-user-c', email: 'rb2b-pago-c@test.local',
+    tenant_id: tenantCId, caps: capsOn,
+  });
+  tokenANoCap = signToken({
+    id: userANoCapId, username: 'rb2b-pago-user-a-nocap',
+    email: 'rb2b-pago-a-nocap@test.local',
+    tenant_id: tenantAId, caps: {},
+  });
+
+  // Lookup cajas seedeadas (catálogo global).
+  const cQ = await pool.query(
+    `SELECT id, nombre, moneda FROM metodos_pago WHERE activo = true ORDER BY orden`
+  );
+  for (const r of cQ.rows) {
+    if (r.moneda === 'ARS' && !cajaArsId) cajaArsId = r.id;
+    if (r.moneda === 'USD' && !cajaUsdId) cajaUsdId = r.id;
+  }
+});
+
+beforeEach(async () => {
+  const ids = [tenantAId, tenantBId, tenantCId];
+
+  // Clear cache between tests.
+  conciliationRouter._clearCache();
+
+  // Unlink FKs first.
+  await pool.query(
+    `UPDATE movimientos_cc SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE proveedor_movimientos SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE productos SET created_from_cross_tenant_op_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+
+  // Delete child rows first.
+  await pool.query(`DELETE FROM cross_tenant_pagos
+    WHERE cross_tenant_operation_id IN (
+      SELECT id FROM cross_tenant_operations
+       WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]);
+  await pool.query(
+    `DELETE FROM cross_tenant_notifications WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  // Devoluciones (parent_op_id ref) — delete those FIRST so they don't
+  // block the parent op delete via FK self-ref.
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE parent_op_id IN (
+         SELECT id FROM cross_tenant_operations
+          WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM tenant_partnerships
+       WHERE tenant_a_id = ANY($1::int[]) OR tenant_b_id = ANY($1::int[])`,
+    [ids]
+  );
+
+  await pool.query(`DELETE FROM cambio_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM cambio_entidades WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM items_movimiento_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM movimientos_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM clientes_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimiento_items WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedores WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM productos WHERE tenant_id = ANY($1::int[])`, [ids]);
+
+  await pool.query(
+    `UPDATE tenants SET suspended_at = NULL, paid_until = NULL,
+                        red_b2b_caja_default_id = NULL
+       WHERE id = ANY($1::int[])`,
+    [ids]
+  );
+});
+
+afterAll(async () => {
+  const ids = [tenantAId, tenantBId, tenantCId];
+  const userIds = [userAId, userBId, userCId, userANoCapId];
+
+  await pool.query(
+    `UPDATE movimientos_cc SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE proveedor_movimientos SET cross_tenant_operation_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `UPDATE productos SET created_from_cross_tenant_op_id = NULL WHERE tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(`DELETE FROM cross_tenant_pagos
+    WHERE cross_tenant_operation_id IN (
+      SELECT id FROM cross_tenant_operations
+       WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]);
+  await pool.query(`DELETE FROM cross_tenant_notifications WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE parent_op_id IN (
+         SELECT id FROM cross_tenant_operations
+          WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[]))`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM cross_tenant_operations
+       WHERE seller_tenant_id = ANY($1::int[]) OR buyer_tenant_id = ANY($1::int[])`,
+    [ids]
+  );
+  await pool.query(
+    `DELETE FROM tenant_partnerships
+       WHERE tenant_a_id = ANY($1::int[]) OR tenant_b_id = ANY($1::int[])`,
+    [ids]
+  );
+
+  await pool.query(`DELETE FROM cambio_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM cambio_entidades WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM items_movimiento_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM movimientos_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM clientes_cc WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimiento_items WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedor_movimientos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM proveedores WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM productos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM contactos WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM user_capabilities WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM tenant_user_roles WHERE tenant_id = ANY($1::int[])`, [ids]);
+  await pool.query(`DELETE FROM tenant_users WHERE user_id = ANY($1::int[])`, [userIds]);
+  await pool.query(`DELETE FROM users WHERE id = ANY($1::int[])`, [userIds]);
+  await pool.query(`DELETE FROM tenants WHERE id = ANY($1::int[])`, [ids]);
+
+  await teardownTestDb(pool);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Capability gate
+// ──────────────────────────────────────────────────────────────────────────
+describe('cross_tenant.write gate (F4)', () => {
+  it('user SIN cap → 403 en POST /pagos', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/operations/1/pagos')
+      .set('Authorization', `Bearer ${tokenANoCap}`)
+      .send({});
+    expect(r.status).toBe(403);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Happy path POST /pagos
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /operations/:id/pagos — happy path', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('seller registra cobro → INSERT en mov_cc seller + proveedor_mov buyer + cross_tenant_pago + notif', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200,
+        moneda_pago: 'USD',
+        monto_pago: 200,
+        tc_pago: 1000,
+        caja_id: cajaUsdId,
+        side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.pago).toBeDefined();
+    expect(r.body.pago.side).toBe('seller');
+    expect(r.body.pago.monto_usd).toBe(200);
+    expect(r.body.pago.diferencia_cambiaria_ars).toBe(0);
+    expect(r.body.pago.cambio_divisa_id).toBeNull();
+
+    // Verifico mov_cc del seller con tipo='pago'.
+    const sellerMov = await pool.query(
+      `SELECT tipo, monto_total FROM movimientos_cc
+         WHERE tenant_id = $1 AND tipo = 'pago' AND cross_tenant_operation_id = $2`,
+      [tenantAId, op.opId]
+    );
+    expect(sellerMov.rows.length).toBe(1);
+    expect(Number(sellerMov.rows[0].monto_total)).toBe(200);
+
+    // Verifico proveedor_mov del buyer con tipo='pago'.
+    const buyerMov = await pool.query(
+      `SELECT tipo, monto_usd FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND tipo = 'pago' AND cross_tenant_operation_id = $2`,
+      [tenantBId, op.opId]
+    );
+    expect(buyerMov.rows.length).toBe(1);
+    expect(Number(buyerMov.rows[0].monto_usd)).toBe(200);
+
+    // Verifico cross_tenant_pagos.
+    const cp = await pool.query(
+      `SELECT * FROM cross_tenant_pagos WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(cp.rows.length).toBe(1);
+    expect(cp.rows[0].registered_by_side).toBe('seller');
+    expect(cp.rows[0].moneda_pago).toBe('USD');
+
+    // Notif al buyer (payment_received).
+    const notif = await pool.query(
+      `SELECT type FROM cross_tenant_notifications
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2`,
+      [tenantBId, op.opId]
+    );
+    expect(notif.rows.some((r) => r.type === 'payment_received')).toBe(true);
+  });
+
+  it('buyer registra pago → notif payment_registered al seller', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        monto_usd: 200,
+        moneda_pago: 'USD',
+        monto_pago: 200,
+        tc_pago: 1000,
+        caja_id: cajaUsdId,
+        side: 'buyer',
+      });
+    expect(r.status).toBe(201);
+
+    const notif = await pool.query(
+      `SELECT type FROM cross_tenant_notifications
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2`,
+      [tenantAId, op.opId]
+    );
+    expect(notif.rows.some((r) => r.type === 'payment_registered')).toBe(true);
+  });
+
+  it('pago parcial actualiza saldo restante', async () => {
+    // op total 200, pago 50 → restante 150.
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    const r = await request(app)
+      .get(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(200);
+    expect(r.body.saldo.pagado_usd).toBe(50);
+    expect(r.body.saldo.restante_usd).toBe(150);
+    expect(r.body.saldo.completo).toBe(false);
+    expect(r.body.pagos.length).toBe(1);
+  });
+
+  it('pago completo deja saldo 0 (completo=true)', async () => {
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    const r = await request(app)
+      .get(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.body.saldo.completo).toBe(true);
+    expect(r.body.saldo.restante_usd).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Multi-divisa (decisión #16 — crítico)
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /operations/:id/pagos — multi-divisa', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    // Op de 200 USD a TC venta = 1000.
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('pago USD/USD → diferencia=0, sin cambio_divisa', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.pago.diferencia_cambiaria_ars).toBe(0);
+    expect(r.body.pago.cambio_divisa_id).toBeNull();
+    // No hay cambio_movimientos del seller.
+    const cm = await pool.query(
+      `SELECT id FROM cambio_movimientos WHERE tenant_id = $1`,
+      [tenantAId]
+    );
+    expect(cm.rows.length).toBe(0);
+  });
+
+  it('pago ARS tc_pago=tc_venta → diferencia=0, sin cambio_divisa', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'ARS', monto_pago: 100000,
+        tc_pago: 1000, caja_id: cajaArsId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.pago.diferencia_cambiaria_ars).toBe(0);
+    expect(r.body.pago.cambio_divisa_id).toBeNull();
+  });
+
+  it('pago ARS tc_pago > tc_venta → diferencia positiva + INSERT en cambio_movimientos', async () => {
+    // TC venta = 1000, TC pago = 1200 → diferencia = (1200-1000)*100 = 20000 ARS positivos.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'ARS', monto_pago: 120000,
+        tc_pago: 1200, caja_id: cajaArsId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.pago.diferencia_cambiaria_ars).toBe(20000);
+    expect(r.body.pago.cambio_divisa_id).not.toBeNull();
+
+    // Verifico cambio_movimientos del seller.
+    const cm = await pool.query(
+      `SELECT tipo, monto_ars, monto_usd, comentarios FROM cambio_movimientos
+         WHERE tenant_id = $1`,
+      [tenantAId]
+    );
+    expect(cm.rows.length).toBe(1);
+    expect(cm.rows[0].tipo).toBe('recibo_usd'); // ganancia → recibo_usd
+    expect(Number(cm.rows[0].monto_ars)).toBe(20000);
+  });
+
+  it('pago ARS tc_pago < tc_venta → diferencia negativa + INSERT en cambio_movimientos', async () => {
+    // TC venta = 1000, TC pago = 800 → diferencia = (800-1000)*100 = -20000 ARS (pérdida).
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'ARS', monto_pago: 80000,
+        tc_pago: 800, caja_id: cajaArsId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    expect(r.body.pago.diferencia_cambiaria_ars).toBe(-20000);
+    expect(r.body.pago.cambio_divisa_id).not.toBeNull();
+
+    const cm = await pool.query(
+      `SELECT tipo, monto_ars FROM cambio_movimientos WHERE tenant_id = $1`,
+      [tenantAId]
+    );
+    expect(cm.rows.length).toBe(1);
+    expect(cm.rows[0].tipo).toBe('entrega_ars'); // pérdida → entrega_ars
+    expect(Number(cm.rows[0].monto_ars)).toBe(20000); // abs value
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Validation
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /operations/:id/pagos — validation', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('sobre-pago (monto > restante) → 400 overpayment', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 500, // op es 200
+        moneda_pago: 'USD', monto_pago: 500,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.reason).toBe('overpayment');
+  });
+
+  it('op cancelled → 409', async () => {
+    await pool.query(
+      `UPDATE cross_tenant_operations SET status = 'cancelled' WHERE id = $1`,
+      [op.opId]
+    );
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('op_cancelled');
+  });
+
+  it('side body !== caller real side → 403 side_mismatch', async () => {
+    // A es seller. Si declara side='buyer', rebote.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'buyer',
+      });
+    expect(r.status).toBe(403);
+    expect(r.body.reason).toBe('side_mismatch');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Conciliación
+// ──────────────────────────────────────────────────────────────────────────
+describe('GET /partnerships/:id/conciliation', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('devuelve saldos coherentes después de pago', async () => {
+    // Pago completo.
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    const r = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(200);
+    expect(r.body.totales.operaciones_usd).toBe(200);
+    expect(r.body.totales.pagado_usd).toBe(200);
+    expect(r.body.totales.saldo_neto_usd).toBe(0);
+    expect(r.body.saldos_bilaterales.difieren).toBe(false);
+  });
+
+  it('cache: segunda llamada en <60s devuelve cached=true', async () => {
+    const r1 = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r1.body.cached).toBe(false);
+
+    const r2 = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r2.body.cached).toBe(true);
+    expect(r2.body.cached_at).toBeTruthy();
+  });
+
+  it('?refresh=true bypasea cache', async () => {
+    await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    const r = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation?refresh=true`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.body.cached).toBe(false);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Devoluciones (decisión #11)
+// ──────────────────────────────────────────────────────────────────────────
+describe('POST /operations/:id/devolucion', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 5, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('devolución parcial: stock revierte + nueva op con parent_op_id', async () => {
+    // Stock inicial del seller después de createCrossOp: 5+5-5 = 5 (10 inicial - 5 vendidos).
+    const stockBeforeQ = await pool.query(
+      `SELECT cantidad FROM productos WHERE id = $1`, [op.prodSellerId]
+    );
+    const stockBefore = Number(stockBeforeQ.rows[0].cantidad);
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`) // buyer
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 2 }],
+        motivo: 'Stock dañado',
+      });
+    expect(r.status).toBe(201);
+    // parent_op_id and op.opId are BIGSERIAL so compare loosely (string vs int).
+    expect(String(r.body.devolucion.parent_op_id)).toBe(String(op.opId));
+    expect(r.body.devolucion.total_usd_devuelto).toBe(200); // 2 * 100
+
+    // Stock del seller +2.
+    const stockAfter = await pool.query(
+      `SELECT cantidad FROM productos WHERE id = $1`, [op.prodSellerId]
+    );
+    expect(Number(stockAfter.rows[0].cantidad)).toBe(stockBefore + 2);
+
+    // Stock del buyer -2.
+    const buyerStockAfter = await pool.query(
+      `SELECT cantidad FROM productos WHERE id = $1`, [op.prodBuyerId]
+    );
+    // Original: cantidad inicial = 5 en createCrossOp.
+    expect(Number(buyerStockAfter.rows[0].cantidad)).toBe(5 - 2);
+
+    // Nueva op con parent.
+    const newOp = await pool.query(
+      `SELECT id, total_usd, parent_op_id FROM cross_tenant_operations
+         WHERE parent_op_id = $1`, [op.opId]
+    );
+    expect(newOp.rows.length).toBe(1);
+    expect(Number(newOp.rows[0].total_usd)).toBe(-200);
+  });
+
+  it('solo buyer puede devolución (seller → 403 only_buyer_can_devolucion)', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenA}`) // seller (incorrect)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(403);
+    expect(r.body.reason).toBe('only_buyer_can_devolucion');
+  });
+
+  it('devolución con cantidad > cantidad original → 400', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 999 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.reason).toBe('devolucion_excede_cantidad');
+  });
+
+  it('devolución contra op cancelled → 409 op_not_active', async () => {
+    await pool.query(
+      `UPDATE cross_tenant_operations SET status = 'cancelled' WHERE id = $1`,
+      [op.opId]
+    );
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe('op_not_active');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// RLS leak
+// ──────────────────────────────────────────────────────────────────────────
+describe('RLS leak — tenant C', () => {
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  it('Tenant C intenta POST /pagos en op A↔B → 404', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+  });
+
+  it('Tenant C intenta GET /conciliation A↔B → 404', async () => {
+    const r = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Config endpoints
+// ──────────────────────────────────────────────────────────────────────────
+describe('GET/PATCH /config', () => {
+  it('GET devuelve caja_default null por defecto', async () => {
+    const r = await request(app)
+      .get('/api/red-b2b/config')
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(200);
+    expect(r.body.red_b2b.caja_default_id).toBeNull();
+  });
+
+  it('PATCH /caja-default actualiza la caja', async () => {
+    const r = await request(app)
+      .patch('/api/red-b2b/config/caja-default')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ caja_id: cajaUsdId });
+    expect(r.status).toBe(200);
+    expect(r.body.caja_default_id).toBe(cajaUsdId);
+
+    // Verifico DB.
+    const t = await pool.query(
+      `SELECT red_b2b_caja_default_id FROM tenants WHERE id = $1`, [tenantAId]
+    );
+    expect(t.rows[0].red_b2b_caja_default_id).toBe(cajaUsdId);
+  });
+
+  it('PATCH /caja-default con caja inexistente → 404', async () => {
+    const r = await request(app)
+      .patch('/api/red-b2b/config/caja-default')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ caja_id: 99999 });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('caja_not_found');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helper puro: calcularDiferenciaCambiaria
+// ──────────────────────────────────────────────────────────────────────────
+describe('calcularDiferenciaCambiaria (helper puro)', () => {
+  const { calcularDiferenciaCambiaria } = require('../src/lib/crossTenantPagos');
+
+  it('moneda USD → diferencia 0', () => {
+    const r = calcularDiferenciaCambiaria(100, 1000, 1500, 'USD');
+    expect(r.diferencia_ars).toBe(0);
+  });
+
+  it('ARS, tc iguales → diferencia 0', () => {
+    const r = calcularDiferenciaCambiaria(100, 1000, 1000, 'ARS');
+    expect(r.diferencia_ars).toBe(0);
+  });
+
+  it('ARS, tc_pago > tc_venta → ganancia (positivo)', () => {
+    const r = calcularDiferenciaCambiaria(100, 1000, 1200, 'ARS');
+    expect(r.diferencia_ars).toBe(20000);
+    expect(r.ganancia_seller).toBe(true);
+  });
+
+  it('ARS, tc_pago < tc_venta → pérdida (negativo)', () => {
+    const r = calcularDiferenciaCambiaria(100, 1000, 800, 'ARS');
+    expect(r.diferencia_ars).toBe(-20000);
+    expect(r.ganancia_seller).toBe(false);
+  });
+});

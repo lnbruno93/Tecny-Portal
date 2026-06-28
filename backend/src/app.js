@@ -107,6 +107,14 @@ const redB2bProductosPendingReviewRoutes = require('./routes/redB2b/productosPen
 // espejada cross-tenant atómicamente. GET listado/detalle. POST cancel +
 // PATCH notes.
 const redB2bOperationsRoutes = require('./routes/redB2b/operations');
+// 2026-06-28 #457 Red B2B F4: pagos + multi-divisa + devoluciones cross-tenant.
+// Montado bajo /api/red-b2b/operations (sibling de operations.js, share-prefix).
+const redB2bPagosRoutes = require('./routes/redB2b/pagos');
+// 2026-06-28 #457 Red B2B F4: conciliación bilateral por partnership.
+// Montado bajo /api/red-b2b/partnerships/:id/conciliation.
+const redB2bConciliationRoutes = require('./routes/redB2b/conciliation');
+// 2026-06-28 #457 Red B2B F4: config del tenant (caja default cross-tenant).
+const redB2bConfigRoutes = require('./routes/redB2b/config');
 // 2026-06-21 #353 Fase 1: Super-Admin app (admin.tecnyapp.com). DISTINTO de
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
@@ -747,6 +755,23 @@ app.use('/api/red-b2b/productos-pending-review',
 // para escribir en ambos tenants en la misma tx con SET LOCAL switching.
 app.use('/api/red-b2b/operations',
   requireAuth, requireCapability('cross_tenant.write'), redB2bOperationsRoutes);
+
+// 2026-06-28 #457 Red B2B F4: pagos cross-tenant + devoluciones.
+// Mismo prefijo /api/red-b2b/operations — pagos.js define POST /:id/pagos,
+// GET /:id/pagos, POST /:id/devolucion. Va DESPUÉS de operationsRoutes para
+// que las rutas más específicas no se solapen (express routea por orden).
+app.use('/api/red-b2b/operations',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bPagosRoutes);
+
+// 2026-06-28 #457 Red B2B F4: conciliación bilateral por partnership.
+// Distinto router del de partnerships (de F1) para no contaminar el archivo;
+// montado bajo el mismo namespace /api/red-b2b/partnerships.
+app.use('/api/red-b2b/partnerships',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bConciliationRoutes);
+
+// 2026-06-28 #457 Red B2B F4: config del tenant (caja default cross-tenant).
+app.use('/api/red-b2b/config',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bConfigRoutes);
 
 // 2026-06-20 #340 Fase 1: Bot conversacional analítico.
 // Disponible para todos los users autenticados de cualquier tenant (todos los
