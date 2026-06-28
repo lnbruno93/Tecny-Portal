@@ -1,10 +1,19 @@
 # Red B2B — Operaciones cross-tenant entre clientes Tecny
 
-**Estado**: 📐 DISEÑO — 16/16 decisiones cerradas, listo para implementación F1.
-**Fecha**: 2026-06-27 (creación), 2026-06-27 actualización con decisiones 11-16
+**Estado**: 🛠 IMPLEMENTACIÓN — F1 + F2 + F3 mergeadas. F4 + F5 pendientes.
+**Fecha**: 2026-06-27 (creación + decisiones), 2026-06-27 actualización post-F3
 **Origen**: idea de Lucas tras cerrar el 6to cliente — convertir a Tecny en una red B2B con efectos de red, donde los tenants se invitan entre sí y operan digitalmente.
-**Effort estimado**: 14-21 días bien hechos, partido en 5 fases mergeables. Multi-divisa F4 +1-2 días (decisión #16).
+**Effort estimado**: 14-21 días total. F1+F2+F3 ≈ 10-13 días entregados. F4+F5 restantes ≈ 6-9 días.
 **Decisiones cerradas con Lucas**: ver sección 3 (16 decisiones).
+
+**Progreso de implementación**:
+| Fase | PR/Status | Notas |
+|---|---|---|
+| F1 partnerships | ✅ Mergeado | 18 tests backend, 8 frontend |
+| F2 productos pending review | ✅ Mergeado | 15 tests backend, 7 frontend |
+| F3 operaciones cross-tenant | ✅ Mergeado | 28 tests backend, frontend básico (integración VentaB2B difered) |
+| F4 pagos + multi-divisa | ⏸ Pendiente | — |
+| F5 inbox + emails | ⏸ Pendiente | — |
 
 ---
 
@@ -334,32 +343,40 @@ Semántica:
 - UI del buyer en Inventario muestra badge "Pendiente revisión" + acción "Confirmar como nuevo" o "Mergear con producto existente".
 - `created_from_cross_tenant_op_id` → trazabilidad de dónde vino.
 
-#### `ventas` (módulo B2B)
+#### `movimientos_cc` (módulo B2B — venta del seller) — **F3 real**
+
+> **DIVERGENCIA DEL DOC ORIGINAL** (2026-06-27): el doc planteaba ALTER en `ventas`. En el repo real, las ventas B2B viven en `movimientos_cc` (la tabla de cuentas corrientes). `ventas` es la tabla retail (efectivo/tarjeta/transferencia). F3 wirea sobre `movimientos_cc` que es donde realmente vive el B2B con CC. Razón: la venta cross-tenant nace siempre como deuda del cliente al seller (CC pura), el "pago" cae en F4.
 
 ```sql
-ALTER TABLE ventas ADD COLUMN cross_tenant_operation_id BIGINT REFERENCES cross_tenant_operations(id);
-CREATE INDEX idx_ventas_cross_tenant ON ventas(tenant_id, cross_tenant_operation_id)
+ALTER TABLE movimientos_cc ADD COLUMN cross_tenant_operation_id BIGINT REFERENCES cross_tenant_operations(id);
+CREATE INDEX idx_movimientos_cc_cross_tenant
+  ON movimientos_cc(tenant_id, cross_tenant_operation_id)
   WHERE cross_tenant_operation_id IS NOT NULL;
 ```
 
-Si una venta B2B forma parte de una operación cross-tenant, este campo apunta a la fila maestra. La UI del seller en su listado de ventas muestra un badge "→ TekHaus (Red B2B)" para diferenciar de ventas B2B normales.
+La UI del seller en su listado B2B muestra un badge "→ TekHaus (Red B2B)" para diferenciar de ventas B2B normales.
 
-#### `compras` (módulo Proveedores)
+#### `proveedor_movimientos` (módulo Proveedores — compra del buyer) — **F3 real**
+
+> **DIVERGENCIA DEL DOC ORIGINAL** (2026-06-27): el doc planteaba ALTER en `compras`. En el repo real, las compras a proveedores viven en `proveedor_movimientos` (tabla de movimientos de CC del proveedor). F3 wirea ahí.
 
 ```sql
-ALTER TABLE compras ADD COLUMN cross_tenant_operation_id BIGINT REFERENCES cross_tenant_operations(id);
-CREATE INDEX idx_compras_cross_tenant ON compras(tenant_id, cross_tenant_operation_id)
+ALTER TABLE proveedor_movimientos ADD COLUMN cross_tenant_operation_id BIGINT REFERENCES cross_tenant_operations(id);
+CREATE INDEX idx_proveedor_movimientos_cross_tenant
+  ON proveedor_movimientos(tenant_id, cross_tenant_operation_id)
   WHERE cross_tenant_operation_id IS NOT NULL;
 ```
 
 Análogo del lado del buyer.
 
-#### `cobros` y `pagos`
+#### `cobros` y `pagos` — **F4 (pendiente)**
 
 ```sql
 ALTER TABLE cobros ADD COLUMN cross_tenant_pago_id BIGINT REFERENCES cross_tenant_pagos(id);
 ALTER TABLE pagos  ADD COLUMN cross_tenant_pago_id BIGINT REFERENCES cross_tenant_pagos(id);
 ```
+
+> **Verificar nombres reales en F4**: revisar si los pagos de CC viven en `cobros`/`pagos` o en `movimientos_cc`/`proveedor_movimientos` (como sucedió con las ventas en F3). Probable que sea lo segundo — los pagos B2B también son movimientos de CC. El doc se actualizará cuando F4 confirme el wiring real.
 
 #### `contactos`
 
@@ -375,12 +392,18 @@ CREATE INDEX idx_contactos_linked_tenant ON contactos(tenant_id, linked_tenant_i
 
 Cuando dos tenants firman partnership, se crea (o linkea con un contacto existente) la entrada de contactos en ambos lados. Las próximas operaciones cross-tenant entre ellos usan ese contacto fantasma. Si A revoca, el contacto queda como histórico no-linkable.
 
-#### `tenant_admin_actions` (audit del super-admin)
+#### `tenant_admin_actions` (audit del super-admin) — **F1 + F3 reales**
 
-```sql
--- Agregar 2 actions al CHECK: 'cross_tenant_partnership_created' y 'cross_tenant_partnership_revoked'
--- (Migration: 20260627000001_tenant_admin_actions_add_cross_tenant.js)
-```
+Total: 5 actions agregadas al CHECK constraint a lo largo de F1+F3:
+- **F1** (`20260627000002_tenant_admin_actions_red_b2b.js`):
+  - `cross_tenant_partnership_created`
+  - `cross_tenant_partnership_revoked`
+- **F3** (`20260628000003_tenant_admin_actions_red_b2b_ops.js`):
+  - `cross_tenant_op_created`
+  - `cross_tenant_op_cancelled`
+  - `cross_tenant_op_modified`
+
+> **Bug crítico encontrado en F3 — lección durable**: el INSERT al audit log con una `action` no presente en el CHECK rebota con error 23514. **Si esto sucede DENTRO de una tx**, deja la tx en estado `aborted` → el COMMIT subsecuente se comporta como ROLLBACK silencioso. Sin SAVEPOINT alrededor del audit, una nueva action olvidada en el CHECK convierte TODO el flow core en placebo (200 OK pero nada persistido). F3 envuelve cada INSERT a `tenant_admin_actions` en SAVEPOINT — **patrón obligatorio para cualquier audit futuro en cross-tenant ops**.
 
 #### `user_capabilities`
 
@@ -701,39 +724,54 @@ Un bell icon en la topbar muestra cantidad de notifications unread. Click → dr
 
 Cada fase es **mergeable independiente**, deployable a prod sin esperar las siguientes. Cap explícito: **NO** activar feature flag en prod hasta validar la fase completa en staging con escenario E2E real.
 
-### F1 — Foundation: schema + partnerships (3-4 días)
+### F1 — Foundation: schema + partnerships (3-4 días) ✅ MERGEADA
 
-Entregables:
-- Migration con TODAS las tablas + indices + RLS policies (1 migration grande)
-- Endpoint `POST /partnerships/invite`, `accept`, `reject`, `revoke`
-- Endpoint `GET /partnerships`, `GET /partnerships/:id`
-- Helper `partnership.js` (orderTenantIds, getActivePartnership)
-- Cap `cross_tenant.write` agregada al seed + UI checkbox en Usuarios
-- Tests backend: 15+ casos (invite happy, anti-spam, re-invite cooldown, accept/reject, revoke, RLS leak attempts)
-- Frontend: solo módulo Partners con listado + invitar. NO operations todavía.
+Entregables completados:
+- Migration `20260627000001_red_b2b_partnerships.js` con 5 tablas nuevas + indices + RLS dual
+- Migration `20260627000002_tenant_admin_actions_red_b2b.js` con 2 actions
+- Endpoints `POST /partnerships/{invite,accept,reject,revoke}` + `GET /partnerships`, `GET /:id`
+- Helper `partnership.js` (`orderTenantIds`, `getActivePartnership`, `getActivePartnershipById`)
+- Cap `cross_tenant.write` agregada al catalog
+- **18 tests backend** + **8 tests frontend**, todos pasando
+- Frontend: módulo Partners (listado + tabs activas/recibidas/enviadas/revocados + InvitePartnerModal)
 
-Validación en prod: dos cuentas test (iPro + TekHaus dummy) firman partnership y se ven mutuamente en la lista. Si esto anda, F1 está lista.
+Decisiones tomadas durante implementación (justificadas en código):
+- **Reject** deja partnership en `revoked` (motivo "rechazado") en vez de DELETE — preserva audit + cooldown.
+- **ALTER contactos.linked_tenant_id se hizo en F1** (no F3) — `accept` ya lo necesita.
+- **Defense-in-depth con filtro INLINE** además del RLS dual — en local con superuser BYPASSRLS aplica y la policy no filtra. Cinturón + tirantes.
 
-### F2 — Auto-create de productos + flag pending review (1.5-2 días)
+### F2 — Auto-create productos + flag pending review (1.5-2 días) ✅ MERGEADA
 
-Entregables:
-- Migration: ALTER productos (`pending_cross_tenant_review`, `created_from_cross_tenant_op_id`)
-- Endpoint `GET /productos-pending-review`
-- Endpoint `POST /productos/:id/confirm-new`
-- Endpoint `POST /productos/:id/merge-into`
-- Tests del flow merge (stock + historial migran correctamente)
-- Frontend: pantalla "Pendientes de revisión" en módulo Red B2B + badge en sidebar
+Entregables completados:
+- Migration `20260628000001_red_b2b_productos_pending_review.js` con ALTER productos + index parcial
+- Endpoints `GET /productos-pending-review`, `POST /:id/confirm-new`, `POST /:id/merge-into`
+- **15 tests backend** + **7 tests frontend**, todos pasando
+- Frontend: pantalla "Pendientes de revisión" + sidebar badge polling cada 2 min
 
-### F3 — Operaciones cross-tenant (5-7 días, el más grande)
+Decisiones tomadas:
+- **`producto_historial` no existe** en el repo. El merge migra referencias en las 4 tablas reales con FK: `venta_items`, `canjes`, `envio_items`, `items_movimiento_cc`. `proveedor_movimiento_items` usa nombre TEXT (sin FK), se skipea.
+- **`source_not_pending` 409 defensivo** evita que un producto del catálogo normal sea soft-deleted via merge accidental.
 
-Entregables:
-- Migration: ALTER ventas + compras (`cross_tenant_operation_id`) + ALTER contactos
-- Endpoint `POST /operations` — el flow core
-- Endpoint `GET /operations`, `GET /operations/:id`
-- Endpoint `POST /operations/:id/cancel`
-- Endpoint `PATCH /operations/:id` (solo notes en F3, items en F3.5)
-- Tests backend: 25+ casos (happy path, RLS leak attempts, partnership inactive, tenant expired, stock insufficient, currency conversion, atomicity del rollback si un side falla)
-- Frontend: pantalla Operaciones + detalle + integración en modal Ventas B2B existente (badge "Red B2B" en dropdown)
+### F3 — Operaciones cross-tenant (5-7 días) ✅ MERGEADA
+
+Entregables completados:
+- Migration `20260628000002_red_b2b_operations_alters.js` con ALTER **movimientos_cc + proveedor_movimientos** (no `ventas`/`compras` como decía el doc original — ver sección 4.2)
+- Migration `20260628000003_tenant_admin_actions_red_b2b_ops.js` con 3 actions nuevas
+- Helper `crossTenantOps.js` con 4 funciones (validar precondiciones, find-or-create producto buyer, crear venta seller, crear compra buyer)
+- Endpoints `POST /operations`, `GET /operations`, `GET /:id`, `PATCH /:id`, `POST /:id/cancel`
+- **28 tests backend** todos pasando (happy path, atomicity, RLS leak, validations, cancel, stock edge cases)
+- Frontend: pantallas `RedB2BOperaciones` + `RedB2BOperacionDetalle`
+
+Decisiones críticas tomadas:
+- **F3 wirea sobre `movimientos_cc` + `proveedor_movimientos`** (no `ventas`/`compras`) — el B2B en este repo vive en CC, no en la tabla retail. Ver divergencia documentada en sección 4.2.
+- **Auto-create productos buyer SIEMPRE** (sin dedup por nombre). Simpler + más atómico. F2 ya provee merge para resolver duplicados.
+- **SAVEPOINT obligatorio alrededor de los audit logs** — bug crítico encontrado y fixeado: sin savepoint, una action no listada en CHECK abortaba TODA la tx silenciosamente. Patrón ahora obligatorio.
+- **Cancel reverso de stock**: suma al seller con guard, resta del buyer sin guard (puede quedar negativo si ya vendió). Notif al buyer con `stock_negativo_warning: true`.
+- **NO inserta cobro al crear la op** — la deuda queda en CC de ambos lados; el pago real cae en F4.
+
+Pendientes diferidos como follow-ups (no bloqueantes):
+- **Integración con modal VentaB2B existente**: API lista, pero "shortcut UX" de detectar cliente=partner desde el modal B2B existente se difiere a follow-up post-staging-test.
+- **Tests frontend (8+)**: el backend tiene cobertura crítica completa. Tests frontend de los screens caen como follow-up.
 
 ### F4 — Pagos cross-tenant + conciliación (3-4 días)
 
