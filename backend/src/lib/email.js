@@ -490,6 +490,379 @@ async function sendPaidUntilWarningEmail({ to, name, daysLeft, paidUntilDate, te
   }
 }
 
+// ── Red B2B F5 (TANDA F5 #458 2026-06-29) ───────────────────────────────
+//
+// 5 templates de email para los events críticos de Red B2B cross-tenant
+// (decisión #13 del doc):
+//   - invitation_received  → "Te invitaron a Red B2B"
+//   - invitation_accepted  → "Aceptaron tu invitación"
+//   - operation_received   → "Recibiste una venta de USD X"
+//   - operation_cancelled  → "Cancelaron la venta"
+//   - payment_received     → "Te pagaron / Pagaste"
+//
+// Patrón idéntico a las funciones existentes:
+//   - test mode → push a _testQueue
+//   - sin RESEND_API_KEY → stub mode (log + retorna ok stub-...)
+//   - resend errors → log + retorna { ok: false, error }
+//   - HTML + text con _esc() en variables (sin XSS en clients de email)
+//
+// Branding consistente: misma estructura HTML que verification/welcome
+// (header con logo Tecny, body con CTA al portal, footer plain).
+//
+// Caller pattern (en partnerships.js / operations.js / pagos.js): fire-and-
+// forget desde setImmediate AFTER el COMMIT de la tx. Si el email falla, la
+// notification in-app ya quedó persistida — el operador la ve igual.
+
+function _redB2bShellHtml({ title, bodyHtml, ctaUrl, ctaLabel }) {
+  // Shell común a los 5 templates Red B2B. Cambia solo title + bodyHtml + cta.
+  const ctaBlock = ctaUrl
+    ? `<p style="margin:0 0 24px;text-align:center;">
+         <a href="${_esc(ctaUrl)}" style="display:inline-block;padding:13px 28px;background:#0ea5e9;color:#ffffff;text-decoration:none;border-radius:9px;font-weight:700;font-size:15px;letter-spacing:-0.005em;">${_esc(ctaLabel || 'Abrir Red B2B')} →</a>
+       </p>`
+    : '';
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${_esc(title)} — Tecny</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1a14;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
+        <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
+          <div style="display:inline-block;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#38bdf8);color:#fff;line-height:36px;text-align:center;font-weight:800;font-size:18px;letter-spacing:-0.04em;">T</div>
+          <span style="display:inline-block;vertical-align:middle;margin-left:12px;font-weight:700;font-size:17px;color:#0d1220;">Tecny <span style="font-weight:500;color:#76705c;font-size:14px;">· Red B2B</span></span>
+        </td></tr>
+        <tr><td style="padding:36px 36px 12px;">
+          <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#0d1220;">${_esc(title)}</h1>
+          ${bodyHtml}
+          ${ctaBlock}
+          <p style="margin:0;font-size:12px;line-height:1.55;color:#9c957f;">Recibís este email porque tenés Red B2B activado en tu cuenta de Tecny. Podés desactivar estos avisos desde Red B2B → Config.</p>
+        </td></tr>
+        <tr><td style="padding:20px 36px 32px;border-top:1px solid #f0ead6;font-size:12px;color:#9c957f;text-align:center;">
+          Tecny
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function _portalBaseUrl() {
+  // Frontend URL para deep-links. Default seguro: el dominio prod tecnyapp.com.
+  // En staging/dev override via FRONTEND_URL env.
+  return (process.env.FRONTEND_URL || 'https://app.tecnyapp.com').replace(/\/+$/, '');
+}
+
+function _fmtUsd(n) {
+  if (n == null || isNaN(n)) return 'USD —';
+  return 'USD ' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function _fmtArs(n) {
+  if (n == null || isNaN(n)) return '';
+  return '$ ' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Wrapper común para los 5 senders: maneja test mode, stub mode, Resend send
+// y errores con el mismo pattern que las funciones existentes (DRY).
+async function _sendRedB2bEmail({ type, to, subject, html, text, payload }) {
+  if (isTest()) {
+    _testQueue.push({ type, from: _emailFrom(), to, ...payload, sentAt: new Date().toISOString() });
+    return { ok: true, deliveryId: 'test-' + Date.now() };
+  }
+  const resend = _getResend();
+  if (!resend) {
+    logger.warn({ to, type }, `[email] RESEND_API_KEY no seteada — ${type} no se envió (modo stub)`);
+    return { ok: true, deliveryId: 'stub-' + Date.now() };
+  }
+  try {
+    const result = await resend.emails.send({
+      from: _emailFrom(),
+      to,
+      subject,
+      html,
+      text,
+    });
+    if (result.error) {
+      logger.error({ err: result.error, to, type }, `[email] Resend error en ${type}`);
+      return { ok: false, deliveryId: null, error: result.error.message || 'Resend error' };
+    }
+    logger.info({ to, type, deliveryId: result.data?.id }, `[email] ${type} enviado`);
+    return { ok: true, deliveryId: result.data?.id };
+  } catch (err) {
+    logger.error({ err, to, type }, `[email] excepción al enviar ${type}`);
+    return { ok: false, deliveryId: null, error: err.message };
+  }
+}
+
+/**
+ * Email: "X te invitó a Red B2B" — al lado receptor de la invitación.
+ *
+ * @param {object} args
+ * @param {string} args.to            — email del owner del tenant invitado
+ * @param {string} [args.name]        — nombre del receptor (saludo)
+ * @param {string} args.partnerNombre — nombre del tenant que invitó
+ * @param {string} [args.invitationMessage] — mensaje opcional del invitador
+ * @param {number} [args.partnershipId]    — para deep-link al inbox
+ */
+async function sendRedB2BInvitationReceivedEmail({ to, name, partnerNombre, invitationMessage, partnershipId }) {
+  if (!to || !partnerNombre) {
+    throw new Error('sendRedB2BInvitationReceivedEmail: `to` y `partnerNombre` son requeridos');
+  }
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  const msgBlock = invitationMessage
+    ? `<blockquote style="margin:0 0 20px;padding:12px 16px;border-left:3px solid #0ea5e9;background:#f0f9ff;color:#0d1220;font-size:14px;line-height:1.55;font-style:italic;">${_esc(invitationMessage)}</blockquote>`
+    : '';
+  const ctaUrl = `${_portalBaseUrl()}/red-b2b${partnershipId ? `?partnership=${Number(partnershipId)}` : ''}`;
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;"><strong>${_esc(partnerNombre)}</strong> te invitó a una partnership de Red B2B en Tecny — operar ventas cross-tenant entre ambos negocios con CC sincronizada.</p>
+    ${msgBlock}
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.55;color:#76705c;">Al aceptar, las ventas que ${_esc(partnerNombre)} te haga se replicarán automáticamente como compras en tu inventario y CC. Podés revocar cuando quieras.</p>`;
+  const html = _redB2bShellHtml({
+    title: `${partnerNombre} te invitó a Red B2B`,
+    bodyHtml,
+    ctaUrl,
+    ctaLabel: 'Ver invitación',
+  });
+  const text = `${name ? `Hola ${name},` : 'Hola,'}
+
+${partnerNombre} te invitó a una partnership de Red B2B en Tecny — operar ventas cross-tenant entre ambos negocios con CC sincronizada.
+
+${invitationMessage ? `Mensaje: "${invitationMessage}"\n\n` : ''}Al aceptar, las ventas que ${partnerNombre} te haga se replicarán automáticamente como compras en tu inventario y CC. Podés revocar cuando quieras.
+
+Ver invitación: ${ctaUrl}
+
+— Tecny
+Podés desactivar estos avisos desde Red B2B → Config.`;
+  return _sendRedB2bEmail({
+    type:    'red_b2b_invitation_received',
+    to,
+    subject: `${partnerNombre} te invitó a Red B2B`,
+    html,
+    text,
+    payload: { name: name || null, partnerNombre, invitationMessage: invitationMessage || null, partnershipId: partnershipId || null },
+  });
+}
+
+/**
+ * Email: "Y aceptó tu invitación a Red B2B" — al invitador.
+ */
+async function sendRedB2BInvitationAcceptedEmail({ to, name, partnerNombre, partnershipId }) {
+  if (!to || !partnerNombre) {
+    throw new Error('sendRedB2BInvitationAcceptedEmail: `to` y `partnerNombre` son requeridos');
+  }
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  const ctaUrl = `${_portalBaseUrl()}/red-b2b${partnershipId ? `?partnership=${Number(partnershipId)}` : ''}`;
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;"><strong>${_esc(partnerNombre)}</strong> aceptó tu invitación a Red B2B. Ya podés cargar ventas cross-tenant y se replicarán automáticamente del otro lado.</p>
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.55;color:#76705c;">Te recomendamos confirmar la primera venta de prueba con un monto chico para que ambos verifiquen que los movimientos se replican OK.</p>`;
+  const html = _redB2bShellHtml({
+    title: `${partnerNombre} aceptó tu invitación`,
+    bodyHtml,
+    ctaUrl,
+    ctaLabel: 'Cargar primera venta',
+  });
+  const text = `${name ? `Hola ${name},` : 'Hola,'}
+
+${partnerNombre} aceptó tu invitación a Red B2B. Ya podés cargar ventas cross-tenant y se replicarán automáticamente del otro lado.
+
+Te recomendamos confirmar la primera venta de prueba con un monto chico para que ambos verifiquen que los movimientos se replican OK.
+
+Abrir Red B2B: ${ctaUrl}
+
+— Tecny
+Podés desactivar estos avisos desde Red B2B → Config.`;
+  return _sendRedB2bEmail({
+    type:    'red_b2b_invitation_accepted',
+    to,
+    subject: `${partnerNombre} aceptó tu invitación a Red B2B`,
+    html,
+    text,
+    payload: { name: name || null, partnerNombre, partnershipId: partnershipId || null },
+  });
+}
+
+/**
+ * Email: "Recibiste una venta cross-tenant de USD X" — al buyer.
+ *
+ * @param {object} args
+ * @param {string} args.to            — email del owner del buyer
+ * @param {string} [args.name]
+ * @param {string} args.partnerNombre — nombre del seller
+ * @param {number} args.totalUsd      — total de la operación en USD
+ * @param {number} [args.totalArs]    — total al TC de la venta (informativo)
+ * @param {number} args.itemsCount    — cantidad de items
+ * @param {number} args.operationId   — para deep-link
+ */
+async function sendRedB2BOperationReceivedEmail({ to, name, partnerNombre, totalUsd, totalArs, itemsCount, operationId }) {
+  if (!to || !partnerNombre || totalUsd == null || !operationId) {
+    throw new Error('sendRedB2BOperationReceivedEmail: `to`, `partnerNombre`, `totalUsd`, `operationId` son requeridos');
+  }
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  const ctaUrl = `${_portalBaseUrl()}/red-b2b/operaciones/${Number(operationId)}`;
+  const itemsTxt = itemsCount === 1 ? '1 producto' : `${Number(itemsCount)} productos`;
+  const arsBlock = totalArs
+    ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.55;color:#76705c;">Equivalente: ${_esc(_fmtArs(totalArs))} al TC informado.</p>`
+    : '';
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;"><strong>${_esc(partnerNombre)}</strong> te envió una venta cross-tenant. Se registró como una compra en tu Red B2B + Proveedores.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;width:100%;background:#f8fafc;border-radius:8px;">
+      <tr><td style="padding:14px 18px;font-size:15px;color:#0d1220;">
+        <div style="font-weight:700;font-size:18px;letter-spacing:-0.01em;">${_esc(_fmtUsd(totalUsd))}</div>
+        <div style="margin-top:4px;font-size:13px;color:#76705c;">${itemsTxt} · Operación #${Number(operationId)}</div>
+      </td></tr>
+    </table>
+    ${arsBlock}
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.55;color:#76705c;">Los productos quedan marcados como "pendientes de revisión" en tu inventario hasta que los mergees con tu catálogo o los confirmes como nuevos.</p>`;
+  const html = _redB2bShellHtml({
+    title: `Recibiste una venta de ${_fmtUsd(totalUsd)}`,
+    bodyHtml,
+    ctaUrl,
+    ctaLabel: 'Ver operación',
+  });
+  const text = `${name ? `Hola ${name},` : 'Hola,'}
+
+${partnerNombre} te envió una venta cross-tenant por ${_fmtUsd(totalUsd)} (${itemsTxt}).
+${totalArs ? `Equivalente: ${_fmtArs(totalArs)} al TC informado.\n` : ''}
+Se registró como compra en tu Red B2B + Proveedores. Los productos quedan marcados como "pendientes de revisión" hasta que los mergees con tu catálogo o los confirmes como nuevos.
+
+Ver operación: ${ctaUrl}
+
+— Tecny
+Podés desactivar estos avisos desde Red B2B → Config.`;
+  return _sendRedB2bEmail({
+    type:    'red_b2b_operation_received',
+    to,
+    subject: `${partnerNombre} te envió una venta de ${_fmtUsd(totalUsd)}`,
+    html,
+    text,
+    payload: {
+      name:   name || null,
+      partnerNombre,
+      totalUsd,
+      totalArs: totalArs || null,
+      itemsCount,
+      operationId,
+    },
+  });
+}
+
+/**
+ * Email: "Cancelaron la venta cross-tenant" — al buyer.
+ */
+async function sendRedB2BOperationCancelledEmail({ to, name, partnerNombre, totalUsd, operationId, reason }) {
+  if (!to || !partnerNombre || !operationId) {
+    throw new Error('sendRedB2BOperationCancelledEmail: `to`, `partnerNombre`, `operationId` son requeridos');
+  }
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  const ctaUrl = `${_portalBaseUrl()}/red-b2b/operaciones/${Number(operationId)}`;
+  const reasonBlock = reason
+    ? `<blockquote style="margin:0 0 20px;padding:12px 16px;border-left:3px solid #f59e0b;background:#fffbeb;color:#92400e;font-size:14px;line-height:1.55;">Motivo: ${_esc(reason)}</blockquote>`
+    : '';
+  const usdBlock = totalUsd != null
+    ? ` por <strong>${_esc(_fmtUsd(totalUsd))}</strong>`
+    : '';
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;"><strong>${_esc(partnerNombre)}</strong> canceló la operación cross-tenant #${Number(operationId)}${usdBlock}.</p>
+    ${reasonBlock}
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.55;color:#76705c;">Tu compra + CC del proveedor se revirtieron automáticamente. Si tu stock de los productos quedó en negativo (porque ya los vendiste), aparece un warning en la operación.</p>`;
+  const html = _redB2bShellHtml({
+    title: `${partnerNombre} canceló una operación`,
+    bodyHtml,
+    ctaUrl,
+    ctaLabel: 'Ver detalles',
+  });
+  const text = `${name ? `Hola ${name},` : 'Hola,'}
+
+${partnerNombre} canceló la operación cross-tenant #${operationId}${totalUsd != null ? ` por ${_fmtUsd(totalUsd)}` : ''}.
+${reason ? `Motivo: ${reason}\n` : ''}
+Tu compra + CC del proveedor se revirtieron automáticamente. Si tu stock de los productos quedó en negativo (porque ya los vendiste), aparece un warning en la operación.
+
+Ver detalles: ${ctaUrl}
+
+— Tecny
+Podés desactivar estos avisos desde Red B2B → Config.`;
+  return _sendRedB2bEmail({
+    type:    'red_b2b_operation_cancelled',
+    to,
+    subject: `${partnerNombre} canceló una operación Red B2B`,
+    html,
+    text,
+    payload: {
+      name:   name || null,
+      partnerNombre,
+      totalUsd: totalUsd != null ? totalUsd : null,
+      operationId,
+      reason:  reason || null,
+    },
+  });
+}
+
+/**
+ * Email: "Te pagaron / Pagaste" — al lado opuesto del que registró el pago.
+ *
+ * Si side='seller' (el seller registró un cobro): el buyer recibe "Te pagamos".
+ * Si side='buyer' (el buyer registró un pago): el seller recibe "Te pagaron".
+ * En ambos casos la función es la misma — el caller decide el "to" y el
+ * "partnerNombre" (el otro lado de la operación). El subject usa
+ * "Te pagaron / Pagaste" según `iWasPaid` (true = soy el receptor del dinero).
+ */
+async function sendRedB2BPaymentReceivedEmail({ to, name, partnerNombre, montoUsd, monedaPago, operationId, iWasPaid }) {
+  if (!to || !partnerNombre || montoUsd == null || !operationId) {
+    throw new Error('sendRedB2BPaymentReceivedEmail: `to`, `partnerNombre`, `montoUsd`, `operationId` son requeridos');
+  }
+  const greeting = name ? `Hola ${_esc(name)},` : 'Hola,';
+  const ctaUrl = `${_portalBaseUrl()}/red-b2b/operaciones/${Number(operationId)}`;
+  const monedaBlock = monedaPago && monedaPago !== 'USD'
+    ? ` <span style="color:#76705c;font-size:13px;">(pago en ${_esc(monedaPago)})</span>`
+    : '';
+  const verb = iWasPaid ? 'te pagó' : 'registraste un pago a';
+  const subjVerb = iWasPaid ? 'Te pagaron' : 'Registraste un pago';
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;"><strong>${_esc(partnerNombre)}</strong> ${verb} <strong>${_esc(_fmtUsd(montoUsd))}</strong>${monedaBlock} sobre la operación #${Number(operationId)}.</p>
+    <p style="margin:0 0 24px;font-size:14px;line-height:1.55;color:#76705c;">El movimiento se replicó del lado opuesto: ${iWasPaid ? 'tu CC del cliente bajó por ese monto' : 'tu CC del proveedor bajó por ese monto'}.</p>`;
+  const html = _redB2bShellHtml({
+    title: `${subjVerb}: ${_fmtUsd(montoUsd)}`,
+    bodyHtml,
+    ctaUrl,
+    ctaLabel: 'Ver operación',
+  });
+  const text = `${name ? `Hola ${name},` : 'Hola,'}
+
+${partnerNombre} ${verb} ${_fmtUsd(montoUsd)}${monedaPago && monedaPago !== 'USD' ? ` (pago en ${monedaPago})` : ''} sobre la operación #${operationId}.
+
+El movimiento se replicó del lado opuesto: ${iWasPaid ? 'tu CC del cliente bajó por ese monto' : 'tu CC del proveedor bajó por ese monto'}.
+
+Ver operación: ${ctaUrl}
+
+— Tecny
+Podés desactivar estos avisos desde Red B2B → Config.`;
+  return _sendRedB2bEmail({
+    type:    'red_b2b_payment_received',
+    to,
+    subject: `${subjVerb}: ${_fmtUsd(montoUsd)} — ${partnerNombre}`,
+    html,
+    text,
+    payload: {
+      name:    name || null,
+      partnerNombre,
+      montoUsd,
+      monedaPago: monedaPago || 'USD',
+      operationId,
+      iWasPaid: !!iWasPaid,
+    },
+  });
+}
+
 /** Para tests: snapshot read-only de los emails enviados en la suite. */
 function _getTestQueue() { return _testQueue.slice(); }
 
@@ -501,6 +874,12 @@ module.exports = {
   sendWelcomeEmail,
   sendPasswordResetEmail,
   sendPaidUntilWarningEmail,
+  // Red B2B F5 (#458)
+  sendRedB2BInvitationReceivedEmail,
+  sendRedB2BInvitationAcceptedEmail,
+  sendRedB2BOperationReceivedEmail,
+  sendRedB2BOperationCancelledEmail,
+  sendRedB2BPaymentReceivedEmail,
   _getTestQueue,
   _resetTestQueue,
   // Helpers exportados solo para que los tests puedan snapshotear el HTML

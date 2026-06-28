@@ -57,6 +57,10 @@ const {
   revokeSchema,
   rejectSchema,
 } = require('../../schemas/redB2b');
+// 2026-06-29 #458 F5: email helper para los 5 events críticos. dispatch()
+// es fire-and-forget — capture errores y nunca rechaza. Llamamos desde
+// setImmediate AFTER el COMMIT de la tx (sino bloquearíamos al endpoint).
+const redB2bEmail = require('../../lib/redB2bEmail');
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 const COOLDOWN_HOURS = 24;
@@ -283,7 +287,7 @@ router.post('/invite', inviteLimiter, validate(inviteSchema), async (req, res, n
         });
 
         await client.query('COMMIT');
-        return { ok: true, partnership, target };
+        return { ok: true, partnership, target, me };
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
         throw e;
@@ -307,6 +311,20 @@ router.post('/invite', inviteLimiter, validate(inviteSchema), async (req, res, n
       },
       '[red-b2b] partnership invite creado'
     );
+
+    // F5 #458: email al target (gated por red_b2b_email_prefs.invitation_received).
+    // Fire-and-forget — la response al cliente NO espera el send.
+    setImmediate(() => {
+      redB2bEmail.dispatch({
+        tenantId: result.target.id,
+        type:     'invitation_received',
+        args: {
+          partnerNombre:      result.me?.nombre || `Tenant #${myTenantId}`,
+          invitationMessage:  message || null,
+          partnershipId:      result.partnership.id,
+        },
+      }).catch(() => { /* dispatch nunca rechaza, pero defensivo */ });
+    });
 
     return res.status(201).json({
       partnership: {
@@ -410,7 +428,7 @@ router.post('/:id/accept', async (req, res, next) => {
         );
 
         await client.query('COMMIT');
-        return { ok: true, partnership: updated, otherTenant };
+        return { ok: true, partnership: updated, otherTenant, meTenant };
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
         throw e;
@@ -428,6 +446,20 @@ router.post('/:id/accept', async (req, res, next) => {
       { user_id: userId, tenant_id: myTenantId, partnership_id: partnershipId },
       '[red-b2b] partnership aceptada'
     );
+
+    // F5 #458: email al invitador (gated por invitation_accepted).
+    // El otherTenant del lado del receptor = el invitador (porque accept
+    // solo lo hace el lado target, no el que invitó).
+    setImmediate(() => {
+      redB2bEmail.dispatch({
+        tenantId: result.partnership.invited_by_tenant_id,
+        type:     'invitation_accepted',
+        args: {
+          partnerNombre: result.meTenant?.nombre || `Tenant #${myTenantId}`,
+          partnershipId: result.partnership.id,
+        },
+      }).catch(() => {});
+    });
 
     return res.json({
       partnership: {

@@ -115,6 +115,10 @@ const redB2bPagosRoutes = require('./routes/redB2b/pagos');
 const redB2bConciliationRoutes = require('./routes/redB2b/conciliation');
 // 2026-06-28 #457 Red B2B F4: config del tenant (caja default cross-tenant).
 const redB2bConfigRoutes = require('./routes/redB2b/config');
+// 2026-06-29 #458 Red B2B F5: inbox notifications (GET list / count-unread,
+// POST :id/read, POST read-all). Lectura/UPDATE sobre cross_tenant_notifications
+// del propio tenant — withTenant (no adminQuery). Mismo gate de capability.
+const redB2bNotificationsRoutes = require('./routes/redB2b/notifications');
 // 2026-06-21 #353 Fase 1: Super-Admin app (admin.tecnyapp.com). DISTINTO de
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
@@ -772,6 +776,10 @@ app.use('/api/red-b2b/partnerships',
 // 2026-06-28 #457 Red B2B F4: config del tenant (caja default cross-tenant).
 app.use('/api/red-b2b/config',
   requireAuth, requireCapability('cross_tenant.write'), redB2bConfigRoutes);
+
+// 2026-06-29 #458 Red B2B F5: inbox notifications + gating.
+app.use('/api/red-b2b/notifications',
+  requireAuth, requireCapability('cross_tenant.write'), redB2bNotificationsRoutes);
 
 // 2026-06-20 #340 Fase 1: Bot conversacional analítico.
 // Disponible para todos los users autenticados de cualquier tenant (todos los

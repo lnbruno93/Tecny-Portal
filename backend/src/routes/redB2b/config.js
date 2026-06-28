@@ -25,7 +25,18 @@ const router = require('express').Router();
 const db = require('../../config/database');
 const logger = require('../../lib/logger');
 const validate = require('../../lib/validate');
-const { setCajaDefaultSchema } = require('../../schemas/redB2b');
+const { setCajaDefaultSchema, setEmailPrefsSchema } = require('../../schemas/redB2b');
+
+// Defaults idénticos al JSONB default de la migration 20260629000001. Si el
+// tenant fue creado pre-F5 y la columna no se backfilleó (no debería pasar —
+// la migration mete DEFAULT), devolvemos estos al frontend.
+const DEFAULT_EMAIL_PREFS = Object.freeze({
+  invitation_received:  true,
+  invitation_accepted:  true,
+  operation_received:   true,
+  operation_cancelled:  true,
+  payment_received:     true,
+});
 
 // ──────────────────────────────────────────────────────────────────────────
 // GET /api/red-b2b/config
@@ -38,7 +49,7 @@ router.get('/', async (req, res, next) => {
   try {
     const data = await db.adminQuery(async (client) => {
       const tQ = await client.query(
-        `SELECT id, red_b2b_caja_default_id FROM tenants WHERE id = $1`,
+        `SELECT id, red_b2b_caja_default_id, red_b2b_email_prefs FROM tenants WHERE id = $1`,
         [myTenantId]
       );
       const t = tQ.rows[0];
@@ -53,7 +64,11 @@ router.get('/', async (req, res, next) => {
         );
         caja = cQ.rows[0] || null;
       }
-      return { caja_default_id: t.red_b2b_caja_default_id, caja_default: caja };
+      return {
+        caja_default_id: t.red_b2b_caja_default_id,
+        caja_default: caja,
+        email_prefs: { ...DEFAULT_EMAIL_PREFS, ...(t.red_b2b_email_prefs || {}) },
+      };
     });
     if (data.notFound) {
       return res.status(404).json({ error: 'Tenant no encontrado', reason: 'not_found' });
@@ -62,6 +77,7 @@ router.get('/', async (req, res, next) => {
       red_b2b: {
         caja_default_id: data.caja_default_id,
         caja_default: data.caja_default,
+        email_prefs: data.email_prefs,
       },
     });
   } catch (err) {
@@ -124,6 +140,84 @@ router.patch('/caja-default', validate(setCajaDefaultSchema), async (req, res, n
       tenant_id: myTenantId, user_id: userId, caja_default_id: result.caja_default_id,
     }, '[red-b2b/F4] caja default actualizada');
     return res.json({ ok: true, caja_default_id: result.caja_default_id });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/red-b2b/config/email-prefs
+//
+// Devuelve solo las prefs (subset de GET / above). Útil para que la UI de
+// Config → "Avisos por email" pueda cargar el form sin pedir todo el config.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/email-prefs', async (req, res, next) => {
+  const myTenantId = req.tenantId;
+  try {
+    const prefs = await db.adminQuery(async (client) => {
+      const q = await client.query(
+        `SELECT red_b2b_email_prefs FROM tenants WHERE id = $1`,
+        [myTenantId]
+      );
+      return { ...DEFAULT_EMAIL_PREFS, ...(q.rows[0]?.red_b2b_email_prefs || {}) };
+    });
+    return res.json({ email_prefs: prefs });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /api/red-b2b/config/email-prefs
+//
+// Body: { invitation_received?: bool, invitation_accepted?: bool, ... }
+// Merge semánticamente con el JSONB existente — solo los flags presentes se
+// pisan; los que no se mandan quedan tal cual.
+//
+// Implementation: jsonb_set chain en SQL (más atómico que read-modify-write
+// en aplicación + más resistente a writes concurrentes — si el owner cambia
+// un flag y un vendedor cambia otro a la vez, no se pisan).
+// ──────────────────────────────────────────────────────────────────────────
+router.patch('/email-prefs', validate(setEmailPrefsSchema), async (req, res, next) => {
+  const myTenantId = req.tenantId;
+  const userId = req.user.id;
+  const updates = req.body; // { flag: bool, ... } — schema garantiza tipos
+
+  try {
+    const newPrefs = await db.adminQuery(async (client) => {
+      // Construye una expresión `jsonb_set(jsonb_set(... , '{k1}', 'v1'::jsonb), '{k2}', 'v2'::jsonb)`
+      // para mergear solo los flags presentes. Más limpio que CASE WHEN o
+      // que serializar todo el jsonb desde JS.
+      const keys = Object.keys(updates);
+      // Defensive: schema ya garantiza >=1 key, pero re-checheamos para no
+      // generar SQL inválido si algo cambia.
+      if (keys.length === 0) {
+        return null;
+      }
+      let expr = 'COALESCE(red_b2b_email_prefs, \'{}\'::jsonb)';
+      const params = [];
+      for (const k of keys) {
+        params.push(JSON.stringify(updates[k]));
+        // ${} interpolation de `k` aceptable porque schema .strict() lo limita
+        // a la whitelist de 5 keys (no es input arbitrario del user).
+        expr = `jsonb_set(${expr}, '{${k}}', $${params.length}::jsonb, true)`;
+      }
+      params.push(myTenantId);
+      const q = await client.query(
+        `UPDATE tenants
+            SET red_b2b_email_prefs = ${expr}
+          WHERE id = $${params.length}
+          RETURNING red_b2b_email_prefs`,
+        params
+      );
+      return { ...DEFAULT_EMAIL_PREFS, ...(q.rows[0]?.red_b2b_email_prefs || {}) };
+    });
+
+    logger.info(
+      { tenant_id: myTenantId, user_id: userId, updated_keys: Object.keys(updates) },
+      '[red-b2b/F5] email prefs actualizado'
+    );
+    return res.json({ ok: true, email_prefs: newPrefs });
   } catch (err) {
     return next(err);
   }
