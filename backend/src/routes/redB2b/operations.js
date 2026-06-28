@@ -86,6 +86,8 @@ const {
 } = require('../../schemas/redB2b');
 const { round2 } = require('../../lib/money');
 const { invalidateMetricas } = require('../../lib/inventarioCache');
+// 2026-06-29 #458 F5: dispatch fire-and-forget de emails Red B2B.
+const redB2bEmail = require('../../lib/redB2bEmail');
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helper: notify (mismo patrón que partnerships.js — copiado por simplicidad)
@@ -413,6 +415,21 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
     // stock, el buyer agregó productos nuevos.
     invalidateMetricas(myTenantId).catch(() => { /* best-effort */ });
     invalidateMetricas(result.buyerTenant.id).catch(() => { /* best-effort */ });
+
+    // F5 #458: email al buyer (gated por operation_received).
+    setImmediate(() => {
+      redB2bEmail.dispatch({
+        tenantId: result.buyerTenant.id,
+        type:     'operation_received',
+        args: {
+          partnerNombre: result.sellerTenant?.nombre || `Tenant #${myTenantId}`,
+          totalUsd:      round2(body.total_usd),
+          totalArs:      round2(body.total_ars),
+          itemsCount:    body.items.length,
+          operationId:   result.operation.id,
+        },
+      }).catch(() => {});
+    });
 
     logger.info(
       {
@@ -839,7 +856,14 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
         });
 
         await client.query('COMMIT');
-        return { ok: true, opId, buyerTenantId, stockNegativoBuyer };
+        return {
+          ok: true,
+          opId,
+          buyerTenantId,
+          stockNegativoBuyer,
+          sellerNombre: sellerTenantQ.rows[0]?.nombre || null,
+          totalUsd:     op.total_usd != null ? Number(op.total_usd) : null,
+        };
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
         throw e;
@@ -855,6 +879,20 @@ router.post('/:id/cancel', validate(cancelOperationSchema), async (req, res, nex
 
     invalidateMetricas(myTenantId).catch(() => {});
     invalidateMetricas(result.buyerTenantId).catch(() => {});
+
+    // F5 #458: email al buyer (gated por operation_cancelled).
+    setImmediate(() => {
+      redB2bEmail.dispatch({
+        tenantId: result.buyerTenantId,
+        type:     'operation_cancelled',
+        args: {
+          partnerNombre: result.sellerNombre || `Tenant #${myTenantId}`,
+          totalUsd:      result.totalUsd,
+          operationId:   opId,
+          reason:        reason || null,
+        },
+      }).catch(() => {});
+    });
 
     logger.info(
       { operation_id: opId, seller_tenant_id: myTenantId, user_id: userId, stock_negativo_buyer: result.stockNegativoBuyer },

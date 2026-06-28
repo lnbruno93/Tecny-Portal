@@ -13,6 +13,8 @@ import UnverifiedBanner from './UnverifiedBanner';
 import ExpiredBanner from './ExpiredBanner';
 import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
+// 2026-06-29 #458 Red B2B F5: bell de notificaciones cross-tenant en topbar.
+import RedB2BNotificationsBell from './RedB2BNotificationsBell';
 import { alertas as alertasApi, redB2b as redB2bApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 
@@ -435,9 +437,10 @@ function Topbar({ onMenuClick, onSearchClick }) {
       >
         <Icons.Search size={17} />
       </button>
-      {/* "Notificaciones" oculto hasta que tenga feature real. La auditoría
-          detectó que aparecer sin onClick parecía bug. */}
-      {/* <button className="icon-btn" title="Notificaciones"><Icons.Bell size={17} /></button> */}
+      {/* 2026-06-29 #458 F5: bell de notificaciones Red B2B cross-tenant.
+          Render condicional dentro del componente (skip si user sin
+          cross_tenant.write — no aparece para tenants sin Red B2B). */}
+      <RedB2BNotificationsBell />
       {/* "Nuevo" solo se renderiza cuando la pantalla actual registra una
           primaryAction vía usePageActions(). Pantallas que no la registran
           (Inicio, Historial, Capital, Desglose360, Forbidden, etc.) ya no

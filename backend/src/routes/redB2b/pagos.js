@@ -48,6 +48,8 @@ const {
 const { round2 } = require('../../lib/money');
 const { invalidateMetricas } = require('../../lib/inventarioCache');
 const { invalidateConciliationCache } = require('./conciliation');
+// 2026-06-29 #458 F5: dispatch fire-and-forget de emails Red B2B.
+const redB2bEmail = require('../../lib/redB2bEmail');
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers: notify + audit (replicados del pattern operations.js — SAVEPOINT
@@ -419,6 +421,9 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           monto_usd,
           diferencia_ars,
           cambio_divisa_id: sellerResult?.cambio_divisa_id || null,
+          // F5 #458: nombres de ambos lados para el email post-commit.
+          sellerNombre: sellerTenant?.nombre || null,
+          buyerNombre:  buyerTenant?.nombre || null,
         };
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
@@ -436,6 +441,34 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
 
     // Invalidar caches.
     invalidateConciliationCache(result.partnershipId);
+
+    // F5 #458: email al lado opuesto del que registró (gated por payment_received).
+    //
+    // Semántica del template `payment_received`:
+    //   - Si el SELLER registró el cobro → buyer recibe email "Pagaste"
+    //     (su CC del proveedor bajó). iWasPaid=false desde la perspectiva del receptor.
+    //   - Si el BUYER registró el pago → seller recibe email "Te pagaron"
+    //     (su CC del cliente bajó / su caja subió). iWasPaid=true.
+    // El destinatario es el OTRO tenant en cualquier caso.
+    const isCallerSeller = result.callerSide === 'seller';
+    const otherTenantId  = isCallerSeller ? result.buyerTenantId : result.sellerTenantId;
+    const partnerNombre  = isCallerSeller
+      ? (result.sellerNombre || `Tenant #${result.sellerTenantId}`)  // el seller le pagó al buyer
+      : (result.buyerNombre  || `Tenant #${result.buyerTenantId}`);  // el buyer le pagó al seller
+    const iWasPaid = !isCallerSeller; // si caller es buyer, el OTHER (seller) "fue pagado"
+    setImmediate(() => {
+      redB2bEmail.dispatch({
+        tenantId: otherTenantId,
+        type:     'payment_received',
+        args: {
+          partnerNombre,
+          montoUsd:    result.monto_usd,
+          monedaPago:  body.moneda_pago,
+          operationId: result.opId,
+          iWasPaid,
+        },
+      }).catch(() => {});
+    });
 
     logger.info({
       operation_id: result.opId,

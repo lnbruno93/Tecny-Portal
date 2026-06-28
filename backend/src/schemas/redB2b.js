@@ -112,6 +112,23 @@ const setCajaDefaultSchema = z.object({
   caja_id: z.coerce.number().int().positive().nullable(),
 }).strict();
 
+// F5 (#458): email prefs per-tenant — los 5 events críticos (decisión #13).
+// Cada flag opcional — solo viajan los que el operador quiere cambiar (PATCH
+// semánticamente: merge con el JSONB existente del tenant). Default true.
+//
+// `.strict()` rechaza flags desconocidos para frenar typos en frontend (sino
+// el merge persistiría una key huerfana en el jsonb que nadie lee).
+const setEmailPrefsSchema = z.object({
+  invitation_received:  z.boolean().optional(),
+  invitation_accepted:  z.boolean().optional(),
+  operation_received:   z.boolean().optional(),
+  operation_cancelled:  z.boolean().optional(),
+  payment_received:     z.boolean().optional(),
+}).strict()
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'al menos un flag requerido',
+  });
+
 // F4: devolución cross-tenant (decisión #11).
 // Solo el buyer puede iniciar — el endpoint enforcea.
 // items: array de items a devolver con cantidad parcial.
@@ -135,4 +152,6 @@ module.exports = {
   registrarPagoSchema,
   setCajaDefaultSchema,
   devolucionSchema,
+  // F5
+  setEmailPrefsSchema,
 };

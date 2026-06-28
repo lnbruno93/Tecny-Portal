@@ -781,5 +781,23 @@ export const redB2b = {
     get: () => api('/api/red-b2b/config'),
     setCajaDefault: (cajaId) =>
       api('/api/red-b2b/config/caja-default', 'PATCH', { caja_id: cajaId }),
+    // 2026-06-29 #458 F5: email prefs per-tenant.
+    getEmailPrefs: () => api('/api/red-b2b/config/email-prefs'),
+    setEmailPrefs: (patch) =>
+      api('/api/red-b2b/config/email-prefs', 'PATCH', patch),
+  },
+  // 2026-06-29 #458 F5: inbox notifications + bell counter.
+  notifications: {
+    list:        (opts = {}) => {
+      const qs = new URLSearchParams();
+      if (opts.unread) qs.set('unread', 'true');
+      if (opts.type)   qs.set('type', opts.type);
+      if (opts.limit)  qs.set('limit', String(opts.limit));
+      const s = qs.toString();
+      return api(`/api/red-b2b/notifications${s ? `?${s}` : ''}`);
+    },
+    countUnread: ()    => api('/api/red-b2b/notifications/count-unread'),
+    markRead:    (id)  => api(`/api/red-b2b/notifications/${id}/read`, 'POST'),
+    markAllRead: ()    => api('/api/red-b2b/notifications/read-all', 'POST'),
   },
 };
