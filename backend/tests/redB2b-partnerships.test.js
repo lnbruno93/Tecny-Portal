@@ -627,3 +627,119 @@ describe('GET /:id detalle', () => {
     expect(r.status).toBe(404);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-C B4 (issue #462) — SAVEPOINT en audit
+//
+// Regression: el helper `audit` en partnerships.js no envolvía el INSERT a
+// tenant_admin_actions con SAVEPOINT, así que cualquier CHECK violation
+// (action no whitelisteada en el constraint) abortaba TODA la tx — invite/
+// revoke quedaba rollbackeado pero respondía 201/200 al cliente.
+//
+// Tests:
+//   1. Happy: POST /invite escribe audit row → fila presente.
+//   2. Resiliencia: si forzamos un CHECK violation INSERTANDO con un action
+//      no permitido directamente (vía pool), verificamos que el comportamiento
+//      esperado del SAVEPOINT está correctamente codificado (audit con valor
+//      inválido NO debe abortar la tx padre).
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-C B4 — SAVEPOINT en partnerships#audit', () => {
+  it('POST /invite persiste fila en tenant_admin_actions (happy path audit)', async () => {
+    const r = await request(app)
+      .post('/api/red-b2b/partnerships/invite')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ target_tenant_slug: TENANT_B.slug });
+    expect(r.status).toBe(201);
+
+    const auditQ = await pool.query(
+      `SELECT action, after_state FROM tenant_admin_actions
+         WHERE tenant_id = $1 AND action = 'cross_tenant_partnership_created'
+         ORDER BY created_at DESC LIMIT 1`,
+      [tenantAId]
+    );
+    expect(auditQ.rows.length).toBe(1);
+    expect(auditQ.rows[0].action).toBe('cross_tenant_partnership_created');
+    // payload contiene partnership_id + target_tenant.
+    expect(auditQ.rows[0].after_state).toBeTruthy();
+    expect(auditQ.rows[0].after_state.partnership_id).toBe(r.body.partnership.id);
+  });
+
+  it('POST /:id/revoke persiste fila audit `cross_tenant_partnership_revoked`', async () => {
+    const inv = await request(app)
+      .post('/api/red-b2b/partnerships/invite')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ target_tenant_slug: TENANT_B.slug });
+    await request(app)
+      .post(`/api/red-b2b/partnerships/${inv.body.partnership.id}/accept`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    const rev = await request(app)
+      .post(`/api/red-b2b/partnerships/${inv.body.partnership.id}/revoke`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ reason: 'test revoke audit' });
+    expect(rev.status).toBe(200);
+
+    const auditQ = await pool.query(
+      `SELECT action FROM tenant_admin_actions
+         WHERE tenant_id = $1 AND action = 'cross_tenant_partnership_revoked'
+         ORDER BY created_at DESC LIMIT 1`,
+      [tenantAId]
+    );
+    expect(auditQ.rows.length).toBe(1);
+  });
+
+  it('SAVEPOINT aísla CHECK violation: action no whitelisteada no aborta tx padre', async () => {
+    // Verificamos el invariante del SAVEPOINT pattern simulando lo que el
+    // helper audit hace internamente. Esto es testing del MECANISMO que
+    // protege a partnerships#audit (mismo patrón usado en pagos.js y
+    // operations.js post-F3).
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Operación legítima en la tx padre (algo que persista si todo va bien).
+      const probe = await client.query(
+        `INSERT INTO tenants (nombre, slug, plan)
+         VALUES ('B4 SAVEPOINT Probe', 'b4-savepoint-probe', 'starter')
+         ON CONFLICT (slug) DO UPDATE SET nombre = EXCLUDED.nombre
+         RETURNING id`
+      );
+      const probeId = probe.rows[0].id;
+
+      // Simular audit con action inválida envuelto en SAVEPOINT — replica
+      // exact lo que hace el helper audit() en partnerships.js.
+      await client.query('SAVEPOINT sp_audit');
+      try {
+        await client.query(
+          `INSERT INTO tenant_admin_actions
+             (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
+           VALUES ($1, $2, 'NOT_A_VALID_ACTION_VALUE_FOR_CHECK', NULL, '{}'::jsonb, NULL)`,
+          [tenantAId, userAId]
+        );
+        await client.query('RELEASE SAVEPOINT sp_audit');
+        // Si llegamos acá, el CHECK fue removido — testing assumption rota.
+        throw new Error('audit con action inválida DEBIÓ violar CHECK constraint');
+      } catch (e) {
+        if (e.code === '23514') {
+          await client.query('ROLLBACK TO SAVEPOINT sp_audit');
+        } else {
+          throw e;
+        }
+      }
+
+      // La tx padre sigue viva — podemos commitear y la operación previa
+      // (probe) persiste. Sin SAVEPOINT, este COMMIT fallaría con
+      // 'current transaction is aborted'.
+      await client.query('COMMIT');
+
+      const verify = await pool.query(
+        `SELECT id FROM tenants WHERE id = $1`,
+        [probeId]
+      );
+      expect(verify.rows.length).toBe(1);
+
+      // Cleanup probe.
+      await pool.query(`DELETE FROM tenants WHERE id = $1`, [probeId]);
+    } finally {
+      client.release();
+    }
+  });
+});

@@ -127,14 +127,37 @@ async function notify(client, tenantId, type, payload, opts = {}) {
 // Escribe a tenant_admin_actions (audit del super-admin / acciones admin
 // del tenant). El super_admin_user_id queda con el user_id del invocador
 // — el nombre del campo es histórico, en práctica es "quien actuó".
+//
+// SAVEPOINT obligatorio (PR-C B4 — issue #462): si la `action` no está
+// whitelisteada en el CHECK constraint de tenant_admin_actions, el INSERT
+// lanza 23514 y aborta TODA la tx padre. Esto era una regression vs el
+// pattern fijado post-F3 en operations.js y pagos.js. Sin SAVEPOINT, un
+// audit log con valor inválido haría silenciosamente fallar el invite/
+// revoke completo (200 OK al cliente con todo rollbackeado — peor
+// escenario posible: el operador cree que invitó pero no quedó nada).
 // ──────────────────────────────────────────────────────────────────────────
 async function audit(client, { tenantId, userId, action, payload }) {
-  await client.query(
-    `INSERT INTO tenant_admin_actions
-       (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
-     VALUES ($1, $2, $3, NULL, $4::jsonb, NULL)`,
-    [tenantId, userId, action, JSON.stringify(payload || {})]
-  );
+  await client.query('SAVEPOINT sp_audit');
+  try {
+    await client.query(
+      `INSERT INTO tenant_admin_actions
+         (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
+       VALUES ($1, $2, $3, NULL, $4::jsonb, NULL)`,
+      [tenantId, userId, action, JSON.stringify(payload || {})]
+    );
+    await client.query('RELEASE SAVEPOINT sp_audit');
+  } catch (err) {
+    await client.query('ROLLBACK TO SAVEPOINT sp_audit').catch(() => {});
+    if (err.code === '23514') {
+      logger.warn(
+        { action, err: err.message, tenantId, userId },
+        '[red-b2b/F1] audit action no permitida en CHECK — migration pendiente? (continuando sin abortar tx)'
+      );
+      return;
+    }
+    // Otros errores (FK violation, etc.) propagan — son bugs genuinos.
+    throw err;
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
