@@ -966,6 +966,46 @@ describe('RLS leak — tenant C', () => {
     expect(r.status).toBe(404);
     expect(r.body.reason).toBe('not_found');
   });
+
+  // PR-E #464: gaps detectados en audit focal Red B2B — 3 endpoints sin test
+  // de RLS leak. El patrón es idéntico al de los 2 existentes arriba (lookup
+  // op + filtro `seller_tenant_id = $caller OR buyer_tenant_id = $caller`).
+  it('Tenant C intenta POST /:id/devolucion sobre op A↔B → 404', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+
+    // Defensa adicional: no se creó NINGUNA op derivada (parent_op_id).
+    const childrenQ = await pool.query(
+      `SELECT id FROM cross_tenant_operations WHERE parent_op_id = $1`,
+      [op.opId]
+    );
+    expect(childrenQ.rows.length).toBe(0);
+  });
+
+  it('Tenant C intenta GET /:id/pagos sobre op A↔B → 404 (incluso con pago previo)', async () => {
+    // Seed: 1 pago real registrado por A (seller).
+    const seed = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(seed.status).toBe(201);
+
+    // Tenant C intenta consultar.
+    const r = await request(app)
+      .get(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

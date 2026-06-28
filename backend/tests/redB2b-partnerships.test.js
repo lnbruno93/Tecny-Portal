@@ -541,6 +541,36 @@ describe('RLS leak attempts (cross-tenant)', () => {
       .set('Authorization', `Bearer ${tokenA}`);
     expect(rA.body.partnerships.length).toBe(1);
   });
+
+  // PR-E #464: gap detectado en audit focal Red B2B — POST /:id/reject sin
+  // test cross-tenant. Mismo helper `getActivePartnershipById` que accept/
+  // revoke (filtro `tenant_a_id = $caller OR tenant_b_id = $caller`) →
+  // tenant C no participa → null → 404. La partnership sigue pending intacta.
+  it('Tenant C intenta reject partnership pending A→B → 404 + sigue pending', async () => {
+    const inv = await request(app)
+      .post('/api/red-b2b/partnerships/invite')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ target_tenant_slug: TENANT_B.slug });
+    expect(inv.status).toBe(201);
+    const partnershipId = inv.body.partnership.id;
+
+    const leak = await request(app)
+      .post(`/api/red-b2b/partnerships/${partnershipId}/reject`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({ reason: 'cross-tenant hack' });
+    expect(leak.status).toBe(404);
+    expect(leak.body.reason).toBe('not_found');
+
+    // Defensa: sigue PENDING + sin revoked_* fields seteados.
+    const row = await pool.query(
+      `SELECT status, revoked_by_tenant_id, revoked_reason
+         FROM tenant_partnerships WHERE id = $1`,
+      [partnershipId]
+    );
+    expect(row.rows[0].status).toBe('pending');
+    expect(row.rows[0].revoked_by_tenant_id).toBeNull();
+    expect(row.rows[0].revoked_reason).toBeNull();
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
