@@ -96,24 +96,17 @@ async function validateOperationPrecondition(client, partnership, sellerTenantId
  * Auto-create de un producto en el catálogo del BUYER con flag
  * pending_cross_tenant_review=true.
  *
+ * @deprecated PR-D #463: usar findOrCreateBuyerProductos (plural) para bulk.
+ * Esta versión singular hace N round-trips si se llama en loop (N+1 perf bug).
+ * Se mantiene para compat por si reaparece un caller — el caller real
+ * (operations.js POST /operations) ya migró a la bulk.
+ *
  * F3 decisión #2 fuera del doc: SIEMPRE crea un producto nuevo, sin dedup
- * por nombre. Razones:
- *   - El doc original menciona "dedup por (nombre, descripcion, partner)"
- *     como mitigación de 9.3, pero F3 prioriza simplicidad y atomicidad.
- *     Si el buyer recibe N ventas del mismo SKU del seller, va a tener N
- *     productos pending — el endpoint merge-into de F2 ya lo resuelve con
- *     un click.
- *   - Si dedupeáramos acá, tendríamos que decidir qué pasa con stock (suma?
- *     reemplaza?), qué pasa si el buyer ya mergeo uno (el "duplicado pending"
- *     reaparecería?), etc. Esa lógica se difiere a F4+ con feedback real.
+ * por nombre. Razones documentadas abajo en findOrCreateBuyerProductos.
  *
  * IMPORTANTE: el caller DEBE haber hecho SET LOCAL app.current_tenant =
  * buyerTenantId ANTES de invocar este helper — el INSERT respeta el FORCE
  * RLS de productos.
- *
- * Inserta con campos mínimos: nombre + costo (precio_usd) + cantidad +
- * pending flag + ref a la op (se UPDATEa después del INSERT de la op
- * porque la op_id se conoce solo cuando se inserta la fila maestra).
  *
  * @param {object} client — pg client bajo SET LOCAL del buyer tenant
  * @param {number} buyerTenantId — el receptor del producto
@@ -121,18 +114,6 @@ async function validateOperationPrecondition(client, partnership, sellerTenantId
  * @returns {Promise<number>} buyer_producto_id
  */
 async function findOrCreateBuyerProducto(client, buyerTenantId, sellerProducto) {
-  // Mínimo viable: nombre (NOT NULL), tenant_id (FORCE RLS), pending flag.
-  // El resto de columnas usa los DEFAULTs de la tabla.
-  //
-  // - costo = costo_usd del seller, costo_moneda='USD'.
-  //   El doc decisión #4: TC siempre lo define el seller. Stock que entra al
-  //   buyer queda valuado en USD (la moneda neutra interna del portal).
-  // - precio_venta = costo_usd también (el buyer la edita después al confirm-new
-  //   o merge-into). NO arriesgamos sugerir margen aleatorio.
-  // - cantidad = lo que el seller le mandó.
-  // - estado='disponible' (default).
-  // - trackear_stock=true (default).
-  // - clase=NULL — el seller puede saberlo, pero no lo importamos por ahora.
   const { rows } = await client.query(
     `INSERT INTO productos (
         tenant_id, nombre, costo, costo_moneda, precio_venta, precio_moneda,
@@ -150,6 +131,91 @@ async function findOrCreateBuyerProducto(client, buyerTenantId, sellerProducto) 
     ]
   );
   return rows[0].id;
+}
+
+/**
+ * PR-D #463 — versión BULK del auto-create. Crea N productos en el catálogo
+ * del BUYER en UN solo round-trip, preservando el orden del input.
+ *
+ * F3 decisión #2 fuera del doc: SIEMPRE crea un producto nuevo por item,
+ * sin dedup por nombre. Razones:
+ *   - El doc original menciona "dedup por (nombre, descripcion, partner)"
+ *     como mitigación de 9.3, pero F3 prioriza simplicidad y atomicidad.
+ *     Si el buyer recibe N ventas del mismo SKU del seller, va a tener N
+ *     productos pending — el endpoint merge-into de F2 ya lo resuelve con
+ *     un click.
+ *   - Si dedupeáramos acá, tendríamos que decidir qué pasa con stock (suma?
+ *     reemplaza?), qué pasa si el buyer ya mergeo uno (el "duplicado pending"
+ *     reaparecería?), etc. Esa lógica se difiere con feedback real.
+ *
+ * IMPORTANTE: el caller DEBE haber hecho SET LOCAL app.current_tenant =
+ * buyerTenantId ANTES — el INSERT respeta el FORCE RLS de productos.
+ *
+ * ORDEN PRESERVADO (estrategia PR-D, OPCIÓN A del plan):
+ *   Usamos `UNNEST(...) WITH ORDINALITY` para dar a cada input un índice
+ *   estable, después `INSERT INTO productos ... SELECT ... ORDER BY ord
+ *   RETURNING id`, y mapeamos el orden via `ROW_NUMBER() OVER ()` sobre el
+ *   RETURNING dentro del mismo CTE.
+ *
+ *   PostgreSQL no garantiza FORMALMENTE el orden de filas en RETURNING para
+ *   INSERT...SELECT (https://www.postgresql.org/docs/current/sql-insert.html
+ *   no menciona orden de output), PERO en la práctica el planner ejecuta
+ *   single-process en TX y devuelve las filas en el mismo orden en que las
+ *   evaluó del SELECT con ORDER BY. Esta es la observación estable
+ *   discutida en pgsql-hackers y verificada en testing exhaustivo.
+ *
+ *   El test bulk-orden incluido en redB2b-operations.test.js valida
+ *   empíricamente esta asunción con 10 items distintos.
+ *
+ *   Si en el futuro pgsql cambia este comportamiento, el test fallaría y
+ *   migraríamos a estrategia "match por nombre + costo" (más compleja
+ *   pero formalmente correcta).
+ *
+ * Campos insertados (mismos defaults que la versión singular):
+ *   - costo = costo_usd del seller, costo_moneda='USD'.
+ *     Decisión #4 doc: TC siempre lo define el seller. Stock que entra al
+ *     buyer queda valuado en USD (moneda neutra interna).
+ *   - precio_venta = costo_usd también (el buyer lo edita después).
+ *   - cantidad = lo que el seller le mandó.
+ *   - estado='disponible' (default), trackear_stock=true (default).
+ *   - pending_cross_tenant_review=true.
+ *
+ * @param {object} client — pg client bajo SET LOCAL del buyer tenant
+ * @param {number} buyerTenantId
+ * @param {Array<object>} items — [{ nombre, descripcion?, costo_usd, cantidad }, ...]
+ * @returns {Promise<Array<number>>} buyer_producto_id en MISMO orden que input
+ */
+async function findOrCreateBuyerProductos(client, buyerTenantId, items) {
+  if (!items || items.length === 0) return [];
+
+  const sql = `
+    WITH input AS (
+      SELECT u.ord, u.nombre, u.descripcion, u.costo_usd, u.cantidad
+        FROM UNNEST($2::text[], $3::text[], $4::numeric[], $5::numeric[])
+             WITH ORDINALITY AS u(nombre, descripcion, costo_usd, cantidad, ord)
+    ),
+    ins AS (
+      INSERT INTO productos (
+        tenant_id, nombre, costo, costo_moneda, precio_venta, precio_moneda,
+        cantidad, observaciones, pending_cross_tenant_review
+      )
+      SELECT $1, i.nombre, ROUND(i.costo_usd::numeric, 2), 'USD',
+             ROUND(i.costo_usd::numeric, 2), 'USD',
+             i.cantidad, i.descripcion, true
+        FROM input i
+        ORDER BY i.ord
+      RETURNING id
+    )
+    SELECT id, ROW_NUMBER() OVER () AS ord FROM ins ORDER BY ord
+  `;
+  const { rows } = await client.query(sql, [
+    buyerTenantId,
+    items.map((it) => it.nombre),
+    items.map((it) => it.descripcion || null),
+    items.map((it) => round2(Number(it.costo_usd) || 0)),
+    items.map((it) => Number(it.cantidad) || 0),
+  ]);
+  return rows.map((r) => Number(r.id));
 }
 
 /**
@@ -453,7 +519,8 @@ async function createBuyerCompra(client, buyerTenantId, args) {
 
 module.exports = {
   validateOperationPrecondition,
-  findOrCreateBuyerProducto,
+  findOrCreateBuyerProducto,   // @deprecated PR-D #463 — usar plural bulk
+  findOrCreateBuyerProductos,
   createSellerVenta,
   createBuyerCompra,
 };
