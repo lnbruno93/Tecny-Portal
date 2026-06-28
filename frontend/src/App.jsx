@@ -58,6 +58,9 @@ const RedB2BOperaciones        = lazy(() => import('./screens/RedB2BOperaciones'
 const RedB2BOperacionDetalle   = lazy(() => import('./screens/RedB2BOperacionDetalle'));
 // 2026-06-28 #455 Red B2B F2: pantalla buyer-side de productos pendientes.
 const RedB2BPendingReview = lazy(() => import('./screens/RedB2BPendingReview'));
+// 2026-06-28 #457 Red B2B F4: conciliacion bilateral + config caja default.
+const RedB2BConciliacion = lazy(() => import('./screens/RedB2BConciliacion'));
+const RedB2BConfig       = lazy(() => import('./screens/RedB2BConfig'));
 // MOCKUP — pantalla de preview del nuevo modelo de permisos (Rol + Override).
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
@@ -284,6 +287,21 @@ export default function App() {
                   <Route path="/red-b2b/operaciones/:id" element={
                     <RequirePermission cap="cross_tenant.write">
                       <ErrorBoundary><RedB2BOperacionDetalle /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="/red-b2b/conciliacion" element={
+                    <RequirePermission cap="cross_tenant.write">
+                      <ErrorBoundary><RedB2BConciliacion /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="/red-b2b/conciliacion/:partnershipId" element={
+                    <RequirePermission cap="cross_tenant.write">
+                      <ErrorBoundary><RedB2BConciliacion /></ErrorBoundary>
+                    </RequirePermission>
+                  } />
+                  <Route path="/red-b2b/config" element={
+                    <RequirePermission cap="cross_tenant.write">
+                      <ErrorBoundary><RedB2BConfig /></ErrorBoundary>
                     </RequirePermission>
                   } />
                   <Route path="/capital" element={

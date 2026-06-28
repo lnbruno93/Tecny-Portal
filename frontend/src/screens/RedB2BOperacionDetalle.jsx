@@ -17,6 +17,7 @@ import { redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { fmtMoney, fmtFecha } from '../lib/format';
+import RedB2BRegistrarPagoModal from '../components/RedB2BRegistrarPagoModal';
 
 const STATUS_LABELS = {
   active:    { label: 'Activa',    color: 'green'  },
@@ -36,12 +37,21 @@ export default function RedB2BOperacionDetalle() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
+  // F4: pagos state.
+  const [pagosData, setPagosData] = useState(null); // { saldo, pagos }
+  const [showPagoModal, setShowPagoModal] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await redB2b.operations.get(id);
       setOp(r.operation);
       setNotesDraft(r.operation?.notes || '');
+      // Cargar pagos también.
+      try {
+        const p = await redB2b.pagos.listByOperation(id);
+        setPagosData(p);
+      } catch { /* swallow — feature degrada gracefully sin pagos */ }
     } catch (err) {
       if (err.status === 404) {
         toast.error('Operación no encontrada');
@@ -265,6 +275,80 @@ export default function RedB2BOperacionDetalle() {
           </p>
         )}
       </section>
+
+      {/* F4: sección de pagos cross-tenant */}
+      <section className="card" style={{ padding: 16, marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Pagos cross-tenant</h2>
+          {op.status === 'active' && pagosData?.saldo && !pagosData.saldo.completo && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setShowPagoModal(true)}
+            >
+              Registrar pago
+            </button>
+          )}
+        </div>
+        {pagosData?.saldo && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 12 }}>
+            <KpiBox label="Pagado USD" value={fmtMoney(pagosData.saldo.pagado_usd, 'USD')} />
+            <KpiBox
+              label="Restante USD"
+              value={fmtMoney(pagosData.saldo.restante_usd, 'USD')}
+              color={pagosData.saldo.completo ? 'green' : 'orange'}
+            />
+            <KpiBox label="Pagos" value={String(pagosData.pagos?.length || 0)} />
+          </div>
+        )}
+        {pagosData?.pagos && pagosData.pagos.length > 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Side</th>
+                  <th style={{ textAlign: 'right' }}>Monto USD</th>
+                  <th>Moneda</th>
+                  <th style={{ textAlign: 'right' }}>TC pago</th>
+                  <th style={{ textAlign: 'right' }}>Dif. cambiaria ARS</th>
+                  <th>Registrado por</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagosData.pagos.map((p) => (
+                  <tr key={p.id}>
+                    <td>{fmtFecha(p.fecha)}</td>
+                    <td>{p.side === 'seller' ? 'Vendedor' : 'Comprador'}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtMoney(p.monto_usd, 'USD')}</td>
+                    <td>{p.moneda_pago}</td>
+                    <td style={{ textAlign: 'right' }}>{p.tc_pago ? Number(p.tc_pago).toFixed(2) : '—'}</td>
+                    <td style={{
+                      textAlign: 'right',
+                      color: p.diferencia_cambiaria_ars > 0 ? 'var(--green-fg, #166534)' :
+                             p.diferencia_cambiaria_ars < 0 ? 'var(--red-fg, #991b1b)' : 'inherit',
+                    }}>
+                      {p.diferencia_cambiaria_ars !== 0 ? fmtMoney(p.diferencia_cambiaria_ars, 'ARS') : '—'}
+                    </td>
+                    <td>{p.registered_by_username || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="muted" style={{ fontSize: 14 }}>Aún no hay pagos registrados.</p>
+        )}
+      </section>
+
+      {showPagoModal && pagosData?.saldo && (
+        <RedB2BRegistrarPagoModal
+          operation={op}
+          restanteUsd={pagosData.saldo.restante_usd}
+          onClose={() => setShowPagoModal(false)}
+          onSuccess={() => load()}
+        />
+      )}
 
       <section className="card" style={{ padding: 16, marginTop: 16 }}>
         <h2 style={{ marginTop: 0, fontSize: 16 }}>Trazabilidad</h2>
