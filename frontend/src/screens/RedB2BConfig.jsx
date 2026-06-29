@@ -1,8 +1,11 @@
 // Red B2B Config (F4 #457) — config del tenant para Red B2B.
 //
-// Por ahora solo expone caja_default_id (donde recibimos pagos cross-tenant
-// propagados desde el otro lado). F5+ puede extender con preferencias de
-// notificaciones, email opt-in, etc.
+// Hoy expone:
+//   - caja_default_id (donde recibimos pagos cross-tenant propagados desde el
+//     otro lado).
+//   - email_prefs (PR-X1 #465): 5 boolean opt-in/opt-out de avisos por email
+//     para eventos cross-tenant (invitaciones, operaciones, pagos). Backend
+//     en F5 #458, endpoint en GET/PATCH /api/red-b2b/config/email-prefs.
 //
 // PR-X1 #465: refactor a Option B. El "core content" (form + estado) vive
 // en <RedB2BConfigContent /> sin page-head propio para que se pueda embeber
@@ -14,6 +17,17 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { redB2b, cajas } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
+
+// Definición de los 5 flags de email prefs. Single source of truth para el
+// JSX (label/descripción del checkbox) y para los tests (orden y nombres).
+// El backend mantiene cada flag como JSONB boolean default true.
+const EMAIL_PREF_FLAGS = [
+  { key: 'invitation_received', label: 'Recibí invitación de partnership' },
+  { key: 'invitation_accepted', label: 'Un partner aceptó mi invitación' },
+  { key: 'operation_received',  label: 'Un partner me envió una venta' },
+  { key: 'operation_cancelled', label: 'Un partner canceló una operación' },
+  { key: 'payment_received',    label: 'Un partner cobró un pago' },
+];
 
 // ── Core content (sin page-head propio) ─────────────────────────────────────
 // Se exporta named para que RedB2B.jsx (hub) pueda renderearlo dentro del tab.
@@ -28,13 +42,24 @@ export function RedB2BConfigContent() {
   const [saving, setSaving] = useState(false);
   const [cajaIdDraft, setCajaIdDraft] = useState('');
 
+  // PR-X1 #465: email prefs. `emailPrefs` es el objeto con los 5 booleans;
+  // arranca en null y se hidrata en el initial load junto con caja default.
+  // `savingPrefKey` guarda qué flag está saving en este momento (para deshabilitar
+  // sólo ese checkbox mientras el PATCH viaja). Se queda null si no hay PATCH en curso.
+  const [emailPrefs, setEmailPrefs] = useState(null);
+  const [savingPrefKey, setSavingPrefKey] = useState(null);
+
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
-        const [cfg, mp] = await Promise.all([
+        // Pedimos los 3 endpoints en paralelo. Si getEmailPrefs falla pero los
+        // otros no, todavía mostramos la caja default — el catch del bloque
+        // entero abarca cualquier error.
+        const [cfg, mp, prefsResp] = await Promise.all([
           redB2b.config.get(),
           cajas.listMetodosPago(),
+          redB2b.config.getEmailPrefs(),
         ]);
         if (!mounted) return;
         setConfig(cfg.red_b2b);
@@ -42,6 +67,15 @@ export function RedB2BConfigContent() {
         // mp puede venir como { metodos_pago: [...] } o array directo según endpoint.
         const list = Array.isArray(mp) ? mp : (mp.metodos_pago || mp.cajas || []);
         setCajasList(list);
+        // El endpoint devuelve { email_prefs: {...} }. Defaults a true por flag
+        // si el backend no devuelve algún campo (ej: si se agregó un flag nuevo
+        // post-deploy y la row vieja no lo tiene en su JSONB).
+        const prefs = prefsResp?.email_prefs || {};
+        const hydrated = {};
+        EMAIL_PREF_FLAGS.forEach(({ key }) => {
+          hydrated[key] = prefs[key] !== false; // default true
+        });
+        setEmailPrefs(hydrated);
       } catch (err) {
         toast.error(err.message || 'No pudimos cargar la config');
       } finally {
@@ -65,6 +99,31 @@ export function RedB2BConfigContent() {
       toast.error(err.message || 'No pudimos guardar');
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Toggle de un flag de email prefs con optimistic update + revert on error.
+  // Flow:
+  //   1. Capturamos el nuevo valor (negación del actual).
+  //   2. Flip inmediato del state (UI cambia ya).
+  //   3. PATCH al backend con solo el flag que cambió — backend hace merge JSONB.
+  //   4. Si falla, revertimos el state + toast error. Si va bien, toast success.
+  async function toggleEmailPref(key) {
+    if (!emailPrefs) return;
+    const oldValue = emailPrefs[key];
+    const newValue = !oldValue;
+    // Optimistic flip.
+    setEmailPrefs((prev) => ({ ...prev, [key]: newValue }));
+    setSavingPrefKey(key);
+    try {
+      await redB2b.config.setEmailPrefs({ [key]: newValue });
+      toast.success('Preferencia guardada');
+    } catch (err) {
+      // Revert.
+      setEmailPrefs((prev) => ({ ...prev, [key]: oldValue }));
+      toast.error(err.message || 'No pudimos guardar la preferencia');
+    } finally {
+      setSavingPrefKey(null);
     }
   }
 
@@ -119,6 +178,46 @@ export function RedB2BConfigContent() {
           <strong>{config.caja_default.nombre}</strong>
           <span className="muted"> ({config.caja_default.moneda})</span>
         </p>
+      )}
+
+      {/* ── PR-X1 #465: Avisos por email ────────────────────────────────── */}
+      {emailPrefs && (
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border, #e5e7eb)' }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>Avisos por email</h2>
+          <p style={{ marginBottom: 12, fontSize: 14 }}>
+            Decidí qué notificaciones de Red B2B querés recibir por mail.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {EMAIL_PREF_FLAGS.map(({ key, label }) => {
+              const inputId = `email-pref-${key}`;
+              const checked = !!emailPrefs[key];
+              const isThisSaving = savingPrefKey === key;
+              return (
+                <label
+                  key={key}
+                  htmlFor={inputId}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 14,
+                    cursor: isThisSaving ? 'wait' : 'pointer',
+                  }}
+                >
+                  <input
+                    id={inputId}
+                    type="checkbox"
+                    checked={checked}
+                    disabled={isThisSaving}
+                    onChange={() => toggleEmailPref(key)}
+                    style={{ width: 16, height: 16, cursor: isThisSaving ? 'wait' : 'pointer' }}
+                  />
+                  {label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
       )}
     </section>
   );
