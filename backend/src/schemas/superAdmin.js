@@ -171,6 +171,22 @@ const patchPlanPriceSchema = z.object({
   reason:    z.string().max(500).optional(),
 }).strict();
 
+// PATCH /api/super-admin/tc-defaults-pais — actualizar TC default por país
+// (Multi-país F2). El super-admin ajusta el valor pre-rellenado en formularios
+// de TODOS los tenants del país (ARS/USD para AR, UYU/USD para UY).
+//
+// pais: enum cerrado ('AR' | 'UY') — matchea el CHECK de la columna.
+// par: enum cerrado por país; el handler hace el cross-check pais↔par.
+// valor: positivo, max 1M (sanity cap — un TC arriba de 1M es claramente bug
+//   de carga humana, ni hiperinflación cubre eso).
+// reason: opcional, va al audit trail.
+const updateTcDefaultPaisSchema = z.object({
+  pais:   z.enum(['AR', 'UY']),
+  par:    z.enum(['ARS/USD', 'UYU/USD']),
+  valor:  z.coerce.number().positive().max(1_000_000),
+  reason: z.string().max(500).optional(),
+}).strict();
+
 module.exports = {
   PLANES,
   patchTenantSchema,
@@ -181,4 +197,5 @@ module.exports = {
   deleteTenantSchema,
   createTenantSchema,
   patchPlanPriceSchema,
+  updateTcDefaultPaisSchema,
 };

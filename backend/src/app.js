@@ -839,6 +839,19 @@ app.use((err, req, res, _next) => {
   // con config vieja), el debug leakeaba a un admin atacante. Ahora usamos
   // SÓLO el host (señal autoritativa) — NODE_ENV ya no afecta la decisión.
   const body = { error: status >= 500 ? 'Error interno' : (err.message || 'Error') };
+  // 2026-06-29 Multi-país F2: pasamos `code` y `detail` al body si el error
+  // tiene los campos seteados explícitamente Y es <500. Útil para que el
+  // frontend pueda discriminar tipos de error de negocio (ej.
+  // 'moneda_no_valida_para_pais' vs validación Zod genérica) sin parsear
+  // err.message. NO se exponen códigos en 5xx — esos son ruido server-side
+  // que puede filtrar info interna (ej. códigos pg como '23505').
+  // Whitelist explícita: solo strings o objetos JSON-safe.
+  if (status < 500) {
+    if (typeof err.code === 'string') body.code = err.code;
+    if (err.detail && typeof err.detail === 'object' && !Array.isArray(err.detail)) {
+      body.detail = err.detail;
+    }
+  }
   const host = req.headers?.host || '';
   const isNonProdHost = host.includes('staging')
                      || host.includes('localhost')

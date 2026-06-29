@@ -1,6 +1,6 @@
 const { z } = require('zod');
 const { baseProducto } = require('./inventario');
-const { fechaNoFutura } = require('./_common');
+const { fechaNoFutura, MonedaEnum } = require('./_common');
 
 const createProveedorSchema = z.object({
   nombre:            z.string().trim().min(1, 'Nombre del proveedor requerido').max(120),
@@ -58,7 +58,7 @@ const createMovimientoProveedorSchema = z.object({
   descripcion:  z.string().trim().max(500).optional().nullable(),
   // Hard cap: 10M USD por movimiento (auditoría #B-04).
   monto:        z.coerce.number().min(0).max(10_000_000, 'Monto excede el máximo (10M)').default(0),
-  moneda:       z.enum(['USD', 'ARS', 'USDT']).default('USD'),
+  moneda:       MonedaEnum.default('USD'),
   tc:           z.coerce.number().positive().optional().nullable(),
   caja_id:      z.coerce.number().int().positive().optional().nullable(),
   notas:        z.string().trim().max(1000).optional().nullable(),

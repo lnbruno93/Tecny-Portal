@@ -45,7 +45,7 @@ const {
   ensureSellerClienteCc,
   ensureBuyerProveedor,
 } = require('../../lib/crossTenantPagos');
-const { round2 } = require('../../lib/money');
+const { round2, assertMonedaValidaParaPais } = require('../../lib/money');
 const { invalidateMetricas } = require('../../lib/inventarioCache');
 // PR-D #463: conciliation no tiene cache (multi-instance bug + frecuencia
 // baja). Antes invalidábamos via invalidateConciliationCache(partnershipId).
@@ -121,6 +121,17 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
   if (!opId) return res.status(400).json({ error: 'id inválido' });
 
   const body = req.body;
+  // Multi-país F2: rechazar moneda_pago no habilitada para el país del tenant
+  // que registra el pago. El otro lado de la operación cross-tenant puede ser
+  // de otro país; la validación acá protege solo el lado caller. La compat
+  // ULTRA caja_default ↔ moneda_pago vive más abajo (ya considera UYU vía
+  // schema update — F5 finaliza el matching seller-side cross-frontera).
+  try {
+    assertMonedaValidaParaPais(body.moneda_pago, req.tenantPais, 'moneda_pago');
+  } catch (err) {
+    return next(err);
+  }
+
   const fecha = body.fecha || new Date().toISOString().slice(0, 10);
 
   try {

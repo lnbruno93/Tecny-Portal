@@ -118,6 +118,29 @@ module.exports = async function requireAuth(req, res, next) {
   req.tenantId  = decoded.tenant_id;
   req.tenantRol = decoded.tenant_rol ?? 'member';
 
+  // 2026-06-29 Multi-país F2: exponer `req.tenantPais` derivado del cache
+  // `tenantStatus` (5min TTL Redis cross-instance, ya leído más abajo en
+  // writes). Llamada cacheada — sub-ms hit en path caliente, único miss
+  // por tenant cada 5min. Fail-open: si el lookup falla (Redis/DB down),
+  // defaulteamos a 'AR' para no romper requests legítimos. La migration
+  // F1 garantiza que TODOS los tenants tienen un `pais` no-null seteado.
+  //
+  // Diseño: NO embebemos `pais` en el JWT directamente porque (a) JWTs
+  // existentes no lo tienen y queremos backward-compat sin re-login forzado
+  // de toda la base; (b) el cache de tenantStatus ya es shared cross-instance
+  // y `pais` cambia ~nunca post-signup; (c) consistencia con `paid_until`
+  // que sigue el mismo patrón.
+  try {
+    const { getTenantStatus } = require('../lib/tenantStatus');
+    const tenantStatus = await getTenantStatus(req.tenantId);
+    req.tenantPais = (tenantStatus && tenantStatus.pais) || 'AR';
+  } catch (err) {
+    const logger = require('../lib/logger');
+    logger.warn({ err: err.message, tenantId: req.tenantId },
+      'requireAuth: lookup tenant.pais falló, fallback a AR');
+    req.tenantPais = 'AR';
+  }
+
   // TANDA 4 (billing pre-live 2026-06-25): bloqueo blando de WRITES en tenants
   // expirados (paid_until < hoy) o suspendidos.
   //

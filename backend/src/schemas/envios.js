@@ -1,4 +1,6 @@
 const { z } = require('zod');
+// Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
+const { MonedaEnum } = require('./_common');
 
 const envioItemSchema = z.object({
   tipo:        z.enum(['producto','pago'], { error: 'tipo de item debe ser: producto, pago' }),
@@ -10,7 +12,7 @@ const envioItemSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   // Moneda del pago (debe coincidir con el grupo de la caja: ARS o USD/USDT).
   // El frontend la infiere de la caja elegida; default 'ARS' para compat.
-  moneda: z.enum(['ARS','USD','USDT']).optional().default('ARS'),
+  moneda: MonedaEnum.optional().default('ARS'),
   // TC opcional — necesario para items en ARS si querés monto_usd preciso.
   tc: z.number().positive().optional().nullable(),
   // Producto linkeado (para items 'producto'): si se setea + registrar_venta=true,

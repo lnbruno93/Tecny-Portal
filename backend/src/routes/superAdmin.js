@@ -55,6 +55,7 @@ const {
   createTenantSchema,
   setPaidUntilSchema,
   patchPlanPriceSchema,
+  updateTcDefaultPaisSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
@@ -1850,6 +1851,158 @@ router.patch('/plan-prices/:plan', validate(patchPlanPriceSchema), async (req, r
       plan: result.row.plan,
       price_usd: result.row.price_usd === null ? null : Number(result.row.price_usd),
       notes: result.row.notes,
+      updated_at: result.row.updated_at,
+      updated_by: result.row.updated_by,
+      noop: !!result.noop,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Multi-país F2 — TC defaults por país (#471).
+//
+// El super-admin edita el TC default que se pre-rellena en formularios de
+// venta/cotizador para TODOS los tenants del país. Cambio sensible — todo
+// PATCH queda en `tenant_admin_actions` con before/after.
+//
+// Read es pool admin (BYPASSRLS) — la tabla es global, no per-tenant.
+// Write usa la misma tx que el audit (atomicidad: si el audit falla, el
+// UPDATE rollbackea, sin estado inconsistente).
+//
+// Diseño:
+//   - tenant_id del audit log = 1 (Tecny, anchor del super-admin), mismo
+//     patrón que `plan_price_change`.
+//   - reason opcional — útil cuando Lucas ajusta por inflación o crisis
+//     ("UYU desplomado por intervención BCRA 2026-07").
+//   - El handler valida cross-check pais↔par (UY no puede setear ARS/USD,
+//     AR no puede setear UYU/USD) para defender contra payload manual.
+// ──────────────────────────────────────────────────────────────────────────
+
+// GET /tc-defaults-pais — lista los 2 pares seedeados (AR + UY).
+//
+// No paginamos (la tabla es siempre 2 filas en F2; si en el futuro
+// agregamos países, ampliamos). JOIN a users para mostrar quién hizo el
+// último UPDATE — patrón idéntico a /plan-prices.
+router.get('/tc-defaults-pais', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `SELECT tcd.pais,
+                tcd.par,
+                tcd.valor,
+                tcd.updated_at,
+                tcd.updated_by,
+                u.username AS updated_by_username
+           FROM tc_defaults_pais tcd
+           LEFT JOIN users u ON u.id = tcd.updated_by
+          ORDER BY tcd.pais, tcd.par`
+      );
+      return rows;
+    });
+    res.json({
+      tc_defaults: data.map(r => ({
+        ...r,
+        valor: r.valor === null ? null : Number(r.valor),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /tc-defaults-pais — actualizar el valor de un par específico.
+//
+// Body: { pais, par, valor, reason? }
+//
+// Validaciones (más allá del Zod schema):
+//   - pais↔par cross-check: AR solo acepta ARS/USD; UY solo UYU/USD.
+//     (Defendido a nivel app — el CHECK del enum del par ya restringe a
+//     2 valores, pero el mapping pais→par lo hace el handler.)
+//   - valor positivo + cap 1M (en el schema).
+//
+// Audit: action='tc_default_pais_updated', before/after del valor numérico.
+router.patch('/tc-defaults-pais', validate(updateTcDefaultPaisSchema), async (req, res, next) => {
+  try {
+    const { pais, par, valor, reason } = req.body;
+
+    // Cross-check pais↔par. AR solo opera ARS/USD; UY solo UYU/USD.
+    const parEsperado = pais === 'UY' ? 'UYU/USD' : 'ARS/USD';
+    if (par !== parEsperado) {
+      return res.status(400).json({
+        error: `Para país ${pais} el par esperado es ${parEsperado}, no ${par}`,
+        code: 'pais_par_mismatch',
+        detail: { pais, par, par_esperado: parEsperado },
+      });
+    }
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const beforeRow = await client.query(
+          `SELECT pais, par, valor, updated_at, updated_by
+             FROM tc_defaults_pais
+            WHERE pais = $1 AND par = $2
+            FOR UPDATE`,
+          [pais, par]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        const beforeValor = Number(before.valor);
+        const newValor = Number(valor);
+        if (Math.abs(beforeValor - newValor) < 1e-9) {
+          // No-op (mismo valor). No audit, no UPDATE.
+          await client.query('ROLLBACK');
+          return { noop: true, row: { ...before, valor: beforeValor } };
+        }
+
+        const updateRow = await client.query(
+          `UPDATE tc_defaults_pais
+              SET valor = $1, updated_at = NOW(), updated_by = $2
+            WHERE pais = $3 AND par = $4
+            RETURNING pais, par, valor, updated_at, updated_by`,
+          [newValor, req.user.id, pais, par]
+        );
+
+        // Audit: tenant_id=1 (anchor del super-admin), mismo patrón que
+        // plan_price_change. Antes/después en JSONB para forense detallado.
+        await insertAdminAction(client, {
+          tenantId: 1,
+          superAdminUserId: req.user.id,
+          action: 'tc_default_pais_updated',
+          beforeState: { pais, par, valor: beforeValor },
+          afterState:  { pais, par, valor: newValor },
+          reason,
+        });
+
+        await client.query('COMMIT');
+        return { row: updateRow.rows[0] };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
+        throw err;
+      }
+    });
+
+    if (result.notFound) {
+      return res.status(404).json({
+        error: `TC default no existe para país=${pais} par=${par}`,
+      });
+    }
+
+    logger.info(
+      { pais, par, super_admin: req.user.id, new_valor: Number(result.row.valor), noop: !!result.noop },
+      '[super-admin] PATCH /tc-defaults-pais'
+    );
+
+    res.json({
+      pais: result.row.pais,
+      par: result.row.par,
+      valor: Number(result.row.valor),
       updated_at: result.row.updated_at,
       updated_by: result.row.updated_by,
       noop: !!result.noop,

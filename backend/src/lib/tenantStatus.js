@@ -43,7 +43,7 @@ const cache = createTenantScopedCache({
     // CURRENT_DATE comparten zona horaria del servidor PG.
     const row = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT id, plan, paid_until, suspended_at,
+        `SELECT id, plan, paid_until, suspended_at, pais,
                 (paid_until IS NULL OR paid_until >= CURRENT_DATE) AS is_active_by_date
            FROM tenants WHERE id = $1`,
         [id]
@@ -57,6 +57,13 @@ const cache = createTenantScopedCache({
       paid_until: row.paid_until,
       suspended_at: row.suspended_at,
       is_active: row.is_active_by_date && row.suspended_at == null,
+      // 2026-06-29 Multi-país F2: incluimos `pais` para que el middleware
+      // requireAuth pueda exponer `req.tenantPais` sin pegar a DB en cada
+      // request. El campo es CHAR(2) inmutable post-signup, encaja perfecto
+      // en este cache de 5min. Defensive fallback a 'AR' si el campo viene
+      // null/undefined — la migration F1 setea DEFAULT 'AR' NOT NULL, así
+      // que en runtime nunca debería ser null, pero defensive vale.
+      pais: row.pais || 'AR',
     };
   },
 });
@@ -64,7 +71,7 @@ const cache = createTenantScopedCache({
 /**
  * Devuelve el status del tenant cacheado por 5min.
  * @param {number} tenantId
- * @returns {Promise<{id, plan, paid_until, suspended_at, is_active}|null>}
+ * @returns {Promise<{id, plan, paid_until, suspended_at, is_active, pais}|null>}
  */
 async function getTenantStatus(tenantId) {
   return cache.get(tenantId);

@@ -55,11 +55,45 @@ const JWT_ALGORITHM = 'HS256';
 
 // 3 cajas default sembradas para cada tenant nuevo. El user las customiza
 // después según su negocio (agrega tarjetas, billeteras virtuales, etc.).
+//
+// 2026-06-29 Multi-país F2: hoy todos los signups públicos son AR (selector
+// de país llega en F4). Mantenemos las cajas hardcoded en ARS para no
+// adelantarnos al feature flag; cuando F4 introduzca el selector, este
+// array pasa a depender de `pais` (helper getDefaultCajasPorPais).
 const DEFAULT_CAJAS = [
   { nombre: 'Efectivo Pesos', moneda: 'ARS', orden: 1, es_financiera: true },
   { nombre: 'Efectivo USD',   moneda: 'USD', orden: 2, es_financiera: false },
   { nombre: 'Banco Pesos',    moneda: 'ARS', orden: 3, es_financiera: false },
 ];
+
+// Multi-país F2 (#471): defaults de alertas_config sembradas en cada tenant
+// nuevo. `tc_referencia.valor` depende del país (1400 ARS/USD vs 40 UYU/USD).
+//
+// Por qué seedear acá en lugar de confiar en la migration 20260620000002:
+//   La migration solo seedea para los tenants EXISTENTES al momento de
+//   correr. Los tenants nuevos creados via signup público quedaban sin
+//   ninguna fila — el tool del bot get_alertas devolvía vacío, las UI de
+//   warning de TC no aparecían en el primer login del owner. Bug latente
+//   tracked pero no fixeado hasta F2.
+//
+// Decisión (Lucas, design doc 9.2): seedear automáticamente con `valor`
+// del país (UY=40, AR=1400). El operador puede cambiar el TC desde
+// /api/alertas/config/tc_referencia en cualquier momento.
+//
+// Thresholds "25 < TC < 60" UY mencionados en design doc 9.5 se traducen
+// a `valor=40` + `tolerancia_pct=50%` en el schema actual de
+// `tc_referencia.parametros` (no agregamos `min`/`max` separados — sería
+// schema change a la tabla, fuera del scope F2).
+function defaultsAlertasParaPais(pais) {
+  const tcValor = pais === 'UY' ? 40 : 1400;
+  return [
+    { tipo: 'tc_referencia', activa: true, parametros: { valor: tcValor, tolerancia_pct: 50, alerta_por_debajo: true } },
+    { tipo: 'caja_negativa', activa: true, parametros: {} },
+    { tipo: 'stock_bajo', activa: true, parametros: { umbral_unidades: 5 } },
+    { tipo: 'cc_mora', activa: true, parametros: { dias_sin_pago: 30 } },
+    { tipo: 'proveedor_atrasado', activa: true, parametros: { dias_sin_movimiento: 30 } },
+  ];
+}
 
 // 2026-06-24 ONB-3 (audit pre-live): 4 categorías default. Sin esto, el primer
 // producto que el owner intenta cargar desde el OnboardingCard rebota con
@@ -293,6 +327,28 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
       `INSERT INTO vendedores (nombre, tenant_id) VALUES ($1, $2)`,
       [nombre, tenant.id]
     );
+
+    // 5cb. 2026-06-29 Multi-país F2 (#471): seed de alertas_config para el
+    // tenant nuevo. Sin esto el tool get_alertas del bot devuelve vacío y
+    // los warnings de TC del frontend no se muestran en el primer login.
+    // `tc_referencia.valor` viene del país (UY=40 vs AR=1400). El tenant
+    // creado via signup público hoy siempre es AR (pais default), pero
+    // dejamos la lectura de `tenant.pais` por si F4 lo expone más adelante.
+    //
+    // Lookup del país recién insertado — la columna tiene DEFAULT 'AR' pero
+    // si el signup explícito de F4 pasa otro país, lo respetamos.
+    const { rows: [tenantRow] } = await client.query(
+      `SELECT pais FROM tenants WHERE id = $1`, [tenant.id]
+    );
+    const tenantPais = (tenantRow && tenantRow.pais) || 'AR';
+    for (const alerta of defaultsAlertasParaPais(tenantPais)) {
+      await client.query(
+        `INSERT INTO alertas_config (tenant_id, tipo, activa, parametros)
+           VALUES ($1, $2, $3, $4::jsonb)
+         ON CONFLICT (tenant_id, tipo) DO NOTHING`,
+        [tenant.id, alerta.tipo, alerta.activa, JSON.stringify(alerta.parametros)]
+      );
+    }
 
     // 5d. 2026-06-25 Bug #2 (primer cliente real iDeals Ar tenant=12):
     // seed de la fila de config con pct_financiera=0. Sin esto, cuando el

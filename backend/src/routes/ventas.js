@@ -7,7 +7,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2 } = require('../lib/money');
+const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
 // TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): pattern duplicado movido
 // a createTenantScopedCache.
 const { createTenantScopedCache } = require('../lib/cacheTtl');
@@ -735,6 +735,20 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
   const b = req.body;
   const client = await db.connect();
   try {
+    // Multi-país F2: rechazar items/pagos/canjes con moneda no habilitada
+    // para el país del tenant (tenant AR no acepta UYU, tenant UY no acepta
+    // ARS). USD/USDT son universales. Validamos arrays explícitamente porque
+    // cada item puede tener una moneda distinta.
+    for (const it of b.items || []) {
+      assertMonedaValidaParaPais(it.moneda, req.tenantPais, 'items[].moneda');
+    }
+    for (const pago of b.pagos || []) {
+      assertMonedaValidaParaPais(pago.moneda, req.tenantPais, 'pagos[].moneda');
+    }
+    for (const canje of b.canjes || []) {
+      assertMonedaValidaParaPais(canje.moneda, req.tenantPais, 'canjes[].moneda');
+    }
+
     validarTc(b.items, b.pagos, b.tc_venta);
     validarCuentaCorriente(b.pagos, b.cliente_cc_id);
     await client.query('BEGIN');
@@ -786,6 +800,19 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     // 2026-06-10 P-15: no llamamos client.release() acá — el `finally` lo hace.
     // El doble-release tira warning en node-pg y puede botar la conexión del pool.
     if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    // Multi-país F2: validación país-aware en updates con items/pagos/canjes.
+    // updateVentaSchema permite items/pagos/canjes opcionales; si vienen, cada
+    // moneda se valida contra el país del tenant.
+    for (const it of b.items || []) {
+      assertMonedaValidaParaPais(it.moneda, req.tenantPais, 'items[].moneda');
+    }
+    for (const pago of b.pagos || []) {
+      assertMonedaValidaParaPais(pago.moneda, req.tenantPais, 'pagos[].moneda');
+    }
+    for (const canje of b.canjes || []) {
+      assertMonedaValidaParaPais(canje.moneda, req.tenantPais, 'canjes[].moneda');
+    }
 
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
