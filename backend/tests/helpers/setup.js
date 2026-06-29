@@ -163,6 +163,19 @@ async function setupTestDb() {
       SET price_usd = EXCLUDED.price_usd, notes = EXCLUDED.notes, updated_by = NULL
   `);
 
+  // 2026-06-29 Multi-país F1: re-seed de tc_defaults_pais por la misma razón
+  // que plan_prices (FK updated_by → users.id). Sin este re-seed el helper
+  // `getTcDefaultPais` devolvería null en cualquier test, rompiendo las
+  // ventas/cotizadores futuros que pre-rellenan el TC. Valores matchean el
+  // seed de migration 20260629100003_tc_defaults_pais.
+  await pool.query(`
+    INSERT INTO tc_defaults_pais (pais, par, valor) VALUES
+      ('AR', 'ARS/USD', 1400.00),
+      ('UY', 'UYU/USD',   40.00)
+    ON CONFLICT (pais, par) DO UPDATE
+      SET valor = EXCLUDED.valor, updated_by = NULL
+  `);
+
   // Crear usuario admin de prueba
   const hash = await bcrypt.hash(TEST_USER.password, 10);
   const { rows } = await pool.query(
