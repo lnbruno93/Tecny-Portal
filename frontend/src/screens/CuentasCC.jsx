@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cuentas, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -401,6 +401,10 @@ const EMPTY_CLIENTE = {
 export default function CuentasCC() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  // PR-X2 Red B2B: rows con cross_tenant_operation_id navegan al detalle
+  // cross-tenant en /red-b2b/operaciones/:id (las rows no-cross-tenant siguen
+  // sin handler — el módulo CC nunca tuvo click-to-detail tradicional).
+  const navigate  = useNavigate();
 
   const [tab, setTab]             = useState('clientes');
   const [catFilter, setCatFilter] = useState('todas');
@@ -1051,11 +1055,39 @@ export default function CuentasCC() {
                     // venta B2B con costo, precio mayorista y ganancia por unidad.
                     const isExpanded = expandedMovIds.has(m.id);
                     const canExpand = nItems > 1;
+                    // PR-X2 Red B2B: rows generadas por una operación cross-tenant
+                    // (F3+) muestran un badge "RED B2B" y al click navegan al
+                    // detalle de la operación cross-tenant (que tiene el contexto
+                    // completo: partner, pagos multidivisa, historial). Para rows
+                    // normales B2B no cambia nada — siguen sin click handler.
+                    const isCrossTenant = m.cross_tenant_operation_id != null;
+                    const handleRowClick = isCrossTenant
+                      ? (e) => {
+                          // Ignorar clicks que vengan de un botón dentro de la fila
+                          // (Trash, chevron de expand) para no pisar sus handlers.
+                          if (e.target.closest && e.target.closest('button')) return;
+                          navigate(`/red-b2b/operaciones/${m.cross_tenant_operation_id}`);
+                        }
+                      : undefined;
                     return (
                       <>
-                      <tr key={m.id} style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--hairline)', opacity: m._pending ? 0.55 : 1 }}>
+                      <tr
+                        key={m.id}
+                        onClick={handleRowClick}
+                        data-testid={isCrossTenant ? `mov-row-cross-tenant-${m.id}` : undefined}
+                        style={{
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--hairline)',
+                          opacity: m._pending ? 0.55 : 1,
+                          cursor: isCrossTenant ? 'pointer' : undefined,
+                        }}
+                      >
                         <td style={cell} className="muted mono">{fmtFecha(m.fecha)}</td>
-                        <td style={cell}><Status tone={t.tone}>{t.label}</Status></td>
+                        <td style={cell}>
+                          <Status tone={t.tone}>{t.label}</Status>
+                          {isCrossTenant && (
+                            <Badge tone="info" style={{ marginLeft: 6, fontSize: 10 }}>RED B2B</Badge>
+                          )}
+                        </td>
                         <td style={cell}>
                           {canExpand && (
                             <button
