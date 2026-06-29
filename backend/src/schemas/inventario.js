@@ -1,4 +1,6 @@
 const { z } = require('zod');
+// Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
+const { MonedaEnum } = require('./_common');
 
 // --- Catálogos simples ---
 // 2026-06-11 T-06: .strict() añadido — antes aceptaba campos extra silenciosamente.
@@ -25,9 +27,9 @@ const baseProducto = z.object({
   deposito_id:    z.coerce.number().int().positive().optional().nullable(),
   proveedor:      z.string().trim().max(200).optional().nullable(),
   costo:          z.coerce.number().min(0).default(0),
-  costo_moneda:   z.enum(['USD', 'ARS']).default('USD'),
+  costo_moneda:   MonedaEnum.default('USD'),
   precio_venta:   z.coerce.number().min(0).default(0),
-  precio_moneda:  z.enum(['USD', 'ARS']).default('USD'),
+  precio_moneda:  MonedaEnum.default('USD'),
   trackear_stock: z.boolean().default(true),
   cantidad:       z.coerce.number().int().min(0).default(1),
   estado:         z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).default('disponible'),

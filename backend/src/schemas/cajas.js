@@ -1,5 +1,7 @@
 const { z } = require('zod');
 const { TIPOS_CONTACTO, ORIGENES } = require('./contactos');
+// Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
+const { MonedaEnum } = require('./_common');
 
 // Mega-form (PR #78 + post-auditoría TANDA 0): el frontend de Inversión/Deuda
 // permite crear contacto y movimiento en un solo step. Antes hacía 2 requests
@@ -68,7 +70,7 @@ const queryInversionesSchema = z.object({
 
 const cajaSchema = z.object({
   nombre:        z.string().trim().min(1, 'Nombre requerido').max(80),
-  moneda:        z.enum(['USD', 'ARS', 'USDT'], { error: 'moneda debe ser: USD, ARS, USDT' }).default('ARS'),
+  moneda:        MonedaEnum.default('ARS'),
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
   saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),  // saldo de apertura (en la moneda de la caja)
@@ -79,7 +81,7 @@ const cajaSchema = z.object({
 
 const updateCajaSchema = z.object({
   nombre:        z.string().trim().min(1).max(80).optional(),
-  moneda:        z.enum(['USD', 'ARS', 'USDT']).optional(),
+  moneda:        MonedaEnum.optional(),
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
   saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),

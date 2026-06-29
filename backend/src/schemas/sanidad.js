@@ -5,6 +5,7 @@
 // egresos, egresos_recurrentes).
 
 const { z } = require('zod');
+const { MonedaEnum } = require('./_common');
 
 // Query del endpoint GET — cuántos meses mostrar hacia atrás (incluye el mes
 // actual). Default 6 (semestre rolling), max 24 (2 años — más que eso es
@@ -48,7 +49,7 @@ const upsertOverrideSchema = z.object({
     z.number()
       .nonnegative('El monto no puede ser negativo.')
       .max(1e10, 'Valor demasiado alto.'),
-  moneda: z.enum(['USD', 'ARS', 'USDT']).default('USD'),
+  moneda: MonedaEnum.default('USD'),
   tc: z.number().positive().nullable().optional(),
 }).strict();
 

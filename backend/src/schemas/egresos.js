@@ -1,6 +1,10 @@
 const { z } = require('zod');
+// Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
+const { MonedaEnum, MONEDAS_PERMITIDAS } = require('./_common');
 
-const MONEDAS = ['USD', 'ARS', 'USDT'];
+// Backward compat — algunos call sites importan MONEDAS directo. La lista
+// ahora incluye UYU; pero el filtro real por país lo hace el handler.
+const MONEDAS = MONEDAS_PERMITIDAS;
 // Fecha ISO válida (los egresos pueden ser futuros: agendados/recurrentes).
 const fecha = z.string().date('Fecha inválida (YYYY-MM-DD)').refine(d => d >= '2000-01-01', 'Fecha anterior al año 2000');
 
@@ -17,7 +21,7 @@ const createRecurrenteSchema = z.object({
   concepto:       z.string().trim().min(1, 'Concepto requerido').max(200),
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   monto:          z.coerce.number().min(0).default(0),
-  moneda:         z.enum(MONEDAS).default('USD'),
+  moneda:         MonedaEnum.default('USD'),
   tc:             z.coerce.number().positive().optional().nullable(),  // TC para recurrentes en ARS
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   dia_del_mes:    z.coerce.number().int().min(1).max(31).default(1),
@@ -38,7 +42,7 @@ const createEgresoSchema = z.object({
   concepto:       z.string().trim().min(1, 'Concepto requerido').max(200),
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   monto:          z.coerce.number().min(0).default(0),
-  moneda:         z.enum(MONEDAS).default('USD'),
+  moneda:         MonedaEnum.default('USD'),
   tc:             z.coerce.number().positive().optional().nullable(),
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   estado:         z.enum(['pendiente', 'pagado']).default('pendiente'),
@@ -67,7 +71,7 @@ const updateEgresoSchema = z.object({
   concepto:       z.string().trim().min(1).max(200).optional(),
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   monto:          z.coerce.number().min(0).optional(),
-  moneda:         z.enum(MONEDAS).optional(),
+  moneda:         MonedaEnum.optional(),
   tc:             z.coerce.number().positive().optional().nullable(),
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   estado:         z.enum(['pendiente', 'pagado']).optional(),

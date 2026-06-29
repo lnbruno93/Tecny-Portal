@@ -43,6 +43,39 @@ function isMonedaValidaParaPais(moneda, pais) {
 }
 
 /**
+ * Hard-asserta que la moneda esté habilitada para el país del tenant.
+ * Llamar en endpoints de escritura DESPUÉS del parse Zod y ANTES de los
+ * INSERT/UPDATE. Si la moneda no está habilitada, lanza un error con
+ * `status=400` y `code='moneda_no_valida_para_pais'` que el error handler
+ * global devuelve como JSON.
+ *
+ * Diseño: la matriz país↔moneda es un check de policy de negocio (no de
+ * shape), por eso vive acá y no en Zod. El Zod schema acepta cualquiera de
+ * las 4 monedas (ARS/USD/USDT/UYU) para que la validación sea uniforme entre
+ * países; el handler decide cuáles son válidas para el tenant.
+ *
+ * @param {string} moneda - 'ARS' | 'USD' | 'USDT' | 'UYU'
+ * @param {string} pais - 'AR' | 'UY'
+ * @param {string} [fieldName='moneda'] - nombre del campo del body para
+ *   contextualizar el error (ej. 'costo_moneda' vs 'precio_moneda').
+ * @throws {Error} con status=400 si la moneda no está habilitada
+ */
+function assertMonedaValidaParaPais(moneda, pais, fieldName = 'moneda') {
+  // moneda null/undefined no es nuestro problema — Zod debió rebotarlo si era
+  // requerido. Si llegó null/undefined acá (caso opcional), pasa sin chequeo.
+  if (moneda == null) return;
+  if (!isMonedaValidaParaPais(moneda, pais)) {
+    const err = new Error(
+      `Moneda '${moneda}' no está habilitada para el país '${pais}'.`
+    );
+    err.status = 400;
+    err.code = 'moneda_no_valida_para_pais';
+    err.detail = { moneda, pais, field: fieldName };
+    throw err;
+  }
+}
+
+/**
  * Retorna la moneda local (fiat no-USD) del país.
  * AR → 'ARS', UY → 'UYU'.
  *
@@ -114,4 +147,6 @@ module.exports = {
   isMonedaValidaParaPais,
   getMonedaLocalPais,
   getTcDefaultPais,
+  // multi-país F2
+  assertMonedaValidaParaPais,
 };

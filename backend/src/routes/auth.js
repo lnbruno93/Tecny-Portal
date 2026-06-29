@@ -393,12 +393,19 @@ router.get('/me', requireAuth, async (req, res, next) => {
         const { getTenantStatus } = require('../lib/tenantStatus');
         const status = await getTenantStatus(req.tenantId);
         if (status) {
+          // 2026-06-29 Multi-país F2: incluimos `pais` y `moneda_local` para
+          // que el frontend pueda filtrar dropdowns + formatear locale sin
+          // pegar a otro endpoint. `moneda_local` se deriva del país (AR→ARS,
+          // UY→UYU) — convenience del backend, no es source-of-truth en DB.
+          const { getMonedaLocalPais } = require('../lib/money');
           tenantInfo = {
             id:           status.id,
             plan:         status.plan,
             paid_until:   status.paid_until,
             suspended_at: status.suspended_at,
             is_active:    status.is_active,
+            pais:         status.pais || 'AR',
+            moneda_local: getMonedaLocalPais(status.pais || 'AR'),
           };
         }
       } catch (e) {

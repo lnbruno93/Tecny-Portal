@@ -74,12 +74,19 @@ const patchOperationSchema = z.object({
 //
 // Body completo del POST /api/red-b2b/operations/:id/pagos.
 // monto_usd es el monto del pago expresado en USD (la moneda interna).
-// Si moneda_pago=ARS, monto_pago debe coincidir aproximadamente con
-// monto_usd * tc_pago (tolerancia 1 centavo, refine al final).
+// Si moneda_pago=ARS|UYU, monto_pago debe coincidir aproximadamente con
+// monto_usd * tc_pago (tolerancia 1 unidad de la moneda local, refine al final).
 // side indica quién registra primero — el OTRO lado recibe propagado.
+//
+// 2026-06-29 Multi-país F2: moneda_pago acepta UYU (anchor del pago sigue
+// siendo USD; UYU se valida análogo a ARS via tc_pago). USDT NO se acepta acá
+// — Red B2B usa USDT como sinónimo de USD para el anchor pero el monto_pago
+// concreto se asienta en USD/ARS/UYU. La validación país-aware (tenant AR
+// rechaza UYU, tenant UY rechaza ARS) se hace en el handler vía
+// `assertMonedaValidaParaPais`.
 const registrarPagoSchema = z.object({
   monto_usd:   z.coerce.number().positive(),
-  moneda_pago: z.enum(['USD', 'ARS']),
+  moneda_pago: z.enum(['USD', 'ARS', 'UYU']),
   monto_pago:  z.coerce.number().positive(),    // monto en la moneda_pago
   tc_pago:     z.coerce.number().positive(),    // TC al momento del pago
   caja_id:     z.coerce.number().int().positive(),
@@ -90,18 +97,20 @@ const registrarPagoSchema = z.object({
   .refine(
     (d) => {
       // Validación de coherencia monto_pago vs monto_usd * tc_pago.
-      // Solo aplica si moneda_pago === 'ARS' (en USD ambos deberían ser iguales,
-      // pero permitimos que tc_pago sea cualquier valor en USD — sin re-cálculo).
       if (d.moneda_pago === 'USD') {
         // En USD el monto_pago debe ser igual a monto_usd (tolerancia 1 centavo).
         return Math.abs(d.monto_pago - d.monto_usd) < 0.01;
       }
-      // ARS: monto_pago ≈ monto_usd * tc_pago.
+      // ARS o UYU: monto_pago ≈ monto_usd * tc_pago.
+      // Tolerancia 1 unidad de moneda local (ARS típico 1400/USD → 0.07%
+      // tolerance; UYU típico 40/USD → 2.5% sobre 1 USD pero menos sobre
+      // pagos grandes — aceptable porque el frontend calcula con la misma
+      // fórmula y el TC es shared).
       const expected = d.monto_usd * d.tc_pago;
-      return Math.abs(d.monto_pago - expected) < 1.0; // tolerancia 1 ARS (montos grandes en ARS)
+      return Math.abs(d.monto_pago - expected) < 1.0;
     },
     {
-      message: 'monto_pago no coincide con monto_usd × tc_pago (tolerancia 1 ARS / 0.01 USD)',
+      message: 'monto_pago no coincide con monto_usd × tc_pago (tolerancia 1 unidad de moneda local / 0.01 USD)',
       path: ['monto_pago'],
     }
   );

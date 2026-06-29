@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { fechaNoFutura } = require('./_common');
+const { fechaNoFutura, MonedaEnum } = require('./_common');
 
 const CATEGORIAS_CC       = ['VIP', 'A+', 'A-'];
 const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia'];
@@ -102,7 +102,7 @@ const cobranzaItemSchema = z.object({
   cliente_cc_id: z.coerce.number().int().positive(),
   fecha:         fechaNoFutura,
   monto:         z.coerce.number().positive('El monto debe ser > 0').max(10_000_000, 'Monto excede el máximo (10M)'),
-  moneda:        z.enum(['USD', 'ARS', 'USDT']).default('USD'),
+  moneda:        MonedaEnum.default('USD'),
   tc:            z.coerce.number().positive().optional().nullable(),
   caja_id:       z.coerce.number().int().positive('Caja requerida'),
   // 'pago' = pago total. 'parte_de_pago' = pago parcial sin saldar la deuda.

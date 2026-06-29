@@ -1,4 +1,8 @@
 const { z } = require('zod');
+// 2026-06-29 Multi-país F2: enum compartido. La restricción país-aware
+// (tenant AR no acepta UYU, tenant UY no acepta ARS) se hace en el handler
+// con `assertMonedaValidaParaPais` — el schema acepta las 4 monedas.
+const { MonedaEnum } = require('./_common');
 
 const HORA_RE = /^\d{2}:\d{2}(:\d{2})?$/;
 
@@ -12,7 +16,7 @@ const ventaItemSchema = z.object({
   precio_vendido:  z.coerce.number().min(0).default(0),
   precio_original: z.coerce.number().min(0).optional().nullable(),
   costo:           z.coerce.number().min(0).default(0),
-  moneda:          z.enum(['USD', 'ARS']).default('USD'),
+  moneda:          MonedaEnum.default('USD'),
   comision:        z.coerce.number().min(0).default(0),
 });
 
@@ -20,7 +24,7 @@ const ventaPagoSchema = z.object({
   metodo_pago_id:      z.coerce.number().int().positive().optional().nullable(),
   metodo_nombre:       z.string().trim().min(1, 'Método requerido').max(120),
   monto:               z.coerce.number().min(0).default(0),
-  moneda:              z.enum(['USD', 'ARS', 'USDT']).default('ARS'),
+  moneda:              MonedaEnum.default('ARS'),
   tc:                  z.coerce.number().positive().optional().nullable(),
   es_cuenta_corriente: z.boolean().default(false),
 });
@@ -37,7 +41,7 @@ const canjeSchema = z.object({
   color:          z.string().trim().max(60).optional().nullable(),
   bateria:        z.coerce.number().int().min(0).max(100).optional().nullable(),
   valor_toma:     z.coerce.number().min(0).default(0),
-  moneda:         z.enum(['USD', 'ARS']).default('USD'),
+  moneda:         MonedaEnum.default('USD'),
   agregar_stock:  z.boolean().default(false),
   // ─── Campos extra cuando agregar_stock=true ──────────────────────────────
   // Estos NO se persisten en la tabla `canjes` — solo viajan al INSERT
@@ -136,7 +140,7 @@ const createEgresoSchema = z.object({
   fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD'),
   concepto:       z.string().trim().min(1, 'Concepto requerido').max(300),
   monto:          z.coerce.number().min(0).default(0),
-  moneda:         z.enum(['USD', 'ARS', 'USDT']).default('USD'),
+  moneda:         MonedaEnum.default('USD'),
   tc:             z.coerce.number().positive().optional().nullable(),
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   notas:          z.string().trim().max(500).optional().nullable(),
