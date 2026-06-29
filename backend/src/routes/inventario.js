@@ -15,6 +15,8 @@ const storageFlags = require('../lib/storageFlags');
 const adminOnly = require('../middleware/adminOnly');
 const { reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { invalidateCajas } = require('../lib/cajasCache');
+// Multi-país F2: validación país-aware en endpoints de escritura.
+const { assertMonedaValidaParaPais } = require('../lib/money');
 
 // Rate-limit específico para carga masiva: 20 req / 15 min por usuario autenticado
 // (la key cae a IP si por algún motivo no hay user). El bulk es write-heavy y
@@ -679,6 +681,14 @@ const PRODUCTO_COLS = [
 
 router.post('/productos', validate(createProductoSchema), async (req, res, next) => {
   try {
+    // Multi-país F2: el schema acepta UYU + ARS, pero el tenant solo puede
+    // usar las monedas habilitadas para su país (assertMonedaValidaParaPais
+    // rebota con 400 si no). Cada producto tiene 2 monedas — costo + precio
+    // — y cada una se valida independientemente con su fieldName para que el
+    // error indique cuál de las dos fue inválida.
+    assertMonedaValidaParaPais(req.body.costo_moneda, req.tenantPais, 'costo_moneda');
+    assertMonedaValidaParaPais(req.body.precio_moneda, req.tenantPais, 'precio_moneda');
+
     // Defaults JS para columnas NOT NULL nuevas (la migración tiene DEFAULT,
     // pero como el INSERT lista todas las columnas explícitamente pasaríamos
     // NULL si el cliente no las manda → NOT NULL violation). Defaultear acá
@@ -741,6 +751,12 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    // Multi-país F2: validación país-aware si el PUT trae monedas.
+    // updateProductoSchema es .partial(), así que `costo_moneda`/`precio_moneda`
+    // pueden venir undefined (no se cambian); el helper hace no-op en ese caso.
+    assertMonedaValidaParaPais(req.body.costo_moneda, req.tenantPais, 'costo_moneda');
+    assertMonedaValidaParaPais(req.body.precio_moneda, req.tenantPais, 'precio_moneda');
 
     const before = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(

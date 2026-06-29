@@ -8,7 +8,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2 } = require('../lib/money');
+const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { syncContactoSafe } = require('../lib/contactosSync');
 const adminOnly = require('../middleware/adminOnly');
@@ -452,6 +452,8 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
   const client = await db.connect();
   try {
     const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;
+    // Multi-país F2: rechazar moneda no habilitada para el país del tenant.
+    assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
 
     // #H-05 cross-module: si la compra crea productos en Inventario, exigir
     // también permiso `inventario` (no alcanza con solo `proveedores`).

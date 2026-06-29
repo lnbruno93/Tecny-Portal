@@ -15,7 +15,7 @@ const requireCapability = require('../middleware/requireCapability');
 // vista de read-only del módulo.
 const egresosCargar = requireCapability('egresos.cargar');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2 } = require('../lib/money');
+const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const {
   createCategoriaSchema, updateCategoriaSchema,
@@ -246,6 +246,8 @@ router.post('/', egresosCargar, validate(createEgresoSchema), async (req, res, n
   const client = await db.connect();
   try {
     const { fecha, concepto, categoria_id, monto, moneda, tc, metodo_pago_id, estado, notas } = req.body;
+    // Multi-país F2: tenant AR no puede egresar en UYU, tenant UY no en ARS.
+    assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
     const monto_usd = round2(toUsd(Number(monto), moneda, tc));
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
@@ -291,6 +293,14 @@ router.put('/:id', egresosCargar, validate(updateEgresoSchema), async (req, res,
     if (next_.estado === 'pagado' && !next_.metodo_pago_id) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Para marcar un egreso como pagado hay que indicar de qué caja sale' });
+    }
+    // Multi-país F2: validamos la moneda final post-merge para que tampoco
+    // se pueda "rescatar" una moneda no habilitada via UPDATE parcial.
+    try {
+      assertMonedaValidaParaPais(next_.moneda, req.tenantPais, 'moneda');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      return next(err);
     }
     // 2026-06-24 SOL-1 (audit pre-live): validar el merged result. Si moneda
     // queda en ARS, tc TIENE que ser > 0 — sin esto, toUsd(monto, 'ARS', null)

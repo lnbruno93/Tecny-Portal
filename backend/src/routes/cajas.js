@@ -5,7 +5,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const requireCapability = require('../middleware/requireCapability');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { round2 } = require('../lib/money');
+const { round2, assertMonedaValidaParaPais } = require('../lib/money');
 const { createTenantScopedCache } = require('../lib/cacheTtl');
 const { CAJAS_RESUMEN } = require('../lib/cacheConfig');
 const { getCajasList, invalidateCajas } = require('../lib/cajasCache');
@@ -257,6 +257,9 @@ router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), as
   const client = await db.connect();
   try {
     const { nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct } = req.body;
+    // Multi-país F2: la caja no puede tener una moneda no habilitada para el
+    // país del tenant (tenant AR no abre caja UYU, tenant UY no abre caja ARS).
+    assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
@@ -285,6 +288,14 @@ router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), as
 router.put('/cajas/:id', requireCapability('cajas.crear'), validate(updateCajaSchema), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
+  // Multi-país F2: si el PUT trae `moneda`, validar país-aware.
+  if (req.body.moneda !== undefined) {
+    try {
+      assertMonedaValidaParaPais(req.body.moneda, req.tenantPais, 'moneda');
+    } catch (err) {
+      return next(err);
+    }
+  }
   const client = await db.connect();
   try {
     await client.query('BEGIN');
