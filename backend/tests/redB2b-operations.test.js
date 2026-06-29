@@ -758,6 +758,43 @@ describe('RLS leak attempts', () => {
       .send({ reason: 'hack attempt' });
     expect(r.status).toBe(404);
   });
+
+  // PR-E #464: gap detectado en audit focal Red B2B — PATCH /:id sin test
+  // de cross-tenant. Mismo filtro que cancel (`seller_tenant_id = $caller OR
+  // buyer_tenant_id = $caller`) → tenant C no ve la op → 404 + las notas
+  // originales no se tocan.
+  it('Tenant C intenta PATCH op A↔B (edit notes) → 404 + notes no cambian', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const created = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+        notes: 'nota original del seller',
+      });
+    expect(created.status).toBe(201);
+    const opId = created.body.operation.id;
+
+    const r = await request(app)
+      .patch(`/api/red-b2b/operations/${opId}`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({ notes: 'leak cross-tenant intento' });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+
+    // Las notas del seller (movimientos_cc.notas) siguen siendo las originales.
+    const movQ = await pool.query(
+      `SELECT notas FROM movimientos_cc
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2`,
+      [tenantAId, opId]
+    );
+    expect(movQ.rows.length).toBe(1);
+    expect(movQ.rows[0].notas).toBe('nota original del seller');
+    expect(movQ.rows[0].notas).not.toContain('leak');
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

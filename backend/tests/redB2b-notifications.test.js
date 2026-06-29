@@ -421,6 +421,36 @@ describe('RLS isolation', () => {
     expect(r.status).toBe(200);
     expect(r.body.notifications.length).toBe(0);
   });
+
+  // PR-E #464: gap detectado en audit focal Red B2B — POST /:id/read sin test
+  // cross-tenant. Decisión documentada en notifications.js: el endpoint NO
+  // devuelve 404 cuando la notif pertenece a otro tenant (evita enumeration
+  // leak). Devuelve 200 idempotent y CRUCIALMENTE no marca como leída la
+  // notif del otro tenant (el WHERE tenant_id = $myTenant + RLS lo bloquean).
+  it('Tenant C intenta marcar como leída notif de tenant A → 200 idempotent + notif A sigue unread', async () => {
+    const notifId = await seedNotification({
+      tenantId: tenantAId,
+      type: 'invitation_received',
+    });
+
+    const r = await request(app)
+      .post(`/api/red-b2b/notifications/${notifId}/read`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    // Endpoint defensivo contra enumeration: devuelve ok idempotent, sin
+    // confirmar/negar existencia del id.
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.idempotent).toBe(true);
+    expect(r.body.read_at).toBeNull();
+
+    // CRÍTICO: la notif del tenant A sigue UNREAD (read_at IS NULL).
+    const dbQ = await pool.query(
+      `SELECT read_at FROM cross_tenant_notifications WHERE id = $1`,
+      [notifId]
+    );
+    expect(dbQ.rows.length).toBe(1);
+    expect(dbQ.rows[0].read_at).toBeNull();
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

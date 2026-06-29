@@ -101,7 +101,13 @@ describe('Pantalla Sanidad del Negocio', () => {
 
     await waitFor(() => expect(sanidad.list).toHaveBeenCalledWith(6));
 
-    await user.click(screen.getByRole('button', { name: /12 meses/i }));
+    // 2026-06-29 PR-E: fix flaky CI. `sanidad.list(6)` se dispara en useEffect
+    // ANTES de que React procese setLoading(false) post-promise. En CI bajo
+    // carga, getByRole se ejecuta mientras la pantalla todavía renderea
+    // "Cargando…" → el botón "12 meses" no existe → throws. Usar findByRole
+    // (wait + get) garantiza que esperamos al primer render post-loading.
+    const btn12 = await screen.findByRole('button', { name: /12 meses/i });
+    await user.click(btn12);
     await waitFor(() => expect(sanidad.list).toHaveBeenCalledWith(12));
   });
 

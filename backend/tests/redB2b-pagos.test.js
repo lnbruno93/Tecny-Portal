@@ -966,6 +966,46 @@ describe('RLS leak — tenant C', () => {
     expect(r.status).toBe(404);
     expect(r.body.reason).toBe('not_found');
   });
+
+  // PR-E #464: gaps detectados en audit focal Red B2B — 3 endpoints sin test
+  // de RLS leak. El patrón es idéntico al de los 2 existentes arriba (lookup
+  // op + filtro `seller_tenant_id = $caller OR buyer_tenant_id = $caller`).
+  it('Tenant C intenta POST /:id/devolucion sobre op A↔B → 404', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenC}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+
+    // Defensa adicional: no se creó NINGUNA op derivada (parent_op_id).
+    const childrenQ = await pool.query(
+      `SELECT id FROM cross_tenant_operations WHERE parent_op_id = $1`,
+      [op.opId]
+    );
+    expect(childrenQ.rows.length).toBe(0);
+  });
+
+  it('Tenant C intenta GET /:id/pagos sobre op A↔B → 404 (incluso con pago previo)', async () => {
+    // Seed: 1 pago real registrado por A (seller).
+    const seed = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(seed.status).toBe(201);
+
+    // Tenant C intenta consultar.
+    const r = await request(app)
+      .get(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(r.status).toBe(404);
+    expect(r.body.reason).toBe('not_found');
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1298,6 +1338,156 @@ describe('PR-B Bug H3: devolución validada contra pagos efectivos', () => {
       });
     expect(r.status).toBe(201);
     expect(r.body.devolucion.total_usd_devuelto).toBe(500);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PR-E #464 — F4 atomicidad: rollback completo si INSERT a cambio_movimientos
+// falla
+//
+// Caso real: el pago ARS con diferencia cambiaria !== 0 inserta:
+//   1. movimientos_cc del seller (tipo='pago')
+//   2. cambio_entidades (find or insert) + cambio_movimientos (diff)
+//   3. proveedor_movimientos del buyer (tipo='pago')
+//   4. cross_tenant_pagos (maestro)
+//   5. cross_tenant_notifications (notif al otro lado)
+//   6. tenant_admin_actions (audit, vía SAVEPOINT)
+//
+// Si CUALQUIERA falla (excepto el audit con SAVEPOINT), TODO debe rollbackearse
+// — no puede quedar mov_cc del seller sin mov_prov del buyer ni cross_tenant_pagos
+// sin la mov de uno de los dos lados, sino la conciliación se rompe.
+//
+// Estrategia del test: spy sobre crossTenantPagos.registerSellerCobro
+// (helper exportado). Ese helper es el que en su segundo INSERT escribe
+// cambio_movimientos (cuando moneda_pago=ARS y diff != 0). Lo reemplazamos
+// para que arranque la sub-secuencia y luego throw al llegar al INSERT del
+// cambio. Más limpio que parchar client.query y evita deadlock con ROLLBACK.
+//
+// TODO: este test es frágil al refactor — si crossTenantPagos cambia el
+// orden de operaciones o renombra registerSellerCobro, el spy debe ajustarse.
+// El invariante (rollback completo en fallo) se mantiene sin importar la
+// implementación interna.
+// ──────────────────────────────────────────────────────────────────────────
+describe('PR-E F4 atomicity — INSERT cambio_movimientos falla → tx completa rollbackea', () => {
+  const db = require('../src/config/database');
+
+  let partnershipId;
+  let op;
+  let adminQuerySpy;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 2, precio_usd: 100, tc: 1000,
+    });
+  });
+
+  afterEach(() => {
+    if (adminQuerySpy) {
+      adminQuerySpy.mockRestore();
+      adminQuerySpy = null;
+    }
+  });
+
+  it('pago ARS con tc_pago != tc_venta: si cambio_movimientos INSERT falla → 0 nuevas filas en mov_cc/mov_prov/cross_pagos/cambio_mov', async () => {
+    const baseQuery = async (table, where) => {
+      const r = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM ${table} ${where}`
+      );
+      return r.rows[0].n;
+    };
+
+    // Pre-baseline: cleanup en beforeEach del file dejó todo en 0 — verificamos.
+    expect(await baseQuery(
+      'movimientos_cc',
+      `WHERE tenant_id = ${tenantAId} AND tipo = 'pago' AND cross_tenant_operation_id = ${op.opId}`
+    )).toBe(0);
+    expect(await baseQuery(
+      'cambio_movimientos',
+      `WHERE tenant_id = ${tenantAId}`
+    )).toBe(0);
+    expect(await baseQuery(
+      'cross_tenant_pagos',
+      `WHERE cross_tenant_operation_id = ${op.opId}`
+    )).toBe(0);
+
+    // Spy: interceptamos db.adminQuery para envolver client.query y forzar
+    // throw cuando llegue el INSERT a cambio_movimientos. Esto simula un
+    // fallo "natural" (CHECK violation, FK orphan, deadlock) sin tocar
+    // schema ni código de producción.
+    //
+    // El throw se gatilla SOLO en el INSERT específico. Las demás queries
+    // (incluyendo el ROLLBACK que el handler emite en catch) pasan al
+    // originalQuery sin tocar, así PG las procesa normal y la tx aborta
+    // limpio sin dejar la conexión en estado inconsistente.
+    const originalAdminQuery = db.adminQuery.bind(db);
+    adminQuerySpy = jest.spyOn(db, 'adminQuery').mockImplementation(async (callback) => {
+      return originalAdminQuery(async (client) => {
+        const originalQuery = client.query.bind(client);
+        // eslint-disable-next-line no-param-reassign
+        client.query = function patchedQuery(textOrConfig, ...rest) {
+          const text = typeof textOrConfig === 'string'
+            ? textOrConfig
+            : (textOrConfig && textOrConfig.text) || '';
+          // Match: el INSERT en crossTenantPagos.js#registerSellerCobro
+          // arranca con `INSERT INTO cambio_movimientos`. Whitespace
+          // intermedio normalizado por la regex.
+          if (/INSERT\s+INTO\s+cambio_movimientos/i.test(text)) {
+            const err = new Error(
+              'simulated INSERT cambio_movimientos failure (PR-E atomicity test)'
+            );
+            err.code = '23514'; // check_violation — error real plausible
+            return Promise.reject(err);
+          }
+          return originalQuery(textOrConfig, ...rest);
+        };
+        return callback(client);
+      });
+    });
+
+    // Pago ARS con tc_pago=1200 vs tc_venta=1000 → diff_ars positiva no-cero
+    // → registerSellerCobro intenta INSERT a cambio_movimientos → spy throw.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'ARS', monto_pago: 60000, // 50 * 1200
+        tc_pago: 1200, caja_id: cajaArsId, side: 'seller',
+      });
+
+    // El handler propaga el throw via next(err) → app-level error handler
+    // mapea 23514 a 400 con mensaje genérico (ver app.js línea ~810).
+    // Lo crítico no es el status code exacto sino que NO sea 200/201
+    // (tx commiteada).
+    expect(r.status).not.toBe(200);
+    expect(r.status).not.toBe(201);
+
+    // ── INVARIANTE CRÍTICO: 0 filas nuevas en TODAS las tablas afectadas ──
+    // En el flujo real, antes del INSERT a cambio_movimientos hay un
+    // INSERT a movimientos_cc del seller (tipo='pago'). El ROLLBACK del
+    // catch del handler DEBE haberlo revertido. Lo mismo aplica a
+    // cualquier otro INSERT pendiente. Si alguna de estas counts es > 0,
+    // la atomicidad está rota → el partner queda con CC desbalanceado.
+    expect(await baseQuery(
+      'movimientos_cc',
+      `WHERE tenant_id = ${tenantAId} AND tipo = 'pago' AND cross_tenant_operation_id = ${op.opId}`
+    )).toBe(0);
+    expect(await baseQuery(
+      'proveedor_movimientos',
+      `WHERE tenant_id = ${tenantBId} AND tipo = 'pago' AND cross_tenant_operation_id = ${op.opId}`
+    )).toBe(0);
+    expect(await baseQuery(
+      'cross_tenant_pagos',
+      `WHERE cross_tenant_operation_id = ${op.opId}`
+    )).toBe(0);
+    expect(await baseQuery(
+      'cambio_movimientos',
+      `WHERE tenant_id = ${tenantAId}`
+    )).toBe(0);
+
+    // Sanity: el spy se disparó (sino no estaríamos testeando rollback real).
+    expect(adminQuerySpy).toHaveBeenCalled();
   });
 });
 
