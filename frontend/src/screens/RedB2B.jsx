@@ -1,29 +1,38 @@
-// Red B2B (F1 #454) — pantalla de gestión de partnerships cross-tenant.
+// Red B2B — hub principal de la feature cross-tenant.
 //
-// Scope F1: solo lifecycle de partnerships (invite/accept/reject/revoke +
-// listado). No hay operaciones, ni pagos, ni notificaciones todavía — esas
-// pantallas vienen en F2-F5. La pantalla está gateada por la capability
-// `cross_tenant.write` (sidebar item se esconde, ruta vía RequirePermission).
+// PR-X1 #465: refactor a hub con tabs. Antes esta pantalla era SOLO el listado
+// de partnerships (F1 #454). Ahora es el contenedor del feature con 2 tabs:
 //
-// Tabs:
-//   · Activos:               status='active' (lo más común — partnerships vigentes)
-//   · Invitaciones recibidas: status='pending' + invited_by_tenant_id !== mio
-//   · Invitaciones enviadas:  status='pending' + invited_by_tenant_id === mio
-//   · Revocados:             status='revoked' (histórico)
+//   · Partners       — invitar / aceptar / revocar partners (contenido F1)
+//   · Configuración  — caja default + email prefs (delega a RedB2BConfigContent)
 //
-// Botones contextuales por fila según status + my_side:
-//   · pending recibida → [Aceptar] [Rechazar]
-//   · pending enviada  → [Cancelar invitación]
-//   · active           → [Revocar]
-//   · revoked          → (sin acciones)
+// Las otras sub-pantallas (Operaciones, Conciliación, Pendientes) siguen en
+// rutas standalone por ahora — PR-X2 / PR-X3 las van a reubicar dentro de B2B
+// e Inventario. La pantalla está gateada por la capability `cross_tenant.write`
+// (sidebar item se esconde, ruta vía RequirePermission).
+//
+// Query param ?tab=config → abre el tab Configuración por default. Se usa
+// también desde el redirect de la ruta legacy /red-b2b/config (ver App.jsx)
+// para preservar bookmarks existentes sin romper la UX consistente.
+//
+// Tabs internos del listado de partnerships (Activos / Recibidas / Enviadas /
+// Revocados) ahora son tabs SECUNDARIOS dentro del tab Partners — se renderean
+// como una segunda fila debajo del tab principal cuando Partners está activo.
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { Icons } from '../components/Icons';
+import { RedB2BConfigContent } from './RedB2BConfig';
 
-const TABS = [
+const HUB_TABS = [
+  { id: 'partners', label: 'Partners' },
+  { id: 'config',   label: 'Configuración' },
+];
+
+const PARTNER_TABS = [
   { id: 'active',             label: 'Activos',                  status: 'active',  filterMine: null },
   { id: 'pending_received',   label: 'Invitaciones recibidas',   status: 'pending', filterMine: 'received' },
   { id: 'pending_sent',       label: 'Invitaciones enviadas',    status: 'pending', filterMine: 'sent' },
@@ -45,6 +54,64 @@ function planLabel(plan) {
 }
 
 export default function RedB2B() {
+  // PR-X1: tab del hub controlado por ?tab=. Default = partners (que es el
+  // contenido histórico — preservamos la UX existente para usuarios que entran
+  // por el sidebar). El redirect desde /red-b2b/config nos manda con
+  // ?tab=config y el efecto lo lee al montar.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialTab = tabParam === 'config' ? 'config' : 'partners';
+  const [hubTab, setHubTab] = useState(initialTab);
+
+  function selectHubTab(id) {
+    setHubTab(id);
+    // Sincronizamos el query param para que el back/forward del browser y los
+    // refreshes preserven el tab. `partners` es el default — no contamina la
+    // URL. `replace: true` para no llenar el history con cambios de tab.
+    if (id === 'partners') {
+      setSearchParams({}, { replace: true });
+    } else {
+      setSearchParams({ tab: id }, { replace: true });
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-head" style={{ marginBottom: 16 }}>
+        <h1>Red B2B</h1>
+      </div>
+      <p className="muted" style={{ marginTop: -8, marginBottom: 16 }}>
+        Conectá tu cuenta con otros tenants Tecny para operar B2B con sincronización
+        automática de inventario, cuentas corrientes y pagos.
+      </p>
+
+      <div className="tabs" role="tablist" aria-label="Secciones de Red B2B" style={{ marginBottom: 16 }}>
+        {HUB_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={hubTab === t.id}
+            className={`tab ${hubTab === t.id ? 'active' : ''}`}
+            onClick={() => selectHubTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {hubTab === 'partners' && <PartnersTab />}
+      {hubTab === 'config'   && <RedB2BConfigContent />}
+    </div>
+  );
+}
+
+// ── Tab Partners ─────────────────────────────────────────────────────────────
+// Encapsula el listado de partnerships con sus sub-tabs (status filter). Es lo
+// que históricamente vivía en el componente principal RedB2B.jsx antes de
+// PR-X1. Se separó para que el hub renderee este tab condicionalmente y para
+// que el componente Configuración no monte el fetch del listado innecesariamente.
+function PartnersTab() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -60,7 +127,7 @@ export default function RedB2B() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(null); // partnership id currently being acted on
 
-  const tab = TABS.find((t) => t.id === activeTab) || TABS[0];
+  const tab = PARTNER_TABS.find((t) => t.id === activeTab) || PARTNER_TABS[0];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,8 +217,9 @@ export default function RedB2B() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 20 }}>
-        <h1>Red B2B</h1>
+      {/* Botón "Invitar partner": contextual al tab Partners. En Configuración
+          no tiene sentido. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         <button
           type="button"
           className="btn btn-primary"
@@ -161,13 +229,8 @@ export default function RedB2B() {
         </button>
       </div>
 
-      <p className="muted" style={{ marginTop: -12, marginBottom: 16 }}>
-        Conectá tu cuenta con otros tenants Tecny para operar B2B con sincronización
-        automática de inventario, cuentas corrientes y pagos.
-      </p>
-
-      <div className="tabs" role="tablist" style={{ marginBottom: 16 }}>
-        {TABS.map((t) => {
+      <div className="tabs" role="tablist" aria-label="Filtros de partnerships" style={{ marginBottom: 16 }}>
+        {PARTNER_TABS.map((t) => {
           const count = (
             t.id === 'active'           ? counts.active_count :
             t.id === 'pending_received' ? counts.pending_received_count :

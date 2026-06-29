@@ -60,7 +60,9 @@ const RedB2BOperacionDetalle   = lazy(() => import('./screens/RedB2BOperacionDet
 const RedB2BPendingReview = lazy(() => import('./screens/RedB2BPendingReview'));
 // 2026-06-28 #457 Red B2B F4: conciliacion bilateral + config caja default.
 const RedB2BConciliacion = lazy(() => import('./screens/RedB2BConciliacion'));
-const RedB2BConfig       = lazy(() => import('./screens/RedB2BConfig'));
+// PR-X1 #465: RedB2BConfig (wrapper standalone) ya no se monta — la ruta
+// /red-b2b/config redirige al hub. El componente sigue exportado en su archivo
+// como named export `RedB2BConfigContent` que el hub usa dentro del tab Configuración.
 // MOCKUP — pantalla de preview del nuevo modelo de permisos (Rol + Override).
 const Capital    = lazy(() => import('./screens/Capital'));
 const Resumen    = lazy(() => import('./screens/Resumen'));
@@ -299,10 +301,15 @@ export default function App() {
                       <ErrorBoundary><RedB2BConciliacion /></ErrorBoundary>
                     </RequirePermission>
                   } />
+                  {/* PR-X1 #465: /red-b2b/config ahora redirige al hub con
+                      ?tab=config para preservar bookmarks pero entregar UX
+                      consistente (mismo layout que entrar por sidebar). El
+                      wrapper standalone RedB2BConfig sigue exportado por si
+                      un PR siguiente lo necesita, pero esta ruta ya no lo
+                      monta. RequirePermission no aplica al Navigate — el
+                      destino /red-b2b ya está gateado por la cap. */}
                   <Route path="/red-b2b/config" element={
-                    <RequirePermission cap="cross_tenant.write">
-                      <ErrorBoundary><RedB2BConfig /></ErrorBoundary>
-                    </RequirePermission>
+                    <Navigate to="/red-b2b?tab=config" replace />
                   } />
                   <Route path="/capital" element={
                     <RequirePermission cap="cajas.ver">
