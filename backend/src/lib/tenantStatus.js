@@ -31,26 +31,32 @@ const cache = createTenantScopedCache({
     }
     // Pool admin: tenants.suspended_at + paid_until son metadata del operador,
     // no del cliente. Bypaseamos RLS para leer por id explícito.
+    //
+    // BUG FIX (issue #466): la comparación paid_until vs hoy se hace EN PG con
+    // CURRENT_DATE, no en JS. Antes computábamos `new Date(row.paid_until) >=
+    // new Date(new Date().toISOString().slice(0,10))` y eso mezclaba parsing
+    // local-TZ (paid_until) con UTC midnight (today), generando off-by-one
+    // cerca del UTC boundary: a las ~22:00 AR (=01:00 UTC) un tenant con
+    // paid_until=CURRENT_DATE (válido!) se evaluaba como expired y el
+    // middleware requireActiveTenant devolvía 402 a writes legítimos. Al hacer
+    // la comparación dentro de PG no hay ambigüedad de TZ — el driver y
+    // CURRENT_DATE comparten zona horaria del servidor PG.
     const row = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT id, plan, paid_until, suspended_at FROM tenants WHERE id = $1`,
+        `SELECT id, plan, paid_until, suspended_at,
+                (paid_until IS NULL OR paid_until >= CURRENT_DATE) AS is_active_by_date
+           FROM tenants WHERE id = $1`,
         [id]
       );
       return rows[0];
     });
     if (!row) return null;
-    // paid_until vs CURRENT_DATE — date-only comparison.
-    // Si paid_until IS NULL → activo (grandfathered).
-    // Si paid_until >= hoy → activo (pagado al día).
-    const isActive = row.paid_until == null
-      ? true
-      : new Date(row.paid_until) >= new Date(new Date().toISOString().slice(0, 10));
     return {
       id: row.id,
       plan: row.plan,
       paid_until: row.paid_until,
       suspended_at: row.suspended_at,
-      is_active: isActive && row.suspended_at == null,
+      is_active: row.is_active_by_date && row.suspended_at == null,
     };
   },
 });

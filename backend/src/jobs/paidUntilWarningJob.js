@@ -45,18 +45,12 @@ function fmtDateAR(isoDate) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-/**
- * Días entre paid_until (date) y hoy (UTC). 0=hoy, 1=mañana, etc.
- */
-function daysUntil(paidUntilDate) {
-  if (!paidUntilDate) return null;
-  const target = new Date(paidUntilDate);
-  if (isNaN(target.getTime())) return null;
-  target.setUTCHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  return Math.floor((target - today) / 86400000);
-}
+// NOTE (issue #466): `daysUntil()` quedó eliminado a propósito. Antes calculaba
+// `(target - today) / 86400000` con `setUTCHours(0,0,0,0)` en ambos lados, pero
+// `target` venía de PG (TZ del driver) y `today` era `new Date()`, lo que
+// generaba off-by-one cerca del UTC boundary (job CI corriendo cerca de
+// medianoche UTC computaba 1d/3d en lugar de 2d). Ahora `days_left` se calcula
+// directo en PG con `(paid_until - CURRENT_DATE)::int` — TZ-safe.
 
 /**
  * Ejecuta UNA pasada del job. Devuelve count de emails enviados.
@@ -74,6 +68,7 @@ async function runPaidUntilWarning() {
     const { rows: candidates } = await db.adminQuery(async (client) => {
       return client.query(`
         SELECT t.id, t.nombre, t.paid_until, t.paid_until_warning_sent_at,
+               (t.paid_until - CURRENT_DATE)::int AS days_left,
                u.id AS owner_user_id, u.email AS owner_email, u.nombre AS owner_nombre
           FROM tenants t
           LEFT JOIN tenant_users tu ON tu.tenant_id = t.id AND tu.rol = 'owner'
@@ -108,9 +103,12 @@ async function runPaidUntilWarning() {
         continue;
       }
 
-      const daysLeft = daysUntil(row.paid_until);
+      // days_left viene calculado por PG: (paid_until - CURRENT_DATE)::int.
+      // TZ-safe: ambos operandos viven en la misma zona horaria del server PG.
+      const daysLeft = row.days_left;
       if (daysLeft == null || daysLeft < 0 || daysLeft > 3) {
-        // El SELECT debería garantizar [0,3] pero defensive contra TZ edge.
+        // El SELECT BETWEEN [CURRENT_DATE, +3d] ya garantiza [0,3]; este guard
+        // es defensive en caso de race con UPDATE concurrente de paid_until.
         logger.warn({
           source: 'paid_until_warning',
           tenant_id: row.id,
