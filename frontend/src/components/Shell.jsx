@@ -15,7 +15,7 @@ import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
 // 2026-06-29 #458 Red B2B F5: bell de notificaciones cross-tenant en topbar.
 import RedB2BNotificationsBell from './RedB2BNotificationsBell';
-import { alertas as alertasApi, redB2b as redB2bApi } from '../lib/api';
+import { alertas as alertasApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
@@ -125,21 +125,14 @@ const NAV_MAIN = [
   { id: 'cuentas',    path: '/cuentas',    label: 'Venta & Gestión B2B', icon: 'Receipt',    cap: 'b2b.trabajar', group: 1 },
   // 2026-06-27 #454 Red B2B F1: pantalla gateada por cap cross_tenant.write.
   // Default OFF — el owner del tenant la activa por vendedor desde Usuarios.
+  //
+  // PR-X1 #465: items consolidados en hub Red B2B. Antes había 4 entries en
+  // el sidebar (Red B2B, Pendientes, Operaciones, Conciliación) que dispersaban
+  // la feature; ahora hay UN solo item que apunta al hub `/red-b2b` con tabs.
+  // Las rutas legacy (/red-b2b/pending-review, /red-b2b/operaciones,
+  // /red-b2b/conciliacion) siguen activas para no romper bookmarks ni links
+  // externos, pero PR-X2 / PR-X3 las van a reubicar dentro de B2B e Inventario.
   { id: 'red_b2b',    path: '/red-b2b',    label: 'Red B2B',    icon: 'Building',   cap: 'cross_tenant.write',   group: 1 },
-  // 2026-06-28 #455 Red B2B F2: pendientes de revisión (buyer-side). Item
-  // separado del principal para que el badge sea inmediatamente visible —
-  // el sub-tab dentro de Red B2B quedaba sepultado y el operador se perdía
-  // los productos auto-creados. El badge se setea desde el useEffect del
-  // Shell que polea el endpoint cada 2 min (mismo patrón que alertas).
-  { id: 'red_b2b_pending', path: '/red-b2b/pending-review', label: 'Red B2B — Pendientes', icon: 'Bell', cap: 'cross_tenant.write', group: 1 },
-  // 2026-06-28 #456 Red B2B F3: operaciones cross-tenant (CORE). Item separado
-  // del principal para acceso rápido al feed de operaciones (venta/compra
-  // espejadas). Lucas pidió que quede al lado de "Red B2B" — el item
-  // principal es el listado de partners, este es el de transacciones.
-  { id: 'red_b2b_operaciones', path: '/red-b2b/operaciones', label: 'Red B2B — Operaciones', icon: 'Receipt', cap: 'cross_tenant.write', group: 1 },
-  // 2026-06-28 #457 Red B2B F4: conciliación bilateral por partner. Permite
-  // detectar saldos divergentes entre seller y buyer en cada operación.
-  { id: 'red_b2b_conciliacion', path: '/red-b2b/conciliacion', label: 'Red B2B — Conciliación', icon: 'Refresh', cap: 'cross_tenant.write', group: 1 },
   { id: 'contactos',  path: '/contactos',  label: 'Contactos',  icon: 'Users',      cap: 'contactos.ver',        group: 1 },
   // Cajas y Proveedores
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },
@@ -485,34 +478,10 @@ export default function Shell() {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, []);
 
-  // 2026-06-28 #455 F2: contador de productos pending review en sidebar.
-  // Polling cada 2 min (mismo intervalo que alertas). Solo se ejecuta si el
-  // user tiene cap cross_tenant.write — sino, no tiene sentido pegarle al
-  // endpoint que rebotaría con 403. El badge se setea en el item
-  // 'red_b2b_pending' y muestra un counter pequeño si > 0.
-  useEffect(() => {
-    if (!user) return;
-    const isBypass = user.role === 'admin'
-      || user.tenant_cap_rol === 'owner'
-      || user.tenant_cap_rol === 'admin';
-    const hasCap = isBypass
-      || user.caps === null
-      || (Array.isArray(user.caps) && user.caps.includes('cross_tenant.write'));
-    if (!hasCap) return;
-    let cancelled = false;
-    function refresh() {
-      redB2bApi.productosPendingReview.list()
-        .then((r) => {
-          if (cancelled) return;
-          const n = Array.isArray(r.pendientes) ? r.pendientes.length : 0;
-          setBadges((b) => ({ ...b, red_b2b_pending: n > 0 ? n : null }));
-        })
-        .catch(() => { /* best-effort: 403/network/etc. silenciado */ });
-    }
-    refresh();
-    const id = setInterval(refresh, 2 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [user]);
+  // PR-X1 #465: el polling del badge `red_b2b_pending` se eliminó junto al
+  // sub-item del sidebar. PR-X3 va a re-introducir el contador en el item
+  // Inventario (que es donde semánticamente vive un "producto pending"), con
+  // un endpoint dedicado para evitar el cost por tenant sin partnerships.
 
   // Refresca el contador de alertas cada 2 min. Best-effort: si falla
   // (sin capability, sin sesión, etc.), se ignora silenciosamente.

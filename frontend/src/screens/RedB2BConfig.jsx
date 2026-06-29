@@ -3,13 +3,23 @@
 // Por ahora solo expone caja_default_id (donde recibimos pagos cross-tenant
 // propagados desde el otro lado). F5+ puede extender con preferencias de
 // notificaciones, email opt-in, etc.
+//
+// PR-X1 #465: refactor a Option B. El "core content" (form + estado) vive
+// en <RedB2BConfigContent /> sin page-head propio para que se pueda embeber
+// dentro del hub /red-b2b (tab Configuración). El wrapper standalone que
+// preserva la ruta legacy /red-b2b/config (con su page-head y back-link)
+// queda como default export.
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { redB2b, cajas } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 
-export default function RedB2BConfig() {
+// ── Core content (sin page-head propio) ─────────────────────────────────────
+// Se exporta named para que RedB2B.jsx (hub) pueda renderearlo dentro del tab.
+// Hace su propio fetch + render — autónomo. Si en el futuro el hub necesita
+// refrescar la config al cambiar de tab, puede remontarlo con `key`.
+export function RedB2BConfigContent() {
   const { toast } = useToast();
 
   const [config, setConfig] = useState(null);
@@ -60,12 +70,66 @@ export default function RedB2BConfig() {
 
   if (loading) {
     return (
-      <div className="screen-wrap">
-        <div className="empty-state" style={{ padding: 32 }}>Cargando…</div>
-      </div>
+      <div className="empty-state" style={{ padding: 32 }}>Cargando…</div>
     );
   }
 
+  return (
+    <section className="card" style={{ padding: 16 }}>
+      <h2 style={{ marginTop: 0, fontSize: 16 }}>Caja default cross-tenant</h2>
+      <p style={{ marginBottom: 12, fontSize: 14 }}>
+        Cuando un partner Red B2B registra un pago de una operación nuestra,
+        el sistema necesita saber en qué caja propia anotar el movimiento.
+        Si no configurás una caja default, usamos la primera caja con moneda
+        compatible (ARS para pagos ARS, USD para pagos USD/USDT).
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 240px' }}>
+          <label htmlFor="caja-default-select" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+            Caja a usar por defecto
+          </label>
+          <select
+            id="caja-default-select"
+            value={cajaIdDraft}
+            onChange={(e) => setCajaIdDraft(e.target.value)}
+            style={{ width: '100%', padding: 8 }}
+          >
+            <option value="">— Sin configurar (usar fallback automático) —</option>
+            {cajasList.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre} ({c.moneda})
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+      </div>
+
+      {config?.caja_default && (
+        <p style={{ marginTop: 12, fontSize: 13 }}>
+          <span className="muted">Actual: </span>
+          <strong>{config.caja_default.nombre}</strong>
+          <span className="muted"> ({config.caja_default.moneda})</span>
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ── Wrapper standalone para la ruta legacy /red-b2b/config ──────────────────
+// Mantenemos esta ruta activa para no romper bookmarks ni links existentes
+// (emails, docs). PR-X1 además agrega un redirect implícito desde el hub —
+// ver Cambio 3 en App.jsx. Si el user llega acá vía bookmark, ve la pantalla
+// con el page-head + back-link al hub.
+export default function RedB2BConfig() {
   return (
     <div className="screen-wrap">
       <header className="page-head">
@@ -77,53 +141,7 @@ export default function RedB2BConfig() {
           Configuración global del tenant para operaciones cross-tenant.
         </p>
       </header>
-
-      <section className="card" style={{ padding: 16 }}>
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Caja default cross-tenant</h2>
-        <p style={{ marginBottom: 12, fontSize: 14 }}>
-          Cuando un partner Red B2B registra un pago de una operación nuestra,
-          el sistema necesita saber en qué caja propia anotar el movimiento.
-          Si no configurás una caja default, usamos la primera caja con moneda
-          compatible (ARS para pagos ARS, USD para pagos USD/USDT).
-        </p>
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 240px' }}>
-            <label htmlFor="caja-default-select" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-              Caja a usar por defecto
-            </label>
-            <select
-              id="caja-default-select"
-              value={cajaIdDraft}
-              onChange={(e) => setCajaIdDraft(e.target.value)}
-              style={{ width: '100%', padding: 8 }}
-            >
-              <option value="">— Sin configurar (usar fallback automático) —</option>
-              {cajasList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre} ({c.moneda})
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Guardando…' : 'Guardar'}
-          </button>
-        </div>
-
-        {config?.caja_default && (
-          <p style={{ marginTop: 12, fontSize: 13 }}>
-            <span className="muted">Actual: </span>
-            <strong>{config.caja_default.nombre}</strong>
-            <span className="muted"> ({config.caja_default.moneda})</span>
-          </p>
-        )}
-      </section>
+      <RedB2BConfigContent />
     </div>
   );
 }

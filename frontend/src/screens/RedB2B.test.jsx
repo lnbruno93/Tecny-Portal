@@ -1,4 +1,4 @@
-// Tests de pantalla RedB2B (F1 #454).
+// Tests de pantalla RedB2B (F1 #454 + PR-X1 #465 hub con tabs).
 //
 // Cubre los flujos críticos del lifecycle de partnerships del lado UI:
 //   - Render empty state cuando no hay partnerships
@@ -8,10 +8,17 @@
 //   - Reject de una pending received actualiza la lista
 //   - userHasCap('cross_tenant.write') === false → ítem oculto en sidebar
 //     (testeado vía userHasCap directo, no via mount completo del Shell)
+//
+// PR-X1 #465 agrega:
+//   - El hub renderea 2 tabs principales: Partners + Configuración
+//   - Click en tab Configuración renderea contenido de Config (caja default)
+//   - Query param ?tab=config abre el tab Configuración por default
+//   - RedB2BConfigContent NO renderea page-head propio (smoke test)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 // Mock de la lib/api. Mockeamos `redB2b` con vi.fn() en cada método para que
 // los tests puedan inspeccionar las llamadas.
@@ -36,22 +43,35 @@ vi.mock('../lib/api', () => ({
       reject:  vi.fn().mockResolvedValue({ partnership: { id: 1, status: 'revoked' } }),
       revoke:  vi.fn().mockResolvedValue({ partnership: { id: 1, status: 'revoked' } }),
     },
+    config: {
+      get: vi.fn().mockResolvedValue({ red_b2b: { caja_default_id: null, caja_default: null } }),
+      setCajaDefault: vi.fn().mockResolvedValue({ red_b2b: { caja_default_id: null } }),
+    },
+  },
+  cajas: {
+    listMetodosPago: vi.fn().mockResolvedValue({ metodos_pago: [
+      { id: 1, nombre: 'Caja ARS', moneda: 'ARS' },
+      { id: 2, nombre: 'Caja USD', moneda: 'USD' },
+    ] }),
   },
 }));
 
 import { redB2b } from '../lib/api';
 import { userHasCap } from '../lib/userHasCap';
 import RedB2B from './RedB2B';
+import RedB2BConfig, { RedB2BConfigContent } from './RedB2BConfig';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
 
-function renderScreen() {
+function renderScreen(initialEntries = ['/red-b2b']) {
   return render(
-    <ToastProvider>
-      <ConfirmProvider>
-        <RedB2B />
-      </ConfirmProvider>
-    </ToastProvider>
+    <MemoryRouter initialEntries={initialEntries}>
+      <ToastProvider>
+        <ConfirmProvider>
+          <RedB2B />
+        </ConfirmProvider>
+      </ToastProvider>
+    </MemoryRouter>
   );
 }
 
@@ -64,8 +84,8 @@ describe('Pantalla RedB2B', () => {
   it('renderiza empty state cuando no hay partnerships activas', async () => {
     renderScreen();
     expect(await screen.findByText(/Sin partnerships activas/i)).toBeInTheDocument();
-    // El botón "Invitar partner" del header SIEMPRE está visible (no depende
-    // del estado de la lista); el del empty state es opcional según tab.
+    // El botón "Invitar partner" del tab Partners siempre está visible; el del
+    // empty state es opcional según tab.
     expect(screen.getAllByRole('button', { name: /Invitar partner/i }).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -155,6 +175,94 @@ describe('Pantalla RedB2B', () => {
     // (reason) es opcional. La row sólo pasa el id → la lib api lo recibe
     // sin reason → mock se llama con (5) o (5, undefined) según interop.
     expect(redB2b.partnerships.reject.mock.calls[0][0]).toBe(5);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PR-X1 #465: hub con tabs Partners + Configuración
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Pantalla RedB2B — hub con tabs (PR-X1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    redB2b.partnerships.list.mockResolvedValue(mockListResp());
+  });
+
+  it('renderiza los 2 tabs principales: Partners + Configuración', async () => {
+    renderScreen();
+    // Tab Partners (principal) — buscamos un button con role="tab" y nombre exacto.
+    const partnersTab = await screen.findByRole('tab', { name: /^Partners$/i });
+    const configTab   = await screen.findByRole('tab', { name: /^Configuración$/i });
+    expect(partnersTab).toBeInTheDocument();
+    expect(configTab).toBeInTheDocument();
+    // Partners está activo por default.
+    expect(partnersTab).toHaveAttribute('aria-selected', 'true');
+    expect(configTab).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('click en tab Configuración renderea contenido de Config (Caja default)', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const configTab = await screen.findByRole('tab', { name: /^Configuración$/i });
+    await user.click(configTab);
+
+    // Después de clickear, el tab queda activo y se renderea el contenido de
+    // RedB2BConfigContent — buscamos texto característico del form de caja default.
+    await waitFor(() => {
+      expect(configTab).toHaveAttribute('aria-selected', 'true');
+    });
+    expect(await screen.findByText(/Caja default cross-tenant/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Caja a usar por defecto/i)).toBeInTheDocument();
+  });
+
+  it('?tab=config en la URL abre el tab Configuración por default', async () => {
+    renderScreen(['/red-b2b?tab=config']);
+    const configTab = await screen.findByRole('tab', { name: /^Configuración$/i });
+    expect(configTab).toHaveAttribute('aria-selected', 'true');
+    // Y el contenido de Config aparece sin necesidad de click.
+    expect(await screen.findByText(/Caja default cross-tenant/i)).toBeInTheDocument();
+  });
+
+  it('?tab=config NO abre el tab Partners por default', async () => {
+    renderScreen(['/red-b2b?tab=config']);
+    const partnersTab = await screen.findByRole('tab', { name: /^Partners$/i });
+    expect(partnersTab).toHaveAttribute('aria-selected', 'false');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PR-X1 #465: smoke test del refactor de RedB2BConfig
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('RedB2BConfig: separation of Content + wrapper standalone', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('RedB2BConfigContent NO renderea page-head propio (sin <h1>)', async () => {
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <RedB2BConfigContent />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+    // Esperamos al fetch de la config para que se renderee el form.
+    await screen.findByText(/Caja default cross-tenant/i);
+    // No debería haber ningún <h1> — solo el <h2> del card "Caja default cross-tenant".
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
+  it('RedB2BConfig (wrapper standalone) SÍ renderea page-head con título', async () => {
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <RedB2BConfig />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+    // El wrapper agrega el page-head con <h1>Configuración Red B2B</h1>.
+    expect(await screen.findByRole('heading', { level: 1, name: /Configuración Red B2B/i })).toBeInTheDocument();
   });
 });
 
