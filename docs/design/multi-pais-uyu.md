@@ -1136,25 +1136,42 @@ Cada fase es **mergeable independiente**, deployable a prod. Feature flag `MULTI
 
 ---
 
-## 9. Open decisions (para Lucas)
+## 9. Decisiones secundarias cerradas (Lucas, 2026-06-29)
 
-Decisiones que NO cerré porque requieren input del PO. Listadas explícitamente para que se respondan antes de implementación o queden como follow-up tracked.
+Las 8 decisiones que habían quedado abiertas al primer draft se cerraron en la review con Lucas el mismo día del doc. Quedan documentadas acá para que F1-F5 las implementen literal sin re-discusión.
 
-1. **¿Cambio de país post-signup?** El doc asume **inmutable desde UI** (sección 6.4). Si un tenant se equivoca al signup, ¿lo dejamos resolver via super-admin manual con migration de datos, o agregamos endpoint `PATCH /api/admin/tenant/:id/pais` con audit + warning de consecuencias? **Recomendación del autor**: super-admin manual hasta que aparezca el primer caso real. No invertir en UI para un edge case hipotético.
+1. **Cambio de país post-signup → ✅ Solo super-admin manual**.
+   - NO se agrega endpoint `PATCH /api/admin/tenant/:id/pais`. Si llega el caso real, super-admin lo hace via SQL directo + acompañamiento de Lucas.
+   - El doc en sección 6.4 ya documentaba esto como "no soportamos" — esta decisión lo confirma definitivamente.
 
-2. **¿Seed de TC default automático al signup UY?** Hoy el primer lookup cae al fallback hardcoded (40 UYU/USD). Alternativa: el signup UY persiste automáticamente `tc_defaults` con valor 40 + notas "Default inicial — actualizar". **Recomendación**: NO seedear. El operador lo edita la primera vez que entra al cotizador y persiste él. Menos magia, más claridad.
+2. **Seed automático de TC default al signup UY → ✅ SÍ seedear**.
+   - Cambio respecto al draft inicial (que recomendaba NO seedear). Razón: si queda NULL, el operador UY se encuentra con inputs TC vacíos en su primera venta — mala UX inicial.
+   - Al signup de un tenant UY, F1 inserta automáticamente fila en `tc_defaults_pais` con `(UY, UYU/USD, 40, NULL, NULL)` o el último valor seteado por admin global.
+   - El operador puede actualizar el TC default en cualquier momento desde Config (decisión 6 abajo).
 
-3. **¿Habilitar también USDT como moneda local UY o solo universal?** Hoy USDT está habilitada para AR y UY como moneda operativa (decisión 5). ¿Es correcto en UY o el revendedor UY casi no opera USDT? Si solo opera USD + UYU, podríamos cerrar el enum UY a `['UYU','USD']` (sin USDT). **Pregunta al cliente UY**: ¿usa USDT operativo? Mientras tanto, dejamos USDT habilitado (default permisivo es menos riesgoso que default restrictivo).
+3. **¿USDT habilitado en UY? → ⏸ Pendiente respuesta del cliente UY**.
+   - **Default permisivo**: F1 deja USDT habilitado en UY (enum `['UYU','USD','USDT']`) hasta confirmación.
+   - **Acción de Lucas**: preguntar al cliente UY si opera USDT. Si dice "no", reducimos enum a `['UYU','USD']` en un follow-up chico post-F1.
 
-4. **¿Pricing diferencial UY?** Decisión 4 dice "todos los planes en USD para todos". Si Lucas a futuro decide ofrecer Starter más barato en UY (mercado menor), ¿el schema lo soporta? Hoy `plan_prices` no es per-país. **Recomendación**: NO abrir esto ahora. Si en 3-6 meses Lucas quiere pricing regional, se agrega `plan_prices_pais` como subtabla con override per país. Es feature aparte.
+4. **Pricing diferencial por país → ✅ NO abrir ahora**.
+   - `plan_prices` permanece sin columna `pais`. Tenants UY pagan en USD igual que AR.
+   - Si en futuro 3-6 meses se valida demanda de pricing regional, se agrega `plan_prices_pais` como subtabla. Es feature aparte.
 
-5. **¿Alertas con thresholds default por país?** Sección 7.9 menciona thresholds de "TC fuera de rango" que para AR son 1200-1600 y para UY serían ~35-45. ¿El signup UY seedea automáticamente la alerta con threshold UY? **Pregunta**: ¿qué thresholds exactos UY?
+5. **Thresholds default alerta "TC fuera de rango" UY → ✅ `25 < TC < 60`**.
+   - El rango UYU/USD oscila históricamente entre 30-45. `25 < TC < 60` da margen de seguridad razonable.
+   - F1 seedea la alerta en signup UY con esos thresholds. Admin puede ajustar luego desde Config.
 
-6. **¿Tab "TC defaults" en Cotizador o en Config?** Decisión durable propuesta: tab en Cotizador (sección 5.6). **Confirmar con Lucas**: a veces los TC defaults se piensan como config global, no contextual del cotizador. Si la posición es "está en Config", el subagente F4 lo mueve.
+6. **Ubicación tab "TC defaults" → ✅ Config (no Cotizador)**.
+   - Cambio respecto al draft inicial (que recomendaba en Cotizador). Razón: el Cotizador ya está sobrecargado y TC defaults es feature de admin (config global) no operativa diaria.
+   - F4 agrega tab "TC default por país" dentro de Configuración del sistema.
 
-7. **¿Localización de errores del backend en UY?** Los mensajes de error JSON del backend están en español sin variantes regionales ("No tenés permiso", "el saldo es negativo"). Para UY funcionan tal cual (español es español). NO recomiendo introducir i18n por país — abre un can of worms para una marginal mejora. **Confirmar**.
+7. **Localización de errores backend por país → ✅ NO**.
+   - Spanish neutro funciona en AR y UY. Sobrekill agregar i18n por país solo para esto.
+   - F1-F5 dejan todos los mensajes de error como están.
 
-8. **¿Bandera UY en landing?** La landing actual (tecnyapp.com) NO menciona Uruguay. ¿Lucas quiere mencionar disponibilidad UY en la landing una vez que F4 esté en prod? Si sí, copy + diseño quedan como follow-up post-merge — no bloquean este doc.
+8. **Mencionar Uruguay en landing tecnyapp.com → ✅ SÍ, pero como follow-up post-launch**.
+   - NO bloquea este feature. Después de tener 1+ tenant UY real funcionando, actualizamos copy + diseño de landing para mencionar disponibilidad UY.
+   - Tracked como tarea aparte; no entra en F1-F5.
 
 ---
 
