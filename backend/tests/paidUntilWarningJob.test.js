@@ -86,6 +86,11 @@ describe('runPaidUntilWarning — filtrado + envío', () => {
     const warnMail = queue.find(m => m.to === 'owner-warn@test.local');
     expect(warnMail).toBeDefined();
     expect(warnMail.type).toBe('paid_until_warning');
+    // daysLeft viene de PG `(paid_until - CURRENT_DATE)::int` → TZ-safe (issue #466).
+    // Antes era cálculo en JS con setUTCHours + (target - today) / 86400000, y
+    // daba off-by-one cuando el job corría cerca del UTC boundary (≥22:00 AR /
+    // ≥01:00 UTC) porque mezclaba parsing de paid_until en TZ del driver PG con
+    // `new Date()` en UTC. Ahora la resta vive entera en PG.
     expect(warnMail.daysLeft).toBe(2);
     expect(warnMail.tenantName).toBe('Tenant Warn');
 
