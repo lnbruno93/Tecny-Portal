@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
+// PR-X3 Red B2B: mockeamos useAuth para poder controlar si el user tiene cap
+// `cross_tenant.write` (gate del tab "Pendientes Red B2B").
+const mockUser = { value: null }; // mutable handle — los tests reasignan .value
+vi.mock('../contexts/AuthContext', async (orig) => {
+  const actual = await orig();
+  return { ...actual, useAuth: () => ({ user: mockUser.value, loading: false }) };
+});
+
 // Smoke tests T-02 — verificamos monte + carga de catálogos + apertura modal.
 vi.mock('../lib/api', () => {
   const paginated = { data: [], pagination: { page: 1, pages: 1, total: 0 } };
@@ -26,10 +34,18 @@ vi.mock('../lib/api', () => {
     proveedores: {
       list: vi.fn().mockResolvedValue({ data: [], pagination: { page: 1, pages: 1, total: 0 } }),
     },
+    cajas: { listMetodosPago: vi.fn().mockResolvedValue([]) },
+    redB2b: {
+      productosPendingReview: {
+        list:       vi.fn().mockResolvedValue({ pendientes: [] }),
+        confirmNew: vi.fn(),
+        mergeInto:  vi.fn(),
+      },
+    },
   };
 });
 
-import { inventario as inventarioApi } from '../lib/api';
+import { inventario as inventarioApi, redB2b } from '../lib/api';
 import Inventario from './Inventario';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
@@ -52,7 +68,13 @@ function renderInventario() {
 }
 
 describe('Pantalla Inventario', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset default mock state. Por defecto sin user (tests preexistentes
+    // no esperan el tab Red B2B).
+    mockUser.value = null;
+    redB2b.productosPendingReview.list.mockResolvedValue({ pendientes: [] });
+  });
 
   it('monta sin crashear y carga catálogos + grilla', async () => {
     renderInventario();
@@ -85,5 +107,42 @@ describe('Pantalla Inventario', () => {
     expect(await screen.findByRole('heading', { name: 'Agregar producto' })).toBeInTheDocument();
     // El campo Nombre es obligatorio → siempre renderizado.
     expect(await screen.findByText(/Nombre/)).toBeInTheDocument();
+  });
+
+  // ─── PR-X3 Red B2B — tab "Pendientes Red B2B" en Inventario ───────────────
+  // El tab se gate-keepea por la cap `cross_tenant.write`. Sin cap → tab
+  // oculto (UX no se contamina para usuarios que no usan Red B2B). Con cap
+  // → tab visible y clickeable, contenido delegado a RedB2BPendingReviewContent.
+
+  it('PR-X3: NO muestra tab "Pendientes Red B2B" sin cap cross_tenant.write', async () => {
+    mockUser.value = { id: 1, caps: ['inventario.ver'] }; // sin cap red B2B
+    renderInventario();
+    await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+    expect(screen.queryByRole('tab', { name: /Pendientes Red B2B/i })).not.toBeInTheDocument();
+  });
+
+  it('PR-X3: muestra tab "Pendientes Red B2B" CON cap cross_tenant.write', async () => {
+    mockUser.value = { id: 1, caps: ['inventario.ver', 'cross_tenant.write'] };
+    renderInventario();
+    expect(await screen.findByRole('tab', { name: /Pendientes Red B2B/i })).toBeInTheDocument();
+  });
+
+  it('PR-X3: click en tab "Pendientes Red B2B" renderea el contenido del feature', async () => {
+    mockUser.value = { id: 1, caps: ['cross_tenant.write'] };
+    redB2b.productosPendingReview.list.mockResolvedValue({
+      pendientes: [{
+        id: 50,
+        nombre: 'iPhone X Cross-Tenant Pending',
+        stock: 3,
+        partner: { id: 7, nombre: 'PartnerSeller', slug: 'partner-seller' },
+        created_at: '2026-06-25T10:00:00Z',
+      }],
+    });
+    renderInventario();
+    const pendingTab = await screen.findByRole('tab', { name: /Pendientes Red B2B/i });
+    fireEvent.click(pendingTab);
+    // Verificamos que el contenido del tab se renderea: el nombre del producto
+    // mockeado debe aparecer (viene de RedB2BPendingReviewContent).
+    expect(await screen.findByText('iPhone X Cross-Tenant Pending')).toBeInTheDocument();
   });
 });
