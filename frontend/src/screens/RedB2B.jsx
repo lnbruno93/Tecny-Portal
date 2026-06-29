@@ -19,12 +19,13 @@
 // Revocados) ahora son tabs SECUNDARIOS dentro del tab Partners — se renderean
 // como una segunda fila debajo del tab principal cuando Partners está activo.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { Icons } from '../components/Icons';
+import useModal from '../lib/useModal';
 import { RedB2BConfigContent } from './RedB2BConfig';
 
 const HUB_TABS = [
@@ -393,6 +394,12 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const overlayRef = useRef(null);
+
+  // useModal: Esc cierra + body scroll lock + focus trap. Mismo patrón que
+  // los modales del design system del portal (PR follow-up post Red B2B UX
+  // — el modal original estilaba con inline styles + no usaba modal-hd/body/ft).
+  useModal({ open: true, onClose, overlayRef });
 
   function validate() {
     const trimmed = slug.trim();
@@ -420,51 +427,75 @@ export function InvitePartnerModal({ onClose, onSuccess }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="invite-modal-title">
-        <h2 id="invite-modal-title">Invitar partner</h2>
-        <p className="muted" style={{ marginTop: -8, marginBottom: 12 }}>
-          Ingresá el slug del tenant Tecny al que querés invitar.
-        </p>
+    <div
+      ref={overlayRef}
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="invite-modal-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-hd">
+          <h3 id="invite-modal-title">Invitar partner</h3>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Cerrar modal">
+            <Icons.X size={16} />
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit}>
-          <label htmlFor="invite-slug" style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>
-            Slug del partner
-          </label>
-          <input
-            id="invite-slug"
-            type="text"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="ej. tekhaus"
-            autoFocus
-            disabled={submitting}
-            style={{ width: '100%', marginBottom: 12 }}
-          />
-          <label htmlFor="invite-message" style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>
-            Mensaje (opcional)
-          </label>
-          <textarea
-            id="invite-message"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Hola, somos X y nos gustaría operar con ustedes vía Red B2B..."
-            rows={3}
-            maxLength={500}
-            disabled={submitting}
-            style={{ width: '100%', marginBottom: 8 }}
-          />
-          <div className="muted tiny" style={{ marginBottom: 12 }}>
-            {message.length}/500 caracteres
+          <div className="modal-body">
+            <p className="muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+              Ingresá el slug del tenant Tecny al que querés invitar.
+            </p>
+
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label" htmlFor="invite-slug">
+                Slug del partner
+              </label>
+              <input
+                id="invite-slug"
+                className="input"
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="ej. tekhaus"
+                autoFocus
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="field" style={{ marginBottom: 8 }}>
+              <label className="field-label" htmlFor="invite-message">
+                Mensaje (opcional)
+              </label>
+              <textarea
+                id="invite-message"
+                className="input"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Hola, somos X y nos gustaría operar con ustedes vía Red B2B..."
+                rows={3}
+                maxLength={500}
+                disabled={submitting}
+                style={{ fontFamily: 'inherit', resize: 'vertical' }}
+              />
+              <div className="muted tiny" style={{ marginTop: 4 }}>
+                {message.length}/500 caracteres
+              </div>
+            </div>
+
+            {error && (
+              <div className="neg tiny" style={{ marginTop: 8 }}>{error}</div>
+            )}
           </div>
-          {error && (
-            <div className="neg tiny" style={{ marginBottom: 12 }}>{error}</div>
-          )}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn" onClick={onClose} disabled={submitting}>
+
+          <div className="modal-ft">
+            <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>
               Cancelar
             </button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? 'Enviando...' : 'Enviar invitación'}
+              {submitting ? 'Enviando…' : 'Enviar invitación'}
             </button>
           </div>
         </form>
