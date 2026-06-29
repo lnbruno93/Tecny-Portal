@@ -46,6 +46,15 @@ vi.mock('../lib/api', () => ({
     config: {
       get: vi.fn().mockResolvedValue({ red_b2b: { caja_default_id: null, caja_default: null } }),
       setCajaDefault: vi.fn().mockResolvedValue({ red_b2b: { caja_default_id: null } }),
+      // PR-X1 #465: email prefs default true para todos los flags.
+      getEmailPrefs: vi.fn().mockResolvedValue({ email_prefs: {
+        invitation_received: true,
+        invitation_accepted: true,
+        operation_received:  true,
+        operation_cancelled: true,
+        payment_received:    true,
+      } }),
+      setEmailPrefs: vi.fn().mockResolvedValue({ email_prefs: {} }),
     },
   },
   cajas: {
@@ -263,6 +272,91 @@ describe('RedB2BConfig: separation of Content + wrapper standalone', () => {
     );
     // El wrapper agrega el page-head con <h1>Configuración Red B2B</h1>.
     expect(await screen.findByRole('heading', { level: 1, name: /Configuración Red B2B/i })).toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PR-X1 #465: UI email prefs en tab Configuración
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('RedB2BConfigContent — email prefs (PR-X1 #465)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Re-stubear los mocks tras clearAllMocks (queda sin resolución por default).
+    redB2b.config.get.mockResolvedValue({ red_b2b: { caja_default_id: null, caja_default: null } });
+    redB2b.config.getEmailPrefs.mockResolvedValue({ email_prefs: {
+      invitation_received: true,
+      invitation_accepted: true,
+      operation_received:  true,
+      operation_cancelled: true,
+      payment_received:    true,
+    } });
+    redB2b.config.setEmailPrefs.mockResolvedValue({ email_prefs: {} });
+  });
+
+  function renderConfig() {
+    return render(
+      <MemoryRouter>
+        <ToastProvider>
+          <RedB2BConfigContent />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+  }
+
+  it('renderea los 5 checkboxes con sus labels', async () => {
+    renderConfig();
+    // Esperamos al load — el título "Avisos por email" aparece junto con los checkboxes.
+    await screen.findByText(/Avisos por email/i);
+
+    expect(screen.getByLabelText(/Recibí invitación de partnership/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Un partner aceptó mi invitación/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Un partner me envió una venta/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Un partner canceló una operación/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Un partner cobró un pago/i)).toBeInTheDocument();
+
+    // Default true → todos checked.
+    expect(screen.getByLabelText(/Recibí invitación de partnership/i)).toBeChecked();
+  });
+
+  it('click en un checkbox llama setEmailPrefs con la key + el nuevo valor', async () => {
+    const user = userEvent.setup();
+    renderConfig();
+    await screen.findByText(/Avisos por email/i);
+
+    const checkbox = screen.getByLabelText(/Un partner me envió una venta/i);
+    expect(checkbox).toBeChecked();
+    await user.click(checkbox);
+
+    await waitFor(() => {
+      expect(redB2b.config.setEmailPrefs).toHaveBeenCalledTimes(1);
+    });
+    // PATCH con sólo la key que cambió + nuevo valor (false porque arranca true).
+    expect(redB2b.config.setEmailPrefs).toHaveBeenCalledWith({ operation_received: false });
+  });
+
+  it('optimistic update: UI cambia antes que la promesa resuelva, y revierte si rejecta', async () => {
+    const user = userEvent.setup();
+
+    // Setup: setEmailPrefs rejecta para forzar el revert.
+    const err = new Error('Backend explotó');
+    redB2b.config.setEmailPrefs.mockRejectedValueOnce(err);
+
+    renderConfig();
+    await screen.findByText(/Avisos por email/i);
+
+    const checkbox = screen.getByLabelText(/Un partner cobró un pago/i);
+    expect(checkbox).toBeChecked();
+
+    await user.click(checkbox);
+
+    // Cuando la promesa rejecte, el checkbox vuelve al estado anterior (checked).
+    // En paralelo aparece un toast de error con el mensaje del error.
+    await waitFor(() => {
+      expect(checkbox).toBeChecked();
+    });
+    // El toast renderea el mensaje en el DOM.
+    expect(await screen.findByText(/Backend explotó/i)).toBeInTheDocument();
   });
 });
 
