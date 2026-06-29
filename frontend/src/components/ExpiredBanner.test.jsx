@@ -19,11 +19,25 @@ vi.mock('../contexts/AuthContext', () => ({
 
 import ExpiredBanner from './ExpiredBanner';
 
-// Helper: fecha ISO YYYY-MM-DD a `n` días desde hoy.
+// Helper: fecha YYYY-MM-DD a `n` días desde hoy, EN LOCAL TZ.
+//
+// BUG HISTÓRICO (issue #466): antes usaba `.toISOString().slice(0,10)` que
+// devuelve la fecha en UTC, pero `setDate(getDate()+n)` opera en LOCAL TZ →
+// mezcla TZ → off-by-one cerca del UTC boundary. Ejemplo: a las 22:00 AR
+// (=01:00 UTC del día siguiente), `dateInDays(1)` devolvía la fecha DOS DÍAS
+// adelante en local AR. El componente `parseLocalDate` interpreta el string
+// como local, entonces el test esperaba +1 pero veía +2 y fallaba el match.
+//
+// Fix: construimos el string YYYY-MM-DD manualmente con getFullYear /
+// getMonth / getDate (todos LOCAL TZ), así matchea exactamente lo que
+// `parseLocalDate` espera del backend (PG DATE en TZ del servidor).
 function dateInDays(n) {
   const d = new Date();
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function makeUser(overrides = {}) {
