@@ -772,4 +772,78 @@ describe('PR-C B4 — SAVEPOINT en partnerships#audit', () => {
       client.release();
     }
   });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // PR-E #464: end-to-end regression guard del SAVEPOINT pattern.
+  //
+  // Los 2 happy-path tests arriba verifican que el audit row SE persiste
+  // en flujo normal. El test 3 verifica el MECANISMO del SAVEPOINT
+  // aisladamente. Faltaba el escenario integrado: si por cualquier razón
+  // el INSERT a tenant_admin_actions falla con CHECK violation (ej:
+  // refactor mete un action no whitelisteado, deployment con migration
+  // pendiente, etc.), el invite NO debe rebotar — la partnership row
+  // tiene que persistir y el handler responder 201.
+  //
+  // Estrategia: spy sobre db.adminQuery interceptando client.query para
+  // throw 23514 (check_violation) específicamente cuando llegue el INSERT
+  // a tenant_admin_actions. El helper audit en partnerships.js envuelve
+  // ese INSERT en SAVEPOINT + ROLLBACK TO SAVEPOINT, así que el throw
+  // queda atrapado y la tx padre sigue viva → COMMIT exitoso del invite.
+  // ────────────────────────────────────────────────────────────────────────
+  it('SAVEPOINT regression guard: INSERT audit falla → invite NO rollbackea (responde 201 + partnership persiste)', async () => {
+    const db = require('../src/config/database');
+    const originalAdminQuery = db.adminQuery.bind(db);
+    const spy = jest.spyOn(db, 'adminQuery').mockImplementation(async (callback) => {
+      return originalAdminQuery(async (client) => {
+        const originalQuery = client.query.bind(client);
+        // eslint-disable-next-line no-param-reassign
+        client.query = function patchedQuery(textOrConfig, ...rest) {
+          const text = typeof textOrConfig === 'string'
+            ? textOrConfig
+            : (textOrConfig && textOrConfig.text) || '';
+          if (/INSERT\s+INTO\s+tenant_admin_actions/i.test(text)) {
+            const err = new Error(
+              'simulated CHECK violation on tenant_admin_actions.action (PR-E SAVEPOINT regression)'
+            );
+            err.code = '23514';
+            return Promise.reject(err);
+          }
+          return originalQuery(textOrConfig, ...rest);
+        };
+        return callback(client);
+      });
+    });
+
+    try {
+      const r = await request(app)
+        .post('/api/red-b2b/partnerships/invite')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ target_tenant_slug: TENANT_B.slug });
+
+      // CRÍTICO: el handler responde 201 a pesar de que el INSERT al
+      // audit row falló (SAVEPOINT lo aisló).
+      expect(r.status).toBe(201);
+      expect(r.body.partnership).toBeDefined();
+      expect(r.body.partnership.id).toBeDefined();
+
+      // Partnership row efectivamente persistida (la tx padre commiteó).
+      const row = await pool.query(
+        `SELECT status FROM tenant_partnerships WHERE id = $1`,
+        [r.body.partnership.id]
+      );
+      expect(row.rows.length).toBe(1);
+      expect(row.rows[0].status).toBe('pending');
+
+      // Y el audit NO se persistió (el spy lo bloqueó, el SAVEPOINT
+      // rollbackeó solo esa porción).
+      const auditQ = await pool.query(
+        `SELECT id FROM tenant_admin_actions
+           WHERE tenant_id = $1 AND action = 'cross_tenant_partnership_created'`,
+        [tenantAId]
+      );
+      expect(auditQ.rows.length).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
