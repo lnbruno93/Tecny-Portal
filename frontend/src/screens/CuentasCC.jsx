@@ -6,6 +6,8 @@ import { cuentas, cajas as cajasApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
+import { useAuth } from '../contexts/AuthContext';
+import { userHasCap } from '../lib/userHasCap';
 import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 import VentaB2BModal from '../components/VentaB2BModal';
 import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
@@ -15,6 +17,7 @@ import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
 import useModal from '../lib/useModal';
 import Seg from '../components/Seg';
+import { RedB2BConciliacionContent } from './RedB2BConciliacion';
 
 
 
@@ -405,14 +408,44 @@ export default function CuentasCC() {
   // cross-tenant en /red-b2b/operaciones/:id (las rows no-cross-tenant siguen
   // sin handler — el módulo CC nunca tuvo click-to-detail tradicional).
   const navigate  = useNavigate();
+  // PR-X3 Red B2B: tab "Conciliación Red B2B" sólo visible si user tiene cap
+  // cross_tenant.write. Necesitamos useAuth() para el chequeo.
+  const { user } = useAuth() || {};
+  const canSeeRedB2B = userHasCap(user, 'cross_tenant.write');
 
-  const [tab, setTab]             = useState('clientes');
+  // PR-X3: ?tab=conciliacion abre directo el tab nuevo (desde redirect de
+  // ruta legacy /red-b2b/conciliacion o desde un bookmark). ?partnership=:id
+  // se delega al RedB2BConciliacionContent que abre el detalle directo.
+  // Mantenemos `clientes` como default histórico para usuarios que entran
+  // por sidebar.
+  const tabFromUrlRaw = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null);
+  const initialTab = (tabFromUrlRaw === 'conciliacion' && canSeeRedB2B)
+    ? 'conciliacion'
+    : tabFromUrlRaw === 'resumen'
+      ? 'resumen'
+      : 'clientes';
+  const [tab, setTab]             = useState(initialTab);
   const [catFilter, setCatFilter] = useState('todas');
   const [search, setSearch]       = useState('');
   const [clientes, setClientes]   = useState([]);
   // Deep-link desde Ventas: /cuentas?cliente=<id> abre directo ese cliente.
   // Usado por la grilla de Ventas cuando el operador edita una fila B2B.
-  const [searchParams] = useSearchParams();
+  // PR-X3: searchParams reactivo también para el tab Conciliación Red B2B
+  // (sync con ?partnership= cuando el user navega adentro del tab).
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Helper: setear tab + sincronizar URL. Preservamos otros query params
+  // (?cliente=<id>, ?partnership=<id>) — sólo tocamos 'tab' y, al salir
+  // de Conciliación, limpiamos 'partnership' para no contaminar el state
+  // de los otros tabs.
+  function selectTab(next) {
+    setTab(next);
+    const sp = new URLSearchParams(searchParams);
+    if (next === 'clientes') sp.delete('tab');
+    else sp.set('tab', next);
+    if (next !== 'conciliacion') sp.delete('partnership');
+    setSearchParams(sp, { replace: true });
+  }
   const initialClienteParam = searchParams.get('cliente');
   const [selectedId, setSelectedId]       = useState(initialClienteParam ? Number(initialClienteParam) : null);
   const [clienteDetail, setClienteDetail] = useState(null);
@@ -746,6 +779,45 @@ export default function CuentasCC() {
   }
 
   // ════════════════════════════════════════════════════════
+  // CONCILIACIÓN RED B2B (PR-X3 #465)
+  // ════════════════════════════════════════════════════════
+  // Tab nuevo: vista de saldos cruzados por partnership. El partnership
+  // activo se lee de ?partnership=<id> (deep-link desde redirect de la
+  // ruta legacy o desde un Click en la lista). Las acciones de seleccionar
+  // / volver se delegan al Content vía callbacks que mutan el query param.
+  if (tab === 'conciliacion' && canSeeRedB2B) {
+    const partnershipParam = searchParams.get('partnership') || null;
+    return (
+      <div>
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">Venta & Gestión B2B</h1>
+            <div className="page-sub">Conciliación bilateral con partners Red B2B</div>
+          </div>
+          <div className="page-actions">
+            <RedB2BTabsBar tab={tab} canSeeRedB2B={canSeeRedB2B} onSelect={selectTab} />
+          </div>
+        </div>
+        <RedB2BConciliacionContent
+          partnershipId={partnershipParam}
+          onSelectPartnership={(id) => {
+            const sp = new URLSearchParams(searchParams);
+            sp.set('tab', 'conciliacion');
+            sp.set('partnership', String(id));
+            setSearchParams(sp, { replace: false });
+          }}
+          onClearPartnership={() => {
+            const sp = new URLSearchParams(searchParams);
+            sp.set('tab', 'conciliacion');
+            sp.delete('partnership');
+            setSearchParams(sp, { replace: false });
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════
   // RESUMEN GENERAL
   // ════════════════════════════════════════════════════════
   if (tab === 'resumen') {
@@ -757,13 +829,7 @@ export default function CuentasCC() {
             <div className="page-sub">Vista global de saldos B2B</div>
           </div>
           <div className="page-actions">
-            <div className="tabs">
-              {['clientes', 'resumen'].map(t => (
-                <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-                  {t === 'clientes' ? 'Clientes' : 'Resumen general'}
-                </button>
-              ))}
-            </div>
+            <RedB2BTabsBar tab={tab} canSeeRedB2B={canSeeRedB2B} onSelect={selectTab} />
           </div>
         </div>
         {!rgData ? (
@@ -842,13 +908,7 @@ export default function CuentasCC() {
           <div className="page-sub">Clientes B2B · registro tipo planilla</div>
         </div>
         <div className="page-actions">
-          <div className="tabs">
-            {['clientes', 'resumen'].map(t => (
-              <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-                {t === 'clientes' ? 'Clientes' : 'Resumen general'}
-              </button>
-            ))}
-          </div>
+          <RedB2BTabsBar tab={tab} canSeeRedB2B={canSeeRedB2B} onSelect={selectTab} />
           <button className="btn" onClick={() => setShowCobranzaMasiva(true)}>
             <Icons.Dollar size={14} /> Cobranza masiva
           </button>
@@ -1307,6 +1367,27 @@ export default function CuentasCC() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// PR-X3 #465 — Barra de tabs reutilizable para CuentasCC.
+// Renderea Clientes / Resumen + opcional Conciliación Red B2B (sólo si el
+// user tiene cap cross_tenant.write). DRY: la usamos en los 3 returns
+// (clientes, resumen, conciliacion) para no duplicar el markup.
+function RedB2BTabsBar({ tab, canSeeRedB2B, onSelect }) {
+  const tabs = [
+    { id: 'clientes', label: 'Clientes' },
+    { id: 'resumen',  label: 'Resumen general' },
+  ];
+  if (canSeeRedB2B) tabs.push({ id: 'conciliacion', label: 'Conciliación Red B2B' });
+  return (
+    <div className="tabs">
+      {tabs.map(t => (
+        <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => onSelect(t.id)}>
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }
