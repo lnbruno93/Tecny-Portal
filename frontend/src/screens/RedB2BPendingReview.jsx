@@ -11,6 +11,14 @@
 //
 // Empty state explica qué son productos pending review para que el operador
 // nuevo entienda de dónde vinieron sin tener que abrir el design doc.
+//
+// PR-X3 #465: split en `RedB2BPendingReviewContent` (named export, sin
+// page-head) + default export wrapper standalone. El Content se renderea
+// dentro del tab "Pendientes Red B2B" de Inventario (sin duplicar el
+// header de la pantalla huésped). El wrapper standalone se mantiene para
+// retro-compat con la ruta /red-b2b/pending-review (que ahora redirige al
+// nuevo home, pero el componente sigue funcional si lo importamos directo
+// en tests o lo montamos a futuro).
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { redB2b, inventario } from '../lib/api';
@@ -36,7 +44,20 @@ function formatPrice(n) {
   return num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function RedB2BPendingReview() {
+// ── Content (sin page-head) ──────────────────────────────────────────────────
+// PR-X3 #465: este es el corazón de la pantalla, sin el header propio.
+// Lo embebemos como tab dentro de Inventario para que el operador encuentre
+// los productos pendientes en el mismo módulo donde ya gestiona stock —
+// menos saltos, menos pantallas que descubrir.
+//
+// Props:
+//   - onCountChange (opcional): callback que recibe la cantidad de pendientes
+//     cada vez que se refresca el listado. Sirve para que el huésped
+//     (Inventario tab badge) actualice su counter sin un fetch adicional.
+//
+// Cuando el componente se monta y existe `onCountChange`, dispara el callback
+// con el count inicial. Idem en cada refresh post-acción (confirmar/mergear).
+export function RedB2BPendingReviewContent({ onCountChange } = {}) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [pendientes, setPendientes] = useState([]);
@@ -48,14 +69,17 @@ export default function RedB2BPendingReview() {
     setLoading(true);
     try {
       const r = await redB2b.productosPendingReview.list();
-      setPendientes(r.pendientes || []);
+      const list = r.pendientes || [];
+      setPendientes(list);
+      if (typeof onCountChange === 'function') onCountChange(list.length);
     } catch (err) {
       toast.error(err.message || 'No pudimos cargar los productos pendientes');
       setPendientes([]);
+      if (typeof onCountChange === 'function') onCountChange(0);
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, onCountChange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -99,10 +123,7 @@ export default function RedB2BPendingReview() {
 
   return (
     <div>
-      <div className="page-head" style={{ marginBottom: 20 }}>
-        <h1>Productos pendientes de revisión</h1>
-      </div>
-      <p className="muted" style={{ marginTop: -12, marginBottom: 16 }}>
+      <p className="muted" style={{ marginTop: 0, marginBottom: 16 }}>
         Productos que tus partners Red B2B agregaron a tu catálogo automáticamente
         a través de operaciones cross-tenant. Confirmalos como nuevos o mergealos
         con productos que ya tenés.
@@ -148,6 +169,22 @@ export default function RedB2BPendingReview() {
           onSubmit={handleMergeSubmit}
         />
       )}
+    </div>
+  );
+}
+
+// ── Wrapper standalone (con page-head) ──────────────────────────────────────
+// Preservado por retro-compat. La ruta /red-b2b/pending-review en App.jsx
+// ahora redirige a /inventario?tab=red-b2b-pending (PR-X3 cleanup), pero
+// dejamos el wrapper exportado por si un test viejo o un futuro PR lo
+// necesita montar standalone.
+export default function RedB2BPendingReview() {
+  return (
+    <div>
+      <div className="page-head" style={{ marginBottom: 20 }}>
+        <h1>Productos pendientes de revisión</h1>
+      </div>
+      <RedB2BPendingReviewContent />
     </div>
   );
 }
