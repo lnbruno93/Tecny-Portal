@@ -144,15 +144,15 @@ export function RedB2BConfigContent() {
       </p>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 240px' }}>
-          <label htmlFor="caja-default-select" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+        <div className="field" style={{ flex: '1 1 240px', marginBottom: 0 }}>
+          <label className="field-label" htmlFor="caja-default-select">
             Caja a usar por defecto
           </label>
           <select
             id="caja-default-select"
+            className="input"
             value={cajaIdDraft}
             onChange={(e) => setCajaIdDraft(e.target.value)}
-            style={{ width: '100%', padding: 8 }}
           >
             <option value="">— Sin configurar (usar fallback automático) —</option>
             {cajasList.map((c) => (
@@ -164,7 +164,7 @@ export function RedB2BConfigContent() {
         </div>
         <button
           type="button"
-          className="btn-primary"
+          className="btn btn-primary"
           onClick={handleSave}
           disabled={saving}
         >
