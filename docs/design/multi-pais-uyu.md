@@ -1149,9 +1149,10 @@ Las 8 decisiones que habían quedado abiertas al primer draft se cerraron en la 
    - Al signup de un tenant UY, F1 inserta automáticamente fila en `tc_defaults_pais` con `(UY, UYU/USD, 40, NULL, NULL)` o el último valor seteado por admin global.
    - El operador puede actualizar el TC default en cualquier momento desde Config (decisión 6 abajo).
 
-3. **¿USDT habilitado en UY? → ⏸ Pendiente respuesta del cliente UY**.
-   - **Default permisivo**: F1 deja USDT habilitado en UY (enum `['UYU','USD','USDT']`) hasta confirmación.
-   - **Acción de Lucas**: preguntar al cliente UY si opera USDT. Si dice "no", reducimos enum a `['UYU','USD']` en un follow-up chico post-F1.
+3. **USDT habilitado en UY → ✅ SÍ**.
+   - Confirmado por Lucas el 2026-06-29 tras consulta al cliente UY: "Hay USDT en Uruguay. Lo usan."
+   - Enum de monedas operativas UY: `['UYU','USD','USDT']`. Idéntico shape que AR salvo cambio de moneda local.
+   - Sin follow-up necesario — F1 lo implementa directo.
 
 4. **Pricing diferencial por país → ✅ NO abrir ahora**.
    - `plan_prices` permanece sin columna `pais`. Tenants UY pagan en USD igual que AR.
