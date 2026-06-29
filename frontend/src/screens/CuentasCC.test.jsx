@@ -11,6 +11,16 @@ vi.mock('react-router-dom', async (orig) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+// PR-X3 Red B2B: mockeamos useAuth para controlar la cap cross_tenant.write
+// (gate del nuevo tab "Conciliación Red B2B"). vi.hoisted asegura que el
+// handle exista cuando vi.mock se eleva al tope del módulo. Sin partial-mock:
+// solo exportamos lo que el código bajo prueba importa de AuthContext.
+const { mockUser } = vi.hoisted(() => ({ mockUser: { value: null } }));
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: mockUser.value, loading: false }),
+  AuthProvider: ({ children }) => children,
+}));
+
 vi.mock('../lib/api', () => ({
   cuentas: {
     clientes: vi.fn().mockResolvedValue({
@@ -24,6 +34,20 @@ vi.mock('../lib/api', () => ({
     createMovimiento: vi.fn(), deleteMovimiento: vi.fn(),
   },
   cajas: { listCajas: vi.fn().mockResolvedValue([]) },
+  // PR-X3: el Content de Conciliación requiere redB2b mocked.
+  redB2b: {
+    partnerships: {
+      list: vi.fn().mockResolvedValue({ partnerships: [] }),
+    },
+    conciliacion: {
+      get: vi.fn().mockResolvedValue({
+        partnership: { id: 1, partner: { nombre: 'TestPartner' } },
+        totales: { operaciones_usd: 0, ops_count: 0, pagado_usd: 0, pagos_count: 0, saldo_neto_usd: 0 },
+        saldos_bilaterales: { difieren: false, diferencia_usd: 0 },
+        ops_diferencias: [],
+      }),
+    },
+  },
 }));
 
 import { cuentas as cuentasApi } from '../lib/api';
@@ -46,6 +70,8 @@ describe('Pantalla CuentasCC (B2B)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navigateMock.mockReset();
+    // PR-X3: default sin user → cap cross_tenant.write false → tab Conciliación oculto.
+    mockUser.value = null;
     // Default: sin movimientos. Cada test que necesite movimientos sobrescribe.
     cuentasApi.movimientos.mockResolvedValue({ data: [], pagination: { page: 1, pages: 1, total: 0 } });
   });
@@ -99,6 +125,27 @@ describe('Pantalla CuentasCC (B2B)', () => {
     // Esperar a que termine de pintar la tabla (descripcion del mov visible)
     await screen.findByText('Venta normal');
     expect(screen.queryByText('RED B2B')).not.toBeInTheDocument();
+  });
+
+  // ─── PR-X3 Red B2B — tab "Conciliación Red B2B" en CuentasCC ───────────────
+  // El tab se gate-keepea por la cap cross_tenant.write. Sin cap → tab oculto.
+  // Con cap → tab visible, click renderea RedB2BConciliacionContent (delegado).
+
+  it('PR-X3: NO muestra tab "Conciliación Red B2B" sin cap cross_tenant.write', async () => {
+    mockUser.value = { id: 1, caps: ['b2b.trabajar'] }; // sin cap red B2B
+    renderScreen();
+    await screen.findByText(/Cliente Test/i);
+    expect(screen.queryByRole('button', { name: /Conciliación Red B2B/i })).not.toBeInTheDocument();
+  });
+
+  it('PR-X3: muestra tab "Conciliación Red B2B" CON cap cross_tenant.write', async () => {
+    mockUser.value = { id: 1, caps: ['b2b.trabajar', 'cross_tenant.write'] };
+    const { container } = renderScreen();
+    await screen.findByText(/Cliente Test/i);
+    // Buscamos directo en el DOM por si hay un timing issue con findBy*.
+    // Si el mock de useAuth no aplica el cap, este test detecta el bug.
+    const labels = Array.from(container.querySelectorAll('.tabs button')).map(b => b.textContent);
+    expect(labels).toContain('Conciliación Red B2B');
   });
 
   it('PR-X2: click en fila cross-tenant navega a /red-b2b/operaciones/:id', async () => {

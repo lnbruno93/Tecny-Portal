@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PageActionsProvider } from './contexts/PageActionsContext';
@@ -54,12 +54,14 @@ const Egresos    = lazy(() => import('./screens/Egresos'));
 const Sanidad    = lazy(() => import('./screens/Sanidad'));
 // 2026-06-27 #454 Red B2B F1: gestión de partnerships cross-tenant.
 const RedB2B     = lazy(() => import('./screens/RedB2B'));
-const RedB2BOperaciones        = lazy(() => import('./screens/RedB2BOperaciones'));
+// 2026-06-29 PR-X3 #465: el detalle /red-b2b/operaciones/:id sigue activo
+// (target del click handler de filas cross-tenant en CuentasCC desde PR-X2).
+// El listado /red-b2b/operaciones (sin id) ahora redirige a /cuentas — las
+// operaciones ya se ven en B2B con el badge "RED B2B".
 const RedB2BOperacionDetalle   = lazy(() => import('./screens/RedB2BOperacionDetalle'));
-// 2026-06-28 #455 Red B2B F2: pantalla buyer-side de productos pendientes.
-const RedB2BPendingReview = lazy(() => import('./screens/RedB2BPendingReview'));
-// 2026-06-28 #457 Red B2B F4: conciliacion bilateral + config caja default.
-const RedB2BConciliacion = lazy(() => import('./screens/RedB2BConciliacion'));
+// PR-X3 #465: las pantallas Pending Review y Conciliación ya no se montan en
+// rutas standalone — viven embebidas como tabs dentro de Inventario y CuentasCC
+// respectivamente. Las rutas legacy redirigen al nuevo home preservando params.
 // PR-X1 #465: RedB2BConfig (wrapper standalone) ya no se monta — la ruta
 // /red-b2b/config redirige al hub. El componente sigue exportado en su archivo
 // como named export `RedB2BConfigContent` que el hub usa dentro del tab Configuración.
@@ -131,6 +133,20 @@ function RedirectIfAuthed({ children }) {
   const { user, loading } = useAuth();
   if (!loading && user) return <Navigate to="/inicio" replace />;
   return children;
+}
+
+// PR-X3 #465 — redirect parametrizado para /red-b2b/conciliacion/:partnershipId.
+// Es separado porque <Navigate to="..."> es estático: no puede leer params del
+// match en runtime. Este wrapper lee :partnershipId del useParams() y lo
+// inyecta en el query string del nuevo home (/cuentas?tab=conciliacion&
+// partnership=:id), para que CuentasCC abra directo el detalle del partnership
+// solicitado. Preserva bookmarks viejos sin romper UX.
+function ConciliacionRedirect() {
+  const { partnershipId } = useParams();
+  const target = partnershipId
+    ? `/cuentas?tab=conciliacion&partnership=${encodeURIComponent(partnershipId)}`
+    : '/cuentas?tab=conciliacion';
+  return <Navigate to={target} replace />;
 }
 
 // ── Capability gate ────────────────────────────────────────────────────────────
@@ -274,32 +290,38 @@ export default function App() {
                       <ErrorBoundary><RedB2B /></ErrorBoundary>
                     </RequirePermission>
                   } />
-                  {/* 2026-06-28 #455 Red B2B F2: pendientes de revisión (buyer-side) */}
+                  {/* PR-X3 #465 — Red B2B pendientes de revisión: viven como
+                      tab dentro de /inventario para que el operador encuentre
+                      los productos auto-creados por partners cross-tenant en
+                      el mismo módulo donde gestiona stock. Esta ruta legacy
+                      redirige al tab, preservando bookmarks. */}
                   <Route path="/red-b2b/pending-review" element={
-                    <RequirePermission cap="cross_tenant.write">
-                      <ErrorBoundary><RedB2BPendingReview /></ErrorBoundary>
-                    </RequirePermission>
+                    <Navigate to="/inventario?tab=red-b2b-pending" replace />
                   } />
-                  {/* 2026-06-28 #456 Red B2B F3: operaciones cross-tenant (CORE) */}
+                  {/* PR-X3 #465 — listado /red-b2b/operaciones standalone:
+                      eliminado. Las operaciones cross-tenant ya se ven en
+                      /cuentas con el badge "RED B2B" (introducido en PR-X2).
+                      Redirect a /cuentas para mantener bookmarks. */}
                   <Route path="/red-b2b/operaciones" element={
-                    <RequirePermission cap="cross_tenant.write">
-                      <ErrorBoundary><RedB2BOperaciones /></ErrorBoundary>
-                    </RequirePermission>
+                    <Navigate to="/cuentas" replace />
                   } />
+                  {/* Detalle de operación cross-tenant: MANTENIDO. Es el
+                      target del click handler en filas cross-tenant de
+                      CuentasCC (PR-X2). Sin esta ruta el navigate del badge
+                      "RED B2B" rompería. */}
                   <Route path="/red-b2b/operaciones/:id" element={
                     <RequirePermission cap="cross_tenant.write">
                       <ErrorBoundary><RedB2BOperacionDetalle /></ErrorBoundary>
                     </RequirePermission>
                   } />
+                  {/* PR-X3 #465 — Conciliación bilateral: vive como tab
+                      dentro de /cuentas (Venta y Gestión B2B). El partnership
+                      activo se sincroniza por query param. */}
                   <Route path="/red-b2b/conciliacion" element={
-                    <RequirePermission cap="cross_tenant.write">
-                      <ErrorBoundary><RedB2BConciliacion /></ErrorBoundary>
-                    </RequirePermission>
+                    <Navigate to="/cuentas?tab=conciliacion" replace />
                   } />
                   <Route path="/red-b2b/conciliacion/:partnershipId" element={
-                    <RequirePermission cap="cross_tenant.write">
-                      <ErrorBoundary><RedB2BConciliacion /></ErrorBoundary>
-                    </RequirePermission>
+                    <ConciliacionRedirect />
                   } />
                   {/* PR-X1 #465: /red-b2b/config ahora redirige al hub con
                       ?tab=config para preservar bookmarks pero entregar UX

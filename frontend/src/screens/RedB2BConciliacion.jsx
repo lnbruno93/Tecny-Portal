@@ -5,6 +5,14 @@
 // PR-D #463: el cache in-memory de 60s del server fue eliminado (multi-instance
 // bug + frecuencia de hit baja). Cada GET recomputa fresh. El botón "Recargar"
 // se mantiene como acción explícita del usuario para refetchear.
+//
+// PR-X3 #465: split en `RedB2BConciliacionContent` (named export, sin
+// page-head) + default export wrapper standalone. El Content se monta como
+// tab dentro de CuentasCC (la pantalla "Venta y Gestión B2B"). En ese
+// modo el partnership se pasa por prop (proveniente del query param de
+// CuentasCC); en modo standalone se sigue leyendo de useParams() vía el
+// wrapper, para preservar el comportamiento histórico de la ruta legacy
+// /red-b2b/conciliacion/:partnershipId (hoy redirige al tab nuevo).
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -12,8 +20,23 @@ import { redB2b } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { fmtMoney, fmtFecha } from '../lib/format';
 
-export default function RedB2BConciliacion() {
-  const { partnershipId } = useParams();
+// ── Content (sin page-head) ──────────────────────────────────────────────────
+// Props:
+//   - partnershipId (opcional): si se pasa, abre directo el detalle.
+//   - onSelectPartnership (opcional): callback con el id seleccionado en la
+//     lista. Permite al huésped sincronizar URL/state (ej. CuentasCC actualiza
+//     ?partnership=<id> sin tener que duplicar el listado).
+//   - onClearPartnership (opcional): callback para volver al listado desde
+//     el detalle (botón "← Conciliación").
+//
+// Si NO se pasan callbacks, el componente cae al comportamiento standalone:
+// navegación interna vía <Link> a /red-b2b/conciliacion/:id (las rutas
+// legacy redirigen al nuevo home).
+export function RedB2BConciliacionContent({
+  partnershipId,
+  onSelectPartnership,
+  onClearPartnership,
+} = {}) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -42,31 +65,46 @@ export default function RedB2BConciliacion() {
     } catch (err) {
       if (err.status === 404) {
         toast.error('Partnership no encontrada');
-        navigate('/red-b2b/conciliacion');
+        // Si el huésped proveyó callback, lo usamos para limpiar el contexto.
+        // Si no, fallback al comportamiento standalone (navigate al listado).
+        if (typeof onClearPartnership === 'function') onClearPartnership();
+        else navigate('/red-b2b/conciliacion');
       } else {
         toast.error(err.message || 'No pudimos cargar la conciliación');
       }
     } finally {
       setLoading(false);
     }
-  }, [partnershipId, navigate, toast]);
+  }, [partnershipId, navigate, toast, onClearPartnership]);
 
   useEffect(() => {
     if (partnershipId) loadConciliacion();
     else loadList();
   }, [partnershipId, loadConciliacion, loadList]);
 
+  // Flag: el componente se considera "embebido" (sin page-head propio,
+  // navegación interna delegada al huésped) cuando hay callback de
+  // selección. Sin callback, mantiene el comportamiento standalone.
+  const embedded = typeof onSelectPartnership === 'function';
+
+  function handleSelectPartnership(id) {
+    if (embedded) onSelectPartnership(id);
+    else navigate(`/red-b2b/conciliacion/${id}`);
+  }
+
+  function handleClearPartnership() {
+    if (embedded && typeof onClearPartnership === 'function') onClearPartnership();
+    else navigate('/red-b2b/conciliacion');
+  }
+
   // ── Lista de partnerships (sin partnershipId) ──────────────────────────
   if (!partnershipId) {
     return (
-      <div className="screen-wrap">
-        <header className="page-head">
-          <h1>Conciliación bilateral</h1>
-          <p className="muted">
-            Vista de saldos cruzados por cada partner Red B2B. Hacé click en uno
-            para ver la conciliación detallada.
-          </p>
-        </header>
+      <div>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 16 }}>
+          Vista de saldos cruzados por cada partner Red B2B. Hacé click en uno
+          para ver la conciliación detallada.
+        </p>
         {loading ? (
           <div className="empty-state" style={{ padding: 32 }}>Cargando…</div>
         ) : partnerships.length === 0 ? (
@@ -92,9 +130,13 @@ export default function RedB2BConciliacion() {
                         Plan: {partner?.plan || '—'}
                       </div>
                     </div>
-                    <Link to={`/red-b2b/conciliacion/${p.id}`} className="btn-secondary">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => handleSelectPartnership(p.id)}
+                    >
                       Ver conciliación →
-                    </Link>
+                    </button>
                   </li>
                 );
               })}
@@ -108,7 +150,7 @@ export default function RedB2BConciliacion() {
   // ── Detalle de conciliación (con partnershipId) ──────────────────────
   if (loading || !conciliacion) {
     return (
-      <div className="screen-wrap">
+      <div>
         <div className="empty-state" style={{ padding: 32 }}>Cargando conciliación…</div>
       </div>
     );
@@ -118,29 +160,34 @@ export default function RedB2BConciliacion() {
   const partner = partnership?.partner;
 
   return (
-    <div className="screen-wrap">
-      <header className="page-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
         <div>
-          <Link to="/red-b2b/conciliacion" className="btn-link" style={{ fontSize: 14 }}>
+          <button
+            type="button"
+            className="btn-link"
+            style={{ fontSize: 14, background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }}
+            onClick={handleClearPartnership}
+          >
             ← Conciliación
-          </Link>
-          <h1 style={{ marginBottom: 4 }}>Conciliación con {partner?.nombre || '—'}</h1>
+          </button>
+          <h2 style={{ marginBottom: 4, marginTop: 6 }}>Conciliación con {partner?.nombre || '—'}</h2>
           <div className="muted" style={{ fontSize: 13 }}>
             Partnership #{partnership.id} · Datos en vivo
           </div>
         </div>
         <button
           type="button"
-          className="btn-secondary"
+          className="btn btn-secondary"
           onClick={() => loadConciliacion()}
           aria-label="Recargar conciliación"
         >
           Recargar
         </button>
-      </header>
+      </div>
 
       <section className="card" style={{ padding: 16, marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Totales agregados</h2>
+        <h3 style={{ marginTop: 0, fontSize: 16 }}>Totales agregados</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           <KpiBox label="Operaciones (USD)" value={fmtMoney(totales.operaciones_usd, 'USD')} sub={`${totales.ops_count} ops`} />
           <KpiBox label="Pagado (USD)" value={fmtMoney(totales.pagado_usd, 'USD')} sub={`${totales.pagos_count} pagos`} />
@@ -153,7 +200,7 @@ export default function RedB2BConciliacion() {
       </section>
 
       <section className="card" style={{ padding: 16, marginBottom: 16 }}>
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Conciliación bilateral</h2>
+        <h3 style={{ marginTop: 0, fontSize: 16 }}>Conciliación bilateral</h3>
         {saldos_bilaterales.difieren ? (
           <div style={{ background: 'var(--red-bg, #fef2f2)', padding: 12, borderRadius: 4, marginBottom: 12 }}>
             <strong style={{ color: 'var(--red-fg, #991b1b)' }}>
@@ -219,6 +266,28 @@ export default function RedB2BConciliacion() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+// ── Wrapper standalone (con page-head) ──────────────────────────────────────
+// Preservado por retro-compat. Las rutas /red-b2b/conciliacion(/:id) en
+// App.jsx ahora redirigen al tab "Conciliación Red B2B" dentro de CuentasCC
+// (PR-X3 #465), pero dejamos el wrapper exportado para tests viejos y
+// montaje directo eventual.
+export default function RedB2BConciliacion() {
+  const { partnershipId } = useParams();
+  const navigate = useNavigate();
+  return (
+    <div className="screen-wrap">
+      <header className="page-head">
+        <h1>Conciliación bilateral</h1>
+      </header>
+      <RedB2BConciliacionContent
+        partnershipId={partnershipId}
+        onSelectPartnership={(id) => navigate(`/red-b2b/conciliacion/${id}`)}
+        onClearPartnership={() => navigate('/red-b2b/conciliacion')}
+      />
     </div>
   );
 }

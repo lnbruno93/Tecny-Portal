@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
-import { inventario, proveedores as proveedoresApi, cajas as cajasApi } from '../lib/api';
+import { inventario, proveedores as proveedoresApi, cajas as cajasApi, redB2b } from '../lib/api';
+import { userHasCap } from '../lib/userHasCap';
+import { RedB2BPendingReviewContent } from './RedB2BPendingReview';
 import { exportCsv } from '../lib/exportCsv';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload } from '../lib/importStock';
@@ -106,6 +108,11 @@ export default function Inventario() {
   // en vez de solo `user?.role === 'admin'`. Antes el owner del tenant NO veía
   // el botón "Vaciar stock + compras" porque su role global no es 'admin'.
   const isAdmin = isTenantAdmin(user);
+  // PR-X3 #465: el tab "Pendientes Red B2B" solo aparece para usuarios con
+  // cap cross_tenant.write (mismo gate que tenía el sidebar item original).
+  // Si no hay user (tests sin AuthProvider), la cap evalúa false → tab oculto,
+  // que es el comportamiento conservador correcto.
+  const canSeeRedB2B = userHasCap(user, 'cross_tenant.write');
   const { setPrimaryAction } = usePageActions();
 
   const [productos, setProductos] = useState([]);
@@ -149,6 +156,56 @@ export default function Inventario() {
   }, [searchParams]);
   const hasDrillDown = Object.keys(drillFilters).length > 0;
   function clearDrillDown() { setSearchParams({}); }
+
+  // ── PR-X3 #465: tab principal "Productos" vs "Pendientes Red B2B" ─────────
+  // El tab Pendientes vive ACÁ porque conceptualmente son productos auto-
+  // creados por partners que esperan revisión — el operador los maneja en
+  // el mismo módulo donde gestiona stock, sin saltar a una pantalla aparte.
+  // Sincronizamos con ?tab= para que back/forward y refresh preserven el
+  // estado, y para que el redirect de la ruta legacy /red-b2b/pending-review
+  // (→ /inventario?tab=red-b2b-pending) caiga directo en el tab correcto.
+  const tabParam = searchParams.get('tab');
+  const initialMainTab = (tabParam === 'red-b2b-pending' && canSeeRedB2B) ? 'red-b2b-pending' : 'productos';
+  const [mainTab, setMainTab] = useState(initialMainTab);
+  // Counter del badge del tab. Empezamos en null para no mostrar 0 antes
+  // de que sepamos (mejor mostrar el tab sin badge que parpadear "0" → "N").
+  const [pendingCount, setPendingCount] = useState(null);
+
+  function selectMainTab(id) {
+    setMainTab(id);
+    // Preservamos los params existentes que no sean 'tab' (drill-down de
+    // desglose 360, etc.) y solo tocamos la key 'tab'.
+    const next = new URLSearchParams(searchParams);
+    if (id === 'productos') next.delete('tab');
+    else next.set('tab', id);
+    setSearchParams(next, { replace: true });
+  }
+
+  // ── Counter polling del tab "Pendientes Red B2B" ──────────────────────────
+  // PR-X1 eliminó el polling de Shell.jsx (cada 2min para todos los users de
+  // un tenant). Acá lo re-introducimos limitado a usuarios con cap
+  // cross_tenant.write — los únicos que verán el tab — y a 120s para no
+  // sobrecargar el backend. El fetch inicial corre on-mount; los siguientes
+  // a intervalo regular. El callback `onCountChange` del Content (al
+  // refrescar tras una acción confirmar/mergear) también actualiza este
+  // counter sin necesidad de un round-trip extra.
+  useEffect(() => {
+    if (!canSeeRedB2B) return undefined;
+    let cancelled = false;
+    async function fetchCount() {
+      try {
+        const r = await redB2b.productosPendingReview.list();
+        if (!cancelled) {
+          setPendingCount(Array.isArray(r?.pendientes) ? r.pendientes.length : 0);
+        }
+      } catch {
+        if (!cancelled) setPendingCount(0); // best-effort: si 403/network, no spamear toast
+      }
+    }
+    fetchCount();
+    const interval = setInterval(fetchCount, 120000); // 120s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [canSeeRedB2B]);
 
   // Modal alta/edición
   const [showForm, setShowForm] = useState(false);
@@ -735,6 +792,54 @@ export default function Inventario() {
           <div className="page-sub">Stock de equipos y accesorios · costos, depósitos y proveedores</div>
         </div>
       </div>
+
+      {/* ── Tabs principales (PR-X3 #465) ─────────────────────────────────
+          "Productos" es el contenido histórico (grilla + filtros + KPIs).
+          "Pendientes Red B2B" sólo aparece si el user tiene cap
+          cross_tenant.write — el contenido se delega a
+          RedB2BPendingReviewContent (named export del archivo del feature). */}
+      {canSeeRedB2B && (
+        <div className="tabs" role="tablist" aria-label="Secciones de Inventario" style={{ marginBottom: 16 }}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mainTab === 'productos'}
+            className={`tab ${mainTab === 'productos' ? 'active' : ''}`}
+            onClick={() => selectMainTab('productos')}
+          >
+            Productos
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mainTab === 'red-b2b-pending'}
+            className={`tab ${mainTab === 'red-b2b-pending' ? 'active' : ''}`}
+            onClick={() => selectMainTab('red-b2b-pending')}
+          >
+            Pendientes Red B2B
+            {pendingCount != null && pendingCount > 0 && (
+              <span className="badge" style={{ marginLeft: 8 }}>{pendingCount}</span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Tab "Pendientes Red B2B" — Content embebido. setPendingCount como
+          callback para que cualquier acción del Content (confirmar / mergear)
+          mantenga el badge sincronizado sin un fetch adicional. */}
+      {mainTab === 'red-b2b-pending' && canSeeRedB2B && (
+        <RedB2BPendingReviewContent onCountChange={setPendingCount} />
+      )}
+
+      {/* Tab "Productos" — todo el contenido histórico de Inventario. Lo
+          envolvemos en un fragment condicional para que el código previo
+          (toolbar + KPIs + filtros + tabla + modales) se siga renderando
+          tal cual cuando el tab activo es 'productos'. Las modales (form,
+          import, catálogos, historial) viven fuera del flujo principal
+          pero las dejamos dentro del condicional para que no sean
+          interactivas mientras estás en el otro tab. */}
+      {mainTab === 'productos' && (<>
+
 
       {/* Toolbar de acciones — fila dedicada, sin pelearse con el header.
           Los botones se distribuyen: refresh/data ops a la izquierda,
@@ -1515,7 +1620,7 @@ export default function Inventario() {
                        + venta (FK producto_id en venta_items / items_movimiento_cc).
           El producto base viene del state productos (no necesita otro request) —
           solo el historial se fetchea on-demand. */}
-      {historialProductoId != null && (() => {
+      {mainTab === 'productos' && historialProductoId != null && (() => {
         const producto = productos.find(p => p.id === historialProductoId);
         return (
           <div ref={historialModalRef} className="modal-overlay"
@@ -1554,6 +1659,7 @@ export default function Inventario() {
           </div>
         );
       })()}
+      </>)}
     </div>
   );
 }
