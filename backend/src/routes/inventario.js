@@ -732,6 +732,39 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
     assertMonedaValidaParaPais(req.body.costo_moneda, req.tenantPais, 'costo_moneda');
     assertMonedaValidaParaPais(req.body.precio_moneda, req.tenantPais, 'precio_moneda');
 
+    // Auditoría 2026-06-30 IMEI race — chequeo preventivo en POST single.
+    // Antes solo el bulk import filtraba IMEIs duplicados (POST /productos/bulk
+    // tiene este mismo SELECT). El POST single no tenía nada → un operador
+    // podía cargar el mismo IMEI dos veces y la DB lo aceptaba (no había
+    // UNIQUE constraint hasta migration 20260701000003).
+    //
+    // El check preventivo da un 409 limpio con mensaje claro (vs el 500 opaco
+    // que devolvería el INSERT al violar el UNIQUE). El UNIQUE PARCIAL de la
+    // migration es la defensa final que cierra la ventana de race entre este
+    // check y el INSERT — si dos requests concurrentes pasan el check al
+    // mismo tiempo, solo uno gana el INSERT (el otro recibe 23505 que
+    // mapeamos a 409 abajo en el catch).
+    const imeiInput = (req.body.imei || '').trim();
+    if (imeiInput) {
+      const yaExiste = await db.withTenant(req.tenantId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, nombre, estado FROM productos
+             WHERE imei = $1
+               AND deleted_at IS NULL
+               AND estado = 'disponible'
+             LIMIT 1`,
+          [imeiInput]
+        );
+        return rows[0] || null;
+      });
+      if (yaExiste) {
+        return res.status(409).json({
+          error: 'IMEI ya cargado en otro producto disponible',
+          duplicado: { id: yaExiste.id, nombre: yaExiste.nombre, estado: yaExiste.estado },
+        });
+      }
+    }
+
     // Defaults JS para columnas NOT NULL nuevas (la migración tiene DEFAULT,
     // pero como el INSERT lista todas las columnas explícitamente pasaríamos
     // NULL si el cliente no las manda → NOT NULL violation). Defaultear acá
@@ -787,7 +820,18 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
     });
     invalidateMetricas(req.tenantId);  // junio 2026: cache stale era fuente de bugs de baseline
     res.status(201).json(row);
-  } catch (err) { next(err); }
+  } catch (err) {
+    // Auditoría 2026-06-30 IMEI race — si dos requests pasaron el check
+    // preventivo al mismo tiempo, el UNIQUE PARCIAL de DB rebota uno con
+    // 23505 (unique_violation). Mapeamos a 409 con mensaje claro en lugar
+    // del 500 opaco que el next(err) genérico devolvería.
+    if (err && err.code === '23505' && err.constraint === 'idx_productos_imei_unique') {
+      return res.status(409).json({
+        error: 'IMEI ya cargado en otro producto disponible (conflicto concurrente).',
+      });
+    }
+    next(err);
+  }
 });
 
 router.put('/productos/:id', validate(updateProductoSchema), async (req, res, next) => {
@@ -1238,6 +1282,13 @@ router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async 
     res.status(201).json({ ok: true, creados: creados.length });
   } catch (err) {
     await client.query('ROLLBACK');
+    // Auditoría 2026-06-30 IMEI race — bulk también puede chocar con el UNIQUE
+    // PARCIAL si dos importaciones concurrentes overlap. Mapeo a 409 limpio.
+    if (err && err.code === '23505' && err.constraint === 'idx_productos_imei_unique') {
+      return res.status(409).json({
+        error: 'Algún IMEI del lote ya existe en inventario (conflicto concurrente con otro import en curso).',
+      });
+    }
     next(err);
   } finally {
     client.release();

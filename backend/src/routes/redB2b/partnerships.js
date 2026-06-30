@@ -136,13 +136,17 @@ async function notify(client, tenantId, type, payload, opts = {}) {
 // revoke completo (200 OK al cliente con todo rollbackeado — peor
 // escenario posible: el operador cree que invitó pero no quedó nada).
 // ──────────────────────────────────────────────────────────────────────────
+// Auditoría 2026-06-30 D-22: pasamos actor_type='tenant_user' para distinguir
+// audit Red B2B del audit super-admin (ver migration 20260701000002).
+// El catch de 42703 absorbe el caso de migration no aplicada — perdemos audit,
+// no rompemos flow (mismo patrón que el catch de 23514 para CHECK violations).
 async function audit(client, { tenantId, userId, action, payload }) {
   await client.query('SAVEPOINT sp_audit');
   try {
     await client.query(
       `INSERT INTO tenant_admin_actions
-         (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
-       VALUES ($1, $2, $3, NULL, $4::jsonb, NULL)`,
+         (tenant_id, super_admin_user_id, actor_type, action, before_state, after_state, reason)
+       VALUES ($1, $2, 'tenant_user', $3, NULL, $4::jsonb, NULL)`,
       [tenantId, userId, action, JSON.stringify(payload || {})]
     );
     await client.query('RELEASE SAVEPOINT sp_audit');
@@ -152,6 +156,13 @@ async function audit(client, { tenantId, userId, action, payload }) {
       logger.warn(
         { action, err: err.message, tenantId, userId },
         '[red-b2b/F1] audit action no permitida en CHECK — migration pendiente? (continuando sin abortar tx)'
+      );
+      return;
+    }
+    if (err.code === '42703') {
+      logger.warn(
+        { action, err: err.message, tenantId, userId },
+        '[red-b2b/F1] audit columna actor_type ausente — migration 20260701000002 pendiente?'
       );
       return;
     }

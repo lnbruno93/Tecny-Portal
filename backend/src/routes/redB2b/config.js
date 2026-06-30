@@ -42,13 +42,17 @@ const { setCajaDefaultSchema, setEmailPrefsSchema } = require('../../schemas/red
 // abortaría TODA la tx — el config update se perdería. Con SAVEPOINT,
 // el config update sigue ok y solo loggeamos warning.
 // ──────────────────────────────────────────────────────────────────────────
+// Auditoría 2026-06-30 D-22: actor_type='tenant_user' explícito (mismo
+// rationale que pagos.js + operations.js + partnerships.js — el operador del
+// tenant que toca config Red B2B NO es super_admin). Catch de 42703 absorbe
+// el caso pre-migration 20260701000002.
 async function audit(client, { tenantId, userId, action, beforeState, afterState }) {
   await client.query('SAVEPOINT sp_audit');
   try {
     await client.query(
       `INSERT INTO tenant_admin_actions
-         (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, NULL)`,
+         (tenant_id, super_admin_user_id, actor_type, action, before_state, after_state, reason)
+       VALUES ($1, $2, 'tenant_user', $3, $4::jsonb, $5::jsonb, NULL)`,
       [
         tenantId,
         userId,
@@ -64,6 +68,13 @@ async function audit(client, { tenantId, userId, action, beforeState, afterState
       logger.warn(
         { action, err: err.message, tenantId, userId },
         '[red-b2b/config] audit action no permitida en CHECK — migration pendiente?'
+      );
+      return;
+    }
+    if (err.code === '42703') {
+      logger.warn(
+        { action, err: err.message, tenantId, userId },
+        '[red-b2b/config] audit columna actor_type ausente — migration 20260701000002 pendiente?'
       );
       return;
     }
