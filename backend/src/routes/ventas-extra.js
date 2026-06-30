@@ -65,11 +65,21 @@ router.delete('/etiquetas/:id', async (req, res, next) => {
 
 /* ═══════════════════════ MÉTODOS DE PAGO ═══════════════════════ */
 
+// Auditoría 2026-06-30 Q-02/Q-03: antes `SELECT *` filtraba `saldo_inicial`
+// (info sensible — saldo de apertura de la caja) en la respuesta. El endpoint
+// /api/metodos-pago (lite, sin gate de capability) ya usa un whitelist
+// explícito; alineamos este endpoint a ese mismo shape para evitar el leak y
+// dejar UN solo contrato de columnas. Los callers del frontend (Ventas.jsx vía
+// `ventas.metodosPago()`) sólo consumen id/nombre/moneda/es_financiera/
+// es_tarjeta/comision_pct — sin regresión funcional.
 router.get('/metodos-pago', async (req, res, next) => {
   try {
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
-        "SELECT * FROM metodos_pago WHERE deleted_at IS NULL AND activo = true ORDER BY orden, nombre"
+        `SELECT id, nombre, moneda, es_financiera, es_tarjeta, comision_pct, orden
+           FROM metodos_pago
+          WHERE deleted_at IS NULL AND activo = true
+          ORDER BY orden, nombre`
       );
       return rows;
     });

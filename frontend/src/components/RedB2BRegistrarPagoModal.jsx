@@ -47,11 +47,11 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
   }, [cajasList, monedaPago]);
 
   useEffect(() => {
+    // Auditoría 2026-06-30 Q-02/Q-03: `cajas.listMetodosPago()` devuelve array
+    // plano. Antes había defensive logic `r.metodos_pago || r.cajas` que
+    // ocultaba un mismatch del mock en RedB2B.test.jsx — ahora alineado.
     cajasApi.listMetodosPago()
-      .then((r) => {
-        const list = Array.isArray(r) ? r : (r.metodos_pago || r.cajas || []);
-        setCajasList(list);
-      })
+      .then((r) => setCajasList(Array.isArray(r) ? r : []))
       .catch(() => setCajasList([]));
   }, []);
 
