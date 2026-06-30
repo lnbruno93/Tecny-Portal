@@ -563,7 +563,14 @@ export default function CuentasCC() {
       try {
         await cuentas.updateCliente(id, { notas: val || null });
         setClientes(prev => prev.map(c => c.id === id ? { ...c, notas: val } : c));
-      } catch (e) { console.warn('notas autosave:', e); }
+      } catch (e) {
+        // Auditoría 2026-06-30 Q-08: era console.warn silencioso.
+        // Las notas son edit-by-typing con debounce 700ms: si el save falla, el
+        // user creía haber guardado sin saber. Ahora reportamos a Sentry +
+        // toast para que sepa reintentar (la UI ya quedó con el texto local).
+        silentReport(e, { context: 'CuentasCC.notasAutosave' });
+        toast.error('No pudimos guardar las notas. Revisá la conexión.');
+      }
     }, 700);
   }
 

@@ -10,6 +10,8 @@ const parseId = require('../lib/parseId');
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const fileStore = require('../lib/fileStore');
 const storageFlags = require('../lib/storageFlags');
+// Auditoría 2026-06-30 Q-12: query compartida con routes/metodos-pago.js.
+const { listMetodosPagoQuery } = require('../lib/metodosPago');
 const {
   etiquetaSchema, garantiaSchema, updateGarantiaSchema, comprobanteVentaSchema,
   createVentaRapidaSchema, updateVentaRapidaSchema,
@@ -66,23 +68,26 @@ router.delete('/etiquetas/:id', async (req, res, next) => {
 /* ═══════════════════════ MÉTODOS DE PAGO ═══════════════════════ */
 
 // Auditoría 2026-06-30 Q-02/Q-03: antes `SELECT *` filtraba `saldo_inicial`
-// (info sensible — saldo de apertura de la caja) en la respuesta. El endpoint
-// /api/metodos-pago (lite, sin gate de capability) ya usa un whitelist
-// explícito; alineamos este endpoint a ese mismo shape para evitar el leak y
-// dejar UN solo contrato de columnas. Los callers del frontend (Ventas.jsx vía
-// `ventas.metodosPago()`) sólo consumen id/nombre/moneda/es_financiera/
-// es_tarjeta/comision_pct — sin regresión funcional.
+// (info sensible — saldo de apertura de la caja) en la respuesta. Whitelist
+// explícito + query compartida (Q-12) con /api/metodos-pago (lite, sin gate
+// de capability) en lib/metodosPago.js, así un cambio de columnas se aplica
+// a ambos endpoints atómicamente y no vuelve a reaparecer la regresión.
+//
+// ¿Por qué este endpoint vive en /api/ventas/metodos-pago Y existe además
+// /api/metodos-pago (routes/metodos-pago.js)? Capability/scope distintos:
+//   · /api/ventas/metodos-pago — gateado por capability `ventas` (route
+//     parent applica el middleware). Lo consume Ventas.jsx vía
+//     `ventas.metodosPago()`. Histórico, no se renombra para no romper
+//     consumidores.
+//   · /api/metodos-pago — sin capability extra. Lo consumen Envíos,
+//     Cotizador, B2B — módulos cuyos usuarios pueden NO tener cap `ventas`
+//     pero sí tienen que elegir caja al cobrar.
+// Comparten la query; NO se consolidan en un solo endpoint a propósito.
+// Los callers del frontend de Ventas sólo consumen id/nombre/moneda/
+// es_financiera/es_tarjeta/comision_pct — sin regresión funcional.
 router.get('/metodos-pago', async (req, res, next) => {
   try {
-    const rows = await db.withTenant(req.tenantId, async (client) => {
-      const { rows } = await client.query(
-        `SELECT id, nombre, moneda, es_financiera, es_tarjeta, comision_pct, orden
-           FROM metodos_pago
-          WHERE deleted_at IS NULL AND activo = true
-          ORDER BY orden, nombre`
-      );
-      return rows;
-    });
+    const rows = await db.withTenant(req.tenantId, (client) => listMetodosPagoQuery(client));
     res.json(rows);
   } catch (err) { next(err); }
 });

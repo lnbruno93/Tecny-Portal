@@ -36,6 +36,17 @@ const withAdvisoryLock = require('../lib/withAdvisoryLock');
 
 const DRAIN_TIMEOUT_MS = 8000; // pre-SIGKILL drain budget
 
+// Auditoría 2026-06-30 Q-05 (P-07 alerta Sentry):
+// Si la queue crece por encima de QUEUE_DEPTH_ALERT_THRESHOLD significa que el
+// worker no está dando abasto (write rate > drain rate). Mandamos un
+// captureMessage con tags a Sentry para que despierte alguien. El check va
+// envuelto en throttle (QUEUE_DEPTH_ALERT_THROTTLE_MS) para no martillar Sentry
+// cada 2 s si la queue queda colgada — un evento cada 10 min es suficiente para
+// detectar y abrir incidente.
+const QUEUE_DEPTH_ALERT_THRESHOLD = 10000;
+const QUEUE_DEPTH_ALERT_THROTTLE_MS = 10 * 60 * 1000;
+let _lastQueueDepthAlertAt = 0;
+
 // processBatch — devuelve { processed: number, drained: boolean }.
 //   processed = filas movidas a audit_logs en este tick.
 //   drained   = true si la queue quedo vacia post-batch (size < batchSize).
@@ -113,6 +124,40 @@ async function processBatch({ batchSize = 100 } = {}) {
   }
 }
 
+// Auditoría 2026-06-30 Q-05 (P-07 alerta Sentry):
+// Chequea queue_depth y manda Sentry.captureMessage si supera el threshold.
+// Throttled: máximo 1 alerta cada QUEUE_DEPTH_ALERT_THROTTLE_MS para evitar
+// floodear Sentry si la queue queda gorda durante minutos. El log local
+// (warn) sí sale siempre — útil para correlacionar en Railway logs.
+async function maybeAlertQueueDepth() {
+  try {
+    const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM audit_queue');
+    const depth = rows[0]?.n ?? 0;
+    if (depth <= QUEUE_DEPTH_ALERT_THRESHOLD) return;
+
+    logger.warn({ depth, threshold: QUEUE_DEPTH_ALERT_THRESHOLD },
+      'audit_queue: depth above threshold');
+
+    const now = Date.now();
+    if (now - _lastQueueDepthAlertAt < QUEUE_DEPTH_ALERT_THROTTLE_MS) return;
+    _lastQueueDepthAlertAt = now;
+
+    try {
+      const Sentry = require('@sentry/node');
+      if (process.env.SENTRY_DSN) {
+        Sentry.captureMessage('audit_queue depth above threshold', {
+          level: 'warning',
+          tags: { component: 'audit_queue_worker', alert: 'queue_depth' },
+          extra: { queue_depth: depth, threshold: QUEUE_DEPTH_ALERT_THRESHOLD },
+        });
+      }
+    } catch { /* Sentry no disponible — no propagar */ }
+  } catch (err) {
+    // Si la query falla, no rompemos el worker — sólo log.
+    logger.error({ err }, 'audit_queue: depth alert check failed');
+  }
+}
+
 function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
   // En tests NO arrancamos el setInterval ni registramos SIGTERM hooks.
   // Razones:
@@ -128,10 +173,18 @@ function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
         if (processed > 0) {
           logger.debug({ processed }, 'audit_queue: batch procesado');
         }
-        // TODO P-07 DLQ: si una row falla N veces (attempts > 5) marcarla y
-        // moverla a audit_queue_dead para inspeccion manual. Por ahora la fila
-        // queda en la queue y el siguiente tick la retoma — operacionalmente ok
-        // porque audit data es uniforme (no hay payloads que rompan).
+        // Auditoría 2026-06-30 Q-05 (P-07 alerta Sentry):
+        // Después de drenar lo que pudimos, chequear si la queue sigue gorda.
+        // Si depth > threshold => Sentry.captureMessage (throttled). Solo el
+        // tenedor del advisory lock ejecuta esto => no hay risk de N réplicas
+        // disparando alertas duplicadas.
+        await maybeAlertQueueDepth();
+        // TODO P-07 DLQ (deferred): si una fila falla N veces (attempts > 5)
+        // marcarla y moverla a audit_queue_dead para inspección manual. Por
+        // ahora la fila queda en la queue y el siguiente tick la retoma —
+        // operacionalmente ok porque audit data es uniforme (no hay payloads
+        // que rompan). Re-evaluar cuando se vea la 1ra row con last_error en
+        // rows_with_errors del endpoint /api/admin/audit-queue-stats.
       }, { logSkip: false });
     } catch (err) {
       logger.error({ err }, 'audit_queue worker tick failed');
@@ -144,10 +197,6 @@ function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
 
   const handle = setInterval(tick, intervalMs);
   if (typeof handle.unref === 'function') handle.unref();
-
-  // TODO P-07: alertar via Sentry si queue_depth > 10000 — agregar check
-  // periodico aca o consumir GET /api/admin/audit-queue-stats desde un cron
-  // externo. Por ahora el operador chequea el endpoint manualmente.
 
   // Graceful drain on shutdown. El proceso recibe SIGTERM de Railway con ~10s
   // de margen antes del SIGKILL. Reservamos 8s para procesar lo encolado;
@@ -192,5 +241,8 @@ function startAuditQueueWorker({ batchSize = 100, intervalMs = 2000 } = {}) {
 module.exports = {
   processBatch,
   startAuditQueueWorker,
+  maybeAlertQueueDepth,
   DRAIN_TIMEOUT_MS,
+  QUEUE_DEPTH_ALERT_THRESHOLD,
+  QUEUE_DEPTH_ALERT_THROTTLE_MS,
 };

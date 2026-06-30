@@ -118,7 +118,22 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
     // distintas (venta_comprobantes + comprobantes), pero apunta al mismo blob:
     // cuando ambas filas pasen a soft-delete, el cron de purga futuro deberá
     // chequear que ninguna fila activa referencia la key antes de borrar el
-    // objeto R2 (TODO P-03 cleanup cron).
+    // objeto R2.
+    //
+    // Auditoría 2026-06-30 Q-05 (TODO P-03 cleanup cron): DEFERRED.
+    // Decisión: no se implementa por ahora. Trade-offs:
+    //   · Falsos positivos de un cron mal hecho borran blobs que SÍ están en
+    //     uso desde otra tabla → pérdida de evidencia auditable con terceros.
+    //     Inaceptable para la regla "calidad > velocidad".
+    //   · El costo de R2 por blobs huérfanos en escala actual es despreciable
+    //     (decenas de MB/mes; bucket factura por GB-mes). No hay urgencia.
+    //   · Implementación correcta requiere: scan de comprobantes ∪
+    //     venta_comprobantes (ambas tablas pueden apuntar a la misma key),
+    //     ventana de gracia (>= 30 días post-soft-delete), dry-run con log
+    //     antes del DELETE real, y tests sobre el grafo de keys compartidas.
+    //     Es ~1 día de trabajo + revisión, no 10 líneas.
+    //   · Plan: agendar como P-03 Fase 6 cuando (a) bucket > 5 GB, o (b) haya
+    //     auditoría externa que requiera purga de blobs eliminados.
     //
     // Auditoría 2026-06-30 D-01: incluimos pct_aplicado en el UPDATE (sellado lazy).
     const { rows } = await client.query(

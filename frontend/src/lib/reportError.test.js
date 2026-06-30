@@ -79,3 +79,41 @@ describe('reportError — filtro de ruido (NOISE_PATTERNS)', () => {
     expect(opts.method).toBe('POST');
   });
 });
+
+// Auditoría 2026-06-30 Q-09: si el build sale sin VITE_API_URL, el fallback
+// hard-coded a producción mandaba todos los reports a la cola de prod aunque
+// el build fuera de staging. Ahora preferimos NO enviar y warnear local.
+describe('reportError — sin VITE_API_URL (Q-09)', () => {
+  let mockFetch;
+  let mockSendBeacon;
+  let warnSpy;
+
+  beforeEach(() => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_API_URL', ''); // no seteada
+    mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    mockSendBeacon = vi.fn().mockReturnValue(true);
+    global.fetch = mockFetch;
+    Object.defineProperty(global.navigator, 'sendBeacon', {
+      value: mockSendBeacon, configurable: true, writable: true,
+    });
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('NO envía reportes si VITE_API_URL está vacío + warnea 1 sola vez', async () => {
+    const { reportError } = await import('./reportError.js');
+    reportError(new TypeError("Bug real de producción"));
+    reportError(new TypeError("Segundo bug"));
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockSendBeacon).not.toHaveBeenCalled();
+    // El warn sólo se loguea la primera vez para no floodear la consola.
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toMatch(/VITE_API_URL/);
+  });
+});

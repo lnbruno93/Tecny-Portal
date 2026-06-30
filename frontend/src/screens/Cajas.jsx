@@ -179,7 +179,13 @@ export default function Cajas() {
   async function loadCajas() {
     setLoadingCajas(true);
     try { setCajasList(await cajas.listCajas() || []); }
-    catch (e) { console.error(e); }
+    catch (e) {
+      // Auditoría 2026-06-30 Q-08: era console.error silencioso.
+      // El user veía la lista vacía sin entender por qué (cualquier 5xx /
+      // network error pasaba mudo). Ahora reportamos a Sentry y avisamos.
+      silentReport(e, { context: 'Cajas.loadCajas' });
+      toast.error('No pudimos cargar las cajas. Reintentá.');
+    }
     finally { setLoadingCajas(false); }
   }
   useEffect(() => { if (tab === 'config') loadCajas(); }, [tab]);

@@ -1,4 +1,5 @@
-# Runbook — iPro Portal
+<!-- Auditoría 2026-06-30 Q-04: rebrand iPro Tech/Celnyx/iPro Portal → Tecny -->
+# Runbook — Tecny Portal
 
 "Tengo X síntoma, ¿qué hago?" — guía operativa indexada por escenario.
 
@@ -162,7 +163,7 @@ stub que loguea los emails a Pino (útil en dev/tests).
 **Env vars requeridas en Railway (staging + prod):**
 - `RESEND_API_KEY` — copiar de 1Password.
 - `EMAIL_FROM` — string `Display Name <email@domain>`. Por defecto del code:
-  `iPro Portal <onboarding@resend.dev>` (sender no verificado, limitado a
+  `Tecny Portal <onboarding@resend.dev>` (sender no verificado, limitado a
   entregar al email del owner de Resend).
 - `FRONTEND_URL` — URL del frontend para construir el link de verificación
   (`{FRONTEND_URL}/verify-email?token=...`).
@@ -176,7 +177,7 @@ externos — sin dominio verificado solo se entrega al email del owner de Resend
 4. Cambiar `EMAIL_FROM` en Railway env vars → redeploy automático.
 
 **Dominio actual (post #312, 2026-06-18):** `tecnyapp.com`, registrado en
-GoDaddy. `EMAIL_FROM` en Railway = `iPro Portal <noreply@tecnyapp.com>`.
+GoDaddy. `EMAIL_FROM` en Railway = `Tecny Portal <noreply@tecnyapp.com>`.
 Setup detallado: [docs/runbooks/resend-domain-setup.md](runbooks/resend-domain-setup.md).
 
 **Troubleshooting deliverability:**
