@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { auth as authApi, saveToken, clearToken } from '../lib/api';
 
 const AuthContext = createContext(null);
@@ -59,8 +59,18 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // Auditoría 2026-06-30 F-21: memoizar el value del provider. Sin useMemo,
+  // cada render del provider creaba un objeto nuevo → todos los consumers
+  // se re-renderean innecesariamente. login/logout/refreshUser ya están
+  // estables vía useCallback con deps vacías; user/loading son los únicos
+  // que cambian de verdad.
+  const value = useMemo(
+    () => ({ user, loading, login, logout, refreshUser }),
+    [user, loading, login, logout, refreshUser]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

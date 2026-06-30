@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 // Each screen can register a "primary action" that the global + button triggers.
 // Usage in a screen:
@@ -17,8 +17,16 @@ export function PageActionsProvider({ children }) {
     setPrimaryActionState(action);
   }, []);
 
+  // Auditoría 2026-06-30 F-25: memoizar value. Lo consume el Shell para
+  // pintar el botón global + cada screen via usePageActions. Sin useMemo,
+  // cada cambio en cualquier consumer dispara re-render del Shell entero.
+  const value = useMemo(
+    () => ({ primaryAction, setPrimaryAction }),
+    [primaryAction, setPrimaryAction]
+  );
+
   return (
-    <PageActionsContext.Provider value={{ primaryAction, setPrimaryAction }}>
+    <PageActionsContext.Provider value={value}>
       {children}
     </PageActionsContext.Provider>
   );

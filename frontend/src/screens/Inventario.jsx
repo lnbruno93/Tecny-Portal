@@ -134,17 +134,6 @@ export default function Inventario() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // El filtro de "pestañas" admite ahora valores compuestos:
-  //   'todos' | 'celular' | 'accesorio' | 'tecnico' | 'usados' | 'cat:<id>'
-  // Esto permite mezclar tabs fijos (claseFilter clásico), el atributo nuevo
-  // 'usados' (condicion=usado) y categorías administrables (categoria_id=N).
-  const [claseFilter, setClaseFilter] = useState('todos');
-  const [vistaFiltro, setVistaFiltro] = useState('no_vendidos');
-  const [search, setSearch] = useState('');
-  // Search debounceada: no dispara una request al backend (con ILIKE multi-columna +
-  // COUNT(*)) en cada keystroke; espera 350ms tras la última tecla.
-  const dSearch = useDebouncedValue(search, 350);
-
   // ── Drill-down desde Desglose 360 ──
   // Si llegamos con query params (?proveedor=X, ?categoria_id=N, etc.) los aplicamos
   // al fetch como filtros adicionales y mostramos un chip "Filtrado por: X · Limpiar".
@@ -161,6 +150,33 @@ export default function Inventario() {
   }, [searchParams]);
   const hasDrillDown = Object.keys(drillFilters).length > 0;
   function clearDrillDown() { setSearchParams({}); }
+
+  // ── Filtros principales — persistidos en URL ──
+  // El filtro de "pestañas" admite ahora valores compuestos:
+  //   'todos' | 'celular' | 'accesorio' | 'tecnico' | 'usados' | 'cat:<id>'
+  // Esto permite mezclar tabs fijos (claseFilter clásico), el atributo nuevo
+  // 'usados' (condicion=usado) y categorías administrables (categoria_id=N).
+  //
+  // Auditoría 2026-06-30 F-08: claseFilter / vistaFiltro / search ahora viven
+  // en la URL (?clase=, ?vista=, ?q=). categoria_id ya se persistía vía el
+  // drill-down. Defaults NO escriben URL. setSearchParams con replace:true
+  // evita inflar la history en typing rápido.
+  const claseFilter = searchParams.get('clase') || 'todos';
+  const vistaFiltro = searchParams.get('vista') || 'no_vendidos';
+  const search = searchParams.get('q') || '';
+  const setParam = useCallback((key, value, def) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === def) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  const setClaseFilter = useCallback((v) => setParam('clase', v, 'todos'), [setParam]);
+  const setVistaFiltro = useCallback((v) => setParam('vista', v, 'no_vendidos'), [setParam]);
+  const setSearch = useCallback((v) => setParam('q', v, ''), [setParam]);
+
+  // Search debounceada: no dispara una request al backend (con ILIKE multi-columna +
+  // COUNT(*)) en cada keystroke; espera 350ms tras la última tecla.
+  const dSearch = useDebouncedValue(search, 350);
 
   // ── PR-X3 #465: tab principal "Productos" vs "Pendientes Red B2B" ─────────
   // El tab Pendientes vive ACÁ porque conceptualmente son productos auto-
@@ -349,6 +365,19 @@ export default function Inventario() {
 
   useEffect(() => { loadCatalogos(); loadMetricas(); }, [loadCatalogos, loadMetricas]);
   useEffect(() => { loadProductos(); }, [loadProductos]);
+
+  // Auditoría 2026-06-30 F-26: catOptions/provOptions usados en cada fila
+  // del map de la grilla — antes se construían dentro del .map (N veces por
+  // render). Con useMemo se construyen 1 sola vez por cambio real de
+  // categorias/proveedoresList.
+  const catOptions = useMemo(
+    () => categorias.map(c => ({ value: c.id, label: c.nombre })),
+    [categorias]
+  );
+  const provOptions = useMemo(
+    () => proveedoresList.map(s => ({ value: s, label: s })),
+    [proveedoresList]
+  );
 
   // ── Edición inline: PATCH un campo y mergear en memoria ──
   // Optimismo controlado: actualizamos el state ANTES de la respuesta,
@@ -1117,7 +1146,13 @@ export default function Inventario() {
                 </div>
                 <button
                   className="btn btn-sm"
-                  onClick={() => { setSearch(''); setVistaFiltro('todos'); setSearchParams({}); }}
+                  /* Auditoría 2026-06-30 F-08: limpiar TODO via setSearchParams.
+                     Forzamos vista='todos' explícito (override del default
+                     'no_vendidos') para que el user vea efectivamente todos los
+                     productos al limpiar, no solo los "en stock visible". El
+                     comportamiento previo (3 setters en cascada) era frágil
+                     porque sólo el último ganaba. */
+                  onClick={() => { setSearchParams({ vista: 'todos' }, { replace: true }); }}
                 >
                   Limpiar filtros
                 </button>
@@ -1167,8 +1202,8 @@ export default function Inventario() {
             <tbody>
               {productos.map(p => {
                 const save = (field) => (val) => inlineUpdate(p.id, field, val);
-                const catOptions = categorias.map(c => ({ value: c.id, label: c.nombre }));
-                const provOptions = proveedoresList.map(s => ({ value: s, label: s }));
+                // Auditoría 2026-06-30 F-26: catOptions/provOptions ahora
+                // viven arriba en useMemo — antes se reconstruían por fila.
                 // Atenuamos la fila si el producto está oculto: pista visual rápida
                 // sin agregar una columna nueva en una tabla que ya es ancha.
                 return (
