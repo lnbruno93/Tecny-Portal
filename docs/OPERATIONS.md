@@ -1,4 +1,5 @@
-# Operaciones — iPro Portal
+<!-- Auditoría 2026-06-30 Q-04: rebrand iPro Tech/Celnyx/iPro Portal → Tecny -->
+# Operaciones — Tecny Portal
 
 Runbook operativo: backups, rollback y decisiones de escala. Producción es Railway (backend + Postgres) + Netlify (frontend).
 

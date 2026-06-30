@@ -1,6 +1,7 @@
-# iPro Portal
+# Tecny Portal
 
-Portal de administración interna de **iPro Tech / Celnyx** — POS, ERP y cuentas corrientes
+<!-- Auditoría 2026-06-30 Q-04: rebrand iPro Tech/Celnyx/iPro Portal → Tecny -->
+Portal de administración interna de **Tecny** — POS, ERP y cuentas corrientes
 para una operación de venta de equipos y accesorios.
 
 | Stack | Tecnología |

@@ -1,4 +1,5 @@
-# Disaster Recovery — iPro Portal
+<!-- Auditoría 2026-06-30 Q-04: rebrand iPro Tech/Celnyx/iPro Portal → Tecny -->
+# Disaster Recovery — Tecny Portal
 
 Escenarios de pérdida/corrupción de datos y procedimientos de recovery.
 

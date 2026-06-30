@@ -1,4 +1,5 @@
-# Arquitectura — iPro Portal
+<!-- Auditoría 2026-06-30 Q-04: rebrand iPro Tech/Celnyx/iPro Portal → Tecny -->
+# Arquitectura — Tecny Portal
 
 Vista panorámica del sistema: qué módulos hay, cómo se relacionan, qué patrones
 se repiten, y por qué las decisiones durables son como son.
@@ -9,9 +10,9 @@ hacer si X" ver [RUNBOOK.md](RUNBOOK.md). Para observabilidad ver
 
 ---
 
-## 1. Qué es iPro Portal
+## 1. Qué es Tecny Portal
 
-Portal operativo interno para iPro Tech (mayorista de tecnología en AR).
+Portal operativo interno para Tecny (mayorista de tecnología en AR).
 Maneja:
 
 - **Inventario** (productos, IMEIs, stock, condición nuevo/usado, ocultos).

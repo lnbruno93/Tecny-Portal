@@ -11,21 +11,20 @@
 // info necesaria para usar la caja como medio de cobro (id, nombre, moneda,
 // flags es_financiera/es_tarjeta, comisión, orden). NO incluye saldos ni
 // movimientos — datos sensibles que sí requieren permiso `cajas` para verse.
+//
+// Auditoría 2026-06-30 Q-12: la query la comparte con /api/ventas/metodos-pago
+// (routes/ventas-extra.js) vía lib/metodosPago.js. NO se consolidan en un
+// único endpoint a propósito: son 2 capabilities distintas (este es público
+// para todos los logueados; el otro requiere cap `ventas`). Compartir la
+// query evita drift de columnas — un olvido aquí re-leakearía `saldo_inicial`.
 
 const router = require('express').Router();
 const db = require('../config/database');
+const { listMetodosPagoQuery } = require('../lib/metodosPago');
 
 router.get('/', async (req, res, next) => {
   try {
-    const rows = await db.withTenant(req.tenantId, async (client) => {
-      const { rows } = await client.query(
-        `SELECT id, nombre, moneda, es_financiera, es_tarjeta, comision_pct, orden
-           FROM metodos_pago
-          WHERE deleted_at IS NULL AND activo = true
-          ORDER BY orden, nombre`
-      );
-      return rows;
-    });
+    const rows = await db.withTenant(req.tenantId, (client) => listMetodosPagoQuery(client));
     res.json(rows);
   } catch (err) { next(err); }
 });

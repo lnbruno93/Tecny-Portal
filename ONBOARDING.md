@@ -1,4 +1,5 @@
-# iPro Portal — Guía de Onboarding
+<!-- Auditoría 2026-06-30 Q-04: rebrand iPro Tech/Celnyx/iPro Portal → Tecny -->
+# Tecny Portal — Guía de Onboarding
 
 > Guía técnica para desarrolladores. Cubre arquitectura, setup local, estructura del proyecto y decisiones de diseño clave.
 
@@ -20,7 +21,7 @@
 
 ## Índice
 
-1. [¿Qué es iPro Portal?](#qué-es-ipro-portal)
+1. [¿Qué es Tecny Portal?](#qué-es-tecny-portal)
 2. [Stack tecnológico](#stack-tecnológico)
 3. [Arquitectura](#arquitectura)
 4. [Setup local](#setup-local)
@@ -35,9 +36,9 @@
 
 ---
 
-## ¿Qué es iPro Portal?
+## ¿Qué es Tecny Portal?
 
-Portal de administración interna para iPro Tech / Celnyx. Módulos activos en producción:
+Portal de administración interna para Tecny. Módulos activos en producción:
 
 | Módulo | Descripción |
 |--------|-------------|

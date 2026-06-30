@@ -15,7 +15,16 @@
  * Throttle: máximo 5 reportes por sesión, mínimo 2s entre reportes. Si la
  * app está en loop generando errores, no queremos DDOS-earnos a nosotros mismos.
  */
-const BASE = import.meta.env.VITE_API_URL || 'https://tecny-backend-production.up.railway.app';
+// Auditoría 2026-06-30 Q-09: no usar fallback hard-coded a producción.
+//
+// El fallback anterior era `'https://tecny-backend-production.up.railway.app'`.
+// Si un build de staging salía sin `VITE_API_URL` por error de Netlify env,
+// TODOS los reportes de ese build viajaban a la cola de Sentry de PROD —
+// contaminando la señal de prod con ruido de staging y haciendo imposible
+// distinguir incidentes reales. Antes que enviar al destino equivocado,
+// preferimos NO enviar y dejar un warn local para que el operador detecte el
+// misconfig.
+const BASE = import.meta.env.VITE_API_URL || '';
 
 // Build metadata inyectada por vite.config.js (via define). Permite correlacionar
 // errores client con el commit/release exacto que estaba activo cuando ocurrió.
@@ -67,9 +76,24 @@ function isNoise(error) {
   return NOISE_PATTERNS.some(p => p.test(msg));
 }
 
+// Warn flag para que el misconfig de VITE_API_URL no se loguee 5000 veces.
+let _baseMissingWarned = false;
+
 export function reportError(error, context = {}) {
   // Solo en producción — en dev preferimos ver el error en consola.
   if (import.meta.env.DEV) return;
+
+  // Auditoría 2026-06-30 Q-09: si el build salió sin VITE_API_URL, no hay
+  // backend al que postear — early return + warn 1 sola vez para que el
+  // operador detecte el misconfig en cualquier consola que abra.
+  if (!BASE) {
+    if (!_baseMissingWarned) {
+      _baseMissingWarned = true;
+      // eslint-disable-next-line no-console
+      console.warn('[reportError] VITE_API_URL no está seteado; no se envían reportes a Sentry.');
+    }
+    return;
+  }
 
   // Filtrar ruido conocido (errores transient de red, etc.) — ver
   // NOISE_PATTERNS para el porqué.
