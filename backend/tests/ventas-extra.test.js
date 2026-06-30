@@ -63,6 +63,20 @@ describe('Métodos de pago', () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThan(0);
   });
+
+  // Auditoría 2026-06-30 Q-02/Q-03: este endpoint solía usar `SELECT *` y
+  // filtraba `saldo_inicial`. Ahora alineado al whitelist de /api/metodos-pago.
+  // Si alguien revierte a `SELECT *` o suma una columna de balance al schema,
+  // este test atrapa la regresión.
+  it('NO incluye campos de balance (regression guard Q-02)', async () => {
+    const res = await request(app).get('/api/ventas/metodos-pago').set(auth());
+    expect(res.status).toBe(200);
+    res.body.forEach((row) => {
+      Object.keys(row).forEach((k) => {
+        expect(k.toLowerCase()).not.toMatch(/saldo|balance/);
+      });
+    });
+  });
 });
 
 /* ═══════════ PLANTILLAS DE GARANTÍA ═══════════ */

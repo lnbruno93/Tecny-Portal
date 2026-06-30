@@ -58,10 +58,14 @@ vi.mock('../lib/api', () => ({
     },
   },
   cajas: {
-    listMetodosPago: vi.fn().mockResolvedValue({ metodos_pago: [
+    // Auditoría 2026-06-30 Q-02/Q-03: el endpoint /api/metodos-pago devuelve
+    // array plano (contrato verificado en backend/tests/metodos-pago.test.js).
+    // El mock anterior devolvía `{ metodos_pago: [...] }`, lo que escondía un
+    // bug latente y forzaba defensive logic en el caller.
+    listMetodosPago: vi.fn().mockResolvedValue([
       { id: 1, nombre: 'Caja ARS', moneda: 'ARS' },
       { id: 2, nombre: 'Caja USD', moneda: 'USD' },
-    ] }),
+    ]),
   },
 }));
 
