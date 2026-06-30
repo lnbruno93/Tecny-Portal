@@ -129,6 +129,30 @@ describe('Pantalla RedB2BPendingReview', () => {
     expect(screen.getByText('Galaxy S24 - Catálogo')).toBeInTheDocument();
   });
 
+  // Auditoría 2026-06-30 F-10: MergeModal ahora usa useModal — Esc cierra.
+  it('MergeModal: Esc cierra el modal', async () => {
+    const user = userEvent.setup();
+    redB2b.productosPendingReview.list.mockResolvedValue({
+      pendientes: [{
+        id: 50, nombre: 'iPhone Pending', stock: 5,
+        partner: { id: 1, nombre: 'Partner', slug: 'partner' },
+        created_at: '2026-06-25T10:00:00Z',
+      }],
+    });
+    renderScreen();
+
+    const mergeBtn = await screen.findByRole('button', { name: /Mergear/i });
+    await user.click(mergeBtn);
+
+    // Modal abierto.
+    expect(await screen.findByRole('dialog', { name: /Mergear con producto existente/i })).toBeInTheDocument();
+    // Esc debe cerrarlo (useModal escucha en document).
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /Mergear con producto existente/i })).not.toBeInTheDocument();
+    });
+  });
+
   it('submit del merge llama mergeInto y refresca la lista', async () => {
     const user = userEvent.setup();
     redB2b.productosPendingReview.list.mockResolvedValue({

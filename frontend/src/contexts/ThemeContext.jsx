@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 // ThemeContext — toggle dark/light persistido en localStorage.
 //
@@ -81,13 +81,19 @@ export function ThemeProvider({ children }) {
     setThemeState(t => (t === 'vault' ? 'linen' : 'vault'));
   }, []);
 
-  const value = {
-    theme,
-    isDark: theme === 'vault',
-    isLight: theme === 'linen',
-    setTheme,
-    toggle,
-  };
+  // Auditoría 2026-06-30 F-22: memoizar value. Sin useMemo, cada cambio en
+  // children (re-render del padre) crea un value nuevo y dispara re-render
+  // en todos los consumers de useTheme.
+  const value = useMemo(
+    () => ({
+      theme,
+      isDark: theme === 'vault',
+      isLight: theme === 'linen',
+      setTheme,
+      toggle,
+    }),
+    [theme, setTheme, toggle]
+  );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

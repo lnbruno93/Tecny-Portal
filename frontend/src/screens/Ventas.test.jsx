@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 vi.mock('../lib/api', () => {
   const paginated = { data: [], pagination: { page: 1, pages: 1, total: 0 } };
@@ -55,15 +55,24 @@ function ActionTrigger() {
   return primaryAction ? <button onClick={primaryAction.onClick}>__abrir__</button> : null;
 }
 
-function renderVentas() {
+function renderVentas(initialEntries = ['/ventas']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <ToastProvider><ConfirmProvider><PageActionsProvider>
         <Ventas />
         <ActionTrigger />
+        <LocationProbe />
       </PageActionsProvider></ConfirmProvider></ToastProvider>
     </MemoryRouter>
   );
+}
+
+// 2026-06-30 F-07: probe que espía la URL actual. Lo renderean los tests de
+// persistencia para asertar que setPeriodoRange/setEstadoFilter/setSearch
+// escriben los query params correctos.
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="location">{loc.pathname}{loc.search}</div>;
 }
 
 describe('Pantalla Ventas', () => {
@@ -121,6 +130,106 @@ describe('Pantalla Ventas', () => {
     // Después de quitar, queda 1 botón Quitar.
     await waitFor(() => {
       expect(screen.getAllByLabelText('Quitar equipo')).toHaveLength(1);
+    });
+  });
+
+  // Auditoría 2026-06-30 F-13/14: regresión clásica del key={index}. Cuando se
+  // quita un ítem del medio, React reutiliza el DOM y el draft del input
+  // "salta" al ítem siguiente. Con _id estable, cada input conserva su valor.
+  it('cart: quitar item 0 NO afecta los valores cargados en items posteriores', async () => {
+    renderVentas();
+    fireEvent.click(await screen.findByText('__abrir__'));
+    // Agregar 3 ítems manuales.
+    const btnManual = screen.getByText(/Ítem manual/);
+    fireEvent.click(btnManual);
+    fireEvent.click(btnManual);
+    fireEvent.click(btnManual);
+    let rows = await screen.findAllByTestId('venta-item-row');
+    expect(rows).toHaveLength(3);
+    // Tipear texto distintivo en el input de descripción del item 1 (índice 1)
+    // y el item 2 (índice 2). Cada fila tiene 4 inputs (descripcion/cant/precio/moneda).
+    const desc1 = rows[1].querySelector('input[placeholder="Producto"]');
+    const desc2 = rows[2].querySelector('input[placeholder="Producto"]');
+    fireEvent.change(desc1, { target: { value: 'ITEM-MEDIO' } });
+    fireEvent.change(desc2, { target: { value: 'ITEM-ULTIMO' } });
+    expect(desc1.value).toBe('ITEM-MEDIO');
+    expect(desc2.value).toBe('ITEM-ULTIMO');
+    // Quitar el primero (la X del item 0).
+    const xBtn0 = rows[0].querySelector('button');
+    fireEvent.click(xBtn0);
+    // Tras quitar, quedan 2 filas. La fila 0 (antes 1) debe seguir mostrando
+    // 'ITEM-MEDIO' y la fila 1 (antes 2) debe seguir mostrando 'ITEM-ULTIMO'.
+    rows = await screen.findAllByTestId('venta-item-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector('input[placeholder="Producto"]').value).toBe('ITEM-MEDIO');
+    expect(rows[1].querySelector('input[placeholder="Producto"]').value).toBe('ITEM-ULTIMO');
+  });
+
+  // Auditoría 2026-06-30 F-10: Esc cierra el modal "Nueva venta" (useModal aplicado).
+  it('modal Nueva venta: Esc cierra el modal', async () => {
+    renderVentas();
+    fireEvent.click(await screen.findByText('__abrir__'));
+    // El modal está montado: detectable por el botón "Ítem manual" (solo
+    // existe dentro del modal). "Nueva venta" aparece en el sidebar Y el
+    // header del modal — usamos "Ítem manual" para discriminar.
+    expect(await screen.findByText(/Ítem manual/)).toBeInTheDocument();
+    // Disparar Esc en el document — useModal escucha en document.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // Tras Esc, el botón "Ítem manual" desaparece (el modal se desmonta).
+    await waitFor(() => {
+      expect(screen.queryByText(/Ítem manual/)).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Auditoría 2026-06-30 F-07: filtros persisten en URL ─────────────────
+  // Reglas: cambiar un filtro escribe el param, defaults NO se escriben,
+  // re-mount con un query lee el filtro correcto.
+  describe('F-07 — filtros persisten en URL', () => {
+    it('click en "Este mes" agrega ?periodo=mes a la URL', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      // Click el segmento "Este mes".
+      fireEvent.click(screen.getByText('Este mes'));
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]periodo=mes/);
+      });
+    });
+
+    it('cambiar estado a "Acreditados" agrega ?estado=acreditado', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      fireEvent.click(screen.getByText('Acreditados'));
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]estado=acreditado/);
+      });
+    });
+
+    it('tipear en el buscador agrega ?q=...', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      const input = screen.getByPlaceholderText(/Order ID/i);
+      fireEvent.change(input, { target: { value: 'iphone' } });
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]q=iphone/);
+      });
+    });
+
+    it('default ("Hoy" + sin estado + sin q) NO escribe params en la URL', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      // Mount inicial — la URL no debería tener periodo/estado/q.
+      const text = screen.getByTestId('location').textContent;
+      expect(text).not.toMatch(/[?&]periodo=/);
+      expect(text).not.toMatch(/[?&]estado=/);
+      expect(text).not.toMatch(/[?&]q=/);
+    });
+
+    it('re-mount con ?periodo=mes lee el filtro correcto del URL', async () => {
+      renderVentas(['/ventas?periodo=mes']);
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      // El segmento "Este mes" debe estar activo (className 'on').
+      const segMes = screen.getByText('Este mes');
+      expect(segMes.className).toMatch(/on/);
     });
   });
 });

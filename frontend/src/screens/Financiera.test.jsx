@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// 2026-06-30 F-09: Financiera ahora usa useSearchParams para persistir
+// tab + filtros, así que necesita un Router en el árbol de tests.
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 // Tests del form "Registrar pago de financiera" (tab Pagos). Cubre los
 // fixes de TANDAs 1–3 del sprint USD (auditoría focal 2026-06):
@@ -69,8 +72,10 @@ import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
 import { PageActionsProvider } from '../contexts/PageActionsContext';
 
-const renderF = () => render(
-  <ToastProvider><ConfirmProvider><PageActionsProvider><Financiera /></PageActionsProvider></ConfirmProvider></ToastProvider>
+const renderF = (initialEntries = ['/financiera']) => render(
+  <MemoryRouter initialEntries={initialEntries}>
+    <ToastProvider><ConfirmProvider><PageActionsProvider><Financiera /></PageActionsProvider></ConfirmProvider></ToastProvider>
+  </MemoryRouter>
 );
 
 // Helper: ir a la tab "Pagos" — el form vive ahí.
@@ -217,4 +222,62 @@ describe('Financiera — form Pagos (TANDAs 1-3 sprint USD)', () => {
     });
     expect(screen.getByText(/Entra a la caja \(ARS\)/i)).toBeInTheDocument();
   });
+
+  // ─── Auditoría 2026-06-30 F-09: tab + filtros persisten en URL ───────────
+  describe('F-09 — tab + filtros persisten en URL', () => {
+    it('re-mount con ?tab=pagos abre la tab Pagos directamente', async () => {
+      // Renderear directo con la URL apuntando a Pagos.
+      render(
+        <MemoryRouter initialEntries={['/financiera?tab=pagos']}>
+          <ToastProvider><ConfirmProvider><PageActionsProvider>
+            <Financiera />
+          </PageActionsProvider></ConfirmProvider></ToastProvider>
+        </MemoryRouter>
+      );
+      // El form de Pagos debe estar visible sin click al menu.
+      expect(await screen.findByRole('heading', { name: /Registrar pago de financiera/i })).toBeInTheDocument();
+    });
+
+    it('cambiar a tab Pagos escribe ?tab=pagos en URL', async () => {
+      // Renderear con probe de URL.
+      render(
+        <MemoryRouter initialEntries={['/financiera']}>
+          <ToastProvider><ConfirmProvider><PageActionsProvider>
+            <Financiera />
+            <LocationProbe />
+          </PageActionsProvider></ConfirmProvider></ToastProvider>
+        </MemoryRouter>
+      );
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: /^Pagos$/i }));
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]tab=pagos/);
+      });
+    });
+
+    it('default (tab=dashboard) NO escribe params en URL', async () => {
+      render(
+        <MemoryRouter initialEntries={['/financiera']}>
+          <ToastProvider><ConfirmProvider><PageActionsProvider>
+            <Financiera />
+            <LocationProbe />
+          </PageActionsProvider></ConfirmProvider></ToastProvider>
+        </MemoryRouter>
+      );
+      // Mount inicial — la URL no debería tener tab/q/vend.
+      await waitFor(() => {
+        expect(screen.getByTestId('location')).toBeInTheDocument();
+      });
+      const text = screen.getByTestId('location').textContent;
+      expect(text).not.toMatch(/[?&]tab=/);
+      expect(text).not.toMatch(/[?&]q=/);
+      expect(text).not.toMatch(/[?&]vend=/);
+    });
+  });
 });
+
+// LocationProbe expuesto a nivel de file scope para usarlo en describes nuevos.
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="location">{loc.pathname}{loc.search}</div>;
+}

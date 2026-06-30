@@ -18,7 +18,7 @@
 // user se loguea/desloguea, los flags se re-piden (sin auth no hay flags
 // que mostrar; con auth queremos los flags al toque sin esperar refresh).
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { featureFlags as featureFlagsApi } from '../lib/api';
 import { silentReport } from '../lib/reportError';
 import { useAuth } from './AuthContext';
@@ -65,8 +65,16 @@ export function FeatureFlagsProvider({ children }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auditoría 2026-06-30 F-23: memoizar value para evitar re-render en cascada
+  // de todos los consumers de useFeatureFlag/useFeatureFlags en cada render
+  // del provider.
+  const value = useMemo(
+    () => ({ flags, loading, error, reload: load }),
+    [flags, loading, error, load]
+  );
+
   return (
-    <FeatureFlagsContext.Provider value={{ flags, loading, error, reload: load }}>
+    <FeatureFlagsContext.Provider value={value}>
       {children}
     </FeatureFlagsContext.Provider>
   );

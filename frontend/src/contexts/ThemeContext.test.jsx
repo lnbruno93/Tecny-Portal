@@ -86,4 +86,14 @@ describe('ThemeContext', () => {
     expect(() => renderHook(() => useTheme())).toThrow(/dentro de <ThemeProvider>/);
     errSpy.mockRestore();
   });
+
+  // Auditoría 2026-06-30 F-22: el value del provider memoizado con useMemo.
+  // Re-render sin cambios → misma referencia. Si esto rompe, todos los
+  // consumers de useTheme re-renderean innecesariamente.
+  it('F-22: value es referencialmente estable entre re-renders sin cambios', () => {
+    const { result, rerender } = renderHook(() => useTheme(), { wrapper: wrap });
+    const before = result.current;
+    rerender();
+    expect(result.current).toBe(before);
+  });
 });
