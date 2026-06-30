@@ -601,7 +601,16 @@ export default function CuentasCC() {
       setClientes(prev => [nuevo, ...prev]);
       setSelectedId(nuevo.id);
       setShowClienteModal(false);
-    } catch (e) { setClienteError(e.message || 'Error al crear el cliente.'); setClienteCreating(false); }
+    } catch (e) {
+      setClienteError(e.message || 'Error al crear el cliente.');
+    } finally {
+      // Fix 2026-06-30: antes setClienteCreating(false) solo se llamaba en
+      // el catch — el path success dejaba el flag en true. El operador
+      // reportó que el modal "queda cargando" al reabrirlo (botón seguía
+      // en "Creando…" porque el estado nunca se reseteó). Mover al finally
+      // garantiza el reset en ambos paths.
+      setClienteCreating(false);
+    }
   }
 
   function reloadDetail() {
@@ -844,15 +853,27 @@ export default function CuentasCC() {
         ) : (
           <>
             <div className="row" style={{ marginBottom: 20 }}>
+              {/*
+                Cada KPI declara su `unit` por separado. Antes el "USD " se
+                renderizaba hardcoded para TODOS los cards — incluyendo
+                "Clientes activos" que es un conteo entero, no un monto.
+                Fix 2026-06-30: `unit: null` en Clientes activos para que
+                el prefijo solo aparezca en los KPIs monetarios. Limpiamos
+                también el sufijo "· USD" del label porque ahora el unit
+                ya lo indica visualmente.
+              */}
               {[
-                { label: 'Deuda total · USD', val: <span className="mono neg">{fmt(rgData.total_deuda)}</span>, sub: 'clientes que nos deben' },
-                { label: 'Clientes activos', val: <span className="mono">{rgData.cant_clientes}</span>, sub: 'en cuenta corriente' },
-                { label: 'Crédito a favor · USD', val: <span className="mono pos">{fmt(rgData.total_credito)}</span>, sub: 'les debemos a clientes' },
-                { label: 'Neto · USD', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmtSigned(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
+                { label: 'Deuda total',     unit: 'USD', val: <span className="mono neg">{fmt(rgData.total_deuda)}</span>, sub: 'clientes que nos deben' },
+                { label: 'Clientes activos', unit: null,  val: <span className="mono">{rgData.cant_clientes}</span>, sub: 'en cuenta corriente' },
+                { label: 'Crédito a favor', unit: 'USD', val: <span className="mono pos">{fmt(rgData.total_credito)}</span>, sub: 'les debemos a clientes' },
+                { label: 'Neto',            unit: 'USD', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmtSigned(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
               ].map(k => (
                 <div key={k.label} className="card card-tight" style={{ flex: 1 }}>
                   <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value"><span className="muted" style={{ fontSize: 12 }}>USD </span>{k.val}</div>
+                  <div className="kpi-value">
+                    {k.unit && <span className="muted" style={{ fontSize: 12 }}>{k.unit} </span>}
+                    {k.val}
+                  </div>
                   <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
                 </div>
               ))}
