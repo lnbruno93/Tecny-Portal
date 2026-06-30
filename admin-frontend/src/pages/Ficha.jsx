@@ -556,6 +556,16 @@ export default function Ficha() {
         </div>
       )}
 
+      {/* Card de footer custom email comprobante (#475) — visible en tab
+          Resumen. UI minimalista: textarea + Guardar + preview. No abre
+          modal (no es destructivo, no requiere confirmación). */}
+      {activeTab === 'resumen' && (
+        <ComprobanteEmailFooterCard
+          tenant={tenant}
+          onSaved={handleSaved}
+        />
+      )}
+
       {activeTab === 'actividad' && (
         <div style={{ marginTop: 'var(--gap)' }}>
           <div className="flex-row" style={{ marginBottom: 12 }}>
@@ -907,3 +917,112 @@ function AuditPanel({ items }) {
 // Memo: este componente vive bajo un Route protegido; el unmount/mount
 // natural al cambiar :id resetea state. No hace falta cleanup explícito
 // del fetch en useEffect (alive flag) salvo en /activity — ahí sí está.
+
+// ── #475: Card de footer custom email comprobante ───────────────────────
+//
+// Card embebida (no modal) — la mutación es 1 textarea + Guardar, no
+// requiere flow multi-paso ni confirmación destructiva. Local state simple,
+// PATCH inline, preview que refleja el textarea en tiempo real.
+//
+// Max 500 chars — enforced en backend (Zod). El frontend valida en input
+// con counter visual para que el operador no se sorprenda con un 400.
+const FOOTER_DEFAULT_PREVIEW = 'Gracias por confiar en {tenant.nombre}.';
+const FOOTER_MAX = 500;
+
+function ComprobanteEmailFooterCard({ tenant, onSaved }) {
+  const initial = tenant.comprobante_email_footer || '';
+  const [value, setValue] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  // Sync local state cuando el tenant cambia (post-save → onSaved re-fetches
+  // y refresca el tenant prop).
+  useEffect(() => {
+    setValue(tenant.comprobante_email_footer || '');
+    setSaved(false);
+    setError('');
+  }, [tenant.id, tenant.comprobante_email_footer]);
+
+  const dirty = value !== initial;
+  const overLimit = value.length > FOOTER_MAX;
+
+  async function handleSave() {
+    if (overLimit) {
+      setError(`Máximo ${FOOTER_MAX} caracteres`);
+      return;
+    }
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      // null cuando vacío post-trim → revierte al default.
+      const payload = value.trim() === '' ? null : value;
+      await adminApi.updateComprobanteFooter(tenant.id, payload);
+      setSaved(true);
+      if (typeof onSaved === 'function') await onSaved();
+    } catch (err) {
+      setError(err.message || 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Preview en el shell del email — el operador ve cómo se ve sin tener
+  // que hacer un envío de prueba.
+  const previewText = value.trim() || FOOTER_DEFAULT_PREVIEW.replace('{tenant.nombre}', tenant.nombre || 'Tecny');
+
+  return (
+    <div className="card" style={{ marginTop: 'var(--gap)' }}>
+      <h3 style={{ margin: '0 0 8px' }}>Footer email comprobante</h3>
+      <p className="muted tiny" style={{ margin: '0 0 12px' }}>
+        Texto que aparece al final del email de comprobante de venta retail que
+        recibe el cliente final. Plain-text — sin HTML (se escapa al renderizar).
+        Dejá vacío para usar el footer default.
+      </p>
+      <div className="field" style={{ marginBottom: 10 }}>
+        <label className="field-label" htmlFor="footer-textarea">
+          Footer custom <span className="muted tiny">({value.length}/{FOOTER_MAX})</span>
+        </label>
+        <textarea
+          id="footer-textarea"
+          className="input"
+          rows={5}
+          maxLength={FOOTER_MAX + 50}  // soft cap; real cap enforced abajo
+          placeholder={`Ej:\nAv. Corrientes 1234, CABA\nWhatsApp: 11-2233-4455\n@miempresa_ok`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          style={{ fontFamily: 'inherit', resize: 'vertical' }}
+        />
+        {overLimit && (
+          <div className="tiny" style={{ color: 'var(--neg)', marginTop: 4 }}>
+            Excede el máximo de {FOOTER_MAX} caracteres
+          </div>
+        )}
+      </div>
+      <div className="flex-row" style={{ gap: 8, alignItems: 'center' }}>
+        <Btn icon="Save" onClick={handleSave} disabled={!dirty || saving || overLimit}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </Btn>
+        {saved && <span className="tiny" style={{ color: 'var(--pos)' }}>✓ Guardado</span>}
+        {error && <span className="tiny" style={{ color: 'var(--neg)' }}>{error}</span>}
+      </div>
+
+      {/* Preview — aproximación visual al footer del email */}
+      <div style={{ marginTop: 16 }}>
+        <div className="muted tiny" style={{ marginBottom: 6 }}>Vista previa del footer:</div>
+        <div style={{
+          padding: '14px 18px',
+          background: 'var(--surface-2)',
+          borderTop: '1px solid var(--border)',
+          borderRadius: 6,
+          fontSize: 12,
+          lineHeight: 1.55,
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          whiteSpace: 'pre-wrap',
+        }}>
+          {previewText}
+        </div>
+      </div>
+    </div>
+  );
+}
