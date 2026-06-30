@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 vi.mock('../lib/api', () => {
   const paginated = { data: [], pagination: { page: 1, pages: 1, total: 0 } };
@@ -55,15 +55,24 @@ function ActionTrigger() {
   return primaryAction ? <button onClick={primaryAction.onClick}>__abrir__</button> : null;
 }
 
-function renderVentas() {
+function renderVentas(initialEntries = ['/ventas']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <ToastProvider><ConfirmProvider><PageActionsProvider>
         <Ventas />
         <ActionTrigger />
+        <LocationProbe />
       </PageActionsProvider></ConfirmProvider></ToastProvider>
     </MemoryRouter>
   );
+}
+
+// 2026-06-30 F-07: probe que espía la URL actual. Lo renderean los tests de
+// persistencia para asertar que setPeriodoRange/setEstadoFilter/setSearch
+// escriben los query params correctos.
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="location">{loc.pathname}{loc.search}</div>;
 }
 
 describe('Pantalla Ventas', () => {
@@ -169,6 +178,58 @@ describe('Pantalla Ventas', () => {
     // Tras Esc, el botón "Ítem manual" desaparece (el modal se desmonta).
     await waitFor(() => {
       expect(screen.queryByText(/Ítem manual/)).not.toBeInTheDocument();
+    });
+  });
+
+  // ─── Auditoría 2026-06-30 F-07: filtros persisten en URL ─────────────────
+  // Reglas: cambiar un filtro escribe el param, defaults NO se escriben,
+  // re-mount con un query lee el filtro correcto.
+  describe('F-07 — filtros persisten en URL', () => {
+    it('click en "Este mes" agrega ?periodo=mes a la URL', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      // Click el segmento "Este mes".
+      fireEvent.click(screen.getByText('Este mes'));
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]periodo=mes/);
+      });
+    });
+
+    it('cambiar estado a "Acreditados" agrega ?estado=acreditado', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      fireEvent.click(screen.getByText('Acreditados'));
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]estado=acreditado/);
+      });
+    });
+
+    it('tipear en el buscador agrega ?q=...', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      const input = screen.getByPlaceholderText(/Order ID/i);
+      fireEvent.change(input, { target: { value: 'iphone' } });
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]q=iphone/);
+      });
+    });
+
+    it('default ("Hoy" + sin estado + sin q) NO escribe params en la URL', async () => {
+      renderVentas();
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      // Mount inicial — la URL no debería tener periodo/estado/q.
+      const text = screen.getByTestId('location').textContent;
+      expect(text).not.toMatch(/[?&]periodo=/);
+      expect(text).not.toMatch(/[?&]estado=/);
+      expect(text).not.toMatch(/[?&]q=/);
+    });
+
+    it('re-mount con ?periodo=mes lee el filtro correcto del URL', async () => {
+      renderVentas(['/ventas?periodo=mes']);
+      await waitFor(() => expect(ventasApi.list).toHaveBeenCalled());
+      // El segmento "Este mes" debe estar activo (className 'on').
+      const segMes = screen.getByText('Este mes');
+      expect(segMes.className).toMatch(/on/);
     });
   });
 });

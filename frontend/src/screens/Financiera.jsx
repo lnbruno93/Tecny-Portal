@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
 import {
@@ -54,7 +55,19 @@ export default function Financiera() {
   // de financiera tradicional) y se mantienen — Financiera es módulo AR-céntrico
   // por ahora; cuando UY lo necesite tendrá su propio sprint de adaptación.
   const { monedaLocal } = useMonedasTenant();
-  const [tab, setTab] = useState('dashboard');
+  // Auditoría 2026-06-30 F-09: tab + filtros de tab Comprobantes persisten
+  // en la URL. Antes el tab se reseteaba al refrescar (Dashboard siempre)
+  // y los filtros locales (búsqueda cliente, vendedor) se perdían. Defaults
+  // NO escriben URL; replace:true para no inflar history.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'dashboard';
+  const setParam = useCallback((key, value, def) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === def) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  const setTab = useCallback((v) => setParam('tab', v, 'dashboard'), [setParam]);
   const [pct, setPct] = useState(3);
   const [vendedores, setVendedores] = useState([]);
 
@@ -130,8 +143,13 @@ export default function Financiera() {
   // Comprobantes tab
   const [comps, setComps] = useState([]);
   const [compsTotal, setCompsTotal] = useState(0);          // total real (pagination.total)
-  const [compSearch, setCompSearch] = useState('');
-  const [compVendFilter, setCompVendFilter] = useState('todos');
+  // Auditoría 2026-06-30 F-09: compSearch + compVendFilter en URL.
+  // Permite compartir un link "Comprobantes filtrados por vendedor X y buscando
+  // cliente Y" o que el F5 no borre el filtro.
+  const compSearch = searchParams.get('q') || '';
+  const compVendFilter = searchParams.get('vend') || 'todos';
+  const setCompSearch = useCallback((v) => setParam('q', v, ''), [setParam]);
+  const setCompVendFilter = useCallback((v) => setParam('vend', v, 'todos'), [setParam]);
   const [loadingComps, setLoadingComps] = useState(false);
 
   // Rango de fechas para la tab Comprobantes — mismo patrón que Dashboard

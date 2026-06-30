@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { ventas, inventario, vendedores as vendedoresApi, cuentas as cuentasApi, contactos as contactosApi, envios as enviosApi, config as configApi, ocr as ocrApi } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
@@ -89,11 +89,42 @@ export default function Ventas() {
   const [rapidas, setRapidas] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [periodo, setPeriodo] = useState('hoy');
-  const [desde, setDesde] = useState(todayStr());
-  const [hasta, setHasta] = useState(todayStr());
-  const [estadoFilter, setEstadoFilter] = useState('');
-  const [search, setSearch] = useState('');
+  // Auditoría 2026-06-30 F-07: filtros persistidos en URL via useSearchParams.
+  // Defaults NO se escriben (mantiene URLs limpias para el caso típico).
+  // Compartir un link con ?periodo=trimestre& estadoFilter=acreditado restaura
+  // el filtro exacto. Reglas: replace:true para no inflar history, helpers
+  // setX(p) borran el param cuando coincide con el default.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const _today = todayStr();
+  const periodo = searchParams.get('periodo') || 'hoy';
+  const desde = searchParams.get('desde') || _today;
+  const hasta = searchParams.get('hasta') || _today;
+  const estadoFilter = searchParams.get('estado') || '';
+  const search = searchParams.get('q') || '';
+
+  // Setters que escriben (o borran) un solo param sobre los existentes —
+  // preservan cualquier otro param (drill-down, etc.) que ya esté en la URL.
+  const setParam = useCallback((key, value, def) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === def) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  // Set múltiples params en un solo render — usado al cambiar el preset
+  // (periodo + desde + hasta cambian todos juntos, no queremos 3 renders).
+  const setParams = useCallback((updates) => {
+    const next = new URLSearchParams(searchParams);
+    for (const { key, value, def } of updates) {
+      if (!value || value === def) next.delete(key);
+      else next.set(key, value);
+    }
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  const setPeriodo = useCallback((p) => setParam('periodo', p, 'hoy'), [setParam]);
+  const setDesde = useCallback((d) => setParam('desde', d, _today), [setParam, _today]);
+  const setHasta = useCallback((h) => setParam('hasta', h, _today), [setParam, _today]);
+  const setEstadoFilter = useCallback((e) => setParam('estado', e, ''), [setParam]);
+  const setSearch = useCallback((s) => setParam('q', s, ''), [setParam]);
   const dSearch = useDebouncedValue(search, 350); // no fetch en cada keystroke
 
   // Catálogos
@@ -191,13 +222,21 @@ export default function Ventas() {
   useEffect(() => { loadDash(); loadLista(); loadRapidas(); }, [loadDash, loadLista, loadRapidas]);
 
   function setPeriodoRange(p) {
-    setPeriodo(p);
+    // Auditoría 2026-06-30 F-07: batch periodo + desde + hasta en un solo
+    // setSearchParams (sin esto serían 3 navegaciones consecutivas y la URL
+    // quedaba inconsistente entre ticks).
     const today = todayStr();
-    if (p === 'hoy') { setDesde(today); setHasta(today); }
-    else if (p === 'ayer') { const y = shiftDate(today, -1); setDesde(y); setHasta(y); }
-    else if (p === 'semana') { setDesde(weekStart()); setHasta(today); }
-    else if (p === 'mes') { setDesde(monthStart()); setHasta(today); }
+    let nd = desde, nh = hasta;
+    if (p === 'hoy') { nd = today; nh = today; }
+    else if (p === 'ayer') { const y = shiftDate(today, -1); nd = y; nh = y; }
+    else if (p === 'semana') { nd = weekStart(); nh = today; }
+    else if (p === 'mes') { nd = monthStart(); nh = today; }
     // 'custom' → el usuario edita los date inputs
+    setParams([
+      { key: 'periodo', value: p, def: 'hoy' },
+      { key: 'desde', value: nd, def: today },
+      { key: 'hasta', value: nh, def: today },
+    ]);
   }
 
   // ── Nueva venta ──
@@ -1090,8 +1129,17 @@ export default function Ventas() {
       {/* Filtros lista */}
       <div className="flex-between" style={{ marginBottom: 14 }}>
         <div className="flex-row" style={{ gap: 8 }}>
-          <input type="date" className="input" style={{ width: 150 }} value={desde} onChange={e => { setPeriodo('custom'); setDesde(e.target.value); }} />
-          <input type="date" className="input" style={{ width: 150 }} value={hasta} onChange={e => { setPeriodo('custom'); setHasta(e.target.value); }} />
+          {/* Auditoría 2026-06-30 F-07: setParams batch — periodo + desde se
+              actualizan en un solo render para que el segundo setParam no use
+              un searchParams stale del primero (pierde el cambio del primero). */}
+          <input type="date" className="input" style={{ width: 150 }} value={desde} onChange={e => setParams([
+            { key: 'periodo', value: 'custom', def: 'hoy' },
+            { key: 'desde', value: e.target.value, def: _today },
+          ])} />
+          <input type="date" className="input" style={{ width: 150 }} value={hasta} onChange={e => setParams([
+            { key: 'periodo', value: 'custom', def: 'hoy' },
+            { key: 'hasta', value: e.target.value, def: _today },
+          ])} />
         </div>
         <div className="flex-row" style={{ gap: 8 }}>
           <div className="input-group" style={{ width: 280 }}>
