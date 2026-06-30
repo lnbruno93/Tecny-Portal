@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cajas, inventario, cuentas, proveedores, tarjetas, cambios } from '../lib/api';
-import { fmt, fmtFecha } from '../lib/format';
+import { fmt, fmtFecha, fmtMoney } from '../lib/format';
+// Auditoría 2026-06-30 F-02→05: multi-país. El screen mostraba "ARS" hardcoded
+// en labels y símbolo "$" (vía `sym`) para todo lo que no fuese USD — para
+// tenants UY (moneda local UYU, símbolo "$U") quedaba inconsistente. Ahora
+// las etiquetas y el símbolo de la moneda LOCAL del tenant salen de
+// useMonedasTenant + fmtMoney.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 // Origen de cada movimiento del ledger (incluye los módulos financieros nuevos).
 const ORIGEN_LABEL = {
@@ -14,11 +20,25 @@ const ORIGEN_TONE = {
   cambio: 'info', tarjeta: 'accent',
 };
 const Badge = ({ tone = 'default', children }) => <span className={`badge badge-${tone}`}>{children}</span>;
-const sym = (m) => (m === 'ARS' ? '$' : 'u$s');
+
+// Auditoría 2026-06-30 F-02→05: helper local que mapea la moneda al prefijo
+// usado en las "Cards de composición" (las que muestran ej. "$ 12.000").
+// Antes era `const sym = (m) => (m === 'ARS' ? '$' : 'u$s')` — ignoraba UYU
+// y USDT. Ahora reusamos fmtMoney y extraemos solo el prefijo para mantener
+// el render legacy `[pre, valor]` que el .map() expecta.
+const sym = (m) => {
+  if (m === 'ARS')  return '$';
+  if (m === 'UYU')  return '$U';
+  if (m === 'USDT') return 'USDT';
+  return 'u$s'; // USD y default
+};
 
 const EMPTY_FILTROS = { caja_id: '', desde: '', hasta: '', origen: '', tipo: '', page: 1 };
 
 export default function Capital() {
+  // Auditoría 2026-06-30 F-02→05: moneda local del tenant (ARS para AR,
+  // UYU para UY). Reemplaza el "ARS" hardcoded en labels y símbolos.
+  const { monedaLocal } = useMonedasTenant();
   const [tab, setTab] = useState('capital');          // 'capital' | 'movimientos'
   const [cajasList, setCajasList] = useState([]);
   const [metricas, setMetricas] = useState({});       // valor de inventario a costo (USD/ARS)
@@ -67,18 +87,29 @@ export default function Capital() {
   }, [filtros, tab]);
 
   // Patrimonio total: descompone el capital en sus partes, totalizado por moneda
-  // (ARS, USD y USDT por separado — no se convierte por TC para no inventar una tasa).
-  // "Cajas (todas)" es el agregado; el detalle por caja vive en la tabla de más abajo.
+  // (moneda local + USD + USDT por separado — no se convierte por TC para no
+  // inventar una tasa). "Cajas (todas)" es el agregado; el detalle por caja
+  // vive en la tabla de más abajo.
+  //
+  // Auditoría 2026-06-30 F-02→05: el filtro de cajas usa monedaLocal (ARS para
+  // tenants AR, UYU para UY) en vez de la cadena 'ARS' hardcodeada. Los
+  // campos del backend (inv_equipos_ars, saldo_ars, etc.) siguen llamándose
+  // `_ars` por compat con la API actual — para tenants UY el backend
+  // todavía devuelve estos campos en moneda local (UYU). El refactor del
+  // shape del API es scope separado (F-06 backend).
   const patrimonio = useMemo(() => {
     const n = (x) => Number(x || 0);
     const inv = metricas || {};
-    const cajasArs  = cajasList.filter(c => c.moneda === 'ARS').reduce((s, c) => s + n(c.saldo_actual), 0);
-    const cajasUsd  = cajasList.filter(c => c.moneda === 'USD').reduce((s, c) => s + n(c.saldo_actual), 0);
-    const cajasUsdt = cajasList.filter(c => c.moneda === 'USDT').reduce((s, c) => s + n(c.saldo_actual), 0);
-    const invArs = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
-    const invUsd = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
-    const deudasArs = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
-    const deudasUsd = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
+    const cajasLocal = cajasList.filter(c => c.moneda === monedaLocal).reduce((s, c) => s + n(c.saldo_actual), 0);
+    const cajasUsd   = cajasList.filter(c => c.moneda === 'USD').reduce((s, c) => s + n(c.saldo_actual), 0);
+    const cajasUsdt  = cajasList.filter(c => c.moneda === 'USDT').reduce((s, c) => s + n(c.saldo_actual), 0);
+    // Campos `_ars` del backend = moneda local del tenant (en AR son ARS,
+    // en UY el backend los rellena con UYU). Renombrar requiere migration de
+    // shape de la API; queda para F-06.
+    const invLocal  = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
+    const invUsd    = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
+    const deudasLocal = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
+    const deudasUsd   = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
     const b2bUsd = n(ccGeneral.neto);
     // Las inversiones son dinero (en USD) que nos invirtieron y debemos devolver → restan.
     const inversionesUsd = (resumen.inversiones || []).reduce((s, i) => s + n(i.total_invertido), 0);
@@ -87,9 +118,9 @@ export default function Capital() {
     // Saldos pendientes en tarjetas (financiera nos debe depositar) → suma.
     // Conceptualmente equivale a "Deudas de clientes a cobrar" — plata que
     // existe, todavía no la recibimos. La moneda depende del método (las TC
-    // ARS suman a ARS; si hubiera tarjeta USD, sumaría a USD).
-    const tarjArs = n(tarjSaldos.saldo_ars);
-    const tarjUsd = n(tarjSaldos.saldo_usd);
+    // en moneda local suman a la local; si hubiera tarjeta USD, sumaría a USD).
+    const tarjLocal = n(tarjSaldos.saldo_ars);
+    const tarjUsd   = n(tarjSaldos.saldo_usd);
     // Saldos pendientes en cambios de divisa (financiera nos debe USD) → suma.
     const cambUsd = n(cambSaldos.saldo_usd);
     // Cards de composición (lo que suma en verde, lo que resta en rojo).
@@ -98,6 +129,8 @@ export default function Capital() {
       label: c.nombre, tone: 'pos', moneda: c.moneda,
       montos: [[sym(c.moneda), n(c.saldo_actual)]],
     }));
+    // Símbolo de la moneda local para los montos mixtos (deudas, stock, etc.).
+    const localSym = sym(monedaLocal);
     // Cards con TODAS las monedas que puede contener cada concepto. Después
     // filtramos las que están en 0 para no mostrar "$ 0" como ruido visual
     // (típico al arrancar el sistema o cuando un negocio no opera en USD).
@@ -105,11 +138,11 @@ export default function Capital() {
     // útil verla igual (sabés que existe la caja, no es ruido).
     const cardsRaw = [
       ...cajaCards,
-      { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [['$', deudasArs], ['u$s', deudasUsd]] },
+      { label: 'Deudas de clientes a cobrar',     tone: 'pos', montos: [[localSym, deudasLocal], ['u$s', deudasUsd]] },
       { label: 'Deudas de clientes B2B a cobrar', tone: 'pos', montos: [['u$s', b2bUsd]] },
-      { label: 'Tarjetas a cobrar',               tone: 'pos', montos: [['$', tarjArs], ['u$s', tarjUsd]] },
+      { label: 'Tarjetas a cobrar',               tone: 'pos', montos: [[localSym, tarjLocal], ['u$s', tarjUsd]] },
       { label: 'Cambios de divisa a cobrar',      tone: 'pos', montos: [['u$s', cambUsd]] },
-      { label: 'Stock valorizado',                tone: 'pos', montos: [['$', invArs], ['u$s', invUsd]] },
+      { label: 'Stock valorizado',                tone: 'pos', montos: [[localSym, invLocal], ['u$s', invUsd]] },
       { label: 'Inversiones recibidas',           tone: 'neg', montos: [['u$s', inversionesUsd]] },
       { label: 'Deudas a proveedores a pagar',    tone: 'neg', montos: [['u$s', provUsd]] },
     ];
@@ -122,11 +155,11 @@ export default function Capital() {
       const montos = c.montos.filter(([, v]) => Math.abs(Number(v) || 0) >= 0.01);
       return montos.length > 0 ? [{ ...c, montos }] : [];
     });
-    const totalArs  = cajasArs  + invArs + deudasArs + tarjArs;
-    const totalUsd  = cajasUsd  + invUsd + deudasUsd + b2bUsd + tarjUsd + cambUsd - provUsd - inversionesUsd;
-    const totalUsdt = cajasUsdt;
-    return { cards, totalArs, totalUsd, totalUsdt };
-  }, [cajasList, metricas, resumen, ccGeneral, provSaldos, tarjSaldos, cambSaldos]);
+    const totalLocal = cajasLocal + invLocal + deudasLocal + tarjLocal;
+    const totalUsd   = cajasUsd  + invUsd + deudasUsd + b2bUsd + tarjUsd + cambUsd - provUsd - inversionesUsd;
+    const totalUsdt  = cajasUsdt;
+    return { cards, totalLocal, totalUsd, totalUsdt };
+  }, [cajasList, metricas, resumen, ccGeneral, provSaldos, tarjSaldos, cambSaldos, monedaLocal]);
 
   return (
     <div>
@@ -163,19 +196,21 @@ export default function Capital() {
         </div>
       )}
 
-      {/* Patrimonio total por moneda (efectivo + inventario + inversiones + a cobrar + B2B) */}
+      {/* Patrimonio total por moneda (efectivo + inventario + inversiones + a cobrar + B2B).
+          Auditoría 2026-06-30 F-02→05: labels y símbolos dinámicos por país
+          (ARS/$ en AR, UYU/$U en UY) vía useMonedasTenant + fmtMoney. */}
       <div className="row" style={{ marginBottom: 14 }}>
         <div className="card card-tight" style={{ flex: 1 }}>
-          <div className="kpi-label">Patrimonio · ARS</div>
-          <div className="kpi-value mono" style={{ color: patrimonio.totalArs >= 0 ? 'var(--pos)' : 'var(--neg)' }}>$ {fmt(patrimonio.totalArs)}</div>
+          <div className="kpi-label">Patrimonio · {monedaLocal}</div>
+          <div className="kpi-value mono" style={{ color: patrimonio.totalLocal >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalLocal, monedaLocal)}</div>
         </div>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Patrimonio · USD</div>
-          <div className="kpi-value mono" style={{ color: patrimonio.totalUsd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>u$s {fmt(patrimonio.totalUsd)}</div>
+          <div className="kpi-value mono" style={{ color: patrimonio.totalUsd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalUsd, 'USD')}</div>
         </div>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Patrimonio · USDT</div>
-          <div className="kpi-value mono" style={{ color: patrimonio.totalUsdt >= 0 ? 'var(--pos)' : 'var(--neg)' }}>USDT {fmt(patrimonio.totalUsdt)}</div>
+          <div className="kpi-value mono" style={{ color: patrimonio.totalUsdt >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalUsdt, 'USDT')}</div>
         </div>
       </div>
 
@@ -254,7 +289,7 @@ export default function Capital() {
       <div className="card card-flush">
         <div className="card-hd">
           <div style={{ fontWeight: 600, fontSize: 14 }}>Movimientos — {ledger.totales.count}</div>
-          <div className="muted tiny">Totales en USD (los montos en ARS sin TC aportan 0 al total USD)</div>
+          <div className="muted tiny">Totales en USD (los montos en {monedaLocal} sin TC aportan 0 al total USD)</div>
         </div>
         {loading ? <div className="empty">Cargando movimientos…</div>
           : ledger.data.length === 0 ? <div className="empty">Sin movimientos para los filtros elegidos.</div>

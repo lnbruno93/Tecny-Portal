@@ -1,17 +1,24 @@
 // CommandPalette.jsx — Global ⌘K command palette for navigation.
 // Controlled by parent via `open` / `onClose` props.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from './Icons';
+// Auditoría 2026-06-30 F-02→05: descripción del Cotizador hardcoded "USD →
+// ARS" — para tenants UY toca "USD → UYU". Moneda local dinámica.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 // Listado completo de rutas — la auditoría detectó que faltaban 10 (Ventas,
 // Inventario, Desglose 360, Contactos, Proyectos, Egresos, Capital, Cambios,
 // Tarjetas). El ⌘K es la fuente única para navegar rápido; si una pantalla
 // crítica no aparece, el usuario tiene que ir por la sidebar.
-const COMMANDS = [
+//
+// 2026-06-30 F-02→05: se transformó de constante top-level a factory porque
+// la descripción del Cotizador depende del país del tenant (USD → ARS|UYU).
+function buildCommands(monedaLocal) {
+return [
   { id: 'inicio',        path: '/inicio',              label: 'Inicio',                       desc: 'Dashboard principal',                            icon: 'Grid'       },
-  { id: 'cotizador',     path: '/cotizador',           label: 'Cotizador',                    desc: 'Precios con cuotas y USD → ARS',                 icon: 'Calculator' },
+  { id: 'cotizador',     path: '/cotizador',           label: 'Cotizador',                    desc: `Precios con cuotas y USD → ${monedaLocal}`,      icon: 'Calculator' },
   { id: 'usados',        path: '/usados',              label: 'Usados | Cotizador',           desc: 'Catálogo de precios USD',                        icon: 'Phone'      },
   { id: 'ventas',        path: '/ventas',              label: 'Ventas',                       desc: 'Alta de ventas + dashboard',                     icon: 'Receipt'    },
   { id: 'cuentas',       path: '/cuentas',             label: 'Venta & Gestión B2B',          desc: 'Clientes B2B y cuenta corriente',                icon: 'Receipt'    },
@@ -31,6 +38,7 @@ const COMMANDS = [
   { id: 'usuarios',      path: '/usuarios',            label: 'Usuarios',                     desc: 'Gestión de acceso',                              icon: 'Users'      },
   { id: 'config',        path: '/config',              label: 'Config',                       desc: 'Ajustes del portal',                             icon: 'Settings'   },
 ];
+}
 
 export default function CommandPalette({ open, onClose }) {
   const [query, setQuery] = useState('');
@@ -38,6 +46,11 @@ export default function CommandPalette({ open, onClose }) {
   const inputRef = useRef(null);
   const filteredRef = useRef([]); // always-current ref used inside keydown handler
   const navigate = useNavigate();
+  // Auditoría 2026-06-30 F-02→05: moneda local del tenant (ARS para AR,
+  // UYU para UY). Inyectada en la desc del Cotizador.
+  const { monedaLocal } = useMonedasTenant();
+  // Memoizado por moneda — el array se reconstruye solo al cambiar de tenant.
+  const COMMANDS = useMemo(() => buildCommands(monedaLocal), [monedaLocal]);
 
   // Reset state when palette opens/closes
   useEffect(() => {
