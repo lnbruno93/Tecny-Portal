@@ -64,9 +64,11 @@ export function RedB2BConfigContent() {
         if (!mounted) return;
         setConfig(cfg.red_b2b);
         setCajaIdDraft(cfg.red_b2b?.caja_default_id ? String(cfg.red_b2b.caja_default_id) : '');
-        // mp puede venir como { metodos_pago: [...] } o array directo según endpoint.
-        const list = Array.isArray(mp) ? mp : (mp.metodos_pago || mp.cajas || []);
-        setCajasList(list);
+        // Auditoría 2026-06-30 Q-02/Q-03: `cajas.listMetodosPago()` devuelve
+        // array plano (contrato verificado en backend/tests/metodos-pago.test.js).
+        // Antes había defensive logic `mp.metodos_pago || mp.cajas` heredada
+        // de un mock de test mal armado — corregido en RedB2B.test.jsx.
+        setCajasList(Array.isArray(mp) ? mp : []);
         // El endpoint devuelve { email_prefs: {...} }. Defaults a true por flag
         // si el backend no devuelve algún campo (ej: si se agregó un flag nuevo
         // post-deploy y la row vieja no lo tiene en su JSONB).
