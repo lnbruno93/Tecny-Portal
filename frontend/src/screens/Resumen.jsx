@@ -10,6 +10,11 @@ import { Icons } from '../components/Icons';
 import { dashboard as dashApi } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { fmt, fmtFecha } from '../lib/format';
+// Auditoría 2026-06-30 F-02→05: multi-país. El KPI "ARS" y el lookup
+// cajas.por_moneda.ARS estaban hardcoded — para tenants UY la card de moneda
+// local aparecía vacía. Ahora derivamos el código de la moneda local
+// (ARS/UYU) del tenant.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 function mesActualISO() {
   const d = new Date();
@@ -103,6 +108,13 @@ function KpiCard({ label, valor, unidad = '', comparado, formatter = fmt, invert
 
 export default function Resumen() {
   const { toast } = useToast();
+  // Auditoría 2026-06-30 F-02→05: moneda local del tenant (ARS para AR, UYU
+  // para UY). Reemplaza los literales 'ARS' / '$' del bloque "Capital en cajas".
+  const { monedaLocal } = useMonedasTenant();
+  // Símbolo visual de la moneda local — alineado con fmtMoney:
+  //   ARS → '$',  UYU → '$U'. Mantenemos un map chico en lugar de derivar de
+  //   fmtMoney(0,...) porque KpiCard recibe `unidad` como string suelto.
+  const simboloLocal = monedaLocal === 'UYU' ? '$U' : '$';
   const [periodoActual, setPeriodoActual]   = useState(mesActualISO());
   const [periodoComp,   setPeriodoComp]     = useState(mesAnteriorISO(mesActualISO()));
   const [data,    setData]    = useState(null);
@@ -146,7 +158,11 @@ export default function Resumen() {
   const [ticketA,    ticketC]    = v('ventas.ticket_promedio_usd');
   const [cantVtaA,   cantVtaC]   = v('ventas.cant_ventas');
   const [capitalA,   capitalC]   = v('cajas.capital_usd_equivalente');
-  const [arsA,       arsC]       = v('cajas.por_moneda.ARS');
+  // Auditoría 2026-06-30 F-02→05: leemos la key correspondiente a la moneda
+  // local del tenant. El payload del backend tiene la forma
+  // `cajas.por_moneda.{ARS|UYU|USD|USDT}` — antes solo se leía la key 'ARS'
+  // y para tenants UY la card quedaba vacía aunque hubiera datos en UYU.
+  const [localA,     localC]     = v(`cajas.por_moneda.${monedaLocal}`);
   const [usdA,       usdC]       = v('cajas.por_moneda.USD');
   const [usdtA,      usdtC]      = v('cajas.por_moneda.USDT');
   const [deudaCCA,   deudaCCC]   = v('deuda_cc.deuda_usd');
@@ -251,7 +267,9 @@ export default function Resumen() {
               />
             </div>
             <div style={{ flex: '1 1 200px' }}>
-              <KpiCard label="ARS" unidad="$" valor={arsA} comparado={arsC} />
+              {/* Auditoría 2026-06-30 F-02→05: label y unidad dinámicas (ARS/$
+                  en AR, UYU/$U en UY). */}
+              <KpiCard label={monedaLocal} unidad={simboloLocal} valor={localA} comparado={localC} />
             </div>
             <div style={{ flex: '1 1 200px' }}>
               <KpiCard label="USD" unidad="u$s" valor={usdA} comparado={usdC} />

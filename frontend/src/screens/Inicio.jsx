@@ -4,6 +4,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../components/Icons';
 import { config, envios, historial } from '../lib/api';
 import { fmt as fmtMagnitud } from '../lib/format';
+// Auditoría 2026-06-30 F-02→05: multi-país. Las descripciones de las tools
+// Cambios y Cotizador hardcoded "ARS" — para tenants UY toca decir "UYU".
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 // 2026-06-18 #323 TANDA 1 H3: card de onboarding para signup público nuevo.
 // El componente se auto-oculta cuando el user completa los 3 pasos o lo
 // dismissa manualmente — no hay flag de "es user nuevo" porque es más
@@ -70,6 +73,9 @@ const TABLA_LABEL = {
 export default function Inicio() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Auditoría 2026-06-30 F-02→05: moneda local del tenant (ARS para AR,
+  // UYU para UY). Reemplaza el "ARS" hardcoded en `desc` de Cambios y Cotizador.
+  const { monedaLocal } = useMonedasTenant();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -141,9 +147,11 @@ export default function Inicio() {
     { id: 'inventario',  cap: 'inventario.ver',       name: 'Inventario',           desc: 'Stock · costos · valorizado',         icon: 'Box',         tint: 'green',  meta: 'Equipos y accesorios' },
     { id: 'proveedores', cap: 'proveedores.trabajar', name: 'Proveedores | Compras',desc: 'Compras y cuenta corriente',          icon: 'Building',    tint: 'cyan',   meta: 'Cta. cte. con proveedores' },
     { id: 'financiera',  cap: 'financiera.trabajar',  name: 'Transferencias',       desc: 'Comprobantes, pagos y OCR',           icon: 'Trend',       tint: 'blue',   meta: 'Comprobantes y pagos' },
-    { id: 'cambios',     cap: 'cambios.trabajar',     name: 'Cambios de Divisa',    desc: 'Conversión USD ↔ ARS ↔ USDT',         icon: 'Dollar',      tint: 'pink',   meta: 'Operaciones de cambio' },
+    // Auditoría 2026-06-30 F-02→05: descripción dinámica por país — UY ve
+    // "USD ↔ UYU ↔ USDT" y "USD → UYU".
+    { id: 'cambios',     cap: 'cambios.trabajar',     name: 'Cambios de Divisa',    desc: `Conversión USD ↔ ${monedaLocal} ↔ USDT`, icon: 'Dollar',      tint: 'pink',   meta: 'Operaciones de cambio' },
     { id: 'tarjetas',    cap: 'tarjetas.trabajar',    name: 'Tarjetas de Crédito',  desc: 'Cobros y liquidaciones',              icon: 'CreditCard',  tint: 'purple', meta: 'Por método de pago' },
-    { id: 'cotizador',   cap: 'cotizador.trabajar',   name: 'Cotizador',            desc: 'Precios con cuotas y USD → ARS',      icon: 'Calculator',  tint: 'amber',  meta: 'Cotizar a clientes' },
+    { id: 'cotizador',   cap: 'cotizador.trabajar',   name: 'Cotizador',            desc: `Precios con cuotas y USD → ${monedaLocal}`, icon: 'Calculator',  tint: 'amber',  meta: 'Cotizar a clientes' },
     { id: 'usados',      cap: 'usados.ver',           name: 'Usados | Cotizador',   desc: 'Catálogo de precios USD',             icon: 'Phone',       tint: 'pink',   meta: 'Equipos usados' },
     { id: 'envios',      cap: 'envios.trabajar',      name: 'Envíos',               desc: 'Despachos a domicilio · prioridad',   icon: 'Truck',       tint: 'purple', meta: data ? `${activosCount} activos` : '—' },
   ];
