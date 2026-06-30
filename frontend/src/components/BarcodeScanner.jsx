@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { Icons } from './Icons';
+import useModal from '../lib/useModal';
 
 // Beep corto generado con WebAudio API. No hace falta servir un archivo .mp3 ni
 // pedir permisos extra — el AudioContext se crea cuando el usuario interactúa
@@ -54,6 +55,12 @@ export default function BarcodeScanner({ open, onScan, onClose, ignoreCodes }) {
   const ignoreRef = useRef(new Set());
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
+  // Auditoría 2026-06-30 F-10: useModal para Esc cierra, focus trap, body lock.
+  // Modal full-screen sin form de cierre por click-outside (sería frustrante en
+  // mobile con la cámara activa — el operador apunta a un código y un toque al
+  // fondo no debe cerrar). Solo Esc + botón "Cerrar" en header.
+  const overlayRef = useRef(null);
+  useModal({ open, onClose, overlayRef });
 
   // Sincronizar el set con lo que viene de afuera (la lista de scaneados).
   useEffect(() => {
@@ -140,9 +147,11 @@ export default function BarcodeScanner({ open, onScan, onClose, ignoreCodes }) {
 
   return (
     <div
+      ref={overlayRef}
       className="modal-overlay"
       style={{ background: 'rgba(0,0,0,0.92)', padding: 0 }}
       role="dialog"
+      aria-modal="true"
       aria-label="Escanear código de barras"
     >
       <div style={{
