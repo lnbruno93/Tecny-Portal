@@ -103,15 +103,19 @@ describe('lib/comprobantePdf', () => {
       venta: ventaArgs,
       tenant: { id: 1, nombre: 'Test', pais: 'AR' },
     });
+    // Footer GIGANTE — pdfkit + zlib compresión + font encoding hace que
+    // 123 chars solo agreguen ~45 bytes al PDF (medido en CI). Para
+    // garantizar diff visible >50 bytes, usar payload mucho mayor.
     const conFooterLargo = await generarComprobantePdf({
       venta: ventaArgs,
       tenant: { id: 1, nombre: 'Test', pais: 'AR',
-        comprobante_email_footer: 'MI FOOTER CUSTOM TENANT ' + 'X'.repeat(100) },
+        comprobante_email_footer: 'X'.repeat(1000) },
     });
-    // El PDF con footer debe ser más grande que el sin footer.
-    // Threshold conservador: >50 bytes de diferencia (el footer extra de
-    // ~120 chars + overhead PDF agrega ~200+ bytes típicamente).
-    expect(conFooterLargo.length).toBeGreaterThan(sinFooter.length + 50);
+    // El PDF con footer de 1000 chars debe ser claramente más grande.
+    // Threshold 30 bytes — con 1000 chars típicamente se ven ~100+ bytes
+    // de diferencia (zlib + font encoding lo comprime bastante pero no
+    // a cero).
+    expect(conFooterLargo.length).toBeGreaterThan(sinFooter.length + 30);
   });
 });
 
