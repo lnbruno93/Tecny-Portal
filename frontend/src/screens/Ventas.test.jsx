@@ -123,4 +123,52 @@ describe('Pantalla Ventas', () => {
       expect(screen.getAllByLabelText('Quitar equipo')).toHaveLength(1);
     });
   });
+
+  // Auditoría 2026-06-30 F-13/14: regresión clásica del key={index}. Cuando se
+  // quita un ítem del medio, React reutiliza el DOM y el draft del input
+  // "salta" al ítem siguiente. Con _id estable, cada input conserva su valor.
+  it('cart: quitar item 0 NO afecta los valores cargados en items posteriores', async () => {
+    renderVentas();
+    fireEvent.click(await screen.findByText('__abrir__'));
+    // Agregar 3 ítems manuales.
+    const btnManual = screen.getByText(/Ítem manual/);
+    fireEvent.click(btnManual);
+    fireEvent.click(btnManual);
+    fireEvent.click(btnManual);
+    let rows = await screen.findAllByTestId('venta-item-row');
+    expect(rows).toHaveLength(3);
+    // Tipear texto distintivo en el input de descripción del item 1 (índice 1)
+    // y el item 2 (índice 2). Cada fila tiene 4 inputs (descripcion/cant/precio/moneda).
+    const desc1 = rows[1].querySelector('input[placeholder="Producto"]');
+    const desc2 = rows[2].querySelector('input[placeholder="Producto"]');
+    fireEvent.change(desc1, { target: { value: 'ITEM-MEDIO' } });
+    fireEvent.change(desc2, { target: { value: 'ITEM-ULTIMO' } });
+    expect(desc1.value).toBe('ITEM-MEDIO');
+    expect(desc2.value).toBe('ITEM-ULTIMO');
+    // Quitar el primero (la X del item 0).
+    const xBtn0 = rows[0].querySelector('button');
+    fireEvent.click(xBtn0);
+    // Tras quitar, quedan 2 filas. La fila 0 (antes 1) debe seguir mostrando
+    // 'ITEM-MEDIO' y la fila 1 (antes 2) debe seguir mostrando 'ITEM-ULTIMO'.
+    rows = await screen.findAllByTestId('venta-item-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector('input[placeholder="Producto"]').value).toBe('ITEM-MEDIO');
+    expect(rows[1].querySelector('input[placeholder="Producto"]').value).toBe('ITEM-ULTIMO');
+  });
+
+  // Auditoría 2026-06-30 F-10: Esc cierra el modal "Nueva venta" (useModal aplicado).
+  it('modal Nueva venta: Esc cierra el modal', async () => {
+    renderVentas();
+    fireEvent.click(await screen.findByText('__abrir__'));
+    // El modal está montado: detectable por el botón "Ítem manual" (solo
+    // existe dentro del modal). "Nueva venta" aparece en el sidebar Y el
+    // header del modal — usamos "Ítem manual" para discriminar.
+    expect(await screen.findByText(/Ítem manual/)).toBeInTheDocument();
+    // Disparar Esc en el document — useModal escucha en document.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // Tras Esc, el botón "Ítem manual" desaparece (el modal se desmonta).
+    await waitFor(() => {
+      expect(screen.queryByText(/Ítem manual/)).not.toBeInTheDocument();
+    });
+  });
 });

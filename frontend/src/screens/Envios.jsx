@@ -41,6 +41,19 @@ const EMPTY_FORM = {
 // edita "Entra a tu caja" directamente). `monto` sigue siendo el bruto en
 // la moneda nativa — única fuente de verdad para el backend.
 const EMPTY_ITEM = { tipo: 'producto', descripcion: '', monto: '', metodo_pago: '', metodo_pago_id: '', producto_id: '', moneda: 'USD', tc: '', es_cuenta_corriente: false, usd_input: '', neto_input: '', _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '' };
+
+// Auditoría 2026-06-30 F-13/14: ID único estable para usar como React key en
+// las filas del array `items`. Usar el índice como key rompe el reconciler al
+// quitar un ítem del medio (el draft del input "salta" al siguiente). Con un
+// id estable, la fila eliminada se desmonta limpia. crypto.randomUUID está
+// disponible en todos los browsers target + jsdom; fallback defensivo para
+// entornos legacy o non-secure-context.
+function newItemId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `it-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 const sym = (m) => m === 'ARS' ? '$' : 'u$s';
 
 // ─── Estado / Prioridad maps ──────────────────────────────────────────────────
@@ -116,7 +129,7 @@ export default function Envios() {
   const [editingId, setEditingId] = useState(null);
   const setShowCreate = (open) => { if (!open) { setModalMode(null); setEditingId(null); } };
   const [form, setForm] = useState(EMPTY_FORM);
-  const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
+  const [items, setItems] = useState([{ ...EMPTY_ITEM, _id: newItemId() }]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   // Paridad con Ventas: si un pago usa la caja Financiera, se exige adjuntar
@@ -136,13 +149,17 @@ export default function Envios() {
   });
 
   const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
-  const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM }]);
-  const addProducto = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'producto' }]);
+  // Auditoría 2026-06-30 F-13/14: cada item tiene _id estable. rmItem opera
+  // por id (el JSX pasa it._id). setItem mantiene firma por índice porque los
+  // call-sites del JSX están dentro del .map y conocen idx, y porque hay
+  // handlers internos (setPagoUsd, etc.) que usan items[idx] para fórmulas.
+  const addItem = () => setItems(i => [...i, { ...EMPTY_ITEM, _id: newItemId() }]);
+  const addProducto = () => setItems(i => [...i, { ...EMPTY_ITEM, _id: newItemId(), tipo: 'producto' }]);
   // 2026-06-10 — Default del pago pasa a USD (era ARS). Footgun: si el operador
   // no cambiaba el dropdown, el pago quedaba como ARS aunque la venta fuera USD.
   // USD es la moneda predominante del negocio (iPhones, accesorios premium).
-  const addPago = () => setItems(i => [...i, { ...EMPTY_ITEM, tipo: 'pago', moneda: 'USD' }]);
-  const rmItem = (idx) => setItems(i => i.filter((_, j) => j !== idx));
+  const addPago = () => setItems(i => [...i, { ...EMPTY_ITEM, _id: newItemId(), tipo: 'pago', moneda: 'USD' }]);
+  const rmItem = (id) => setItems(i => i.filter(it => it._id !== id));
   const setItem = (idx, field, val) =>
     setItems(i => i.map((it, j) => j === idx ? { ...it, [field]: val } : it));
 
@@ -401,7 +418,7 @@ export default function Envios() {
 
   function openCreate() {
     setForm(EMPTY_FORM);
-    setItems([{ ...EMPTY_ITEM }]);
+    setItems([{ ...EMPTY_ITEM, _id: newItemId() }]);
     setCreateError('');
     setComprobantes([]);
     setOcrSugerencia({ status: 'idle', monto: null });
@@ -473,6 +490,7 @@ export default function Envios() {
       tc:           envio.tc != null ? String(envio.tc) : '',
     });
     const mappedItems = (envio.items || []).map(i => ({
+      _id: newItemId(),
       tipo: i.tipo,
       descripcion: i.descripcion || '',
       monto: i.monto != null ? String(i.monto) : '',
@@ -485,7 +503,7 @@ export default function Envios() {
       // Meta solo para UI — vacío al cargar; se llena solo si hacen "Cambiar".
       _imei: '', _nombre: '', _gb: '', _color: '', _costo: '', _costo_moneda: '',
     }));
-    setItems(mappedItems.length ? mappedItems : [{ ...EMPTY_ITEM }]);
+    setItems(mappedItems.length ? mappedItems : [{ ...EMPTY_ITEM, _id: newItemId() }]);
     setCreateError('');
     setComprobantes([]);
     setOcrSugerencia({ status: 'idle', monto: null });
@@ -1308,8 +1326,9 @@ export default function Envios() {
                       </button>
                     </div>
                     <div className="stack" style={{ gap: 8 }}>
+                      {/* Auditoría 2026-06-30 F-13/14: key={_id} estable. */}
                       {items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.tipo === 'producto').map(({ it, idx }) => (
-                        <div key={`p-${idx}`} className="card card-tight" style={{ padding: '12px 14px' }}>
+                        <div key={it._id} className="card card-tight" style={{ padding: '12px 14px' }}>
                           {/* 2026-06-10 (Lucas eligió layout "Hero card con chips"):
                               · Sin linkear → grilla compacta de 4 col: buscador + monto + moneda + ✕.
                               · Linkeado → 2 niveles:
@@ -1354,7 +1373,7 @@ export default function Envios() {
                                     .map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                               </div>
-                              <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
+                              <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(it._id)}>
                                 <Icons.X size={14} />
                               </button>
                             </div>
@@ -1411,7 +1430,7 @@ export default function Envios() {
                                       .map(m => <option key={m} value={m}>{m}</option>)}
                                   </select>
                                 </div>
-                                <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
+                                <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(it._id)}>
                                   <Icons.X size={14} />
                                 </button>
                               </div>
@@ -1456,7 +1475,7 @@ export default function Envios() {
                           }
                         }
                         return (
-                          <div key={`pg-${idx}`}>
+                          <div key={it._id}>
                             <div style={{
                               display: 'grid',
                               gridTemplateColumns: showTc ? '1fr 110px 90px auto' : '1fr 110px auto',
@@ -1509,7 +1528,7 @@ export default function Envios() {
                                   />
                                 </div>
                               )}
-                              <button type="button" className="icon-btn" onClick={() => rmItem(idx)}>
+                              <button type="button" className="icon-btn" onClick={() => rmItem(it._id)}>
                                 <Icons.X size={14} />
                               </button>
                             </div>

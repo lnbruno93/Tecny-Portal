@@ -20,11 +20,12 @@
 // nuevo home, pero el componente sigue funcional si lo importamos directo
 // en tests o lo montamos a futuro).
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { redB2b, inventario } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { Icons } from '../components/Icons';
+import useModal from '../lib/useModal';
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -259,6 +260,11 @@ function MergeModal({ source, onClose, onSubmit }) {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // Auditoría 2026-06-30 F-10: useModal para Esc, focus trap, body scroll lock
+  // y restore-focus. El modal se monta cuando hay un source, por eso open=true
+  // mientras viva — el cleanup se da al desmontar (cuando el padre pone mergeOpen=null).
+  const overlayRef = useRef(null);
+  useModal({ open: true, onClose, overlayRef });
 
   useEffect(() => {
     let cancelled = false;
@@ -305,12 +311,10 @@ function MergeModal({ source, onClose, onSubmit }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div ref={overlayRef} className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="merge-modal-title">
       <div
         className="modal"
         onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-labelledby="merge-modal-title"
         style={{ maxWidth: 600 }}
       >
         <h2 id="merge-modal-title">Mergear con producto existente</h2>

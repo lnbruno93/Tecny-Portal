@@ -59,6 +59,20 @@ const EMPTY_CANJE = {
   precio_venta_sugerido: '', observaciones: '',
 };
 
+// Auditoría 2026-06-30 F-13/14: ID único por ítem para usarse como React key.
+// Usar el índice como key rompe el reconciler cuando se quita un ítem del
+// medio: React reutiliza el DOM del index anterior, pero el state interno
+// del input (incluyendo el draft no-controlado y el cursor) "salta" al
+// ítem siguiente. Con un id estable la fila eliminada se desmonta limpio.
+// crypto.randomUUID está disponible en todos los browsers target + jsdom.
+function newItemId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback ultra-defensivo (jsdom viejos, entornos no-secure-context).
+  return `it-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 // ─── Pantalla ──────────────────────────────────────────────────────────────────
 export default function Ventas() {
   const { toast } = useToast();
@@ -116,16 +130,20 @@ export default function Ventas() {
   const [nuevaEtiqueta, setNuevaEtiqueta] = useState('');
   const [showComprob, setShowComprob] = useState(null); // venta id
   const [comprobList, setComprobList] = useState([]);
-  // useModal — auditoría 2026-06-06 UX B2: Esc cierra los modales,
-  // focus trap, body scroll lock. Aplicado a los 3 modales operativos
-  // más usados (venta nueva, venta rápida, garantías). showEtiquetas y
-  // showComprob (poco frecuentes) quedan para una iteración posterior.
+  // useModal — auditoría 2026-06-06 UX B2 + 2026-06-30 F-10:
+  // Esc cierra los modales, focus trap, body scroll lock.
+  // Aplicado a los 5 modales del módulo: venta nueva, venta rápida,
+  // garantías, etiquetas (F-10) y ver comprobantes (F-10).
   const ventaModalRef = useRef(null);
   const rapidaModalRef = useRef(null);
   const garantiasModalRef = useRef(null);
+  const etiquetasModalRef = useRef(null);
+  const comprobModalRef = useRef(null);
   useModal({ open: showVenta, onClose: () => setShowVenta(false), overlayRef: ventaModalRef });
   useModal({ open: showRapida, onClose: () => setShowRapida(false), overlayRef: rapidaModalRef });
   useModal({ open: showGarantias, onClose: () => setShowGarantias(false), overlayRef: garantiasModalRef });
+  useModal({ open: showEtiquetas, onClose: () => setShowEtiquetas(false), overlayRef: etiquetasModalRef });
+  useModal({ open: showComprob != null, onClose: () => setShowComprob(null), overlayRef: comprobModalRef });
 
   // ── Carga ──
   const loadDash = useCallback(async () => {
@@ -223,6 +241,7 @@ export default function Ventas() {
       // defaults para los nuevos (categoria/condicion/precio_venta_sugerido/observaciones) —
       // edición de canjes existentes no permite cambiar campos que ya viajaron a Inventario.
       canjes: (v.canjes || []).map(c => ({
+        _id: newItemId(),
         descripcion: c.descripcion || '',
         imei: c.imei || '', gb: c.gb || '', color: c.color || '', bateria: c.bateria ?? '',
         valor_toma: c.valor_toma || '', moneda: c.moneda || 'USD',
@@ -232,8 +251,9 @@ export default function Ventas() {
         _existing: true, // flag: este canje ya existe en DB, no se re-crea producto
       })),
     });
-    setCart((v.items || []).map(it => ({ producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
+    setCart((v.items || []).map(it => ({ _id: newItemId(), producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
     setPagos((v.pagos || []).map(p => ({
+      _id: newItemId(),
       metodo_pago_id: p.metodo_pago_id ?? null, metodo_nombre: p.metodo_nombre,
       monto: Number(p.monto), moneda: p.moneda, tc: p.tc || '',
       es_cuenta_corriente: !!p.es_cuenta_corriente,
@@ -255,7 +275,7 @@ export default function Ventas() {
       setVForm(f => ({ ...f, cliente_nombre: rapida.cliente_texto || '', notas: rapida.detalle || '' }));
       const vend = vendedores.find(v => v.nombre.toLowerCase() === (rapida.vendedor_nombre || '').toLowerCase());
       if (vend) setVForm(f => ({ ...f, vendedor_id: vend.id }));
-      setCart([{ producto_id: null, descripcion: '', imei: '', cantidad: 1, precio_vendido: 0, costo: 0, moneda: 'USD' }]);
+      setCart([{ _id: newItemId(), producto_id: null, descripcion: '', imei: '', cantidad: 1, precio_vendido: 0, costo: 0, moneda: 'USD' }]);
     }
     setShowVenta(true);
   }
@@ -280,15 +300,19 @@ export default function Ventas() {
   }
   function addProd(p) {
     setCart(c => [...c, {
+      _id: newItemId(),
       producto_id: p.id,
       descripcion: [p.nombre, p.color, p.gb ? p.gb + 'GB' : ''].filter(Boolean).join(' '),
       imei: p.imei || '', cantidad: 1, precio_vendido: Number(p.precio_venta) || 0, costo: Number(p.costo) || 0, moneda: p.precio_moneda || 'USD',
     }]);
     setProdSearch(''); setProdResults([]);
   }
-  const addItemManual = () => setCart(c => [...c, { producto_id: null, descripcion: '', imei: '', cantidad: 1, precio_vendido: 0, costo: 0, moneda: 'USD' }]);
-  const setItem = (i, k, v) => setCart(c => c.map((it, j) => j === i ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
-  const rmItem = (i) => setCart(c => c.filter((_, j) => j !== i));
+  // Auditoría 2026-06-30 F-13/14: cart, pagos y canjes usan _id estable como
+  // React key. setItem/rmItem operan por id (no por índice) — quitar un ítem
+  // del medio no afecta el draft de los inputs de los siguientes.
+  const addItemManual = () => setCart(c => [...c, { _id: newItemId(), producto_id: null, descripcion: '', imei: '', cantidad: 1, precio_vendido: 0, costo: 0, moneda: 'USD' }]);
+  const setItem = (id, k, v) => setCart(c => c.map(it => it._id === id ? { ...it, [k]: (k === 'cantidad' || k === 'precio_vendido' || k === 'costo') ? (v === '' ? '' : Number(v)) : v } : it));
+  const rmItem = (id) => setCart(c => c.filter(it => it._id !== id));
 
   // Tema C en-vivo rev5 (2026-06-14): nuevo modelo de pago — el operador
   // tipea USD (su mental model), el sistema arma el bruto ARS según el
@@ -302,11 +326,16 @@ export default function Ventas() {
   // bruto = usd × tc / (1 − pct/100). El backend recibe monto como siempre,
   // sin cambios server-side.
   const addPago = () => setPagos(p => [...p, {
+    _id: newItemId(),
     metodo_pago_id: null, metodo_nombre: '', monto: '', moneda: 'ARS', tc: '',
     usd_input: '', neto_input: '', es_cuenta_corriente: false,
   }]);
-  const setPago = (i, k, v) => setPagos(p => p.map((pg, j) => j === i ? { ...pg, [k]: v } : pg));
-  const rmPago = (i) => setPagos(p => p.filter((_, j) => j !== i));
+  // Auditoría 2026-06-30 F-13/14: setPago/rmPago aceptan _id estable. Los
+  // handlers internos (setPagoUsd, setPagoMetodo, etc.) siguen operando por
+  // índice porque dependen de prevPagos[i] para fórmulas multi-pago — el
+  // call-site del JSX usa el _id de la fila y lo resolvemos a índice acá.
+  const setPago = (id, k, v) => setPagos(p => p.map(pg => pg._id === id ? { ...pg, [k]: v } : pg));
+  const rmPago = (id) => setPagos(p => p.filter(pg => pg._id !== id));
 
   // Helpers de fórmula (rev5)
   function pctMetodo(m) {
@@ -566,11 +595,14 @@ export default function Ventas() {
   }, [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera]);
 
   // ── Helpers para manipular el array de canjes (junio 2026) ─────────────
-  const addCanje = () => setVForm(f => ({ ...f, canjes: [...(f.canjes || []), { ...EMPTY_CANJE }] }));
-  const rmCanje = (i) => setVForm(f => ({ ...f, canjes: (f.canjes || []).filter((_, idx) => idx !== i) }));
-  const setCanje = (i, k, v) => setVForm(f => ({
+  // Auditoría 2026-06-30 F-13/14: _id estable por canje + rmCanje/setCanje
+  // por id. Mismo motivo que cart/pagos: quitar el canje del medio no debe
+  // pisar el draft del input del siguiente canje.
+  const addCanje = () => setVForm(f => ({ ...f, canjes: [...(f.canjes || []), { ...EMPTY_CANJE, _id: newItemId() }] }));
+  const rmCanje = (id) => setVForm(f => ({ ...f, canjes: (f.canjes || []).filter(c => c._id !== id) }));
+  const setCanje = (id, k, v) => setVForm(f => ({
     ...f,
-    canjes: (f.canjes || []).map((c, idx) => idx === i ? { ...c, [k]: v } : c),
+    canjes: (f.canjes || []).map(c => c._id === id ? { ...c, [k]: v } : c),
   }));
 
   async function handleSaveVenta(e) {
@@ -1145,27 +1177,28 @@ export default function Ventas() {
                       )}
                     </div>
                     <div className="stack" style={{ gap: 6, marginTop: 8 }}>
-                      {cart.map((it, i) => (
+                      {cart.map((it) => (
                         // data-testid agregado para E2E (TANDA 5 venta retail) — scoping
                         // estable de los 4 inputs por fila (descripcion/cant/precio/moneda)
                         // sin atarse a CSS frágil del grid.
                         // 2026-06-24 mobile lote C: class .item-grid + CSS var --cols
                         // hace que en <=520px todas las columnas colapsen a 1fr
                         // (stack vertical, delete right-aligned). Desktop sin cambios.
-                        <div key={i} data-testid="venta-item-row" className="item-grid" style={{ '--cols': '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
-                          <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(i, 'descripcion', e.target.value)} />
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)} />
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(i, 'precio_vendido', e.target.value)} />
+                        // Auditoría 2026-06-30 F-13/14: key={_id} en vez de index.
+                        <div key={it._id} data-testid="venta-item-row" className="item-grid" style={{ '--cols': '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
+                          <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(it._id, 'cantidad', e.target.value)} />
+                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(it._id, 'precio_vendido', e.target.value)} />
                           {/* Items de venta retail: USD o moneda local del tenant (no
                               USDT, que es medio de pago, no precio de góndola). Si el
                               record tiene un valor legacy fuera del set (ej. venta
                               vieja ARS en un tenant que hoy es UY), lo conservamos
                               para no romper edits. */}
-                          <select className="input" value={it.moneda} onChange={e => setItem(i, 'moneda', e.target.value)}>
+                          <select className="input" value={it.moneda} onChange={e => setItem(it._id, 'moneda', e.target.value)}>
                             {Array.from(new Set(['USD', monedaLocal, it.moneda].filter(Boolean)))
                               .map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
-                          <button type="button" className="icon-btn" onClick={() => rmItem(i)}><Icons.X size={14} /></button>
+                          <button type="button" className="icon-btn" onClick={() => rmItem(it._id)}><Icons.X size={14} /></button>
                         </div>
                       ))}
                     </div>
@@ -1381,8 +1414,9 @@ export default function Ventas() {
                       </div>
                     )}
                     <div className="stack" style={{ gap: 10 }}>
+                      {/* Auditoría 2026-06-30 F-13/14: key={_id} en canjes. */}
                       {(vForm.canjes || []).map((c, i) => (
-                        <div key={i} style={{
+                        <div key={c._id} style={{
                           padding: 12, background: 'var(--surface-2)', border: '1px solid var(--border)',
                           borderRadius: 8,
                         }}>
@@ -1392,7 +1426,7 @@ export default function Ventas() {
                               Equipo {i + 1}
                               {c._existing && <span style={{ marginLeft: 6, color: 'var(--accent)' }}>(ya en Inventario)</span>}
                             </div>
-                            <button type="button" className="icon-btn" aria-label="Quitar equipo" onClick={() => rmCanje(i)}>
+                            <button type="button" className="icon-btn" aria-label="Quitar equipo" onClick={() => rmCanje(c._id)}>
                               <Icons.X size={14} />
                             </button>
                           </div>
@@ -1402,17 +1436,17 @@ export default function Ventas() {
                             <div className="field" style={{ flex: 2 }}>
                               <label className="field-label">Descripción</label>
                               <input className="input" placeholder="iPhone 13 Pro 256 Sierra Blue"
-                                     value={c.descripcion} onChange={e => setCanje(i, 'descripcion', e.target.value)} />
+                                     value={c.descripcion} onChange={e => setCanje(c._id, 'descripcion', e.target.value)} />
                             </div>
                             <div className="field" style={{ flex: 1.2 }}>
                               <label className="field-label">IMEI / Nº serie</label>
                               <input className="input mono" placeholder="35..."
-                                     value={c.imei} onChange={e => setCanje(i, 'imei', e.target.value)} />
+                                     value={c.imei} onChange={e => setCanje(c._id, 'imei', e.target.value)} />
                             </div>
                             <div className="field" style={{ flex: 1 }}>
                               <label className="field-label">Valor toma (USD)</label>
                               <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
-                                     placeholder="0" value={c.valor_toma} onChange={e => setCanje(i, 'valor_toma', e.target.value)} />
+                                     placeholder="0" value={c.valor_toma} onChange={e => setCanje(c._id, 'valor_toma', e.target.value)} />
                             </div>
                           </div>
 
@@ -1421,23 +1455,23 @@ export default function Ventas() {
                             <div className="field" style={{ flex: 0.7 }}>
                               <label className="field-label">GB</label>
                               <input className="input" placeholder="256"
-                                     value={c.gb} onChange={e => setCanje(i, 'gb', e.target.value)} />
+                                     value={c.gb} onChange={e => setCanje(c._id, 'gb', e.target.value)} />
                             </div>
                             <div className="field" style={{ flex: 1 }}>
                               <label className="field-label">Color</label>
                               <input className="input" placeholder="Sierra Blue"
-                                     value={c.color} onChange={e => setCanje(i, 'color', e.target.value)} />
+                                     value={c.color} onChange={e => setCanje(c._id, 'color', e.target.value)} />
                             </div>
                             <div className="field" style={{ flex: 0.7 }}>
                               <label className="field-label">% Batería</label>
                               <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      min="0" max="100" placeholder="100"
-                                     value={c.bateria} onChange={e => setCanje(i, 'bateria', e.target.value)} />
+                                     value={c.bateria} onChange={e => setCanje(c._id, 'bateria', e.target.value)} />
                             </div>
                             <div className="field" style={{ flex: 0.8 }}>
                               <label className="field-label">Condición</label>
                               <select className="input" value={c.condicion}
-                                      onChange={e => setCanje(i, 'condicion', e.target.value)}>
+                                      onChange={e => setCanje(c._id, 'condicion', e.target.value)}>
                                 <option value="usado">Usado</option>
                                 <option value="nuevo">Nuevo</option>
                               </select>
@@ -1449,7 +1483,7 @@ export default function Ventas() {
                             <div className="field" style={{ flex: 1.5 }}>
                               <label className="field-label">Categoría Inventario</label>
                               <select className="input" value={c.categoria_id}
-                                      onChange={e => setCanje(i, 'categoria_id', e.target.value)}
+                                      onChange={e => setCanje(c._id, 'categoria_id', e.target.value)}
                                       disabled={c._existing}>
                                 <option value="">— sin asignar —</option>
                                 {categoriasInv.map(cat => (
@@ -1462,14 +1496,14 @@ export default function Ventas() {
                               <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      placeholder="0 (editar en Inventario después)"
                                      value={c.precio_venta_sugerido}
-                                     onChange={e => setCanje(i, 'precio_venta_sugerido', e.target.value)}
+                                     onChange={e => setCanje(c._id, 'precio_venta_sugerido', e.target.value)}
                                      disabled={c._existing} />
                             </div>
                             <div className="field" style={{ flex: 0.8, alignSelf: 'end' }}>
                               <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: c._existing ? 'not-allowed' : 'pointer' }}>
                                 <input type="checkbox" checked={c.agregar_stock}
                                        disabled={c._existing}
-                                       onChange={e => setCanje(i, 'agregar_stock', e.target.checked)} />
+                                       onChange={e => setCanje(c._id, 'agregar_stock', e.target.checked)} />
                                 A inventario
                               </label>
                             </div>
@@ -1481,7 +1515,7 @@ export default function Ventas() {
                               <label className="field-label">Observaciones (opcional)</label>
                               <input className="input" placeholder="Pantalla sin raspones, caja original, batería al 87%"
                                      value={c.observaciones}
-                                     onChange={e => setCanje(i, 'observaciones', e.target.value)} />
+                                     onChange={e => setCanje(c._id, 'observaciones', e.target.value)} />
                             </div>
                           )}
                         </div>
@@ -1507,18 +1541,23 @@ export default function Ventas() {
                         const showDesglose = det && det.pct > 0 && (p.moneda === 'ARS' || p.moneda === 'UYU');
                         const showTc = !p.es_cuenta_corriente && (p.moneda === 'ARS' || p.moneda === 'UYU');
                         // CC = flujo viejo (monto + moneda, sin desglose, sin auto-fill).
+                        // Auditoría 2026-06-30 F-13/14: key={_id}, rmPago/setPago por id.
+                        // Los handlers setPagoMetodo/setPagoUsd/etc. mantienen firma por
+                        // índice porque dependen de faltanteUsd(index, prevPagos) — el
+                        // índice viene del closure del map y el array no cambió de orden
+                        // entre el render y el dispatch.
                         if (p.es_cuenta_corriente) {
                           return (
-                            <div key={i}>
+                            <div key={p._id}>
                               <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
                                 <select className="input" value="__CC__" onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
-                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
-                                <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}>
+                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(p._id, 'monto', e.target.value)} />
+                                <select className="input" value={p.moneda} onChange={e => setPago(p._id, 'moneda', e.target.value)}>
                                   {Array.from(new Set([...monedas, p.moneda].filter(Boolean)))
                                     .map(mm => <option key={mm} value={mm}>{mm}</option>)}
                                 </select>
-                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />
-                                <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
+                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(p._id, 'tc', e.target.value)} />
+                                <button type="button" className="icon-btn" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
                               </div>
                               <TcWarning tc={p.tc} />
                             </div>
@@ -1545,7 +1584,7 @@ export default function Ventas() {
                           }
                         }
                         return (
-                          <div key={i}>
+                          <div key={p._id}>
                             <div
                               data-testid="venta-pago-row"
                               style={{
@@ -1597,7 +1636,7 @@ export default function Ventas() {
                                   />
                                 </div>
                               )}
-                              <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
+                              <button type="button" className="icon-btn" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
                             </div>
                             {showDesglose && (
                               <div
@@ -1833,9 +1872,9 @@ Pago: Efectivo + Transferencia`}
 
       {/* ── Modal etiquetas ── */}
       {showEtiquetas && (
-        <div className="modal-overlay" onClick={() => setShowEtiquetas(false)}>
+        <div ref={etiquetasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowEtiquetas(false)} role="dialog" aria-modal="true" aria-labelledby="etiquetas-modal-title">
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Etiquetas de venta</h3><button className="icon-btn" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button className="icon-btn" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               <div className="flex-row" style={{ gap: 6, marginBottom: 10 }}>
                 <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
@@ -1858,9 +1897,9 @@ Pago: Efectivo + Transferencia`}
 
       {/* ── Modal ver comprobantes adjuntos ── */}
       {showComprob != null && (
-        <div className="modal-overlay" onClick={() => setShowComprob(null)}>
+        <div ref={comprobModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowComprob(null)} role="dialog" aria-modal="true" aria-labelledby="comprob-modal-title">
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3>Comprobantes de la venta</h3><button className="icon-btn" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button className="icon-btn" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               {comprobList == null ? <div className="muted">Cargando…</div> : comprobList.length === 0 ? <div className="empty">Sin comprobantes</div> : (
                 comprobList.map(c => (
