@@ -501,6 +501,12 @@ export const inventario = {
   productos:       (params = {}) => api('/api/inventario/productos?' + new URLSearchParams(params)),
   metricas:        () => api('/api/inventario/productos/metricas'),
   proveedoresList: () => api('/api/inventario/productos/proveedores'),
+  // 2026-06-30 #imei-dup: GET /productos/check-imei?imei=XXX devuelve
+  // { exists: bool, producto?: { id, nombre, estado } } para que el form
+  // de alta unitaria bloquee submit si el IMEI ya pertenece a otro producto
+  // activo. Filtra por estado='disponible' + no soft-deleted (decisión
+  // durable: vendidos/canjes pueden reingresar el mismo IMEI).
+  checkImei:       (imei) => api('/api/inventario/productos/check-imei?' + new URLSearchParams({ imei })),
   desglose:        (params = {}) => api('/api/inventario/desglose?' + new URLSearchParams(params)),
   foto:            (id) => api(`/api/inventario/productos/${id}/foto`),
   // Fase 2 trazabilidad (2026-06-15): historial de compra+venta de un producto.
