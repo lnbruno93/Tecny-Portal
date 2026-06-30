@@ -189,7 +189,10 @@ describe('POST /api/ventas con enviar_comprobante_email', () => {
 });
 
 describe('POST /api/ventas/:id/enviar-comprobante (envío manual / reenvío)', () => {
-  it('reenvío sobre venta existente → nuevo row con reenvio_de_id apuntando al primero', async () => {
+  it('reenvío sobre venta existente → 202 pending + UPDATE async a sent + reenvio_de_id apunta al primero', async () => {
+    // Auditoría 2026-06-30 E-03: el endpoint ahora responde 202 con
+    // status='pending' y el envío real corre vía setImmediate. La row aparece
+    // primero en 'pending' y se actualiza a 'sent'/'failed' después.
     const venta = await crearVentaRetail({
       enviar_comprobante_email: true,
       cliente_email: 'primero@test.com',
@@ -203,21 +206,80 @@ describe('POST /api/ventas/:id/enviar-comprobante (envío manual / reenvío)', (
       .set(auth())
       .send({ email: 'reenvio@test.com' });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('pending');
     expect(res.body.email_to).toBe('reenvio@test.com');
+    expect(typeof res.body.sent_id).toBe('number');
+
+    // Inmediatamente después del 202, la row ya existe en 'pending'.
+    const { rows: pendingRows } = await pool.query(
+      'SELECT status, email_to FROM venta_emails_enviados WHERE id = $1',
+      [res.body.sent_id]
+    );
+    expect(pendingRows).toHaveLength(1);
+    expect(pendingRows[0].email_to).toBe('reenvio@test.com');
+    // Status puede ser 'pending' o 'sent' dependiendo del timing del setImmediate.
+    expect(['pending', 'sent']).toContain(pendingRows[0].status);
+
+    // Esperamos a que el setImmediate corra el envío + UPDATE.
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setTimeout(r, 100));
 
     const { rows } = await pool.query(
       'SELECT * FROM venta_emails_enviados WHERE venta_id = $1 ORDER BY sent_at ASC',
       [venta.id]
     );
     expect(rows).toHaveLength(2);
-    // Primer envío: reenvio_de_id = NULL
+    // Primer envío (del alta): reenvio_de_id = NULL
     expect(rows[0].reenvio_de_id).toBeNull();
     expect(rows[0].email_to).toBe('primero@test.com');
-    // Segundo: reenvio_de_id apunta al primero
+    // Segundo (reenvío): reenvio_de_id apunta al primero, status terminal
     expect(rows[1].reenvio_de_id).toBe(rows[0].id);
     expect(rows[1].email_to).toBe('reenvio@test.com');
+    expect(rows[1].status).toBe('sent');
+  });
+
+  it('reenvío responde 202 con sent_id inmediato + row pending visible (E-03)', async () => {
+    // Test focal del nuevo flujo: el endpoint NO espera al envío.
+    const venta = await crearVentaRetail({ cliente_email: 'x@x.com' });
+    const t0 = Date.now();
+    const res = await request(app)
+      .post(`/api/ventas/${venta.id}/enviar-comprobante`)
+      .set(auth())
+      .send({ email: 'rapido@test.com' });
+    const elapsed = Date.now() - t0;
+
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe('pending');
+    expect(res.body.sent_id).toBeTruthy();
+    // El response NO debe esperar al PDF + Resend (típicamente 200-1500ms).
+    // Threshold generoso (1s) para tolerar CI lento — local da <100ms.
+    expect(elapsed).toBeLessThan(1000);
+
+    // La row YA está creada con status pending o sent (depende si el
+    // setImmediate alcanzó a correr antes de esta query — ambos son válidos).
+    const { rows } = await pool.query(
+      'SELECT status FROM venta_emails_enviados WHERE id = $1',
+      [res.body.sent_id]
+    );
+    expect(rows).toHaveLength(1);
+    expect(['pending', 'sent', 'failed']).toContain(rows[0].status);
+  });
+
+  it('reenvío sobre venta cancelada → 400 sin insertar row', async () => {
+    const venta = await crearVentaRetail({ estado: 'cancelado' });
+    const res = await request(app)
+      .post(`/api/ventas/${venta.id}/enviar-comprobante`)
+      .set(auth())
+      .send({ email: 'cancelado@test.com' });
+
+    expect(res.status).toBe(400);
+    const { rows } = await pool.query(
+      'SELECT 1 FROM venta_emails_enviados WHERE venta_id = $1',
+      [venta.id]
+    );
+    expect(rows).toHaveLength(0);
   });
 
   it('venta inexistente → 404', async () => {

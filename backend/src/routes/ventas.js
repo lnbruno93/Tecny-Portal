@@ -31,7 +31,7 @@ const {
   enviarComprobanteSchema,
 } = require('../schemas/ventas');
 // #475 — orchestrador de envío de comprobante PDF por email al cliente.
-const { enviarComprobanteVenta } = require('../lib/comprobanteEmail');
+const { enviarComprobanteVenta, insertarPendingRow, sendAndMarkPending } = require('../lib/comprobanteEmail');
 const logger = require('../lib/logger');
 
 router.use(requireAuth);
@@ -1056,73 +1056,112 @@ router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, nex
 // - force: reservado (hoy ignorado — futuro: skipear checks como "ya enviaste
 //   uno hace <5min").
 //
-// Comportamiento:
-// - Inline (await del send) — el frontend muestra toast inmediato con el
-//   resultado. Diferente del path POST /api/ventas (donde el send es fire-
-//   and-forget porque el path principal es crear la venta).
-// - Si hay envío previo del mismo email (sent), el nuevo row tiene
-//   `reenvio_de_id` apuntando al PRIMERO de la cadena. Permite armar
-//   visualización de "cadena de reenvíos" sin recursión profunda.
-// - Cap auth: requireAuth + tenant scoping ya aplicados por router.use.
-//   No agregamos requireCapability adicional — si el user puede ver la venta
-//   (mismo módulo), puede reenviar el comprobante. Audit log en
-//   venta_emails_enviados queda con sent_by_user_id.
+// Auditoría 2026-06-30 E-03 — perf: este endpoint era inline (await PDF +
+// Resend = 350ms-2s bloqueando el event loop por request). Migrado al patrón
+// pending → sent/failed que ya usa el POST /api/ventas (creación):
+//   1. Validar venta + lookup reenvio_de_id (tx corta).
+//   2. INSERT venta_emails_enviados con status='pending' + COMMIT.
+//   3. Responder 202 Accepted con { ok:true, sent_id, status:'pending' }.
+//   4. setImmediate post-COMMIT: PDF + Resend + UPDATE status='sent'|'failed'.
+//
+// El frontend ya hace polling de GET /api/ventas/:id/emails-enviados (status
+// 'pending' rotando a 'sent'/'failed'), así que la UX no cambia (toast
+// "Enviando…" hasta que el polling vea status terminal). Nuevo HTTP status:
+// el shape `{ ok:true, sent_id, email_to, msg_id }` se preserva para el caso
+// 'sent' eventual, pero la respuesta inmediata reporta `status:'pending'`
+// (sin msg_id porque todavía no salió por Resend).
+//
+// Auditoría 2026-06-30 AS (TANDA 1.B) — anti-spam: enviarComprobanteLimiter
+// limita 50 reenvíos/24h/tenant. Aplica ANTES del setImmediate refactor
+// para que el rate-limit se evalúe antes de tocar la DB. Conservado del
+// merge con TANDA 1.B (PR #452).
+//
+// Cap auth: requireAuth + tenant scoping ya aplicados por router.use.
+// No agregamos requireCapability adicional — si el user puede ver la venta
+// (mismo módulo), puede reenviar el comprobante. Audit log en
+// venta_emails_enviados queda con sent_by_user_id.
 router.post('/:id/enviar-comprobante', enviarComprobanteLimiter, validate(enviarComprobanteSchema), async (req, res, next) => {
+  const client = await db.connect();
   try {
     const id = parseId(req.params.id);
-    if (!id) return res.status(400).json({ error: 'ID inválido' });
-
-    // Lookup primer envío de la chain (si hay) para encadenar reenvio_de_id.
-    // Si NO hay envíos previos, reenvio_de_id queda NULL (primer envío manual).
-    const reenvioDeId = await db.withTenant(req.tenantId, async (client) => {
-      // Verificamos primero que la venta existe + es del tenant. Si RLS la
-      // filtra, 404. Esto cubre el caso cross-tenant (tenant B intenta enviar
-      // comprobante de venta del tenant A).
-      const vRes = await client.query(
-        `SELECT id FROM ventas WHERE id = $1 AND deleted_at IS NULL`,
-        [id]
-      );
-      if (!vRes.rows[0]) return { notFound: true };
-
-      // Primer envío (root de la cadena) para esta venta — si existe.
-      const firstRes = await client.query(
-        `SELECT id FROM venta_emails_enviados
-           WHERE venta_id = $1 AND reenvio_de_id IS NULL
-           ORDER BY sent_at ASC LIMIT 1`,
-        [id]
-      );
-      return { firstId: firstRes.rows[0]?.id || null };
-    });
-
-    if (reenvioDeId.notFound) {
-      return res.status(404).json({ error: 'Venta no encontrada' });
+    if (!id) {
+      client.release();
+      return res.status(400).json({ error: 'ID inválido' });
     }
 
-    const result = await enviarComprobanteVenta({
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // Validación de existencia + lookup reenvio_de_id. RLS asegura cross-
+    // tenant (404 si la venta es de otro tenant).
+    const vRes = await client.query(
+      `SELECT id, estado FROM ventas WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (!vRes.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    if (vRes.rows[0].estado === 'cancelado') {
+      // Validación temprana — antes esto reventaba post-PDF; ahora el guard
+      // está en la tx misma para que no insertemos pending sobre una venta
+      // cancelada.
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'la venta está cancelada' });
+    }
+
+    // Primer envío (root de la cadena) para esta venta — si existe.
+    const firstRes = await client.query(
+      `SELECT id FROM venta_emails_enviados
+         WHERE venta_id = $1 AND reenvio_de_id IS NULL
+         ORDER BY sent_at ASC LIMIT 1`,
+      [id]
+    );
+    const reenvioDeId = firstRes.rows[0]?.id || null;
+
+    // INSERT pending dentro de la tx.
+    const { id: sentId } = await insertarPendingRow(client, {
       tenantId:     req.tenantId,
       ventaId:      id,
       emailTo:      req.body.email,
       sentByUserId: req.user.id,
-      reenvioDeId:  reenvioDeId.firstId,  // null si es el primer envío
+      reenvioDeId,
     });
 
-    if (!result.ok) {
-      if (result.skipped) {
-        // Validación post-RLS: la venta existe pero fue cancelada / etc.
-        return res.status(400).json({ error: result.error });
-      }
-      // Send falló (Resend rechazó, error de red). La row con status='failed'
-      // ya quedó persistida.
-      return res.status(502).json({ error: result.error || 'No se pudo enviar el email' });
-    }
+    await client.query('COMMIT');
 
-    res.json({
+    // Responder 202 al cliente — el envío está en cola.
+    res.status(202).json({
       ok:       true,
-      sent_id:  result.sentId,
+      sent_id:  sentId,
+      status:   'pending',
       email_to: req.body.email,
-      msg_id:   result.msgId,
     });
-  } catch (err) { next(err); }
+
+    // Fire-and-forget POST-COMMIT — PDF + Resend + UPDATE. El handler de
+    // `sendAndMarkPending` no throws (todo error queda como UPDATE status=
+    // 'failed' con error_msg). Idéntico patrón al del POST /api/ventas.
+    const tenantId = req.tenantId;
+    const ventaId = id;
+    const emailTo = req.body.email;
+    setImmediate(async () => {
+      try {
+        const result = await sendAndMarkPending({ tenantId, ventaId, emailTo, sentId });
+        if (!result.ok) {
+          logger.warn({ tenantId, ventaId, sentId },
+            '[comprobante-email] reenvío manual marcó failed');
+        }
+      } catch (err) {
+        logger.error({ err, tenantId, ventaId, sentId },
+          '[comprobante-email] excepción inesperada en reenvío async');
+      }
+    });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // GET /api/ventas/:id/emails-enviados

@@ -110,3 +110,93 @@ describe('SortableTable', () => {
     expect(getRowOrder()).toEqual(['Alpha', 'Charlie', 'Bravo']); // 12, 5, 1
   });
 });
+
+// ── Auditoría 2026-06-30 E-04 — paginación cliente ───────────────────────
+describe('SortableTable — paginación cliente (E-04)', () => {
+  // Genera N filas con nombres "Item N" (estables, fáciles de leer).
+  function makeRows(n) {
+    return Array.from({ length: n }, (_, i) => ({
+      id: i + 1,
+      nombre: `Item ${String(i + 1).padStart(4, '0')}`,
+      stock: i + 1,
+    }));
+  }
+
+  it('sin pageSize renderiza todas las filas (default Infinity)', () => {
+    const rows = makeRows(50);
+    render(<SortableTable columns={COLS} data={rows} />);
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(50);
+    // Sin paginar = sin nav.
+    expect(document.querySelector('.sortable-table-pager')).toBeNull();
+  });
+
+  it('pageSize=200 sobre 5000 filas renderiza solo 200 + nav visible', () => {
+    const rows = makeRows(5000);
+    render(<SortableTable columns={COLS} data={rows} pageSize={200} />);
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(200);
+    const nav = document.querySelector('.sortable-table-pager');
+    expect(nav).not.toBeNull();
+    // 5000 / 200 = 25 páginas.
+    expect(nav.textContent).toContain('Página 1 de 25');
+  });
+
+  it('click en Next » avanza una página y muestra filas distintas', () => {
+    const rows = makeRows(5000);
+    render(<SortableTable columns={COLS} data={rows} pageSize={200} />);
+
+    const firstRowPage1 = document.querySelector('tbody tr td:first-child').textContent;
+    expect(firstRowPage1).toBe('Item 0001');
+
+    fireEvent.click(screen.getByLabelText('Página siguiente'));
+
+    const firstRowPage2 = document.querySelector('tbody tr td:first-child').textContent;
+    expect(firstRowPage2).toBe('Item 0201');
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(200);
+    expect(document.querySelector('.sortable-table-pager').textContent)
+      .toContain('Página 2 de 25');
+  });
+
+  it('« Prev está disabled en página 1 y se habilita después de avanzar', () => {
+    const rows = makeRows(5000);
+    render(<SortableTable columns={COLS} data={rows} pageSize={200} />);
+
+    const prev = screen.getByLabelText('Página anterior');
+    expect(prev.disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText('Página siguiente'));
+    expect(prev.disabled).toBe(false);
+
+    fireEvent.click(prev);
+    expect(document.querySelector('tbody tr td:first-child').textContent).toBe('Item 0001');
+  });
+
+  it('Next » está disabled en la última página', () => {
+    const rows = makeRows(450); // 3 páginas de 200, 200, 50
+    render(<SortableTable columns={COLS} data={rows} pageSize={200} />);
+
+    const next = screen.getByLabelText('Página siguiente');
+    fireEvent.click(next);
+    fireEvent.click(next); // página 3 (última)
+    expect(next.disabled).toBe(true);
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(50);
+  });
+
+  it('paginación opera SOBRE el sort: cambiar sort no cambia la cantidad de filas visibles', () => {
+    const rows = makeRows(500); // 3 páginas
+    render(<SortableTable columns={COLS} data={rows} pageSize={200} />);
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(200);
+
+    // Sort desc por stock — la página 1 ahora debe mostrar Item 0500, 0499, ...
+    fireEvent.click(screen.getByText('Stock'));
+    fireEvent.click(screen.getByText('Stock')); // asc → desc
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(200);
+    expect(document.querySelector('tbody tr td:first-child').textContent).toBe('Item 0500');
+  });
+
+  it('pageSize=Infinity (default explícito) = sin paginar', () => {
+    const rows = makeRows(100);
+    render(<SortableTable columns={COLS} data={rows} pageSize={Infinity} />);
+    expect(document.querySelectorAll('tbody tr')).toHaveLength(100);
+    expect(document.querySelector('.sortable-table-pager')).toBeNull();
+  });
+});
