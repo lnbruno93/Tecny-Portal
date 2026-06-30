@@ -6,6 +6,16 @@ import { tenantProfile, config as configApi } from '../lib/api'; // 2026-06-22 +
 import { useAuth } from '../contexts/AuthContext'; // 2026-06-22 tab Configuración (Mi negocio)
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner edit
 import BusinessProfileSection from '../components/BusinessProfileSection'; // idem
+// 2026-06-29 Multi-país F5: parametrizar labels + símbolo según país del tenant.
+// AR → "ARS" + "$"; UY → "UYU" + "$U". Sin componente separado — la mayoría
+// del flow es idéntico (cuotas, comisiones, mensaje al cliente), solo cambian
+// strings. Ver docs/design/multi-pais-uyu.md sección 5.4.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
+
+// Símbolo monetario del país. Espejo de la convención usada en lib/format.ts:
+// UYU se escribe con "$U" para distinguir de ARS "$" cuando el formato no
+// trae el código (texto generado para WhatsApp, labels cortos).
+const symbolFor = (monedaLocal) => (monedaLocal === 'UYU' ? '$U' : '$');
 
 // 2026-06-22 fix: arma la oración "Nos encontrás en Google como..." dinámicamente
 // según el perfil del tenant. Si el tenant NO tiene ficha de Google activada,
@@ -81,11 +91,19 @@ const pctEfectivo = (c) => ((factor(c) - 1) * 100).toFixed(c >= 0.1 ? 2 : 2);
 // ─── Tab: Tarjetas de crédito ────────────────────────────────────────────────
 
 function TabTarjetas() {
+  // 2026-06-29 Multi-país F5: el cotizador parametriza labels + símbolo según
+  // país del tenant. AR (default) → "ARS" + "$"; UY → "UYU" + "$U". El TC
+  // default también es país-aware (#445 + F5 backend): GET /api/config/last-tc
+  // ahora devuelve el TC default del país (1400 AR, 40 UY) cuando no hay
+  // ventas recientes.
+  const { monedaLocal } = useMonedasTenant();
+  const symLocal = symbolFor(monedaLocal);
   // #445: TC default = último cambio del tenant (de venta más reciente en 90d).
-  // El backend devuelve 1400 como fallback si no hay venta con TC reciente,
-  // así que el initial state arranca con 1400 y se actualiza si el fetch
-  // devuelve algo distinto. Sin esto el operador siempre arranca con 1400
-  // y debe pisarlo manualmente cada vez que el TC se mueve.
+  // El backend devuelve fallback país-aware si no hay venta con TC reciente,
+  // así que el initial state arranca con 1400 (sentinel histórico de AR) y se
+  // actualiza apenas el fetch responde. Para tenants UY el primer render usa
+  // 1400 hasta que el fetch reemplaza con ~40 — caso aceptable porque el
+  // input se hidrata antes de que el operador interactúe.
   const [tc, setTc]         = useState(1400);
   // Nombre por defecto como hint (el placeholder del input igual lo muestra),
   // pero precio en 0 para que el operador NO lo confunda con un valor real.
@@ -153,20 +171,21 @@ function TabTarjetas() {
     let txt = 'Te comparto la cotización que me solicitaste:\n';
     calculo.lines.forEach(({ p, contado, transf, c1, c3, c6 }) => {
       txt += `\n- ${p.nom || 'Producto'}${p.vari ? ' ' + p.vari : ''}\n`;
-      txt += `- Precio: USD ${fmt(p.usd)} | TC $${fmt(tc)}\n\n`;
-      txt += `- Contado en pesos ARS: $${fmt(contado)}\n`;
-      txt += `- Transferencia ARS: $${fmt(transf)}\n\n`;
-      txt += `- 💳 1 cuota: $${fmt(c1)}\n`;
-      txt += `- 💳 3 cuotas: $${fmt(c3)} ($${fmt(Math.round(c3 / 3))}/cuota)\n`;
-      txt += `- 💳 6 cuotas: $${fmt(c6)} ($${fmt(Math.round(c6 / 6))}/cuota)\n`;
+      // F5: TC con símbolo país-aware ("$" para AR, "$U" para UY).
+      txt += `- Precio: USD ${fmt(p.usd)} | TC ${symLocal}${fmt(tc)}\n\n`;
+      txt += `- Contado en pesos ${monedaLocal}: ${symLocal}${fmt(contado)}\n`;
+      txt += `- Transferencia ${monedaLocal}: ${symLocal}${fmt(transf)}\n\n`;
+      txt += `- 💳 1 cuota: ${symLocal}${fmt(c1)}\n`;
+      txt += `- 💳 3 cuotas: ${symLocal}${fmt(c3)} (${symLocal}${fmt(Math.round(c3 / 3))}/cuota)\n`;
+      txt += `- 💳 6 cuotas: ${symLocal}${fmt(c6)} (${symLocal}${fmt(Math.round(c6 / 6))}/cuota)\n`;
     });
     if (calculo.lines.length > 1) {
       txt += `\n━━━━━━━━━━━━━━━\n`;
-      txt += `TOTAL CONTADO: $${fmt(calculo.tots.contado)}\n`;
-      txt += `TOTAL TRANSFERENCIA: $${fmt(calculo.tots.transf)}\n\n`;
-      txt += `💳 TOTAL 1 cuota: $${fmt(calculo.tots.c1)}\n`;
-      txt += `💳 TOTAL 3 cuotas: $${fmt(calculo.tots.c3)}\n`;
-      txt += `💳 TOTAL 6 cuotas: $${fmt(calculo.tots.c6)}\n`;
+      txt += `TOTAL CONTADO: ${symLocal}${fmt(calculo.tots.contado)}\n`;
+      txt += `TOTAL TRANSFERENCIA: ${symLocal}${fmt(calculo.tots.transf)}\n\n`;
+      txt += `💳 TOTAL 1 cuota: ${symLocal}${fmt(calculo.tots.c1)}\n`;
+      txt += `💳 TOTAL 3 cuotas: ${symLocal}${fmt(calculo.tots.c3)}\n`;
+      txt += `💳 TOTAL 6 cuotas: ${symLocal}${fmt(calculo.tots.c6)}\n`;
     }
     // 2026-06-22 fix multi-tenant: la frase de Google (nombre del negocio +
     // reseñas) ahora se inyecta dinámicamente desde el perfil del tenant.
@@ -196,9 +215,9 @@ function TabTarjetas() {
         {/* TC card */}
         <div className="card card-tight" style={{ marginBottom: 14 }}>
           <div className="field" style={{ marginBottom: 0 }}>
-            <div className="field-label">Tipo de cambio (USD → ARS)</div>
+            <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
             <div className="input-group" style={{ maxWidth: 240 }}>
-              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>{symLocal}</span>
               <input
                 type="number" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
@@ -287,30 +306,30 @@ function TabTarjetas() {
             </div>
             <div className="quote-line">
               <span className="lbl">Contado</span>
-              <span className="val mono pos" style={{ fontWeight: 600 }}>${fmt(contado)}</span>
+              <span className="val mono pos" style={{ fontWeight: 600 }}>{symLocal}{fmt(contado)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">Transferencia (+{pctEfectivo(COMISIONES.transf)}%)</span>
-              <span className="val mono pos" style={{ fontWeight: 600 }}>${fmt(transf)}</span>
+              <span className="val mono pos" style={{ fontWeight: 600 }}>{symLocal}{fmt(transf)}</span>
             </div>
             <div className="quote-line" style={{ marginTop: 6 }}>
               <span className="lbl">💳 1 cuota (+{pctEfectivo(COMISIONES.c1)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                ${fmt(c1)}
+                {symLocal}{fmt(c1)}
               </span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 3 cuotas (+{pctEfectivo(COMISIONES.c3)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                ${fmt(c3)}{' '}
-                <small className="muted">· ${fmt(Math.round(c3 / 3))}/c</small>
+                {symLocal}{fmt(c3)}{' '}
+                <small className="muted">· {symLocal}{fmt(Math.round(c3 / 3))}/c</small>
               </span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 6 cuotas (+{pctEfectivo(COMISIONES.c6)}%)</span>
               <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                ${fmt(c6)}{' '}
-                <small className="muted">· ${fmt(Math.round(c6 / 6))}/c</small>
+                {symLocal}{fmt(c6)}{' '}
+                <small className="muted">· {symLocal}{fmt(Math.round(c6 / 6))}/c</small>
               </span>
             </div>
           </div>
@@ -320,23 +339,23 @@ function TabTarjetas() {
           <>
             <div className="quote-total">
               <span className="lbl muted tiny" style={{ alignSelf: 'flex-end' }}>Total contado</span>
-              <span className="val mono pos">${fmt(calculo.tots.contado)}</span>
+              <span className="val mono pos">{symLocal}{fmt(calculo.tots.contado)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">Total transferencia</span>
-              <span className="val mono pos" style={{ fontWeight: 600 }}>${fmt(calculo.tots.transf)}</span>
+              <span className="val mono pos" style={{ fontWeight: 600 }}>{symLocal}{fmt(calculo.tots.transf)}</span>
             </div>
             <div className="quote-line" style={{ marginTop: 4 }}>
               <span className="lbl">💳 Total 1 cuota</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>${fmt(calculo.tots.c1)}</span>
+              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c1)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 Total 3 cuotas</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>${fmt(calculo.tots.c3)}</span>
+              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c3)}</span>
             </div>
             <div className="quote-line">
               <span className="lbl">💳 Total 6 cuotas</span>
-              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>${fmt(calculo.tots.c6)}</span>
+              <span className="val mono" style={{ fontWeight: 600, color: 'var(--accent)' }}>{symLocal}{fmt(calculo.tots.c6)}</span>
             </div>
           </>
         )}
@@ -346,7 +365,7 @@ function TabTarjetas() {
           className="muted tiny mono"
           style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}
         >
-          TC referencia: ${fmt(tc)} / USD
+          TC referencia: {symLocal}{fmt(tc)} / USD
         </div>
       </div>
     </div>
@@ -359,7 +378,10 @@ function TabTarjetas() {
 // nombre + precio USD c/u, y el mensaje al cliente sale enumerado.
 
 function TabUsd() {
-  // #445: igual que TabTarjetas — TC default desde backend, 1400 como fallback.
+  // 2026-06-29 Multi-país F5: ver TabTarjetas para racionale de monedaLocal.
+  const { monedaLocal } = useMonedasTenant();
+  const symLocal = symbolFor(monedaLocal);
+  // #445: igual que TabTarjetas — TC default desde backend, fallback país-aware.
   const [tc, setTc]         = useState(1400);
   const [prods, setProds]   = useState([
     { id: 1, nom: '', usd: 0 },
@@ -423,20 +445,21 @@ function TabUsd() {
 
   const copyUsd = () => {
     if (!tieneMonto) return;
-    let m = `Te comparto la cotización que me solicitaste:\n\nDe acuerdo al último tipo de cambio (TC $${fmt(tc)}):\n`;
+    let m = `Te comparto la cotización que me solicitaste:\n\nDe acuerdo al último tipo de cambio (TC ${symLocal}${fmt(tc)}):\n`;
     calculo.lines.forEach(({ p, ef, tars, tusd, usdRaw }) => {
       if (usdRaw <= 0) return;  // omitimos productos sin precio cargado
       m += `\n- ${p.nom || 'Producto'} (USD ${fmt(p.usd)})\n`;
-      if (optEf)   m += `  Efectivo / Contado: $${fmt(ef)}\n`;
-      if (optTars) m += `  Transferencia ARS: $${fmt(tars)}\n`;
+      // F5: símbolo + moneda país-aware.
+      if (optEf)   m += `  Efectivo / Contado: ${symLocal}${fmt(ef)}\n`;
+      if (optTars) m += `  Transferencia ${monedaLocal}: ${symLocal}${fmt(tars)}\n`;
       if (optTusd) m += `  Transferencia USD: u$s ${fmt(tusd)}\n`;
     });
     // Totales solo si hay más de un producto con precio.
     const validas = calculo.lines.filter(l => l.usdRaw > 0);
     if (validas.length > 1) {
       m += `\n━━━━━━━━━━━━━━━\n`;
-      if (optEf)   m += `TOTAL Efectivo / Contado: $${fmt(calculo.tots.ef)}\n`;
-      if (optTars) m += `TOTAL Transferencia ARS: $${fmt(calculo.tots.tars)}\n`;
+      if (optEf)   m += `TOTAL Efectivo / Contado: ${symLocal}${fmt(calculo.tots.ef)}\n`;
+      if (optTars) m += `TOTAL Transferencia ${monedaLocal}: ${symLocal}${fmt(calculo.tots.tars)}\n`;
       if (optTusd) m += `TOTAL Transferencia USD: u$s ${fmt(calculo.tots.tusd)}\n`;
     }
     // 2026-06-22 fix multi-tenant: ver TabTarjetas para racionale completo.
@@ -460,7 +483,7 @@ function TabUsd() {
       key: 'tars',
       val: optTars,
       set: setOptTars,
-      label: `Transferencia ARS (+${pctEfectivo(COMISIONES.transf)}%)`,
+      label: `Transferencia ${monedaLocal} (+${pctEfectivo(COMISIONES.transf)}%)`,
       sub: 'Cobro en pesos con recargo',
     },
     {
@@ -479,9 +502,9 @@ function TabUsd() {
         {/* TC card */}
         <div className="card card-tight" style={{ marginBottom: 14 }}>
           <div className="field" style={{ marginBottom: 0 }}>
-            <div className="field-label">Tipo de cambio (USD → ARS)</div>
+            <div className="field-label">Tipo de cambio (USD → {monedaLocal})</div>
             <div className="input-group" style={{ maxWidth: 240 }}>
-              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
+              <span className="addon addon-l" style={{ color: 'var(--accent)' }}>{symLocal}</span>
               <input
                 type="number" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
@@ -618,13 +641,13 @@ function TabUsd() {
                 {optEf && (
                   <div className="quote-line">
                     <span className="lbl">Efectivo / Contado</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(ef)}</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(ef)}</span>
                   </div>
                 )}
                 {optTars && (
                   <div className="quote-line">
-                    <span className="lbl">Transferencia ARS (+{pctEfectivo(COMISIONES.transf)}%)</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(tars)}</span>
+                    <span className="lbl">Transferencia {monedaLocal} (+{pctEfectivo(COMISIONES.transf)}%)</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(tars)}</span>
                   </div>
                 )}
                 {optTusd && (
@@ -644,13 +667,13 @@ function TabUsd() {
                 {optEf && (
                   <div className="quote-line">
                     <span className="lbl">Total Efectivo / Contado</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(calculo.tots.ef)}</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(calculo.tots.ef)}</span>
                   </div>
                 )}
                 {optTars && (
                   <div className="quote-line">
-                    <span className="lbl">Total Transferencia ARS</span>
-                    <span className="val mono pos" style={{ fontWeight: 700 }}>${fmt(calculo.tots.tars)}</span>
+                    <span className="lbl">Total Transferencia {monedaLocal}</span>
+                    <span className="val mono pos" style={{ fontWeight: 700 }}>{symLocal}{fmt(calculo.tots.tars)}</span>
                   </div>
                 )}
                 {optTusd && (
@@ -667,7 +690,7 @@ function TabUsd() {
             <hr className="h-rule" />
 
             <div className="muted tiny mono" style={{ marginBottom: 8 }}>
-              Total USD {fmt(calculo.tots.usdRaw)} × TC ${fmt(tc)}
+              Total USD {fmt(calculo.tots.usdRaw)} × TC {symLocal}{fmt(tc)}
             </div>
             <div
               className="muted tiny"
@@ -702,6 +725,10 @@ export default function Cotizador() {
   // El backend (tenant-profile.js) acepta owner via adminOnly middleware —
   // el bug era 100% frontend. Reportado por primer cliente real.
   const isAdmin = isTenantAdmin(user);
+  // 2026-06-29 Multi-país F5: label del tab "USD → ARS" → "USD → {moneda}"
+  // para que el operador UY vea "USD → UYU". Decisión durable (design doc
+  // §5.4): mostramos la moneda real, NO un genérico "USD → Local".
+  const { monedaLocal } = useMonedasTenant();
 
   return (
     <div>
@@ -732,7 +759,7 @@ export default function Cotizador() {
             className={'btn' + (tab === 'usd' ? ' btn-primary' : '')}
             onClick={() => setTab('usd')}
           >
-            USD → ARS
+            USD → {monedaLocal}
           </button>
         </div>
       </div>
