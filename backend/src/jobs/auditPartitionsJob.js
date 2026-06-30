@@ -35,6 +35,22 @@ const db = require('../config/database');
 const logger = require('../lib/logger');
 const withAdvisoryLock = require('../lib/withAdvisoryLock');
 
+// Auditoría 2026-06-30 E-01: reportar a Sentry si el cron falla. Antes solo
+// había logger.error → si el cron fallaba silencioso por permisos DB, search
+// path roto, o ensure_audit_partition no existiendo, nadie se enteraba hasta
+// que un INSERT del próximo mes fallaba con "no partition found for row".
+// Sentry capture cierra el loop de observabilidad. No-op si no hay DSN
+// (e.g. tests, dev local).
+function reportToSentry(err, step) {
+  try {
+    if (!process.env.SENTRY_DSN) return;
+    const Sentry = require('@sentry/node');
+    Sentry.captureException(err, { tags: { job: 'audit_partitions', step } });
+  } catch (sentryErr) {
+    logger.warn({ err: sentryErr.message }, 'Sentry capture falló en audit_partitions');
+  }
+}
+
 // Pre-crea la partición del próximo mes si no existe.
 async function ensureNextMonthPartition() {
   const t0 = Date.now();
@@ -43,6 +59,7 @@ async function ensureNextMonthPartition() {
     logger.info({ elapsed_ms: Date.now() - t0 }, 'audit_logs ensure_next_month_partition OK');
   } catch (err) {
     logger.error({ err }, 'audit_logs ensure_next_month_partition falló');
+    reportToSentry(err, 'ensure_next_month');
     throw err;
   }
 }
@@ -63,6 +80,7 @@ async function dropOldPartitions(retentionMonths = 12) {
     return dropped;
   } catch (err) {
     logger.error({ err }, 'audit_logs drop_old_partitions falló');
+    reportToSentry(err, 'drop_old');
     throw err;
   }
 }
