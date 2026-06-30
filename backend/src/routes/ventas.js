@@ -26,7 +26,11 @@ const { syncVentaCaja, sincronizarCuentaCorriente } = require('../lib/ventaSync'
 const { syncComisionTotalMetodos } = require('../lib/comisionesMetodos');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
+  enviarComprobanteSchema,
 } = require('../schemas/ventas');
+// #475 — orchestrador de envío de comprobante PDF por email al cliente.
+const { enviarComprobanteVenta } = require('../lib/comprobanteEmail');
+const logger = require('../lib/logger');
 
 router.use(requireAuth);
 
@@ -783,6 +787,40 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     await audit(client, 'ventas', 'INSERT', venta.id, { despues: venta, user_id: req.user.id });
     await client.query('COMMIT');
     invalidateMetricas(req.tenantId);  // venta retail descontó stock
+
+    // #475 — fire-and-forget envío del comprobante por email POST-COMMIT.
+    // Reusamos el pattern de signup.js / redB2bEmail.js: setImmediate hace
+    // que el response al user se devuelva apenas terminó el INSERT, sin
+    // esperar 500ms-3s del roundtrip a Resend. Si el envío falla, queda
+    // logueado + persistido como row status='failed' en venta_emails_enviados.
+    //
+    // Skip silencioso si:
+    //   - El operador no tildó el checkbox (enviar_comprobante_email != true)
+    //   - No se cargó email del cliente (cliente_email falsy)
+    //   - La venta nació cancelada (no tiene sentido mandar comprobante de
+    //     algo que ya fue revertido).
+    if (b.enviar_comprobante_email && b.cliente_email && venta.estado !== 'cancelado') {
+      const ventaId = venta.id;
+      const tenantId = req.tenantId;
+      const sentByUserId = req.user.id;
+      const emailTo = b.cliente_email;
+      setImmediate(async () => {
+        try {
+          const result = await enviarComprobanteVenta({
+            tenantId, ventaId, emailTo, sentByUserId,
+          });
+          if (!result.ok) {
+            logger.warn(
+              { tenantId, ventaId, error: result.error },
+              '[comprobante-email] envío post-alta falló (la venta ya quedó creada)'
+            );
+          }
+        } catch (err) {
+          logger.error({ err, tenantId, ventaId }, '[comprobante-email] excepción inesperada post-alta');
+        }
+      });
+    }
+
     res.status(201).json(venta);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -934,6 +972,123 @@ router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, nex
   } finally {
     client.release();
   }
+});
+
+// ── #475: Comprobante por email — endpoints dedicados ──────────────────
+
+// POST /api/ventas/:id/enviar-comprobante
+//
+// Envía (o reenvía) el comprobante de venta por email al cliente final.
+//
+// Body: { email: string, force?: boolean }
+// - email: destinatario, validado por Zod (regex pragmática).
+// - force: reservado (hoy ignorado — futuro: skipear checks como "ya enviaste
+//   uno hace <5min").
+//
+// Comportamiento:
+// - Inline (await del send) — el frontend muestra toast inmediato con el
+//   resultado. Diferente del path POST /api/ventas (donde el send es fire-
+//   and-forget porque el path principal es crear la venta).
+// - Si hay envío previo del mismo email (sent), el nuevo row tiene
+//   `reenvio_de_id` apuntando al PRIMERO de la cadena. Permite armar
+//   visualización de "cadena de reenvíos" sin recursión profunda.
+// - Cap auth: requireAuth + tenant scoping ya aplicados por router.use.
+//   No agregamos requireCapability adicional — si el user puede ver la venta
+//   (mismo módulo), puede reenviar el comprobante. Audit log en
+//   venta_emails_enviados queda con sent_by_user_id.
+router.post('/:id/enviar-comprobante', validate(enviarComprobanteSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    // Lookup primer envío de la chain (si hay) para encadenar reenvio_de_id.
+    // Si NO hay envíos previos, reenvio_de_id queda NULL (primer envío manual).
+    const reenvioDeId = await db.withTenant(req.tenantId, async (client) => {
+      // Verificamos primero que la venta existe + es del tenant. Si RLS la
+      // filtra, 404. Esto cubre el caso cross-tenant (tenant B intenta enviar
+      // comprobante de venta del tenant A).
+      const vRes = await client.query(
+        `SELECT id FROM ventas WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (!vRes.rows[0]) return { notFound: true };
+
+      // Primer envío (root de la cadena) para esta venta — si existe.
+      const firstRes = await client.query(
+        `SELECT id FROM venta_emails_enviados
+           WHERE venta_id = $1 AND reenvio_de_id IS NULL
+           ORDER BY sent_at ASC LIMIT 1`,
+        [id]
+      );
+      return { firstId: firstRes.rows[0]?.id || null };
+    });
+
+    if (reenvioDeId.notFound) {
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+
+    const result = await enviarComprobanteVenta({
+      tenantId:     req.tenantId,
+      ventaId:      id,
+      emailTo:      req.body.email,
+      sentByUserId: req.user.id,
+      reenvioDeId:  reenvioDeId.firstId,  // null si es el primer envío
+    });
+
+    if (!result.ok) {
+      if (result.skipped) {
+        // Validación post-RLS: la venta existe pero fue cancelada / etc.
+        return res.status(400).json({ error: result.error });
+      }
+      // Send falló (Resend rechazó, error de red). La row con status='failed'
+      // ya quedó persistida.
+      return res.status(502).json({ error: result.error || 'No se pudo enviar el email' });
+    }
+
+    res.json({
+      ok:       true,
+      sent_id:  result.sentId,
+      email_to: req.body.email,
+      msg_id:   result.msgId,
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/ventas/:id/emails-enviados
+//
+// Devuelve el historial de envíos de comprobante para una venta. Usado por
+// la pantalla de Detalle de Venta para listar "enviado/falló" con fecha +
+// destinatario + status.
+//
+// RLS asegura que solo se ven envíos del mismo tenant. Sin paginación —
+// el cap esperado es <10 envíos por venta (alta + 1-3 reenvíos típicos).
+router.get('/:id/emails-enviados', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    const data = await db.withTenant(req.tenantId, async (client) => {
+      // Guard de existencia de la venta (404 limpio si no, o si RLS la filtra).
+      const vRes = await client.query(
+        `SELECT id FROM ventas WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (!vRes.rows[0]) return { notFound: true };
+
+      const eRes = await client.query(
+        `SELECT id, email_to, sent_at, status, resend_msg_id, error_msg,
+                sent_by_user_id, reenvio_de_id
+           FROM venta_emails_enviados
+           WHERE venta_id = $1
+           ORDER BY sent_at DESC`,
+        [id]
+      );
+      return { emails: eRes.rows };
+    });
+
+    if (data.notFound) return res.status(404).json({ error: 'Venta no encontrada' });
+    res.json({ emails: data.emails });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

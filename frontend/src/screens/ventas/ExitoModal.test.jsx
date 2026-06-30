@@ -75,3 +75,48 @@ describe('ExitoModal — acciones', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe('ExitoModal — #475 reenvío por mail', () => {
+  it('venta SIN cliente_email: no muestra "Reenviar por mail"', () => {
+    const onReenviarEmail = vi.fn();
+    const { queryByText } = render(
+      <ExitoModal
+        state={{ open: true, venta: { id: 1 } }}
+        onClose={vi.fn()}
+        onDescargar={vi.fn()}
+        pdfLoading={false}
+        onReenviarEmail={onReenviarEmail}
+      />
+    );
+    expect(queryByText('Reenviar por mail')).toBeNull();
+  });
+
+  it('venta CON cliente_email: muestra el email y el botón "Reenviar por mail"', () => {
+    const onReenviarEmail = vi.fn();
+    const { getByText, container } = render(
+      <ExitoModal
+        state={{ open: true, venta: { id: 1, cliente_email: 'cliente@x.com' } }}
+        onClose={vi.fn()}
+        onDescargar={vi.fn()}
+        pdfLoading={false}
+        onReenviarEmail={onReenviarEmail}
+      />
+    );
+    expect(container.textContent).toContain('cliente@x.com');
+    fireEvent.click(getByText('Reenviar por mail'));
+    expect(onReenviarEmail).toHaveBeenCalledWith({ id: 1, cliente_email: 'cliente@x.com' });
+  });
+
+  it('venta con email pero SIN handler onReenviarEmail: no muestra el botón', () => {
+    const { queryByText } = render(
+      <ExitoModal
+        state={{ open: true, venta: { id: 1, cliente_email: 'cliente@x.com' } }}
+        onClose={vi.fn()}
+        onDescargar={vi.fn()}
+        pdfLoading={false}
+        // sin onReenviarEmail
+      />
+    );
+    expect(queryByText('Reenviar por mail')).toBeNull();
+  });
+});

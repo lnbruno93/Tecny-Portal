@@ -43,6 +43,12 @@ const EMPTY_VENTA = {
   // canjes con 10 campos c/u — cada canje puede ir a Inventario con todos sus
   // datos. Ver schema canjeSchema en backend/src/schemas/ventas.js.
   canjes: [],
+  // #475 — opt-in para enviar el comprobante PDF por email al cliente al
+  // confirmar la venta. cliente_email pre-cargado desde contactos.email del
+  // contacto vinculado (si tiene). enviar_comprobante_email default ON si
+  // el contacto ya tiene email (asumimos que es el flow esperado).
+  cliente_email: '',
+  enviar_comprobante_email: false,
 };
 
 // Forma de un canje vacío para usar como template al "+ Agregar equipo".
@@ -663,6 +669,14 @@ export default function Ventas() {
       estado: vForm.estado, tc_venta: vForm.tc_venta ? Number(vForm.tc_venta) : null,
       notas: vForm.notas.trim() || null, items, pagos: pagosPayload, canjes,
     };
+    // #475 — pasar opt-in del comprobante por email solo en alta (no en edición).
+    // El backend acepta ambos campos como opcionales en createVentaSchema; el
+    // schema de update no los acepta (es propio del alta — para reenviar desde
+    // edición se usa el endpoint dedicado /:id/enviar-comprobante).
+    if (!editId && vForm.enviar_comprobante_email && vForm.cliente_email) {
+      payload.enviar_comprobante_email = true;
+      payload.cliente_email = vForm.cliente_email.trim().toLowerCase();
+    }
     setSavingVenta(true);
     try {
       const venta = editId ? await ventas.update(editId, payload) : await ventas.create(payload);
@@ -675,6 +689,13 @@ export default function Ventas() {
       // Si el adjunto falló no podemos cantar éxito (y en el flujo financiera el
       // comprobante de Financiera NO se habría auto-generado): avisamos.
       if (uploadFalló) toast.error('La venta se guardó, pero el comprobante no se pudo adjuntar. Subilo de nuevo desde la venta.');
+      // #475 — feedback inline si pedimos enviar comprobante por mail. El send
+      // es fire-and-forget del backend (setImmediate post-COMMIT), así que no
+      // sabemos acá si el send tuvo éxito — el feedback es informativo. El
+      // detalle de la venta tiene el historial real (sent/failed).
+      if (!editId && payload.enviar_comprobante_email) {
+        toast.success(`Enviando comprobante a ${payload.cliente_email}…`);
+      }
       setShowVenta(false);
       // Cobro por Financiera con comprobante OK: ya se auto-generó el de Financiera → ir a verificarlo.
       if (!editId && usaFinanciera && !uploadFalló) { navigate('/financiera'); return; }
@@ -729,7 +750,9 @@ export default function Ventas() {
           cliente_apellido: contactoVinculado?.apellido || null,
           cliente_dni:      contactoVinculado?.dni      || null,
           cliente_telefono: contactoVinculado?.telefono || null,
-          cliente_email:    contactoVinculado?.email    || null,
+          // #475 — preferimos el email cargado en el form (puede ser fresh,
+          // de un contacto sin email previo) sobre el del contacto vinculado.
+          cliente_email:    vForm.cliente_email?.trim() || contactoVinculado?.email || null,
           vendedor_nombre:  vendedorNombre,
           hora:             venta.hora    || vForm.hora || null,
           fecha:            venta.fecha   || vForm.fecha,
@@ -1183,7 +1206,19 @@ export default function Ventas() {
                           <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
                             {matches.map(c => (
                               <div key={c.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }}
-                                onMouseDown={() => { setVForm(f => ({ ...f, cliente_nombre: `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`, cliente_id: c.id })); setClienteDrop(false); }}>
+                                onMouseDown={() => {
+                                  // #475: si el contacto tiene email cargado, lo pre-llenamos
+                                  // y tildamos el checkbox automáticamente — asumimos que el
+                                  // operador quiere mandar el comprobante (puede destildar).
+                                  setVForm(f => ({
+                                    ...f,
+                                    cliente_nombre: `${c.nombre}${c.apellido ? ' ' + c.apellido : ''}`,
+                                    cliente_id: c.id,
+                                    cliente_email: c.email || '',
+                                    enviar_comprobante_email: !!c.email,
+                                  }));
+                                  setClienteDrop(false);
+                                }}>
                                 {c.nombre}{c.apellido ? ' ' + c.apellido : ''} {c.tipo && <span className="muted tiny">· {c.tipo}</span>}
                               </div>
                             ))}
@@ -1196,6 +1231,51 @@ export default function Ventas() {
                         );
                       })()}
                       {vForm.cliente_id && <div className="tiny pos" style={{ marginTop: 2 }}>✓ vinculado a la base de clientes</div>}
+
+                      {/* #475 — Email del cliente + checkbox para enviar comprobante.
+                          Solo aparece para venta retail nueva (no en edición — la edición
+                          no re-dispara el envío para evitar dobles envíos accidentales;
+                          el operador usa "Reenviar comprobante" desde el detalle). */}
+                      {!editId && (
+                        <div style={{ marginTop: 10, padding: 10, background: 'var(--surface-2)', borderRadius: 8 }}>
+                          <div className="field" style={{ marginBottom: 8 }}>
+                            <label className="field-label" htmlFor="v-cliente-email">
+                              Email cliente <span className="muted tiny">(opcional, para enviar comprobante)</span>
+                            </label>
+                            <input
+                              id="v-cliente-email"
+                              className="input"
+                              type="email"
+                              inputMode="email"
+                              autoComplete="off"
+                              autoCapitalize="none"
+                              autoCorrect="off"
+                              placeholder="email@ejemplo.com"
+                              value={vForm.cliente_email}
+                              onChange={e => setVForm(f => ({ ...f, cliente_email: e.target.value }))}
+                              onBlur={() => {
+                                // Validación blur: si el email no parsea, destildar el
+                                // checkbox para no postear con email inválido (el backend
+                                // igual lo rebota con 400, pero la UX es mejor inline).
+                                const v = vForm.cliente_email.trim();
+                                if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+                                  setVForm(f => ({ ...f, enviar_comprobante_email: false }));
+                                }
+                              }}
+                            />
+                          </div>
+                          {vForm.cliente_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vForm.cliente_email.trim()) && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={!!vForm.enviar_comprobante_email}
+                                onChange={e => setVForm(f => ({ ...f, enviar_comprobante_email: e.target.checked }))}
+                              />
+                              Enviar comprobante por mail al cliente
+                            </label>
+                          )}
+                        </div>
+                      )}
 
                       {/* Mini-form embebido — Nuevo cliente con datos completos
                           (DNI, WhatsApp, email, fecha de nacimiento). Se abre al
@@ -1809,6 +1889,27 @@ Pago: Efectivo + Transferencia`}
         state={exitoModal}
         onClose={() => setExitoModal({ open: false, venta: null })}
         pdfLoading={pdfLoading}
+        // #475 — handler de reenvío del comprobante por mail desde el modal éxito.
+        // Pre-llena el email destino con el que el operador cargó en el form +
+        // permite editarlo via prompt() (simplest UX que no requiere modal nuevo).
+        // Si el operador acepta, llamamos al endpoint inline y mostramos el
+        // resultado por toast.
+        onReenviarEmail={async (venta) => {
+          const defaultEmail = venta?.cliente_email || '';
+          const dest = window.prompt('Reenviar comprobante a:', defaultEmail);
+          if (!dest) return;
+          const destTrim = dest.trim().toLowerCase();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destTrim)) {
+            toast.error('Email inválido');
+            return;
+          }
+          try {
+            await ventas.enviarComprobante(venta.id, { email: destTrim });
+            toast.success(`Comprobante reenviado a ${destTrim}`);
+          } catch (err) {
+            toast.error('No se pudo reenviar: ' + (err.message || 'error desconocido'));
+          }
+        }}
         onDescargar={(venta) => withPdfLoading(async () => {
           try {
             const mod = await import('../lib/generarComprobantePdf');

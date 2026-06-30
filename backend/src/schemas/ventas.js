@@ -54,6 +54,14 @@ const canjeSchema = z.object({
 });
 
 /* ── Venta ── */
+// #475 — email del cliente final para enviar el comprobante por mail.
+// Regex pragmático (no RFC 5322 full): `local@dominio.tld` con al menos un
+// dot en el host. Detecta typos comunes ("juanperez@gmailcom") y evita el
+// roundtrip a Resend con basura. Toda la validación dura la hace el provider;
+// esto es UX-frontline + protección de costo (Resend cobra por intento).
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const clienteEmailSchema = z.string().trim().toLowerCase().regex(EMAIL_RE, 'Email inválido').max(254);
+
 const createVentaSchema = z.object({
   fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD'),
   hora:           z.string().regex(HORA_RE, 'Hora inválida').optional().nullable(),
@@ -69,6 +77,11 @@ const createVentaSchema = z.object({
   items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto'),
   pagos:          z.array(ventaPagoSchema).default([]),
   canjes:         z.array(canjeSchema).default([]),
+  // #475 — opt-in para enviar el comprobante PDF por email al cliente al
+  // confirmar la venta. Si enviar_comprobante_email=true sin cliente_email,
+  // el handler skipea el envío silenciosamente (no rompe la venta).
+  enviar_comprobante_email: z.boolean().optional(),
+  cliente_email:            clienteEmailSchema.optional().nullable(),
 }).strict();
 
 // Edición de metadatos (no se editan items/pagos para no descuadrar el stock).
@@ -176,6 +189,16 @@ const updateVentaRapidaSchema = z.object({
   venta_id:        z.coerce.number().int().positive().optional().nullable(),
 });
 
+// #475 — POST /api/ventas/:id/enviar-comprobante (envío manual / reenvío).
+// El email se valida con la misma regex que cliente_email del create.
+// force: opcional, ignorado por ahora (reservado para skips de checks futuros
+// — ej. "mandar de nuevo aunque ya se envió hace <5min"). Aceptado para
+// que el frontend no choque si lo pasa.
+const enviarComprobanteSchema = z.object({
+  email: clienteEmailSchema,
+  force: z.boolean().optional(),
+}).strict();
+
 module.exports = {
   createVentaSchema, updateVentaSchema, queryVentasSchema,
   etiquetaSchema,
@@ -183,4 +206,7 @@ module.exports = {
   comprobanteVentaSchema,
   createEgresoSchema, queryEgresosSchema, queryDashboardSchema,
   createVentaRapidaSchema, updateVentaRapidaSchema,
+  // #475 — envío comprobante por email
+  enviarComprobanteSchema,
+  clienteEmailSchema,
 };

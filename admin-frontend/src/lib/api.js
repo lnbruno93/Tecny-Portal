@@ -335,6 +335,14 @@ export const adminApi = {
   changePaisTenant: (id, pais) =>
     api(`/api/super-admin/tenants/${id}/pais`, 'PATCH', { pais }),
 
+  // PATCH /tenants/:id/comprobante-footer (#475) — setea el footer custom
+  // plain-text del email de comprobante de venta retail. footer=null o ''
+  // borra el override (vuelve al footer default del portal).
+  //
+  // Response 200: { tenant_id, comprobante_email_footer }
+  updateComprobanteFooter: (id, footer) =>
+    api(`/api/super-admin/tenants/${id}/comprobante-footer`, 'PATCH', { footer }),
+
   // DELETE /tenants/:id?confirm=<slug> — soft-delete tenant (feature #438).
   //
   // Anti-clicaccidental estilo GitHub: el caller debe pasar el slug del

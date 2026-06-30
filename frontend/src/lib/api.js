@@ -557,6 +557,12 @@ export const ventas = {
   comprobantes:    (id) => api(`/api/ventas/${id}/comprobantes`),
   getComprobante:  (cid) => api(`/api/ventas/comprobantes/${cid}`),
   uploadComprobante: (id, data) => api(`/api/ventas/${id}/comprobantes`, 'POST', data),
+  // #475 — comprobante PDF por email al cliente.
+  // enviarComprobante: inline (await) — frontend muestra toast del resultado.
+  // emailsEnviados: historial para el detalle de venta (alta + reenvíos).
+  enviarComprobante: (id, { email, force = false } = {}) =>
+    api(`/api/ventas/${id}/enviar-comprobante`, 'POST', { email, force }),
+  emailsEnviados:    (id) => api(`/api/ventas/${id}/emails-enviados`),
 };
 
 export const usuarios = {
