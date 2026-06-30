@@ -30,6 +30,10 @@ const {
   hashRecoveryCodes,
   findRecoveryCodeIndex,
 } = require('../lib/twoFa');
+// Auditoría 2026-06-30 S-25: invalidar userAuthCache cuando el user activa
+// o desactiva 2FA, para que `req.user.twofa_enabled` (gate de requireSuperAdmin)
+// refleje el cambio en la siguiente request sin esperar el TTL de 60s.
+const userAuthCache = require('../lib/userAuthCache');
 
 // ─── Schemas ───
 const enableSchema = z.object({
@@ -224,6 +228,9 @@ router.post('/enable', validate(enableSchema), async (req, res, next) => {
     await db.query('UPDATE user_2fa SET enabled_at = NOW(), last_used_at = NOW() WHERE user_id = $1', [req.user.id]);
     await audit('user_2fa', 'UPDATE', req.user.id,
                 { despues: { action: 'enabled' }, user_id: req.user.id });
+    // Auditoría 2026-06-30 S-25: invalidar cache para que requireSuperAdmin
+    // vea twofa_enabled=true en la siguiente request del super-admin.
+    userAuthCache.invalidateUserAuth(req.user.id).catch(() => {});
     res.json({ ok: true, enabled_at: new Date().toISOString() });
   } catch (err) { next(err); }
 });
@@ -241,6 +248,9 @@ router.post('/disable', validate(codeSchema), async (req, res, next) => {
     await db.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
     await audit('user_2fa', 'DELETE', req.user.id,
                 { antes: { enabled_at: row.enabled_at }, despues: { action: 'disabled' }, user_id: req.user.id });
+    // Auditoría 2026-06-30 S-25: invalidar cache para que requireSuperAdmin
+    // vea twofa_enabled=false en la siguiente request (gate fail-closed).
+    userAuthCache.invalidateUserAuth(req.user.id).catch(() => {});
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -75,6 +75,9 @@ module.exports = async function requireAuth(req, res, next) {
     ...decoded,
     email_verified: isEmailVerified,
     is_super_admin: !!userAuth.is_super_admin,
+    // Auditoría 2026-06-30 S-25: twofa_enabled para que requireSuperAdmin
+    // pueda exigir 2FA en endpoints super-admin sin pegar a DB.
+    twofa_enabled: !!userAuth.twofa_enabled,
   };
 
   // 2026-06-16 TANDA 2.1 bloqueo blando: si el user NO verificó su email,

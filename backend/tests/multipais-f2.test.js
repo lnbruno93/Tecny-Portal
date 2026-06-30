@@ -118,6 +118,12 @@ beforeAll(async () => {
 
   // === Super-admin token (sobre testadmin id=1) ===
   await pool.query(`UPDATE users SET is_super_admin = true WHERE id = 1`);
+  // Auditoría 2026-06-30 S-25: super-admin requiere 2FA habilitada.
+  await pool.query(`
+    INSERT INTO user_2fa (user_id, secret_encrypted, recovery_codes, enabled_at)
+    VALUES (1, 'test-secret-enc', ARRAY['hash1','hash2'], NOW())
+    ON CONFLICT (user_id) DO UPDATE SET enabled_at = NOW()
+  `);
   await userAuthCache.invalidateUserAuth(1);
   superAdminToken = jwt.sign(
     {
@@ -168,6 +174,8 @@ afterAll(async () => {
   await pool.query(`DELETE FROM users WHERE id = $1`, [uyUserId]);
   await pool.query(`DELETE FROM tenants WHERE id = $1`, [TENANT_UY_F2]);
   await pool.query(`UPDATE users SET is_super_admin = false WHERE id = 1`);
+  // Auditoría 2026-06-30 S-25: limpiar 2FA setup del test.
+  await pool.query(`DELETE FROM user_2fa WHERE user_id = 1`);
   await userAuthCache.invalidateUserAuth(1);
   if (nonSuperUserId) {
     await pool.query(`DELETE FROM tenant_users WHERE user_id = $1`, [nonSuperUserId]);
