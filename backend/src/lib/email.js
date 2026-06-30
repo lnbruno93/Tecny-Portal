@@ -863,6 +863,162 @@ Podés desactivar estos avisos desde Red B2B → Config.`;
   });
 }
 
+// ── Comprobante de venta retail (#475) ──────────────────────────────────
+//
+// Email con PDF attached para que el cliente final reciba su comprobante de
+// compra. El HTML del body es simple — el "documento real" es el PDF
+// adjunto (generado con pdfkit en lib/comprobantePdf.js). El body solo da
+// contexto + agradece + reproduce los datos clave (total, fecha) para que
+// si el cliente solo previsualiza el email sin abrir el adjunto, igual se
+// entere de lo básico.
+//
+// Customización: tenant.comprobante_email_footer (TEXT NULL) overridea el
+// footer default. Se inyecta plain-text con escape — el operador NO puede
+// meter HTML (XSS protection).
+
+function _comprobanteVentaHtml({ tenantNombre, ventaOrderId, ventaFecha, ventaTotal, footerCustom }) {
+  const footerLines = (footerCustom || `Gracias por confiar en ${tenantNombre || 'nosotros'}.`)
+    .split('\n')
+    .map(line => _esc(line))
+    .join('<br>');
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comprobante de tu compra — ${_esc(tenantNombre || 'Tecny')}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f1ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c1a14;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.05);">
+        <tr><td style="padding:32px 36px 24px;border-bottom:1px solid #f0ead6;">
+          <span style="font-weight:700;font-size:17px;color:#0d1220;">${_esc(tenantNombre || 'Tecny')}</span>
+        </td></tr>
+        <tr><td style="padding:36px 36px 12px;">
+          <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#0d1220;">Comprobante de tu compra</h1>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#3f3a2c;">Hola, gracias por tu compra. Adjuntamos el comprobante en PDF.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;width:100%;background:#f8fafc;border-radius:8px;">
+            <tr><td style="padding:14px 18px;font-size:14px;color:#0d1220;">
+              <div><strong>${_esc(ventaOrderId || '')}</strong></div>
+              <div style="margin-top:4px;color:#76705c;font-size:13px;">${_esc(ventaFecha || '')}</div>
+              <div style="margin-top:10px;font-size:18px;font-weight:700;letter-spacing:-0.01em;">Total: ${_esc(ventaTotal || '')}</div>
+            </td></tr>
+          </table>
+          <p style="margin:0 0 24px;font-size:13px;line-height:1.55;color:#76705c;">El detalle completo de la compra está en el comprobante adjunto.</p>
+        </td></tr>
+        <tr><td style="padding:20px 36px 32px;border-top:1px solid #f0ead6;font-size:12px;line-height:1.55;color:#9c957f;text-align:center;">
+          ${footerLines}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+function _comprobanteVentaText({ tenantNombre, ventaOrderId, ventaFecha, ventaTotal, footerCustom }) {
+  const footer = footerCustom || `Gracias por confiar en ${tenantNombre || 'nosotros'}.`;
+  return `Hola,
+
+Gracias por tu compra en ${tenantNombre || 'Tecny'}.
+
+Comprobante: ${ventaOrderId || ''}
+Fecha:       ${ventaFecha || ''}
+Total:       ${ventaTotal || ''}
+
+El detalle completo está en el PDF adjunto a este email.
+
+${footer}`;
+}
+
+/**
+ * Envía el email de comprobante de venta retail al cliente final, con el PDF
+ * generado attached. Devuelve { ok, deliveryId, error? } — no throws.
+ *
+ * Fail mode: si el provider rechaza el envío, devolvemos ok:false con el
+ * error message. El caller (comprobanteEmail.js orchestrator) persiste una
+ * row en venta_emails_enviados con status='failed' y el error.
+ *
+ * @param {object} args
+ * @param {string} args.to              — email destinatario
+ * @param {string} args.tenantNombre    — para subject + branding
+ * @param {string} args.ventaOrderId    — ej "ORD-26-abcdef" — va al subject
+ * @param {string} args.ventaFecha      — fecha formateada DD/MM/YYYY
+ * @param {string} args.ventaTotal      — total formateado "USD 950.00"
+ * @param {Buffer} args.pdfBuffer       — bytes del PDF, attached como adjunto
+ * @param {string} args.pdfFilename     — nombre del attachment (sin path)
+ * @param {string} [args.footerCustom]  — footer del tenant (plain text)
+ * @param {string} [args.replyTo]       — reply-to opcional (email del tenant)
+ */
+async function sendComprobanteVentaEmail({
+  to, tenantNombre, ventaOrderId, ventaFecha, ventaTotal,
+  pdfBuffer, pdfFilename, footerCustom, replyTo,
+}) {
+  if (!to || !pdfBuffer || !pdfFilename) {
+    throw new Error('sendComprobanteVentaEmail: `to`, `pdfBuffer`, `pdfFilename` son requeridos');
+  }
+  const subject = `Comprobante de tu compra — ${tenantNombre || 'Tecny'} ${ventaOrderId || ''}`.trim();
+  const payload = {
+    type:    'comprobante_venta',
+    from:    _emailFrom(),
+    to,
+    tenantNombre: tenantNombre || null,
+    ventaOrderId: ventaOrderId || null,
+    ventaFecha:   ventaFecha || null,
+    ventaTotal:   ventaTotal || null,
+    pdfFilename,
+    pdfSize:      pdfBuffer.length,
+    footerCustom: footerCustom || null,
+    replyTo:      replyTo || null,
+    sentAt:       new Date().toISOString(),
+  };
+
+  if (isTest()) {
+    _testQueue.push(payload);
+    return { ok: true, deliveryId: 'test-' + Date.now() };
+  }
+
+  const resend = _getResend();
+  if (!resend) {
+    logger.warn({ to, ventaOrderId }, '[email] RESEND_API_KEY no seteada — comprobante venta no se envió (modo stub)');
+    return { ok: true, deliveryId: 'stub-' + Date.now() };
+  }
+
+  const html = _comprobanteVentaHtml({ tenantNombre, ventaOrderId, ventaFecha, ventaTotal, footerCustom });
+  const text = _comprobanteVentaText({ tenantNombre, ventaOrderId, ventaFecha, ventaTotal, footerCustom });
+
+  try {
+    // Resend SDK: attachments es array de { filename, content }.
+    // content puede ser Buffer (preferido para binarios) o base64 string.
+    // Usamos Buffer directo — el SDK lo serializa a base64 al hacer la
+    // request HTTP, evitamos el round-trip a string acá.
+    const reqArgs = {
+      from:    _emailFrom(),
+      to,
+      subject,
+      html,
+      text,
+      attachments: [{
+        filename: pdfFilename,
+        content:  pdfBuffer,
+      }],
+    };
+    if (replyTo) reqArgs.reply_to = replyTo;
+
+    const result = await resend.emails.send(reqArgs);
+    if (result.error) {
+      logger.error({ err: result.error, to, ventaOrderId }, '[email] Resend error en comprobante venta');
+      return { ok: false, deliveryId: null, error: result.error.message || 'Resend error' };
+    }
+    logger.info({ to, ventaOrderId, deliveryId: result.data?.id }, '[email] comprobante venta enviado');
+    return { ok: true, deliveryId: result.data?.id };
+  } catch (err) {
+    logger.error({ err, to, ventaOrderId }, '[email] excepción al enviar comprobante venta');
+    return { ok: false, deliveryId: null, error: err.message };
+  }
+}
+
 /** Para tests: snapshot read-only de los emails enviados en la suite. */
 function _getTestQueue() { return _testQueue.slice(); }
 
@@ -880,6 +1036,8 @@ module.exports = {
   sendRedB2BOperationReceivedEmail,
   sendRedB2BOperationCancelledEmail,
   sendRedB2BPaymentReceivedEmail,
+  // Comprobante venta retail (#475)
+  sendComprobanteVentaEmail,
   _getTestQueue,
   _resetTestQueue,
   // Helpers exportados solo para que los tests puedan snapshotear el HTML
@@ -889,4 +1047,5 @@ module.exports = {
   _welcomeHtml,
   _passwordResetHtml,
   _paidUntilWarningHtml,
+  _comprobanteVentaHtml,
 };
