@@ -84,16 +84,38 @@ const patchOperationSchema = z.object({
 // concreto se asienta en USD/ARS/UYU. La validación país-aware (tenant AR
 // rechaza UYU, tenant UY rechaza ARS) se hace en el handler vía
 // `assertMonedaValidaParaPais`.
+// Auditoría 2026-06-30 D-19: `tc_pago` se vuelve OPCIONAL cuando
+// moneda_pago === 'USD'. Razón: en USD no hay conversión, así que el frontend
+// no tiene un TC concreto que mandar — antes Zod rechazaba tc_pago undefined
+// con `Required`, ahora se admite. La validación de coherencia inferior sigue
+// asegurando que cuando moneda_pago !== 'USD', tc_pago sea positivo.
+//
+// El handler en pagos.js sustituye tc_pago por 1 cuando moneda_pago === 'USD'
+// para satisfacer el NOT NULL de cross_tenant_pagos.tc_used (legacy column F1).
 const registrarPagoSchema = z.object({
   monto_usd:   z.coerce.number().positive(),
   moneda_pago: z.enum(['USD', 'ARS', 'UYU']),
   monto_pago:  z.coerce.number().positive(),    // monto en la moneda_pago
-  tc_pago:     z.coerce.number().positive(),    // TC al momento del pago
+  tc_pago:     z.coerce.number().positive().optional(),   // TC al momento del pago (opcional si moneda_pago=USD)
   caja_id:     z.coerce.number().int().positive(),
   side:        z.enum(['seller', 'buyer']),
   fecha:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   notas:       z.string().trim().max(500).optional(),
 }).strict()
+  .refine(
+    (d) => {
+      // Auditoría 2026-06-30 D-19: tc_pago requerido solo cuando moneda_pago !== 'USD'.
+      // En USD no se requiere TC porque no hay conversión.
+      if (d.moneda_pago !== 'USD' && (d.tc_pago == null || d.tc_pago <= 0)) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'tc_pago requerido y positivo cuando moneda_pago es ARS o UYU',
+      path: ['tc_pago'],
+    }
+  )
   .refine(
     (d) => {
       // Validación de coherencia monto_pago vs monto_usd * tc_pago.
