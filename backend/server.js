@@ -100,8 +100,16 @@ const server = app.listen(PORT, () => {
   //   · Cada 24h: pre-crea partition del próximo mes (idempotente).
   //   · Día 1 del mes (UTC) ~04 AM: dropea partitions > AUDIT_RETENCION_MESES.
   // Ambas tareas con advisory lock — solo una réplica las corre.
+  //
+  // Auditoría 2026-06-30 E-01 (P0): runOnStartup: true. Antes el primer tick
+  // corría 24h post-deploy — si el server reiniciaba repetidamente cerca del
+  // boundary de mes y el cron nunca lograba ejecutarse, eventualmente los
+  // INSERTs del próximo mes fallaban con "no partition found for row" (sin
+  // default partition por diseño). Buffer inicial de migration es +3 meses,
+  // pero el time-bomb era real. Ahora la partición del próximo mes se asegura
+  // a cada boot (idempotente via CREATE TABLE IF NOT EXISTS).
   const retencionMeses = Number(process.env.AUDIT_RETENCION_MESES) || 12;
-  startAuditPartitionsJob({ retentionMonths: retencionMeses, intervalHours: 24 });
+  startAuditPartitionsJob({ retentionMonths: retencionMeses, intervalHours: 24, runOnStartup: true });
 
   // P-07: worker async para audit_queue. No-op cuando el flag
   // `audit_async_enabled` esta OFF (que es el default — no hay encolado, queue

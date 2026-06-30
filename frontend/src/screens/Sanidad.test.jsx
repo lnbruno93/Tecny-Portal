@@ -68,9 +68,18 @@ vi.mock('../lib/api', () => ({
 
 import Sanidad from './Sanidad';
 import { sanidad, egresos } from '../lib/api';
+// 2026-06-30 Auditoría F-01: ProyeccionGastosPanel ahora usa useConfirm(),
+// que requiere ConfirmProvider en el árbol. Wrap del test.
+import { ConfirmProvider } from '../components/ConfirmModal';
 
 function renderScreen() {
-  return render(<MemoryRouter><Sanidad /></MemoryRouter>);
+  return render(
+    <MemoryRouter>
+      <ConfirmProvider>
+        <Sanidad />
+      </ConfirmProvider>
+    </MemoryRouter>
+  );
 }
 
 describe('Pantalla Sanidad del Negocio', () => {

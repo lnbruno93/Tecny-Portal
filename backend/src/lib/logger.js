@@ -48,6 +48,18 @@ const logger = pino({
       '*.secret',
       '*.secret_encrypted',
       '*.TWOFA_ENCRYPTION_KEY',
+      // PII/email (auditoría 2026-06-30 Q-01): los emails de usuarios finales
+      // y URLs con token (verify, reset, etc.) NO deben quedar en logs en
+      // texto plano. lib/email.js loguea `{to, verifyUrl, resetUrl, ...}` en
+      // stub mode y en sends fallidos. Si los logs van a Sentry/Railway con
+      // ACL laxo, un atacante con acceso a logs ve tokens activos + emails.
+      // Cubrimos paths wildcard porque el field aparece en varios contextos
+      // (req.body.email, args.to, opts.verifyUrl, etc.).
+      '*.to',
+      '*.email',
+      '*.cliente_email',
+      '*.verifyUrl',
+      '*.resetUrl',
     ],
     censor: '[REDACTED]',
   },

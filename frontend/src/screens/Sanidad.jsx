@@ -23,6 +23,12 @@ import { fmt } from '../lib/format';
 import useModal from '../lib/useModal';
 // 2026-06-29 Multi-país F3: dropdown moneda del recurrente gated por país.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+// 2026-06-30 Auditoría F-01 (P0): useConfirm reemplaza window.confirm() en
+// el delete de recurrentes (línea 387 antes). El nativo bloquea el thread,
+// ignora dark mode y se ve mal en mobile — el resto del portal (28+ screens)
+// usa el design system. Mantener la inconsistencia rompía UX en una
+// operación destructiva (gastos recurrentes proyectados).
+import { useConfirm } from '../components/ConfirmModal';
 
 // Helper: nombre del mes corto a partir de 'YYYY-MM'.
 function labelMes(periodo) {
@@ -277,6 +283,8 @@ function ProyeccionGastosPanel({ onChange }) {
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  // F-01: confirm imperativo (modal del design system, no el nativo del browser).
+  const confirmAsk = useConfirm();
   // Grupos expandidos (accordion). Set de keys (categoria_id || 'sin').
   // Default vacío: todos colapsados — el usuario ve el resumen y abre
   // solo lo que le interesa.
@@ -384,7 +392,13 @@ function ProyeccionGastosPanel({ onChange }) {
   }
 
   async function remove(r) {
-    if (!confirm(`¿Borrar el gasto recurrente "${r.concepto}"?\nLos egresos pasados que ya quedaron pagados se mantienen — solo dejas de proyectarlo para los próximos meses.`)) return;
+    const ok = await confirmAsk({
+      title: `¿Borrar el gasto recurrente "${r.concepto}"?`,
+      message: 'Los egresos pasados que ya quedaron pagados se mantienen — solo dejas de proyectarlo para los próximos meses.',
+      confirmLabel: 'Borrar',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await egresosApi.deleteRecurrente(r.id);
       await load();

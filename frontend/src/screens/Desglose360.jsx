@@ -19,6 +19,12 @@ import { Icons } from '../components/Icons';
 import { inventario } from '../lib/api';
 import { exportCsv } from '../lib/exportCsv';
 import { fmt, fmtMoney } from '../lib/format'; // Hygiene H2 + U-05 auditoría 2026-06-10
+// Auditoría 2026-06-30 F-02→05: multi-país. Las columnas "Inv ARS" /
+// "Valorizado ARS" mostraban literal "ARS" — para tenants UY hay que
+// rotular como "UYU". Datos del backend siguen viniendo en campos `inv_ars`
+// / `valorizado_ars` (= moneda local del tenant). Refactor de shape API
+// queda fuera de scope.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 // Alias local para no tocar todos los callsites — `money` se resuelve al
 // helper compartido `fmtMoney` (DRY de wrappers duplicados en Inventario+Desglose360).
@@ -56,6 +62,9 @@ const ESTADO_LABEL = {
 
 export default function Desglose360() {
   const navigate = useNavigate();
+  // Auditoría 2026-06-30 F-02→05: moneda local del tenant (ARS para AR,
+  // UYU para UY) — usada en headers + subtítulos de KPIs + export CSV.
+  const { monedaLocal } = useMonedasTenant();
 
   const [por, setPor] = useState('categoria');
   const [clase, setClase] = useState(''); // '' | 'celular' | 'accesorio'
@@ -106,8 +115,10 @@ export default function Desglose360() {
 
   function exportarCsv() {
     const dimLabel = DIMENSIONES.find(d => d.value === por)?.label || 'Dimensión';
+    // Auditoría 2026-06-30 F-02→05: encabezados de moneda local dinámicos
+    // (ARS para AR, UYU para UY).
     const rows = [
-      [dimLabel, 'Productos', 'Stock (u)', 'Inv USD', 'Inv ARS', 'Valorizado USD', 'Valorizado ARS', 'Margen USD', 'Margen ARS'],
+      [dimLabel, 'Productos', 'Stock (u)', 'Inv USD', `Inv ${monedaLocal}`, 'Valorizado USD', `Valorizado ${monedaLocal}`, 'Margen USD', `Margen ${monedaLocal}`],
       ...filasOrdenadas.map(f => [
         por === 'estado' ? (ESTADO_LABEL[f.valor] || f.valor) : f.valor,
         f.productos, f.stock,
@@ -150,12 +161,13 @@ export default function Desglose360() {
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Inversión USD</div>
           <div className="kpi-value mono">{money(tot.inv_usd, 'USD')}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.inv_ars ? money(tot.inv_ars, 'ARS') + ' ARS' : '—'}</div>
+          {/* Auditoría 2026-06-30 F-02→05: moneda local dinámica (ARS/UYU). */}
+          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.inv_ars ? money(tot.inv_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
         </div>
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Valorizado venta USD</div>
           <div className="kpi-value mono pos">{money(tot.valorizado_usd, 'USD')}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.valorizado_ars ? money(tot.valorizado_ars, 'ARS') + ' ARS' : '—'}</div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>{tot.valorizado_ars ? money(tot.valorizado_ars, monedaLocal) + ' ' + monedaLocal : '—'}</div>
         </div>
         <div className="card card-tight" style={{ flex: '1 1 180px' }}>
           <div className="kpi-label">Margen potencial USD</div>
@@ -237,9 +249,10 @@ export default function Desglose360() {
                 <th style={{ textAlign: 'right' }}>Productos</th>
                 <th style={{ textAlign: 'right' }}>Stock (u)</th>
                 <th style={{ textAlign: 'right' }}>Inv USD</th>
-                <th style={{ textAlign: 'right' }}>Inv ARS</th>
+                {/* Auditoría 2026-06-30 F-02→05: header moneda local (ARS/UYU). */}
+                <th style={{ textAlign: 'right' }}>Inv {monedaLocal}</th>
                 <th style={{ textAlign: 'right' }}>Valorizado USD</th>
-                <th style={{ textAlign: 'right' }}>Valorizado ARS</th>
+                <th style={{ textAlign: 'right' }}>Valorizado {monedaLocal}</th>
                 <th style={{ textAlign: 'right' }}>Margen USD</th>
                 <th style={{ textAlign: 'right' }}>%</th>
                 <th></th>
@@ -255,9 +268,10 @@ export default function Desglose360() {
                     <td className="mono" style={{ textAlign: 'right' }}>{fmt(f.productos)}</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{fmt(f.stock)}</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{f.inv_usd ? money(f.inv_usd, 'USD') : <span className="muted">—</span>}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{f.inv_ars ? money(f.inv_ars, 'ARS') : <span className="muted">—</span>}</td>
+                    {/* Auditoría 2026-06-30 F-02→05: símbolo moneda local ($ AR / $U UY). */}
+                    <td className="mono" style={{ textAlign: 'right' }}>{f.inv_ars ? money(f.inv_ars, monedaLocal) : <span className="muted">—</span>}</td>
                     <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_usd ? money(f.valorizado_usd, 'USD') : <span className="muted">—</span>}</td>
-                    <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_ars ? money(f.valorizado_ars, 'ARS') : <span className="muted">—</span>}</td>
+                    <td className="mono pos" style={{ textAlign: 'right' }}>{f.valorizado_ars ? money(f.valorizado_ars, monedaLocal) : <span className="muted">—</span>}</td>
                     <td className="mono" style={{ textAlign: 'right', color: f.margen_usd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                       {f.margen_usd ? money(f.margen_usd, 'USD') : <span className="muted">—</span>}
                     </td>
