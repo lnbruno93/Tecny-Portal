@@ -306,12 +306,17 @@ describe('POST /api/auth/signup', () => {
       expect(tenants[0].pais).toBe('UY');
 
       // 2) cajas default en UYU (no en ARS) + USD se mantiene.
+      // Filtro explícito por tenant_id porque el pool de tests corre como
+      // superuser (BYPASSRLS) — sin el filtro veríamos las cajas de TODOS los
+      // tenants signupeados antes en la misma suite (cada signup crea cajas)
+      // y aparecerían 'ARS' de tenants AR previos, rompiendo el assert.
       const c = await pool.connect();
       try {
         await c.query('BEGIN');
         await c.query(`SET LOCAL app.current_tenant = ${u.tenant_id}`);
         const { rows: cajas } = await c.query(
-          `SELECT moneda FROM metodos_pago WHERE deleted_at IS NULL ORDER BY orden`
+          `SELECT moneda FROM metodos_pago WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY orden`,
+          [u.tenant_id]
         );
         const monedas = cajas.map(r => r.moneda);
         // UY: dos cajas en UYU + una USD; NO debe haber ninguna en ARS.
