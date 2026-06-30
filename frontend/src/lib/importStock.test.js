@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapStockRows, normHeader, parseNum, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload } from './importStock';
+import { mapStockRows, normHeader, parseNum, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from './importStock';
 
 // Encabezados reales del negocio (con aclaraciones entre paréntesis).
 const HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
@@ -353,5 +353,91 @@ describe('buildBulkMovimientosPayload', () => {
   it('devuelve [] si groups es vacío/no-array', () => {
     expect(buildBulkMovimientosPayload({ groups: [] })).toEqual([]);
     expect(buildBulkMovimientosPayload({})).toEqual([]);
+  });
+});
+
+// 2026-06-30 #imei-dup: helper que detecta IMEIs duplicados DENTRO de un
+// set de filas del XLSX. Acepta tanto el shape de mapStockRows (con .body)
+// como un shape plano.
+describe('findDuplicateImeis', () => {
+  it('0 duplicados → array vacío', () => {
+    const rows = [
+      { body: { imei: '111111111111111' } },
+      { body: { imei: '222222222222222' } },
+      { body: { imei: '333333333333333' } },
+    ];
+    expect(findDuplicateImeis(rows)).toEqual([]);
+  });
+
+  it('1 IMEI repetido 2 veces → 1 entry con 2 rowIndices', () => {
+    const rows = [
+      { body: { imei: '111111111111111' } }, // 0
+      { body: { imei: '999999999999999' } }, // 1
+      { body: { imei: '111111111111111' } }, // 2
+    ];
+    const dups = findDuplicateImeis(rows);
+    expect(dups).toHaveLength(1);
+    expect(dups[0].imei).toBe('111111111111111');
+    expect(dups[0].rowIndices).toEqual([0, 2]);
+  });
+
+  it('filas sin IMEI (accesorios) → ignoradas', () => {
+    const rows = [
+      { body: { imei: '' } },          // 0 — accesorio
+      { body: { imei: null } },        // 1 — accesorio
+      { body: { imei: undefined } },   // 2 — accesorio
+      { body: { imei: '111111111111111' } }, // 3
+      { body: { imei: '111111111111111' } }, // 4 — dup con 3
+    ];
+    const dups = findDuplicateImeis(rows);
+    expect(dups).toHaveLength(1);
+    expect(dups[0].rowIndices).toEqual([3, 4]);
+  });
+
+  it('2 IMEIs distintos repetidos → 2 entries', () => {
+    const rows = [
+      { body: { imei: '111111111111111' } }, // 0
+      { body: { imei: '222222222222222' } }, // 1
+      { body: { imei: '111111111111111' } }, // 2 — dup A
+      { body: { imei: '333333333333333' } }, // 3
+      { body: { imei: '222222222222222' } }, // 4 — dup B
+      { body: { imei: '111111111111111' } }, // 5 — dup A (3 ya)
+    ];
+    const dups = findDuplicateImeis(rows);
+    expect(dups).toHaveLength(2);
+    const byImei = Object.fromEntries(dups.map(d => [d.imei, d.rowIndices]));
+    expect(byImei['111111111111111']).toEqual([0, 2, 5]);
+    expect(byImei['222222222222222']).toEqual([1, 4]);
+  });
+
+  it('trim de IMEI tolera espacios accidentales (Excel)', () => {
+    const rows = [
+      { body: { imei: '  111111111111111  ' } }, // 0
+      { body: { imei: '111111111111111' } },     // 1 — dup post-trim
+    ];
+    const dups = findDuplicateImeis(rows);
+    expect(dups).toHaveLength(1);
+    expect(dups[0].imei).toBe('111111111111111');
+    expect(dups[0].rowIndices).toEqual([0, 1]);
+  });
+
+  it('acepta shape plano ({ imei }) además del shape con .body', () => {
+    const rows = [
+      { imei: '111111111111111' },
+      { imei: '111111111111111' },
+    ];
+    const dups = findDuplicateImeis(rows);
+    expect(dups).toHaveLength(1);
+    expect(dups[0].rowIndices).toEqual([0, 1]);
+  });
+
+  it('devuelve [] si rows no es array', () => {
+    expect(findDuplicateImeis(null)).toEqual([]);
+    expect(findDuplicateImeis(undefined)).toEqual([]);
+    expect(findDuplicateImeis('foo')).toEqual([]);
+  });
+
+  it('devuelve [] para array vacío', () => {
+    expect(findDuplicateImeis([])).toEqual([]);
   });
 });
