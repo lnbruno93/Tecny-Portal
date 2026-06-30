@@ -43,6 +43,14 @@ beforeAll(async () => {
 
   // Marcar testadmin (id=1) como super-admin.
   await pool.query(`UPDATE users SET is_super_admin = true WHERE id = 1`);
+  // Auditoría 2026-06-30 S-25: super-admin requiere 2FA habilitada para
+  // pasar requireSuperAdmin middleware. Insertamos row en user_2fa con
+  // enabled_at set para que los tests pasen.
+  await pool.query(`
+    INSERT INTO user_2fa (user_id, secret_encrypted, recovery_codes, enabled_at)
+    VALUES (1, 'test-secret-enc', ARRAY['hash1','hash2'], NOW())
+    ON CONFLICT (user_id) DO UPDATE SET enabled_at = NOW()
+  `);
   // Invalidar cache para que el próximo getUserAuth lea el nuevo valor.
   await userAuthCache.invalidateUserAuth(1);
 
@@ -94,6 +102,8 @@ afterAll(async () => {
   await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id IN (1, 777)`);
   await pool.query(`DELETE FROM tenants WHERE id = 777`);
   await pool.query(`UPDATE users SET is_super_admin = false WHERE id = 1`);
+  // Auditoría 2026-06-30 S-25: limpiar 2FA setup del test.
+  await pool.query(`DELETE FROM user_2fa WHERE user_id = 1`);
   await userAuthCache.invalidateUserAuth(1);
   await teardownTestDb(pool);
 });

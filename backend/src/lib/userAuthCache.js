@@ -45,10 +45,22 @@ const logger = require('./logger');
 // requireSuperAdmin pueda validar sin pegar a DB en cada request. El JWT
 // también lleva el claim, pero validamos contra DB porque el bit puede
 // haberse revocado después de emitir el token (script setSuperAdmin --revoke).
+//
+// Auditoría 2026-06-30 S-25: agregamos twofa_enabled (LEFT JOIN a user_2fa)
+// para el middleware requireSuperAdmin — exigimos que el super-admin tenga
+// 2FA activa antes de operar la app admin. Sin esto, un super-admin con
+// password leakeada controla todos los tenants. Si user_2fa NO tiene row o
+// enabled_at IS NULL → twofa_enabled = false. El cache se invalida cuando
+// el user activa/desactiva 2FA (ver routes/twoFa.js endpoints).
 const USER_AUTH_SQL = `
-  SELECT password_changed_at, email_verified_at, is_super_admin
-    FROM users
-   WHERE id = $1 AND deleted_at IS NULL`;
+  SELECT
+    u.password_changed_at,
+    u.email_verified_at,
+    u.is_super_admin,
+    (f.enabled_at IS NOT NULL) AS twofa_enabled
+  FROM users u
+  LEFT JOIN user_2fa f ON f.user_id = u.id
+  WHERE u.id = $1 AND u.deleted_at IS NULL`;
 
 const cache = createTenantScopedCache({
   ...USER_AUTH,
@@ -74,6 +86,8 @@ const cache = createTenantScopedCache({
         : null,
       // boolean — JSON round-trip safe sin transformación.
       is_super_admin: !!rows[0].is_super_admin,
+      // Auditoría 2026-06-30 S-25: 2FA enabled status para requireSuperAdmin.
+      twofa_enabled: !!rows[0].twofa_enabled,
     };
   },
 });

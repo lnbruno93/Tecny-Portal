@@ -163,11 +163,32 @@ function _welcomeText({ name }) {
 }
 
 // Mini-escape HTML — evitamos inyectar nombres / URLs sin escape en el HTML.
-// No es full-XSS safe (no escapamos comillas), pero el HTML se renderiza en
-// clients de email, no en browser, así que el riesgo es bajo. Y los inputs
-// vienen del backend (nombre del user, verifyUrl construido por nosotros).
+//
+// Auditoría 2026-06-30 S-02: extendido a `"` y `'`. El output de _esc se
+// interpola dentro de atributos HTML (href="...", title="..."): si el input
+// contenía `"`, salía del atributo y permitía inyectar atributos extra
+// (onclick=, onerror=, etc.). Ahora escapamos comillas también.
+//
+// Defense-in-depth (no explotable hoy):
+//   · Los inputs vienen del backend (nombre del tenant que invita, verifyUrl
+//     construido por nosotros, etc.). Hoy NO hay un path donde un atacante
+//     pueda meter `"` en un campo que termine en estos templates.
+//   · El HTML se renderiza en clients de email, no en browser. Gmail / Outlook
+//     bloquean event handlers y JS, así que aún con un break-out de atributo
+//     el daño potencial es phishing visual, no XSS clásico.
+//   · Pero un nombre de tenant `Foo" style="display:none` sí podría romper
+//     el rendering visual del email. Y mañana, si agregamos un campo libre
+//     del operador (ej. footer custom del comprobante venta — ya existe),
+//     queremos que _esc lo cubra sin pensarlo.
+//
+// null/undefined → '' (era `String(null)` = 'null' antes, comportamiento
+// dudoso). Si el caller manda null, asumimos que quiere string vacía.
 function _esc(s) {
-  return String(s).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+  if (s == null) return '';
+  return String(s).replace(/[<>&"']/g, c => ({
+    '<': '&lt;', '>': '&gt;', '&': '&amp;',
+    '"': '&quot;', "'": '&#39;'
+  }[c]));
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -1048,4 +1069,7 @@ module.exports = {
   _passwordResetHtml,
   _paidUntilWarningHtml,
   _comprobanteVentaHtml,
+  // Auditoría 2026-06-30 S-02: exportado para unit test del escape de
+  // comillas. No usar fuera de tests.
+  _esc,
 };
