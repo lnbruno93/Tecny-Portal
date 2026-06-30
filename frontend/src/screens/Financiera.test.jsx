@@ -9,9 +9,22 @@ import userEvent from '@testing-library/user-event';
 //   U5 — desactivar toggle limpia TC + USD del state
 //   U6 — chip indicador descalce USD×TC ≠ ARS
 //
+// 2026-06-29 Multi-país F5: agregamos test del filtro de cajas país-aware
+// (antes el filtro era `c.moneda === 'ARS'` hardcodeado — para tenants UY no
+// aparecía ninguna caja válida). Mockeamos useAuth para inyectar tenant.pais.
+//
 // Estos tests son la red de seguridad C2 que falta — Financiera.jsx no
 // tenía coverage Vitest y los fixes UX se podrían romper sin que nos
 // enteremos en un refactor.
+
+// 2026-06-29 F5: mock de useAuth con valor mutable (mismo patrón que
+// Inventario.test.jsx). Por default user=null → useMonedasTenant cae al
+// fallback AR (preserva tests pre-F5 que no setean tenant).
+const mockUser = { value: null };
+vi.mock('../contexts/AuthContext', async (orig) => {
+  const actual = await orig();
+  return { ...actual, useAuth: () => ({ user: mockUser.value, loading: false }) };
+});
 
 // Mock todo lo que el screen importa de api.
 vi.mock('../lib/api', () => ({
@@ -44,6 +57,9 @@ vi.mock('../lib/api', () => ({
     listCajas: vi.fn().mockResolvedValue([
       { id: 1, nombre: 'Caja Pesos',   moneda: 'ARS', es_tarjeta: false, es_financiera: false },
       { id: 2, nombre: 'Caja Dólares', moneda: 'USD', es_tarjeta: false, es_financiera: false },
+      // F5: agregamos una caja UYU para que el test UY pueda confirmar que
+      // se filtra correctamente.
+      { id: 3, nombre: 'Caja Pesos UY', moneda: 'UYU', es_tarjeta: false, es_financiera: false },
     ]),
   },
 }));
@@ -71,6 +87,8 @@ describe('Financiera — form Pagos (TANDAs 1-3 sprint USD)', () => {
     // tests, el siguiente arranca con el estado del anterior y el click lo
     // DESACTIVA en vez de activarlo. Mismo patrón que en Tarjetas.test.jsx.
     localStorage.clear();
+    // F5: reset user mock por test. Los tests pre-F5 esperan default AR.
+    mockUser.value = null;
   });
 
   it('U2: el form está envuelto en <form> — submit semántico (Enter funciona)', async () => {
@@ -156,5 +174,47 @@ describe('Financiera — form Pagos (TANDAs 1-3 sprint USD)', () => {
       const text = screen.queryByText(/50\.?000|50,000/);
       expect(text).toBeTruthy();
     });
+  });
+
+  // ─── Multi-país F5 — filtro de cajas por moneda local del tenant ─────────
+  // Bug pre-F5: el select de caja del form de pagos filtraba con
+  // `c.moneda === 'ARS'` hardcodeado — para tenants UY no aparecía ninguna
+  // caja válida. Fix: filtra por monedaLocal del tenant (ARS para AR, UYU para UY).
+
+  it('F5: tenant UY filtra cajas UYU (no muestra ARS) en el select del form', async () => {
+    mockUser.value = { id: 1, caps: [], tenant: { pais: 'UY' } };
+    renderF();
+    const user = userEvent.setup();
+    await gotoPagos(user);
+    // El select "Entra a la caja (UYU)" lista las cajas filtradas. Debe
+    // aparecer "Caja Pesos UY" (UYU) y NO "Caja Pesos" (ARS).
+    await waitFor(() => {
+      const opciones = screen.getAllByRole('option');
+      const labels = opciones.map(o => o.textContent || '');
+      // La caja UYU debe estar.
+      expect(labels.some(l => /Caja Pesos UY/.test(l))).toBe(true);
+      // La caja ARS NO debe aparecer entre las opciones (el filtro la excluye
+      // porque monedaLocal=UYU). NB: puede aparecer como <option> en algún
+      // otro select del screen, pero verificamos puntualmente que NO está
+      // entre las opciones cuya etiqueta termina en "· ARS".
+      expect(labels.some(l => /Caja Pesos · ARS$/.test(l))).toBe(false);
+    });
+    // El label del field también debe decir "(UYU)", no "(ARS)".
+    expect(screen.getByText(/Entra a la caja \(UYU\)/i)).toBeInTheDocument();
+  });
+
+  it('F5: tenant AR sigue filtrando cajas ARS (no degrada modo AR)', async () => {
+    mockUser.value = { id: 1, caps: [], tenant: { pais: 'AR' } };
+    renderF();
+    const user = userEvent.setup();
+    await gotoPagos(user);
+    await waitFor(() => {
+      const opciones = screen.getAllByRole('option');
+      const labels = opciones.map(o => o.textContent || '');
+      // Tenant AR → caja ARS visible, caja UYU NO debe aparecer.
+      expect(labels.some(l => /Caja Pesos · ARS$/.test(l))).toBe(true);
+      expect(labels.some(l => /Caja Pesos UY · UYU$/.test(l))).toBe(false);
+    });
+    expect(screen.getByText(/Entra a la caja \(ARS\)/i)).toBeInTheDocument();
   });
 });

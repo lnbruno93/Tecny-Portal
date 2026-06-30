@@ -20,6 +20,9 @@ import { generarComprobantesResumenXlsx } from '../lib/generarComprobantesResume
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
+// 2026-06-29 Multi-país F5: el filtro de cajas locales del form de pago
+// no puede asumir ARS — para tenants UY debe ser UYU. Ver bug flagueado en F3.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
@@ -44,6 +47,13 @@ function Status({ tone = 'default', children }) {
 export default function Financiera() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  // 2026-06-29 Multi-país F5: monedaLocal del tenant (ARS para AR, UYU para UY).
+  // Reemplaza `'ARS'` hardcodeado en el filtro de cajas del form de pagos —
+  // tenants UY operan contra cajas UYU, no ARS. Ver bug flagueado en F3.
+  // El resto de los strings "ARS" en este file son del flow AR-only (USD×TC=ARS
+  // de financiera tradicional) y se mantienen — Financiera es módulo AR-céntrico
+  // por ahora; cuando UY lo necesite tendrá su propio sprint de adaptación.
+  const { monedaLocal } = useMonedasTenant();
   const [tab, setTab] = useState('dashboard');
   const [pct, setPct] = useState(3);
   const [vendedores, setVendedores] = useState([]);
@@ -1435,9 +1445,12 @@ export default function Financiera() {
                   </div>
                 )}
 
-                {/* Caja destino: filtrada por moneda según el toggle. */}
+                {/* Caja destino: filtrada por moneda según el toggle.
+                    F5: el branch "no convertir USD" filtra por moneda LOCAL del
+                    tenant (ARS para AR, UYU para UY). Antes era ARS hardcoded
+                    — para tenants UY no aparecía ninguna caja válida. */}
                 <div className="field" style={{ marginBottom: 14 }}>
-                  <div className="field-label">Entra a la caja {pagoForm.convertir_usd ? '(USD)' : '(ARS)'}</div>
+                  <div className="field-label">Entra a la caja {pagoForm.convertir_usd ? '(USD)' : `(${monedaLocal})`}</div>
                   <select className="input"
                     value={pagoForm.caja_id}
                     onChange={e => setPagoForm(f => ({ ...f, caja_id: e.target.value }))}>
@@ -1446,7 +1459,7 @@ export default function Financiera() {
                       .filter(c => !c.es_tarjeta)
                       .filter(c => pagoForm.convertir_usd
                         ? (c.moneda === 'USD' || c.moneda === 'USDT')
-                        : c.moneda === 'ARS')
+                        : c.moneda === monedaLocal)
                       .map(c => (
                         <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>
                       ))}
