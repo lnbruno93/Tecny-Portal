@@ -321,7 +321,7 @@ describe('GET /api/config/system-limits (#443)', () => {
 });
 
 describe('GET /api/config/last-tc (#445)', () => {
-  it('devuelve fallback 1400 cuando no hay ventas con TC en últimos 90d', async () => {
+  it('devuelve fallback 1400 cuando no hay ventas con TC en últimos 90d (tenant AR)', async () => {
     // setup: borrar cualquier venta con TC en últimos 90d del tenant 1
     // (las otras suites pueden crear ventas — limpiamos para test determinístico)
     await pool.query(
@@ -333,8 +333,11 @@ describe('GET /api/config/last-tc (#445)', () => {
       .get('/api/config/last-tc')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(res.body.tc).toBe(1400);
+    // 2026-06-29 Multi-país F5: fallback ahora viene de tc_defaults_pais
+    // (seed AR=1400). Para tenant 1 (AR) sigue siendo 1400.
+    expect(Number(res.body.tc)).toBe(1400);
     expect(res.body.source).toBe('fallback');
+    expect(res.body.pais).toBe('AR');
   });
 
   it('devuelve el TC de la venta más reciente cuando existe', async () => {
@@ -358,9 +361,79 @@ describe('GET /api/config/last-tc (#445)', () => {
     expect(res.status).toBe(200);
     expect(Number(res.body.tc)).toBe(1750);
     expect(res.body.source).toBe('venta');
+    // F5: el response siempre incluye `pais` (AR para tenant 1).
+    expect(res.body.pais).toBe('AR');
 
     // Cleanup
     await pool.query(`DELETE FROM ventas WHERE tc_venta = 1750 AND tenant_id = 1`);
+  });
+
+  // 2026-06-29 Multi-país F5: tenant UY → fallback usa tc_defaults_pais (UY=40),
+  // no el 1400 hardcoded de AR. Insertamos un tenant UY temporal y firmamos
+  // JWT manual (mismo pattern que multipais-f2.test.js).
+  it('F5: tenant UY → fallback usa tc_defaults_pais (40 UYU/USD), no 1400', async () => {
+    const jwt = require('jsonwebtoken');
+    const bcrypt = require('bcrypt');
+    const tenantStatus = require('../src/lib/tenantStatus');
+    const TENANT_UY_LASTTC = 9821;
+    const uyUsername = 'uylasttc_owner';
+
+    // Setup tenant UY + user owner.
+    await pool.query(
+      `INSERT INTO tenants (id, nombre, slug, plan, pais) VALUES ($1, $2, $3, 'starter', 'UY')
+         ON CONFLICT (id) DO UPDATE SET pais = 'UY'`,
+      [TENANT_UY_LASTTC, 'F5 UY LastTc', 'f5-uy-lasttc']
+    );
+    await pool.query(
+      `SELECT setval('tenants_id_seq', GREATEST((SELECT MAX(id) FROM tenants), 1))`
+    );
+    await tenantStatus.invalidateTenantStatus(TENANT_UY_LASTTC);
+
+    const hash = await bcrypt.hash('uylasttc123', 10);
+    // Limpiar runs previos (puede quedar suite anterior). users tiene UNIQUE
+    // sobre LOWER(email) — no podemos depender de ON CONFLICT directo por
+    // username (no necesariamente único en este schema).
+    await pool.query(`DELETE FROM users WHERE username = $1`, [uyUsername]);
+    const { rows: uRows } = await pool.query(
+      `INSERT INTO users (nombre, username, email, password_hash, role)
+         VALUES ('UY LastTc Owner', $1, $2, $3, 'admin')
+       RETURNING id`,
+      [uyUsername, `${uyUsername}@test.local`, hash]
+    );
+    const uyUserId = uRows[0].id;
+    await pool.query(
+      `INSERT INTO tenant_users (tenant_id, user_id, rol) VALUES ($1, $2, 'owner')
+         ON CONFLICT (tenant_id, user_id) DO UPDATE SET rol = 'owner'`,
+      [TENANT_UY_LASTTC, uyUserId]
+    );
+
+    const uyTok = jwt.sign(
+      {
+        id: uyUserId, username: uyUsername, email: `${uyUsername}@test.local`,
+        role: 'admin', tenant_id: TENANT_UY_LASTTC, tenant_rol: 'owner',
+        iat_ms: Date.now(),
+      },
+      process.env.JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' }
+    );
+
+    try {
+      const res = await request(app)
+        .get('/api/config/last-tc')
+        .set('Authorization', `Bearer ${uyTok}`);
+      expect(res.status).toBe(200);
+      // Sin ventas con TC en el tenant UY nuevo → fallback. Y el fallback
+      // debe ser 40 (UYU/USD seed), NO 1400.
+      expect(res.body.source).toBe('fallback');
+      expect(res.body.pais).toBe('UY');
+      expect(Number(res.body.tc)).toBe(40);
+    } finally {
+      // Cleanup.
+      await pool.query(`DELETE FROM tenant_users WHERE tenant_id = $1`, [TENANT_UY_LASTTC]);
+      await pool.query(`DELETE FROM users WHERE id = $1`, [uyUserId]);
+      await pool.query(`DELETE FROM tenants WHERE id = $1`, [TENANT_UY_LASTTC]);
+      await tenantStatus.invalidateTenantStatus(TENANT_UY_LASTTC);
+    }
   });
 
   it('401 sin JWT', async () => {
