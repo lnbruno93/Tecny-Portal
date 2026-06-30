@@ -34,4 +34,15 @@ describe('format', () => {
     // Moneda desconocida → cae al símbolo USD por compat con wrappers locales viejos.
     expect(fmtMoney(50, 'EUR')).toBe('u$s50');
   });
+
+  // 2026-06-29 Multi-país F3: UYU para tenants UY. Convención visual: "$U"
+  // (sin espacio) para diferenciar del "$" argentino sin gastar ancho extra
+  // en grillas densas. Mismo separador miles que ARS (locale es-AR reusado).
+  it('fmtMoney: UYU usa símbolo $U y mismo separador que ARS', () => {
+    expect(fmtMoney(1234.56, 'UYU')).toBe('$U1.235');  // fmt redondea a entero
+    expect(fmtMoney(45000, 'UYU')).toBe('$U45.000');
+    expect(fmtMoney(0, 'UYU')).toBe('$U0');
+    expect(fmtMoney(null, 'UYU')).toBe('$U0');
+    expect(fmtMoney(-500, 'UYU')).toBe('$U500'); // magnitud, sin signo
+  });
 });

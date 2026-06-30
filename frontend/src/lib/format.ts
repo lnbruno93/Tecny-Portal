@@ -3,10 +3,12 @@
 
 // Tipo compartido para las monedas que maneja el portal. Lo exportamos desde
 // acá porque `fmtMoney` lo necesita y money.ts lo reusa (DRY).
-// El portal soporta los 3 oficialmente; `fmtMoney` cae a "u$s" para cualquier
-// otro string por compat con wrappers locales viejos, así que el parámetro
-// acepta `string` además del union para no romper call sites .js no migrados.
-export type Moneda = 'ARS' | 'USD' | 'USDT';
+// El portal soporta los 4 oficialmente (ARS para AR, UYU para UY, USD/USDT
+// transversales); `fmtMoney` cae a "u$s" para cualquier otro string por compat
+// con wrappers locales viejos, así que el parámetro acepta `string` además
+// del union para no romper call sites .js no migrados.
+// 2026-06-29 Multi-país F3: UYU agregado para tenants UY.
+export type Moneda = 'ARS' | 'USD' | 'USDT' | 'UYU';
 
 // Cualquier cosa que pueda entrar como "monto" desde un .jsx legacy: número
 // de la API, string del input, null/undefined cuando todavía no se cargó.
@@ -45,6 +47,7 @@ export function fmtFecha(iso: string | Date | null | undefined): string {
 // vivían duplicados en Inventario.jsx y Desglose360.jsx (U-05 auditoría
 // 2026-06-10). Convención visual del portal:
 //   · ARS  → "$"
+//   · UYU  → "$U"   (convención UY — separa visualmente del $ argentino)
 //   · USD  → "u$s"
 //   · USDT → "USDT "  (con espacio para que no quede pegado al número)
 // Cualquier moneda distinta cae al símbolo USD ("u$s") por compatibilidad
@@ -53,9 +56,13 @@ export function fmtFecha(iso: string | Date | null | undefined): string {
 // aparte (fmtSigned o clases CSS .pos/.neg) — misma política que `fmt`.
 // Aceptamos `string` además de `Moneda` porque los call sites legacy (.jsx)
 // pasan strings sin estrechar el tipo. El default sigue siendo "u$s".
+// 2026-06-29 Multi-país F3: UYU agregado. NO usamos toLocaleString('es-UY')
+// porque visualmente coincide con es-AR (separador miles ".", decimal ",")
+// y mantener un solo locale evita drift de formato entre pantallas.
 export function fmtMoney(n: MontoInput, moneda?: Moneda | string | null): string {
   let prefix: string;
   if (moneda === 'ARS') prefix = '$';
+  else if (moneda === 'UYU') prefix = '$U';
   else if (moneda === 'USDT') prefix = 'USDT ';
   else prefix = 'u$s'; // USD y default
   return prefix + fmt(n);
