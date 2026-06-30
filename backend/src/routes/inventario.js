@@ -247,6 +247,49 @@ router.get('/productos/metricas', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// 2026-06-30 #imei-dup: chequeo previo de IMEI duplicado para la UX de alta.
+// La decisión durable (migration 20260524000001_inventario.js:13-15) es no
+// poner UNIQUE en DB porque un IMEI puede reingresar via canje cuando un
+// equipo vendido vuelve. Pero EN EL MOMENTO DE LA CARGA queremos avisar al
+// operador si ese IMEI ya está cargado en otro producto ACTIVO — la mayoría
+// de los duplicados son tipeos o re-cargas accidentales.
+//
+// Filtra por estado='disponible' + deleted_at IS NULL deliberadamente:
+//   - vendido        → su IMEI puede reingresar via canje
+//   - en_tecnico     → físicamente en stock, pero ya cargado → bloqueamos
+//   - reservado      → ya cargado → bloqueamos
+//   - deleted_at <>  → soft-deleted, su IMEI puede reusarse
+//
+// Lucas pidió bloquear si está en otro "activo" — interpretamos activo como
+// disponible (que es donde tienen sentido los duplicados problemáticos). Si
+// en el futuro hay que ampliar a en_tecnico/reservado, es 1 línea.
+//
+// 200 en todos los casos (no es error de auth/validación): si el caller
+// recibe { exists: true } decide cómo presentarlo. Si el IMEI es vacío o
+// solo espacios → 400 (caller debería filtrar antes de llamar).
+router.get('/productos/check-imei', async (req, res, next) => {
+  try {
+    const imei = String(req.query.imei ?? '').trim();
+    if (!imei) return res.status(400).json({ error: 'IMEI requerido' });
+
+    const row = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, nombre, estado
+           FROM productos
+          WHERE imei = $1
+            AND deleted_at IS NULL
+            AND estado = 'disponible'
+          LIMIT 1`,
+        [imei]
+      );
+      return rows[0] || null;
+    });
+
+    if (!row) return res.json({ exists: false });
+    res.json({ exists: true, producto: { id: row.id, nombre: row.nombre, estado: row.estado } });
+  } catch (err) { next(err); }
+});
+
 // Proveedores únicos vistos en productos vivos. Insumo del combo de edición
 // inline (Inventario): no tenemos tabla de proveedores como FK, así que esto
 // es la mejor fuente de verdad para autocompletar. DISTINCT chico (≤cientos
