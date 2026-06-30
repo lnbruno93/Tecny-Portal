@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 // PR-X3 Red B2B: mockeamos useAuth para poder controlar si el user tiene cap
 // `cross_tenant.write` (gate del tab "Pendientes Red B2B").
@@ -56,15 +56,22 @@ function ActionTrigger() {
   return primaryAction ? <button onClick={primaryAction.onClick}>__abrir__</button> : null;
 }
 
-function renderInventario() {
+function renderInventario(initialEntries = ['/inventario']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <ToastProvider><ConfirmProvider><PageActionsProvider>
         <Inventario />
         <ActionTrigger />
+        <LocationProbe />
       </PageActionsProvider></ConfirmProvider></ToastProvider>
     </MemoryRouter>
   );
+}
+
+// 2026-06-30 F-08: probe de URL para tests de persistencia de filtros.
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="location">{loc.pathname}{loc.search}</div>;
 }
 
 describe('Pantalla Inventario', () => {
@@ -177,5 +184,101 @@ describe('Pantalla Inventario', () => {
     const monedas = opts.map(o => o.value).filter(v => v === 'UYU' || v === 'ARS');
     expect(monedas).toContain('ARS');
     expect(monedas).not.toContain('UYU');
+  });
+
+  // ─── Auditoría 2026-06-30 F-08: filtros persisten en URL ─────────────────
+  describe('F-08 — filtros persisten en URL', () => {
+    it('cambiar tab clase ("Celulares") agrega ?clase=celular', async () => {
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      fireEvent.click(screen.getByText('Celulares'));
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]clase=celular/);
+      });
+    });
+
+    it('tipear en buscador agrega ?q=...', async () => {
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const input = screen.getByPlaceholderText(/Buscar nombre, IMEI/i);
+      fireEvent.change(input, { target: { value: 'samsung' } });
+      await waitFor(() => {
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]q=samsung/);
+      });
+    });
+
+    it('default (clase=todos + vista=no_vendidos + sin q) NO escribe params', async () => {
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const text = screen.getByTestId('location').textContent;
+      expect(text).not.toMatch(/[?&]clase=/);
+      expect(text).not.toMatch(/[?&]vista=/);
+      expect(text).not.toMatch(/[?&]q=/);
+    });
+
+    it('re-mount con ?clase=celular activa el tab correcto', async () => {
+      renderInventario(['/inventario?clase=celular']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      // El tab "Celulares" debe estar activo (className 'on').
+      const tabCel = screen.getByText('Celulares');
+      expect(tabCel.className).toMatch(/on/);
+      // El backend recibió clase=celular en los params.
+      expect(inventarioApi.productos).toHaveBeenCalledWith(
+        expect.objectContaining({ clase: 'celular' })
+      );
+    });
+  });
+
+  // ─── Auditoría 2026-06-30 F-26: catOptions/provOptions no se reconstruyen
+  // por fila ─────────────────────────────────────────────────────────────
+  // Antes el .map(p => { const catOptions = categorias.map(...) }) ejecutaba
+  // categorias.map() N veces por render (1 por producto). Con useMemo se
+  // ejecuta 1 vez por cambio real de categorias. Test indirecto: render con
+  // 50 productos + spy en Array.prototype.map → contar invocaciones sobre
+  // el array de categorias específico.
+  describe('F-26 — catOptions/provOptions memoizados', () => {
+    it('grilla con 50 productos renderea sin recomputar options por fila', async () => {
+      // Setear 2 categorias y 50 productos.
+      const cats = [{ id: 1, nombre: 'iPhone' }, { id: 2, nombre: 'Samsung' }];
+      inventarioApi.categorias.mockResolvedValueOnce(cats);
+      const productos50 = Array.from({ length: 50 }, (_, i) => ({
+        id: i + 1, nombre: `Prod ${i + 1}`, clase: 'celular', estado: 'disponible',
+        costo: 0, precio_venta: 0, costo_moneda: 'USD', precio_moneda: 'USD',
+        cantidad: 1, gb: null, color: null, bateria: null, imei: null,
+        tipo_carga: 'unitario', categoria_id: 1, deposito_id: null,
+        proveedor: null, observaciones: null, condicion: 'nuevo', oculto: false,
+        categoria_nombre: 'iPhone', deposito_nombre: null,
+      }));
+      inventarioApi.productos.mockResolvedValueOnce({
+        data: productos50,
+        pagination: { page: 1, pages: 1, total: 50 },
+      });
+
+      // Spy en .map del array de categorias específico — registramos cuántas
+      // veces se llama después de que el provider montó. Ejecutado vía spy
+      // sobre `Array.prototype.map` cabe — pero filtramos al subject `cats`
+      // para evitar contar map() de OTROS arrays.
+      let mapCalls = 0;
+      const origMap = Array.prototype.map;
+      // eslint-disable-next-line no-extend-native
+      Array.prototype.map = function patchedMap(...args) {
+        if (this === cats) mapCalls++;
+        return origMap.apply(this, args);
+      };
+
+      try {
+        renderInventario();
+        // Esperar hasta que la grilla tenga las 50 filas renderizadas.
+        await waitFor(() => {
+          expect(screen.getByText('Prod 50')).toBeInTheDocument();
+        });
+        // Antes del fix F-26: 50+ llamadas (1 por fila). Con useMemo: típicamente
+        // 1–4 (mount + algunos re-renders del provider). Margen de seguridad: < 10.
+        expect(mapCalls).toBeLessThan(10);
+      } finally {
+        // eslint-disable-next-line no-extend-native
+        Array.prototype.map = origMap;
+      }
+    });
   });
 });

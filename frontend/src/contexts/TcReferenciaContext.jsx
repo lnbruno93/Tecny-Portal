@@ -12,7 +12,7 @@
 // El TC se compara solo "por debajo" según la política inicial (#1).
 // Si en el futuro se quiere alertar también por arriba, se agrega un flag.
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { alertas as alertasApi } from '../lib/api';
 import { useAuth } from './AuthContext';
 
@@ -85,8 +85,16 @@ export function TcReferenciaProvider({ children }) {
     [tcRef]
   );
 
+  // Auditoría 2026-06-30 F-24: memoizar value. Sin esto, cada render del
+  // provider crea un objeto nuevo y los consumers de useTcReferencia se
+  // re-renderean aunque tcRef no haya cambiado.
+  const value = useMemo(
+    () => ({ tcRef, verificarTc, reload: load }),
+    [tcRef, verificarTc, load]
+  );
+
   return (
-    <TcReferenciaContext.Provider value={{ tcRef, verificarTc, reload: load }}>
+    <TcReferenciaContext.Provider value={value}>
       {children}
     </TcReferenciaContext.Provider>
   );

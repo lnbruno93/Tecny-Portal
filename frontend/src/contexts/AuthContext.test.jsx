@@ -239,4 +239,26 @@ describe('AuthContext', () => {
       expect(result.current.user).toBe(null);
     });
   });
+
+  // ── F-21 memo del value ────────────────────────────────────────────
+  // Auditoría 2026-06-30: el value del provider debe ser referencialmente
+  // estable cuando los inputs no cambian. Sin useMemo, cada render del
+  // provider crea un objeto nuevo y todos los consumers re-renderean.
+  describe('F-21 — value memoizado', () => {
+    it('el value es referencialmente estable entre re-renders sin cambios', async () => {
+      authApi.login.mockResolvedValueOnce({
+        token: 'tok-mem',
+        user: { id: 99, username: 'memo' },
+      });
+      const { result, rerender } = renderHook(() => useAuth(), { wrapper: wrap });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        await result.current.login('memo', 'pwd');
+      });
+      const beforeValue = result.current;
+      // Re-render del provider sin cambios → mismo objeto.
+      rerender();
+      expect(result.current).toBe(beforeValue);
+    });
+  });
 });
