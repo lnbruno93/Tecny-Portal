@@ -24,10 +24,13 @@
 import { useRef } from 'react';
 import useModal from '../../lib/useModal';
 
-export default function ExitoModal({ state, onClose, onDescargar, pdfLoading }) {
+export default function ExitoModal({ state, onClose, onDescargar, pdfLoading, onReenviarEmail }) {
   const overlayRef = useRef(null);
   useModal({ open: state.open, onClose, overlayRef });
   if (!state.open) return null;
+  // #475 — mostrar entry-point del reenvío por email solo si la venta tiene
+  // email cargado (cliente_email viene del payload o del contacto vinculado).
+  const ventaEmail = state.venta?.cliente_email || '';
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="exito-modal-title" style={{ zIndex: 600 }}
          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -49,8 +52,17 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading }) 
           <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: 0 }}>
             Venta guardada exitosamente.
           </p>
+          {/* #475 — entry-point reenvío comprobante por mail. Solo aparece si
+              hay email del cliente cargado. Si el operador ya pidió enviar el
+              comprobante (checkbox del modal de venta), el backend ya lo
+              despachó via setImmediate; el botón acá es para reenviar. */}
+          {ventaEmail && onReenviarEmail && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '14px 0 0' }}>
+              Comprobante por mail a <strong>{ventaEmail}</strong>
+            </p>
+          )}
         </div>
-        <div className="modal-ft" style={{ justifyContent: 'center', gap: 12 }}>
+        <div className="modal-ft" style={{ justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={onClose}
                   autoFocus style={{ minWidth: 110, background: 'var(--accent)' }}>OK</button>
           <button className="btn"
@@ -59,6 +71,13 @@ export default function ExitoModal({ state, onClose, onDescargar, pdfLoading }) 
                   onClick={() => onDescargar(state.venta)}>
             {pdfLoading ? 'Generando…' : 'Descargar comprobante'}
           </button>
+          {ventaEmail && onReenviarEmail && (
+            <button className="btn btn-ghost"
+                    style={{ minWidth: 180 }}
+                    onClick={() => onReenviarEmail(state.venta)}>
+              Reenviar por mail
+            </button>
+          )}
         </div>
       </div>
     </div>
