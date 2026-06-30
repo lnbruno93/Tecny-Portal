@@ -296,6 +296,10 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
 
 // ── Sub-modal: recurrentes ──
 function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, toast, confirm }) {
+  // Multi-país F3 fix: el hook se llamaba en el padre pero el sub-component
+  // RecurrentesModal usa `monedas` en el dropdown línea 326 — había un
+  // ReferenceError silencioso (no-undef en lint). Llamar acá garantiza scope.
+  const { monedas } = useMonedasTenant();
   const EMPTY_R = { concepto: '', categoria_id: '', monto: '', moneda: 'USD', tc: '', metodo_pago_id: '', dia_del_mes: 1 };
   const [form, setForm] = useState(EMPTY_R);
   const overlayRef = useRef(null);
