@@ -16,9 +16,13 @@ const NAV = [
   {
     sec: 'Gestión',
     items: [
-      { id: 'resumen',  label: 'Resumen',  icon: 'Grid',     path: '/' },
-      { id: 'clientes', label: 'Clientes', icon: 'Building', path: '/clientes' },
-      { id: 'planes',   label: 'Planes',   icon: 'Tag',      path: '/planes' },
+      { id: 'resumen',     label: 'Resumen',     icon: 'Grid',     path: '/' },
+      { id: 'clientes',    label: 'Clientes',    icon: 'Building', path: '/clientes' },
+      { id: 'planes',      label: 'Planes',      icon: 'Tag',      path: '/planes' },
+      // Multi-país F4 (#470): editor de TC default por país. Vive en Gestión
+      // porque conceptualmente es configuración global del SaaS (igual que
+      // Planes). El ícono Dollar refleja la naturaleza monetaria.
+      { id: 'tc-defaults', label: 'TC defaults', icon: 'Dollar',   path: '/tc-defaults' },
     ],
   },
   // #450 (2026-06-26): se removió la sección "Operación" del sidebar.

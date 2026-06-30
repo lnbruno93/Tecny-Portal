@@ -4,6 +4,7 @@
 //   · /clientes               → Clientes, real (lista + filtros + búsqueda)
 //   · /clientes/:id           → Ficha, real (detalle + 2 tabs + 4 modals de mutations)
 //   · /planes                 → Planes, real (editor de precios #353)
+//   · /tc-defaults            → TcDefaults, real (editor de TC default por país, F4 #470)
 //   · /facturacion, /onboarding, /uso, /soporte
 //                             → placeholders ComingSoon (no implementadas todavía)
 
@@ -18,10 +19,11 @@ import { useAuth } from './contexts/AuthContext.jsx';
 // código de Ficha + 4 modals + ColChart + Planes — eso son ~40KB que
 // se descargan solo después de loguearse. Login queda en el initial
 // bundle por velocidad (es la pantalla pre-auth obvia).
-const Resumen  = lazy(() => import('./pages/Resumen.jsx'));
-const Clientes = lazy(() => import('./pages/Clientes.jsx'));
-const Ficha    = lazy(() => import('./pages/Ficha.jsx'));
-const Planes   = lazy(() => import('./pages/Planes.jsx'));
+const Resumen    = lazy(() => import('./pages/Resumen.jsx'));
+const Clientes   = lazy(() => import('./pages/Clientes.jsx'));
+const Ficha      = lazy(() => import('./pages/Ficha.jsx'));
+const Planes     = lazy(() => import('./pages/Planes.jsx'));
+const TcDefaults = lazy(() => import('./pages/TcDefaults.jsx'));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -127,6 +129,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Planes />
+          </ProtectedRoute>
+        }
+      />
+      {/* Multi-país F4 (#470): editor de TC default por país (AR ARS/USD, UY UYU/USD). */}
+      <Route
+        path="/tc-defaults"
+        element={
+          <ProtectedRoute>
+            <TcDefaults />
           </ProtectedRoute>
         }
       />
