@@ -753,3 +753,9 @@ module.exports = router;
 // Verificado: `router.setResendStore` queda disponible en app.js.
 module.exports.setResendStore = exports.setResendStore;
 module.exports.setVerifyStore = exports.setVerifyStore;
+
+// 2026-06-30 #473: exponemos getDefaultCajasPorPais para que superAdmin.js lo
+// reuse cuando un super-admin cambia el país de un tenant (crea las cajas del
+// país nuevo sin borrar las viejas). Single source of truth: la misma lista
+// que sembramos en signup público.
+module.exports.getDefaultCajasPorPais = getDefaultCajasPorPais;

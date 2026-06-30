@@ -187,6 +187,21 @@ const updateTcDefaultPaisSchema = z.object({
   reason: z.string().max(500).optional(),
 }).strict();
 
+// PATCH /api/super-admin/tenants/:id/pais — cambia el país del tenant (#473).
+//
+// Acción manual del super-admin: solo hay 2 países hoy (AR/UY), el enum
+// matchea exactamente el CHECK de tenants.pais. `.strict()` rechaza extras
+// — si el frontend manda `reason` u otro campo, queremos 400 explícito para
+// detectar mismatch contract (vs swallow silencioso).
+//
+// Reason NO incluido en este schema. El cambio de país es siempre por el
+// mismo motivo (corregir signup equivocado) y los side-effects son
+// determinísticos (cajas nuevas + alerta TC). Si en el futuro hace falta
+// trazabilidad textual, agregar acá y propagar al audit.
+const changePaisSchema = z.object({
+  pais: z.enum(['AR', 'UY']),
+}).strict();
+
 module.exports = {
   PLANES,
   patchTenantSchema,
@@ -198,4 +213,5 @@ module.exports = {
   createTenantSchema,
   patchPlanPriceSchema,
   updateTcDefaultPaisSchema,
+  changePaisSchema,
 };
