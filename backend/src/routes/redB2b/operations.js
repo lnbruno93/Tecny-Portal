@@ -123,12 +123,18 @@ async function audit(client, { tenantId, userId, action, payload }) {
   // el audit log antes que romper el flow core. SIN savepoint, un error
   // 23514 deja la tx en estado abortado y todo el flow se pierde — ese era
   // el bug original de F3 que descubrimos en tests.
+  //
+  // Auditoría 2026-06-30 D-22: pasamos `actor_type='tenant_user'` para
+  // distinguir audit operativo Red B2B del audit del panel super-admin.
+  // Si la migration 20260701000002 no corrió, el INSERT con la columna
+  // falla con 42703 (undefined_column) — el SAVEPOINT lo absorbe igual que
+  // 23514 (perdemos el audit, no rompemos el flow).
   await client.query('SAVEPOINT sp_audit');
   try {
     await client.query(
       `INSERT INTO tenant_admin_actions
-         (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
-       VALUES ($1, $2, $3, NULL, $4::jsonb, NULL)`,
+         (tenant_id, super_admin_user_id, actor_type, action, before_state, after_state, reason)
+       VALUES ($1, $2, 'tenant_user', $3, NULL, $4::jsonb, NULL)`,
       [tenantId, userId, action, JSON.stringify(payload || {})]
     );
     await client.query('RELEASE SAVEPOINT sp_audit');
@@ -136,6 +142,10 @@ async function audit(client, { tenantId, userId, action, payload }) {
     await client.query('ROLLBACK TO SAVEPOINT sp_audit').catch(() => {});
     if (err.code === '23514') {
       logger.warn({ action, err: err.message }, '[red-b2b] audit action no permitida — migration pendiente?');
+      return;
+    }
+    if (err.code === '42703') {
+      logger.warn({ action, err: err.message }, '[red-b2b] audit columna actor_type ausente — migration 20260701000002 pendiente?');
       return;
     }
     throw err;

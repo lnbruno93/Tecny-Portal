@@ -72,13 +72,20 @@ async function notify(client, tenantId, type, payload, opts = {}) {
   );
 }
 
+// Auditoría 2026-06-30 D-22: pasamos `actor_type='tenant_user'` explícito en
+// los INSERTs de Red B2B. La columna se agrega en migration
+// 20260701000002_tenant_admin_actions_actor_type. Si la migration no corrió
+// (DB vieja), el INSERT con la columna falla con 42703 (undefined_column) —
+// el SAVEPOINT lo atrapa exactamente igual que 23514 (CHECK violation): perdemos
+// el audit, no rompemos el flow. La detección dispara warn en logs para
+// alertar de migration pendiente.
 async function audit(client, { tenantId, userId, action, payload }) {
   await client.query('SAVEPOINT sp_audit');
   try {
     await client.query(
       `INSERT INTO tenant_admin_actions
-         (tenant_id, super_admin_user_id, action, before_state, after_state, reason)
-       VALUES ($1, $2, $3, NULL, $4::jsonb, NULL)`,
+         (tenant_id, super_admin_user_id, actor_type, action, before_state, after_state, reason)
+       VALUES ($1, $2, 'tenant_user', $3, NULL, $4::jsonb, NULL)`,
       [tenantId, userId, action, JSON.stringify(payload || {})]
     );
     await client.query('RELEASE SAVEPOINT sp_audit');
@@ -86,6 +93,10 @@ async function audit(client, { tenantId, userId, action, payload }) {
     await client.query('ROLLBACK TO SAVEPOINT sp_audit').catch(() => {});
     if (err.code === '23514') {
       logger.warn({ action, err: err.message }, '[red-b2b/F4] audit action no permitida — migration pendiente?');
+      return;
+    }
+    if (err.code === '42703') {
+      logger.warn({ action, err: err.message }, '[red-b2b/F4] audit columna actor_type ausente — migration 20260701000002 pendiente?');
       return;
     }
     throw err;
@@ -218,8 +229,22 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         // — ese es el ARS "esperado al momento de vender". La diferencia incluye
         // tanto el delta de TC como cualquier drift de redondeo dentro de la
         // tolerancia, pero el saldo CC del cliente queda exacto.
+        //
+        // Auditoría 2026-06-30 D-19: `tc_pago` puede venir undefined cuando
+        // moneda_pago === 'USD' (schema lo hizo opcional). Si el frontend lo
+        // manda explícito (caso legacy), respetamos el valor; si no, defaultamos
+        // a 1.0 — neutro para diferencia cambiaria (no aplica en USD) y
+        // satisface el NOT NULL de cross_tenant_pagos.tc_used (legacy F1 column
+        // que persistimos como snapshot del tc del pago).
+        //
+        // Compat: tests existentes pasan tc_pago: 1000 con moneda='USD' — la
+        // rama `body.tc_pago != null` preserva ese valor. La rama `=== null/undefined`
+        // usa 1.0. Para moneda ARS/UYU, el schema refine ya garantizó
+        // tc_pago > 0 (no entra al fallback).
         const tc_venta = Number(op.tc_used);
-        const tc_pago = Number(body.tc_pago);
+        const tc_pago = body.moneda_pago === 'USD'
+          ? (body.tc_pago != null ? Number(body.tc_pago) : 1)
+          : Number(body.tc_pago);
         const monto_pago_persist = body.moneda_pago === 'ARS'
           ? round2(Number(body.monto_pago))
           : round2(monto_usd);

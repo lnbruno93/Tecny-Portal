@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const crypto = require('crypto');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const requireCapability = require('../middleware/requireCapability');
@@ -8,6 +9,7 @@ const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
+const PostgresRateLimitStore = require('../lib/postgresRateLimitStore');
 // TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): pattern duplicado movido
 // a createTenantScopedCache.
 const { createTenantScopedCache } = require('../lib/cacheTtl');
@@ -33,6 +35,57 @@ const { enviarComprobanteVenta } = require('../lib/comprobanteEmail');
 const logger = require('../lib/logger');
 
 router.use(requireAuth);
+
+// Auditoría 2026-06-30 AS — anti-spam reenvío de comprobante por email.
+//
+// El endpoint POST /api/ventas/:id/enviar-comprobante manda un email con PDF
+// adjunto al destinatario. Sin limiter, un user (intencional o por bug en UI)
+// puede dispararlo en loop y:
+//   · Generar carga de bills en Resend (cada send tiene costo).
+//   · Inundar la bandeja del cliente final (reputational risk + posibles flags
+//     anti-spam que afecten la deliverability del tenant).
+//   · Llenar `venta_emails_enviados` con cientos de rows ruido.
+//
+// Política: 50 reenvíos / 24h / tenant. La key del limiter es el `tenantId`
+// (no user.id) porque el abuse vector es el TENANT — un operador con muchos
+// users malicioso podría rotar entre ellos para multiplicar el cupo si la key
+// fuera per-user. 50 es holgado para uso legítimo (un tenant retail típico
+// emite ~10-30 comprobantes/día; un día pico con muchas correcciones podría
+// llegar a 50 sin ser abuse).
+//
+// Store: PostgresRateLimitStore compartido entre réplicas. En tests se
+// skipea (NODE_ENV='test') para no requerir DB de tests.
+//
+// keyGenerator: `t${req.tenantId}` — string seguro, no leakea info, distinto
+// de los keys IP del global limiter (no hay colisión namespace porque el
+// store tiene prefix dedicado 'enviar-comprobante').
+const isTestEnv = process.env.NODE_ENV === 'test';
+let _enviarComprobanteStore = null;
+function getEnviarComprobanteStore() {
+  if (isTestEnv) return undefined;
+  if (!_enviarComprobanteStore) {
+    _enviarComprobanteStore = new PostgresRateLimitStore({
+      db, prefix: 'enviar-comprobante', logger,
+    });
+  }
+  return _enviarComprobanteStore;
+}
+
+const enviarComprobanteLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24h
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Se llegó al límite de 50 reenvíos de comprobantes en 24h para este tenant. Esperá antes de seguir reenviando.',
+  },
+  // Key per-tenant. Si no hay tenantId (no debería — requireAuth lo setea),
+  // fallback a IP normalizada para no romper el limiter.
+  keyGenerator: (req) =>
+    req.tenantId != null ? `t${req.tenantId}` : ipKeyGenerator(req),
+  skip: () => isTestEnv,
+  ...(getEnviarComprobanteStore() && { store: getEnviarComprobanteStore() }),
+});
 
 function genOrderId() {
   const yy = new Date().getFullYear().toString().slice(-2);
@@ -1014,7 +1067,7 @@ router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, nex
 //   No agregamos requireCapability adicional — si el user puede ver la venta
 //   (mismo módulo), puede reenviar el comprobante. Audit log en
 //   venta_emails_enviados queda con sent_by_user_id.
-router.post('/:id/enviar-comprobante', validate(enviarComprobanteSchema), async (req, res, next) => {
+router.post('/:id/enviar-comprobante', enviarComprobanteLimiter, validate(enviarComprobanteSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });

@@ -13,12 +13,23 @@ const { retieneStock } = require('./ventaCore');
 
 // Sincroniza los ingresos de caja de una venta. Idempotente: revierte previos
 // y re-postea según el estado actual. Saltea pagos CC, financiera y tarjeta.
+//
+// Auditoría 2026-06-30 D-21: agregado filtro `mp.deleted_at IS NULL` al JOIN.
+// Sin el filtro, una venta vieja cuyo método de pago fue soft-deleted
+// re-posteaba el caja_movimiento contra una caja borrada al re-syncar (por
+// ejemplo: editar la venta). El postCajaMovimiento no chequea el deleted_at
+// de la caja → terminaba inflando el saldo de una caja que el operador ya
+// "borró" del UI. Filtrar acá rompe la sincronización para esos pagos
+// huérfanos — preferimos esa señal explícita (saldo no coincide) a contabilidad
+// silenciosamente incorrecta sobre cajas archivadas. El operador debe re-asignar
+// el pago a una caja activa antes de editar la venta.
 async function syncVentaCaja(client, venta, userId) {
   await reverseCajaMovimientos(client, 'ventas', venta.id);
   if (!retieneStock(venta.estado)) return;
   const { rows: pagos } = await client.query(
     `SELECT vp.metodo_pago_id, vp.monto, vp.moneda, vp.tc, mp.es_financiera, mp.es_tarjeta
-       FROM venta_pagos vp JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
+       FROM venta_pagos vp
+       JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id AND mp.deleted_at IS NULL
       WHERE vp.venta_id = $1 AND vp.es_cuenta_corriente = false AND vp.metodo_pago_id IS NOT NULL`, [venta.id]
   );
   for (const p of pagos) {
