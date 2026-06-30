@@ -17,6 +17,8 @@ import ChatWidget from './ChatWidget';
 import RedB2BNotificationsBell from './RedB2BNotificationsBell';
 import { alertas as alertasApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
+// 2026-06-29 Multi-país F3: badge país en topbar (sec 5.3 design doc).
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
@@ -398,6 +400,13 @@ function Topbar({ onMenuClick, onSearchClick }) {
   const { primaryAction } = usePageActions();
   const segment = location.pathname.split('/').filter(Boolean)[0] || 'inicio';
   const label = SCREEN_LABELS[segment] || segment;
+  // 2026-06-29 Multi-país F3 sub-feature 3: bandera país del tenant en topbar.
+  // Opción A del design doc (sec 5.3) — sutil pero contextual. Si Lucas (o un
+  // admin) opera múltiples tenants AR/UY, ve de un vistazo en qué país está
+  // operando. Tooltip muestra "Operando en {país} · Moneda local: {moneda}".
+  // Para tenant AR (mayoritario) muestra igual la bandera — no esconder bandera
+  // AR sería raro si UY sí la muestra, y mantiene consistencia.
+  const { paisLabel, monedaLocal } = useMonedasTenant();
 
   return (
     <div className="topbar">
@@ -408,6 +417,13 @@ function Topbar({ onMenuClick, onSearchClick }) {
         <button className="icon-btn" title="Volver" onClick={() => navigate(-1)} style={{ fontSize: 18, lineHeight: 1 }}>←</button>
       )}
       <div className="crumbs">
+        <span
+          title={`Operando en ${paisLabel.nombre} · Moneda local: ${monedaLocal}`}
+          aria-label={`País de operación: ${paisLabel.nombre}, moneda local ${monedaLocal}`}
+          style={{ marginRight: 6, cursor: 'help', fontSize: 14, lineHeight: 1 }}
+        >
+          {paisLabel.flag}
+        </span>
         <span>Portal</span>
         <span className="sep">/</span>
         <span className="cur">{label}</span>
