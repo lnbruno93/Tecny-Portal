@@ -56,9 +56,13 @@ const {
   setPaidUntilSchema,
   patchPlanPriceSchema,
   updateTcDefaultPaisSchema,
+  changePaisSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
+// #473: reusamos las defaults de signup para que el set de cajas creado por
+// "cambiar país" matchee 1:1 al que recibe un tenant nuevo del país destino.
+const { getDefaultCajasPorPais } = require('./signup');
 const { computeHealthScore } = require('../lib/tenantHealth');
 const { sendPasswordResetEmail } = require('../lib/email');
 const { randomBytes } = require('crypto');
@@ -2036,6 +2040,286 @@ router.get('/metrics/recent-actions', async (req, res, next) => {
       return { recent_actions: rows };
     });
     res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /tenants/:id/pais — cambiar el país de un tenant existente (#473).
+//
+// Use case que motiva el endpoint: cliente UY que signupeó pre-F4 cuando el
+// selector de país aún no existía. Todos los tenants creados antes del
+// 2026-06-29 quedaron con pais='AR' por el backfill de la migration
+// 20260629100001. El owner UY necesita operar en UYU pero las cajas seedeadas
+// son ARS y la alerta TC está calibrada a ~1400 (vs ~40 que tiene sentido UY).
+//
+// Decisión durable (design doc multi-pais-uyu.md §9.1): `tenant.pais` es
+// inmutable desde la UI normal. Solo super-admin puede cambiarlo, y deja
+// audit trail. NO existe endpoint público (ni admin-of-tenant) — exclusivo
+// del back office.
+//
+// Side effects atomizados en una sola tx admin:
+//   1. UPDATE tenants.pais (con guard "mismo país" → 400 same_country).
+//   2. Crear cajas default del país NUEVO sin borrar las viejas. El operador
+//      del tenant puede limpiar las que no le sirvan después. Guard contra
+//      duplicados (si por algún motivo ya existe una caja con el mismo
+//      nombre+moneda, no insertamos esa fila, las demás sí).
+//   3. UPDATE alerta TC referencia al valor por defecto del país nuevo
+//      (UY=40, AR=1400). Solo si la fila existe (todos los tenants post-F2
+//      la tienen seedeada; tenants viejos pre-F2 no, en cuyo caso el UPDATE
+//      es no-op).
+//   4. invalidateTenantStatus(tenantId) — el helper de F2 cachea
+//      pais/suspended/paid_until en Redis. Sin invalidar, la próxima request
+//      del owner del tenant podría seguir viendo `pais=viejo` hasta TTL.
+//   5. Audit a tenant_admin_actions con action='tenant_pais_changed', payload
+//      con before/after del país. SAVEPOINT pattern (PR-C B4 #462) por si la
+//      migration del CHECK no corrió todavía — no abortamos toda la tx por
+//      un audit failure, solo warning.
+//
+// Guards previos al UPDATE:
+//   - requireSuperAdmin middleware (gate principal).
+//   - Zod `.strict()` rechaza body extra (no aceptamos `reason` por ahora).
+//   - 404 si tenant no existe o está soft-deleted.
+//   - 409 has_active_partnerships si el tenant tiene partnerships Red B2B
+//     activas. Cambiar el país de un tenant con vínculo vivo a otro podría
+//     generar operaciones cross-tenant en moneda no soportada por uno de
+//     los lados — preferimos forzar al operador a revocar partnerships
+//     antes (decisión manual + audit trail explícito en cada revoke).
+//   - 400 same_country si pais_nuevo === pais_actual (no-op = error explícito
+//     para que el frontend no muestre "todo OK" cuando no pasó nada).
+//
+// Response shape mantiene el patrón de otros endpoints destructivos: tenant_id
+// + before/after del campo + summary de side-effects. Útil para que el
+// frontend muestre "Se crearon N cajas + alerta TC actualizada" sin tener que
+// re-fetchear todo.
+// ──────────────────────────────────────────────────────────────────────────
+router.patch('/tenants/:id/pais', validate(changePaisSchema), async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const { pais: paisNuevo } = req.body;
+
+    const result = await db.adminQuery(async (client) => {
+      await client.query('BEGIN');
+      try {
+        // 1. Lock + read estado actual. FOR UPDATE serializa contra otros
+        //    PATCH/POST sobre el mismo tenant (e.g. concurrent suspend).
+        const beforeRow = await client.query(
+          `SELECT id, pais, suspended_at
+             FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL
+            FOR UPDATE`,
+          [id]
+        );
+        if (!beforeRow.rows[0]) {
+          await client.query('ROLLBACK');
+          return { notFound: true };
+        }
+        const before = beforeRow.rows[0];
+
+        // 2. Guard mismo país. Si paisNuevo === before.pais el operador
+        //    seguramente se equivocó — preferimos 400 explícito vs no-op
+        //    silencioso (que daría falsa señal de éxito).
+        if (before.pais === paisNuevo) {
+          await client.query('ROLLBACK');
+          return { sameCountry: true, pais: before.pais };
+        }
+
+        // 2b. Guard tenant suspendido. Operar sobre un tenant bloqueado no
+        //     debería ser posible — además de coherencia con otros endpoints
+        //     destructivos, evita que cambiemos país de un tenant que está
+        //     por ser eliminado y dejar audit confuso.
+        if (before.suspended_at) {
+          await client.query('ROLLBACK');
+          return { suspended: true };
+        }
+
+        // 3. Guard partnerships activas. Si el tenant participa en al menos
+        //    una partnership Red B2B `active`, abortamos. El operador debe
+        //    revocar primero — el cambio de país afecta la moneda local que
+        //    se usa en operaciones cross-tenant, mezclar AR↔UY en una
+        //    partnership activa rompería el modelo de pagos multi-divisa.
+        const partsRow = await client.query(
+          `SELECT 1 FROM tenant_partnerships
+            WHERE (tenant_a_id = $1 OR tenant_b_id = $1)
+              AND status = 'active'
+            LIMIT 1`,
+          [id]
+        );
+        if (partsRow.rowCount > 0) {
+          await client.query('ROLLBACK');
+          return { activePartnerships: true };
+        }
+
+        // 4. UPDATE tenant.pais. RETURNING pais para confirmar y devolver
+        //    al cliente.
+        const upd = await client.query(
+          `UPDATE tenants SET pais = $1 WHERE id = $2 RETURNING pais`,
+          [paisNuevo, id]
+        );
+        const paisAnterior = before.pais;
+
+        // 5. Crear cajas default del país nuevo. Reusamos
+        //    getDefaultCajasPorPais para single source of truth con signup.
+        //    No borramos las viejas (el operador del tenant decide qué
+        //    limpiar). Guard contra duplicados por (nombre, moneda) — usamos
+        //    NOT EXISTS en el INSERT, simple y race-safe bajo FOR UPDATE.
+        //
+        //    Nota RLS: metodos_pago tiene FORCE RLS. El pool admin
+        //    (BYPASSRLS) no necesita SET LOCAL app.current_tenant, pero
+        //    pasamos tenant_id explícito en cada INSERT para evitar
+        //    accidentes si alguien refactorea el pool más adelante.
+        // El UNIQUE INDEX `(tenant_id, LOWER(nombre)) WHERE deleted_at IS NULL`
+        // (migration 20260616000006) hace que dos cajas no puedan compartir
+        // nombre — sin importar la moneda. Las defaults de signup usan los
+        // mismos nombres entre AR y UY ("Efectivo Pesos", "Banco Pesos") y
+        // un tenant AR ya tiene esas cajas en ARS. Si quisiéramos crear
+        // "Efectivo Pesos" en UYU, chocaría con el UNIQUE.
+        //
+        // Decisión: las cajas nuevas creadas por "cambiar país" llevan
+        // sufijo `(<pais>)` en el nombre para distinguirlas visualmente +
+        // evadir el UNIQUE constraint. "Efectivo Pesos (UY)", "Banco Pesos (UY)",
+        // "Efectivo USD (UY)". El operador puede renombrarlas y borrar las
+        // viejas a discreción.
+        //
+        // Excepción: si por algún motivo la caja sufijada ya existe (re-run,
+        // operador la creó a mano), salteamos con NOT EXISTS — el endpoint
+        // se vuelve idempotente para esta sección.
+        // Guard adicional: el UNIQUE INDEX idx_metodos_pago_financiera
+        // (migration 20260616000005) permite SOLO UNA caja con
+        // es_financiera=true por tenant. Como el tenant viejo ya tiene su
+        // caja financiera marcada (default de signup), las nuevas cajas
+        // creadas por el cambio de país nunca deben llevar es_financiera=true
+        // — sino reventaría el INSERT. El operador puede re-flagear
+        // manualmente desde la UI de Cajas si quiere desplazar la financiera.
+        const cajasDelPaisNuevo = getDefaultCajasPorPais(paisNuevo);
+        let cajasCreadas = 0;
+        for (const caja of cajasDelPaisNuevo) {
+          const nombreSufijado = `${caja.nombre} (${paisNuevo})`;
+          const ins = await client.query(
+            `INSERT INTO metodos_pago (nombre, moneda, orden, es_financiera, tenant_id)
+               SELECT $1, $2, $3, false, $4
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM metodos_pago
+                   WHERE tenant_id = $4
+                     AND LOWER(nombre) = LOWER($1)
+                     AND deleted_at IS NULL
+                )`,
+            [nombreSufijado, caja.moneda, caja.orden, id]
+          );
+          if (ins.rowCount > 0) cajasCreadas += 1;
+        }
+
+        // 6. Actualizar alerta tc_referencia al default del país nuevo.
+        //    Usamos jsonb_set para preservar las otras claves del parametros
+        //    (tolerancia_pct, alerta_por_debajo, etc.). Solo aplica si la
+        //    fila existe — tenants pre-F2 que no la tienen quedan como
+        //    estaban (el operador puede configurar manualmente desde la UI
+        //    de alertas).
+        const tcValor = paisNuevo === 'UY' ? 40 : 1400;
+        const alertaUpd = await client.query(
+          `UPDATE alertas_config
+              SET parametros = jsonb_set(parametros, '{valor}', $1::jsonb, true),
+                  updated_at = NOW()
+            WHERE tenant_id = $2 AND tipo = 'tc_referencia'`,
+          [String(tcValor), id]
+        );
+        const alertaActualizada = alertaUpd.rowCount > 0;
+
+        // 7. Invalidar el cache de tenantStatus. Lo hacemos DENTRO de la
+        //    tx para mantener ordering simple — si la tx rollback-ea por un
+        //    error posterior, el siguiente getTenantStatus repobla el cache
+        //    con el estado real (pais viejo). El cost de un cache miss
+        //    extra es despreciable vs riesgo de cache stale.
+        await invalidateTenantStatus(id);
+
+        // 8. Audit log. SAVEPOINT pattern para que un CHECK constraint sin
+        //    la action nueva (e.g. migration sin correr todavía en staging)
+        //    no abote la tx — preservamos la operación con warning.
+        await client.query('SAVEPOINT sp_audit');
+        try {
+          await insertAdminAction(client, {
+            tenantId: id,
+            superAdminUserId: req.user.id,
+            action: 'tenant_pais_changed',
+            beforeState: { pais: paisAnterior },
+            afterState:  { pais: paisNuevo },
+            reason: null,
+          });
+          await client.query('RELEASE SAVEPOINT sp_audit');
+        } catch (err) {
+          await client.query('ROLLBACK TO SAVEPOINT sp_audit').catch(() => {});
+          if (err.code === '23514') {
+            logger.warn(
+              { action: 'tenant_pais_changed', tenant_id: id, err: err.message },
+              '[super-admin/#473] audit action no permitida en CHECK — migration pendiente? (continuando sin abortar tx)'
+            );
+          } else {
+            throw err;
+          }
+        }
+
+        await client.query('COMMIT');
+        return {
+          tenantId: id,
+          paisAnterior,
+          paisNuevo: upd.rows[0].pais,
+          cajasCreadas,
+          alertaActualizada,
+        };
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
+        throw err;
+      }
+    });
+
+    if (result.notFound) {
+      return res.status(404).json({ error: 'Tenant no encontrado' });
+    }
+    if (result.suspended) {
+      return res.status(400).json({
+        error: 'No se puede cambiar el país de un tenant suspendido',
+        code: 'tenant_suspended',
+      });
+    }
+    if (result.sameCountry) {
+      return res.status(400).json({
+        error: `El tenant ya tiene país ${result.pais}`,
+        code: 'same_country',
+        detail: { pais: result.pais },
+      });
+    }
+    if (result.activePartnerships) {
+      return res.status(409).json({
+        error: 'El tenant tiene partnerships Red B2B activas. Revocá las partnerships antes de cambiar el país.',
+        code: 'has_active_partnerships',
+      });
+    }
+
+    logger.info(
+      {
+        tenant_id: result.tenantId,
+        super_admin: req.user.id,
+        pais_anterior: result.paisAnterior,
+        pais_nuevo: result.paisNuevo,
+        cajas_creadas: result.cajasCreadas,
+        alerta_actualizada: result.alertaActualizada,
+      },
+      '[super-admin/#473] PATCH /tenants/:id/pais'
+    );
+
+    res.json({
+      tenant_id: result.tenantId,
+      pais_anterior: result.paisAnterior,
+      pais_nuevo: result.paisNuevo,
+      side_effects: {
+        cajas_creadas: result.cajasCreadas,
+        alerta_actualizada: result.alertaActualizada,
+      },
+    });
   } catch (err) {
     next(err);
   }
