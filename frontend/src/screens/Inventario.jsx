@@ -218,6 +218,15 @@ export default function Inventario() {
   const [form, setForm] = useState(EMPTY_PRODUCTO);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  // 2026-06-30 #imei-dup: warning inline cuando el IMEI tipeado ya está
+  // cargado en otro producto activo. Lo seteamos en onBlur del input para
+  // feedback temprano (antes del submit) y lo re-chequeamos en handleSave
+  // para bloquear de forma autoritativa. Vacío = sin warning.
+  const [imeiWarning, setImeiWarning] = useState('');
+  // Flag para evitar disparar el chequeo onBlur dos veces consecutivas con
+  // el mismo IMEI (ej. usuario tab-tab-tab por el form), o cuando el blur
+  // viene de un IMEI que ya validamos.
+  const lastCheckedImeiRef = useRef('');
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Modal historial (Fase 2 trazabilidad, 2026-06-15)
@@ -376,6 +385,11 @@ export default function Inventario() {
   // ── Modal alta/edición ──
   function openCreate() {
     setEditId(null); setForm(EMPTY_PRODUCTO); setFormError(''); setShowForm(true);
+    // 2026-06-30 #imei-dup: limpiar el warning y el cache del último IMEI
+    // chequeado al abrir el modal — sino, un alta previa con warning vivo
+    // bloquearía la siguiente sesión del modal con un IMEI distinto.
+    setImeiWarning('');
+    lastCheckedImeiRef.current = '';
   }
   function openEdit(p) {
     setEditId(p.id);
@@ -388,6 +402,36 @@ export default function Inventario() {
       condicion: p.condicion || 'nuevo',
     });
     setFormError(''); setShowForm(true);
+    // En edit no chequeamos: el producto YA existe con ese IMEI por
+    // definición, sería un falso positivo. Pre-cargamos el cache para que
+    // un onBlur no dispare ruido.
+    setImeiWarning('');
+    lastCheckedImeiRef.current = (p.imei ?? '').trim();
+  }
+
+  // 2026-06-30 #imei-dup: chequeo onBlur del input IMEI en el form de alta.
+  // No bloquea por sí solo (handleSave hace el check autoritativo), pero
+  // muestra warning temprano para que el operador corrija antes de submit.
+  // No corre si: estamos editando (vivimos con el IMEI propio), el IMEI
+  // está vacío, o ya lo chequeamos en este abrir-del-modal.
+  async function onImeiBlur() {
+    const imei = String(form.imei || '').trim();
+    if (editId) return;                            // edit: skip (su IMEI = el propio)
+    if (!imei) { setImeiWarning(''); return; }     // vacío: limpiar warning si había
+    if (imei === lastCheckedImeiRef.current) return; // no re-chequear el mismo
+    lastCheckedImeiRef.current = imei;
+    try {
+      const r = await inventario.checkImei(imei);
+      if (r?.exists) {
+        setImeiWarning(`Este IMEI ya está cargado en "${r.producto?.nombre || 'otro producto'}" (id ${r.producto?.id}).`);
+      } else {
+        setImeiWarning('');
+      }
+    } catch {
+      // Si el check falla (network, 5xx) no bloqueamos UX: handleSave hará
+      // el check autoritativo. Solo limpiamos cualquier warning vieja.
+      setImeiWarning('');
+    }
   }
 
   useEffect(() => {
@@ -401,6 +445,29 @@ export default function Inventario() {
     if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
     // Categoría requerida al crear (en edits de productos legacy queda opcional para no bloquear).
     if (!editId && !form.categoria_id) { setFormError('La categoría es obligatoria.'); return; }
+
+    // 2026-06-30 #imei-dup: bloqueo autoritativo de IMEI duplicado al crear.
+    // El onBlur muestra warning, pero el submit es la única defensa real
+    // (el usuario puede haber pegado el IMEI sin perder focus → no dispara
+    // onBlur). En edit no chequeamos: el producto ya existe con ese IMEI.
+    const imeiTrim = String(form.imei || '').trim();
+    if (!editId && imeiTrim) {
+      try {
+        const r = await inventario.checkImei(imeiTrim);
+        if (r?.exists) {
+          const msg = `Este IMEI ya está cargado en otro producto activo${r.producto?.nombre ? ` ("${r.producto.nombre}")` : ''}.`;
+          toast.error(msg);
+          setFormError(msg);
+          setImeiWarning(msg);
+          return;
+        }
+      } catch {
+        // Si el check falla (network/5xx) NO bloqueamos: dejamos pasar al
+        // POST de creación. La consecuencia máxima es un duplicado en DB,
+        // que sigue siendo la situación pre-feature.
+      }
+    }
+
     setSaving(true); setFormError('');
     const num = (v) => v === '' || v == null ? null : Number(v);
     const payload = {
@@ -1307,7 +1374,31 @@ export default function Inventario() {
                     <div className="field" style={{ flex: 1 }}><label className="field-label">GB</label><input className="input" placeholder="128" value={form.gb} onChange={e => setF('gb', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Color</label><input className="input" placeholder="Natural" value={form.color} onChange={e => setF('color', e.target.value)} /></div>
                   </div>
-                  <div className="field"><label className="field-label">IMEI (opcional)</label><input className="input mono" placeholder="356938035643809" value={form.imei} onChange={e => setF('imei', e.target.value)} /></div>
+                  <div className="field">
+                    <label className="field-label">IMEI (opcional)</label>
+                    {/* 2026-06-30 #imei-dup: onBlur dispara warning temprano
+                        si el IMEI ya está en otro producto activo. handleSave
+                        hace el check autoritativo. Reset del warning al cambiar
+                        el valor para no quedar mostrando uno stale. */}
+                    <input
+                      className="input mono"
+                      placeholder="356938035643809"
+                      value={form.imei}
+                      onChange={e => { setF('imei', e.target.value); if (imeiWarning) setImeiWarning(''); }}
+                      onBlur={onImeiBlur}
+                      aria-invalid={!!imeiWarning}
+                      aria-describedby={imeiWarning ? 'imei-warning' : undefined}
+                    />
+                    {imeiWarning && (
+                      <div
+                        id="imei-warning"
+                        role="alert"
+                        style={{ color: 'var(--neg)', fontSize: 12, marginTop: 4 }}
+                      >
+                        {imeiWarning}
+                      </div>
+                    )}
+                  </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Categoría <span style={{ color: 'var(--neg)' }}>*</span></label>
@@ -1373,7 +1464,10 @@ export default function Inventario() {
               </div>
               <div className="modal-ft">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button>
+                {/* 2026-06-30 #imei-dup: si hay warning de IMEI duplicado,
+                    deshabilitamos el submit. handleSave también valida (defensa
+                    en profundidad para casos donde el state queda stale). */}
+                <button type="submit" className="btn btn-primary" disabled={saving || !!imeiWarning}>{saving ? 'Guardando…' : 'Guardar'}</button>
               </div>
             </form>
           </div>
