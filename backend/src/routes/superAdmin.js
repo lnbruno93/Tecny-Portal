@@ -57,6 +57,7 @@ const {
   patchPlanPriceSchema,
   updateTcDefaultPaisSchema,
   changePaisSchema,
+  updateComprobanteFooterSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
@@ -2324,5 +2325,67 @@ router.patch('/tenants/:id/pais', validate(changePaisSchema), async (req, res, n
     next(err);
   }
 });
+
+// ── #475: PATCH tenant.comprobante_email_footer ──────────────────────────
+//
+// El super-admin setea el footer custom plain-text para los emails de
+// comprobante de venta retail del tenant. Body: { footer: string|null }.
+// Plain-text obligatorio (XSS protection — el render escapa antes de inyectar
+// en el HTML del email).
+//
+// Diseño minimalista:
+//   - Sin lock FOR UPDATE: el footer no participa de ningún invariante con
+//     otras columnas, no requiere serialización pesada. UPDATE simple basta.
+//   - Sin audit a tenant_admin_actions: el footer es una preferencia visual,
+//     no una decisión comercial. El audit_logs general (via logger.info) basta.
+//     Si Lucas más adelante quiere historial de cambios, agregar action al
+//     CHECK + insertAdminAction (pattern de los otros endpoints).
+//   - String vacío → null. La UI envía '' cuando limpian el textarea;
+//     consolidamos a null para que "sin override" tenga una sola representación.
+router.patch('/tenants/:id/comprobante-footer',
+  validate(updateComprobanteFooterSchema),
+  async (req, res, next) => {
+    try {
+      const id = parseId(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'id inválido' });
+      }
+      // Normalizar: '' o whitespace-only → null. El Zod ya hizo trim().
+      const footerRaw = req.body.footer;
+      const footer = (footerRaw === null || footerRaw === '') ? null : footerRaw;
+
+      const result = await db.adminQuery(async (client) => {
+        const { rows } = await client.query(
+          `UPDATE tenants
+              SET comprobante_email_footer = $1
+            WHERE id = $2 AND deleted_at IS NULL
+            RETURNING id, comprobante_email_footer`,
+          [footer, id]
+        );
+        return rows[0] || null;
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: 'Tenant no encontrado' });
+      }
+
+      logger.info(
+        {
+          tenant_id: id,
+          super_admin: req.user.id,
+          footer_len: footer ? footer.length : 0,
+        },
+        '[super-admin/#475] PATCH /tenants/:id/comprobante-footer'
+      );
+
+      res.json({
+        tenant_id: id,
+        comprobante_email_footer: result.comprobante_email_footer,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;

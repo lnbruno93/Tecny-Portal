@@ -202,6 +202,24 @@ const changePaisSchema = z.object({
   pais: z.enum(['AR', 'UY']),
 }).strict();
 
+// PATCH /api/super-admin/tenants/:id/comprobante-footer — actualiza el footer
+// custom de los emails de comprobante de venta retail (#475).
+//
+// footer: string plain-text (no HTML — el render hace _esc antes de inyectar).
+// max 500 chars (cap soft — coincide con el comment de la migration).
+// null permitido: setear a null = revertir al footer default.
+//
+// trim primero → si después del trim queda string vacío, lo tratamos como
+// null (intencionado por el endpoint). Razón: la UI envía '' cuando el
+// operador limpia el textarea, y la semántica "vacío = sin override" es
+// más limpia que persistir '' en DB.
+const updateComprobanteFooterSchema = z.object({
+  footer: z.union([
+    z.string().trim().max(500, 'Máximo 500 caracteres'),
+    z.null(),
+  ]),
+}).strict();
+
 module.exports = {
   PLANES,
   patchTenantSchema,
@@ -214,4 +232,6 @@ module.exports = {
   patchPlanPriceSchema,
   updateTcDefaultPaisSchema,
   changePaisSchema,
+  // #475
+  updateComprobanteFooterSchema,
 };
