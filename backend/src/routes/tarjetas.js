@@ -154,44 +154,81 @@ router.get('/saldos-resumen', async (req, res, next) => {
 router.get('/movimientos', async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 5000 });
-    // Filtro opcional por rango de fechas. Importante: el saldo_acum SIEMPRE
-    // se calcula sobre TODOS los movimientos del histórico (no filtrado) —
-    // si filtráramos en la CTE base, el saldo acumulado mentiría al mostrar
-    // un rango parcial. Filtramos solo en el outer SELECT (y en el count
-    // para que coincida con lo visible).
+    // Filtro opcional por rango de fechas. Importante: el saldo_acum debe
+    // reflejar el histórico real (cobros − liquidaciones desde el principio
+    // del tiempo hasta el movimiento corriente), pero la window function NO
+    // necesita correr sobre toda la tabla.
+    //
+    // Auditoría 2026-06-30 E-02 — perf: la implementación anterior hacía
+    // `SUM(...) OVER (ORDER BY m.fecha, m.id)` en una CTE que escaneaba TODA
+    // la tabla `tarjeta_movimientos WHERE deleted_at IS NULL` y solo filtraba
+    // el rango en el outer SELECT. Postgres materializaba la window sobre el
+    // universo entero antes de descartar lo que estaba fuera del rango → a
+    // ~100k filas la query medía 200-500ms. Con el rediseño:
+    //   · saldo_inicial: agregado acotado por `fecha < $desde` (un solo
+    //     número, usa idx (tenant_id, fecha) si existe).
+    //   · rango: window function corre solo sobre filas del rango pedido
+    //     (no del histórico entero) calculando un `delta` parcial.
+    //   · saldo_acum = saldo_inicial + delta — matemáticamente equivalente
+    //     a la window global.
+    // Cuando no hay `desde` el saldo_inicial es 0 (no hay PRE-rango) y el
+    // resultado coincide con el comportamiento previo.
     const { desde, hasta } = req.query;
-    const params = [];
-    const outerFiltros = [];
-    if (desde) { params.push(desde); outerFiltros.push(`b.fecha >= $${params.length}`); }
-    if (hasta) { params.push(hasta); outerFiltros.push(`b.fecha <= $${params.length}`); }
-    const whereExtra = outerFiltros.length ? ' WHERE ' + outerFiltros.join(' AND ') : '';
+    const rangoParams = [];
+    const rangoFiltros = ['m.deleted_at IS NULL'];
+    if (desde) { rangoParams.push(desde); rangoFiltros.push(`m.fecha >= $${rangoParams.length}`); }
+    if (hasta) { rangoParams.push(hasta); rangoFiltros.push(`m.fecha <= $${rangoParams.length}`); }
+    const rangoWhere = ' WHERE ' + rangoFiltros.join(' AND ');
+
     const countParams = [];
     let countWhere = ' WHERE deleted_at IS NULL';
     if (desde) { countParams.push(desde); countWhere += ` AND fecha >= $${countParams.length}`; }
     if (hasta) { countParams.push(hasta); countWhere += ` AND fecha <= $${countParams.length}`; }
+
+    // saldo_inicial: si hay `desde`, suma cobros − liquidaciones de TODO lo
+    // anterior al rango (placeholder $1 = desde). Si no hay `desde`, la query
+    // se skipea (saldo_inicial=0). Misma fórmula que la window: 'cobro'
+    // suma monto_neto, todo lo demás (liquidacion) lo resta.
+    const saldoInicialParams = desde ? [desde] : [];
+    const saldoInicialSql = desde
+      ? `SELECT COALESCE(SUM(CASE WHEN tipo='cobro' THEN monto_neto ELSE -monto_neto END), 0) AS saldo
+           FROM tarjeta_movimientos
+          WHERE deleted_at IS NULL AND fecha < $1`
+      : null;
+
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
+      // count + saldo_inicial corren en paralelo (independientes entre sí).
+      // La query de `rango` debe esperar al saldo_inicial porque lo inyecta
+      // como parámetro literal — alternativa con subquery aumentaba el plan
+      // sin beneficio (saldoInicial es un escalar pre-calculado).
+      const [countRes, saldoIniRes] = await Promise.all([
         client.query('SELECT COUNT(*) FROM tarjeta_movimientos' + countWhere, countParams),
-        client.query(
-          `WITH base AS (
-             SELECT m.id, m.metodo_pago_id, m.fecha, m.tipo, m.moneda, m.monto_bruto, m.pct,
-                    m.monto_comision, m.monto_neto, m.caja_id, m.venta_id,
-                    SUM(CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END)
-                        OVER (ORDER BY m.fecha, m.id) AS saldo_acum
-               FROM tarjeta_movimientos m
-              WHERE m.deleted_at IS NULL
-           )
-           SELECT b.*, mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
-             FROM base b
-             JOIN metodos_pago mp ON mp.id = b.metodo_pago_id
-             LEFT JOIN metodos_pago mc ON mc.id = b.caja_id
-             LEFT JOIN ventas v ON v.id = b.venta_id
-            ${whereExtra}
-            ORDER BY b.fecha DESC, b.id DESC
-            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
+        saldoInicialSql
+          ? client.query(saldoInicialSql, saldoInicialParams)
+          : Promise.resolve({ rows: [{ saldo: 0 }] }),
       ]);
+      const saldoInicial = Number(saldoIniRes.rows[0]?.saldo || 0);
+      const dataRes = await client.query(
+        `WITH rango AS (
+           SELECT m.id, m.metodo_pago_id, m.fecha, m.tipo, m.moneda, m.monto_bruto, m.pct,
+                  m.monto_comision, m.monto_neto, m.caja_id, m.venta_id,
+                  SUM(CASE WHEN m.tipo='cobro' THEN m.monto_neto ELSE -m.monto_neto END)
+                      OVER (ORDER BY m.fecha, m.id) AS delta
+             FROM tarjeta_movimientos m
+            ${rangoWhere}
+         )
+         SELECT r.id, r.metodo_pago_id, r.fecha, r.tipo, r.moneda, r.monto_bruto, r.pct,
+                r.monto_comision, r.monto_neto, r.caja_id, r.venta_id,
+                ($${rangoParams.length + 1}::numeric + r.delta) AS saldo_acum,
+                mp.nombre AS metodo_nombre, mc.nombre AS caja_nombre, v.order_id AS venta_order_id
+           FROM rango r
+           JOIN metodos_pago mp ON mp.id = r.metodo_pago_id
+           LEFT JOIN metodos_pago mc ON mc.id = r.caja_id
+           LEFT JOIN ventas v ON v.id = r.venta_id
+          ORDER BY r.fecha DESC, r.id DESC
+          LIMIT $${rangoParams.length + 2} OFFSET $${rangoParams.length + 3}`,
+        [...rangoParams, saldoInicial, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));
