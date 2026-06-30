@@ -279,6 +279,73 @@ describe('POST /api/auth/signup', () => {
     });
     expect(r.status).toBe(400);
   });
+
+  // ── Multi-país F4 (#470) ──────────────────────────────────────────────
+  // Signup ahora acepta `pais` en el body para que el selector frontend
+  // pueda crear tenants AR o UY. Default 'AR' para legacy clients.
+  describe('#470 selector país AR/UY', () => {
+    it('sin `pais` en body → tenant queda en AR (default Zod)', async () => {
+      const { res, body } = await signup();
+      expect(res.status).toBe(200);
+      const u = await fetchUserByEmail(body.email);
+      const { rows } = await pool.query(
+        `SELECT pais FROM tenants WHERE id = $1`, [u.tenant_id]
+      );
+      expect(rows[0].pais).toBe('AR');
+    });
+
+    it('pais="UY" → tenant queda en UY + cajas en UYU + alerta TC valor=40', async () => {
+      const { res, body } = await signup({ pais: 'UY' });
+      expect(res.status).toBe(200);
+      const u = await fetchUserByEmail(body.email);
+
+      // 1) tenants.pais
+      const { rows: tenants } = await pool.query(
+        `SELECT pais FROM tenants WHERE id = $1`, [u.tenant_id]
+      );
+      expect(tenants[0].pais).toBe('UY');
+
+      // 2) cajas default en UYU (no en ARS) + USD se mantiene.
+      const c = await pool.connect();
+      try {
+        await c.query('BEGIN');
+        await c.query(`SET LOCAL app.current_tenant = ${u.tenant_id}`);
+        const { rows: cajas } = await c.query(
+          `SELECT moneda FROM metodos_pago WHERE deleted_at IS NULL ORDER BY orden`
+        );
+        const monedas = cajas.map(r => r.moneda);
+        // UY: dos cajas en UYU + una USD; NO debe haber ninguna en ARS.
+        expect(monedas).toEqual(expect.arrayContaining(['UYU', 'USD']));
+        expect(monedas).not.toContain('ARS');
+
+        // 3) alertas_config tc_referencia con valor=40 (TC UYU/USD), no 1400.
+        const { rows: alertas } = await c.query(
+          `SELECT parametros FROM alertas_config
+            WHERE tenant_id = $1 AND tipo = 'tc_referencia'`,
+          [u.tenant_id]
+        );
+        expect(alertas.length).toBe(1);
+        const params = alertas[0].parametros;
+        const parsed = typeof params === 'string' ? JSON.parse(params) : params;
+        expect(parsed.valor).toBe(40);
+
+        await c.query('COMMIT');
+      } finally {
+        c.release();
+      }
+    });
+
+    it('pais="CL" → 400 (Zod rechaza países no soportados)', async () => {
+      const r = await request(app).post('/api/auth/signup').send({
+        nombre: 'X',
+        email: `cl_${Date.now()}@example.com`,
+        password: 'Validpass1!',
+        tenant_nombre: 'Empresa CL test',
+        pais: 'CL',
+      });
+      expect(r.status).toBe(400);
+    });
+  });
 });
 
 describe('Bloqueo blando: user unverified no puede escribir', () => {

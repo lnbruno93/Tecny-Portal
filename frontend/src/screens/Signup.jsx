@@ -96,6 +96,12 @@ export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenantNombre, setTenantNombre] = useState('');
+  // 2026-06-29 Multi-país F4 (#470): selector país AR/UY. Default 'AR' por ser
+  // el mercado mayoritario hoy. Determina la moneda local (ARS o UYU) que se
+  // siembra en cajas + alertas TC default + matriz de monedas habilitadas para
+  // el tenant nuevo. Decisión inmutable post-signup desde la UI (ver design
+  // doc sección 6.4) — si Lucas necesita cambiarlo es script manual.
+  const [pais, setPais] = useState('AR');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -143,6 +149,10 @@ export default function Signup() {
         email: normalizedEmail,
         password,
         tenant_nombre: tenantNombre.trim(),
+        // Multi-país F4 (#470): el backend persiste tenant.pais con este
+        // valor y seedea cajas + alertas TC según corresponda (AR=ARS+1400,
+        // UY=UYU+40). Si lo omitiéramos Zod aplicaría default 'AR'.
+        pais,
         hcaptcha_response: captchaToken || undefined,
       });
       // TANDA 2.7: backend response idéntica para email nuevo vs. duplicado
@@ -335,6 +345,70 @@ export default function Signup() {
                       {PASSWORD_POLICY_HINT} Usá una contraseña que no uses en otros sitios.
                     </div>
                   )}
+                </div>
+
+                {/* Multi-país F4 (#470): selector AR/UY antes del campo
+                    "Nombre de empresa" — el orden mental es "qué país operás
+                    + cómo se llama tu empresa". Segmented control con dos
+                    botones grandes (ARIA radiogroup) para que sea claro que
+                    es una elección excluyente y no se confunda con un
+                    checkbox de "agregar país adicional". El default visual
+                    es AR (mayoría de tenants). El copy debajo explica las
+                    monedas operativas resultantes — info que el user no tiene
+                    por qué saber, así no se siente atrapado en una decisión
+                    abstracta. */}
+                <div className="field">
+                  <label className="field-label" id="pais-label">País</label>
+                  <div
+                    className="seg"
+                    role="radiogroup"
+                    aria-labelledby="pais-label"
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={pais === 'AR'}
+                      className={`seg-btn ${pais === 'AR' ? 'active' : ''}`}
+                      onClick={() => setPais('AR')}
+                      disabled={loading}
+                      style={{
+                        padding: '10px 12px',
+                        border: '1px solid var(--border, #d4d4d8)',
+                        borderRadius: 8,
+                        background: pais === 'AR' ? 'var(--bg-soft, #f4f4f5)' : 'transparent',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        fontWeight: pais === 'AR' ? 600 : 400,
+                        textAlign: 'center',
+                      }}
+                    >
+                      🇦🇷 Argentina
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={pais === 'UY'}
+                      className={`seg-btn ${pais === 'UY' ? 'active' : ''}`}
+                      onClick={() => setPais('UY')}
+                      disabled={loading}
+                      style={{
+                        padding: '10px 12px',
+                        border: '1px solid var(--border, #d4d4d8)',
+                        borderRadius: 8,
+                        background: pais === 'UY' ? 'var(--bg-soft, #f4f4f5)' : 'transparent',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        fontWeight: pais === 'UY' ? 600 : 400,
+                        textAlign: 'center',
+                      }}
+                    >
+                      🇺🇾 Uruguay
+                    </button>
+                  </div>
+                  <div className="field-note">
+                    {pais === 'UY'
+                      ? 'Vas a operar en UYU. También podés vender/comprar en USD y USDT.'
+                      : 'Vas a operar en ARS. También podés vender/comprar en USD y USDT.'}
+                  </div>
                 </div>
 
                 <div className="field">

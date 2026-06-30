@@ -96,12 +96,14 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
 
     // Email se normaliza a lowercase + trim. CAPTCHA token incluído
     // (mock auto-dispara onVerify con 'mock-captcha-token').
+    // Multi-país F4 (#470): pais default 'AR' siempre va en el body.
     await waitFor(() => expect(mockSignup).toHaveBeenCalled());
     expect(mockSignup).toHaveBeenCalledWith({
       nombre:            'Lucas Bruno',
       email:             'lucas@example.com',
       password:          'pass1234',
       tenant_nombre:     'Mi empresa SA',
+      pais:              'AR',
       hcaptcha_response: 'mock-captcha-token',
     });
 
@@ -222,6 +224,54 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
       // Agregamos una letra al input → el error desaparece.
       await user.type(getPassword(), 'a');
       expect(screen.queryByText(/al menos una letra/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Multi-país F4 (#470): selector país AR/UY ───────────────────────────
+  // El form renderiza un segmented control con dos opciones (AR | UY). El
+  // backend persiste tenant.pais con este valor y seedea cajas + alertas
+  // TC según corresponda. Default visual: AR.
+  describe('#470 selector país AR/UY', () => {
+    it('renderiza ambas opciones con AR seleccionada por default', () => {
+      renderS();
+      const arBtn = screen.getByRole('radio', { name: /Argentina/i });
+      const uyBtn = screen.getByRole('radio', { name: /Uruguay/i });
+      expect(arBtn).toBeInTheDocument();
+      expect(uyBtn).toBeInTheDocument();
+      // AR está checked por default.
+      expect(arBtn).toHaveAttribute('aria-checked', 'true');
+      expect(uyBtn).toHaveAttribute('aria-checked', 'false');
+      // Hint copy refleja AR.
+      expect(screen.getByText(/Vas a operar en ARS/i)).toBeInTheDocument();
+    });
+
+    it('click en Uruguay cambia aria-checked + hint copy', async () => {
+      renderS();
+      const user = userEvent.setup();
+      const uyBtn = screen.getByRole('radio', { name: /Uruguay/i });
+      await user.click(uyBtn);
+      expect(uyBtn).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: /Argentina/i })).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByText(/Vas a operar en UYU/i)).toBeInTheDocument();
+    });
+
+    it('submit con UY seleccionado → body POST incluye pais="UY"', async () => {
+      mockSignup.mockResolvedValue({ verification_required: true });
+      renderS();
+      const user = userEvent.setup();
+      // Elegimos UY antes de llenar el resto.
+      await user.click(screen.getByRole('radio', { name: /Uruguay/i }));
+      await user.type(getNombre(), 'Juan Perez');
+      await user.type(getEmail(), 'uy@example.com');
+      await user.type(getPassword(), 'pass1234');
+      await user.type(getEmpresa(), 'Mi empresa UY');
+      await user.click(getSubmit());
+
+      await waitFor(() => expect(mockSignup).toHaveBeenCalled());
+      // El body POST contiene pais: 'UY' (no 'AR').
+      const call = mockSignup.mock.calls[0][0];
+      expect(call.pais).toBe('UY');
+      expect(call.tenant_nombre).toBe('Mi empresa UY');
     });
   });
 });
