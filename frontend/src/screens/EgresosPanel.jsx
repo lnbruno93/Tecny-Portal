@@ -8,6 +8,8 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
 import useModal from '../lib/useModal';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 const thisMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -18,6 +20,8 @@ const EMPTY = { fecha: new Date().toISOString().slice(0, 10), concepto: '', cate
 export default function EgresosPanel() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  // 2026-06-29 Multi-país F3: monedas operativas según país del tenant.
+  const { monedas } = useMonedasTenant();
 
   const [periodo, setPeriodo] = useState(thisMonth());
   const [estadoFiltro, setEstadoFiltro] = useState('');
@@ -216,7 +220,7 @@ export default function EgresosPanel() {
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Monto</label>
                       <div className="flex-row" style={{ gap: 6 }}>
                         <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} />
-                        <select className="input" style={{ width: 80 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select>
+                        <select className="input" style={{ width: 80 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select>
                       </div>
                     </div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">TC (si es ARS)</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
@@ -319,7 +323,7 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
         <div className="modal-body">
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 2 }}><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
-            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option>USD</option><option>ARS</option><option>USDT</option></select></div></div>
+            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
             {form.moneda === 'ARS' && (
               <div className="field" style={{ width: 80 }}><label className="field-label tiny">TC</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
             )}

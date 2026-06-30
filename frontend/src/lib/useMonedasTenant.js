@@ -15,7 +15,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { getMonedasParaPais, getMonedaLocalParaPais, getPaisLabel } from './monedasPais';
 
 export function useMonedasTenant() {
-  const { user } = useAuth();
+  // Safe destructure: useAuth() puede devolver null en tests que renderean
+  // un screen sin AuthProvider (mismo guard que Inventario.jsx, Capital,
+  // etc.). En prod siempre hay un AuthProvider arriba.
+  const { user } = useAuth() || {};
   // user puede ser:
   //   · null     → loading (mount inicial)
   //   · object   → autenticado; user.tenant puede faltar si /me falló

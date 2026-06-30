@@ -21,6 +21,8 @@ import { fmt, fmtMoney } from '../lib/format';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
 import { SkeletonRow } from '../components/Skeleton';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 // ─── Formatters ────────────────────────────────────────────────────────────────
@@ -113,6 +115,9 @@ export default function Inventario() {
   // Si no hay user (tests sin AuthProvider), la cap evalúa false → tab oculto,
   // que es el comportamiento conservador correcto.
   const canSeeRedB2B = userHasCap(user, 'cross_tenant.write');
+  // 2026-06-29 Multi-país F3: monedas operativas del tenant. Si pais=UY,
+  // los dropdowns de costo_moneda/precio_moneda muestran UYU en vez de ARS.
+  const { monedas, monedaLocal } = useMonedasTenant();
   const { setPrimaryAction } = usePageActions();
 
   const [productos, setProductos] = useState([]);
@@ -1157,7 +1162,7 @@ export default function Inventario() {
                       value={p.costo_moneda}
                       display={<span className="ccy">{p.costo_moneda}</span>}
                       type="select"
-                      options={[{ value: 'USD', label: 'USD' }, { value: 'ARS', label: 'ARS' }]}
+                      options={Array.from(new Set(['USD', monedaLocal, p.costo_moneda, p.precio_moneda].filter(Boolean))).map(m => ({ value: m, label: m }))}
                       onSave={save('costo_moneda')}
                       emptyToNull={false}
                     />
@@ -1176,7 +1181,7 @@ export default function Inventario() {
                       value={p.precio_moneda}
                       display={<span className="ccy">{p.precio_moneda}</span>}
                       type="select"
-                      options={[{ value: 'USD', label: 'USD' }, { value: 'ARS', label: 'ARS' }]}
+                      options={Array.from(new Set(['USD', monedaLocal, p.costo_moneda, p.precio_moneda].filter(Boolean))).map(m => ({ value: m, label: m }))}
                       onSave={save('precio_moneda')}
                       emptyToNull={false}
                     />
@@ -1324,14 +1329,21 @@ export default function Inventario() {
                       <label className="field-label">Costo</label>
                       <div className="flex-row" style={{ gap: 6 }}>
                         <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} style={{ flex: 1 }} />
-                        <select className="input" style={{ width: 80 }} value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}><option>USD</option><option>ARS</option></select>
+                        {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
+                        <select className="input" style={{ width: 80 }} value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}>
+                          {Array.from(new Set(['USD', monedaLocal, form.costo_moneda].filter(Boolean)))
+                            .map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
                       </div>
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Precio de venta</label>
                       <div className="flex-row" style={{ gap: 6 }}>
                         <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} style={{ flex: 1 }} />
-                        <select className="input" style={{ width: 80 }} value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}><option>USD</option><option>ARS</option></select>
+                        <select className="input" style={{ width: 80 }} value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}>
+                          {Array.from(new Set(['USD', monedaLocal, form.precio_moneda].filter(Boolean)))
+                            .map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1497,11 +1509,11 @@ export default function Inventario() {
                               </div>
                               <div className="field" style={{ flex: '0 0 100px' }}>
                                 <label className="field-label">Moneda</label>
+                                {/* 2026-06-29 Multi-país F3: monedas según país del tenant. */}
                                 <select className="input" value={g.moneda}
                                   onChange={e => updateImportGroup(g.key, { moneda: e.target.value, tc: e.target.value === 'USD' ? '' : g.tc })}>
-                                  <option value="USD">USD</option>
-                                  <option value="ARS">ARS</option>
-                                  <option value="USDT">USDT</option>
+                                  {Array.from(new Set([...monedas, g.moneda].filter(Boolean)))
+                                    .map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                               </div>
                               {monedaSel !== 'USD' && (

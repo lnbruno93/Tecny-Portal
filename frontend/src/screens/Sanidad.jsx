@@ -21,6 +21,8 @@ import { Icons } from '../components/Icons';
 import { sanidad as sanidadApi, egresos as egresosApi } from '../lib/api';
 import { fmt } from '../lib/format';
 import useModal from '../lib/useModal';
+// 2026-06-29 Multi-país F3: dropdown moneda del recurrente gated por país.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 // Helper: nombre del mes corto a partir de 'YYYY-MM'.
 function labelMes(periodo) {
@@ -582,6 +584,8 @@ function ProyeccionGastosPanel({ onChange }) {
 
 // Sub-componente: row editable (crear nuevo o editar existente).
 function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onSave, onCancel }) {
+  // 2026-06-29 Multi-país F3: monedas según país del tenant.
+  const { monedas } = useMonedasTenant();
   // 2026-06-25 UX-4 (audit pre-live): reemplazamos `window.prompt()` por un
   // mini-modal in-app. El prompt nativo rompe el theme dark (popup blanco) y
   // no soporta validación. Ahora: select "+ Nueva categoría…" abre el modal,
@@ -663,11 +667,12 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
             onChange={(e) => setDraft({ ...draft, moneda: e.target.value })}
             style={{ width: 78, fontSize: 13, padding: '6px 8px' }}
           >
-            <option value="USD">USD</option>
-            <option value="ARS">ARS</option>
-            <option value="USDT">USDT</option>
+            {Array.from(new Set([...monedas, draft.moneda].filter(Boolean)))
+              .map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-          {draft.moneda === 'ARS' ? (
+          {/* 2026-06-29 Multi-país F3: si la moneda es la local (ARS o UYU),
+              mostrar input TC para convertir a USD. Antes ARS-only. */}
+          {(draft.moneda === 'ARS' || draft.moneda === 'UYU') ? (
             <input
               className="input mono" type="number" min="0" step="50"
               placeholder="TC"

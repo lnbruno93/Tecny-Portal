@@ -12,6 +12,8 @@ import { Skeleton, SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
 import ContactoPickerEmbedded from '../components/ContactoPickerEmbedded';
 import Badge from '../components/Badge';
+// 2026-06-29 Multi-país F3: monedas según país del tenant en form alta caja.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -74,6 +76,8 @@ const EMPTY_INV = () => ({
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Cajas() {
   const { toast } = useToast();
+  // 2026-06-29 Multi-país F3: monedas disponibles para nueva caja según tenant.
+  const { monedas, monedaLocal } = useMonedasTenant();
   const confirm   = useConfirm();
   const navigate  = useNavigate();
   const [tab, setTab] = useState('config');
@@ -123,7 +127,13 @@ export default function Cajas() {
   // ── Config Cajas (cuentas de dinero = metodos_pago) ───────────────────────
   const [cajasList, setCajasList] = useState([]);
   const [loadingCajas, setLoadingCajas] = useState(false);
+  // 2026-06-29 Multi-país F3: initial state usa 'ARS' por compat con el
+  // mount inicial sync (cuando user todavía no hidrató). El effect abajo
+  // sincroniza a monedaLocal cuando el hook está listo.
   const [cajaForm, setCajaForm] = useState({ nombre: '', moneda: 'ARS', saldo_inicial: '', es_tarjeta: false, comision_pct: '' });
+  useEffect(() => {
+    setCajaForm(f => f.moneda === 'ARS' && monedaLocal !== 'ARS' && !f.nombre ? { ...f, moneda: monedaLocal } : f);
+  }, [monedaLocal]);
   const [cajaSaving, setCajaSaving] = useState(false);
   const [cajaError, setCajaError] = useState('');
   // Ledger de una caja (modal con movimientos + ajuste manual + saldo inicial)
@@ -454,7 +464,8 @@ export default function Cajas() {
         es_tarjeta: !!cajaForm.es_tarjeta,
         comision_pct: cajaForm.es_tarjeta && cajaForm.comision_pct !== '' ? Number(cajaForm.comision_pct) : null,
       });
-      setCajaForm({ nombre: '', moneda: 'ARS', saldo_inicial: '', es_tarjeta: false, comision_pct: '' });
+      // 2026-06-29 Multi-país F3: default moneda local del tenant (ARS o UYU).
+      setCajaForm({ nombre: '', moneda: monedaLocal, saldo_inicial: '', es_tarjeta: false, comision_pct: '' });
       toast.success('Caja creada.');
       loadCajas();
     } catch (e) { setCajaError(e.message || 'No se pudo crear la caja.'); }
@@ -871,10 +882,10 @@ export default function Cajas() {
               </div>
               <div className="field" style={{ width: 110 }}>
                 <label className="field-label">Moneda</label>
+                {/* 2026-06-29 Multi-país F3: monedas según país (UY ve UYU). */}
                 <select className="input" value={cajaForm.moneda} onChange={e => setCajaForm(f => ({ ...f, moneda: e.target.value }))}>
-                  <option value="ARS">ARS</option>
-                  <option value="USD">USD</option>
-                  <option value="USDT">USDT</option>
+                  {Array.from(new Set([...monedas, cajaForm.moneda].filter(Boolean)))
+                    .map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div className="field" style={{ width: 140 }}>

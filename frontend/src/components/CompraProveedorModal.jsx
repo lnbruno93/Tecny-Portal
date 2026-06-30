@@ -29,6 +29,8 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #M-11
 import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
 import CajaSelectHint from './CajaSelectHint';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
@@ -99,6 +101,8 @@ function parsePastedRows(text, defaults) {
 export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const { toast } = useToast();
   const confirm = useConfirm();
+  // 2026-06-29 Multi-país F3: monedas operativas para form costo/precio.
+  const { monedaLocal } = useMonedasTenant();
 
   // ── Cabecera ─────────────────────────────────────────────────────────
   const [fecha, setFecha]   = useState(todayISO());
@@ -436,10 +440,13 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                 <option value="nuevo">Nuevo</option><option value="usado">Usado</option></select></Field>
               <Field label="Tipo carga"><select className="input" value={defs.tipo_carga} onChange={e => setDef('tipo_carga', e.target.value)}>
                 <option value="unitario">Unitario</option><option value="lote">Lote</option></select></Field>
+              {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
               <Field label="Moneda costo"><select className="input" value={defs.costo_moneda} onChange={e => setDef('costo_moneda', e.target.value)}>
-                <option>USD</option><option>ARS</option></select></Field>
+                {Array.from(new Set(['USD', monedaLocal, defs.costo_moneda].filter(Boolean)))
+                  .map(m => <option key={m} value={m}>{m}</option>)}</select></Field>
               <Field label="Moneda venta"><select className="input" value={defs.precio_moneda} onChange={e => setDef('precio_moneda', e.target.value)}>
-                <option>USD</option><option>ARS</option></select></Field>
+                {Array.from(new Set(['USD', monedaLocal, defs.precio_moneda].filter(Boolean)))
+                  .map(m => <option key={m} value={m}>{m}</option>)}</select></Field>
             </div>
           </div>
 
@@ -578,9 +585,11 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                           onChange={e => updCell(idx, 'costo', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
+                        {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.costo_moneda}
                           onChange={e => updCell(idx, 'costo_moneda', e.target.value)}>
-                          <option>USD</option><option>ARS</option>
+                          {Array.from(new Set(['USD', monedaLocal, r.costo_moneda].filter(Boolean)))
+                            .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px' }}>
@@ -591,7 +600,8 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                       <td style={{ padding: '3px 4px' }}>
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}
                           onChange={e => updCell(idx, 'precio_moneda', e.target.value)}>
-                          <option>USD</option><option>ARS</option>
+                          {Array.from(new Set(['USD', monedaLocal, r.precio_moneda].filter(Boolean)))
+                            .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px', textAlign: 'center' }}>
