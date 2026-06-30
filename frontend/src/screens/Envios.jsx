@@ -14,6 +14,8 @@ import useModal from '../lib/useModal';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
 import { Skeleton } from '../components/Skeleton';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 // ─── Create modal helpers ─────────────────────────────────────────────────────
@@ -63,6 +65,8 @@ const PRIO_DISPLAY = {
 export default function Envios() {
   const { toast } = useToast();
   const confirm   = useConfirm();
+  // 2026-06-29 Multi-país F3: monedas operativas según país del tenant.
+  const { monedas } = useMonedasTenant();
   const [enviosList, setEnviosList] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [estadoFilter, setEstadoFilter] = useState('todos');
@@ -340,7 +344,10 @@ export default function Envios() {
       setItems(arr => arr.map((it, j) => j !== idx ? it : ({
         ...it,
         metodo_pago_id: '', es_cuenta_corriente: true,
-        moneda: it.moneda && it.moneda !== 'ARS' ? it.moneda : 'USD',
+        // 2026-06-29 Multi-país F3: CC raramente se lleva en moneda local
+        // (ARS o UYU son volátiles); default USD si la moneda era local,
+        // sino preservar (USDT, etc.).
+        moneda: it.moneda && it.moneda !== 'ARS' && it.moneda !== 'UYU' ? it.moneda : 'USD',
         tc: '', usd_input: '', neto_input: '',
       })));
       return;
@@ -1340,8 +1347,11 @@ export default function Envios() {
                               </div>
                               <div className="field" style={{ marginBottom: 0 }}>
                                 <label className="field-label">Moneda</label>
+                                {/* 2026-06-29 Multi-país F3: monedas según país del tenant.
+                                    Preserva legacy value si existiera (records viejos). */}
                                 <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
-                                  <option>USD</option><option>ARS</option><option>USDT</option>
+                                  {Array.from(new Set([...monedas, it.moneda].filter(Boolean)))
+                                    .map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                               </div>
                               <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>
@@ -1395,8 +1405,10 @@ export default function Envios() {
                                 </div>
                                 <div className="field" style={{ marginBottom: 0 }}>
                                   <label className="field-label">Moneda</label>
+                                  {/* 2026-06-29 Multi-país F3: monedas según país del tenant. */}
                                   <select className="input" value={it.moneda || 'USD'} onChange={e => setItem(idx, 'moneda', e.target.value)}>
-                                    <option>USD</option><option>ARS</option><option>USDT</option>
+                                    {Array.from(new Set([...monedas, it.moneda].filter(Boolean)))
+                                      .map(m => <option key={m} value={m}>{m}</option>)}
                                   </select>
                                 </div>
                                 <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(idx)}>

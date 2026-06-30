@@ -145,4 +145,37 @@ describe('Pantalla Inventario', () => {
     // mockeado debe aparecer (viene de RedB2BPendingReviewContent).
     expect(await screen.findByText('iPhone X Cross-Tenant Pending')).toBeInTheDocument();
   });
+
+  // ─── Multi-país F3 — dropdowns moneda gated por tenant.pais ───────────────
+  // El form de alta de producto tiene dropdowns para "Moneda costo" y "Moneda
+  // venta". Para tenant AR, las opciones son USD + ARS. Para tenant UY, USD +
+  // UYU (sin ARS). El default precio_moneda es USD para ambos (Inventario
+  // negocia en USD por convención del portal — el cliente paga en local).
+
+  it('F3 multi-país: tenant UY abre form alta y los dropdowns muestran UYU en vez de ARS', async () => {
+    mockUser.value = { id: 1, caps: [], tenant: { pais: 'UY', moneda_local: 'UYU' } };
+    renderInventario();
+    await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+    fireEvent.click(await screen.findByText('__abrir__'));
+    await screen.findByRole('heading', { name: 'Agregar producto' });
+    // El form tiene 2 selects con valor inicial 'USD' (defaults del form).
+    // Buscamos todos los <option> que pertenezcan a un select con value USD/UYU.
+    // Validación robusta: existe al menos un option UYU en el modal.
+    const opts = Array.from(document.querySelectorAll('select option'));
+    const monedas = opts.map(o => o.value).filter(v => v === 'UYU' || v === 'ARS');
+    expect(monedas).toContain('UYU');
+    expect(monedas).not.toContain('ARS');
+  });
+
+  it('F3 multi-país: tenant AR abre form alta y los dropdowns muestran ARS', async () => {
+    mockUser.value = { id: 1, caps: [], tenant: { pais: 'AR', moneda_local: 'ARS' } };
+    renderInventario();
+    await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+    fireEvent.click(await screen.findByText('__abrir__'));
+    await screen.findByRole('heading', { name: 'Agregar producto' });
+    const opts = Array.from(document.querySelectorAll('select option'));
+    const monedas = opts.map(o => o.value).filter(v => v === 'UYU' || v === 'ARS');
+    expect(monedas).toContain('ARS');
+    expect(monedas).not.toContain('UYU');
+  });
 });

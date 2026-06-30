@@ -31,6 +31,8 @@ import useSpreadsheetRows from '../lib/useSpreadsheetRows'; // #F-5
 import TcWarning from './TcWarning';
 import useModal from '../lib/useModal'; // U2 auditoría 2026-06
 import CajaSelectHint from './CajaSelectHint';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 
 function todayISO() { return new Date().toLocaleDateString('sv'); }
@@ -62,6 +64,8 @@ const isUsedRow = (r) => !!(r.producto_id || r.nombre?.trim() || Number(r.precio
 export default function VentaB2BModal({ cliente, onClose, onSaved }) {
   const { toast } = useToast();
   const confirm = useConfirm();
+  // 2026-06-29 Multi-país F3: USD + moneda local del tenant.
+  const { monedaLocal } = useMonedasTenant();
 
   // #B-09: confirm-on-close si hay data cargada
   async function tryClose() {
@@ -558,9 +562,11 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
                         })()}
                       </td>
                       <td style={{ padding: '3px 4px' }}>
+                        {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
                         <select style={{ ...cellInp, cursor: 'pointer' }} value={r.precio_moneda}
                           onChange={e => updCell(idx, 'precio_moneda', e.target.value)}>
-                          <option>USD</option><option>ARS</option>
+                          {Array.from(new Set(['USD', monedaLocal, r.precio_moneda].filter(Boolean)))
+                            .map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>

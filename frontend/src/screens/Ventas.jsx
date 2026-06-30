@@ -13,6 +13,11 @@ import useModal from '../lib/useModal';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
 import { fmt, fmt2 } from '../lib/format';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+// AR → ARS/USD/USDT, UY → UYU/USD/USDT. monedaLocal sirve de default para
+// pagos y para el check "es moneda local" (que antes era hardcoded ARS).
+import { useMonedasTenant } from '../lib/useMonedasTenant';
+import { getMonedasConValor } from '../lib/monedasPais';
 
 // Componentes y helpers locales del módulo Ventas — extraídos a archivos
 // dedicados para mantener este screen enfocado en orchestration.
@@ -54,6 +59,10 @@ export default function Ventas() {
   const confirm = useConfirm();
   const { setPrimaryAction } = usePageActions();
   const navigate = useNavigate();
+  // 2026-06-29 Multi-país F3: set de monedas + local del tenant. Reemplaza
+  // los hardcodes ['ARS','USD','USDT'] / 'ARS' en los dropdowns y la lógica
+  // país-aware (TC visible cuando moneda===monedaLocal, no ARS hardcoded).
+  const { monedas, monedaLocal } = useMonedasTenant();
 
   const [lista, setLista] = useState([]);
   const [dash, setDash] = useState(null);
@@ -306,7 +315,10 @@ export default function Ventas() {
     const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
     if (moneda === 'USD' || moneda === 'USDT') return Math.round(u * factor * 100) / 100;
     const t = Number(tc);
-    if (moneda === 'ARS' && t > 0)              return Math.round(u * t * factor * 100) / 100;
+    // 2026-06-29 Multi-país F3: ARS y UYU usan el mismo cálculo USD×TC (el TC
+    // viene del país correcto vía configApi.lastTc()). Antes era ARS-only,
+    // sesgo AR pre-multi-país.
+    if ((moneda === 'ARS' || moneda === 'UYU') && t > 0) return Math.round(u * t * factor * 100) / 100;
     return '';
   }
   function brutoFromNetoInput(neto, pct) {
@@ -357,7 +369,8 @@ export default function Ventas() {
       let usd = '';
       const n = Number(value) || 0;
       if (n > 0) {
-        if (pg.moneda === 'ARS' && tc > 0) usd = Math.round(n / tc * 100) / 100;
+        // 2026-06-29 Multi-país F3: ARS o UYU se convierten dividiendo por TC.
+        if ((pg.moneda === 'ARS' || pg.moneda === 'UYU') && tc > 0) usd = Math.round(n / tc * 100) / 100;
         else                                usd = n;
       }
       return { ...pg, usd_input: usd !== '' ? String(usd) : '', neto_input: value, monto: bruto !== '' ? String(bruto) : '' };
@@ -393,9 +406,12 @@ export default function Ventas() {
     setPagos(p => {
       const newMoneda = m ? m.moneda : null;
       const pct = pctMetodo(m);
-      // Caso EFECTIVO ARS (sin comisión, ARS): el operador trabaja en ARS directo.
-      // Autollenar el monto = faltante_usd × tc, NO calcular USD intermedio.
-      const arsDirect = pct === 0 && newMoneda === 'ARS';
+      // Caso EFECTIVO en moneda local (sin comisión): el operador trabaja
+      // en ARS o UYU directo. Autollenar el monto = faltante_usd × tc, NO
+      // calcular USD intermedio.
+      // 2026-06-29 Multi-país F3: acepta ARS o UYU (la moneda del método
+      // viene de la DB, que en tenant UY van a ser métodos UYU-default).
+      const arsDirect = pct === 0 && (newMoneda === 'ARS' || newMoneda === 'UYU');
       return p.map((pg, j) => {
         if (j !== i) return pg;
         const tcUse = pg.tc || vForm.tc_venta;
@@ -412,7 +428,8 @@ export default function Ventas() {
             metodo_pago_id: m ? m.id : null,
             metodo_nombre: value,
             es_cuenta_corriente: false,
-            moneda: 'ARS',
+            // Mantener la moneda del método (ARS o UYU) — no la forzamos a ARS.
+            moneda: newMoneda,
             usd_input: '', neto_input: '',
             monto: monto || '',
           };
@@ -1116,7 +1133,15 @@ export default function Ventas() {
                           <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(i, 'descripcion', e.target.value)} />
                           <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(i, 'cantidad', e.target.value)} />
                           <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(i, 'precio_vendido', e.target.value)} />
-                          <select className="input" value={it.moneda} onChange={e => setItem(i, 'moneda', e.target.value)}><option>USD</option><option>ARS</option></select>
+                          {/* Items de venta retail: USD o moneda local del tenant (no
+                              USDT, que es medio de pago, no precio de góndola). Si el
+                              record tiene un valor legacy fuera del set (ej. venta
+                              vieja ARS en un tenant que hoy es UY), lo conservamos
+                              para no romper edits. */}
+                          <select className="input" value={it.moneda} onChange={e => setItem(i, 'moneda', e.target.value)}>
+                            {Array.from(new Set(['USD', monedaLocal, it.moneda].filter(Boolean)))
+                              .map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
                           <button type="button" className="icon-btn" onClick={() => rmItem(i)}><Icons.X size={14} /></button>
                         </div>
                       ))}
@@ -1396,8 +1421,11 @@ export default function Ventas() {
                         // neto EDITABLE (caso "cliente ya transfirió $X").
                         const det = totales.pagosDetalle[i];
                         const m = metodos.find(x => x.id === p.metodo_pago_id);
-                        const showDesglose = det && det.pct > 0 && p.moneda === 'ARS';
-                        const showTc = !p.es_cuenta_corriente && p.moneda === 'ARS';
+                        // 2026-06-29 Multi-país F3: desglose + TC visibles cuando la
+                        // moneda es la local (ARS o UYU), no ARS-hardcoded. USD/USDT
+                        // no requieren TC (montos directos).
+                        const showDesglose = det && det.pct > 0 && (p.moneda === 'ARS' || p.moneda === 'UYU');
+                        const showTc = !p.es_cuenta_corriente && (p.moneda === 'ARS' || p.moneda === 'UYU');
                         // CC = flujo viejo (monto + moneda, sin desglose, sin auto-fill).
                         if (p.es_cuenta_corriente) {
                           return (
@@ -1405,7 +1433,10 @@ export default function Ventas() {
                               <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
                                 <select className="input" value="__CC__" onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
                                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(i, 'monto', e.target.value)} />
-                                <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}><option>ARS</option><option>USD</option><option>USDT</option></select>
+                                <select className="input" value={p.moneda} onChange={e => setPago(i, 'moneda', e.target.value)}>
+                                  {Array.from(new Set([...monedas, p.moneda].filter(Boolean)))
+                                    .map(mm => <option key={mm} value={mm}>{mm}</option>)}
+                                </select>
                                 <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(i, 'tc', e.target.value)} />
                                 <button type="button" className="icon-btn" onClick={() => rmPago(i)}><Icons.X size={14} /></button>
                               </div>
@@ -1419,14 +1450,17 @@ export default function Ventas() {
                         const tcEff = Number(p.tc) || Number(vForm.tc_venta) || null;
                         const pctEff = pctMetodo(m);
                         const factorEff = pctEff > 0 ? 1 / (1 - pctEff / 100) : 1;
-                        const arsDirect = pctEff === 0 && p.moneda === 'ARS';
+                        // 2026-06-29 Multi-país F3: "arsDirect" → "localDirect": efectivo
+                        // en moneda local (ARS o UYU) sin comisión va al input directo.
+                        // Renombro la var para reflejar la nueva semántica país-aware.
+                        const localDirect = pctEff === 0 && (p.moneda === 'ARS' || p.moneda === 'UYU');
                         const montoNum = Number(p.monto) || 0;
                         let derivedUsd = p.usd_input;
-                        if (!arsDirect && (derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
+                        if (!localDirect && (derivedUsd === '' || derivedUsd === null) && montoNum > 0) {
                           // Derivar USD desde monto al cargar venta existente para edición.
                           if (p.moneda === 'USD' || p.moneda === 'USDT') {
                             derivedUsd = String(Math.round(montoNum / factorEff * 100) / 100);
-                          } else if (p.moneda === 'ARS' && tcEff > 0) {
+                          } else if ((p.moneda === 'ARS' || p.moneda === 'UYU') && tcEff > 0) {
                             derivedUsd = String(Math.round(montoNum / factorEff / tcEff * 100) / 100);
                           }
                         }
@@ -1447,16 +1481,18 @@ export default function Ventas() {
                               </select>
                               <div style={{ position: 'relative' }}>
                                 <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>
-                                  {arsDirect ? '$' : 'USD'}
+                                  {/* 2026-06-29 Multi-país F3: símbolo local del input ARS-direct
+                                      ahora distingue $ (ARS) vs $U (UYU). */}
+                                  {localDirect ? (p.moneda === 'UYU' ? '$U' : '$') : 'USD'}
                                 </span>
-                                {arsDirect ? (
+                                {localDirect ? (
                                   <input
                                     type="number" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="venta-pago-ars"
                                     className="input mono" placeholder="730.000"
                                     value={p.monto}
                                     onChange={e => setPagoArsAmount(i, e.target.value)}
-                                    style={{ paddingLeft: arsDirect ? 22 : 36 }}
+                                    style={{ paddingLeft: localDirect ? 22 : 36 }}
                                   />
                                 ) : (
                                   <input

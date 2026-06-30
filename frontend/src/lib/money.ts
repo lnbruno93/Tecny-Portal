@@ -23,15 +23,19 @@ export function round2(x: NumInput): number {
 
 // Convierte un monto a USD usando el TC dado.
 //   · USD/USDT → devuelve el monto tal cual (no necesita TC).
-//   · ARS      → divide por el TC; si el TC es 0 o inválido, devuelve 0
-//                (evita NaN/Infinity en la UI).
+//   · ARS/UYU  → divide por el TC; si el TC es 0 o inválido, devuelve 0
+//                (evita NaN/Infinity en la UI). El TC se interpreta como
+//                "1 USD = N moneda_local", independiente de si N son pesos
+//                argentinos o uruguayos — el call site usa el TC del país
+//                correcto vía configApi.lastTc() o el TC manual del form.
 // Promovido desde frontend/src/screens/ventas/utils.js (2026-06-10) para
 // poder reusarlo desde Envíos sin un cross-module import feo.
 // `moneda` acepta `Moneda | string` por compat con call sites .jsx que pasan
 // el valor sin estrechar el tipo (mismo patrón que fmtMoney).
+// 2026-06-29 Multi-país F3: UYU agregado (mismo tratamiento que ARS).
 export function toUsd(monto: NumInput, moneda: Moneda | string | null | undefined, tc: NumInput): number {
   const m = Number(monto) || 0;
   if (moneda === 'USD' || moneda === 'USDT') return m;
-  if (moneda === 'ARS') return tc && Number(tc) > 0 ? m / Number(tc) : 0;
+  if (moneda === 'ARS' || moneda === 'UYU') return tc && Number(tc) > 0 ? m / Number(tc) : 0;
   return m;
 }

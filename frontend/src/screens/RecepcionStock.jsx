@@ -31,6 +31,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { Icons } from '../components/Icons';
 import BarcodeScanner from '../components/BarcodeScanner';
+// 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
+import { useMonedasTenant } from '../lib/useMonedasTenant';
 
 // Luhn check para IMEI estándar GSMA (15 dígitos). Para 14/16/17 (serial
 // numbers de otros fabricantes) saltamos el check pero validamos formato.
@@ -57,6 +59,8 @@ export default function RecepcionStock() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const navigate = useNavigate();
+  // 2026-06-29 Multi-país F3: USD + moneda local del tenant en costo/precio.
+  const { monedaLocal } = useMonedasTenant();
 
   // Catálogos para selectores.
   const [cats,    setCats]    = useState([]);
@@ -303,9 +307,10 @@ export default function RecepcionStock() {
             <div className="muted tiny" style={{ marginBottom: 4 }}>Costo unitario</div>
             <div style={{ display: 'flex', gap: 4 }}>
               <input className="input" inputMode="decimal" placeholder="0" value={mCosto} onChange={e => setMCosto(e.target.value)} style={{ flex: 1 }} />
+              {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
               <select className="input" value={mCostoMoneda} onChange={e => setMCostoMoneda(e.target.value)} style={{ width: 70 }}>
-                <option>USD</option>
-                <option>ARS</option>
+                {Array.from(new Set(['USD', monedaLocal, mCostoMoneda].filter(Boolean)))
+                  .map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
           </label>
@@ -314,8 +319,8 @@ export default function RecepcionStock() {
             <div style={{ display: 'flex', gap: 4 }}>
               <input className="input" inputMode="decimal" placeholder="0" value={mPrecio} onChange={e => setMPrecio(e.target.value)} style={{ flex: 1 }} />
               <select className="input" value={mPrecioMoneda} onChange={e => setMPrecioMoneda(e.target.value)} style={{ width: 70 }}>
-                <option>USD</option>
-                <option>ARS</option>
+                {Array.from(new Set(['USD', monedaLocal, mPrecioMoneda].filter(Boolean)))
+                  .map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
           </label>
@@ -421,6 +426,7 @@ export default function RecepcionStock() {
                         aria-label={`Costo de ${it.imei}`}
                         style={{ flex: 1, minWidth: 0 }}
                       />
+                      {/* 2026-06-29 Multi-país F3: USD + moneda local. */}
                       <select
                         className="input"
                         value={it.costo_moneda}
@@ -428,8 +434,8 @@ export default function RecepcionStock() {
                         aria-label="Moneda del costo"
                         style={{ width: 60 }}
                       >
-                        <option>USD</option>
-                        <option>ARS</option>
+                        {Array.from(new Set(['USD', monedaLocal, it.costo_moneda].filter(Boolean)))
+                          .map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                   </label>
@@ -452,8 +458,8 @@ export default function RecepcionStock() {
                         aria-label="Moneda del precio"
                         style={{ width: 60 }}
                       >
-                        <option>USD</option>
-                        <option>ARS</option>
+                        {Array.from(new Set(['USD', monedaLocal, it.precio_moneda].filter(Boolean)))
+                          .map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                   </label>
