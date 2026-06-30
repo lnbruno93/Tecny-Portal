@@ -141,12 +141,17 @@ async function syncTarjetaCobros(client, ventaId, estado) {
   // es NULL (caso de venta_pagos pre-fix recién sellado arriba, O caso de pago
   // recién INSERTado donde el sealing al INSERT falló por algún motivo), caemos
   // al pct ACTUAL de metodos_pago — caso borde, se persiste como snapshot abajo.
+  // Auditoría 2026-06-30 D-21: filtro `mp.deleted_at IS NULL` agregado al JOIN.
+  // Consistente con ventaSync.js — re-syncar una venta no debe resucitar movs
+  // sobre tarjeta soft-deleted. Si el método fue archivado, la venta ya no
+  // genera nuevos cobros de tarjeta automáticamente (rompe contabilidad en
+  // cajas-tarjeta zombi).
   const { rows: pagos } = await client.query(
     `SELECT vp.id AS vp_id, vp.monto, vp.moneda, vp.metodo_pago_id,
             vp.comision_pct_snapshot,
             COALESCE(mp.comision_pct, 0) AS mp_comision_pct
        FROM venta_pagos vp
-       JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
+       JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id AND mp.deleted_at IS NULL
       WHERE vp.venta_id = $1 AND vp.es_cuenta_corriente = false AND mp.es_tarjeta = true`, [ventaId]
   );
   if (pagos.length === 0) return;
