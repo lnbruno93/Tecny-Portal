@@ -79,7 +79,7 @@ function fmtFecha(fecha) {
  * @param {object} opts.tenant - { nombre, comprobante_email_footer, pais }
  * @returns {Promise<Buffer>}
  */
-async function generarComprobantePdf({ venta, tenant }) {
+async function generarComprobantePdf({ venta, tenant, _compress = true }) {
   if (!venta) throw new Error('generarComprobantePdf: venta requerida');
   if (!tenant) throw new Error('generarComprobantePdf: tenant requerido');
 
@@ -91,6 +91,12 @@ async function generarComprobantePdf({ venta, tenant }) {
     const doc = new PDFDocument({
       size: 'A5',
       margin: 36,
+      // Por default pdfkit zlib-comprime los text streams del PDF. En tests
+      // que inspeccionan el buffer (e.g. assertar footer custom) eso vuelve
+      // el texto invisible al `.toString()`. Param interno `_compress=false`
+      // permite a los tests pasar texto plano. Prod siempre usa `true` (PDFs
+      // más livianos para el adjunto del email).
+      compress: _compress,
       info: {
         Title:    `Comprobante ${venta.order_id || `#${venta.id}`}`,
         Author:   tenant.nombre || 'Tecny',

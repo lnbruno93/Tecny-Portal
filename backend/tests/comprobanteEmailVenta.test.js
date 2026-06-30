@@ -86,6 +86,9 @@ describe('lib/comprobantePdf', () => {
   });
 
   it('genera PDF con footer custom del tenant inyectado', async () => {
+    // pdfkit zlib-comprime text streams por default — para inspeccionar
+    // el texto del PDF en tests, pasar _compress=false (helper expone ese
+    // hatch interno; prod siempre genera comprimido por tamaño).
     const buf = await generarComprobantePdf({
       venta: {
         id: 2, order_id: 'ORD-26-test02', fecha: hoy, total_usd: 100,
@@ -94,6 +97,7 @@ describe('lib/comprobantePdf', () => {
       },
       tenant: { id: 1, nombre: 'Test', pais: 'AR',
         comprobante_email_footer: 'MI FOOTER CUSTOM TENANT' },
+      _compress: false,
     });
     expect(buf.toString('latin1')).toMatch(/MI FOOTER CUSTOM TENANT/);
   });
