@@ -316,6 +316,25 @@ export const adminApi = {
     }
   },
 
+  // PATCH /tenants/:id/pais — cambiar país del tenant (#473).
+  //
+  // body: { pais: 'AR' | 'UY' }
+  // Solo super-admin (gate en backend). Side effects: crea cajas default del
+  // país nuevo con sufijo (UY)/(AR) en el nombre, actualiza alerta TC al
+  // valor del país, invalida cache tenantStatus. Audit en
+  // tenant_admin_actions con action='tenant_pais_changed'.
+  //
+  // Errores comunes (backend devuelve `code`):
+  //   - 400 same_country: pais === actual del tenant
+  //   - 400 tenant_suspended: tenant suspendido
+  //   - 409 has_active_partnerships: tiene Red B2B activa, revocar primero
+  //   - 404: tenant no existe / soft-deleted
+  //
+  // Response 200: { tenant_id, pais_anterior, pais_nuevo,
+  //                 side_effects: { cajas_creadas, alerta_actualizada } }
+  changePaisTenant: (id, pais) =>
+    api(`/api/super-admin/tenants/${id}/pais`, 'PATCH', { pais }),
+
   // DELETE /tenants/:id?confirm=<slug> — soft-delete tenant (feature #438).
   //
   // Anti-clicaccidental estilo GitHub: el caller debe pasar el slug del

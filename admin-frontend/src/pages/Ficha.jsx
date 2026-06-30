@@ -38,6 +38,7 @@ import ReactivateTenantModal from '../components/modals/ReactivateTenantModal.js
 import ExtendTrialModal from '../components/modals/ExtendTrialModal.jsx';
 import SetPaidUntilModal from '../components/modals/SetPaidUntilModal.jsx';
 import DeleteTenantModal from '../components/modals/DeleteTenantModal.jsx';
+import ChangePaisTenantModal from '../components/modals/ChangePaisTenantModal.jsx';
 
 // ── Helpers locales ───────────────────────────────────────────────────
 
@@ -530,6 +531,31 @@ export default function Ficha() {
         </div>
       )}
 
+      {/* Card de país (#473) — visible solo en tab Resumen, debajo del split.
+         Acción super-admin exclusiva: cambiar pais del tenant arrastra
+         side-effects (cajas nuevas + alerta TC). NO se muestra en
+         tab Actividad para no contaminar el panel de drill-down. */}
+      {activeTab === 'resumen' && (
+        <div className="card" style={{ marginTop: 'var(--gap)' }}>
+          <h3 style={{ margin: '0 0 8px' }}>País del tenant</h3>
+          <p style={{ margin: '0 0 6px' }}>
+            Actualmente:{' '}
+            <strong>
+              {tenant.pais === 'UY' ? 'Uruguay (UYU)' : 'Argentina (ARS)'}
+            </strong>
+          </p>
+          <p className="muted tiny" style={{ margin: '0 0 12px' }}>
+            Cambiar arrastra side-effects: se crean cajas nuevas en la moneda
+            local del país nuevo (con sufijo en el nombre, sin borrar las
+            viejas) y se actualiza el threshold de la alerta TC. Historial
+            intacto.
+          </p>
+          <Btn icon="Tag" onClick={() => setOpenModal('change-pais')}>
+            Cambiar país
+          </Btn>
+        </div>
+      )}
+
       {activeTab === 'actividad' && (
         <div style={{ marginTop: 'var(--gap)' }}>
           <div className="flex-row" style={{ marginBottom: 12 }}>
@@ -576,6 +602,12 @@ export default function Ficha() {
       <SetPaidUntilModal
         tenant={tenant}
         open={openModal === 'set-paid-until'}
+        onClose={() => setOpenModal(null)}
+        onSaved={handleSaved}
+      />
+      <ChangePaisTenantModal
+        tenant={tenant}
+        open={openModal === 'change-pais'}
         onClose={() => setOpenModal(null)}
         onSaved={handleSaved}
       />
