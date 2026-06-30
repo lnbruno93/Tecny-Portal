@@ -126,17 +126,30 @@ async function sincronizarPagosDesdeEnvio(client, venta, items, envio, userId) {
     const moneda = p.moneda || 'ARS';
     const tc = p.tc ?? envio.tc ?? null;
     const monto_usd = round2(toUsd(monto, moneda, tc));
-    // Resolvemos el nombre del método para el comprobante / dashboard
+    // Resolvemos el nombre del método para el comprobante / dashboard.
+    // Auditoría 2026-06-30 D-01: además del nombre, leemos comision_pct para
+    // snapshotear en venta_pagos.comision_pct_snapshot. Si no hay metodo_pago_id
+    // (CC o pago manual), el snapshot queda NULL.
     let metodo_nombre = p.metodo_pago || (p.es_cuenta_corriente ? 'Cuenta corriente' : null);
-    if (!metodo_nombre && p.metodo_pago_id) {
+    let comision_pct_snapshot = null;
+    const mpIdForLookup = p.es_cuenta_corriente ? null : (p.metodo_pago_id ?? null);
+    if (mpIdForLookup) {
+      const { rows: mp } = await client.query(
+        'SELECT nombre, comision_pct FROM metodos_pago WHERE id = $1', [mpIdForLookup]
+      );
+      if (!metodo_nombre) metodo_nombre = mp[0]?.nombre || 'Pago';
+      comision_pct_snapshot = mp[0]?.comision_pct ?? null;
+    } else if (!metodo_nombre && p.metodo_pago_id) {
+      // (camino legacy: sólo se llega acá si es_cuenta_corriente, pero por
+      // seguridad cubrimos el caso de p.metodo_pago_id presente).
       const { rows: mp } = await client.query('SELECT nombre FROM metodos_pago WHERE id = $1', [p.metodo_pago_id]);
       metodo_nombre = mp[0]?.nombre || 'Pago';
     }
     await client.query(
-      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente, comision_pct_snapshot)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [venta.id, p.es_cuenta_corriente ? null : (p.metodo_pago_id ?? null), metodo_nombre || 'Pago',
-       monto, moneda, tc, monto_usd, !!p.es_cuenta_corriente]
+       monto, moneda, tc, monto_usd, !!p.es_cuenta_corriente, comision_pct_snapshot]
     );
   }
 

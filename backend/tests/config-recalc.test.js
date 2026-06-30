@@ -1,5 +1,12 @@
 /**
- * Tests del helper recalcComprobantesFinancieraByTenant.
+ * Tests SMOKE del helper recalcComprobantesFinancieraByTenant.
+ *
+ * Auditoría 2026-06-30 D-01: el helper FUE marcado deprecado — ya NO se invoca
+ * desde el flujo de PUT /api/config (su efecto retroactivo era el bug P0). Los
+ * tests siguen como smoke del helper aislado (sigue exportado y testeable) por
+ * si en el futuro hace falta usarlo desde un script admin de re-sealing
+ * forzado. Pero NO valida más el flujo end-to-end del endpoint — eso ahora
+ * cubre comision-pct-snapshot.test.js con la nueva política inmutable.
  *
  * Reportado por primer cliente real (iDeals Ar tenant=12, 2026-06-25):
  *   1. Owner configuró pct_financiera = 3% en Config
@@ -13,9 +20,7 @@
  *     0 filas → cae al `|| 0` → cálculo congelado en 0
  *
  * Estos tests cubren el helper de forma AISLADA (no toca config global ni rompe
- * otros suites paralelos). El comportamiento del endpoint PUT /api/config está
- * cubierto implícitamente por los tests existentes de financiera.test.js que
- * setean pct_financiera y verifican que los comprobantes lo usan.
+ * otros suites paralelos).
  */
 const { recalcComprobantesFinancieraByTenant } = require('../src/lib/financiera');
 const { setupTestDb, teardownTestDb } = require('./helpers/setup');
@@ -36,7 +41,7 @@ afterAll(async () => {
   await teardownTestDb(pool);
 });
 
-describe('recalcComprobantesFinancieraByTenant — Bug #2 primer cliente real', () => {
+describe('recalcComprobantesFinancieraByTenant — smoke del helper deprecado (Auditoría 2026-06-30 D-01)', () => {
   it('recalcula monto_financiera y monto_neto con el nuevo pct', async () => {
     // Insertar comprobante propio con valores congelados en 0 (caso del cliente)
     const { rows } = await pool.query(

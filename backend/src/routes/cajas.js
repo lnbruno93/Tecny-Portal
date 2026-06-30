@@ -285,6 +285,10 @@ router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), as
   } finally { client.release(); }
 });
 
+// Auditoría 2026-06-30 D-01: cambiar `comision_pct` de un método tarjeta SOLO
+// afecta cobros NUEVOS. Las ventas históricas tienen el % snapshoteado en
+// venta_pagos.comision_pct_snapshot — syncTarjetaCobros lo lee de ahí, no de
+// metodos_pago. Eliminamos cualquier "propagación retroactiva".
 router.put('/cajas/:id', requireCapability('cajas.crear'), validate(updateCajaSchema), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });

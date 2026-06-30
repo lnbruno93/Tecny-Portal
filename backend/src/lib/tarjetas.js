@@ -94,13 +94,38 @@ async function syncTarjetaCobros(client, ventaId, estado) {
   if (estado === 'cancelado') {
     await checkLiquidacionesBloqueantes(client, ventaId);
   }
-  // Antes de soft-deletear los tarjeta_movimientos, listamos sus IDs para
-  // revertir sus caja_movimientos asociados (trazabilidad junio 2026). Si
-  // no había caja_movs (cobros pre-TANDA 1), reverseCajaMovimientos es no-op.
+
+  // Auditoría 2026-06-30 D-01 — Snapshot lazy de venta_pagos.comision_pct_snapshot:
+  //  Antes de borrar/recrear movs (patrón legacy idempotente), levantamos los
+  //  movs viejos con su pct (derivable de monto_comision/monto_bruto). Si el
+  //  pago correspondiente tiene comision_pct_snapshot IS NULL, usamos el pct
+  //  derivado para SELLAR el snapshot — así el método sigue inmutable aunque
+  //  cambien mp.comision_pct. Esto es el sealing lazy en primer touch.
+  //
+  //  La lista de movs viejos se cruza por venta_id + metodo_pago_id (un pago
+  //  por método: el venta_pago lleva metodo_pago_id como FK). Si hay sealing
+  //  pendiente, lo aplicamos antes del soft-delete para que el snapshot
+  //  refleje la histórica.
   const { rows: cobrosViejos } = await client.query(
-    `SELECT id FROM tarjeta_movimientos
+    `SELECT id, metodo_pago_id, monto_bruto, monto_comision, pct AS pct_old
+       FROM tarjeta_movimientos
       WHERE venta_id = $1 AND tipo = 'cobro' AND deleted_at IS NULL`, [ventaId]
   );
+
+  // Sealing lazy: para los venta_pagos involucrados con comision_pct_snapshot IS NULL,
+  // derivamos el % desde el mov viejo (monto_comision/monto_bruto × 100) y lo persistimos.
+  for (const c of cobrosViejos) {
+    const bruto = Number(c.monto_bruto);
+    const comision = Number(c.monto_comision);
+    if (bruto <= 0) continue;
+    const pctDerivado = round3(comision * 100 / bruto);
+    await client.query(
+      `UPDATE venta_pagos SET comision_pct_snapshot = $1
+         WHERE venta_id = $2 AND metodo_pago_id = $3 AND comision_pct_snapshot IS NULL`,
+      [pctDerivado, ventaId, c.metodo_pago_id]
+    );
+  }
+
   for (const c of cobrosViejos) {
     await reverseCajaMovimientos(client, 'tarjeta_movimientos', c.id);
   }
@@ -111,8 +136,15 @@ async function syncTarjetaCobros(client, ventaId, estado) {
   );
   if (estado === 'cancelado') return;
 
+  // Auditoría 2026-06-30 D-01 — leemos comision_pct_snapshot del venta_pagos
+  // (NO de metodos_pago) para preservar inmutabilidad histórica. Si el snapshot
+  // es NULL (caso de venta_pagos pre-fix recién sellado arriba, O caso de pago
+  // recién INSERTado donde el sealing al INSERT falló por algún motivo), caemos
+  // al pct ACTUAL de metodos_pago — caso borde, se persiste como snapshot abajo.
   const { rows: pagos } = await client.query(
-    `SELECT vp.monto, vp.moneda, vp.metodo_pago_id, COALESCE(mp.comision_pct, 0) AS comision_pct
+    `SELECT vp.id AS vp_id, vp.monto, vp.moneda, vp.metodo_pago_id,
+            vp.comision_pct_snapshot,
+            COALESCE(mp.comision_pct, 0) AS mp_comision_pct
        FROM venta_pagos vp
        JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id
       WHERE vp.venta_id = $1 AND vp.es_cuenta_corriente = false AND mp.es_tarjeta = true`, [ventaId]
@@ -123,7 +155,21 @@ async function syncTarjetaCobros(client, ventaId, estado) {
   const fecha = v[0]?.fecha;
 
   for (const p of pagos) {
-    const { bruto, pct, comision, neto } = computeNeto(p.monto, p.comision_pct);
+    // Snapshot del % a usar: prioridad al snapshot del venta_pago; si NULL, al pct actual del método.
+    const pctSnap = p.comision_pct_snapshot != null
+      ? Number(p.comision_pct_snapshot)
+      : Number(p.mp_comision_pct);
+    const { bruto, pct, comision, neto } = computeNeto(p.monto, pctSnap);
+
+    // Si el snapshot estaba NULL, persistirlo para que la próxima edición ya no
+    // lea de metodos_pago (sealing del fallback).
+    if (p.comision_pct_snapshot == null) {
+      await client.query(
+        `UPDATE venta_pagos SET comision_pct_snapshot = $1 WHERE id = $2`,
+        [round3(pct), p.vp_id]
+      );
+    }
+
     const { rows } = await client.query(
       `INSERT INTO tarjeta_movimientos
          (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, venta_id)
@@ -142,6 +188,12 @@ async function syncTarjetaCobros(client, ventaId, estado) {
       concepto: `Cobro venta #${ventaId}`,
     });
   }
+}
+
+// Auditoría 2026-06-30 D-01 — helper local para redondear a 3 decimales (tipo
+// NUMERIC(6,3) de comision_pct_snapshot).
+function round3(n) {
+  return Math.round(Number(n) * 1000) / 1000;
 }
 
 module.exports = { syncTarjetaCobros, postCajaMovimientoTarjeta };

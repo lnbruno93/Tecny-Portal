@@ -118,15 +118,32 @@ async function insertarDetalle(client, venta, b) {
   }
   // Pagos: bulk INSERT con UNNEST. monto_usd se precalcula en JS (toUsd
   // depende del TC, no es portable a SQL puro sin replicar la lógica).
+  //
+  // Auditoría 2026-06-30 D-01: snapshot del % del método de pago al momento del
+  // INSERT (comision_pct_snapshot). Se lee de metodos_pago.comision_pct en bloque
+  // por los IDs presentes y se persiste — garantiza que cambiar el % del método
+  // luego NO afecte ventas históricas. Si metodo_pago_id es NULL (CC / método
+  // manual sin caja-tarjeta), el snapshot queda NULL.
   if (b.pagos && b.pagos.length > 0) {
+    // Auditoría 2026-06-30 D-01: lookup en bloque de los % actuales de los
+    // métodos. Para pagos sin metodo_pago_id (CC), el snapshot queda NULL.
+    const mpIds = [...new Set(b.pagos.map(p => p.metodo_pago_id).filter(Boolean))];
+    const pctByMpId = new Map();
+    if (mpIds.length > 0) {
+      const { rows: mps } = await client.query(
+        `SELECT id, comision_pct FROM metodos_pago WHERE id = ANY($1::int[])`,
+        [mpIds]
+      );
+      for (const r of mps) pctByMpId.set(r.id, r.comision_pct);
+    }
     await client.query(
       `INSERT INTO venta_pagos
-         (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente)
-       SELECT $1, mpid, mnom, m, mo, t, mu, ecc
+         (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd, es_cuenta_corriente, comision_pct_snapshot)
+       SELECT $1, mpid, mnom, m, mo, t, mu, ecc, cps
          FROM UNNEST(
            $2::int[], $3::text[], $4::numeric[], $5::text[],
-           $6::numeric[], $7::numeric[], $8::boolean[]
-         ) AS u(mpid, mnom, m, mo, t, mu, ecc)`,
+           $6::numeric[], $7::numeric[], $8::boolean[], $9::numeric[]
+         ) AS u(mpid, mnom, m, mo, t, mu, ecc, cps)`,
       [
         venta.id,
         b.pagos.map(p => p.metodo_pago_id ?? null),
@@ -136,6 +153,7 @@ async function insertarDetalle(client, venta, b) {
         b.pagos.map(p => p.tc ?? null),
         b.pagos.map(p => round2(toUsd(p.monto, p.moneda, p.tc ?? b.tc_venta))),
         b.pagos.map(p => !!p.es_cuenta_corriente),
+        b.pagos.map(p => p.metodo_pago_id ? (pctByMpId.get(p.metodo_pago_id) ?? null) : null),
       ]
     );
   }

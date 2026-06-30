@@ -42,21 +42,75 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
     return null;
   }
 
-  // Comisión con el monto y % actuales.
+  // Auditoría 2026-06-30 D-01 — Snapshot lazy de pct_aplicado:
+  //  · Si la fila comprobantes ya existe y tiene pct_aplicado NOT NULL →
+  //    usar ese % snapshoteado (NO leer config). Garantiza inmutabilidad
+  //    histórica: editar la venta vieja no reescribe monto_financiera con el
+  //    pct nuevo de config.
+  //  · Si pct_aplicado IS NULL (fila pre-fix) → sealing lazy: derivar el %
+  //    matemáticamente del monto_financiera ya congelado y persistirlo. NO
+  //    sobrescribir monto_financiera con un valor recalculado del pct actual
+  //    de config (el monto histórico es fuente de verdad).
+  //  · Si no existe fila (alta nueva) → leer config.pct_financiera y persistir
+  //    pct_aplicado al INSERT.
   const monto = Number(pagoFin.monto);
-  const { rows: cfg } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
-  const pct = Number(cfg[0]?.pct_financiera || 0);
-  const monto_financiera = round2(monto * pct / 100);
-  const monto_neto = round2(monto - monto_financiera);
+  const existing = await client.query(
+    `SELECT id, pct_aplicado, monto AS monto_old, monto_financiera AS monto_financiera_old
+       FROM comprobantes WHERE venta_id = $1 ORDER BY id LIMIT 1`,
+    [ventaId]
+  );
 
-  // Si ya hay una fila (activa o revertida), restaurarla + recalcular. Si no, crearla.
+  let pct;             // % a persistir en pct_aplicado (NUMERIC(6,3))
+  let monto_financiera;
+  let monto_neto;
+
+  if (existing.rows[0]) {
+    const row = existing.rows[0];
+    const pctSnap = row.pct_aplicado != null ? Number(row.pct_aplicado) : null;
+    const montoOld = Number(row.monto_old);
+    const montoFinOld = Number(row.monto_financiera_old);
+
+    if (pctSnap != null) {
+      // CAMINO A: fila ya sellada — usar el % snapshoteado.
+      // Si el monto del pago cambió (edit del monto en venta_pagos), recalculamos
+      // con el % snapshot. El % NO cambia: el % es del momento de la venta.
+      pct = pctSnap;
+      monto_financiera = round2(monto * pct / 100);
+      monto_neto = round2(monto - monto_financiera);
+    } else if (montoOld > 0 && montoFinOld >= 0 && monto === montoOld) {
+      // CAMINO B: fila pre-fix, monto no cambió — sealing lazy derivando el %
+      // del monto_financiera ya congelado. Mantenemos los valores históricos
+      // intactos y solo sellamos pct_aplicado para que futuros toques no
+      // recalculen.
+      pct = round3(montoFinOld * 100 / montoOld);
+      monto_financiera = montoFinOld;        // preservar el valor histórico
+      monto_neto = round2(monto - monto_financiera);
+    } else {
+      // CAMINO C: fila pre-fix Y el monto del pago cambió (o monto_old era 0).
+      // No podemos derivar el % del histórico (la relación se rompió). Usamos
+      // el pct ACTUAL de config como fallback y sellamos. Caso borde — debería
+      // ser raro porque las ediciones de monto vienen de fullEdit que ya
+      // re-INSERTÓ venta_pagos.
+      const { rows: cfg } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
+      pct = round3(Number(cfg[0]?.pct_financiera || 0));
+      monto_financiera = round2(monto * pct / 100);
+      monto_neto = round2(monto - monto_financiera);
+    }
+  } else {
+    // CAMINO D: fila nueva — leer config y snapshotear.
+    const { rows: cfg } = await client.query('SELECT pct_financiera FROM config LIMIT 1');
+    pct = round3(Number(cfg[0]?.pct_financiera || 0));
+    monto_financiera = round2(monto * pct / 100);
+    monto_neto = round2(monto - monto_financiera);
+  }
+
+  // Si ya hay una fila (activa o revertida), restaurarla + actualizar. Si no, crearla.
   //
   // IMPORTANTE: el UPDATE incluye archivo_data/nombre/tipo, no solo los montos.
   // Antes de mayo-2026 estos no se refrescaban: si la venta era cancelada (con su
   // comprobante soft-deleted), después se subía un archivo nuevo en venta_comprobantes,
   // y al reactivarse, el comprobante de Financiera quedaba pegado al archivo viejo —
   // archivo desincronizado de los montos. Riesgo de auditoría con terceros.
-  const existing = await client.query('SELECT id FROM comprobantes WHERE venta_id = $1 ORDER BY id LIMIT 1', [ventaId]);
   if (existing.rows[0]) {
     // P-03 Fase 5: copiar también archivo_key + archivo_size. Si la fila origen
     // tiene archivo_data poblado (legacy), se copia tal cual. Si tiene archivo_key
@@ -65,32 +119,43 @@ async function syncFinancieraComprobante(client, ventaId, estado) {
     // cuando ambas filas pasen a soft-delete, el cron de purga futuro deberá
     // chequear que ninguna fila activa referencia la key antes de borrar el
     // objeto R2 (TODO P-03 cleanup cron).
+    //
+    // Auditoría 2026-06-30 D-01: incluimos pct_aplicado en el UPDATE (sellado lazy).
     const { rows } = await client.query(
       `UPDATE comprobantes
           SET deleted_at = NULL, monto = $2, monto_financiera = $3, monto_neto = $4,
               archivo_data = $5, archivo_nombre = $6, archivo_tipo = $7,
-              archivo_key = $8, archivo_size = $9
+              archivo_key = $8, archivo_size = $9,
+              pct_aplicado = $10
         WHERE venta_id = $1
-       RETURNING id, monto, monto_financiera, monto_neto`,
+       RETURNING id, monto, monto_financiera, monto_neto, pct_aplicado`,
       [ventaId, monto, monto_financiera, monto_neto,
        file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null,
-       file.archivo_key ?? null, file.archivo_size ?? null]
+       file.archivo_key ?? null, file.archivo_size ?? null, pct]
     );
     return rows[0];
   }
 
   const { rows: v } = await client.query('SELECT fecha, cliente_nombre, order_id FROM ventas WHERE id = $1', [ventaId]);
+  // Auditoría 2026-06-30 D-01: persistir pct_aplicado en el INSERT (snapshot).
   const { rows } = await client.query(
     `INSERT INTO comprobantes
       (fecha, cliente, monto, monto_financiera, monto_neto, referencia,
-       archivo_data, archivo_nombre, archivo_tipo, archivo_key, archivo_size, venta_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-     RETURNING id, monto, monto_financiera, monto_neto`,
+       archivo_data, archivo_nombre, archivo_tipo, archivo_key, archivo_size,
+       venta_id, pct_aplicado)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+     RETURNING id, monto, monto_financiera, monto_neto, pct_aplicado`,
     [v[0].fecha, v[0].cliente_nombre ?? null, monto, monto_financiera, monto_neto, v[0].order_id,
      file.archivo_data, file.archivo_nombre ?? null, file.archivo_tipo ?? null,
-     file.archivo_key ?? null, file.archivo_size ?? null, ventaId]
+     file.archivo_key ?? null, file.archivo_size ?? null, ventaId, pct]
   );
   return rows[0];
+}
+
+// Auditoría 2026-06-30 D-01 — helper local para redondear a 3 decimales (tipo
+// NUMERIC(6,3) de pct_aplicado / comision_pct_snapshot).
+function round3(n) {
+  return Math.round(Number(n) * 1000) / 1000;
 }
 
 /**
@@ -169,12 +234,26 @@ async function postCajaMovimientoFinanciera(client, {
  * recalcComprobantesFinancieraByTenant — recalcula monto_financiera y monto_neto
  * de TODOS los comprobantes activos del tenant actual con el nuevo `pctNuevo`.
  *
+ * @deprecated Auditoría 2026-06-30 D-01. Este helper FUE invocado desde PUT
+ *   /api/config para "propagar" el cambio de pct_financiera a las filas
+ *   históricas. La auditoría detectó que ese comportamiento es exactamente el
+ *   bug P0: cambiar el % afecta KPIs históricos retroactivamente.
+ *
+ *   La política nueva es "snapshot lazy" (Opción B): cada `comprobantes` lleva
+ *   su propio `pct_aplicado` (NUMERIC(6,3)) congelado al momento de la venta.
+ *   Cambiar pct_financiera SOLO afecta ventas NUEVAS. Por eso este helper YA
+ *   NO se invoca desde rutas — queda para tests de smoke y eventuales scripts
+ *   admin (re-sealing forzado en escenarios excepcionales).
+ *
  * 2026-06-25 Bug #2 (primer cliente real iDeals Ar tenant=12): cuando el owner
  * cambia el % de retención de la financiera en Config, los comprobantes ya
  * existentes quedaban con el cálculo congelado del % viejo (o 0 si nunca se
  * configuró). El owner espera intuitivamente que cambiar el % afecte sus
  * ventas históricas — si no, el dashboard miente y la trazabilidad financiera
  * pierde sentido.
+ * — Reverso 2026-06-30 D-01: ese "intuitivo" choca con la integridad histórica.
+ *   Decisión final: ventas nuevas usan pct nuevo (snapshot al INSERT), ventas
+ *   viejas se quedan con su pct original (sealing lazy en primer touch).
  *
  * Diseño:
  *  · Idempotente: re-correr con el mismo pct no cambia nada (los valores ya
