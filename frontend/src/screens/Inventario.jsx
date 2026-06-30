@@ -6,7 +6,7 @@ import { userHasCap } from '../lib/userHasCap';
 import { RedB2BPendingReviewContent } from './RedB2BPendingReview';
 import { exportCsv } from '../lib/exportCsv';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
-import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload } from '../lib/importStock';
+import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -841,6 +841,10 @@ export default function Inventario() {
 
   const importValidos = useMemo(() => importRows.filter(r => !r.error), [importRows]);
   const importErrores = useMemo(() => importRows.filter(r => r.error), [importRows]);
+  // 2026-06-30 #imei-dup: IMEIs duplicados DENTRO del XLSX. Si hay alguno,
+  // bloqueamos el submit del import — el operador tiene que corregir el
+  // archivo. Filas sin IMEI (accesorios) son legítimas y se ignoran.
+  const importDupImeis = useMemo(() => findDuplicateImeis(importRows), [importRows]);
 
   function estadoBadge(s) {
     const d = ESTADO_DISPLAY[s] || { label: s, tone: 'default' };
@@ -1511,6 +1515,35 @@ export default function Inventario() {
                       <> · <strong>{importGroups.length} compra{importGroups.length === 1 ? '' : 's'}</strong> a generar</>
                     )}
                   </div>
+                  {/* 2026-06-30 #imei-dup: BLOCK banner — IMEIs duplicados
+                      dentro del XLSX bloquean el submit. Aparece arriba para
+                      que sea lo primero que ven y muestra qué filas chocan
+                      (rowIndex + 2 porque rows[0] es header y rowIndex es
+                      0-based; mostramos números humanos = línea en Excel). */}
+                  {importDupImeis.length > 0 && (
+                    <div style={{
+                      marginBottom: 10, padding: '8px 12px',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.45)',
+                      borderRadius: 6, color: 'var(--neg)', fontSize: 12,
+                    }} role="alert">
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                        ⚠ {importDupImeis.length} IMEI{importDupImeis.length === 1 ? '' : 's'} duplicado{importDupImeis.length === 1 ? '' : 's'} en este archivo
+                      </div>
+                      <div style={{ marginBottom: 4 }}>
+                        Corregilos antes de continuar. La importación queda bloqueada.
+                      </div>
+                      <div style={{ maxHeight: 100, overflowY: 'auto' }}>
+                        {importDupImeis.map((d, i) => (
+                          <div key={i} className="mono" style={{ fontSize: 11 }}>
+                            · IMEI <strong>{d.imei}</strong> aparece en filas{' '}
+                            {d.rowIndices.map(idx => idx + 2).join(', ')}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Errores: si los hay, se mostrarán pero NO bloquean. Las filas
                       con error simplemente no entran a ningún grupo (el agrupador
                       las ignora). El usuario decide si seguir o corregir la planilla. */}
@@ -1646,8 +1679,11 @@ export default function Inventario() {
             </div>
             <div className="modal-ft">
               <button className="btn btn-ghost" onClick={() => setShowImport(false)}>Cancelar</button>
+              {/* 2026-06-30 #imei-dup: bloqueamos si hay IMEIs duplicados en
+                  el XLSX. Mismo criterio que el form alta — la integridad de
+                  la carga es prioridad sobre velocidad. */}
               <button className="btn btn-primary"
-                disabled={importing || importValidos.length === 0 || importGroups.length === 0}
+                disabled={importing || importValidos.length === 0 || importGroups.length === 0 || importDupImeis.length > 0}
                 onClick={confirmImport}>
                 {importing
                   ? 'Importando…'

@@ -263,6 +263,40 @@ export function buildBulkMovimientosPayload({ groups, newCatByName = new Map(), 
   });
 }
 
+// 2026-06-30 #imei-dup: detecta IMEIs duplicados DENTRO de un set de filas
+// del XLSX. Ignora filas sin IMEI (productos sin IMEI son legítimos —
+// accesorios, lote sin serial). Devuelve un array con un entry por IMEI
+// repetido, incluyendo los índices de fila (0-based dentro de `rows`) para
+// que la UI pueda highlightearlas.
+//
+// Trim aplicado para tolerar IMEIs con espacios accidentales (Excel a veces
+// los pega con padding). Coincidencia exacta del string trimmed — no
+// case-normalize porque IMEIs son numéricos puros, pero por defensa
+// futura aceptamos cualquier string.
+//
+// Shape: [{ imei: string, rowIndices: number[] }]
+//
+// Pensado para correrse en la UI del import xlsx ANTES de submit, mostrando
+// un banner rojo + lista + disable del botón si dups.length > 0.
+export function findDuplicateImeis(rows) {
+  const map = new Map(); // imei trimmed → [rowIndex, ...]
+  if (!Array.isArray(rows)) return [];
+  rows.forEach((row, idx) => {
+    // Tolerar tanto el shape de mapStockRows ({ body: { imei } }) como un
+    // shape plano ({ imei }) por si el helper se usa en otros contextos.
+    const raw = row?.body?.imei ?? row?.imei ?? '';
+    const imei = String(raw ?? '').trim();
+    if (!imei) return;
+    if (!map.has(imei)) map.set(imei, []);
+    map.get(imei).push(idx);
+  });
+  const dups = [];
+  for (const [imei, indices] of map.entries()) {
+    if (indices.length > 1) dups.push({ imei, rowIndices: indices });
+  }
+  return dups;
+}
+
 // Helper: dado el resultado de mapStockRows, devuelve los nombres únicos
 // (case-insensitive) de categorías y proveedores nuevos a crear. Útil para
 // mostrar en el preview "Se crearán N categorías nuevas: [lista]".
