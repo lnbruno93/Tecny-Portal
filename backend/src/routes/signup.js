@@ -56,15 +56,25 @@ const JWT_ALGORITHM = 'HS256';
 // 3 cajas default sembradas para cada tenant nuevo. El user las customiza
 // después según su negocio (agrega tarjetas, billeteras virtuales, etc.).
 //
-// 2026-06-29 Multi-país F2: hoy todos los signups públicos son AR (selector
-// de país llega en F4). Mantenemos las cajas hardcoded en ARS para no
-// adelantarnos al feature flag; cuando F4 introduzca el selector, este
-// array pasa a depender de `pais` (helper getDefaultCajasPorPais).
-const DEFAULT_CAJAS = [
+// 2026-06-29 Multi-país F4 (#470): el selector de país en el form de signup
+// determina las cajas iniciales. Para UY usamos UYU (Efectivo Pesos = Pesos
+// Uruguayos) — el operador uruguayo no tendría por qué arrancar con cajas
+// en ARS. USD se mantiene en ambos países (universal). El operador puede
+// agregar/borrar después según su negocio.
+const DEFAULT_CAJAS_AR = [
   { nombre: 'Efectivo Pesos', moneda: 'ARS', orden: 1, es_financiera: true },
   { nombre: 'Efectivo USD',   moneda: 'USD', orden: 2, es_financiera: false },
   { nombre: 'Banco Pesos',    moneda: 'ARS', orden: 3, es_financiera: false },
 ];
+const DEFAULT_CAJAS_UY = [
+  { nombre: 'Efectivo Pesos', moneda: 'UYU', orden: 1, es_financiera: true },
+  { nombre: 'Efectivo USD',   moneda: 'USD', orden: 2, es_financiera: false },
+  { nombre: 'Banco Pesos',    moneda: 'UYU', orden: 3, es_financiera: false },
+];
+
+function getDefaultCajasPorPais(pais) {
+  return pais === 'UY' ? DEFAULT_CAJAS_UY : DEFAULT_CAJAS_AR;
+}
 
 // Multi-país F2 (#471): defaults de alertas_config sembradas en cada tenant
 // nuevo. `tc_referencia.valor` depende del país (1400 ARS/USD vs 40 UYU/USD).
@@ -170,7 +180,9 @@ function frontendUrl() {
  *                _verification_token (solo en dev/test) }
  */
 router.post('/signup', validate(signupSchema), async (req, res, next) => {
-  const { nombre, email, password, tenant_nombre, hcaptcha_response } = req.body;
+  // 2026-06-29 Multi-país F4 (#470): `pais` viene del selector en Signup.jsx
+  // (AR | UY). Zod aplicó default 'AR' si el campo faltaba (legacy clients).
+  const { nombre, email, password, tenant_nombre, hcaptcha_response, pais } = req.body;
 
   // CAPTCHA gate — antes de cualquier query a DB para protegerla del costo de
   // SELECT/INSERT con tokens inválidos masivos. Si HCAPTCHA_ENABLED!='true'
@@ -240,10 +252,15 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
 
     // 1. Tenant nuevo (plan trial por default). `tenants` NO está en la lista
     // RLS — se filtra indirectamente vía tenant_users.
+    //
+    // 2026-06-29 Multi-país F4 (#470): persistimos `pais` en el INSERT. La
+    // columna tiene DEFAULT 'AR' (migration F1), así que un legacy client que
+    // no mande `pais` también queda en AR — pero acá lo pasamos siempre porque
+    // Zod aplica .default('AR') y `pais` queda como string válido (AR|UY).
     const slug = await uniqueSlug(client, slugify(tenant_nombre));
     const { rows: [tenant] } = await client.query(
-      `INSERT INTO tenants (nombre, slug, plan) VALUES ($1, $2, 'trial') RETURNING id, nombre, slug, plan`,
-      [tenant_nombre, slug]
+      `INSERT INTO tenants (nombre, slug, plan, pais) VALUES ($1, $2, 'trial', $3) RETURNING id, nombre, slug, plan, pais`,
+      [tenant_nombre, slug, pais]
     );
 
     // 1.5. SET LOCAL ANTES de cualquier INSERT en tabla RLS-protegida.
@@ -297,7 +314,10 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     );
 
     // 5. Seed cajas default — metodos_pago SÍ tiene RLS, tenant_id explícito.
-    for (const caja of DEFAULT_CAJAS) {
+    // 2026-06-29 Multi-país F4: las cajas iniciales dependen del país elegido
+    // en signup. UY usa UYU (Pesos Uruguayos) en las dos cajas "Pesos",
+    // AR usa ARS (Pesos Argentinos). USD se mantiene en ambos casos.
+    for (const caja of getDefaultCajasPorPais(pais)) {
       await client.query(
         `INSERT INTO metodos_pago (nombre, moneda, orden, es_financiera, tenant_id)
            VALUES ($1, $2, $3, $4, $5)`,
@@ -331,17 +351,13 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
     // 5cb. 2026-06-29 Multi-país F2 (#471): seed de alertas_config para el
     // tenant nuevo. Sin esto el tool get_alertas del bot devuelve vacío y
     // los warnings de TC del frontend no se muestran en el primer login.
-    // `tc_referencia.valor` viene del país (UY=40 vs AR=1400). El tenant
-    // creado via signup público hoy siempre es AR (pais default), pero
-    // dejamos la lectura de `tenant.pais` por si F4 lo expone más adelante.
+    // `tc_referencia.valor` viene del país (UY=40 vs AR=1400).
     //
-    // Lookup del país recién insertado — la columna tiene DEFAULT 'AR' pero
-    // si el signup explícito de F4 pasa otro país, lo respetamos.
-    const { rows: [tenantRow] } = await client.query(
-      `SELECT pais FROM tenants WHERE id = $1`, [tenant.id]
-    );
-    const tenantPais = (tenantRow && tenantRow.pais) || 'AR';
-    for (const alerta of defaultsAlertasParaPais(tenantPais)) {
+    // 2026-06-29 Multi-país F4 (#470): `pais` ya viene del body validado por
+    // Zod (default 'AR' para legacy clients sin selector). Antes hacíamos un
+    // SELECT post-INSERT para leerlo de la DB — innecesario ahora que el
+    // form siempre lo manda explícito.
+    for (const alerta of defaultsAlertasParaPais(pais)) {
       await client.query(
         `INSERT INTO alertas_config (tenant_id, tipo, activa, parametros)
            VALUES ($1, $2, $3, $4::jsonb)

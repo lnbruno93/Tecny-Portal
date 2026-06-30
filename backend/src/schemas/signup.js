@@ -24,6 +24,12 @@ const signupSchema = z.object({
   // Bound a 10kB — tokens reales son ~500-2000 chars; este límite protege
   // contra abuse de payload size.
   hcaptcha_response: z.string().trim().max(10_000).optional(),
+  // 2026-06-29 Multi-país F4 (#470): selector país en el form de signup. El
+  // frontend siempre lo manda (default 'AR' en el form). Aceptamos también
+  // requests legacy sin `pais` — Zod usa el default. Validamos hard contra
+  // el enum AR|UY para defender contra payloads manuales con países que
+  // no soportamos (ej. 'CL' → 400 con shape de Zod estándar).
+  pais: z.enum(['AR', 'UY']).default('AR'),
 }).strict();
 
 /** Schema para POST /api/auth/verify-email — recibe token UUID-hex. */

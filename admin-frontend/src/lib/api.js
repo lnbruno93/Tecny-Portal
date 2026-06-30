@@ -369,4 +369,25 @@ export const adminApi = {
   // devuelve el valor nuevo.
   updatePlanPrice: (plan, body) =>
     api(`/api/super-admin/plan-prices/${encodeURIComponent(plan)}`, 'PATCH', body),
+
+  // ── TC defaults por país (Multi-país F4 #470) ─────────────────────────
+  // GET /tc-defaults-pais — lista las 2 filas seedeadas (AR ARS/USD, UY UYU/USD)
+  // con { pais, par, valor, updated_at, updated_by, updated_by_username }.
+  // Sin paginación: la tabla es fija (2 filas hoy; si se agrega un país
+  // nuevo, escala a N filas pero igual sin paginación). Misma shape que
+  // /plan-prices — usado por la pantalla /tc-defaults del back-office.
+  getTcDefaultsPais: () => api('/api/super-admin/tc-defaults-pais'),
+
+  // PATCH /tc-defaults-pais — actualiza el valor numérico de un par.
+  // body: { pais: 'AR'|'UY', par: 'ARS/USD'|'UYU/USD', valor: number > 0,
+  //         reason?: string }.
+  // Reglas server-side:
+  //   · pais ↔ par cross-check: AR exige ARS/USD; UY exige UYU/USD.
+  //     Si no coincide → 400 code='pais_par_mismatch'.
+  //   · valor positivo + cap 1M (Zod).
+  //   · row inexistente → 404 (no debería ocurrir con el seed de F1).
+  //   · no-op (mismo valor) → 200 con noop:true (no audit, no UPDATE).
+  // Audit: action='tc_default_pais_updated' en tenant_admin_actions.
+  updateTcDefaultPais: (body) =>
+    api('/api/super-admin/tc-defaults-pais', 'PATCH', body),
 };

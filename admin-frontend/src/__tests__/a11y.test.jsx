@@ -67,6 +67,13 @@ vi.mock('../lib/api.js', () => ({
         { plan: 'enterprise', price_usd: null, active: true, notes: '', updated_at: null, updated_by_username: null },
       ],
     }),
+    // Multi-país F4 (#470): mock para el smoke test de a11y de TcDefaults.
+    getTcDefaultsPais: vi.fn().mockResolvedValue({
+      tc_defaults: [
+        { pais: 'AR', par: 'ARS/USD', valor: 1400, updated_at: '2026-06-29T10:00:00Z', updated_by: 1, updated_by_username: 'lucas' },
+        { pais: 'UY', par: 'UYU/USD', valor: 40, updated_at: null, updated_by: null, updated_by_username: null },
+      ],
+    }),
   },
   getToken: vi.fn(() => 'tok-x'),
   saveToken: vi.fn(),
@@ -79,6 +86,7 @@ import Login from '../pages/Login.jsx';
 import Resumen from '../pages/Resumen.jsx';
 import Clientes from '../pages/Clientes.jsx';
 import Planes from '../pages/Planes.jsx';
+import TcDefaults from '../pages/TcDefaults.jsx';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -117,6 +125,11 @@ describe('a11y smoke tests', () => {
 
   it('Planes no tiene violations a11y', async () => {
     const results = await runA11y(<Planes />);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('TcDefaults no tiene violations a11y', async () => {
+    const results = await runA11y(<TcDefaults />);
     expect(results).toHaveNoViolations();
   });
 });
