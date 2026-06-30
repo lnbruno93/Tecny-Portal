@@ -99,6 +99,12 @@ router.get('/', async (req, res, next) => {
 });
 
 // Solo admins pueden cambiar la configuración global
+//
+// Auditoría 2026-06-30 D-01: cambiar `pct_financiera` SOLO afecta ventas NUEVAS
+// (snapshot al INSERT en comprobantes.pct_aplicado). NO se invoca
+// recalcComprobantesFinancieraByTenant — fue marcado deprecado precisamente
+// porque su efecto retroactivo era el bug P0. Las filas históricas mantienen
+// su pct_aplicado snapshoteado (o se sellan lazy en el primer touch).
 router.put('/', adminOnly, validate(updateConfigSchema), async (req, res, next) => {
   try {
     const { pct_financiera } = req.body;
