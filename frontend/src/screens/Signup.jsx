@@ -359,28 +359,28 @@ export default function Signup() {
                     abstracta. */}
                 <div className="field">
                   <label className="field-label" id="pais-label">País</label>
+                  {/* Usa el patrón `.seg` + `button.on` del design system
+                      (styles.css L740) — antes había inline styles que pisaban
+                      las clases y rompían el contraste en dark theme (bg blanco
+                      sobre fondo oscuro). Ahora deja al CSS hacer su trabajo:
+                      surface contenedor + surface-3 + shadow-sm para el activo,
+                      text-muted → text para inactive→active. Solo overrides:
+                      `flex:1` para repartir el ancho 50/50 (signup tiene 2
+                      opciones full-width, no es un filtro compacto). */}
                   <div
                     className="seg"
                     role="radiogroup"
                     aria-labelledby="pais-label"
-                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}
+                    style={{ display: 'flex', width: '100%' }}
                   >
                     <button
                       type="button"
                       role="radio"
                       aria-checked={pais === 'AR'}
-                      className={`seg-btn ${pais === 'AR' ? 'active' : ''}`}
+                      className={pais === 'AR' ? 'on' : ''}
                       onClick={() => setPais('AR')}
                       disabled={loading}
-                      style={{
-                        padding: '10px 12px',
-                        border: '1px solid var(--border, #d4d4d8)',
-                        borderRadius: 8,
-                        background: pais === 'AR' ? 'var(--bg-soft, #f4f4f5)' : 'transparent',
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        fontWeight: pais === 'AR' ? 600 : 400,
-                        textAlign: 'center',
-                      }}
+                      style={{ flex: 1, height: 36, fontSize: 14 }}
                     >
                       🇦🇷 Argentina
                     </button>
@@ -388,18 +388,10 @@ export default function Signup() {
                       type="button"
                       role="radio"
                       aria-checked={pais === 'UY'}
-                      className={`seg-btn ${pais === 'UY' ? 'active' : ''}`}
+                      className={pais === 'UY' ? 'on' : ''}
                       onClick={() => setPais('UY')}
                       disabled={loading}
-                      style={{
-                        padding: '10px 12px',
-                        border: '1px solid var(--border, #d4d4d8)',
-                        borderRadius: 8,
-                        background: pais === 'UY' ? 'var(--bg-soft, #f4f4f5)' : 'transparent',
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        fontWeight: pais === 'UY' ? 600 : 400,
-                        textAlign: 'center',
-                      }}
+                      style={{ flex: 1, height: 36, fontSize: 14 }}
                     >
                       🇺🇾 Uruguay
                     </button>
