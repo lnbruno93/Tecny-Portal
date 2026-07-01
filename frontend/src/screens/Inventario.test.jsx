@@ -107,6 +107,10 @@ describe('Pantalla Inventario', () => {
   });
 
   it('abre modal "Agregar producto" sin crashear', async () => {
+    // #500: el botón "Agregar producto" requiere inventario.crear.
+    // Sin esa cap, setPrimaryAction no se llama y el ActionTrigger
+    // no renderiza el botón — el findByText('__abrir__') falla.
+    mockUser.value = { id: 1, caps: ['inventario.crear'] };
     renderInventario();
     await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
     fireEvent.click(await screen.findByText('__abrir__'));
@@ -160,7 +164,7 @@ describe('Pantalla Inventario', () => {
   // negocia en USD por convención del portal — el cliente paga en local).
 
   it('F3 multi-país: tenant UY abre form alta y los dropdowns muestran UYU en vez de ARS', async () => {
-    mockUser.value = { id: 1, caps: [], tenant: { pais: 'UY', moneda_local: 'UYU' } };
+    mockUser.value = { id: 1, caps: ['inventario.crear'], tenant: { pais: 'UY', moneda_local: 'UYU' } };
     renderInventario();
     await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
     fireEvent.click(await screen.findByText('__abrir__'));
@@ -175,7 +179,7 @@ describe('Pantalla Inventario', () => {
   });
 
   it('F3 multi-país: tenant AR abre form alta y los dropdowns muestran ARS', async () => {
-    mockUser.value = { id: 1, caps: [], tenant: { pais: 'AR', moneda_local: 'ARS' } };
+    mockUser.value = { id: 1, caps: ['inventario.crear'], tenant: { pais: 'AR', moneda_local: 'ARS' } };
     renderInventario();
     await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
     fireEvent.click(await screen.findByText('__abrir__'));
