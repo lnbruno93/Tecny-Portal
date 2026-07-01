@@ -123,6 +123,16 @@ const redB2bNotificationsRoutes = require('./routes/redB2b/notifications');
 // adminRoutes (que es admin DENTRO de un tenant). Super-admin opera cross-
 // tenant con BYPASSRLS. Protegido por requireSuperAdmin (no adminOnly).
 const superAdminRoutes   = require('./routes/superAdmin');
+// 2026-07-01 #499: gestión de co-super-admins (invitar / revocar / listar).
+// Sub-router del namespace /api/super-admin. Todos los endpoints requieren
+// super-admin (con guard S-25: 2FA activa). Ver routes/superAdminTeam.js
+// para el detalle. Mountado ANTES de superAdminRoutes en el ordering, pero
+// se registra bajo un prefix específico /api/super-admin/team para que la
+// resolución de express no colisione con las rutas del superAdmin core.
+const superAdminTeamRoutes       = require('./routes/superAdminTeam');
+// 2026-07-01 #499: público. Verificar + aceptar la invitación via el link
+// del email (SIN auth previa — el invitado todavía no tiene cuenta).
+const publicSuperAdminInviteRoutes = require('./routes/publicSuperAdminInvite');
 const publicRoutes       = require('./routes/public');
 
 const requireAuth       = require('./middleware/auth');
@@ -720,6 +730,12 @@ app.use('/api/admin',         requireAuth, adminRoutes);
 // DISTINTO de /api/admin (admin DENTRO de un tenant). Este namespace opera
 // cross-tenant con BYPASSRLS. Solo Lucas (users.is_super_admin=true) puede
 // usar — el middleware requireSuperAdmin enforcea adentro del router.
+// 2026-07-01 #499: sub-router /api/super-admin/team ANTES del router core.
+// Ambos pasan por requireAuth; el gate específico de requireSuperAdmin lo
+// enforcea cada router internamente. Ordering matters porque express
+// resuelve por primer match; los paths NO se solapan (team vs. root del
+// otro router), pero mantenemos el orden explícito por claridad.
+app.use('/api/super-admin/team', requireAuth, superAdminTeamRoutes);
 app.use('/api/super-admin',   requireAuth, superAdminRoutes);
 
 // 2026-06-22 #353 C.1.2: Endpoints PÚBLICOS (sin auth, sin tenant scope).
@@ -727,6 +743,14 @@ app.use('/api/super-admin',   requireAuth, superAdminRoutes);
 // falta más, agregar acá — mantener el namespace para que sea OBVIO qué
 // está expuesto al mundo.
 app.use('/api/public',        publicRoutes);
+
+// 2026-07-01 #499: aceptar invitación de super-admin — flow público (el
+// invitado todavía no tiene cuenta). Rate-limitado con signupLimiter
+// (5/hora/IP) porque el POST /accept crea un user nuevo con is_super_admin=true
+// — abuso acá es especialmente costoso. GET /:token es lookup barato pero
+// cubierto por el globalLimiter existente. Los endpoints tienen sus propios
+// checks de token TTL/revocado/aceptado.
+app.use('/api/public/super-admin-invite', signupLimiter, publicSuperAdminInviteRoutes);
 
 // Feature flags (M-08 GRAN auditoría 2026-06-10). Sistema minimalista on/off
 // global. GET / es accesible a cualquier user logueado (lo lee el frontend

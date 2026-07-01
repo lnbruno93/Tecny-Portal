@@ -27,6 +27,11 @@ const TcDefaults = lazy(() => import('./pages/TcDefaults.jsx'));
 // #498: Mi cuenta — gestión de password y 2FA del super-admin desde el back
 // office (antes había que salir a app.tecnyapp.com para hacerlo).
 const MiCuenta   = lazy(() => import('./pages/MiCuenta.jsx'));
+// #499 (2026-07-01): Equipo — lista de super-admins + gestión de invitaciones.
+const Equipo     = lazy(() => import('./pages/Equipo.jsx'));
+// #499 pantalla PÚBLICA (sin auth): landing del invitado que clickea el link
+// del email. Se carga fuera del ProtectedRoute — el user recién va a crearse.
+const AcceptSuperAdminInvite = lazy(() => import('./pages/AcceptSuperAdminInvite.jsx'));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -103,6 +108,17 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* #499 (2026-07-01): landing del invitado a super-admin. Pública. La
+          carga con Suspense fallback porque también es lazy — el user llega
+          desde el email, no importa un poquito de latencia extra vs el login. */}
+      <Route
+        path="/aceptar-invitacion"
+        element={
+          <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
+            <AcceptSuperAdminInvite />
+          </Suspense>
+        }
+      />
       <Route
         path="/"
         element={
@@ -153,6 +169,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MiCuenta />
+          </ProtectedRoute>
+        }
+      />
+      {/* #499 (2026-07-01): Equipo — gestión de super-admins. */}
+      <Route
+        path="/equipo"
+        element={
+          <ProtectedRoute>
+            <Equipo />
           </ProtectedRoute>
         }
       />
