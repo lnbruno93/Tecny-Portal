@@ -473,4 +473,10 @@ export const twoFa = {
   // Rota los 8 recovery codes. Los anteriores quedan invalidados.
   regenerateRecovery: (code) =>
     api('/api/auth/2fa/regenerate-recovery', 'POST', { code }),
+
+  // POST /cancel-setup → { ok: true }
+  // Borra el row si enabled_at IS NULL (setup pendiente). Task #497 — UX
+  // defensiva cuando el user abandonó el setup antes de confirmar el código.
+  // Falla con 409 si ya está enabled (usar /disable en su lugar).
+  cancelSetup: () => api('/api/auth/2fa/cancel-setup', 'POST'),
 };

@@ -20,6 +20,7 @@ vi.mock('../lib/api', () => ({
       recovery_codes: ['NEW1-AAAA-AA','NEW2-BBBB-BB','NEW3-CCCC-CC','NEW4-DDDD-DD',
                        'NEW5-EEEE-EE','NEW6-FFFF-FF','NEW7-GGGG-GG','NEW8-HHHH-HH'],
     })),
+    cancelSetup:        vi.fn(() => Promise.resolve({ ok: true })),
   },
 }));
 
@@ -196,6 +197,62 @@ describe('TwoFaSection — disable 2FA', () => {
     // del describe anterior (mismo race condition con button:disabled en CI).
     fireEvent.submit(input.closest('form'));
     await waitFor(() => expect(twoFa.disable).toHaveBeenCalledWith('999999'));
+  });
+});
+
+// ─── Task #497: estado SETUP PENDIENTE ─────────────────────────────────────
+// Cuando el user llamó /setup pero no completó /enable, status devuelve
+// configured=true + enabled=false. La UI debe mostrar el card amarillo con
+// badge "Setup pendiente" + 2 botones ("Continuar setup" y "Cancelar setup").
+describe('TwoFaSection — estado SETUP PENDIENTE (task #497)', () => {
+  beforeEach(() => {
+    twoFa.status.mockResolvedValue({
+      configured: true, enabled: false,
+      enabled_at: null, last_used_at: null,
+      recovery_codes_remaining: 8,
+    });
+  });
+
+  it('muestra badge "Setup pendiente" + botones Continuar/Cancelar', async () => {
+    const { findByText } = renderSection();
+    await findByText('Setup pendiente');
+    await findByText('Continuar setup');
+    await findByText('Cancelar setup');
+  });
+
+  it('click en "Continuar setup" muestra TwoFaSetup (mock)', async () => {
+    const { findByText, getByTestId } = renderSection();
+    fireEvent.click(await findByText('Continuar setup'));
+    expect(getByTestId('twofa-setup-mock')).toBeTruthy();
+  });
+
+  it('click en "Cancelar setup" + confirm → llama twoFa.cancelSetup()', async () => {
+    const { findByText } = renderSection();
+    fireEvent.click(await findByText('Cancelar setup'));
+    // ConfirmModal aparece — click "Cancelar setup" (confirmLabel).
+    // Ese label aparece 2x: el botón de la card y el del confirm modal. Buscamos
+    // el que aparece cuando el confirm ya está montado — el último rendered.
+    const confirmBtn = await waitFor(() => {
+      // Cuando el confirm modal aparece, hay un botón "Cancelar setup" adicional
+      // (el confirmLabel del useConfirm). Esperamos a que hayan >= 2 y clickeamos
+      // el último (el del confirm modal).
+      const btns = document.querySelectorAll('button');
+      const matches = Array.from(btns).filter(b => b.textContent.trim() === 'Cancelar setup');
+      if (matches.length < 2) throw new Error('waiting for confirm modal');
+      return matches[matches.length - 1];
+    });
+    fireEvent.click(confirmBtn);
+    await waitFor(() => expect(twoFa.cancelSetup).toHaveBeenCalled());
+  });
+
+  it('si user cancela el confirm modal, NO llama cancelSetup', async () => {
+    const { findByText, getAllByText } = renderSection();
+    fireEvent.click(await findByText('Cancelar setup'));
+    // ConfirmModal aparece — click "Cancelar" (label default del hook).
+    const cancelBtns = await waitFor(() => getAllByText('Cancelar'));
+    fireEvent.click(cancelBtns[cancelBtns.length - 1]);
+    await new Promise(r => setTimeout(r, 50));
+    expect(twoFa.cancelSetup).not.toHaveBeenCalled();
   });
 });
 

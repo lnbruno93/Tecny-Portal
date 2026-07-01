@@ -223,6 +223,9 @@ export const twoFa = {
   enable:             (code) => api('/api/auth/2fa/enable', 'POST', { code }),
   disable:            (code) => api('/api/auth/2fa/disable', 'POST', { code }),
   regenerateRecovery: (code) => api('/api/auth/2fa/regenerate-recovery', 'POST', { code }),
+  // Borra setup pendiente (row con enabled_at=NULL). Task #497 — UX defensiva
+  // cuando el user abandona el setup antes de confirmar el código de 6 dígitos.
+  cancelSetup:        () => api('/api/auth/2fa/cancel-setup', 'POST'),
 };
 
 export const comprobantes = {

@@ -8,7 +8,7 @@
 //   3. La prop onMessage recibe el error si el fetch inicial falla
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock de qrcode — TwoFaSetup lo usa, pero en este suite nunca llegamos al
@@ -24,6 +24,7 @@ vi.mock('../../lib/api.js', () => ({
     enable: vi.fn(),
     disable: vi.fn(),
     regenerateRecovery: vi.fn(),
+    cancelSetup: vi.fn(() => Promise.resolve({ ok: true })),
   },
   getToken: vi.fn(() => null),
   saveToken: vi.fn(),
@@ -95,6 +96,57 @@ describe('TwoFaSection', () => {
       expect(onMessage).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'error' })
       );
+    });
+  });
+
+  // Task #497: setup pendiente (configured=true, enabled=false).
+  it('muestra "Setup pendiente" cuando configured=true y enabled=false', async () => {
+    twoFa.status.mockResolvedValue({
+      configured: true,
+      enabled: false,
+      enabled_at: null,
+      last_used_at: null,
+      recovery_codes_remaining: 8,
+    });
+
+    renderSection();
+
+    await waitFor(() => {
+      expect(screen.getByText(/setup pendiente/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /continuar setup/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancelar setup/i })).toBeInTheDocument();
+  });
+
+  it('click en "Cancelar setup" + confirm → llama twoFa.cancelSetup()', async () => {
+    twoFa.status.mockResolvedValue({
+      configured: true,
+      enabled: false,
+      enabled_at: null,
+      last_used_at: null,
+      recovery_codes_remaining: 8,
+    });
+
+    renderSection();
+
+    await waitFor(() => {
+      expect(screen.getByText(/setup pendiente/i)).toBeInTheDocument();
+    });
+
+    // Click en el botón "Cancelar setup" de la card → abre el confirm modal.
+    fireEvent.click(screen.getByRole('button', { name: /cancelar setup/i }));
+
+    // Confirm modal aparece con otro botón "Cancelar setup" (el danger). Buscamos
+    // los 2 y clickeamos el último — es el del modal.
+    await waitFor(() => {
+      const btns = screen.getAllByRole('button', { name: /cancelar setup/i });
+      expect(btns.length).toBeGreaterThanOrEqual(2);
+    });
+    const btns = screen.getAllByRole('button', { name: /cancelar setup/i });
+    fireEvent.click(btns[btns.length - 1]);
+
+    await waitFor(() => {
+      expect(twoFa.cancelSetup).toHaveBeenCalled();
     });
   });
 });
