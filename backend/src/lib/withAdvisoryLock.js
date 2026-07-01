@@ -38,7 +38,7 @@ const logger = require('./logger');
  *                           Se hashea con `hashtext` para obtener el BIGINT.
  * @param {() => Promise<any>} fn  Función async a ejecutar bajo el lock.
  * @param {object} [options]
- * @param {boolean} [options.logSkip=true]  Logear info cuando otra instancia tiene el lock.
+ * @param {boolean} [options.logSkip=true]  Logear debug cuando otra instancia tiene el lock.
  * @returns {Promise<{ acquired: boolean, result?: any, error?: Error }>}
  */
 async function withAdvisoryLock(lockName, fn, { logSkip = true } = {}) {
@@ -65,13 +65,23 @@ async function withAdvisoryLock(lockName, fn, { logSkip = true } = {}) {
 
     if (!acquired) {
       if (logSkip) {
-        logger.info({ lockName }, 'advisory_lock: skip — otra instancia tiene el lock');
+        // Auditoría 2026-06-30 seguimiento: era logger.info y en jobs de
+        // alta frecuencia (audit_queue_worker cada 2s) saturaba Railway
+        // (rate limit 500 logs/sec → mensajes descartados). Bajado a debug:
+        // el valor operacional está en el log del RESULTADO del job (ej.
+        // "audit_queue: batch procesado", "audit_logs drop_old_partitions
+        // OK"), no en el hecho de que se adquirió/soltó el lock. Con
+        // LOG_LEVEL=debug se sigue viendo para diagnóstico manual.
+        logger.debug({ lockName }, 'advisory_lock: skip — otra instancia tiene el lock');
       }
       return { acquired: false };
     }
 
     // Tenemos el lock. Ejecutamos el job.
-    logger.info({ lockName }, 'advisory_lock: acquired — ejecutando job');
+    // Auditoría 2026-06-30 seguimiento: ver comment en la rama del skip
+    // más arriba — mismo motivo. El log del resultado del job (info) es
+    // la señal operacional útil; "acquired" es puro diagnóstico.
+    logger.debug({ lockName }, 'advisory_lock: acquired — ejecutando job');
     try {
       const result = await fn();
       return { acquired: true, result };
