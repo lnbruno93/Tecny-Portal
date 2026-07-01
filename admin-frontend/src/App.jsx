@@ -24,6 +24,9 @@ const Clientes   = lazy(() => import('./pages/Clientes.jsx'));
 const Ficha      = lazy(() => import('./pages/Ficha.jsx'));
 const Planes     = lazy(() => import('./pages/Planes.jsx'));
 const TcDefaults = lazy(() => import('./pages/TcDefaults.jsx'));
+// #498: Mi cuenta — gestión de password y 2FA del super-admin desde el back
+// office (antes había que salir a app.tecnyapp.com para hacerlo).
+const MiCuenta   = lazy(() => import('./pages/MiCuenta.jsx'));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -138,6 +141,18 @@ export default function App() {
         element={
           <ProtectedRoute>
             <TcDefaults />
+          </ProtectedRoute>
+        }
+      />
+      {/* #498: Mi cuenta — password + 2FA del super-admin.
+          Se accede desde el user-pill del sidebar (o desde el CTA del banner
+          de Resumen cuando 2FA no está activo). Query param opcional
+          ?tab=seguridad|perfil preserva el tab activo. */}
+      <Route
+        path="/mi-cuenta"
+        element={
+          <ProtectedRoute>
+            <MiCuenta />
           </ProtectedRoute>
         }
       />

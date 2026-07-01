@@ -418,3 +418,59 @@ export const adminApi = {
   updateTcDefaultPais: (body) =>
     api('/api/super-admin/tc-defaults-pais', 'PATCH', body),
 };
+
+// ─── Auth account management (Mi cuenta — task #498) ─────────────────────
+// Endpoints /api/auth/2fa/* y /api/auth/change-password son shared con
+// el portal principal — el backend los mounta con requireAuth pero SIN
+// requireSuperAdmin, así el super-admin puede gestionar su cuenta desde
+// aquí sin quedar locked-out por el guard S-25 (audit 2026-06-30) que
+// exige 2FA para llegar a /api/super-admin/*.
+//
+// Diseño: exportamos módulos separados (auth, twoFa) — mismo shape que el
+// frontend principal para que el port de componentes sea mecánico y no
+// tengamos que reescribir los call sites.
+
+export const auth = {
+  // POST /api/auth/change-password — cambia el password del user autenticado.
+  // body: { currentPassword, newPassword, twofa_code? }
+  // Responses:
+  //   · 200 { ok: true }
+  //   · 401 { code: 'TWOFA_REQUIRED', twofa_required: true }        → user tiene 2FA activo; re-submit con code
+  //   · 401 { code: 'INVALID_TWOFA_CODE' }                           → 2FA code mal
+  //   · 401 { code: 'INVALID_CURRENT_PASSWORD' }                     → password actual mal
+  //   · 400 { error: 'Password policy fail...' }                     → nueva rechazada por policy
+  //
+  // Efecto side: backend bumpea password_changed_at → el JWT del cliente
+  // queda inválido → forzar logout post-éxito.
+  changePassword: (currentPassword, newPassword, twofaCode) =>
+    api('/api/auth/change-password', 'POST', {
+      currentPassword,
+      newPassword,
+      ...(twofaCode ? { twofa_code: twofaCode } : {}),
+    }),
+};
+
+export const twoFa = {
+  // GET /status → { configured, enabled, enabled_at, last_used_at, recovery_codes_remaining }
+  status: () => api('/api/auth/2fa/status'),
+
+  // POST /setup → { secret, otpauth_uri, recovery_codes: [8 strings] }
+  // Genera el secret encriptado + recovery codes plain (mostrados UNA vez).
+  // Idempotente: si el user ya llamó setup pero no enable, devuelve el mismo
+  // secret. Si llama setup DESPUÉS de enable, error (hay que disable primero).
+  setup: () => api('/api/auth/2fa/setup', 'POST'),
+
+  // POST /enable { code } → { ok: true, enabled_at }
+  // code = 6 dígitos TOTP. Verifica contra el secret guardado en /setup.
+  // Marca enabled_at = NOW() → el guard requireSuperAdmin ahora deja entrar.
+  enable: (code) => api('/api/auth/2fa/enable', 'POST', { code }),
+
+  // POST /disable { code } → { ok: true }
+  // code = 6 dígitos TOTP o recovery code. Verifica y marca enabled_at = NULL.
+  disable: (code) => api('/api/auth/2fa/disable', 'POST', { code }),
+
+  // POST /regenerate-recovery { code } → { recovery_codes: [8 strings] }
+  // Rota los 8 recovery codes. Los anteriores quedan invalidados.
+  regenerateRecovery: (code) =>
+    api('/api/auth/2fa/regenerate-recovery', 'POST', { code }),
+};
