@@ -11,6 +11,7 @@ import BusinessProfileSection from '../components/BusinessProfileSection'; // id
 // del flow es idéntico (cuotas, comisiones, mensaje al cliente), solo cambian
 // strings. Ver docs/design/multi-pais-uyu.md sección 5.4.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+import { getStoredTc, saveStoredTc, subscribeTcChange } from '../lib/cotizadorTc';
 
 // Símbolo monetario del país. Espejo de la convención usada en lib/format.ts:
 // UYU se escribe con "$U" para distinguir de ARS "$" cuando el formato no
@@ -98,13 +99,13 @@ function TabTarjetas() {
   // ventas recientes.
   const { monedaLocal } = useMonedasTenant();
   const symLocal = symbolFor(monedaLocal);
-  // #445: TC default = último cambio del tenant (de venta más reciente en 90d).
-  // El backend devuelve fallback país-aware si no hay venta con TC reciente,
-  // así que el initial state arranca con 1400 (sentinel histórico de AR) y se
-  // actualiza apenas el fetch responde. Para tenants UY el primer render usa
-  // 1400 hasta que el fetch reemplaza con ~40 — caso aceptable porque el
-  // input se hidrata antes de que el operador interactúe.
-  const [tc, setTc]         = useState(1400);
+  // #445 + follow-up 2026-07-01: TC persistente en localStorage. Al montar,
+  // si el operador ya lo tipeó antes (en cualquier sesión), lo recuperamos
+  // instantáneamente. Sólo hidratamos desde el backend cuando localStorage
+  // está vacío (primera vez en este navegador). Ver lib/cotizadorTc.js
+  // para el racionale completo. Los 2 tabs (Tarjetas + USD) comparten el
+  // mismo TC — cambiarlo en uno actualiza el otro al toque.
+  const [tc, setTc]         = useState(() => getStoredTc() ?? 1400);
   // Nombre por defecto como hint (el placeholder del input igual lo muestra),
   // pero precio en 0 para que el operador NO lo confunda con un valor real.
   // Antes el default era 1185 y se prestaba a errores cuando se olvidaban de
@@ -123,14 +124,21 @@ function TabTarjetas() {
     tenantProfile.get()
       .then((p) => { if (alive) setProfile(p); })
       .catch(() => { /* silent: el mensaje sale sin la frase de Google */ });
-    // #445: hidratar TC default desde el backend. Failure mode aceptable:
-    // si el endpoint falla, queda en 1400 (mismo behavior que antes).
-    configApi.lastTc()
-      .then((res) => {
-        if (alive && res && Number.isFinite(Number(res.tc))) setTc(Number(res.tc));
-      })
-      .catch(() => { /* silent: fallback al hardcoded */ });
-    return () => { alive = false; };
+    // Hidratación TC desde backend SOLO si no había persistido en localStorage.
+    // Si el operador ya tenía un valor guardado, respetamos su elección — no
+    // se pisa con el último TC del backend en cada mount.
+    if (getStoredTc() === null) {
+      configApi.lastTc()
+        .then((res) => {
+          if (alive && res && Number.isFinite(Number(res.tc))) setTc(Number(res.tc));
+        })
+        .catch(() => { /* silent: fallback al hardcoded */ });
+    }
+    // Sync entre TabTarjetas y TabUsd de la misma pestaña + entre pestañas.
+    // Si el user cambia el TC en cualquiera de esos contextos, este tab se
+    // actualiza sin necesidad de re-mount. Ver lib/cotizadorTc.js.
+    const unsubscribe = subscribeTcChange((v) => { if (alive) setTc(v); });
+    return () => { alive = false; unsubscribe(); };
   }, []);
 
   const addProd = () =>
@@ -222,7 +230,12 @@ function TabTarjetas() {
                 type="number" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
                 value={tc}
-                onChange={e => setTc(parseFloat(e.target.value) || 0)}
+                onChange={e => {
+                  const v = parseFloat(e.target.value) || 0;
+                  setTc(v);
+                  // Persistir + propagar a TabUsd y otras pestañas.
+                  saveStoredTc(v);
+                }}
               />
             </div>
           </div>
@@ -381,8 +394,9 @@ function TabUsd() {
   // 2026-06-29 Multi-país F5: ver TabTarjetas para racionale de monedaLocal.
   const { monedaLocal } = useMonedasTenant();
   const symLocal = symbolFor(monedaLocal);
-  // #445: igual que TabTarjetas — TC default desde backend, fallback país-aware.
-  const [tc, setTc]         = useState(1400);
+  // #445 + follow-up 2026-07-01: TC persistente. Ver TabTarjetas para
+  // racionale — este tab comparte el mismo valor via lib/cotizadorTc.js.
+  const [tc, setTc]         = useState(() => getStoredTc() ?? 1400);
   const [prods, setProds]   = useState([
     { id: 1, nom: '', usd: 0 },
   ]);
@@ -399,12 +413,17 @@ function TabUsd() {
     tenantProfile.get()
       .then((p) => { if (alive) setProfile(p); })
       .catch(() => { /* silent */ });
-    configApi.lastTc()
-      .then((res) => {
-        if (alive && res && Number.isFinite(Number(res.tc))) setTc(Number(res.tc));
-      })
-      .catch(() => { /* silent */ });
-    return () => { alive = false; };
+    // Ver TabTarjetas: fetch backend sólo si localStorage está vacío + sync
+    // cross-component/cross-tab.
+    if (getStoredTc() === null) {
+      configApi.lastTc()
+        .then((res) => {
+          if (alive && res && Number.isFinite(Number(res.tc))) setTc(Number(res.tc));
+        })
+        .catch(() => { /* silent */ });
+    }
+    const unsubscribe = subscribeTcChange((v) => { if (alive) setTc(v); });
+    return () => { alive = false; unsubscribe(); };
   }, []);
 
   const addProd = () =>
@@ -509,7 +528,12 @@ function TabUsd() {
                 type="number" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
                 value={tc}
-                onChange={e => setTc(parseFloat(e.target.value) || 0)}
+                onChange={e => {
+                  const v = parseFloat(e.target.value) || 0;
+                  setTc(v);
+                  // Persistir + propagar a TabUsd y otras pestañas.
+                  saveStoredTc(v);
+                }}
               />
             </div>
           </div>
