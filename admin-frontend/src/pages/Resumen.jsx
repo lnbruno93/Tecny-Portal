@@ -12,7 +12,7 @@
 // campos — la UI debería seguir renderizando sin crashes.
 
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Btn, Card, Badge } from '../components/primitives/index.jsx';
@@ -61,6 +61,11 @@ export default function Resumen() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // #498: si el guard S-25 del backend responde 'super_admin_2fa_required',
+  // en vez del banner rojo genérico mostramos un banner especial con CTA a
+  // /mi-cuenta?tab=seguridad. Aísla el caso de "no podés entrar hasta que
+  // actives 2FA" del caso "algo se rompió".
+  const [needs2fa, setNeeds2fa] = useState(false);
 
   // Cargamos los 4 endpoints en paralelo. Si alguno falla, NO bloqueamos
   // el render — mostramos el que funcionó y un banner muted con error.
@@ -70,6 +75,7 @@ export default function Resumen() {
     let alive = true;
     setLoading(true);
     setError('');
+    setNeeds2fa(false);
 
     Promise.allSettled([
       adminApi.getMetrics(),
@@ -96,7 +102,23 @@ export default function Resumen() {
       const allFailed = results.every((r) => r.status === 'rejected');
       if (allFailed) {
         const firstErr = results.find((r) => r.status === 'rejected');
-        setError(firstErr?.reason?.message || 'No pudimos cargar los datos.');
+        // #498: chequear si TODOS los errores son el guard S-25
+        // (super_admin_2fa_required). Si alguno tiene ese code — es el gate
+        // de 2FA obligatorio para llegar a /api/super-admin/*. En ese caso
+        // mostramos un banner especial con CTA para activarlo (más útil que
+        // repetir "no autorizado" 4 veces al operador). Chequeo defensivo:
+        // el code puede estar en responseBody o el message puede contener
+        // el string canónico.
+        const anyIs2fa = results.some((r) => {
+          if (r.status !== 'rejected') return false;
+          const code = r.reason?.responseBody?.code;
+          return code === 'super_admin_2fa_required';
+        });
+        if (anyIs2fa) {
+          setNeeds2fa(true);
+        } else {
+          setError(firstErr?.reason?.message || 'No pudimos cargar los datos.');
+        }
       }
       setLoading(false);
     });
@@ -254,7 +276,42 @@ export default function Resumen() {
         </div>
       </div>
 
-      {error && (
+      {/* #498: banner especial cuando el guard S-25 rechaza al super-admin
+          por no tener 2FA activo. Este caso es muy específico y actionable
+          — no queremos que se pierda entre "No pudimos cargar los datos"
+          genérico. Link directo a /mi-cuenta?tab=seguridad para que Lucas
+          active 2FA en un click. */}
+      {needs2fa && (
+        <div
+          role="alert"
+          className="card"
+          style={{
+            marginBottom: 'var(--gap)',
+            background: 'rgba(234, 179, 8, 0.08)',
+            border: '1px solid rgba(234, 179, 8, 0.3)',
+            fontSize: 13,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div>
+            <strong>Activá 2FA para acceder al panel super-admin.</strong>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Por política de seguridad, el back office exige autenticación
+              de dos factores. Configuralo en un minuto desde Mi cuenta.
+            </div>
+          </div>
+          <Link
+            to="/mi-cuenta?tab=seguridad"
+            className="btn btn-primary"
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Activar 2FA
+          </Link>
+        </div>
+      )}
+
+      {error && !needs2fa && (
         <div
           role="alert"
           className="card"

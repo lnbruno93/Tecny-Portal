@@ -7,7 +7,7 @@
 // porque es la única forma de salir de un estado de sesión roto.
 
 import { useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Icon, Icons } from './Icons.jsx';
 import CreateTenantModal from './modals/CreateTenantModal.jsx';
@@ -115,14 +115,26 @@ export default function Layout({ children }) {
 
         <div className="sidebar-spacer" />
 
-        <div className="user-pill" title={displayName}>
+        {/* #498: el user-pill ahora es un Link a /mi-cuenta. Antes era un
+            div puramente decorativo; ahora expone el acceso a la pantalla
+            "Mi cuenta" (2FA + password). Mantenemos las mismas clases CSS
+            para no cambiar el look, sólo la interactividad (hover/pointer
+            los da el navegador por ser un <a>). El aria-label deja claro
+            qué pasa al click, útil para screen readers. */}
+        <Link
+          to="/mi-cuenta"
+          className="user-pill"
+          title={displayName}
+          aria-label={`Mi cuenta — ${displayName}`}
+          style={{ textDecoration: 'none', color: 'inherit' }}
+        >
           <div className="avatar" aria-hidden="true">{initialsFromUser(user)}</div>
           <div className="user-meta">
             <div className="user-name">{displayName}</div>
             <div className="user-role">Founder · Admin</div>
           </div>
           <span className="chev"><Icons.ChevronUp size={14} /></span>
-        </div>
+        </Link>
 
         {/*
           Logout explícito y visible: es el "escape" de una sesión rota
