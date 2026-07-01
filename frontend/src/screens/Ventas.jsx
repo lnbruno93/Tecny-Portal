@@ -12,6 +12,7 @@ import useLoadingAction from '../lib/useLoadingAction'; // #F-2
 import useModal from '../lib/useModal';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
+import VendedoresCatalogModal from '../components/VendedoresCatalogModal';
 import { fmt, fmt2 } from '../lib/format';
 // 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
 // AR → ARS/USD/USDT, UY → UYU/USD/USDT. monedaLocal sirve de default para
@@ -159,6 +160,11 @@ export default function Ventas() {
   const [showGarantias, setShowGarantias] = useState(false);
   const [showEtiquetas, setShowEtiquetas] = useState(false);
   const [nuevaEtiqueta, setNuevaEtiqueta] = useState('');
+  // 2026-07-01: modal de administración del catálogo de vendedores.
+  // Antes vivía en el tab "Vendedores" de Transferencias, pero se consume
+  // desde el dropdown de "Nueva venta" en esta pantalla — moverlo acá
+  // resuelve el mismatch conceptual reportado por cliente Uruguay.
+  const [showVendedoresModal, setShowVendedoresModal] = useState(false);
   const [showComprob, setShowComprob] = useState(null); // venta id
   const [comprobList, setComprobList] = useState([]);
   // useModal — auditoría 2026-06-06 UX B2 + 2026-06-30 F-10:
@@ -1117,6 +1123,10 @@ export default function Ventas() {
           <button className="btn" onClick={() => { loadDash(); loadLista(); loadRapidas(); }}><Icons.Refresh size={14} /> Actualizar</button>
           <button className="btn" onClick={() => setShowGarantias(true)}><Icons.Shield size={14} /> Plantillas</button>
           <button className="btn" onClick={() => setShowEtiquetas(true)}><Icons.Tag size={14} /> Etiquetas</button>
+          {/* 2026-07-01: catálogo de vendedores movido acá desde Transferencias
+              — reportado por cliente Uruguay. El modal permite CRUD in-place
+              y refresca el dropdown de "Nueva venta" sin refetch adicional. */}
+          <button className="btn" onClick={() => setShowVendedoresModal(true)}><Icons.Users size={14} /> Vendedores</button>
           <button className="btn" onClick={() => { setRForm({ fechaHora: nowLocalDt(), detalle: '' }); setShowRapida(true); }}><Icons.Bolt size={14} /> Venta rápida</button>
           <button className="btn" onClick={exportarExcel}><Icons.Download size={14} /> Exportar</button>
           <button className="btn btn-primary" onClick={() => openVenta(null)}><Icons.Plus size={14} /> Nueva venta</button>
@@ -1942,6 +1952,15 @@ Pago: Efectivo + Transferencia`}
           </div>
         </div>
       )}
+
+      {/* ── Modal catálogo de vendedores (2026-07-01) ──
+          onChange refresca el state local para que el dropdown de "Nueva
+          venta" refleje inmediatamente los cambios sin refetch redundante. */}
+      <VendedoresCatalogModal
+        open={showVendedoresModal}
+        onClose={() => setShowVendedoresModal(false)}
+        onChange={setVendedores}
+      />
 
       {/* ── Modal ver comprobantes adjuntos ── */}
       {showComprob != null && (

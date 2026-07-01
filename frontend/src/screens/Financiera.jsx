@@ -60,7 +60,12 @@ export default function Financiera() {
   // y los filtros locales (búsqueda cliente, vendedor) se perdían. Defaults
   // NO escriben URL; replace:true para no inflar history.
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') || 'dashboard';
+  const rawTab = searchParams.get('tab') || 'dashboard';
+  // 2026-07-01: el tab 'vendedores' fue eliminado (movido a modal en Ventas).
+  // Si alguien llega con ?tab=vendedores (bookmark viejo, link compartido),
+  // caemos a 'dashboard' para no renderizar una pantalla vacía. La URL no
+  // se reescribe automáticamente — el próximo click en un tab la limpia.
+  const tab = rawTab === 'vendedores' ? 'dashboard' : rawTab;
   const setParam = useCallback((key, value, def) => {
     const next = new URLSearchParams(searchParams);
     if (!value || value === def) next.delete(key);
@@ -350,8 +355,12 @@ export default function Financiera() {
   };
 
   // Vendedores tab
-  const [newVend, setNewVend] = useState('');
-  const [savingVend, setSavingVend] = useState(false);
+  // 2026-07-01: newVend/savingVend eliminados junto con el tab "Vendedores".
+  // El CRUD del catálogo se movió a un modal en Ventas.jsx
+  // (VendedoresCatalogModal) — reportado por cliente Uruguay. El state
+  // `vendedores` sigue acá porque el catálogo se sigue LEYENDO en el form
+  // de comprobantes (dropdown), el KPI del dashboard y el filtro de la
+  // lista de comprobantes.
 
   // Inline error states (replaces silent console.error)
   const [dashError, setDashError] = useState('');
@@ -675,35 +684,10 @@ export default function Financiera() {
     }
   }
 
-  // ── Vendedores CRUD ────────────────────────────────────────────────────────
-  async function handleAddVend() {
-    if (!newVend.trim()) return;
-    setSavingVend(true);
-    try {
-      const v = await vendsApi.create({ nombre: newVend.trim() });
-      setVendedores(prev => [...prev, v]);
-      setNewVend('');
-      toast.success(`Vendedor "${v.nombre}" creado.`);
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setSavingVend(false);
-    }
-  }
-
-  async function handleDeleteVend(id) {
-    const ok = await confirm({ title: 'Eliminar vendedor', message: 'Se eliminarán también sus estadísticas asociadas.', confirmLabel: 'Eliminar', danger: true });
-    if (!ok) return;
-    try {
-      await vendsApi.delete(id);
-      setVendedores(prev => prev.filter(v => v.id !== id));
-      toast.success('Vendedor eliminado.');
-    } catch (e) {
-      toast.error(e.message);
-    }
-  }
-
   // ── Render ─────────────────────────────────────────────────────────────────
+  // 2026-07-01: handleAddVend / handleDeleteVend eliminados junto con el tab
+  // "Vendedores". CRUD del catálogo ahora vive en VendedoresCatalogModal
+  // (montado desde la toolbar de Ventas.jsx).
   return (
     <div>
       {/* Page head — 2026-06-19 Lucas: solo título + subtítulo, los botones
@@ -725,7 +709,8 @@ export default function Financiera() {
             { value: 'cargar',       label: 'Cargar' },
             { value: 'comprobantes', label: 'Comprobantes' },
             { value: 'pagos',        label: 'Pagos' },
-            { value: 'vendedores',   label: 'Vendedores' },
+            // 2026-07-01: tab "Vendedores" eliminado — admin del catálogo
+            // se movió a Ventas.jsx (VendedoresCatalogModal).
           ].map(t => (
             <button
               key={t.value}
@@ -1560,92 +1545,11 @@ export default function Financiera() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════
-          VENDEDORES TAB
-      ════════════════════════════════════════════════════════ */}
-      {tab === 'vendedores' && (
-        <div className="card card-flush">
-          <div className="card-hd">
-            <div>
-              <h3>Equipo de ventas</h3>
-              <div className="muted tiny">
-                Asignan comprobantes — no son usuarios del portal
-              </div>
-            </div>
-          </div>
-          <div style={{ padding: 16 }}>
-            {/* Add vendedor */}
-            <div className="input-group" style={{ marginBottom: 16, maxWidth: 360 }}>
-              <input
-                className="input"
-                placeholder="Nombre del nuevo vendedor"
-                value={newVend}
-                onChange={e => setNewVend(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddVend()}
-              />
-              <button
-                className="addon"
-                style={{
-                  background: 'var(--accent)',
-                  color: 'var(--accent-ink)',
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                  padding: '0 14px',
-                  border: 'none',
-                }}
-                onClick={handleAddVend}
-                disabled={savingVend}
-              >
-                {savingVend ? '…' : 'Agregar'}
-              </button>
-            </div>
-
-            {/* Vendedores list */}
-            {vendedores.length === 0 ? (
-              <div className="empty">Sin vendedores registrados</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {vendedores.map(v => (
-                  <div
-                    key={v.id}
-                    className="flex-between"
-                    style={{
-                      padding: '12px 14px',
-                      background: 'var(--surface-2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                    }}
-                  >
-                    <div className="flex-row" style={{ gap: 12 }}>
-                      <div style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
-                        background: 'var(--surface-3)',
-                        display: 'grid',
-                        placeItems: 'center',
-                        fontWeight: 700,
-                        fontSize: 11,
-                      }}>
-                        {v.nombre.split(' ').map(p => p[0]).slice(0, 2).join('')}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{v.nombre}</div>
-                        <div className="muted tiny">
-                          {comps.filter(c => c.vendedor_id === v.id).length} comprobantes
-                        </div>
-                      </div>
-                    </div>
-                    <button className="icon-btn" onClick={() => handleDeleteVend(v.id)}>
-                      <Icons.Trash size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* 2026-07-01: tab "Vendedores" eliminado — la administración del
+          catálogo se movió a un modal en Ventas.jsx (VendedoresCatalogModal),
+          reportado por cliente Uruguay. El catálogo se sigue LEYENDO acá
+          (form de comprobantes, KPI, filtro), pero el CRUD ya no vive en
+          Transferencias. */}
 
       {/* ── Visor de comprobante adjunto ──────────────────────────────────── */}
       {viewFile && (
