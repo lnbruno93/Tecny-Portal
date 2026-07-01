@@ -405,6 +405,20 @@ export const adminApi = {
   // /plan-prices — usado por la pantalla /tc-defaults del back-office.
   getTcDefaultsPais: () => api('/api/super-admin/tc-defaults-pais'),
 
+  // ── Team (#499) — gestión de co-super-admins ────────────────────────────
+  // GET  /team           → { super_admins, pending_invites }
+  // POST /team/invite    → { invite, email_sent }
+  // DELETE /team/invite/:id → { ok }
+  // POST /team/invite/:id/resend → { ok, email_sent }
+  // POST /team/revoke/:userId → { ok, user }
+  team: {
+    list:          () => api('/api/super-admin/team'),
+    invite:        (body) => api('/api/super-admin/team/invite', 'POST', body),
+    revokeInvite:  (id) => api(`/api/super-admin/team/invite/${id}`, 'DELETE'),
+    resendInvite:  (id) => api(`/api/super-admin/team/invite/${id}/resend`, 'POST'),
+    revokeAdmin:   (userId) => api(`/api/super-admin/team/revoke/${userId}`, 'POST'),
+  },
+
   // PATCH /tc-defaults-pais — actualiza el valor numérico de un par.
   // body: { pais: 'AR'|'UY', par: 'ARS/USD'|'UYU/USD', valor: number > 0,
   //         reason?: string }.
@@ -417,6 +431,26 @@ export const adminApi = {
   // Audit: action='tc_default_pais_updated' en tenant_admin_actions.
   updateTcDefaultPais: (body) =>
     api('/api/super-admin/tc-defaults-pais', 'PATCH', body),
+};
+
+// ─── Public — aceptar invitación de super-admin (#499) ──────────────────
+// Endpoints públicos: NO requieren JWT. El wrapper `api()` no manda
+// header Authorization cuando getToken() devuelve null, así que este
+// flow funciona antes de que el invitado tenga cuenta.
+//
+// verify: valida el token. Backend devuelve 200 si vigente, 404 (ambiguo)
+//   si inválido/expirado/aceptado/revocado.
+// accept: consume el token, crea el user, backend devuelve JWT.
+//   El caller debe llamar saveToken(res.token) para persistir la sesión.
+export const publicInvite = {
+  verify: (token) =>
+    api(`/api/public/super-admin-invite/${encodeURIComponent(token)}`),
+  accept: (token, password) =>
+    api(
+      `/api/public/super-admin-invite/${encodeURIComponent(token)}/accept`,
+      'POST',
+      { password }
+    ),
 };
 
 // ─── Auth account management (Mi cuenta — task #498) ─────────────────────

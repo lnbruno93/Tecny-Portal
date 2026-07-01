@@ -18,6 +18,9 @@ const NAV = [
     items: [
       { id: 'resumen',     label: 'Resumen',     icon: 'Grid',     path: '/' },
       { id: 'clientes',    label: 'Clientes',    icon: 'Building', path: '/clientes' },
+      // #499 (2026-07-01): gestión de co-super-admins (invitar/revocar).
+      // Entre Clientes y Planes — pattern "gente" antes de "producto".
+      { id: 'equipo',      label: 'Equipo',      icon: 'Users',    path: '/equipo' },
       { id: 'planes',      label: 'Planes',      icon: 'Tag',      path: '/planes' },
       // Multi-país F4 (#470): editor de TC default por país. Vive en Gestión
       // porque conceptualmente es configuración global del SaaS (igual que

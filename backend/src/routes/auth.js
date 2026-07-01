@@ -725,3 +725,11 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res, n
 });
 
 module.exports = router;
+// 2026-07-01 #499: exportamos `makeToken` para que otros routes que crean
+// users + los devuelven logueados (ej. POST /accept del invite super-admin)
+// puedan firmar el JWT con el mismo shape (payload + expiración + algorithm)
+// que el /login canónico. Sin esto, los tests con jwt.verify() no comparten
+// invariantes con el flow real. Este export NO expande la API pública del
+// module — sigue siendo `router` (Express) usado con `app.use(...)`; el
+// property adicional en el mismo objeto es un module.exports.makeToken.
+module.exports.makeToken = makeToken;
