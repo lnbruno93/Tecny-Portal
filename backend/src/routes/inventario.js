@@ -722,7 +722,7 @@ const PRODUCTO_COLS = [
   'observaciones', 'condicion', 'oculto',
 ];
 
-router.post('/productos', validate(createProductoSchema), async (req, res, next) => {
+router.post('/productos', requireCapability('inventario.crear'), validate(createProductoSchema), async (req, res, next) => {
   try {
     // Multi-país F2: el schema acepta UYU + ARS, pero el tenant solo puede
     // usar las monedas habilitadas para su país (assertMonedaValidaParaPais
@@ -834,7 +834,7 @@ router.post('/productos', validate(createProductoSchema), async (req, res, next)
   }
 });
 
-router.put('/productos/:id', validate(updateProductoSchema), async (req, res, next) => {
+router.put('/productos/:id', requireCapability('inventario.editar'), validate(updateProductoSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -928,7 +928,7 @@ router.put('/productos/:id', validate(updateProductoSchema), async (req, res, ne
   } catch (err) { next(err); }
 });
 
-router.delete('/productos/:id', async (req, res, next) => {
+router.delete('/productos/:id', requireCapability('inventario.eliminar'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -1171,7 +1171,7 @@ router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, admin
   }
 });
 
-router.post('/productos/bulk', bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {
+router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimiter, validate(bulkProductoSchema), async (req, res, next) => {
   const productos = req.body.productos;
 
   // Revalidamos FKs ANTES de empezar a insertar: si alguna categoría/depósito no existe,

@@ -105,6 +105,32 @@ const GATES = [
     cap:  'b2b.cobranza_masiva',
     req:  () => request(app).post('/api/cuentas/cobranzas-masivas').send({ cobranzas: [] }),
   },
+  // #500 (2026-07-01) hotfix: mutaciones de inventario ahora gated.
+  // Antes cualquier user autenticado (custom sin caps, vendedor, etc.)
+  // podía POST/PUT/DELETE productos. Cliente Uruguay lo detectó porque
+  // su vendedor pudo editar un producto y quedó en audit_logs. Fix: los
+  // 4 endpoints requieren la cap correspondiente. Este test regresivo
+  // rompe si alguien las saca en el futuro.
+  {
+    name: 'POST /api/inventario/productos requiere inventario.crear',
+    cap:  'inventario.crear',
+    req:  () => request(app).post('/api/inventario/productos').send({}),
+  },
+  {
+    name: 'POST /api/inventario/productos/bulk requiere inventario.crear',
+    cap:  'inventario.crear',
+    req:  () => request(app).post('/api/inventario/productos/bulk').send({ productos: [] }),
+  },
+  {
+    name: 'PUT /api/inventario/productos/:id requiere inventario.editar',
+    cap:  'inventario.editar',
+    req:  () => request(app).put('/api/inventario/productos/999999').send({ nombre: 'x' }),
+  },
+  {
+    name: 'DELETE /api/inventario/productos/:id requiere inventario.eliminar',
+    cap:  'inventario.eliminar',
+    req:  () => request(app).delete('/api/inventario/productos/999999'),
+  },
 ];
 
 describe.each(GATES)('capability gate — $name', (G) => {

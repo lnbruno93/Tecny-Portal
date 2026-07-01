@@ -59,6 +59,13 @@ const PANTALLAS = [
     { id: 'exportar',        label: 'Exportar inventario' },
     { id: 'importar',        label: 'Importar inventario (XLSX)' },
     { id: 'vaciar_stock',    label: 'Vaciar stock disponible' },
+    // #500 hotfix seguridad — antes POST/PUT/DELETE de productos no tenían
+    // gate: cualquier user autenticado (incluso vendedor) podía mutar
+    // inventario. Estas 3 caps las cierran. Migration seed:
+    // 20260702000000_inventario_mutate_caps.js
+    { id: 'crear',           label: 'Agregar productos' },
+    { id: 'editar',          label: 'Editar productos' },
+    { id: 'eliminar',        label: 'Eliminar productos' },
   ]},
   { id: 'proveedores', label: 'Proveedores | Compras', capabilities: [
     { id: 'trabajar',        label: 'Acceder al módulo' },
