@@ -237,6 +237,52 @@ describe('POST /api/auth/login con 2FA', () => {
   });
 });
 
+// ─── POST /api/auth/2fa/cancel-setup ─────────────────────────────────────────
+// Task #497: borra el row si enabled_at IS NULL (setup pendiente). Deja intacto
+// el flujo normal (setup, enable, disable, regenerate-recovery). Se requiere
+// auth (requireAuth) para llegar.
+describe('POST /api/auth/2fa/cancel-setup', () => {
+  it('200: user con setup pendiente (enabled_at=NULL) → borra el row', async () => {
+    await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));
+    // Sanity check: el row existe pre-cancel.
+    const pre = await pool.query('SELECT user_id FROM user_2fa');
+    expect(pre.rows).toHaveLength(1);
+
+    const res = await request(app).post('/api/auth/2fa/cancel-setup').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // Row eliminado.
+    const post = await pool.query('SELECT user_id FROM user_2fa');
+    expect(post.rows).toHaveLength(0);
+  });
+
+  it('409: 2FA activo (enabled_at != NULL) → mensaje "usá /disable"', async () => {
+    const setup = await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));
+    await request(app).post('/api/auth/2fa/enable').set(auth(adminToken))
+      .send({ code: twoFaLib.generateTokenForTest(setup.body.secret) });
+
+    const res = await request(app).post('/api/auth/2fa/cancel-setup').set(auth(adminToken));
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/disable/i);
+    // Row sigue presente y enabled.
+    const rows = await pool.query('SELECT enabled_at FROM user_2fa');
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].enabled_at).toBeTruthy();
+  });
+
+  it('400: user sin row → mensaje "No hay setup pendiente"', async () => {
+    const res = await request(app).post('/api/auth/2fa/cancel-setup').set(auth(adminToken));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no hay setup pendiente/i);
+  });
+
+  it('401: sin auth → rejected por requireAuth', async () => {
+    const res = await request(app).post('/api/auth/2fa/cancel-setup');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('POST /api/auth/2fa/regenerate-recovery', () => {
   it('genera 8 nuevos codes e invalida los viejos', async () => {
     const setup = await request(app).post('/api/auth/2fa/setup').set(auth(adminToken));

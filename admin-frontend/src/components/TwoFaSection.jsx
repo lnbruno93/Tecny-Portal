@@ -65,6 +65,11 @@ export default function TwoFaSection({ onMessage }) {
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState('');
 
+  // Task #497: confirm inline para "Cancelar setup pendiente" (evitamos
+  // window.confirm para mantener el look-and-feel; usamos el Modal primitive).
+  const [cancelSetupModalOpen, setCancelSetupModalOpen] = useState(false);
+  const [cancelSetupLoading, setCancelSetupLoading] = useState(false);
+
   // Fallback local para el banner cuando el padre no pasa onMessage —
   // permite usar el componente standalone (tests / sanity check).
   const [localMessage, setLocalMessage] = useState(null);
@@ -137,6 +142,21 @@ export default function TwoFaSection({ onMessage }) {
     setCodeModal({ open: false, action: null });
     setCode('');
     setCodeError('');
+  }
+
+  // Task #497: cancelar setup pendiente (row con enabled_at=NULL).
+  async function confirmCancelSetup() {
+    setCancelSetupLoading(true);
+    try {
+      await twoFa.cancelSetup();
+      emit('success', 'Setup cancelado. Podés empezar de cero cuando quieras.');
+      setCancelSetupModalOpen(false);
+      refresh();
+    } catch (err) {
+      emit('error', err?.message || 'No se pudo cancelar el setup.');
+    } finally {
+      setCancelSetupLoading(false);
+    }
   }
 
   async function copyRecoveryCodes() {
@@ -351,6 +371,77 @@ export default function TwoFaSection({ onMessage }) {
               </div>
             )}
           </form>
+        </Modal>
+      </div>
+    );
+  }
+
+  // ── Estado SETUP PENDIENTE ───────────────────────────────────────────
+  // Task #497: el user llamó /setup (row existe con enabled_at=NULL) pero no
+  // completó el paso 3 (ingresar código de 6 dígitos + enable). Ofrecemos 2
+  // caminos: "Continuar setup" muestra TwoFaSetup (que es idempotente: regenera
+  // secret + recovery codes vía /setup) o "Cancelar setup" borra el row para
+  // empezar de cero.
+  if (status?.configured && !status?.enabled) {
+    return (
+      <div>
+        {localBanner}
+        <div
+          className="card"
+          style={{
+            padding: 18,
+            background: 'rgba(234, 179, 8, 0.08)',
+            border: '1px solid rgba(234, 179, 8, 0.3)',
+          }}
+        >
+          <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            <Badge tone="warn">Setup pendiente</Badge>
+            <strong>Autenticación de dos factores</strong>
+          </div>
+          <div className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 14 }}>
+            Empezaste a activar 2FA pero no completaste el paso final (ingresar
+            el código de 6 dígitos de tu app autenticadora). Para terminar,
+            continuá el setup. Si perdiste el QR o querés empezar de cero,
+            cancelá.
+          </div>
+          <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+            <Btn kind="ghost" sm onClick={() => setCancelSetupModalOpen(true)}>
+              Cancelar setup
+            </Btn>
+            <Btn kind="primary" sm onClick={() => setShowSetup(true)}>
+              Continuar setup
+            </Btn>
+          </div>
+        </div>
+
+        {/* Confirm modal para cancelar setup */}
+        <Modal
+          open={cancelSetupModalOpen}
+          onClose={() => !cancelSetupLoading && setCancelSetupModalOpen(false)}
+          title="Cancelar setup pendiente"
+          size="sm"
+          actions={
+            <>
+              <Btn
+                kind="ghost"
+                onClick={() => setCancelSetupModalOpen(false)}
+                disabled={cancelSetupLoading}
+              >
+                Volver
+              </Btn>
+              <Btn
+                kind="danger"
+                onClick={confirmCancelSetup}
+                disabled={cancelSetupLoading}
+              >
+                {cancelSetupLoading ? 'Cancelando…' : 'Cancelar setup'}
+              </Btn>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+            Se borra el setup incompleto y podrás empezar de cero. ¿Continuar?
+          </p>
         </Modal>
       </div>
     );

@@ -255,6 +255,32 @@ router.post('/disable', validate(codeSchema), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ─── POST /cancel-setup — borrar setup pendiente ───
+// Si el user inició setup (row existe con enabled_at=NULL) pero no lo confirmó,
+// borra el row para que pueda empezar de cero sin quedar con secret/recovery
+// codes viejos que ya perdió. Falla si el 2FA ya está enabled (usá /disable).
+//
+// Contexto (task #497): el flujo de setup se quedaba a medias cuando el user
+// cerraba la pantalla después de escanear el QR pero antes de ingresar el
+// código de 6 dígitos. El row quedaba huérfano y el frontend renderizaba
+// "No activado" sin pista visible. Ahora el frontend muestra "Setup pendiente"
+// con 2 botones (Continuar / Cancelar) y este endpoint respalda el Cancelar.
+router.post('/cancel-setup', async (req, res, next) => {
+  try {
+    const row = await load2fa(req.user.id);
+    if (!row) {
+      return res.status(400).json({ error: 'No hay setup pendiente que cancelar.' });
+    }
+    if (row.enabled_at) {
+      return res.status(409).json({ error: '2FA está activado. Usá /disable en su lugar.' });
+    }
+    await db.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
+    await audit('user_2fa', 'DELETE', req.user.id,
+                { despues: { action: 'setup_canceled' }, user_id: req.user.id });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // ─── POST /regenerate-recovery — nuevos 8 codes, invalida los viejos ───
 router.post('/regenerate-recovery', validate(codeSchema), async (req, res, next) => {
   try {

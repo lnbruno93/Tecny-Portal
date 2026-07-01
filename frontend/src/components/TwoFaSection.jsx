@@ -248,6 +248,56 @@ export default function TwoFaSection() {
     );
   }
 
+  // ── Estado SETUP PENDIENTE ──
+  // Task #497: el user llamó /setup (row existe con enabled_at=NULL) pero no
+  // completó el paso 3 (ingresar código de 6 dígitos + enable). Ofrecemos 2
+  // caminos: continuar el setup (genera secret nuevo, /setup es idempotente)
+  // o cancelar y borrar el row para empezar de cero limpio.
+  if (status?.configured && !status?.enabled) {
+    return (
+      <div>
+        <div className="card card-tight" style={{
+          padding: 18,
+          background: 'rgba(234, 179, 8, 0.08)',
+          border: '1px solid rgba(234, 179, 8, 0.3)',
+        }}>
+          <div className="flex-row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            <span className="badge" style={{ background: 'var(--warn)', color: '#000' }}>Setup pendiente</span>
+            <strong>Autenticación de dos factores</strong>
+          </div>
+          <div className="muted tiny" style={{ lineHeight: 1.5, marginBottom: 14 }}>
+            Empezaste a activar 2FA pero no completaste el paso final (ingresar el código de 6 dígitos de tu app autenticadora). Para terminar, continuá el setup. Si perdiste el QR o querés empezar de cero, cancelá.
+          </div>
+          <div className="flex-row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Cancelar setup pendiente',
+                  message: 'Se borra el setup incompleto y podrás empezar de cero. ¿Continuar?',
+                  confirmLabel: 'Cancelar setup',
+                });
+                if (!ok) return;
+                try {
+                  await twoFa.cancelSetup();
+                  toast.success('Setup cancelado. Podés empezar de cero cuando quieras.');
+                  refresh();
+                } catch (e) {
+                  toast.error(e.message || 'No se pudo cancelar el setup.');
+                }
+              }}
+            >
+              Cancelar setup
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowSetup(true)}>
+              Continuar setup
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Estado NO configurado ──
   return (
     <div className="card card-tight" style={{ padding: 18 }}>
