@@ -115,6 +115,14 @@ export default function Inventario() {
   // Si no hay user (tests sin AuthProvider), la cap evalúa false → tab oculto,
   // que es el comportamiento conservador correcto.
   const canSeeRedB2B = userHasCap(user, 'cross_tenant.write');
+  // #500 hotfix seguridad: gate visual de mutaciones de inventario. El
+  // backend rebota con 403 igual (defense-in-depth), pero ocultar los
+  // botones evita el UX ambiguo de "clickeo y aparece error opaco". Para
+  // owner/admin del tenant y super-admin global, userHasCap devuelve true
+  // por bypass — mismo comportamiento visual que antes.
+  const canCreateProducto  = userHasCap(user, 'inventario.crear');
+  const canEditProducto    = userHasCap(user, 'inventario.editar');
+  const canDeleteProducto  = userHasCap(user, 'inventario.eliminar');
   // 2026-06-29 Multi-país F3: monedas operativas del tenant. Si pais=UY,
   // los dropdowns de costo_moneda/precio_moneda muestran UYU en vez de ARS.
   const { monedas, monedaLocal } = useMonedasTenant();
@@ -464,10 +472,13 @@ export default function Inventario() {
   }
 
   useEffect(() => {
-    setPrimaryAction({ label: 'Agregar producto', onClick: openCreate });
+    // #500: sin cap crear, no exponer la acción en el header (mobile).
+    if (canCreateProducto) {
+      setPrimaryAction({ label: 'Agregar producto', onClick: openCreate });
+    }
     return () => setPrimaryAction(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setPrimaryAction]);
+  }, [setPrimaryAction, canCreateProducto]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -989,7 +1000,9 @@ export default function Inventario() {
         )}
         {/* Spacer empuja Agregar producto a la derecha de la toolbar */}
         <span style={{ marginLeft: 'auto' }} />
-        <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
+        {canCreateProducto && (
+          <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
+        )}
       </div>
 
       {/* ── KPIs ── */}
@@ -1163,11 +1176,15 @@ export default function Inventario() {
             <div className="empty" style={{ padding: '32px 16px' }}>
               <div style={{ fontWeight: 600, marginBottom: 6 }}>Todavía no cargaste productos</div>
               <div className="muted tiny" style={{ marginBottom: 14 }}>
-                Empezá con tu primer equipo o accesorio — necesitás al menos uno para registrar ventas.
+                {canCreateProducto
+                  ? 'Empezá con tu primer equipo o accesorio — necesitás al menos uno para registrar ventas.'
+                  : 'Todavía no hay productos cargados. Contactá al administrador para que agregue el primero.'}
               </div>
-              <button className="btn btn-primary btn-sm" onClick={openCreate}>
-                <Icons.Plus size={13} /> Agregar producto
-              </button>
+              {canCreateProducto && (
+                <button className="btn btn-primary btn-sm" onClick={openCreate}>
+                  <Icons.Plus size={13} /> Agregar producto
+                </button>
+              )}
             </div>
           );
         })()
@@ -1347,11 +1364,16 @@ export default function Inventario() {
                         className="icon-btn"
                         title={p.oculto ? 'Mostrar (sacar de ocultos)' : 'Ocultar de la vista por defecto'}
                         onClick={() => inlineUpdate(p.id, 'oculto', !p.oculto).catch(() => {})}
+                        disabled={!canEditProducto}
                       >
                         {p.oculto ? <Icons.EyeOff size={14} /> : <Icons.Eye size={14} />}
                       </button>
-                      <button className="icon-btn" title="Editar (modal completo)" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
+                      {canEditProducto && (
+                        <button className="icon-btn" title="Editar (modal completo)" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
+                      )}
+                      {canDeleteProducto && (
+                        <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
+                      )}
                     </td>
                   </tr>
                 );

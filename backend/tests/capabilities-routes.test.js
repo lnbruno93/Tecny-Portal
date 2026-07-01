@@ -90,7 +90,8 @@ describe('GET /api/capabilities/catalog', () => {
     expect(r.body.pantallas).toBeInstanceOf(Array);
     expect(r.body.pantallas.length).toBe(20);
     const total = r.body.pantallas.reduce((acc, p) => acc + p.capabilities.length, 0);
-    expect(total).toBe(46);
+    // 46 → 49 tras #500 (agregamos inventario.crear/editar/eliminar).
+    expect(total).toBe(49);
     expect(r.body.roles).toContain('owner');
     expect(r.body.roles).toContain('custom');
   });
