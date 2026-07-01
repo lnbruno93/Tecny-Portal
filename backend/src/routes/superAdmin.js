@@ -61,6 +61,7 @@ const {
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
+const { invalidateUserAuth } = require('../lib/userAuthCache');
 // #473: reusamos las defaults de signup para que el set de cajas creado por
 // "cambiar país" matchee 1:1 al que recibe un tenant nuevo del país destino.
 const { getDefaultCajasPorPais } = require('./signup');
@@ -2237,6 +2238,57 @@ router.patch('/tenants/:id/pais', validate(changePaisSchema), async (req, res, n
         //    extra es despreciable vs riesgo de cache stale.
         await invalidateTenantStatus(id);
 
+        // 7b. #501 hotfix — forzar re-login de todos los users del tenant.
+        //
+        //   Problema: el cambio de país modifica `tenant.pais` en DB, pero
+        //   el frontend guarda `user.tenant.pais` en memoria desde la sesión
+        //   que abrió ANTES del cambio. Sin forzar re-login, el owner del
+        //   tenant sigue viendo dropdowns con las monedas viejas hasta que
+        //   cierre sesión manualmente. Cliente Uruguay (tenant 17) lo reportó
+        //   2026-07-01 tras el cambio del 2026-06-30 — sigue viendo ARS.
+        //
+        //   Solución: bumpear `users.password_changed_at` para todos los
+        //   users vivos del tenant. El middleware requireAuth compara
+        //   `jwt.iat >= users.password_changed_at`: con el bump, todos los
+        //   JWT preexistentes quedan invalidados → 401 → auto-logout en
+        //   el frontend → login fresco con /me que trae `pais` nuevo.
+        //
+        //   Trade-off: los users que estaban trabajando pierden la sesión
+        //   sin previo aviso. Aceptable porque (a) es una operación rara
+        //   (cambio de país es one-time por tenant en la práctica); (b) el
+        //   super-admin sabe que va a interrumpir sesiones; (c) alternativa
+        //   (dejarlos con dropdowns viejos) tiene peor UX y correctness.
+        //
+        //   Cache Redis: hay que invalidar userAuthCache por cada user
+        //   (cachea password_changed_at TTL 60s). Sin invalidar, el bump
+        //   en DB queda pero el middleware sigue leyendo el cache stale
+        //   hasta TTL — los users siguen "logueados" hasta 60s.
+        const bumpResult = await client.query(
+          `UPDATE users u
+              SET password_changed_at = NOW()
+             FROM tenant_users tu
+            WHERE tu.tenant_id = $1
+              AND tu.user_id = u.id
+              AND u.deleted_at IS NULL
+            RETURNING u.id`,
+          [id]
+        );
+        const usersInvalidados = bumpResult.rows.length;
+        // Cache invalidation por user. Best-effort: si Redis está caído
+        // no abortamos la tx (el bump en DB es la source-of-truth; a lo sumo
+        // los users tardan 60s extra en desloguearse). Wrapping en
+        // Promise.all fuera del await de cada uno serializa I/O.
+        await Promise.all(
+          bumpResult.rows.map((r) =>
+            invalidateUserAuth(r.id).catch((err) => {
+              logger.warn(
+                { userId: r.id, tenantId: id, err: err.message },
+                '[super-admin/#473] invalidateUserAuth fallo — TTL 60s se hará cargo'
+              );
+            })
+          )
+        );
+
         // 8. Audit log. SAVEPOINT pattern para que un CHECK constraint sin
         //    la action nueva (e.g. migration sin correr todavía en staging)
         //    no abote la tx — preservamos la operación con warning.
@@ -2270,6 +2322,7 @@ router.patch('/tenants/:id/pais', validate(changePaisSchema), async (req, res, n
           paisNuevo: upd.rows[0].pais,
           cajasCreadas,
           alertaActualizada,
+          usersInvalidados,
         };
       } catch (err) {
         try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
@@ -2308,6 +2361,7 @@ router.patch('/tenants/:id/pais', validate(changePaisSchema), async (req, res, n
         pais_nuevo: result.paisNuevo,
         cajas_creadas: result.cajasCreadas,
         alerta_actualizada: result.alertaActualizada,
+        users_invalidados: result.usersInvalidados,
       },
       '[super-admin/#473] PATCH /tenants/:id/pais'
     );
@@ -2319,6 +2373,7 @@ router.patch('/tenants/:id/pais', validate(changePaisSchema), async (req, res, n
       side_effects: {
         cajas_creadas: result.cajasCreadas,
         alerta_actualizada: result.alertaActualizada,
+        users_invalidados: result.usersInvalidados,
       },
     });
   } catch (err) {

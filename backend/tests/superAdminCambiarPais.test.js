@@ -377,6 +377,74 @@ describe('PATCH /api/super-admin/tenants/:id/pais — AR → UY (200 + side effe
     expect(status.pais).toBe('UY');
   });
 
+  // #501 hotfix: bump users.password_changed_at de todos los users del
+  // tenant para forzar re-login. Sin este bump, el owner del tenant sigue
+  // viendo `user.tenant.pais='AR'` en memoria hasta que cierre sesión
+  // manualmente — cliente Uruguay lo reportó 2026-07-01.
+  it('bumpea users.password_changed_at de todos los users del tenant + reporta users_invalidados', async () => {
+    // Setup: crear 2 users vinculados al tenant (el fixture no los seedea
+    // — el super-admin no está en tenant_users). password_changed_at NULL
+    // simula un user que nunca hizo login (típico post-invite).
+    const { rows: uRows } = await pool.query(
+      `INSERT INTO users (nombre, username, email, password_hash, role)
+       VALUES
+         ('U1 test', 'u1_pais_bump', 'u1@pais-bump.test', 'x', 'op'),
+         ('U2 test', 'u2_pais_bump', 'u2@pais-bump.test', 'x', 'op')
+       RETURNING id`
+    );
+    for (const u of uRows) {
+      await pool.query(
+        `INSERT INTO tenant_users (tenant_id, user_id) VALUES ($1, $2)`,
+        [TENANT_AR, u.id]
+      );
+    }
+    // Poner un password_changed_at "viejo" en uno de los users para verificar
+    // que el bump avanza el timestamp (no se queda con el mismo valor).
+    await pool.query(
+      `UPDATE users SET password_changed_at = NOW() - INTERVAL '1 day' WHERE id = $1`,
+      [uRows[0].id]
+    );
+
+    const { rows: antes } = await pool.query(
+      `SELECT u.id, u.password_changed_at
+         FROM users u
+         JOIN tenant_users tu ON tu.user_id = u.id
+        WHERE tu.tenant_id = $1 AND u.deleted_at IS NULL`,
+      [TENANT_AR]
+    );
+    expect(antes.length).toBeGreaterThanOrEqual(2);
+
+    const r = await request(app)
+      .patch(`/api/super-admin/tenants/${TENANT_AR}/pais`)
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ pais: 'UY' });
+    expect(r.status).toBe(200);
+    // El endpoint reporta cuántos usuarios se invalidaron — útil para que
+    // el super-admin vea "cortaste N sesiones" en el back office.
+    expect(r.body.side_effects.users_invalidados).toBe(antes.length);
+
+    // Verificar que password_changed_at avanzó para cada user.
+    const { rows: despues } = await pool.query(
+      `SELECT u.id, u.password_changed_at
+         FROM users u
+         JOIN tenant_users tu ON tu.user_id = u.id
+        WHERE tu.tenant_id = $1 AND u.deleted_at IS NULL
+        ORDER BY u.id`,
+      [TENANT_AR]
+    );
+    const anterioresMap = Object.fromEntries(antes.map(u => [u.id, u.password_changed_at]));
+    for (const u of despues) {
+      const prev = anterioresMap[u.id];
+      // Si prev era NULL (user recién creado sin login previo), aceptamos
+      // el bump como "ahora tiene valor". Si tenía valor, debe ser mayor.
+      if (prev === null) {
+        expect(u.password_changed_at).not.toBeNull();
+      } else {
+        expect(new Date(u.password_changed_at).getTime()).toBeGreaterThan(new Date(prev).getTime());
+      }
+    }
+  });
+
   it('alerta tc_referencia AUSENTE → endpoint no rompe, alerta_actualizada=false', async () => {
     // Borrar la alerta para simular tenant pre-F2 sin seed.
     await pool.query(
