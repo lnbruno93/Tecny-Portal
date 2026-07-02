@@ -4,7 +4,6 @@
 //   · /clientes               → Clientes, real (lista + filtros + búsqueda)
 //   · /clientes/:id           → Ficha, real (detalle + 2 tabs + 4 modals de mutations)
 //   · /planes                 → Planes, real (editor de precios #353)
-//   · /tc-defaults            → TcDefaults, real (editor de TC default por país, F4 #470)
 //   · /facturacion, /onboarding, /uso, /soporte
 //                             → placeholders ComingSoon (no implementadas todavía)
 
@@ -23,7 +22,6 @@ const Resumen    = lazy(() => import('./pages/Resumen.jsx'));
 const Clientes   = lazy(() => import('./pages/Clientes.jsx'));
 const Ficha      = lazy(() => import('./pages/Ficha.jsx'));
 const Planes     = lazy(() => import('./pages/Planes.jsx'));
-const TcDefaults = lazy(() => import('./pages/TcDefaults.jsx'));
 // #498: Mi cuenta — gestión de password y 2FA del super-admin desde el back
 // office (antes había que salir a app.tecnyapp.com para hacerlo).
 const MiCuenta   = lazy(() => import('./pages/MiCuenta.jsx'));
@@ -148,15 +146,6 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Planes />
-          </ProtectedRoute>
-        }
-      />
-      {/* Multi-país F4 (#470): editor de TC default por país (AR ARS/USD, UY UYU/USD). */}
-      <Route
-        path="/tc-defaults"
-        element={
-          <ProtectedRoute>
-            <TcDefaults />
           </ProtectedRoute>
         }
       />
