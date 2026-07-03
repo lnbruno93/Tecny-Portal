@@ -179,7 +179,7 @@ export default function ResetPassword() {
 
         <form onSubmit={handleSubmit} style={{ textAlign: 'left' }}>
           <div className="field">
-            <label htmlFor="reset-new">Contraseña nueva</label>
+            <label htmlFor="reset-new">Contraseña nueva <span style={{ color: 'var(--neg)' }}>*</span></label>
             <div className="iw">
               <span className="lead"><IconLock /></span>
               <input
@@ -215,7 +215,7 @@ export default function ResetPassword() {
           </div>
 
           <div className="field">
-            <label htmlFor="reset-confirm">Confirmar contraseña</label>
+            <label htmlFor="reset-confirm">Confirmar contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
             <div className="iw">
               <span className="lead"><IconLock /></span>
               <input

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { silentReport } from '../lib/reportError';
+import { downloadBlob } from '../lib/downloadBlob';
 import { Icons } from '../components/Icons';
 import {
   comprobantes as compApi,
@@ -209,14 +210,7 @@ export default function Financiera() {
       const blob = await compApi.exportZip(params);
       const { desde, hasta } = params;
       const tag = desde && hasta ? `${desde}_${hasta}` : (desde || hasta || new Date().toISOString().slice(0, 10));
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `comprobantes_${tag}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      downloadBlob(blob, `comprobantes_${tag}.zip`);
       toast.success('ZIP descargado');
     } catch (err) {
       toast.error(err);

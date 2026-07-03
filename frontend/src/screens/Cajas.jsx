@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { silentReport } from '../lib/reportError';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { cajas, contactos as contactosApi } from '../lib/api';
 import { usePageActions } from '../contexts/PageActionsContext';
@@ -80,7 +80,34 @@ export default function Cajas() {
   const { monedas, monedaLocal } = useMonedasTenant();
   const confirm   = useConfirm();
   const navigate  = useNavigate();
-  const [tab, setTab] = useState('config');
+  // Audit 2026-07-04 P2: deep-link `?tab=X` para compartir/bookmarkear una tab
+  // específica de Cajas (config | deudas | inversiones). Sin esto el usuario
+  // siempre aterriza en Config aunque venga de un link "ir a Cajas > Deudas".
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = (() => {
+    const t = searchParams.get('tab');
+    return ['config', 'deudas', 'inversiones'].includes(t) ? t : 'config';
+  })();
+  const [tab, setTab] = useState(initialTab);
+
+  // Sincronizamos el tab con la URL cuando el user cambia de pestaña, con
+  // `replace: true` para no llenar el history stack con cada click. Reset al
+  // default no ensucia la URL con `?tab=config`.
+  useEffect(() => {
+    const current = searchParams.get('tab');
+    if (tab === 'config') {
+      if (current) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('tab');
+        setSearchParams(next, { replace: true });
+      }
+    } else if (current !== tab) {
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', tab);
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // Deudas
   const [deudaMovs, setDeudaMovs] = useState([]);

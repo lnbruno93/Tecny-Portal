@@ -10,6 +10,8 @@
 // Google Sheets no respeta el hint y lo ve como una fila extra; nuestros
 // importers (`parseCsv` en Inventario.jsx y en lib/parsers.js) saltean
 // esa línea explícitamente.
+import { downloadBlob } from './downloadBlob';
+
 export function exportCsv(filename, rows, columns) {
   const header = columns.map(c => `"${c.label}"`).join(',');
   const body = rows.map(r =>
@@ -19,10 +21,5 @@ export function exportCsv(filename, rows, columns) {
     }).join(',')
   ).join('\n');
   const blob = new Blob(['\uFEFF' + 'sep=,\n' + header + '\n' + body], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, filename);
 }
