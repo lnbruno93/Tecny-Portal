@@ -28,6 +28,9 @@ export default function VentasList({
   openComprob,
   deleteVenta,
   confirmarEntrega,
+  // #509 — abre el modal focalizado para editar solo el nombre del vendedor
+  // que sale en el comprobante. Opcional: si no se pasa, no renderizamos el botón.
+  openEditarVendedor,
 }) {
   return (
     <div className="card card-flush">
@@ -196,6 +199,13 @@ export default function VentasList({
                 <button className="icon-btn" title={esB2B ? 'Ir al cliente B2B' : 'Editar venta'} onClick={() => openEdit(v)}>
                   <Icons.Edit size={14} />
                 </button>
+                {/* #509 — Editar vendedor del comprobante. Solo retail (B2B no
+                    imprime este comprobante). Icono Users pega bien conceptualmente. */}
+                {!esB2B && openEditarVendedor && (
+                  <button className="icon-btn" title="Editar vendedor del comprobante" onClick={() => openEditarVendedor(v)}>
+                    <Icons.Users size={14} />
+                  </button>
+                )}
                 {!esB2B && (
                   <button className="icon-btn" title="Comprobante (imprimir/PDF)" onClick={() => comprobantePDF(v)}>
                     <Icons.Print size={14} />
