@@ -21,6 +21,7 @@
  */
 
 import { writeXlsx } from './xlsx';
+import { downloadBlob } from './downloadBlob';
 
 function fmtFechaCorta(s) {
   if (!s) return '';
@@ -32,16 +33,7 @@ function toNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
+// Audit 2026-07-04 P3: `downloadBlob` compartido en lib/downloadBlob.js.
 
 function kpiRow(label, t) {
   return [

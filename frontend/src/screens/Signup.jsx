@@ -270,7 +270,7 @@ export default function Signup() {
 
               <form onSubmit={handleSubmit}>
                 <div className="field">
-                  <label htmlFor="signup-nombre">Tu nombre</label>
+                  <label htmlFor="signup-nombre">Tu nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
                   <div className="iw">
                     <span className="lead"><IconUser /></span>
                     <input
@@ -289,7 +289,7 @@ export default function Signup() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="signup-email">Email</label>
+                  <label htmlFor="signup-email">Email <span style={{ color: 'var(--neg)' }}>*</span></label>
                   <div className="iw">
                     <span className="lead"><IconMail /></span>
                     <input
@@ -308,7 +308,7 @@ export default function Signup() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="signup-password">Contraseña</label>
+                  <label htmlFor="signup-password">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
                   <div className="iw">
                     <span className="lead"><IconLock /></span>
                     <input
@@ -404,7 +404,7 @@ export default function Signup() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="signup-empresa">Nombre de tu empresa</label>
+                  <label htmlFor="signup-empresa">Nombre de tu empresa <span style={{ color: 'var(--neg)' }}>*</span></label>
                   <div className="iw">
                     <span className="lead"><IconBuilding /></span>
                     <input

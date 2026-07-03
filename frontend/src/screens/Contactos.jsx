@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { contactos as contactosApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { downloadBlob } from '../lib/downloadBlob';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
@@ -107,8 +108,10 @@ export default function Contactos() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportando, setExportando] = useState(false);
   const exportMenuRef = useRef(null);
-  // Click-outside cierra el menú. useEffect con listener global registrado
-  // solo mientras está abierto (evita cost cuando no aplica).
+  // Click-outside + Esc cierran el menú. useEffect con listeners globales
+  // registrados solo mientras está abierto (evita cost cuando no aplica).
+  // Audit 2026-07-04 P2: teclas Esc en dropdowns — antes solo click-outside,
+  // los usuarios con teclado no tenían forma de cerrar sin desenfocar/click.
   useEffect(() => {
     if (!exportOpen) return;
     function onDocClick(e) {
@@ -116,8 +119,15 @@ export default function Contactos() {
         setExportOpen(false);
       }
     }
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setExportOpen(false);
+    }
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [exportOpen]);
 
   async function copiarMails() {
@@ -181,12 +191,7 @@ export default function Contactos() {
         ...rows.map(r2 => EXPORT_COLS.map(c => r2[c.key] ?? '')),
       ];
       const blob = writeXlsx(aoa, { sheetName: 'Contactos' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `contactos_${fechaSlug()}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `contactos_${fechaSlug()}.xlsx`);
       toast.success(`Descargaste ${rows.length} contacto${rows.length === 1 ? '' : 's'} en XLSX.`);
     } catch (e) {
       toast.error(e.message || 'No se pudo descargar el XLSX.');

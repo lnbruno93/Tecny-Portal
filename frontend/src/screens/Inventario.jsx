@@ -5,6 +5,7 @@ import { inventario, proveedores as proveedoresApi, cajas as cajasApi, redB2b } 
 import { userHasCap } from '../lib/userHasCap';
 import { RedB2BPendingReviewContent } from './RedB2BPendingReview';
 import { exportCsv } from '../lib/exportCsv';
+import { downloadBlob as downloadBlobShared } from '../lib/downloadBlob';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -570,11 +571,9 @@ export default function Inventario() {
   // Filas (arrays) → objetos keyed por header, para exportCsv.
   const rowsToObjects = (rows) => rows.map(r => Object.fromEntries(PLANTILLA_HEADERS.map((h, i) => [h, r[i]])));
   const plantillaCols = () => PLANTILLA_HEADERS.map(h => ({ key: h, label: h }));
-  function downloadBlob(blob, name) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
-    URL.revokeObjectURL(url);
-  }
+  // #509 audit follow-up: helper compartido en lib/downloadBlob (versión robusta
+  // con appendChild + setTimeout revoke). Alias local para mantener call sites.
+  const downloadBlob = downloadBlobShared;
 
   // Exporta TODO el inventario que matchea los filtros activos, no solo la
   // página visible. Antes el botón "Exportar" solo bajaba ~50 productos (la

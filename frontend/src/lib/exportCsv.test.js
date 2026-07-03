@@ -1,23 +1,33 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { exportCsv } from './exportCsv';
 
 describe('exportCsv()', () => {
   let captured;
   beforeEach(() => {
     captured = {};
-    const anchor = { set href(v) { captured.href = v; }, set download(v) { captured.download = v; }, click: vi.fn() };
-    captured.anchor = anchor;
-    vi.spyOn(document, 'createElement').mockReturnValue(anchor);
-    let blobText = '';
+    // 2026-07-04 audit follow-up: exportCsv delega en lib/downloadBlob que
+    // hace appendChild + click + removeChild + setTimeout(revoke). Interceptamos
+    // createObjectURL para capturar el Blob y click en el anchor prototype.
+    // Dejamos que appendChild/removeChild corran reales sobre un anchor real
+    // creado por jsdom (spy sin mockImplementation).
     global.URL.createObjectURL = vi.fn((blob) => { captured.blob = blob; return 'blob:mock'; });
     global.URL.revokeObjectURL = vi.fn();
-    void blobText;
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+      captured.download = this.download;
+      captured.click = (captured.click || 0) + 1;
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('genera el CSV con headers y filas, y dispara la descarga', async () => {
     exportCsv('reporte.csv', [{ a: 'x', b: 2 }, { a: 'y', b: 3 }], [{ key: 'a', label: 'Columna A' }, { key: 'b', label: 'Columna B' }]);
     expect(captured.download).toBe('reporte.csv');
-    expect(captured.anchor.click).toHaveBeenCalled();
+    expect(captured.click).toBeGreaterThanOrEqual(1);
     const text = await captured.blob.text();
     expect(text).toContain('"Columna A","Columna B"');
     expect(text).toContain('"x","2"');

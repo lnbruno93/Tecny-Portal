@@ -41,11 +41,13 @@ const renderS = () => render(
   <MemoryRouter><Signup /></MemoryRouter>
 );
 
-// Selectores — los labels exactos del form (ver Signup.jsx).
-const getNombre   = () => screen.getByLabelText('Tu nombre');
-const getEmail    = () => screen.getByLabelText('Email');
-const getPassword = () => screen.getByLabelText('Contraseña');
-const getEmpresa  = () => screen.getByLabelText('Nombre de tu empresa');
+// Selectores — los labels usan regex porque llevan `*` de required (audit
+// 2026-07-04 P3). El regex evita romperse si mañana cambiamos el asterisco
+// por otra marca visual.
+const getNombre   = () => screen.getByLabelText(/^Tu nombre/);
+const getEmail    = () => screen.getByLabelText(/^Email/);
+const getPassword = () => screen.getByLabelText(/^Contraseña/);
+const getEmpresa  = () => screen.getByLabelText(/^Nombre de tu empresa/);
 const getSubmit   = () => screen.getByRole('button', { name: /crear cuenta/i });
 const getEyeBtn   = () => screen.getByRole('button', { name: /^(mostrar|ocultar) contraseña$/i });
 
@@ -136,8 +138,8 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
     await user.click(screen.getByRole('button', { name: /volver y crear cuenta de nuevo/i }));
 
     // El form reaparece y el campo email está vacío (para retipear).
-    expect(screen.getByLabelText('Tu nombre')).toBeInTheDocument();
-    expect(screen.getByLabelText('Email')).toHaveValue('');
+    expect(screen.getByLabelText(/^Tu nombre/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Email/)).toHaveValue('');
     expect(screen.queryByRole('heading', { name: /revisá tu email/i })).not.toBeInTheDocument();
   });
 
@@ -154,7 +156,7 @@ describe('Signup — TANDA 2.7 anti-enum', () => {
 
     expect(await screen.findByText(/rate limit/i)).toBeInTheDocument();
     // El form sigue visible (no se mostró la pantalla "Revisá tu email").
-    expect(screen.getByLabelText('Tu nombre')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Tu nombre/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /revisá tu email/i })).not.toBeInTheDocument();
   });
 
