@@ -333,6 +333,16 @@ export const egresos = {
 };
 
 // Sanidad del Negocio (feature 2026-06-23) — dashboard de presupuesto vs real
+// #505 — Movimientos de Caja (transferencias entre 2 cajas propias del negocio).
+// Comparte pantalla con Egresos (tab interno) y capability 'egresos.ver'.
+// Backend: /api/caja-transferencias. Modelo detallado en la migration
+// 20260704000001_caja_transferencias.js.
+export const cajaTransferencias = {
+  list:   (params = {}) => api('/api/caja-transferencias?' + new URLSearchParams(params)),
+  create: (data)        => api('/api/caja-transferencias', 'POST', data),
+  delete: (id)          => api(`/api/caja-transferencias/${id}`, 'DELETE'),
+};
+
 // mensual. El backend devuelve TODO cruzado en un solo GET.
 export const sanidad = {
   list:             (meses = 6) => api(`/api/sanidad?meses=${meses}`),
