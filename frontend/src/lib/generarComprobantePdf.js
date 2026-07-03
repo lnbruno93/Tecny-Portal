@@ -50,7 +50,16 @@ function tc(doc, [r, g, b]) { doc.setTextColor(r, g, b); }
 function fc(doc, [r, g, b]) { doc.setFillColor(r, g, b); }
 function dc(doc, [r, g, b]) { doc.setDrawColor(r, g, b); }
 
-export async function generarComprobantePdf(venta) {
+/**
+ * @param {object} venta — datos de la venta a imprimir (items, cliente, pagos, garantía…)
+ * @param {object} [opts]
+ * @param {string} [opts.tenantNombre] — nombre del negocio del tenant (owner-set).
+ *   Se usa en el brand del header y en el pie del PDF. Fallback: 'Tecny' (el
+ *   nombre del SaaS). 2026-07-04 (#506): el backend YA usa tenant.nombre; el
+ *   frontend estaba hardcodeado a 'Tecny' — este PR lo corrige.
+ */
+export async function generarComprobantePdf(venta, opts = {}) {
+  const tenantNombre = (opts.tenantNombre || '').trim() || 'Tecny';
   const { jsPDF } = await import('jspdf');
   const autoTableImport = await import('jspdf-autotable');
   const autoTable =
@@ -74,11 +83,13 @@ export async function generarComprobantePdf(venta) {
   doc.rect(0, 0, pageWidth, 6, 'F');
 
   y = 50;
-  // Logo de texto "Tecny" con tracking grande
+  // Logo de texto con el nombre del negocio del tenant.
+  // 2026-07-04 (#506): antes hardcoded "Tecny" (el brand del SaaS).
+  // El brand del comprobante es del negocio del owner (ej. "Celnyx").
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(28);
   tc(doc, COLOR.brand);
-  doc.text('Tecny', margin, y);
+  doc.text(tenantNombre, margin, y);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
@@ -337,7 +348,7 @@ export async function generarComprobantePdf(venta) {
   doc.setFontSize(8);
   tc(doc, COLOR.textSoft);
   doc.text(
-    `Generado el ${new Date().toLocaleString('es-AR')} · Tecny`,
+    `Generado el ${new Date().toLocaleString('es-AR')} · ${tenantNombre}`,
     pageWidth - margin,
     footerY + 24,
     { align: 'right' }

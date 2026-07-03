@@ -400,6 +400,10 @@ router.get('/me', requireAuth, async (req, res, next) => {
           const { getMonedaLocalPais } = require('../lib/money');
           tenantInfo = {
             id:           status.id,
+            // 2026-07-04 (#506) — Nombre del negocio para brandear comprobantes
+            // en el frontend. Fallback a null (el frontend usa 'Tecny' como
+            // fallback duro cuando no lo tiene).
+            nombre:       status.nombre || null,
             plan:         status.plan,
             paid_until:   status.paid_until,
             suspended_at: status.suspended_at,
