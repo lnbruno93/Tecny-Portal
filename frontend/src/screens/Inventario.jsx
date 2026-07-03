@@ -18,6 +18,7 @@ import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
 import { fmt, fmtMoney } from '../lib/format';
+import { rangeToParams, RANGE_PRESETS } from '../lib/dateRange';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
 import { SkeletonRow } from '../components/Skeleton';
@@ -180,6 +181,14 @@ export default function Inventario() {
   }, [searchParams, setSearchParams]);
   const setClaseFilter = useCallback((v) => setParam('clase', v, 'todos'), [setParam]);
   const setVistaFiltro = useCallback((v) => setParam('vista', v, 'no_vendidos'), [setParam]);
+
+  // 2026-07-04 (#507): filtro de fecha para vista='vendidos'. Default 'todo' →
+  // no filtra (compat con comportamiento previo). El backend acepta desde/hasta
+  // (YYYY-MM-DD) y filtra por venta_items.venta_id → ventas.fecha (retail) o
+  // items_movimiento_cc → movimientos_cc.fecha (B2B). Ambos canales, OR.
+  // Se guarda en state local (no URL) porque solo aplica al tab Vendidos y el
+  // usuario típicamente cambia entre presets rápido — no vale la deep-link.
+  const [vendidosRange, setVendidosRange] = useState({ preset: 'todo', desde: '', hasta: '' });
   const setSearch = useCallback((v) => setParam('q', v, ''), [setParam]);
 
   // Search debounceada: no dispara una request al backend (con ILIKE multi-columna +
@@ -315,6 +324,9 @@ export default function Inventario() {
     setLoading(true);
     try {
       const params = { page, limit: 50, vista: vistaFiltro };
+      // 2026-07-04 (#507): merge del rango de fechas SOLO en vista Vendidos.
+      // rangeToParams devuelve {} para preset='todo', así que no rompe otras vistas.
+      if (vistaFiltro === 'vendidos') Object.assign(params, rangeToParams(vendidosRange));
       // Resolución del tab activo:
       //   - celular / accesorio → params.clase
       //   - tecnico            → params.estado = en_tecnico
@@ -343,7 +355,7 @@ export default function Inventario() {
     } finally {
       setLoading(false);
     }
-  }, [page, claseFilter, vistaFiltro, dSearch, toast, drillFilters]);
+  }, [page, claseFilter, vistaFiltro, dSearch, toast, drillFilters, vendidosRange]);
 
   const loadMetricas = useCallback(async () => {
     try { setMetricas(await inventario.metricas()); } catch (_) {}
@@ -1080,6 +1092,43 @@ export default function Inventario() {
             <input className="input" placeholder="Buscar nombre, IMEI, color, GB…" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
+        {/* 2026-07-04 (#507): filtro de fecha SOLO visible cuando vista=Vendidos.
+            Presets compartidos con Financiera y Tarjetas (lib/dateRange). Default 'todo'
+            = sin filtro. En 'custom' se muestran 2 date pickers. */}
+        {vistaFiltro === 'vendidos' && (
+          <div className="flex-row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="muted tiny" style={{ marginRight: 4 }}>Vendidos:</span>
+            {RANGE_PRESETS.map(p => (
+              <button
+                key={p.v}
+                type="button"
+                className={'btn btn-sm ' + (vendidosRange.preset === p.v ? 'btn-primary' : 'btn-ghost')}
+                onClick={() => setVendidosRange(r => ({ ...r, preset: p.v }))}
+              >
+                {p.l}
+              </button>
+            ))}
+            {vendidosRange.preset === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  className="input"
+                  style={{ width: 140, marginLeft: 6 }}
+                  value={vendidosRange.desde}
+                  onChange={e => setVendidosRange(r => ({ ...r, desde: e.target.value }))}
+                />
+                <span className="muted">→</span>
+                <input
+                  type="date"
+                  className="input"
+                  style={{ width: 140 }}
+                  value={vendidosRange.hasta}
+                  onChange={e => setVendidosRange(r => ({ ...r, hasta: e.target.value }))}
+                />
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Chip de drill-down ── */}
