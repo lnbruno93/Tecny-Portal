@@ -468,7 +468,7 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
 router.get('/productos', validate(queryProductosSchema, 'query'), async (req, res, next) => {
   try {
     const { buscar, clase, estado, categoria_id, deposito_id, solo_stock,
-            nombre, proveedor, gb, color, vista, condicion } = req.query;
+            nombre, proveedor, gb, color, vista, condicion, desde, hasta } = req.query;
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
@@ -494,6 +494,42 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
       conditions.push(`p.oculto = true`);
     } else if (vistaEfectiva === 'vendidos') {
       conditions.push(`p.estado = 'vendido' AND p.oculto = false`);
+      // 2026-07-04 (#507) — Filtro por fecha de venta cuando vista='vendidos'.
+      // Cubre ambos canales:
+      //   - Retail: venta_items.producto_id → ventas.fecha
+      //   - B2B:    items_movimiento_cc.producto_id → movimientos_cc.fecha
+      //             (mc.tipo='compra' = compra que el cliente CC nos hace).
+      // Un producto matchea si tiene AL MENOS UN item en cualquiera de los 2
+      // canales dentro del rango. Ambos EXISTS respetan soft-deletes.
+      if (desde || hasta) {
+        const desdeIdx = desde ? (params.push(desde), params.length) : null;
+        const hastaIdx = hasta ? (params.push(hasta), params.length) : null;
+        const fechaRetail = [
+          desdeIdx ? `v.fecha >= $${desdeIdx}` : null,
+          hastaIdx ? `v.fecha <= $${hastaIdx}` : null,
+        ].filter(Boolean).join(' AND ');
+        const fechaB2B = [
+          desdeIdx ? `mc.fecha >= $${desdeIdx}` : null,
+          hastaIdx ? `mc.fecha <= $${hastaIdx}` : null,
+        ].filter(Boolean).join(' AND ');
+        conditions.push(`(
+          EXISTS (
+            SELECT 1 FROM venta_items vi
+            JOIN ventas v ON v.id = vi.venta_id
+            WHERE vi.producto_id = p.id
+              AND v.deleted_at IS NULL
+              AND ${fechaRetail}
+          )
+          OR EXISTS (
+            SELECT 1 FROM items_movimiento_cc ic
+            JOIN movimientos_cc mc ON mc.id = ic.movimiento_cc_id
+            WHERE ic.producto_id = p.id
+              AND mc.tipo = 'compra'
+              AND mc.deleted_at IS NULL
+              AND ${fechaB2B}
+          )
+        )`);
+      }
     } else if (vistaEfectiva === 'todos_visibles') {
       conditions.push(`p.oculto = false`);
     }

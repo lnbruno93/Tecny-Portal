@@ -132,6 +132,12 @@ const queryProductosSchema = z.object({
   // boolean nativo o los literales 'true'/'false' y normalizamos.
   // Auditoría 2026-06-06 Sol H2 / Sec M1.
   solo_stock:   z.union([z.boolean(), z.enum(['true','false']).transform(v => v === 'true')]).optional(),
+  // 2026-07-04 (#507): filtro por fecha de venta cuando vista='vendidos'.
+  // Los strings van en formato YYYY-MM-DD (ISO). El router los aplica a
+  // ventas.fecha (retail) y movimientos_cc.fecha (B2B). Si vienen con otra
+  // vista, se ignoran (no crashea).
+  desde:        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
+  hasta:        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
   page:         z.coerce.number().int().positive().optional(),
   limit:        z.coerce.number().int().positive().max(200).optional(),
 });
