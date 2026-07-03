@@ -637,14 +637,22 @@ export default function Ventas() {
       costosUsd += toUsd(costo * qty, it.moneda, tc);
     });
 
-    // Tema C en-vivo (2026-06-14): el operador carga el monto BRUTO que cobra al
-    // cliente. El sistema desglosa por pago:
-    //   bruto cliente − costo financiero (retiene la financiera/procesadora) = neto a caja
-    // El "Cubierto ✓" se evalúa contra la suma de NETOS (no brutos) — el cliente
-    // tiene que pagar lo suficiente para que después de la retención el monto
-    // efectivamente percibido cubra el precio del producto.
-    let netoTotalUsd  = 0;
-    let costoFinTotal = 0;
+    // 2026-07-04 (#506) — Cambio de criterio: el "Cubierto ✓" se evalúa contra
+    // el BRUTO que paga el cliente, NO contra el neto que entra a caja.
+    // Razón: la comisión de financiera/tarjeta se la lleva un tercero (no queda
+    // en tu caja); no debe participar del chequeo "los pagos suman el total".
+    // Ejemplo del bug corregido: venta u$s1.250, cliente paga u$s1.250 con
+    // transferencia (comisión 3%). Antes → "Falta u$s37.50" porque comparaba
+    // vs neto (1.212,50). Después → "Cubierto ✓" porque el cliente sí pagó
+    // lo que corresponde. La comisión sigue impactando Ganancia real (más abajo).
+    //
+    // Desglose por pago:
+    //   brutoUsd  = lo que paga el cliente (para chequeo de sumatoria)
+    //   netoUsd   = bruto − comisión = lo que efectivamente entra a caja
+    //               (informativo + Ganancia real)
+    // Nota: usamos map + reduce (en vez de reassignments dentro del map) para
+    // satisfacer al React Compiler — la regla react-hooks/immutability no permite
+    // reasignar variables outer desde un callback.
     const pagosDetalle = pagos.map(p => {
       const brutoUsd = toUsd(p.monto, p.moneda, p.tc || tc);
       const brutoOrig = Number(p.monto) || 0;
@@ -662,22 +670,25 @@ export default function Ventas() {
       const costoFinUsd  = brutoUsd  * pct / 100;
       const netoUsd      = brutoUsd  - costoFinUsd;
       const netoOrig     = brutoOrig - costoFinOrig;
-      netoTotalUsd  += netoUsd;
-      costoFinTotal += costoFinUsd;
       return { pct, brutoOrig, brutoUsd, costoFinOrig, costoFinUsd, netoOrig, netoUsd };
     });
+    const brutoTotalUsd = pagosDetalle.reduce((a, d) => a + d.brutoUsd, 0);
+    const netoTotalUsd  = pagosDetalle.reduce((a, d) => a + d.netoUsd,  0);
+    const costoFinTotal = pagosDetalle.reduce((a, d) => a + d.costoFinUsd, 0);
 
     // Suma de TODOS los valor_toma de canjes (asumimos USD — el form solo permite USD por canje).
     const canjeTotal = (vForm.canjes || []).reduce((acc, c) => acc + (Number(c.valor_toma) || 0), 0);
-    // Cubierto = lo que efectivamente recibimos (netos + canjes). Si el operador
-    // pasó bien el recargo al cliente, neto = precio y queda Cubierto ✓.
-    const cubierto = netoTotalUsd + canjeTotal;
+    // Cubierto = lo que paga el cliente (brutos + canjes). La comisión NO figura acá.
+    // Se compara contra `items` (precio de venta) para validar sumatoria de pagos.
+    const cubierto = brutoTotalUsd + canjeTotal;
     // Ganancia bruta natural (precio − costo) — la del operador antes de cualquier descuento.
     const bruta = items - costosUsd;
     // Ganancia REAL = "el neto que se descuenta contra el costo" (Lucas, 2026-06-14).
     // = (lo efectivamente percibido + canjes) − costos. Si el cliente cubrió el
     // recargo, real ≡ bruta. Si no, real < bruta por la parte que come la financiera.
-    const real = cubierto - costosUsd;
+    // Nota: acá seguimos usando NETO (no bruto), porque la Ganancia real sí
+    // debe reflejar el impacto de la comisión — el negocio no se queda con esa plata.
+    const real = (netoTotalUsd + canjeTotal) - costosUsd;
     return {
       items, cubierto, dif: cubierto - items, canjeTotal,
       bruta, costoFin: costoFinTotal, real, pagosDetalle,
@@ -1811,13 +1822,9 @@ export default function Ventas() {
                     <div className="flex-between" style={{ fontSize: 13 }}>
                       <span
                         className="muted"
-                        title={
-                          totales.costoFin > 0
-                            ? 'Suma de los NETOS percibidos (después de descontar comisión financiera) + canjes. Es el monto que efectivamente entra a tu caja.'
-                            : 'Suma de los pagos + canjes'
-                        }
+                        title="Suma de lo que paga el cliente (brutos) + canjes. La comisión de financiera/tarjeta no descuenta acá — se ve reflejada en Ganancia real."
                       >
-                        Pagos {totales.costoFin > 0 ? 'neto' : ''}
+                        Pagos
                         {(vForm.canjes || []).length > 0 ? ` + ${vForm.canjes.length} canje${vForm.canjes.length > 1 ? 's' : ''}` : ''}
                       </span>
                       <span className="mono">u$s{fmt(totales.cubierto)}</span>
