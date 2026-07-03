@@ -132,4 +132,40 @@ describe('Contactos — agenda', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // 2026-07-04 (#508): endpoint /export para descarga CSV/XLSX en el frontend.
+  describe('GET /api/contactos/export — ficha completa para CSV/XLSX', () => {
+    it('devuelve TODOS los contactos con ficha completa, sin dedup', async () => {
+      // Creamos contactos con ficha completa y otro sin email (debe salir igual).
+      await request(app).post('/api/contactos').set(auth()).send({
+        nombre: 'Pedro', apellido: 'López', telefono: '11-1111', dni: '30000000',
+        email: 'pedro@mail.com', tipo: 'cliente', origen: 'manual',
+      });
+      await request(app).post('/api/contactos').set(auth()).send({
+        nombre: 'Sin Mail Export', apellido: 'Test', /* email null */ tipo: 'amigo',
+      });
+
+      const res = await request(app).get('/api/contactos/export').set(auth());
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.contactos)).toBe(true);
+      expect(res.body.count).toBe(res.body.contactos.length);
+
+      const pedro = res.body.contactos.find(c => c.nombre === 'Pedro' && c.apellido === 'López');
+      expect(pedro).toBeDefined();
+      // Shape completo: nombre + apellido + tel + dni + email + tipo + origen.
+      expect(pedro).toMatchObject({
+        nombre: 'Pedro', apellido: 'López', telefono: '11-1111', dni: '30000000',
+        email: 'pedro@mail.com', tipo: 'cliente', origen: 'manual',
+      });
+      // Contactos sin email también salen (a diferencia de /emails que los filtra).
+      const sinMail = res.body.contactos.find(c => c.nombre === 'Sin Mail Export');
+      expect(sinMail).toBeDefined();
+      expect(sinMail.email).toBeNull();
+    });
+
+    it('exige auth → 401 sin token', async () => {
+      const res = await request(app).get('/api/contactos/export');
+      expect(res.status).toBe(401);
+    });
+  });
 });

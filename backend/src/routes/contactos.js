@@ -81,6 +81,25 @@ router.get('/emails', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/contactos/export — 2026-07-04 (#508): ficha completa de la agenda
+// para descarga como CSV o XLSX en el frontend. A diferencia de /emails, no
+// dedup — cada contacto es una fila con nombre + apellido + tel + DNI + email
+// + tipo + origen. Sin paginación (mismo orden de magnitud que /emails).
+// Cap: requireAuth (misma lógica que GET /).
+router.get('/export', async (req, res, next) => {
+  try {
+    const { rows } = await db.withTenant(req.tenantId, async (client) => {
+      return client.query(
+        `SELECT nombre, apellido, telefono, dni, email, tipo, origen
+           FROM contactos
+          WHERE deleted_at IS NULL
+          ORDER BY nombre, apellido`
+      );
+    });
+    res.json({ contactos: rows, count: rows.length });
+  } catch (err) { next(err); }
+});
+
 // 2026-06-11 S-05: los 3 endpoints (POST/PUT/DELETE) ahora ejecutan UPDATE +
 // audit dentro de la misma TX. Antes el audit corría post-write con pool global:
 // si el proceso moría entre el INSERT/UPDATE y el audit, los cambios quedaban

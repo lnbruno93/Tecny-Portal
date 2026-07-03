@@ -502,6 +502,10 @@ export const contactos = {
   // hacer mailing masivo. No paginado — devuelve todos los emails no-null
   // del tenant. Formato: { emails: string[], count: number }.
   emails: () => api('/api/contactos/emails'),
+  // 2026-07-04 (#508): ficha completa (nombre, apellido, tel, DNI, email,
+  // tipo, origen) para descarga CSV/XLSX en el frontend. No dedup, sin paginar.
+  // Formato: { contactos: [{...}], count: number }.
+  export: () => api('/api/contactos/export'),
   create: (data) => api('/api/contactos', 'POST', data),
   update: (id, data) => api(`/api/contactos/${id}`, 'PUT', data),
   delete: (id) => api(`/api/contactos/${id}`, 'DELETE'),

@@ -7,6 +7,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
+import { exportCsv } from '../lib/exportCsv';
+import { writeXlsx } from '../lib/xlsx';
 
 // Origen: de qué módulo provino el contacto. 'manual' = cargado en la agenda.
 const ORIGENES = [
@@ -96,29 +98,100 @@ export default function Contactos() {
     } catch (err) { setFormError(err.message); } finally { setSaving(false); }
   }
 
-  // 2026-07-04 (#508) — Copia todos los emails de la agenda al portapapeles,
-  // separados por coma y espacio, listos para pegar en el campo "Para" de
-  // Gmail o cualquier cliente de correo. Ignora los filtros de la pantalla:
-  // siempre trae la lista completa (dedup case-insensitive vía backend).
-  const [copiando, setCopiando] = useState(false);
+  // 2026-07-04 (#508) — Dropdown "Exportar mails" con 3 acciones:
+  //   1. Copiar al portapapeles (dedup, solo emails)  → contactosApi.emails()
+  //   2. Descargar CSV (ficha completa)               → contactosApi.export()
+  //   3. Descargar XLSX (ficha completa)              → contactosApi.export()
+  // El menu se cierra al elegir opción o al hacer click afuera. `exportando`
+  // deshabilita el botón mientras corre la request (evita doble-click).
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const exportMenuRef = useRef(null);
+  // Click-outside cierra el menú. useEffect con listener global registrado
+  // solo mientras está abierto (evita cost cuando no aplica).
+  useEffect(() => {
+    if (!exportOpen) return;
+    function onDocClick(e) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [exportOpen]);
+
   async function copiarMails() {
-    setCopiando(true);
+    setExportOpen(false);
+    setExportando(true);
     try {
       const r = await contactosApi.emails();
       const list = r?.emails || [];
-      if (!list.length) {
-        toast.info?.('No hay contactos con email cargado.') || toast.error('No hay contactos con email cargado.');
-        return;
-      }
-      const texto = list.join(', ');
-      // navigator.clipboard requiere HTTPS o localhost. En prod (tecnyapp.com)
-      // está garantizado; en dev localhost también funciona.
-      await navigator.clipboard.writeText(texto);
+      if (!list.length) return toast.error('No hay contactos con email cargado.');
+      // navigator.clipboard requiere HTTPS o localhost — nuestro caso siempre.
+      await navigator.clipboard.writeText(list.join(', '));
       toast.success(`Copiaste ${list.length} email${list.length === 1 ? '' : 's'} al portapapeles.`);
     } catch (e) {
       toast.error(e.message || 'No se pudo copiar la lista.');
     } finally {
-      setCopiando(false);
+      setExportando(false);
+    }
+  }
+
+  // Ficha completa por contacto (no dedup): nombre, apellido, tel, DNI,
+  // email, tipo, origen. Sirve para importar a otro CRM, Mailchimp, Excel.
+  const EXPORT_COLS = [
+    { key: 'nombre',   label: 'Nombre' },
+    { key: 'apellido', label: 'Apellido' },
+    { key: 'telefono', label: 'Teléfono' },
+    { key: 'dni',      label: 'DNI' },
+    { key: 'email',    label: 'Email' },
+    { key: 'tipo',     label: 'Tipo' },
+    { key: 'origen',   label: 'Origen' },
+  ];
+  function fechaSlug() {
+    const d = new Date();
+    return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  }
+  async function descargarCsv() {
+    setExportOpen(false);
+    setExportando(true);
+    try {
+      const r = await contactosApi.export();
+      const rows = r?.contactos || [];
+      if (!rows.length) return toast.error('No hay contactos para exportar.');
+      exportCsv(`contactos_${fechaSlug()}.csv`, rows, EXPORT_COLS);
+      toast.success(`Descargaste ${rows.length} contacto${rows.length === 1 ? '' : 's'} en CSV.`);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo descargar el CSV.');
+    } finally {
+      setExportando(false);
+    }
+  }
+  async function descargarXlsx() {
+    setExportOpen(false);
+    setExportando(true);
+    try {
+      const r = await contactosApi.export();
+      const rows = r?.contactos || [];
+      if (!rows.length) return toast.error('No hay contactos para exportar.');
+      // writeXlsx recibe array-of-arrays (headers + filas). Todas las celdas
+      // como texto — nombres, teléfonos y DNIs no son números aritméticos.
+      const aoa = [
+        EXPORT_COLS.map(c => c.label),
+        ...rows.map(r2 => EXPORT_COLS.map(c => r2[c.key] ?? '')),
+      ];
+      const blob = writeXlsx(aoa, { sheetName: 'Contactos' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contactos_${fechaSlug()}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Descargaste ${rows.length} contacto${rows.length === 1 ? '' : 's'} en XLSX.`);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo descargar el XLSX.');
+    } finally {
+      setExportando(false);
     }
   }
 
@@ -151,17 +224,78 @@ export default function Contactos() {
           {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <span className="muted tiny" style={{ marginLeft: 'auto' }}>{total} contacto{total === 1 ? '' : 's'}</span>
-        {/* 2026-07-04 (#508): copiar todos los emails al portapapeles para
-            mailing masivo. Ignora filtros — trae siempre la agenda completa. */}
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={copiarMails}
-          disabled={copiando}
-          title="Copia al portapapeles los emails de toda la agenda, separados por coma. Pegalos en el 'Para/CC/BCC' de Gmail."
-        >
-          <Icons.Copy size={13} /> {copiando ? 'Copiando…' : 'Copiar mails'}
-        </button>
+        {/* 2026-07-04 (#508): dropdown Exportar mails con 3 acciones.
+            Menú se cierra por click-outside (registrado condicionalmente en useEffect). */}
+        <div ref={exportMenuRef} style={{ position: 'relative' }}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setExportOpen(o => !o)}
+            disabled={exportando}
+            aria-haspopup="menu"
+            aria-expanded={exportOpen}
+            title="Exportar la agenda para mailing masivo o importar a otro CRM"
+          >
+            <Icons.Download size={13} /> {exportando ? 'Exportando…' : 'Exportar mails'} ▾
+          </button>
+          {exportOpen && (
+            <div
+              role="menu"
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                right: 0,
+                minWidth: 260,
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+                padding: 6,
+                zIndex: 50,
+              }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="btn btn-ghost"
+                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '8px 10px' }}
+                onClick={copiarMails}
+              >
+                <Icons.Copy size={13} />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <strong style={{ fontSize: 13 }}>Copiar al portapapeles</strong>
+                  <span className="muted tiny">Solo emails, listos para pegar en Gmail</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="btn btn-ghost"
+                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '8px 10px' }}
+                onClick={descargarCsv}
+              >
+                <Icons.Download size={13} />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <strong style={{ fontSize: 13 }}>Descargar CSV</strong>
+                  <span className="muted tiny">Ficha completa · Excel, Mailchimp, otros CRM</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="btn btn-ghost"
+                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', padding: '8px 10px' }}
+                onClick={descargarXlsx}
+              >
+                <Icons.Download size={13} />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <strong style={{ fontSize: 13 }}>Descargar XLSX</strong>
+                  <span className="muted tiny">Ficha completa · abre directo en Excel</span>
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card card-flush">
