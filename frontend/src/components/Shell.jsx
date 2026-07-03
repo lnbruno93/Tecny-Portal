@@ -140,7 +140,9 @@ const NAV_MAIN = [
   { id: 'cajas',      path: '/cajas',      label: 'Cajas',      icon: 'Wallet',     cap: 'cajas.ver',            group: 2 },
   { id: 'sanidad',    path: '/sanidad',    label: 'Sanidad del Negocio', icon: 'Trend', cap: 'sanidad.trabajar', group: 2 },
   { id: 'conciliacion', path: '/conciliacion', label: 'Conciliación bancaria', icon: 'Refresh', cap: 'cajas.conciliacion', group: 2 },
-  { id: 'egresos',    path: '/egresos',    label: 'Egresos',    icon: 'ArrowDownRight', cap: 'egresos.ver',      group: 2 },
+  // 2026-07-04 #505: label incluye Movimientos porque la pantalla ahora tiene
+  // 2 tabs (Egresos + Movimientos de caja). Ruta sigue siendo /egresos por compat.
+  { id: 'egresos',    path: '/egresos',    label: 'Egresos y Movimientos', icon: 'ArrowDownRight', cap: 'egresos.ver',      group: 2 },
   { id: 'inventario', path: '/inventario', label: 'Inventario', icon: 'Box',        cap: 'inventario.ver',       group: 2 },
   { id: 'proveedores',path: '/proveedores',label: 'Proveedores | Compras',icon: 'Building',   cap: 'proveedores.trabajar', group: 2 },
   // Opciones Financieras — el path /financiera y el slug `financiera.trabajar`

@@ -77,6 +77,7 @@ const ocrRoutes          = require('./routes/ocr');
 const contactosRoutes    = require('./routes/contactos');
 const cajasRoutes        = require('./routes/cajas');
 const egresosRoutes      = require('./routes/egresos');
+const cajaTransferenciasRoutes = require('./routes/cajaTransferencias');
 const sanidadRoutes      = require('./routes/sanidad');
 const cambiosRoutes      = require('./routes/cambios');
 const tarjetasRoutes     = require('./routes/tarjetas');
@@ -673,6 +674,9 @@ app.use('/api/cajas',         requireAuth, requireCapability('cajas.ver'), cajas
 // src/routes/metodos-pago.js para el rationale completo.
 app.use('/api/metodos-pago',  requireAuth, require('./routes/metodos-pago'));
 app.use('/api/egresos',       requireAuth, requireCapability('egresos.ver'),     egresosRoutes);
+// #505 Movimientos de Caja (transferencias entre cajas propias). Comparte
+// pantalla y capability con Egresos — vive en una tab del mismo módulo.
+app.use('/api/caja-transferencias', requireAuth, requireCapability('egresos.ver'), cajaTransferenciasRoutes);
 app.use('/api/sanidad',       requireAuth, requireCapability('sanidad.trabajar'), sanidadRoutes);
 app.use('/api/cambios',       requireAuth, requireCapability('cambios.trabajar'), cambiosRoutes);
 app.use('/api/tarjetas',      requireAuth, requireCapability('tarjetas.trabajar'), tarjetasRoutes);
