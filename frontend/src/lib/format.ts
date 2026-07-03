@@ -67,3 +67,26 @@ export function fmtMoney(n: MontoInput, moneda?: Moneda | string | null): string
   else prefix = 'u$s'; // USD y default
   return prefix + fmt(n);
 }
+
+// IMEI que puede llegar como notación científica desde XLSX importado
+// (Google Sheets guarda enteros de 15 dígitos como "3.50332842758552E14").
+// Los detectamos y los reconstruimos como string de dígitos limpios.
+// Idempotente: strings normales pasan sin cambio. Alfa-numéricos (seriales de
+// AirPods como "SJW0KF7C5P6") también.
+// 2026-07-04: bug reportado por Lucas — el picker mostraba "IMEI 3.50332842758552E14"
+// que además de feo puede romper búsquedas por sufijo.
+export function fmtImei(v: string | number | null | undefined): string {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  // Detecta notación científica tipo "3.50332842758552E14" o "1.23E15".
+  // Regex acepta E mayúscula o minúscula, exponente positivo.
+  if (/^-?\d+(\.\d+)?[eE]\+?\d+$/.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) {
+      // Number(3.50332842758552E14) → 350332842758552; toFixed(0) evita otra
+      // notación cuando el número es enorme.
+      return Math.round(n).toString();
+    }
+  }
+  return s;
+}

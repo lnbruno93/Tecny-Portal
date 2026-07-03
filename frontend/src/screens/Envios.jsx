@@ -5,7 +5,7 @@ import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi, c
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
-import { fmt, fmtFecha } from '../lib/format';
+import { fmt, fmtFecha, fmtImei } from '../lib/format';
 import { toUsd } from '../lib/money';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
@@ -251,7 +251,8 @@ export default function Envios() {
       _nombre: p.nombre || '',
       _gb: p.gb || '',
       _color: p.color || '',
-      _imei: p.imei || '',
+      // 2026-07-04: fmtImei normaliza notación científica heredada de imports XLSX
+      _imei: fmtImei(p.imei),
       _costo: p.costo != null ? String(p.costo) : '',
       _costo_moneda: p.costo_moneda || 'USD',
     })));
@@ -1353,7 +1354,7 @@ export default function Envios() {
                                               onClick={() => pickProducto(idx, p)}
                                               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderBottom: '1px solid var(--hairline)', color: 'var(--text)' }}>
                                         <div style={{ fontWeight: 600, fontSize: 13 }}>{[p.nombre, gbLabel(p.gb), p.color].filter(Boolean).join(' · ')}</div>
-                                        <div className="muted tiny mono">{p.imei ? 'IMEI ' + p.imei : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
+                                        <div className="muted tiny mono">{p.imei ? 'IMEI ' + fmtImei(p.imei) : '—'} · cantidad {p.cantidad ?? 0} · ${fmt(p.precio_venta)}</div>
                                       </button>
                                     ))}
                                   </div>

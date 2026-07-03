@@ -13,7 +13,7 @@ import useModal from '../lib/useModal';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
 import VendedoresCatalogModal from '../components/VendedoresCatalogModal';
-import { fmt, fmt2 } from '../lib/format';
+import { fmt, fmt2, fmtImei } from '../lib/format';
 // 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
 // AR → ARS/USD/USDT, UY → UYU/USD/USDT. monedaLocal sirve de default para
 // pagos y para el check "es moneda local" (que antes era hardcoded ARS).
@@ -348,7 +348,9 @@ export default function Ventas() {
       _id: newItemId(),
       producto_id: p.id,
       descripcion: [p.nombre, p.color, p.gb ? p.gb + 'GB' : ''].filter(Boolean).join(' '),
-      imei: p.imei || '', cantidad: 1, precio_vendido: Number(p.precio_venta) || 0, costo: Number(p.costo) || 0, moneda: p.precio_moneda || 'USD',
+      // 2026-07-04: fmtImei normaliza notación científica (p.ej. "3.5E14" → "350000000000000")
+      // heredada de imports XLSX viejos, para que la venta quede persistida limpia.
+      imei: fmtImei(p.imei), cantidad: 1, precio_vendido: Number(p.precio_venta) || 0, costo: Number(p.costo) || 0, moneda: p.precio_moneda || 'USD',
     }]);
     setProdSearch(''); setProdResults([]);
   }
@@ -1228,7 +1230,7 @@ export default function Ventas() {
                         <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
                           {prodResults.map(p => (
                             <div key={p.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }} onClick={() => addProd(p)}>
-                              <strong>{p.nombre}</strong>&nbsp;{p.color || ''} {p.gb ? p.gb + 'GB' : ''} · {sym(p.precio_moneda)}{fmt(p.precio_venta)}{p.imei ? ' · IMEI ' + p.imei : ''}
+                              <strong>{p.nombre}</strong>&nbsp;{p.color || ''} {p.gb ? p.gb + 'GB' : ''} · {sym(p.precio_moneda)}{fmt(p.precio_venta)}{p.imei ? ' · IMEI ' + fmtImei(p.imei) : ''}
                             </div>
                           ))}
                         </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmt, fmtSigned, fmtFecha, fmtMoney } from './format';
+import { fmt, fmtSigned, fmtFecha, fmtMoney, fmtImei } from './format';
 
 describe('format', () => {
   it('fmt: monto completo en magnitud, sin abreviar', () => {
@@ -44,5 +44,33 @@ describe('format', () => {
     expect(fmtMoney(0, 'UYU')).toBe('$U0');
     expect(fmtMoney(null, 'UYU')).toBe('$U0');
     expect(fmtMoney(-500, 'UYU')).toBe('$U500'); // magnitud, sin signo
+  });
+
+  // 2026-07-04: IMEI en notación científica desde XLSX importado (Google Sheets
+  // guarda enteros de 15 dígitos como float con notación científica).
+  it('fmtImei: convierte notación científica a dígitos limpios', () => {
+    expect(fmtImei('3.50332842758552E14')).toBe('350332842758552');
+    expect(fmtImei('3.53242103343951E14')).toBe('353242103343951');
+    expect(fmtImei('3.52574677881995E14')).toBe('352574677881995');
+    expect(fmtImei('1.23E15')).toBe('1230000000000000');
+    // Con e minúscula también
+    expect(fmtImei('3.5e14')).toBe('350000000000000');
+  });
+
+  it('fmtImei: IMEI normal pasa sin cambio (idempotente)', () => {
+    expect(fmtImei('356938035643809')).toBe('356938035643809');
+    expect(fmtImei('  356938035643809  ')).toBe('356938035643809'); // trim
+    expect(fmtImei('')).toBe('');
+    expect(fmtImei(null)).toBe('');
+    expect(fmtImei(undefined)).toBe('');
+  });
+
+  it('fmtImei: serial alfanumérico pasa sin cambio', () => {
+    expect(fmtImei('SJW0KF7C5P6')).toBe('SJW0KF7C5P6');
+    expect(fmtImei('SKCFDW2WQ4T')).toBe('SKCFDW2WQ4T');
+  });
+
+  it('fmtImei: números pasados como number type se convierten a string', () => {
+    expect(fmtImei(350332842758552)).toBe('350332842758552');
   });
 });
