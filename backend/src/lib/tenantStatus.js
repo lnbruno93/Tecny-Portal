@@ -43,7 +43,7 @@ const cache = createTenantScopedCache({
     // CURRENT_DATE comparten zona horaria del servidor PG.
     const row = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT id, plan, paid_until, suspended_at, pais,
+        `SELECT id, nombre, plan, paid_until, suspended_at, pais,
                 (paid_until IS NULL OR paid_until >= CURRENT_DATE) AS is_active_by_date
            FROM tenants WHERE id = $1`,
         [id]
@@ -53,6 +53,12 @@ const cache = createTenantScopedCache({
     if (!row) return null;
     return {
       id: row.id,
+      // 2026-07-04 (#506) — Nombre del negocio que el owner setteó. Se expone
+      // en /me → user.tenant.nombre para que el frontend brandee comprobantes
+      // PDF, garantías y cualquier UI con el nombre del negocio (no "Tecny",
+      // que es el SaaS). Cache 5min es aceptable — cambia raro (admin edita
+      // ~1x cada varios meses).
+      nombre: row.nombre,
       plan: row.plan,
       paid_until: row.paid_until,
       suspended_at: row.suspended_at,

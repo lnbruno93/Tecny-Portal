@@ -18,6 +18,7 @@ import { fmt, fmt2, fmtImei } from '../lib/format';
 // AR → ARS/USD/USDT, UY → UYU/USD/USDT. monedaLocal sirve de default para
 // pagos y para el check "es moneda local" (que antes era hardcoded ARS).
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+import { useAuth } from '../contexts/AuthContext';
 import { getMonedasConValor } from '../lib/monedasPais';
 
 // Componentes y helpers locales del módulo Ventas — extraídos a archivos
@@ -35,7 +36,15 @@ const ESTADO_DISPLAY = {
   cancelado:  { label: 'Cancelado',  tone: 'neg' },
 };
 const ESTADO_LABEL = { acreditado: 'Acreditado', pendiente: 'Pendiente', cancelado: 'Cancelado' };
-const GARANTIA_FALLBACK = 'Este comprobante es tu nota de compra y avala la operación comercial entre partes. No es una factura ni comprobante fiscal.\n\nNos responsabilizamos por 12 meses, desde la fecha de compra, ante cualquier error, falla o mal funcionamiento propio de software y hardware.\n\nTecny | Tech Reseller';
+// Texto de garantía por defecto cuando el tenant no tiene ninguna plantilla
+// activa. 2026-07-04 (#506): pasa de string constante a función que recibe
+// el nombre del negocio, para no hardcodear "Tecny" en el pie. Si el tenant
+// tiene una plantilla propia guardada (Config → Plantillas de Garantía) esa
+// gana y no pasamos por este fallback.
+function garantiaFallback(tenantNombre) {
+  const marca = (tenantNombre || '').trim() || 'Tecny';
+  return 'Este comprobante es tu nota de compra y avala la operación comercial entre partes. No es una factura ni comprobante fiscal.\n\nNos responsabilizamos por 12 meses, desde la fecha de compra, ante cualquier error, falla o mal funcionamiento propio de software y hardware.\n\n' + marca;
+}
 
 const EMPTY_VENTA = {
   fecha: todayStr(), hora: '', cliente_nombre: '', cliente_id: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
@@ -84,6 +93,11 @@ export default function Ventas() {
   // los hardcodes ['ARS','USD','USDT'] / 'ARS' en los dropdowns y la lógica
   // país-aware (TC visible cuando moneda===monedaLocal, no ARS hardcoded).
   const { monedas, monedaLocal } = useMonedasTenant();
+  // 2026-07-04 (#506): nombre del negocio (owner-set) para brandear el PDF del
+  // comprobante + fallback de garantía. Guard igual a useMonedasTenant: user
+  // puede ser null en mount inicial o si /me falló. En prod siempre resuelve.
+  const { user } = useAuth() || {};
+  const tenantNombre = user?.tenant?.nombre || 'Tecny';
 
   const [lista, setLista] = useState([]);
   const [dash, setDash] = useState(null);
@@ -891,7 +905,7 @@ export default function Ventas() {
           fecha:            venta.fecha   || vForm.fecha,
           notas:            venta.notas   || vForm.notas,
           garantia_nombre:  garantiaSel?.nombre || (vForm.garantia_id ? null : 'Predeterminada'),
-          garantia_texto:   garantiaSel?.texto  || GARANTIA_FALLBACK,
+          garantia_texto:   garantiaSel?.texto  || garantiaFallback(tenantNombre),
           items:            itemsPdf,
           pagos:            pagosPdf,
         };
@@ -1129,11 +1143,11 @@ export default function Ventas() {
         cliente_email:    contactoVinculado?.email    || null,
         vendedor_nombre:  vendedorNombre,
         garantia_nombre:  garFuente?.nombre || (v.garantia_id ? null : 'Predeterminada'),
-        garantia_texto:   garFuente?.texto  || GARANTIA_FALLBACK,
+        garantia_texto:   garFuente?.texto  || garantiaFallback(tenantNombre),
       };
       try {
         const mod = await import('../lib/generarComprobantePdf');
-        await mod.generarComprobantePdf(ventaEnriquecida);
+        await mod.generarComprobantePdf(ventaEnriquecida, { tenantNombre });
       } catch (e) {
         console.error('PDF error:', e);
         toast.error(`No se pudo generar el comprobante PDF: ${e?.message || e}`, { duration: 12000 });
@@ -2094,7 +2108,7 @@ Pago: Efectivo + Transferencia`}
         onDescargar={(venta) => withPdfLoading(async () => {
           try {
             const mod = await import('../lib/generarComprobantePdf');
-            await mod.generarComprobantePdf(venta);
+            await mod.generarComprobantePdf(venta, { tenantNombre });
           } catch (e) {
             // Mostramos el error real para que el usuario lo pueda reportar
             // sin tener que abrir la consola. El stack queda en console.error
