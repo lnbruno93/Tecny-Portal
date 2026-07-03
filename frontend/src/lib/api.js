@@ -584,6 +584,11 @@ export const ventas = {
   enviarComprobante: (id, { email, force = false } = {}) =>
     api(`/api/ventas/${id}/enviar-comprobante`, 'POST', { email, force }),
   emailsEnviados:    (id) => api(`/api/ventas/${id}/emails-enviados`),
+  // #509 — edición focalizada del "atendido por" post-emisión.
+  // vendedor_nombre: string (max 120, trim) o null (borra el override → PDF
+  // vuelve al fallback derivado del vendedor_id del primer item).
+  updateVendedorNombre: (id, vendedorNombre) =>
+    api(`/api/ventas/${id}/vendedor-nombre`, 'PATCH', { vendedor_nombre: vendedorNombre }),
 };
 
 export const usuarios = {

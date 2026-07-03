@@ -27,6 +27,7 @@ import Seg from './ventas/Seg';
 import Dashboard from './ventas/Dashboard';
 import DiffModal from './ventas/DiffModal';
 import ExitoModal from './ventas/ExitoModal';
+import EditarVendedorModal from './ventas/EditarVendedorModal';
 import VentasList from './ventas/VentasList';
 import { sym, toUsd, todayStr, shiftDate, monthStart, weekStart, computeVentaTotales } from './ventas/utils';
 
@@ -163,6 +164,9 @@ export default function Ventas() {
   // y modal de éxito post-venta con descargar comprobante en PDF.
   const [diffModal, setDiffModal] = useState({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null });
   const [exitoModal, setExitoModal] = useState({ open: false, venta: null });
+  // #509 — modal focalizado para editar el "atendido por" del comprobante
+  // post-emisión. Se abre desde el icono Users de VentasList.
+  const [editarVendedor, setEditarVendedor] = useState({ open: false, venta: null });
   // #M-12 / #F-2: loading state del PDF compartido entre modal éxito y grilla.
   // Extraído al hook useLoadingAction — el patrón se reutiliza para cualquier
   // acción async con anti-click-spam.
@@ -1054,6 +1058,21 @@ export default function Ventas() {
     } catch (e) { toast.error('Error al abrir.'); }
   }
 
+  // #509 — persistir el override del "atendido por" del comprobante.
+  // Delega en el PATCH focalizado que corre server-side el trim + audit log.
+  // El backend devuelve la venta actualizada; refrescamos el listado para que
+  // el PDF y el modal reflejen el nuevo valor sin lag.
+  async function saveVendedorNombre(ventaId, nuevoNombre) {
+    try {
+      await ventas.updateVendedorNombre(ventaId, nuevoNombre);
+      toast.success('Vendedor del comprobante actualizado');
+      await loadLista();
+    } catch (e) {
+      toast.error(`No se pudo actualizar: ${e?.message || e}`);
+      throw e; // el modal mantiene el estado de guardado en false y cerrará vía onClose.
+    }
+  }
+
   // ── Comprobante PDF (mismo flujo que el modal de éxito) ──
   // Antes había dos comprobantes: el PDF del modal y un HTML imprimible
   // que abría una ventana nueva. Unificamos en uno solo: ambos puntos de
@@ -1066,10 +1085,15 @@ export default function Ventas() {
         : null;
       // Cuando la venta viene del backend (lista), los items tienen vendedor_id;
       // usamos el primer item con vendedor para resolver el nombre.
+      // #509 — si la venta tiene `vendedor_nombre` (override post-emisión desde
+      // el modal Editar vendedor o del alta), lo preferimos sobre el derivado
+      // del item. Ese es exactamente el punto del feature: dejar que el owner
+      // muestre otro nombre en el comprobante sin tocar los items.
       const vendedorId = (v.items || []).find(i => i.vendedor_id)?.vendedor_id;
-      const vendedorNombre = vendedorId
+      const vendedorDerivado = vendedorId
         ? (vendedores.find(x => String(x.id) === String(vendedorId))?.nombre || null)
         : null;
+      const vendedorNombre = v.vendedor_nombre || vendedorDerivado;
       // Garantía: la elegida en la venta, o la default del catálogo, o el fallback.
       const garFuente = v.garantia_id
         ? garantias.find(g => String(g.id) === String(v.garantia_id))
@@ -1205,6 +1229,7 @@ export default function Ventas() {
           openComprob={openComprob}
           deleteVenta={deleteVenta}
           confirmarEntrega={confirmarEntrega}
+          openEditarVendedor={(v) => setEditarVendedor({ open: true, venta: v })}
         />
       )}
 
@@ -2014,6 +2039,15 @@ Pago: Efectivo + Transferencia`}
       <DiffModal
         state={diffModal}
         onClose={() => setDiffModal({ open: false, items: 0, cubierto: 0, dif: 0, resolve: null })}
+      />
+
+      {/* #509 — Modal focalizado para editar el "atendido por" del comprobante
+          post-emisión. Se abre desde el icono Users en cada fila de la grilla. */}
+      <EditarVendedorModal
+        state={editarVendedor}
+        onClose={() => setEditarVendedor({ open: false, venta: null })}
+        onSave={saveVendedorNombre}
+        vendedores={vendedores}
       />
 
       {/* Modal: venta guardada con opción de descargar PDF (lazy import del

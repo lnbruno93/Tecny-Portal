@@ -74,6 +74,10 @@ const createVentaSchema = z.object({
   tc_compra:      z.coerce.number().positive().optional().nullable(),
   garantia_id:    z.coerce.number().int().positive().optional().nullable(),
   notas:          z.string().trim().max(1000).optional().nullable(),
+  // #509 — override presentacional del "atendido por" del comprobante. Si no
+  // se envía, el PDF cae al fallback de vendedor_id del primer item (comportamiento
+  // legacy). Se puede editar post-emisión via PATCH /:id/vendedor-nombre.
+  vendedor_nombre: z.string().trim().max(120).optional().nullable(),
   items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto'),
   pagos:          z.array(ventaPagoSchema).default([]),
   canjes:         z.array(canjeSchema).default([]),
@@ -93,6 +97,11 @@ const updateVentaSchema = z.object({
   cliente_cc_id:  z.coerce.number().int().positive().optional().nullable(),
   cliente_nombre: z.string().trim().max(200).optional().nullable(),
   notas:          z.string().trim().max(1000).optional().nullable(),
+  // #509 — permitir setear el override del "atendido por" en el PUT completo
+  // (el modal Editar venta puede incluirlo). El PATCH focalizado
+  // (/:id/vendedor-nombre) sigue siendo el canal preferido cuando lo único
+  // que se está editando es esto.
+  vendedor_nombre: z.string().trim().max(120).optional().nullable(),
   // Edición completa (opcional): si se envían items, se recalculan totales y stock.
   // `fecha` también se acepta porque el modal Editar venta del frontend siempre
   // re-envía la fecha original (no la cambia, pero la incluye en el payload).
@@ -199,6 +208,14 @@ const enviarComprobanteSchema = z.object({
   force: z.boolean().optional(),
 }).strict();
 
+// 2026-07-04 (#509) — PATCH /api/ventas/:id/vendedor-nombre.
+// Endpoint focalizado para editar SOLO el nombre del vendedor post-emisión
+// (aparece en el comprobante impreso). No re-corre los sync de caja/CC/etc.
+// del PUT completo — solo actualiza el campo + audit. null borra el vendedor.
+const updateVendedorNombreSchema = z.object({
+  vendedor_nombre: z.string().trim().max(120).nullable(),
+}).strict();
+
 module.exports = {
   createVentaSchema, updateVentaSchema, queryVentasSchema,
   etiquetaSchema,
@@ -209,4 +226,6 @@ module.exports = {
   // #475 — envío comprobante por email
   enviarComprobanteSchema,
   clienteEmailSchema,
+  // #509 — edición focalizada del vendedor post-emisión
+  updateVendedorNombreSchema,
 };

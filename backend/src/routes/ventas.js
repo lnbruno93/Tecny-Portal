@@ -28,7 +28,7 @@ const { syncVentaCaja, sincronizarCuentaCorriente } = require('../lib/ventaSync'
 const { syncComisionTotalMetodos } = require('../lib/comisionesMetodos');
 const {
   createVentaSchema, updateVentaSchema, queryVentasSchema, queryDashboardSchema,
-  enviarComprobanteSchema,
+  enviarComprobanteSchema, updateVendedorNombreSchema,
 } = require('../schemas/ventas');
 // #475 — orchestrador de envío de comprobante PDF por email al cliente.
 const { enviarComprobanteVenta, insertarPendingRow, sendAndMarkPending } = require('../lib/comprobanteEmail');
@@ -832,11 +832,16 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
 
     const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta);
 
+    // #509 — vendedor_nombre es opcional al alta: normalizamos '' → null para
+    // consistencia con el PATCH focalizado (que hace lo mismo). Si no viene, el
+    // PDF cae al fallback derivado del vendedor_id del primer item.
+    const vendedorNombreCreate = b.vendedor_nombre && b.vendedor_nombre.trim()
+      ? b.vendedor_nombre.trim() : null;
     const { rows: vrows } = await client.query(
-      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [genOrderId(), b.fecha, b.hora ?? null, b.cliente_id ?? null, b.cliente_cc_id ?? null, b.cliente_nombre ?? null,
-       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, req.user.id]
+       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, vendedorNombreCreate, req.user.id]
     );
     const venta = vrows[0];
 
@@ -949,14 +954,19 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await client.query('DELETE FROM canjes WHERE venta_id = $1', [id]);
 
       const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc);
-      const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora } = b;
+      const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, vendedor_nombre } = b;
+      // #509 — vendedor_nombre: COALESCE-based (undefined = keep, null/string = set).
+      // Para "borrar" el override usar el PATCH focalizado.
       const { rows: vrows } = await client.query(
         `UPDATE ventas SET
            estado = COALESCE($1, estado), etiqueta_id = COALESCE($2, etiqueta_id), garantia_id = COALESCE($3, garantia_id),
            cliente_id = COALESCE($4, cliente_id), cliente_cc_id = COALESCE($5, cliente_cc_id), cliente_nombre = COALESCE($6, cliente_nombre),
-           notas = COALESCE($7, notas), hora = COALESCE($8, hora), tc_venta = $9, total_usd = $10, ganancia_usd = $11
-         WHERE id = $12 RETURNING *`,
-        [estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, tc ?? null, totalUsd, gananciaUsd, id]
+           notas = COALESCE($7, notas), hora = COALESCE($8, hora), tc_venta = $9, total_usd = $10, ganancia_usd = $11,
+           vendedor_nombre = COALESCE($12, vendedor_nombre)
+         WHERE id = $13 RETURNING *`,
+        [estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, tc ?? null, totalUsd, gananciaUsd,
+         vendedor_nombre !== undefined && vendedor_nombre && vendedor_nombre.trim() ? vendedor_nombre.trim() : (vendedor_nombre === '' ? null : vendedor_nombre),
+         id]
       );
       await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc });
       await sincronizarCuentaCorriente(client, vrows[0]);
@@ -1003,6 +1013,66 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     res.json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// 2026-07-04 (#509) — PATCH /api/ventas/:id/vendedor-nombre.
+// Endpoint focalizado para editar el nombre del vendedor DESPUÉS de emitir
+// el comprobante. Reemplazo del flow "abrir modal Nueva Venta completo solo
+// para cambiar el vendedor" (muy pesado). Este endpoint sólo actualiza el
+// campo + graba audit — no re-corre syncs de caja/CC/comisión (el cambio
+// no altera montos ni contabilidad).
+//
+// Gate: hereda `ventas.trabajar` del mount en app.js (vendedores y encargados
+// SÍ pueden editar el vendedor; sólo DELETE requiere `ventas.eliminar`).
+//
+// Body: { vendedor_nombre: string(max 120) | null }
+//   null / '' → borra el vendedor de la venta (queda sin "Atendido por").
+router.patch('/:id/vendedor-nombre', validate(updateVendedorNombreSchema), async (req, res, next) => {
+  const client = await db.connect();
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+    // Normalización: string vacío → null (evita persistir "" en la DB).
+    const raw = req.body.vendedor_nombre;
+    const nuevoVendedor = raw && raw.trim() ? raw.trim() : null;
+
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    const { rows: before } = await client.query(
+      'SELECT id, vendedor_nombre FROM ventas WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (!before[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+
+    // Short-circuit: si no cambió, no gastamos audit ni escribimos.
+    if ((before[0].vendedor_nombre || null) === nuevoVendedor) {
+      await client.query('ROLLBACK');
+      return res.json({ id, vendedor_nombre: nuevoVendedor, sin_cambios: true });
+    }
+
+    const { rows: after } = await client.query(
+      'UPDATE ventas SET vendedor_nombre = $1 WHERE id = $2 RETURNING id, vendedor_nombre',
+      [nuevoVendedor, id]
+    );
+    await audit(client, 'ventas', 'UPDATE', id, {
+      antes:   { vendedor_nombre: before[0].vendedor_nombre },
+      despues: { vendedor_nombre: nuevoVendedor },
+      user_id: req.user.id,
+      req,
+    });
+    await client.query('COMMIT');
+    res.json(after[0]);
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
     next(err);
   } finally {
     client.release();
