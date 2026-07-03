@@ -86,8 +86,18 @@ export async function generarComprobantePdf(venta, opts = {}) {
   // Logo de texto con el nombre del negocio del tenant.
   // 2026-07-04 (#506): antes hardcoded "Tecny" (el brand del SaaS).
   // El brand del comprobante es del negocio del owner (ej. "Celnyx").
+  //
+  // 2026-07-04 auditoría TANDA 0: nombres largos (ej. "Celnyx Technology
+  // Solutions SRL", 34 chars) desbordaban horizontalmente el header a
+  // fontSize 28. Ajustamos el tamaño en 2 tiers:
+  //   ≤16 chars → 28pt (default original)
+  //   17-30    → 22pt (compacto pero visible)
+  //   >30      → 18pt (comprimido, aún legible)
+  // Los tiers se calcularon empíricamente en A4 con margin=40pt.
+  const brandLen = tenantNombre.length;
+  const brandFontSize = brandLen <= 16 ? 28 : brandLen <= 30 ? 22 : 18;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(28);
+  doc.setFontSize(brandFontSize);
   tc(doc, COLOR.brand);
   doc.text(tenantNombre, margin, y);
 
@@ -338,11 +348,14 @@ export async function generarComprobantePdf(venta, opts = {}) {
     doc.text(venta.order_id || `#${venta.id || ''}`, margin + 70, footerY + 18);
   }
 
-  // Agradecimiento alineado a la derecha
+  // Agradecimiento alineado a la derecha con nombre del negocio.
+  // 2026-07-04 (#506 follow-up): antes decía "¡Gracias por tu compra!" genérico,
+  // ahora incluye el nombre del negocio para paridad con el backend (email PDF)
+  // que ya usaba `Gracias por tu compra en ${tenant.nombre}`.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   tc(doc, COLOR.brand);
-  doc.text('¡Gracias por tu compra!', pageWidth - margin, footerY + 8, { align: 'right' });
+  doc.text(`¡Gracias por tu compra en ${tenantNombre}!`, pageWidth - margin, footerY + 8, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);

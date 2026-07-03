@@ -28,7 +28,7 @@ import Dashboard from './ventas/Dashboard';
 import DiffModal from './ventas/DiffModal';
 import ExitoModal from './ventas/ExitoModal';
 import VentasList from './ventas/VentasList';
-import { sym, toUsd, todayStr, shiftDate, monthStart, weekStart } from './ventas/utils';
+import { sym, toUsd, todayStr, shiftDate, monthStart, weekStart, computeVentaTotales } from './ventas/utils';
 
 const ESTADO_DISPLAY = {
   acreditado: { label: 'Acreditado', tone: 'pos' },
@@ -639,75 +639,14 @@ export default function Ventas() {
     setOcrSugerencia({ status: 'idle', monto: null });
   }
 
-  const totales = useMemo(() => {
-    const tc = Number(vForm.tc_venta) || null;
-    let items = 0;     // Total venta (USD) — precio × cantidad
-    let costosUsd = 0; // Costos de mercadería (USD) — costo × cantidad
-    cart.forEach(it => {
-      const qty = Number(it.cantidad) || 0;
-      const precio = Number(it.precio_vendido) || 0;
-      const costo = Number(it.costo) || 0;
-      items += toUsd(precio * qty, it.moneda, tc);
-      costosUsd += toUsd(costo * qty, it.moneda, tc);
-    });
-
-    // 2026-07-04 (#506) — Cambio de criterio: el "Cubierto ✓" se evalúa contra
-    // el BRUTO que paga el cliente, NO contra el neto que entra a caja.
-    // Razón: la comisión de financiera/tarjeta se la lleva un tercero (no queda
-    // en tu caja); no debe participar del chequeo "los pagos suman el total".
-    // Ejemplo del bug corregido: venta u$s1.250, cliente paga u$s1.250 con
-    // transferencia (comisión 3%). Antes → "Falta u$s37.50" porque comparaba
-    // vs neto (1.212,50). Después → "Cubierto ✓" porque el cliente sí pagó
-    // lo que corresponde. La comisión sigue impactando Ganancia real (más abajo).
-    //
-    // Desglose por pago:
-    //   brutoUsd  = lo que paga el cliente (para chequeo de sumatoria)
-    //   netoUsd   = bruto − comisión = lo que efectivamente entra a caja
-    //               (informativo + Ganancia real)
-    // Nota: usamos map + reduce (en vez de reassignments dentro del map) para
-    // satisfacer al React Compiler — la regla react-hooks/immutability no permite
-    // reasignar variables outer desde un callback.
-    const pagosDetalle = pagos.map(p => {
-      const brutoUsd = toUsd(p.monto, p.moneda, p.tc || tc);
-      const brutoOrig = Number(p.monto) || 0;
-      let pct = 0;
-      if (!p.es_cuenta_corriente && p.metodo_pago_id) {
-        const m = metodos.find(x => x.id === p.metodo_pago_id);
-        if (m) {
-          if (m.es_tarjeta && Number(m.comision_pct) > 0) pct = Number(m.comision_pct);
-          else if (m.es_financiera && pctFinanciera > 0)  pct = pctFinanciera;
-        }
-      }
-      // El backend (lib/tarjetas.js + lib/financiera.js) calcula la comisión
-      // como % del MONTO BRUTO. Misma cuenta acá para preview fiel.
-      const costoFinOrig = brutoOrig * pct / 100;
-      const costoFinUsd  = brutoUsd  * pct / 100;
-      const netoUsd      = brutoUsd  - costoFinUsd;
-      const netoOrig     = brutoOrig - costoFinOrig;
-      return { pct, brutoOrig, brutoUsd, costoFinOrig, costoFinUsd, netoOrig, netoUsd };
-    });
-    const brutoTotalUsd = pagosDetalle.reduce((a, d) => a + d.brutoUsd, 0);
-    const netoTotalUsd  = pagosDetalle.reduce((a, d) => a + d.netoUsd,  0);
-    const costoFinTotal = pagosDetalle.reduce((a, d) => a + d.costoFinUsd, 0);
-
-    // Suma de TODOS los valor_toma de canjes (asumimos USD — el form solo permite USD por canje).
-    const canjeTotal = (vForm.canjes || []).reduce((acc, c) => acc + (Number(c.valor_toma) || 0), 0);
-    // Cubierto = lo que paga el cliente (brutos + canjes). La comisión NO figura acá.
-    // Se compara contra `items` (precio de venta) para validar sumatoria de pagos.
-    const cubierto = brutoTotalUsd + canjeTotal;
-    // Ganancia bruta natural (precio − costo) — la del operador antes de cualquier descuento.
-    const bruta = items - costosUsd;
-    // Ganancia REAL = "el neto que se descuenta contra el costo" (Lucas, 2026-06-14).
-    // = (lo efectivamente percibido + canjes) − costos. Si el cliente cubrió el
-    // recargo, real ≡ bruta. Si no, real < bruta por la parte que come la financiera.
-    // Nota: acá seguimos usando NETO (no bruto), porque la Ganancia real sí
-    // debe reflejar el impacto de la comisión — el negocio no se queda con esa plata.
-    const real = (netoTotalUsd + canjeTotal) - costosUsd;
-    return {
-      items, cubierto, dif: cubierto - items, canjeTotal,
-      bruta, costoFin: costoFinTotal, real, pagosDetalle,
-    };
-  }, [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera]);
+  // 2026-07-04 auditoría TANDA 0: lógica extraída a `computeVentaTotales` en
+  // ventas/utils.js para poder testearla como unidad pura (ver utils.test.js).
+  // El cambio de criterio bruto-vs-neto para el "Cubierto ✓" (#506) vive dentro
+  // del helper; ver comment allí. El useMemo acá es solo el wire-up + deps.
+  const totales = useMemo(
+    () => computeVentaTotales(cart, pagos, vForm.canjes, metodos, pctFinanciera, vForm.tc_venta),
+    [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera]
+  );
 
   // ── Helpers para manipular el array de canjes (junio 2026) ─────────────
   // Auditoría 2026-06-30 F-13/14: _id estable por canje + rmCanje/setCanje

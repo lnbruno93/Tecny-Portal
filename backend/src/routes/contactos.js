@@ -56,6 +56,16 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
   }
 });
 
+// Tope de seguridad para descargas bulk de contactos — protege contra tenants
+// que crezcan a decenas de miles de contactos: el response JSON explota RAM
+// del Node y el `writeXlsx` client-side congela el main thread 15-30s. Con
+// 10K contactos el response ronda 5-7 MB, todavía manejable en Chrome/Node.
+// Auditoría 2026-07-04 P0: sin este guard, un tenant con 50K contactos
+// dispararía 30s timeout en Railway. Si un tenant real llega a 10K y necesita
+// descarga completa, cambiar la estrategia (streaming, paginación explícita
+// desde el frontend, o async job con notificación).
+const CONTACTOS_EXPORT_MAX = 10000;
+
 // GET /api/contactos/emails — 2026-07-04 (#508): lista dedup de emails de la
 // agenda para copiar al portapapeles y hacer mailing masivo. Devuelve TODOS
 // los emails no-null del tenant (sin paginación) — se espera del orden de
@@ -63,19 +73,33 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
 // LOWER(TRIM(email)) evita mandar el mismo mail 2 veces al cliente.
 //
 // Cap: solo requiere requireAuth (mismo criterio que GET / — leer la agenda
-// es lectura básica, no requiere `contactos.crear_borrar`).
+// es lectura básica, no requiere `contactos.crear_borrar`). Trade-off consciente
+// (auditoría 2026-07-04): cualquier rol autenticado del tenant puede exportar
+// la agenda. Si en el futuro se quiere restringir (ej. solo owner + admin
+// pueden bajar mailing masivo), agregar `requireCapability('contactos.exportar')`
+// aquí y en /export, y crear la cap correspondiente en el sistema de permisos.
 router.get('/emails', async (req, res, next) => {
   try {
     const { rows } = await db.withTenant(req.tenantId, async (client) => {
+      // LIMIT +1 nos deja detectar overflow sin hacer un COUNT() extra.
       return client.query(
         `SELECT DISTINCT LOWER(TRIM(email)) AS email
            FROM contactos
           WHERE deleted_at IS NULL
             AND email IS NOT NULL
             AND TRIM(email) <> ''
-          ORDER BY email`
+          ORDER BY email
+          LIMIT $1`,
+        [CONTACTOS_EXPORT_MAX + 1]
       );
     });
+    if (rows.length > CONTACTOS_EXPORT_MAX) {
+      return res.status(413).json({
+        error: `La agenda supera el máximo exportable (${CONTACTOS_EXPORT_MAX} emails únicos). ` +
+               'Contactá soporte para exportación asistida.',
+        code: 'EXPORT_LIMIT_EXCEEDED',
+      });
+    }
     const emails = rows.map(r => r.email);
     res.json({ emails, count: emails.length });
   } catch (err) { next(err); }
@@ -84,8 +108,9 @@ router.get('/emails', async (req, res, next) => {
 // GET /api/contactos/export — 2026-07-04 (#508): ficha completa de la agenda
 // para descarga como CSV o XLSX en el frontend. A diferencia de /emails, no
 // dedup — cada contacto es una fila con nombre + apellido + tel + DNI + email
-// + tipo + origen. Sin paginación (mismo orden de magnitud que /emails).
-// Cap: requireAuth (misma lógica que GET /).
+// + tipo + origen. Sin paginación pero con tope CONTACTOS_EXPORT_MAX (10K).
+// Cap: requireAuth (misma lógica que GET /). Ver comment en /emails para el
+// trade-off consciente sobre no requerir capability específica.
 router.get('/export', async (req, res, next) => {
   try {
     const { rows } = await db.withTenant(req.tenantId, async (client) => {
@@ -93,9 +118,18 @@ router.get('/export', async (req, res, next) => {
         `SELECT nombre, apellido, telefono, dni, email, tipo, origen
            FROM contactos
           WHERE deleted_at IS NULL
-          ORDER BY nombre, apellido`
+          ORDER BY nombre, apellido
+          LIMIT $1`,
+        [CONTACTOS_EXPORT_MAX + 1]
       );
     });
+    if (rows.length > CONTACTOS_EXPORT_MAX) {
+      return res.status(413).json({
+        error: `La agenda supera el máximo exportable (${CONTACTOS_EXPORT_MAX} contactos). ` +
+               'Contactá soporte para exportación asistida.',
+        code: 'EXPORT_LIMIT_EXCEEDED',
+      });
+    }
     res.json({ contactos: rows, count: rows.length });
   } catch (err) { next(err); }
 });
