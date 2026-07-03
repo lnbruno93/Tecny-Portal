@@ -213,13 +213,31 @@ export default function MovimientosCajaPanel() {
         </div>
       )}
 
-      {/* Modal Nueva Transferencia */}
+      {/* Modal Nueva Transferencia.
+          Clases del portal: modal-overlay + modal-hd + modal-ft (no
+          "backdrop/head/foot" — el CSS solo define las primeras). Header
+          usa <h3> con id + aria-labelledby para lector de pantalla, y el
+          click-outside chequea currentTarget para que clicks dentro del
+          modal no lo cierren. Mismo patrón que EgresosPanel / Inventario /
+          Ventas. */}
       {form && (
-        <div ref={overlayRef} className="modal-backdrop" onClick={cerrarModal}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>Nueva transferencia</h2>
-              <button className="icon-btn" onClick={cerrarModal}><Icons.X size={16} /></button>
+        <div
+          ref={overlayRef}
+          className="modal-overlay"
+          onClick={e => e.target === e.currentTarget && cerrarModal()}
+        >
+          <div
+            className="modal"
+            style={{ maxWidth: 520 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mov-caja-modal-title"
+          >
+            <div className="modal-hd">
+              <h3 id="mov-caja-modal-title">Nueva transferencia</h3>
+              <button type="button" className="icon-btn" onClick={cerrarModal} aria-label="Cerrar" title="Cerrar">
+                <Icons.X size={16} />
+              </button>
             </div>
 
             <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
@@ -319,9 +337,9 @@ export default function MovimientosCajaPanel() {
               )}
             </div>
 
-            <div className="modal-foot">
-              <button className="btn" onClick={cerrarModal}>Cancelar</button>
-              <button className="btn btn-primary" onClick={guardar}>Registrar transferencia</button>
+            <div className="modal-ft">
+              <button type="button" className="btn btn-ghost" onClick={cerrarModal}>Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={guardar}>Registrar transferencia</button>
             </div>
           </div>
         </div>
