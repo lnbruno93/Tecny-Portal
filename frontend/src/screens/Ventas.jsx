@@ -408,6 +408,23 @@ export default function Ventas() {
     if (n <= 0) return '';
     return Math.round(n / (1 - pct / 100) * 100) / 100;
   }
+  // 2026-07-04: inversa de brutoFromUsdInput. Dado el bruto que el operador
+  // tipea en "Le cobrás al cliente" (moneda nativa del pago), devolver el USD
+  // equivalente para mostrarlo en el input USD y mantener consistencia visual
+  // interna. La comisión sigue aplicándose sobre el bruto manual (mismo modelo
+  // contable). Retorna '' si no se puede computar (bruto=0 o TC faltante).
+  function usdFromBrutoInput(bruto, moneda, tc, pct) {
+    const b = Number(bruto) || 0;
+    if (b <= 0) return '';
+    const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
+    const netoEquivalente = b / factor;   // bruto sin comisión
+    if (moneda === 'USD' || moneda === 'USDT') return Math.round(netoEquivalente * 100) / 100;
+    const t = Number(tc);
+    if ((moneda === 'ARS' || moneda === 'UYU') && t > 0) {
+      return Math.round(netoEquivalente / t * 100) / 100;
+    }
+    return '';
+  }
   // Faltante USD = total venta − otros pagos − canjes. Usado para auto-llenar
   // el USD al elegir un método nuevo (si el operador no había tipeado nada).
   function faltanteUsd(indexExcluir, prevPagos) {
@@ -429,6 +446,8 @@ export default function Ventas() {
   }
 
   // Setter para el input USD (lo que el operador tipea).
+  // 2026-07-04: al editar USD se pierde el override manual del bruto
+  // (bruto_manual=false) — el vendedor "vuelve" al modo calculado por fórmula.
   function setPagoUsd(i, value) {
     setPagos(p => p.map((pg, j) => {
       if (j !== i) return pg;
@@ -436,7 +455,28 @@ export default function Ventas() {
       const pct = pctMetodo(m);
       const tc = pg.tc || vForm.tc_venta;
       const bruto = brutoFromUsdInput(value, pg.moneda, tc, pct);
-      return { ...pg, usd_input: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+      return { ...pg, usd_input: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // 2026-07-04: setter para el input "Le cobrás al cliente" (bruto en moneda
+  // nativa). Único caso donde el bruto no se deriva de USD × TC × factor sino
+  // que es directamente lo que el operador tipea. Recalcula USD y limpia neto
+  // para que se muestre el neto derivado del bruto manual. bruto_manual=true
+  // dispara el badge "Manual" en el render.
+  function setPagoBruto(i, value) {
+    setPagos(p => p.map((pg, j) => {
+      if (j !== i) return pg;
+      const m = metodos.find(x => x.id === pg.metodo_pago_id);
+      const pct = pctMetodo(m);
+      const tc = pg.tc || vForm.tc_venta;
+      const usdDerivado = usdFromBrutoInput(value, pg.moneda, tc, pct);
+      return {
+        ...pg,
+        monto: value,
+        usd_input: usdDerivado !== '' ? String(usdDerivado) : '',
+        neto_input: '',
+        bruto_manual: true,
+      };
     }));
   }
   // Setter para el input Neto (caso "cliente ya transfirió X").
@@ -459,13 +499,15 @@ export default function Ventas() {
     }));
   }
   // Setter del TC (recalcula el bruto desde el USD tipeado).
+  // 2026-07-04: al editar TC se pierde el override manual (misma política
+  // que setPagoUsd — cualquier cambio en input primario descarta el manual).
   function setPagoTc(i, value) {
     setPagos(p => p.map((pg, j) => {
       if (j !== i) return pg;
       const m = metodos.find(x => x.id === pg.metodo_pago_id);
       const pct = pctMetodo(m);
       const bruto = brutoFromUsdInput(pg.usd_input, pg.moneda, value, pct);
-      return { ...pg, tc: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+      return { ...pg, tc: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
     }));
   }
   // Setter directo en moneda nativa para EFECTIVO ARS (sin comisión). El operador
@@ -512,7 +554,7 @@ export default function Ventas() {
             es_cuenta_corriente: false,
             // Mantener la moneda del método (ARS o UYU) — no la forzamos a ARS.
             moneda: newMoneda,
-            usd_input: '', neto_input: '',
+            usd_input: '', neto_input: '', bruto_manual: false,
             monto: monto || '',
           };
         }
@@ -531,6 +573,7 @@ export default function Ventas() {
           moneda: newMoneda || pg.moneda,
           usd_input: usd,
           neto_input: '',
+          bruto_manual: false,
           monto: bruto !== '' ? String(bruto) : '',
         };
       });
@@ -1709,8 +1752,31 @@ export default function Ventas() {
                                 }}
                               >
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Le cobrás al cliente</div>
-                                  <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(p.moneda)}{fmt(det.brutoOrig)}</div>
+                                  <div className="muted tiny" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span>Le cobrás al cliente <span style={{ color: 'var(--text-muted)' }}>(editable)</span></span>
+                                    {p.bruto_manual && (
+                                      <span
+                                        title="Estás editando el monto manualmente. Al cambiar USD/TC/método el cálculo vuelve a la fórmula."
+                                        style={{
+                                          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+                                          padding: '1px 5px', borderRadius: 3,
+                                          background: 'rgba(217, 119, 6, 0.15)',
+                                          color: '#d97706',
+                                          border: '1px solid rgba(217, 119, 6, 0.35)',
+                                        }}
+                                      >MANUAL</span>
+                                    )}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(p.moneda)}</span>
+                                    <input
+                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      className="input mono"
+                                      value={p.bruto_manual ? (p.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
+                                      onChange={e => setPagoBruto(i, e.target.value)}
+                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                    />
+                                  </div>
                                 </div>
                                 <div>
                                   <div className="muted tiny" style={{ marginBottom: 2 }} title={m?.nombre || ''}>Financiera ({det.pct}%)</div>

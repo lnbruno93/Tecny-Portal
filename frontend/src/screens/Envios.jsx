@@ -288,6 +288,19 @@ export default function Envios() {
     if (n <= 0) return '';
     return Math.round(n / (1 - pct / 100) * 100) / 100;
   }
+  // 2026-07-04: inversa de brutoFromUsdInput. Dado el bruto ARS/UYU/USD que el
+  // operador tipeó en "Le cobrás al cliente", devolver el USD equivalente para
+  // mantener consistencia visual en el input USD. Ver Ventas.jsx (mismo helper).
+  function usdFromBrutoInput(bruto, moneda, tc, pct) {
+    const b = Number(bruto) || 0;
+    if (b <= 0) return '';
+    const factor = pct > 0 ? 1 / (1 - pct / 100) : 1;
+    const netoEquivalente = b / factor;
+    if (moneda === 'USD' || moneda === 'USDT') return Math.round(netoEquivalente * 100) / 100;
+    const t = Number(tc);
+    if (moneda === 'ARS' && t > 0) return Math.round(netoEquivalente / t * 100) / 100;
+    return '';
+  }
   // Faltante USD = total productos − otros pagos. Usado para auto-llenar el
   // USD al elegir un método nuevo (si el operador no había tipeado nada).
   function faltanteUsd(indexExcluir, prevItems) {
@@ -308,6 +321,7 @@ export default function Envios() {
   }
 
   // Setter del USD tipeado por el operador. Recalcula bruto en moneda nativa.
+  // 2026-07-04: limpia bruto_manual — al editar USD el override se pierde.
   function setPagoUsd(idx, value) {
     setItems(arr => arr.map((it, j) => {
       if (j !== idx) return it;
@@ -315,7 +329,25 @@ export default function Envios() {
       const pct = pctMetodo(m);
       const tcUse = it.tc || form.tc;
       const bruto = brutoFromUsdInput(value, it.moneda, tcUse, pct);
-      return { ...it, usd_input: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+      return { ...it, usd_input: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
+    }));
+  }
+  // 2026-07-04: setter para el input "Le cobrás al cliente" editable. Ver
+  // setPagoBruto en Ventas.jsx (mismo modelo).
+  function setPagoBruto(idx, value) {
+    setItems(arr => arr.map((it, j) => {
+      if (j !== idx) return it;
+      const m = cajasPago.find(x => Number(x.id) === Number(it.metodo_pago_id));
+      const pct = pctMetodo(m);
+      const tc = it.tc || form.tc;
+      const usdDerivado = usdFromBrutoInput(value, it.moneda, tc, pct);
+      return {
+        ...it,
+        monto: value,
+        usd_input: usdDerivado !== '' ? String(usdDerivado) : '',
+        neto_input: '',
+        bruto_manual: true,
+      };
     }));
   }
   // Setter del Neto editable ("entra a tu caja"). Caso "cliente ya transfirió X".
@@ -336,13 +368,14 @@ export default function Envios() {
     }));
   }
   // Setter del TC del pago (recalcula bruto desde el USD tipeado).
+  // 2026-07-04: limpia bruto_manual (misma política que setPagoUsd).
   function setPagoTc(idx, value) {
     setItems(arr => arr.map((it, j) => {
       if (j !== idx) return it;
       const m = cajasPago.find(x => Number(x.id) === Number(it.metodo_pago_id));
       const pct = pctMetodo(m);
       const bruto = brutoFromUsdInput(it.usd_input, it.moneda, value, pct);
-      return { ...it, tc: value, neto_input: '', monto: bruto !== '' ? String(bruto) : '' };
+      return { ...it, tc: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
     }));
   }
   // Setter directo en moneda nativa para EFECTIVO ARS (sin comisión). El operador
@@ -391,7 +424,7 @@ export default function Envios() {
             metodo_pago_id: value,
             es_cuenta_corriente: false,
             moneda: 'ARS',
-            usd_input: '', neto_input: '',
+            usd_input: '', neto_input: '', bruto_manual: false,
             monto: monto || '',
             tc: it.tc || '',
           };
@@ -411,6 +444,7 @@ export default function Envios() {
           tc: c && c.moneda !== 'ARS' ? '' : it.tc,
           usd_input: usd,
           neto_input: '',
+          bruto_manual: false,
           monto: bruto !== '' ? String(bruto) : '',
         };
       });
@@ -1541,8 +1575,31 @@ export default function Envios() {
                                 paddingLeft: 2,
                               }}>
                                 <div>
-                                  <div className="muted tiny" style={{ marginBottom: 2 }}>Le cobrás al cliente</div>
-                                  <div className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(it.moneda)}{fmt(det.brutoOrig)}</div>
+                                  <div className="muted tiny" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span>Le cobrás al cliente <span style={{ color: 'var(--text-muted)' }}>(editable)</span></span>
+                                    {it.bruto_manual && (
+                                      <span
+                                        title="Estás editando el monto manualmente. Al cambiar USD/TC/método el cálculo vuelve a la fórmula."
+                                        style={{
+                                          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+                                          padding: '1px 5px', borderRadius: 3,
+                                          background: 'rgba(217, 119, 6, 0.15)',
+                                          color: '#d97706',
+                                          border: '1px solid rgba(217, 119, 6, 0.35)',
+                                        }}
+                                      >MANUAL</span>
+                                    )}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(it.moneda)}</span>
+                                    <input
+                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      className="input mono"
+                                      value={it.bruto_manual ? (it.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
+                                      onChange={e => setPagoBruto(idx, e.target.value)}
+                                      style={{ padding: '2px 6px', fontSize: 13, fontWeight: 600, width: 110 }}
+                                    />
+                                  </div>
                                 </div>
                                 <div>
                                   <div className="muted tiny" style={{ marginBottom: 2 }} title={m?.nombre || ''}>Financiera ({det.pct}%)</div>
