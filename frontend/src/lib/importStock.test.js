@@ -78,6 +78,30 @@ describe('mapStockRows', () => {
     expect(res[1].error).toMatch(/precio/i);
   });
 
+  // Julio 2026: accesorio con stock=0 es intencional (dar de alta un modelo
+  // antes de recibir mercadería). Antes era error bloqueante; ahora pasa como
+  // warning informativo y la fila se importa igual.
+  it('accesorio con stock=0 → warning (no error), la fila se importa', () => {
+    const rows = [HEADERS,
+      ['Funda modelo nuevo', '', '', '', '5', 'USD', '12', 'USD', '', 'stock', 'Fundas', 'MayorAcc', '0', '1']];
+    const [{ body, error, warning }] = mapStockRows(rows, ctx);
+    expect(error).toBeNull();
+    expect(warning).toMatch(/stock en 0/i);
+    expect(body.clase).toBe('accesorio');
+    expect(body.cantidad).toBe(0);
+  });
+
+  it('accesorio con stock=0 pasa a groupRowsByProveedor (no lo descarta)', () => {
+    const rows = [HEADERS,
+      ['Vidrio nuevo', '', '', '', '3', 'USD', '8', 'USD', '', 'stock', 'Fundas', 'ProveedorX', '0', '1']];
+    const mapped = mapStockRows(rows, ctx);
+    const grupos = groupRowsByProveedor(mapped);
+    expect(grupos).toHaveLength(1);
+    expect(grupos[0].proveedor).toBe('ProveedorX');
+    expect(grupos[0].rows).toHaveLength(1);
+    expect(grupos[0].rows[0].warning).toMatch(/stock en 0/i);
+  });
+
   it('marca error si el ID de depósito no existe (evita romper el FK)', () => {
     const rows = [HEADERS,
       ['Funda', '', '', '', '5', 'USD', '12', 'USD', '', 'stock', 'Fundas', 'X', '4', '999']];
