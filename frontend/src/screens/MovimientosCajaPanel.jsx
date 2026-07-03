@@ -12,7 +12,7 @@
 //   - Al eliminar: reversa los 2 asientos del ledger. Si eso dejaría alguna
 //     caja negativa, el backend responde 409 y no borra.
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { cajas as cajasApi, cajaTransferencias } from '../lib/api';
 import { fmt, fmtFecha, fmtMoney } from '../lib/format';
 import { useToast } from '../contexts/ToastContext';
@@ -56,7 +56,10 @@ export default function MovimientosCajaPanel() {
   };
   const cerrarModal = () => { setForm(null); modal.close(); };
 
-  async function cargar() {
+  // useCallback: necesario para que el useEffect pueda depender de `cargar`
+  // sin recrear el efecto en cada render (React Compiler rule
+  // react-hooks/exhaustive-deps + react-hooks/set-state-in-effect).
+  const cargar = useCallback(async () => {
     setLoading(true);
     try {
       const [tr, cs] = await Promise.all([
@@ -70,21 +73,25 @@ export default function MovimientosCajaPanel() {
     } finally {
       setLoading(false);
     }
-  }
-  useEffect(() => { cargar(); }, []);
+  }, [toast]);
+  useEffect(() => { cargar(); }, [cargar]);
 
   // Origen y destino disponibles según la moneda. Cuando cambia origen, si
   // destino ya no es válido (grupo distinto) lo limpiamos para evitar submit
   // inválido.
   const cajaOrigen = form ? cajasList.find(c => String(c.id) === String(form.caja_origen_id)) : null;
   const monedaOrigen = cajaOrigen?.moneda || null;
+  // El compilador React infiere `form.caja_origen_id` como dep — usamos `form`
+  // completo para evitar mismatch entre inferred vs source deps
+  // (react-hooks/preserve-manual-memoization). El early-return de `monedaOrigen`
+  // ya garantiza que dentro del filter form nunca sea null.
   const destinoOpts = useMemo(() => {
     if (!monedaOrigen) return [];
     const g = grupoMoneda(monedaOrigen);
     return cajasList.filter(c =>
-      String(c.id) !== String(form?.caja_origen_id) && grupoMoneda(c.moneda) === g
+      String(c.id) !== String(form.caja_origen_id) && grupoMoneda(c.moneda) === g
     );
-  }, [cajasList, form?.caja_origen_id, monedaOrigen]);
+  }, [cajasList, form, monedaOrigen]);
 
   function setF(k, v) { setForm(f => ({ ...f, [k]: v })); }
   function setOrigen(id) {
