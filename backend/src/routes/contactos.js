@@ -56,6 +56,31 @@ router.get('/', validate(queryContactosSchema, 'query'), async (req, res, next) 
   }
 });
 
+// GET /api/contactos/emails — 2026-07-04 (#508): lista dedup de emails de la
+// agenda para copiar al portapapeles y hacer mailing masivo. Devuelve TODOS
+// los emails no-null del tenant (sin paginación) — se espera del orden de
+// cientos a miles, cabe en 1 response. Dedup case-insensitive vía
+// LOWER(TRIM(email)) evita mandar el mismo mail 2 veces al cliente.
+//
+// Cap: solo requiere requireAuth (mismo criterio que GET / — leer la agenda
+// es lectura básica, no requiere `contactos.crear_borrar`).
+router.get('/emails', async (req, res, next) => {
+  try {
+    const { rows } = await db.withTenant(req.tenantId, async (client) => {
+      return client.query(
+        `SELECT DISTINCT LOWER(TRIM(email)) AS email
+           FROM contactos
+          WHERE deleted_at IS NULL
+            AND email IS NOT NULL
+            AND TRIM(email) <> ''
+          ORDER BY email`
+      );
+    });
+    const emails = rows.map(r => r.email);
+    res.json({ emails, count: emails.length });
+  } catch (err) { next(err); }
+});
+
 // 2026-06-11 S-05: los 3 endpoints (POST/PUT/DELETE) ahora ejecutan UPDATE +
 // audit dentro de la misma TX. Antes el audit corría post-write con pool global:
 // si el proceso moría entre el INSERT/UPDATE y el audit, los cambios quedaban

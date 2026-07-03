@@ -498,6 +498,10 @@ export const proyectos = {
 
 export const contactos = {
   list: (params = {}) => api('/api/contactos?' + new URLSearchParams(params)),
+  // 2026-07-04 (#508): lista dedup de emails para copiar al portapapeles y
+  // hacer mailing masivo. No paginado — devuelve todos los emails no-null
+  // del tenant. Formato: { emails: string[], count: number }.
+  emails: () => api('/api/contactos/emails'),
   create: (data) => api('/api/contactos', 'POST', data),
   update: (id, data) => api(`/api/contactos/${id}`, 'PUT', data),
   delete: (id) => api(`/api/contactos/${id}`, 'DELETE'),

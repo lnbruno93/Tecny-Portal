@@ -28,6 +28,7 @@ export const Icons = {
   ArrowDownRight: (p) => <ICO {...p}><path d="M7 7l10 10M17 8v9h-9" /></ICO>,
   Download: (p) => <ICO {...p}><path d="M12 3v13M6 11l6 6 6-6M4 21h16" /></ICO>,
   Upload: (p) => <ICO {...p}><path d="M12 19V6M6 11l6-6 6 6M4 21h16" /></ICO>,
+  Copy: (p) => <ICO {...p}><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M15 9V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></ICO>,
   Share: (p) => <ICO {...p}><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="M16 6l-4-4-4 4" /><path d="M12 2v14" /></ICO>,
   Filter: (p) => <ICO {...p}><path d="M3 5h18l-7 9v6l-4-2v-4Z" /></ICO>,
   Check: (p) => <ICO {...p}><path d="M5 12.5 10 17.5 20 7" /></ICO>,

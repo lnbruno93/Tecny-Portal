@@ -96,4 +96,40 @@ describe('Contactos — agenda', () => {
       .send({ nombre: 'Mal Fecha', fecha_nacimiento: '04-08-1993' });
     expect(res.status).toBe(400);
   });
+
+  // 2026-07-04 (#508): endpoint /emails para copiar la lista al portapapeles
+  // desde el frontend y hacer mailing masivo. Sin paginación (dedup + orden).
+  describe('GET /api/contactos/emails — lista para mailing masivo', () => {
+    it('devuelve solo emails no-null, dedup case-insensitive y ordenados', async () => {
+      // Creamos contactos con: email, sin email, email duplicado en mayúsculas,
+      // email con espacios. El endpoint debe devolver 1 solo por variante.
+      await request(app).post('/api/contactos').set(auth()).send({ nombre: 'Con Mail', email: 'juan@mail.com' });
+      await request(app).post('/api/contactos').set(auth()).send({ nombre: 'Sin Mail' /* no email */ });
+      await request(app).post('/api/contactos').set(auth()).send({ nombre: 'Dup Mayus', email: 'JUAN@MAIL.COM' });
+      await request(app).post('/api/contactos').set(auth()).send({ nombre: 'Con Espacios', email: '  otro@mail.com  ' });
+
+      const res = await request(app).get('/api/contactos/emails').set(auth());
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.emails)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+      // 'juan@mail.com' debería aparecer 1 sola vez (case-insensitive dedup).
+      const juanCount = res.body.emails.filter(e => e === 'juan@mail.com').length;
+      expect(juanCount).toBe(1);
+      // 'otro@mail.com' con TRIM aplicado.
+      expect(res.body.emails).toContain('otro@mail.com');
+      // No debería aparecer 'Sin Mail' (email null).
+      expect(res.body.emails).not.toContain(null);
+      expect(res.body.emails).not.toContain('');
+      // count debe coincidir con emails.length.
+      expect(res.body.count).toBe(res.body.emails.length);
+      // Orden alfabético.
+      const sorted = [...res.body.emails].sort();
+      expect(res.body.emails).toEqual(sorted);
+    });
+
+    it('exige auth → 401 sin token', async () => {
+      const res = await request(app).get('/api/contactos/emails');
+      expect(res.status).toBe(401);
+    });
+  });
 });

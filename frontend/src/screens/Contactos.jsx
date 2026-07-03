@@ -96,6 +96,32 @@ export default function Contactos() {
     } catch (err) { setFormError(err.message); } finally { setSaving(false); }
   }
 
+  // 2026-07-04 (#508) — Copia todos los emails de la agenda al portapapeles,
+  // separados por coma y espacio, listos para pegar en el campo "Para" de
+  // Gmail o cualquier cliente de correo. Ignora los filtros de la pantalla:
+  // siempre trae la lista completa (dedup case-insensitive vía backend).
+  const [copiando, setCopiando] = useState(false);
+  async function copiarMails() {
+    setCopiando(true);
+    try {
+      const r = await contactosApi.emails();
+      const list = r?.emails || [];
+      if (!list.length) {
+        toast.info?.('No hay contactos con email cargado.') || toast.error('No hay contactos con email cargado.');
+        return;
+      }
+      const texto = list.join(', ');
+      // navigator.clipboard requiere HTTPS o localhost. En prod (tecnyapp.com)
+      // está garantizado; en dev localhost también funciona.
+      await navigator.clipboard.writeText(texto);
+      toast.success(`Copiaste ${list.length} email${list.length === 1 ? '' : 's'} al portapapeles.`);
+    } catch (e) {
+      toast.error(e.message || 'No se pudo copiar la lista.');
+    } finally {
+      setCopiando(false);
+    }
+  }
+
   async function handleDelete(c) {
     const ok = await confirm({ title: 'Eliminar contacto', message: `Se eliminará "${c.nombre}${c.apellido ? ' ' + c.apellido : ''}".`, confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
@@ -125,6 +151,17 @@ export default function Contactos() {
           {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <span className="muted tiny" style={{ marginLeft: 'auto' }}>{total} contacto{total === 1 ? '' : 's'}</span>
+        {/* 2026-07-04 (#508): copiar todos los emails al portapapeles para
+            mailing masivo. Ignora filtros — trae siempre la agenda completa. */}
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={copiarMails}
+          disabled={copiando}
+          title="Copia al portapapeles los emails de toda la agenda, separados por coma. Pegalos en el 'Para/CC/BCC' de Gmail."
+        >
+          <Icons.Copy size={13} /> {copiando ? 'Copiando…' : 'Copiar mails'}
+        </button>
       </div>
 
       <div className="card card-flush">
