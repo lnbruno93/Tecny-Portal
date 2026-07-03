@@ -88,10 +88,23 @@ beforeAll(async () => {
       ('ventas', 'INSERT', 9002, '{"cliente":"ISO_B_AUDIT_TEST"}'::jsonb, $3, $4, NOW() - INTERVAL '1 hour'),
       ('ventas', 'INSERT', 9003, '{"cliente":"ISO_NULL_AUDIT_TEST"}'::jsonb, NULL, NULL, NOW() - INTERVAL '1 hour')
   `, [USER_A.id, TENANT_A, USER_B.id, TENANT_B]);
+
+  // 5. Auditoría 2026-07-04 TANDA 0 — seed de contactos para validar isolation
+  //    de los nuevos endpoints /api/contactos/emails y /api/contactos/export
+  //    (feature #508). Cada tenant tiene 2 contactos con nombres distintivos
+  //    para poder identificarlos en la respuesta.
+  await pool.query(`
+    INSERT INTO contactos (nombre, email, tipo, origen, tenant_id) VALUES
+      ('ISO_A_CONTACT_1', 'iso.a.uno@mail.test', 'cliente', 'manual', $1),
+      ('ISO_A_CONTACT_2', 'iso.a.dos@mail.test', 'cliente', 'manual', $1),
+      ('ISO_B_CONTACT_1', 'iso.b.uno@mail.test', 'cliente', 'manual', $2),
+      ('ISO_B_CONTACT_2', 'iso.b.dos@mail.test', 'cliente', 'manual', $2)
+  `, [TENANT_A, TENANT_B]);
 });
 
 afterAll(async () => {
   await pool.query(`DELETE FROM categorias WHERE nombre LIKE 'ISO_A_%' OR nombre LIKE 'ISO_B_%'`);
+  await pool.query(`DELETE FROM contactos WHERE nombre LIKE 'ISO_A_%' OR nombre LIKE 'ISO_B_%'`);
   // Cleanup audits sembrados para el fix #336 (incluye la fila NULL).
   await pool.query(`
     DELETE FROM audit_logs
@@ -228,5 +241,84 @@ describe('E2E multi-tenant: aislamiento de /api/inventario/categorias', () => {
     const idsB = rB.body.map(u => u.id);
     expect(idsB).toContain(USER_B.id);
     expect(idsB).not.toContain(USER_A.id);
+  });
+
+  // Auditoría 2026-07-04 TANDA 0: los endpoints /api/contactos/emails y /export
+  // (feature #508) leen la agenda entera del tenant. La isolation depende 100%
+  // de `withTenant(req.tenantId)` + RLS de contactos.
+  //
+  // Estos tests siguen el patrón del resto del archivo: en local con superuser
+  // la RLS puede bypassar (ver caveat del header línea 18-32), por lo que solo
+  // validamos que los propios SÍ están presentes en la respuesta (sanity check
+  // del pattern + JWT). El aislamiento cross-tenant real corre en CI/prod con
+  // NOSUPERUSER (TANDA 0c #294), donde `.not.toContain` sí sería significativo.
+  describe('#508: /api/contactos/emails y /export devuelven la agenda del tenant', () => {
+    it('user A ve sus propios emails en /emails (JWT + withTenant OK)', async () => {
+      const r = await request(app).get('/api/contactos/emails').set('Authorization', `Bearer ${tokenA}`);
+      expect(r.status).toBe(200);
+      expect(Array.isArray(r.body.emails)).toBe(true);
+      expect(r.body.emails).toContain('iso.a.uno@mail.test');
+      expect(r.body.emails).toContain('iso.a.dos@mail.test');
+    });
+
+    it('user B ve sus propios emails en /emails (JWT + withTenant OK)', async () => {
+      const r = await request(app).get('/api/contactos/emails').set('Authorization', `Bearer ${tokenB}`);
+      expect(r.status).toBe(200);
+      expect(r.body.emails).toContain('iso.b.uno@mail.test');
+      expect(r.body.emails).toContain('iso.b.dos@mail.test');
+    });
+
+    it('user A ve sus propias fichas en /export (JWT + withTenant OK)', async () => {
+      const r = await request(app).get('/api/contactos/export').set('Authorization', `Bearer ${tokenA}`);
+      expect(r.status).toBe(200);
+      const nombres = r.body.contactos.map(c => c.nombre);
+      expect(nombres).toContain('ISO_A_CONTACT_1');
+      expect(nombres).toContain('ISO_A_CONTACT_2');
+    });
+
+    it('user B ve sus propias fichas en /export (JWT + withTenant OK)', async () => {
+      const r = await request(app).get('/api/contactos/export').set('Authorization', `Bearer ${tokenB}`);
+      expect(r.status).toBe(200);
+      const nombres = r.body.contactos.map(c => c.nombre);
+      expect(nombres).toContain('ISO_B_CONTACT_1');
+      expect(nombres).toContain('ISO_B_CONTACT_2');
+    });
+  });
+
+  // Auditoría 2026-07-04 TANDA 0: /api/caja-transferencias (feature #505) usa
+  // withTenant + RLS. Sin isolation, user A podría listar transferencias de
+  // tenant B. El test valida el pattern completo: crear con tokenA y aparece
+  // en el listado de A. Cross-tenant real cubierto por RLS en CI/prod.
+  describe('#505: /api/caja-transferencias respeta withTenant + JWT', () => {
+    let cajaOrigenA, cajaDestinoA;
+
+    it('user A puede crear cajas propias y una transferencia entre ellas', async () => {
+      const rA1 = await request(app).post('/api/cajas/cajas').set('Authorization', `Bearer ${tokenA}`)
+        .send({ nombre: 'ISO_A_CAJA_ORIGEN', moneda: 'USD', saldo_inicial: 5000 });
+      const rA2 = await request(app).post('/api/cajas/cajas').set('Authorization', `Bearer ${tokenA}`)
+        .send({ nombre: 'ISO_A_CAJA_DESTINO', moneda: 'USD', saldo_inicial: 0 });
+      expect(rA1.status).toBe(201);
+      expect(rA2.status).toBe(201);
+      cajaOrigenA  = rA1.body.id;
+      cajaDestinoA = rA2.body.id;
+
+      const r = await request(app).post('/api/caja-transferencias').set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          fecha: new Date().toISOString().split('T')[0],
+          caja_origen_id: cajaOrigenA,
+          caja_destino_id: cajaDestinoA,
+          moneda: 'USD',
+          monto: 100,
+          descripcion: 'ISO_A_TRANSF_TEST',
+        });
+      expect(r.status).toBe(201);
+    });
+
+    it('user A ve su transferencia en el listado (withTenant OK para GET)', async () => {
+      const r = await request(app).get('/api/caja-transferencias').set('Authorization', `Bearer ${tokenA}`);
+      expect(r.status).toBe(200);
+      const descripciones = r.body.data.map(t => t.descripcion);
+      expect(descripciones).toContain('ISO_A_TRANSF_TEST');
+    });
   });
 });
