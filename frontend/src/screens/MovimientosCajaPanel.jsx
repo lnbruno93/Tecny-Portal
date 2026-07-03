@@ -12,7 +12,7 @@
 //   - Al eliminar: reversa los 2 asientos del ledger. Si eso dejaría alguna
 //     caja negativa, el backend responde 409 y no borra.
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { cajas as cajasApi, cajaTransferencias } from '../lib/api';
 import { fmt, fmtFecha, fmtMoney } from '../lib/format';
 import { useToast } from '../contexts/ToastContext';
@@ -40,9 +40,13 @@ export default function MovimientosCajaPanel() {
   const [cajasList, setCajasList] = useState([]);
   const [loading, setLoading]     = useState(true);
 
-  // Modal Nueva Transferencia
-  const modal = useModal();
-  const [form, setForm] = useState(null); // null cuando modal cerrado
+  // Modal Nueva Transferencia. `form` es la fuente de verdad de "está abierto"
+  // (null = cerrado). useModal recibe el flag y agrega Esc, scroll-lock,
+  // focus-trap y restore-focus — es un hook side-effect, NO devuelve state.
+  const [form, setForm] = useState(null);
+  const overlayRef = useRef(null);
+  const cerrarModal = useCallback(() => setForm(null), []);
+  useModal({ open: form != null, onClose: cerrarModal, overlayRef });
   const abrirModal = () => {
     setForm({
       fecha: HOY,
@@ -52,9 +56,7 @@ export default function MovimientosCajaPanel() {
       costo: '',
       descripcion: '',
     });
-    modal.open();
   };
-  const cerrarModal = () => { setForm(null); modal.close(); };
 
   // useCallback: necesario para que el useEffect pueda depender de `cargar`
   // sin recrear el efecto en cada render (React Compiler rule
@@ -212,8 +214,8 @@ export default function MovimientosCajaPanel() {
       )}
 
       {/* Modal Nueva Transferencia */}
-      {modal.isOpen && form && (
-        <div className="modal-backdrop" onClick={cerrarModal}>
+      {form && (
+        <div ref={overlayRef} className="modal-backdrop" onClick={cerrarModal}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <h2>Nueva transferencia</h2>
