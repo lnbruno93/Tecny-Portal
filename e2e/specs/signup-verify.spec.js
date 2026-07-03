@@ -34,10 +34,15 @@ function uniqueEmail(prefix = 'e2e') {
 // al flow del happy path).
 async function fillSignupAndSubmit(page, { nombre, email, password, empresa }) {
   await page.goto('/signup');
-  await page.getByLabel('Tu nombre').fill(nombre);
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Contraseña', { exact: true }).fill(password);
-  await page.getByLabel('Nombre de tu empresa').fill(empresa);
+  // Audit 2026-07-04 P3: labels llevan asterisco rojo `*` (ej. "Tu nombre *").
+  // Usamos regex `/^X/` para tolerar el marker de required sin romper el E2E
+  // si mañana cambiamos la marca visual. Contraseña con `/^Contraseña/` (no $)
+  // porque el label es "Contraseña *" — el `^` evita colisión con eventuales
+  // "Confirmar contraseña".
+  await page.getByLabel(/^Tu nombre/).fill(nombre);
+  await page.getByLabel(/^Email/).fill(email);
+  await page.getByLabel(/^Contraseña/).fill(password);
+  await page.getByLabel(/^Nombre de tu empresa/).fill(empresa);
   await page.getByRole('button', { name: /crear cuenta/i }).click();
 }
 
