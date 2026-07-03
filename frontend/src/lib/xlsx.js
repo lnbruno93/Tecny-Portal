@@ -132,27 +132,45 @@ function parseSheet(xml, strings) {
   for (const rm of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
     const cells = [];
     let maxCol = -1;
-    for (const cm of rm[1].matchAll(/<c\b[^>]*\br="([A-Z]+\d+)"([^>]*)>([\s\S]*?)<\/c>/g)) {
+    // Bug 2026-07-04: el regex anterior era `<c ...>([\s\S]*?)</c>`, que NO
+    // matcheaba celdas self-closing (`<c r="B2" s="2"/>`) — el formato que usa
+    // Google Sheets para celdas vacías. Cuando el regex greedy encontraba una
+    // self-closing la saltaba y consumía el contenido de la SIGUIENTE celda no
+    // vacía, corrompiendo el mapeo de columnas silenciosamente: el importador
+    // XLSX terminaba con COSTO=0 (el valor real se pegaba a la celda anterior
+    // vacía) e IMEI="16" (el índice de sharedString de "stock" se pegaba a la
+    // celda IMEI vacía). Afectaba tanto accesorios como unitarios que exportaran
+    // desde Google Sheets con cualquier columna vacía en el medio.
+    //
+    // Fix: la alternancia `(?:\/>|>([\s\S]*?)<\/c>)` matchea ambos casos.
+    // Grupo 3 (inner) queda `undefined` en las self-closing → val = ''.
+    const CELL_RE = /<c\b[^>]*?\br="([A-Z]+\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+    for (const cm of rm[1].matchAll(CELL_RE)) {
       const ref = cm[1];
       const attrs = cm[2];
-      const inner = cm[3];
+      const inner = cm[3]; // undefined si la celda es self-closing (vacía)
       const typeMatch = attrs.match(/\bt="([^"]+)"/);
       const type = typeMatch ? typeMatch[1] : '';
       let val = '';
-      if (type === 'inlineStr') {
-        const t = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
-        val = t ? decodeEntities(t[1]) : '';
-      } else {
-        const v = inner.match(/<v[^>]*>([\s\S]*?)<\/v>/);
-        const raw = v ? v[1] : '';
-        if (type === 's') val = strings[Number(raw)] ?? '';
-        else val = decodeEntities(raw);
+      if (inner !== undefined) {
+        if (type === 'inlineStr') {
+          const t = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
+          val = t ? decodeEntities(t[1]) : '';
+        } else {
+          const v = inner.match(/<v[^>]*>([\s\S]*?)<\/v>/);
+          const raw = v ? v[1] : '';
+          if (type === 's') val = strings[Number(raw)] ?? '';
+          else val = decodeEntities(raw);
+        }
       }
+      // Self-closing → val queda '' (celda vacía). El resto del pipeline ya
+      // trata '' como "sin valor" y no dispara false positives (costo=0, imei
+      // duplicado) porque el índice de columna es el correcto.
       const ci = colIndex(ref);
       cells[ci] = val;
       if (ci > maxCol) maxCol = ci;
     }
-    // Rellena huecos (celdas vacías omitidas en el XML) con ''
+    // Rellena huecos (celdas totalmente omitidas del XML) con ''
     for (let i = 0; i <= maxCol; i++) if (cells[i] === undefined) cells[i] = '';
     out.push(cells);
   }
