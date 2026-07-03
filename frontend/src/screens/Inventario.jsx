@@ -881,6 +881,12 @@ export default function Inventario() {
 
   const importValidos = useMemo(() => importRows.filter(r => !r.error), [importRows]);
   const importErrores = useMemo(() => importRows.filter(r => r.error), [importRows]);
+  // 2026-07-04: warnings — filas que SÍ se importan pero merecen aviso
+  // (ej. accesorio con stock=0). Se cuentan sobre válidos, no sobre errores.
+  const importWarnings = useMemo(
+    () => importRows.filter(r => !r.error && r.warning),
+    [importRows]
+  );
   // 2026-06-30 #imei-dup: IMEIs duplicados DENTRO del XLSX. Si hay alguno,
   // bloqueamos el submit del import — el operador tiene que corregir el
   // archivo. Filas sin IMEI (accesorios) son legítimas y se ignoran.
@@ -1567,7 +1573,11 @@ export default function Inventario() {
               {importRows.length > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
-                    <span className="pos">{importValidos.length} válidos</span> · <span className="neg">{importErrores.length} con error</span> · {importRows.length} filas
+                    <span className="pos">{importValidos.length} válidos</span>
+                    {importWarnings.length > 0 && (
+                      <> · <span style={{ color: 'var(--warn, #d97706)' }}>{importWarnings.length} con aviso</span></>
+                    )}
+                    {' · '}<span className="neg">{importErrores.length} con error</span> · {importRows.length} filas
                     {importGroups.length > 0 && (
                       <> · <strong>{importGroups.length} compra{importGroups.length === 1 ? '' : 's'}</strong> a generar</>
                     )}
@@ -1617,6 +1627,27 @@ export default function Inventario() {
                         <div key={i}>· {r.body.nombre || 'sin nombre'}: {r.error}</div>
                       ))}
                       {importErrores.length > 20 && <div className="muted">+ {importErrores.length - 20} más…</div>}
+                    </div>
+                  )}
+
+                  {/* 2026-07-04: warnings — la fila SÍ se importa, pero avisamos.
+                      Ejemplo típico: accesorio con stock=0 (alta del modelo antes
+                      de recibir mercadería). Color ámbar para distinguir de error
+                      rojo — el usuario ve que puede seguir sin corregir. */}
+                  {importWarnings.length > 0 && (
+                    <div style={{
+                      fontSize: 11, color: 'var(--warn, #92400e)',
+                      maxHeight: 80, overflowY: 'auto',
+                      marginBottom: 10, padding: '6px 10px',
+                      background: 'rgba(217, 119, 6, 0.08)',
+                      border: '1px solid rgba(217, 119, 6, 0.28)',
+                      borderRadius: 6,
+                    }}>
+                      <strong>Filas con aviso (se importan igual):</strong>
+                      {importWarnings.slice(0, 20).map((r, i) => (
+                        <div key={i}>· {r.body.nombre || 'sin nombre'}: {r.warning}</div>
+                      ))}
+                      {importWarnings.length > 20 && <div className="muted">+ {importWarnings.length - 20} más…</div>}
                     </div>
                   )}
 

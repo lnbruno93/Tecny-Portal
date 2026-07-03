@@ -74,10 +74,12 @@ const cleanMoneda = (v) => (String(v ?? '').trim().toUpperCase().startsWith('ARS
 const cleanGb = (v) => String(v ?? '').trim().replace(/\.0+$/, '');  // "128.0" → "128"
 
 // rows: string[][] (incluye fila de encabezados). ctx: { categorias, depositos, proveedores }.
-// Devuelve [{ body, error, _categoriaNueva, _proveedorNuevo }]:
+// Devuelve [{ body, error, warning, _categoriaNueva, _proveedorNuevo }]:
 //   · body listo para POST /inventario/productos/bulk (categoria_id puede ser
 //     null si _categoriaNueva está seteada — el caller debe crearla y reemplazar).
-//   · error: validación que aborta la fila (nombre vacío, costo 0, depósito inexistente, etc.)
+//   · error: validación que ABORTA la fila (nombre vacío, costo 0, depósito inexistente, etc.)
+//   · warning: aviso informativo — la fila SÍ se importa. Ej. accesorio con
+//     stock=0 (útil para dar de alta el modelo antes de recibir mercadería).
 //   · _categoriaNueva: string si la categoría de la fila NO existe en el catálogo
 //     actual. Marker para que el caller la cree antes del bulk. Si existe,
 //     body.categoria_id ya está seteado y _categoriaNueva es null.
@@ -86,6 +88,8 @@ const cleanGb = (v) => String(v ?? '').trim().replace(/\.0+$/, '');  // "128.0" 
 // Junio 2026: el comportamiento previo era "tirar error si la categoría no
 // existe" — ahora se acepta y se marca como pendiente de crear. El caller
 // (Inventario.jsx → confirmImport) hace el create antes del bulk de productos.
+// Julio 2026: "Stock en 0" pasó de error a warning — permite dar de alta el
+// producto aunque todavía no haya stock físico (feature pedida por owner).
 export function mapStockRows(rows, { categorias = [], depositos = [], proveedores = [] } = {}) {
   if (!Array.isArray(rows) || rows.length < 2) return [];
   const idx = buildIdx(rows[0]);
@@ -166,9 +170,16 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       else if (!categoriaRaw) error = 'Falta la categoría';
       else if (!(costo > 0)) error = 'Costo en 0 o inválido';
       else if (!(precio_venta > 0)) error = 'Precio en 0 o inválido';
-      else if (clase === 'accesorio' && cantidad < 1) error = 'Stock en 0';
 
-      return { body, error, _categoriaNueva, _proveedorNuevo };
+      // Warnings: la fila SÍ se importa, pero el owner ve un aviso amarillo en
+      // el preview para tomar la decisión con contexto (ej. alta de modelo
+      // vacío para preparar catálogo antes de recibir mercadería).
+      let warning = null;
+      if (!error && clase === 'accesorio' && cantidad < 1) {
+        warning = 'Stock en 0 — el producto se dará de alta sin unidades disponibles';
+      }
+
+      return { body, error, warning, _categoriaNueva, _proveedorNuevo };
     });
 }
 
