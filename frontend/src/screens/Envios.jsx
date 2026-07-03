@@ -169,8 +169,10 @@ export default function Envios() {
   // - netoUsd: suma de los NETOS percibidos (después de comisión financiera).
   // - pagosDetalle[i]: { pct, brutoOrig, brutoUsd, costoFinOrig, costoFinUsd,
   //                     netoOrig, netoUsd } — usado por el render del desglose.
-  // - cubierto: NETO + canjes >= total de productos (tolerancia 0.01).
-  //   Si el cliente cubre el recargo, neto = precio y queda cubierto ✓.
+  // - cubierto: BRUTO >= total de productos (tolerancia 0.01).
+  //   2026-07-04 (#506) — El chequeo va contra el BRUTO (lo que paga el cliente),
+  //   NO contra el neto. La comisión se la lleva un tercero, no debe participar
+  //   del chequeo pagos-vs-venta. Impacta sí en Ganancia real (más abajo).
   const summary = useMemo(() => {
     const tcEnv = Number(form.tc) || null;
     let totalUsd = 0, pagosUsd = 0, netoUsd = 0;
@@ -197,9 +199,11 @@ export default function Envios() {
         if (d) { pagosUsd += d.brutoUsd; netoUsd += d.netoUsd; }
       }
     });
-    // Diferencia se evalúa contra NETO (no bruto): el cliente debe cubrir lo
-    // suficiente para que después del descuento queden los USD del producto.
-    return { totalUsd, pagosUsd, netoUsd, diferenciaUsd: totalUsd - netoUsd, pagosDetalle };
+    // Diferencia se evalúa contra BRUTO (no neto): la comisión se la lleva un
+    // tercero (financiera/procesadora), no debe participar del chequeo de
+    // "los pagos suman el total de la venta". El neto sigue siendo útil para
+    // mostrar cuánto entra a caja y para el cálculo de Ganancia real.
+    return { totalUsd, pagosUsd, netoUsd, diferenciaUsd: totalUsd - pagosUsd, pagosDetalle };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, form.tc, cajasPago, pctFinanciera]);
   const cubierto = Math.abs(summary.diferenciaUsd) < 0.01;
