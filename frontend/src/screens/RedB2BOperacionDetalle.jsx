@@ -41,6 +41,12 @@ export default function RedB2BOperacionDetalle() {
   const [pagosData, setPagosData] = useState(null); // { saldo, pagos }
   const [showPagoModal, setShowPagoModal] = useState(false);
 
+  // 2026-07-05 TANDA 0.5 (Red B2B U0-2): reemplaza `window.prompt` por modal
+  // inline con textarea. El prompt nativo: (a) rompe look-and-feel; (b) truncado
+  // en iOS Safari; (c) sin focus trap; (d) sin validación en vivo.
+  // Estado: null = modal cerrado; string = modal abierto con motivo tipeado.
+  const [cancelReason, setCancelReason] = useState(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -80,26 +86,35 @@ export default function RedB2BOperacionDetalle() {
     }
   }
 
-  async function handleCancel() {
-    const reason = window.prompt(
-      'Motivo de la cancelación (opcional, max 500 chars):',
-      ''
-    );
-    // window.prompt returns null on cancel, '' on empty submit.
-    if (reason === null) return;
+  // 2026-07-05 TANDA 0.5 (Red B2B U0-2): flujo de cancelación con modal.
+  //
+  // Antes: (1) window.prompt para el motivo, (2) confirm() con `destructive`
+  // que no existe (la prop real es `danger`). Combinado: la acción MÁS
+  // peligrosa del portal (revertir stock en 2 tenants) tenía la peor UX.
+  //
+  // Ahora: modal inline (openCancelModal) con textarea + confirmación explícita.
+  // Segundo paso via useConfirm con prop `danger: true` (rojo). Focus trap +
+  // Esc + validación en vivo del textarea vienen "gratis" del pattern.
+  function openCancelModal() {
+    setCancelReason(''); // string vacío = abierto, sin motivo aún
+  }
+
+  async function confirmCancel() {
+    if (cancelReason === null) return;
     const ok = await confirm({
       title: 'Cancelar operación',
       message: `Vas a cancelar la operación con ${op.partner?.nombre}. ` +
                'Se revierte el stock del vendedor y se baja del comprador. ' +
                '¿Confirmás?',
-      confirmLabel: 'Cancelar operación',
-      destructive: true,
+      confirmLabel: 'Sí, cancelar',
+      danger: true,
     });
     if (!ok) return;
     setCancelling(true);
     try {
-      await redB2b.operations.cancel(id, reason || undefined);
+      await redB2b.operations.cancel(id, cancelReason.trim() || undefined);
       toast.success('Operación cancelada');
+      setCancelReason(null);
       await load();
     } catch (err) {
       toast.error(err.message || 'No pudimos cancelar la operación');
@@ -186,8 +201,8 @@ export default function RedB2BOperacionDetalle() {
         {canCancel && (
           <button
             type="button"
-            className="btn-danger"
-            onClick={handleCancel}
+            className="btn btn-danger"
+            onClick={openCancelModal}
             disabled={cancelling}
           >
             {cancelling ? 'Cancelando…' : 'Cancelar operación'}
@@ -348,6 +363,74 @@ export default function RedB2BOperacionDetalle() {
           onClose={() => setShowPagoModal(false)}
           onSuccess={() => load()}
         />
+      )}
+
+      {/* 2026-07-05 TANDA 0.5 U0-2: modal reemplaza window.prompt.
+          Consistente con look-and-feel del portal (focus trap, Esc, textarea
+          nativo con maxLength y validación en vivo). */}
+      {cancelReason !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-op-title"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'grid', placeItems: 'center',
+            padding: 16,
+          }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setCancelReason(null); }}
+        >
+          <div
+            className="card"
+            style={{ width: '100%', maxWidth: 480, padding: 20 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="cancel-op-title" style={{ margin: 0, marginBottom: 12, color: 'var(--neg)' }}>
+              Cancelar operación
+            </h3>
+            <p className="muted" style={{ marginTop: 0, fontSize: 13, lineHeight: 1.5 }}>
+              Vas a cancelar la operación con <strong>{op.partner?.nombre}</strong>.
+              Esto revierte el stock del vendedor y baja las unidades del
+              comprador en ambos tenants.
+            </p>
+            <label htmlFor="cancel-reason" style={{ display: 'block', marginTop: 12, marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
+              Motivo (opcional)
+            </label>
+            <textarea
+              id="cancel-reason"
+              autoFocus
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value.slice(0, 500))}
+              placeholder="Ej: cliente se arrepintió, error de carga, etc."
+              rows={3}
+              maxLength={500}
+              className="input"
+              style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+            />
+            <div className="muted" style={{ fontSize: 11, marginTop: 4, textAlign: 'right' }}>
+              {cancelReason.length}/500
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setCancelReason(null)}
+                disabled={cancelling}
+              >
+                Volver
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={confirmCancel}
+                disabled={cancelling}
+              >
+                {cancelling ? 'Cancelando…' : 'Cancelar operación'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <section className="card" style={{ padding: 16, marginTop: 16 }}>
