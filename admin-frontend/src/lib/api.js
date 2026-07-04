@@ -152,13 +152,17 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
 // Login directo — no usa el wrapper api() porque el wrapper clearea el token
 // ante CUALQUIER 401, y el endpoint de login devuelve 401 ante credenciales
 // malas (caso esperado durante el flow normal).
-async function loginDirect(username, password) {
+// 2026-07-04: acepta `code` (TOTP 6 dígitos) opcional. El backend responde
+// 401 con `twofa_required: true` si la password OK pero el user tiene 2FA
+// activo — el caller re-invoca con code en la segunda pasada.
+async function loginDirect(username, password, code) {
   const isEmail = typeof username === 'string' && username.includes('@');
-  const body = isEmail ? { email: username, password } : { username, password };
+  const bodyObj = isEmail ? { email: username, password } : { username, password };
+  if (code) bodyObj.code = code;
   const res = await fetch(BASE + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(bodyObj),
   });
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data; // { token, user }
@@ -181,7 +185,9 @@ function buildQs(params) {
 
 export const adminApi = {
   // ── Auth ──────────────────────────────────────────────────────────────
-  login: (username, password) => loginDirect(username, password),
+  // `code` es opcional: el flujo estándar es intentar sin code, y si el backend
+  // responde 401 { twofa_required: true }, reintentar con el TOTP de 6 dígitos.
+  login: (username, password, code) => loginDirect(username, password, code),
   // GET /me — devuelve { is_super_admin, user_id, username }. Usado por
   // AuthContext al mount para revalidar que el flag is_super_admin sigue
   // activo (podría haberse revocado vía script desde el último login).
