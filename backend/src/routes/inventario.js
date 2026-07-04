@@ -704,9 +704,17 @@ router.get('/productos/:id/historial', async (req, res, next) => {
     //   - `inventario.ver_costos` controla los campos monetarios
     //     (monto/valor_item) dentro del bloque. Encargado SÍ, vendedor NO.
     // Hacemos check ANTES de construir el body para no exponer datos.
-    const [canSeeCompras, canSeeCostos] = await Promise.all([
+    //
+    // BLOCKER 2026-07-05 P1 (seguridad ganancias): antes el bloque `venta`
+    // salía con `ganancia_usd` sin gating — un vendedor con `inventario.ver`
+    // pero SIN `ventas.ver_ganancias` podía leer la ganancia de cada producto
+    // vendido navegando el historial. Fix consistente con el patrón de #510:
+    // redactamos `ganancia_usd` del bloque venta si el user no puede ver
+    // ganancias. Owner/admin bypass (hasCapability retorna true).
+    const [canSeeCompras, canSeeCostos, canSeeGanancias] = await Promise.all([
       hasCapability(req.user, 'inventario.ver_compras'),
       hasCapability(req.user, 'inventario.ver_costos'),
+      hasCapability(req.user, 'ventas.ver_ganancias'),
     ]);
     let compraOut = null;
     if (canSeeCompras && compra) {
@@ -720,7 +728,13 @@ router.get('/productos/:id/historial', async (req, res, next) => {
       }
     }
 
-    res.json({ compra: compraOut, venta });
+    let ventaOut = venta;
+    if (venta && !canSeeGanancias) {
+      const { ganancia_usd, ...ventaRest } = venta;
+      ventaOut = ventaRest;
+    }
+
+    res.json({ compra: compraOut, venta: ventaOut });
   } catch (err) { next(err); }
 });
 
