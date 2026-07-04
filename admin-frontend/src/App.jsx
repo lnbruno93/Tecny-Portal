@@ -12,6 +12,12 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login.jsx';
 import Layout from './components/Layout.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
+// 2026-07-04: pantallas públicas del flow "Olvidé mi contraseña". Se cargan
+// lazy porque el user típico (super-admin loguéandose normal) nunca las abre
+// — no las queremos en el initial bundle del login. El delay de descarga es
+// aceptable: el user llega desde un email, no lo apura un segundo.
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword.jsx'));
+const ResetPassword  = lazy(() => import('./pages/ResetPassword.jsx'));
 
 // PERF-3 fix (audit 2026-06-22): code-split de rutas autenticadas con
 // React.lazy + Suspense. El user que aterriza en /login NO necesita el
@@ -114,6 +120,28 @@ export default function App() {
         element={
           <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
             <AcceptSuperAdminInvite />
+          </Suspense>
+        }
+      />
+      {/* 2026-07-04: flow "Olvidé mi contraseña" para super-admins. Ambas
+          rutas son PÚBLICAS (fuera del ProtectedRoute) — el user está
+          deslogueado cuando llega acá. El backend endpoints
+          (POST /api/auth/forgot-password y /reset-password) son shared con
+          el portal (TANDA 0 #321). El link del email lleva a
+          /reset-password?token=<hex>. */}
+      <Route
+        path="/forgot-password"
+        element={
+          <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
+            <ForgotPassword />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <Suspense fallback={<div style={{ display:'grid', placeItems:'center', height:'100vh' }}><div className="muted">Cargando…</div></div>}>
+            <ResetPassword />
           </Suspense>
         }
       />
