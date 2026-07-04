@@ -13,6 +13,16 @@
   command = "npm run build"
   publish = "dist"
 
+# VITE_API_URL — hardcoded acá para que NO dependa de la Netlify UI env vars
+# (2026-07-04 P0: la var se perdió/cambió en la UI, el bundle se compiló
+# con fallback a localhost → todo el admin en prod dejaba de conectar al
+# backend con "Sin conexión con el servidor"). Tener esto en el repo garantiza
+# que un rebuild siempre saca el bundle con la URL correcta, aunque alguien
+# borre variables en Netlify UI. Los context blocks abajo overridean para
+# staging/preview builds.
+[build.environment]
+  VITE_API_URL = "https://tecny-backend-production.up.railway.app"
+
 # SPA fallback — react-router maneja todas las rutas internamente.
 # Tiene que ser la ÚLTIMA redirect rule (Netlify procesa en orden).
 [[redirects]]
@@ -54,6 +64,11 @@
 # Netlify NO mergea context blocks con el global — REPLACE para los paths
 # que matchea. Replicamos todos los headers cambiando SOLO el report-uri
 # (apunta a backend-staging en vez de prod). Misma razón que frontend/.
+# En branch-deploy (staging), overrideamos VITE_API_URL para apuntar al
+# backend de staging. Consistente con el override del report-uri en headers.
+[context.branch-deploy.environment]
+  VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
+
 [[context.branch-deploy.headers]]
   for = "/*"
   [context.branch-deploy.headers.values]
@@ -69,6 +84,10 @@
 #
 # Misma config que branch-deploy. Previews son entornos no-prod, reportan a
 # staging backend.
+# Deploy previews (PRs) también contra staging backend — mismo criterio.
+[context.deploy-preview.environment]
+  VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
+
 [[context.deploy-preview.headers]]
   for = "/*"
   [context.deploy-preview.headers.values]
