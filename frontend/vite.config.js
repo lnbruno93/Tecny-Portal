@@ -64,14 +64,40 @@ const BUILD_SHA = buildCommit();
 // ese hueco: si la var no está y NO es prod, fallar el build de Netlify de
 // forma visible — el log queda en rojo y no se sirve un bundle roto.
 const NETLIFY_CONTEXT = process.env.CONTEXT;
-const HAS_VITE_API_URL = Boolean((process.env.VITE_API_URL || '').trim());
-if (NETLIFY_CONTEXT && NETLIFY_CONTEXT !== 'production' && !HAS_VITE_API_URL) {
-  throw new Error(
-    `[vite.config] VITE_API_URL no está seteada para Netlify context "${NETLIFY_CONTEXT}". ` +
-    `Configurala en Site settings → Environment variables, scope correspondiente ` +
-    `("Branch deploys" o "Deploy previews"). Sin esto el bundle cae al fallback ` +
-    `prod-backend y CORS rechaza requests del origen non-prod.`
-  );
+const RAW_VITE_API_URL = (process.env.VITE_API_URL || '').trim();
+const HAS_VITE_API_URL = Boolean(RAW_VITE_API_URL);
+// 2026-07-04 P0 hardening: además de detectar ausencia, detectar valores
+// tipo "dev" en la env var. admin.tecnyapp.com se rompió porque VITE_API_URL
+// apuntaba a localhost en Netlify UI — el bundle compiló OK y deployó sin
+// errores, pero en el browser fallaban todos los fetches ("Sin conexión con
+// el servidor"). Los clientes reales no pueden resolver "localhost" ni IPs
+// privadas — con este gate el build falla en rojo antes de deployar.
+const LOOKS_LIKE_DEV_URL = /localhost|127\.0\.0\.1|0\.0\.0\.0|\.local(:|\/|$)/i.test(RAW_VITE_API_URL);
+
+if (NETLIFY_CONTEXT) {
+  // Caso 1: non-prod sin var — bundle usaría el fallback prod y CORS rechazaría
+  // requests del origen non-prod. Bug patcheado en #334 (jun 2026).
+  if (NETLIFY_CONTEXT !== 'production' && !HAS_VITE_API_URL) {
+    throw new Error(
+      `[vite.config] VITE_API_URL no está seteada para Netlify context "${NETLIFY_CONTEXT}". ` +
+      `Configurala en netlify.toml ([context.<name>.environment]) o Site settings → ` +
+      `Environment variables. Sin esto el bundle cae al fallback prod-backend y ` +
+      `CORS rechaza requests del origen non-prod.`
+    );
+  }
+  // Caso 2: cualquier context (incluida production) con URL apuntando a dev.
+  // Bug del 2026-07-04: prod tenía VITE_API_URL apuntando a localhost, el
+  // bundle salió "funcional" pero muerto para clientes. Un rebuild silencioso
+  // (por Netlify UI cambio, o env var borrada, o error humano) puede llevar
+  // a esto sin señal — este gate corta el flujo antes de deployar.
+  if (LOOKS_LIKE_DEV_URL) {
+    throw new Error(
+      `[vite.config] VITE_API_URL apunta a un host dev/local ("${RAW_VITE_API_URL}") ` +
+      `en Netlify context "${NETLIFY_CONTEXT}". Los clientes reales no pueden ` +
+      `resolver "localhost" ni IPs privadas desde su navegador. Corregí la variable ` +
+      `en netlify.toml o Site settings → Environment variables.`
+    );
+  }
 }
 
 export default defineConfig({
