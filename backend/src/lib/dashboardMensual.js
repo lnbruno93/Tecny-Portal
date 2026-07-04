@@ -19,7 +19,7 @@
 // del par (tenant, periodo, comparado).
 
 const db = require('../config/database');
-const { toUsd, round2 } = require('./money');
+const { toUsd, round2, getTcDefaultPais } = require('./money');
 
 // Duck-type para distinguir un pg Client/PoolClient del pool global. Si el
 // primer arg tiene .query (es decir, parece un Client o el pool mismo) Y NO
@@ -154,10 +154,16 @@ async function snapshotCajas(...allArgs) {
   const cajas = rows.map(r => ({ ...r, saldo: round2(r.saldo) }));
 
   // Capital total por moneda + agregado en USD. Para el USD agregado,
-  // ARS se convierte con el último TC de venta del período (aproximado).
-  // Para simplicidad inicial: asumimos 1 USD = 1000 ARS si no hay TC.
-  // (Mejora futura: parametrizar el TC o usar el del cierre del mes).
-  const porMoneda = { ARS: 0, USD: 0, USDT: 0 };
+  // ARS se convierte con el último TC de venta del período (aproximado),
+  // UYU con el TC default del país UY (tc_defaults_pais).
+  //
+  // BLOCKER 2026-07-05 (multi-país UYU): `porMoneda` antes era
+  // { ARS, USD, USDT } — omitía UYU y las cajas UYU se quedaban afuera
+  // del agregado por moneda Y del capital_usd_equivalente. Tenants UY con
+  // caja UYU veían capital agregado sub-dimensionado (sólo USD + USDT).
+  // Ahora UYU se acumula y se convierte con el tc UYU/USD del país UY
+  // (catálogo global `tc_defaults_pais`, no depende del tenant que llama).
+  const porMoneda = { ARS: 0, UYU: 0, USD: 0, USDT: 0 };
   for (const c of cajas) {
     if (porMoneda[c.moneda] !== undefined) porMoneda[c.moneda] += Number(c.saldo) || 0;
   }
@@ -167,7 +173,13 @@ async function snapshotCajas(...allArgs) {
   // en alertas_config (si el usuario lo seteó), (3) NULL para que el front
   // sepa que no hay base de conversión confiable. Antes era hardcoded 1000,
   // lo que ocultaba el problema y daba capital_usd irreal.
-  const [{ rows: tcRowArr }, { rows: tcConfArr }] = await Promise.all([
+  //
+  // BLOCKER 2026-07-05 (multi-país UYU): el TC UYU se obtiene del catálogo
+  // global `tc_defaults_pais` (seed AR=1400, UY=40). No cruzamos con el TC
+  // de ventas porque un tenant AR puede tener cajas UYU legacy (raro pero
+  // posible) y su histórico de ventas nunca va a tener tc UYU. La decisión
+  // durable: el TC UYU de referencia vive en el catálogo país, no per-tenant.
+  const [{ rows: tcRowArr }, { rows: tcConfArr }, tcUYU] = await Promise.all([
     exec.query(
       `SELECT tc_venta FROM ventas
         WHERE tc_venta IS NOT NULL AND fecha <= $1 AND deleted_at IS NULL
@@ -177,30 +189,51 @@ async function snapshotCajas(...allArgs) {
     exec.query(
       `SELECT parametros FROM alertas_config WHERE tipo = 'tc_referencia' LIMIT 1`
     ),
+    getTcDefaultPais(exec, 'UY'),
   ]);
   const tcDeVenta = Number(tcRowArr[0]?.tc_venta) || 0;
   const tcDeConfig = Number(tcConfArr[0]?.parametros?.valor) || 0;
   // Si ninguno: NULL → capital_usd_equivalente queda en null, el front muestra "—".
   const tcReferencia = tcDeVenta > 0 ? tcDeVenta : (tcDeConfig > 0 ? tcDeConfig : null);
+  // TC de referencia UYU (siempre desde el catálogo país). Si no hay seed,
+  // null → el saldo UYU no se suma al capital_usd_equivalente (mismo criterio
+  // que ARS sin TC).
+  const tcReferenciaUYU = tcUYU && Number(tcUYU) > 0 ? Number(tcUYU) : null;
 
   // Si no hay TC para convertir ARS → USD, el capital_usd_equivalente sólo
   // refleja USD + USDT (no inventamos un TC). El frontend muestra "—" para
   // capital agregado y un hint "Configurá un TC de referencia en Alertas".
-  const capitalUsdEquivalente = tcReferencia
-    ? round2(porMoneda.USD + porMoneda.USDT + toUsd(porMoneda.ARS, 'ARS', tcReferencia))
-    : (porMoneda.ARS === 0
-        ? round2(porMoneda.USD + porMoneda.USDT)
-        : null);
+  //
+  // BLOCKER 2026-07-05: la fórmula legacy sumaba `USD + USDT + toUsd(ARS)`
+  // pero NO `toUsd(UYU)` — el saldo UYU se caía silenciosamente del capital
+  // agregado. Fix: sumar también la conversión UYU→USD si hay tc_referencia_uyu.
+  // Regla de "sin TC → null" ahora aplica a ARS **y** a UYU: si hay saldo en
+  // una moneda local pero falta su TC, el agregado no es confiable.
+  const arsSinTc = porMoneda.ARS !== 0 && !tcReferencia;
+  const uyuSinTc = porMoneda.UYU !== 0 && !tcReferenciaUYU;
+  let capitalUsdEquivalente;
+  if (arsSinTc || uyuSinTc) {
+    capitalUsdEquivalente = null;
+  } else {
+    capitalUsdEquivalente = round2(
+      porMoneda.USD +
+      porMoneda.USDT +
+      toUsd(porMoneda.ARS, 'ARS', tcReferencia) +
+      toUsd(porMoneda.UYU, 'UYU', tcReferenciaUYU)
+    );
+  }
 
   return {
     cajas,
     por_moneda: {
       ARS:  round2(porMoneda.ARS),
+      UYU:  round2(porMoneda.UYU),
       USD:  round2(porMoneda.USD),
       USDT: round2(porMoneda.USDT),
     },
     capital_usd_equivalente: capitalUsdEquivalente,
     tc_referencia:           tcReferencia,
+    tc_referencia_uyu:       tcReferenciaUYU,
   };
 }
 

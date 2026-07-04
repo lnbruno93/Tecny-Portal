@@ -106,12 +106,41 @@ async function getTcDefaultPais(client, pais) {
 
 // ─── Helpers monetarios pre-existentes ────────────────────────────────────
 
-// Convierte un monto a USD. ARS usa el TC provisto; sin TC válido devuelve 0.
+/**
+ * Convierte un monto a USD.
+ *
+ *   - USD/USDT → retorna el monto tal cual (1:1).
+ *   - ARS/UYU → divide por `tc` (unidades locales por USD). Sin `tc` válido
+ *     devuelve 0 (no leak silencioso).
+ *   - Cualquier otra moneda → devuelve 0 (defensive: mejor cero que corrupto).
+ *
+ * BLOCKER 2026-07-05 (auditoría UYU): la versión previa retornaba `return m`
+ * como fallback, así que un monto UYU con tc caía a "monto tal cual" y se
+ * persistía inflado 40x (ej: 40000 UYU se guardaba como total_usd=40000 en
+ * lugar de 1000). Todos los tenants UY tenían `total_usd`, `ganancia_usd` y
+ * `monto_usd` corruptos. El fix cambia:
+ *   1. `UYU` se maneja explícitamente como `ARS` (fiat local con TC).
+ *   2. El fallback pasa a `return 0` — si algún día llega una moneda nueva
+ *      sin actualizar este helper, preferimos "cero visible" (que rompe el
+ *      dashboard y alerta) antes que "monto crudo" (que se persiste corrupto
+ *      y solo se detecta cuando el cliente reclama).
+ *
+ * El `tc` esperado es "unidades locales por USD":
+ *   - AR: tc_venta ≈ 1400 (ARS/USD)
+ *   - UY: tc_venta ≈ 40 (UYU/USD)
+ *
+ * @param {number|string} monto — cantidad en la moneda origen
+ * @param {string} moneda — 'ARS' | 'UYU' | 'USD' | 'USDT'
+ * @param {number|string} tc — cotización local/USD (solo relevante para ARS/UYU)
+ * @returns {number} equivalente en USD (redondear con round2 si se persiste)
+ */
 function toUsd(monto, moneda, tc) {
   const m = Number(monto) || 0;
   if (moneda === 'USD' || moneda === 'USDT') return m;
-  if (moneda === 'ARS') return tc && Number(tc) > 0 ? m / Number(tc) : 0;
-  return m;
+  if (moneda === 'ARS' || moneda === 'UYU') {
+    return tc && Number(tc) > 0 ? m / Number(tc) : 0;
+  }
+  return 0;
 }
 
 // Redondeo a 2 decimales estable.

@@ -245,21 +245,33 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         const tc_pago = body.moneda_pago === 'USD'
           ? (body.tc_pago != null ? Number(body.tc_pago) : 1)
           : Number(body.tc_pago);
-        const monto_pago_persist = body.moneda_pago === 'ARS'
+        // BLOCKER 2026-07-05 (multi-país UYU): antes solo ARS persistía el
+        // monto_pago declarado; UYU caía al `round2(monto_usd)` (el USD
+        // canónico) y se guardaba un monto en USD como si fuera UYU. Ahora
+        // ARS y UYU (fiats locales con TC) persisten lo que efectivamente
+        // entró a caja; USD/USDT persisten el USD canónico.
+        const esFiatLocal = body.moneda_pago === 'ARS' || body.moneda_pago === 'UYU';
+        const monto_pago_persist = esFiatLocal
           ? round2(Number(body.monto_pago))
           : round2(monto_usd);
 
+        // BLOCKER 2026-07-05: la variable se llama `diferencia_ars` por
+        // retro-compat con la columna DB `cross_tenant_pagos.diferencia_cambiaria_ars`
+        // (schema legacy F1). El VALOR ahora está en la moneda del pago:
+        // ARS si moneda_pago='ARS', UYU si moneda_pago='UYU'. El nombre de
+        // la columna miente, pero cambiarlo requiere una migration y análisis
+        // de reportes existentes — se difiere a un PR aparte.
         let diferencia_ars;
-        if (body.moneda_pago === 'USD') {
+        if (body.moneda_pago === 'USD' || body.moneda_pago === 'USDT') {
           diferencia_ars = 0;
         } else if (tc_venta > 0) {
-          // Diferencia = ARS realmente recibido − ARS esperado por TC de venta.
+          // Diferencia = fiat local realmente recibido − fiat esperado por TC de venta.
           // Si tc_pago > tc_venta o monto_pago > monto_usd × tc_venta → ganancia.
           diferencia_ars = round2(monto_pago_persist - (monto_usd * tc_venta));
         } else {
           // Fallback al helper puro (tc_venta inválido — sin diff calculable).
           const r = calcularDiferenciaCambiaria(monto_usd, tc_venta, tc_pago, body.moneda_pago);
-          diferencia_ars = r.diferencia_ars;
+          diferencia_ars = r.diferencia_local;
         }
 
         // G. Lookup caja del propio tenant (validar que existe + moneda
@@ -274,10 +286,14 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           await client.query('ROLLBACK');
           return { error: 'caja_not_found', status: 404, details: { caja_id: body.caja_id } };
         }
-        // Compat moneda: ARS↔ARS, USD↔USD/USDT.
-        const cajaCompat = body.moneda_pago === 'ARS'
-          ? callerCaja.moneda === 'ARS'
-          : (callerCaja.moneda === 'USD' || callerCaja.moneda === 'USDT');
+        // Compat moneda: ARS↔ARS, UYU↔UYU, USD/USDT↔USD/USDT.
+        // BLOCKER 2026-07-05 (multi-país UYU): antes el `else` de "no-ARS"
+        // aceptaba caja USD/USDT para pagos UYU — un cobro en pesos uruguayos
+        // podía terminar registrado en caja dólares. Ahora UYU exige caja UYU.
+        let cajaCompat;
+        if (body.moneda_pago === 'ARS')      cajaCompat = callerCaja.moneda === 'ARS';
+        else if (body.moneda_pago === 'UYU') cajaCompat = callerCaja.moneda === 'UYU';
+        else /* USD | USDT */                 cajaCompat = callerCaja.moneda === 'USD' || callerCaja.moneda === 'USDT';
         if (!cajaCompat) {
           await client.query('ROLLBACK');
           return {
@@ -410,9 +426,20 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         // PR-B Bug B1: caja_seller_id / caja_buyer_id usan las variables ya
         // resueltas arriba (no más resolveCajaParaTenant inline que podía
         // devolver NULL y romper la tx por NOT NULL constraint).
-        const monto_ars_persist = body.moneda_pago === 'ARS'
-          ? monto_pago_persist
-          : round2(monto_usd * tc_pago);
+        //
+        // BLOCKER 2026-07-05 (multi-país UYU): la columna `monto_ars` es
+        // legacy F1 y el nombre miente cuando moneda_pago='UYU'. Para pagos
+        // UYU persistimos el `monto_pago_persist` (que ya viene en UYU) —
+        // así queda "monto en moneda local", coherente con `diferencia_cambiaria_ars`
+        // que también aloja el valor UYU (ver más arriba). Reportes viejos
+        // que asumen ARS literal en esta columna deben leer también
+        // `moneda_pago` para desambiguar.
+        let monto_ars_persist;
+        if (body.moneda_pago === 'ARS' || body.moneda_pago === 'UYU') {
+          monto_ars_persist = monto_pago_persist;
+        } else {
+          monto_ars_persist = round2(monto_usd * tc_pago);
+        }
 
         const cpQ = await client.query(
           `INSERT INTO cross_tenant_pagos
