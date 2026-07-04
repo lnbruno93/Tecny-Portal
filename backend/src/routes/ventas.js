@@ -4,6 +4,7 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const db = require('../config/database');
 const requireAuth = require('../middleware/auth');
 const requireCapability = require('../middleware/requireCapability');
+const { hasCapability } = require('../middleware/requireCapability');
 const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
@@ -552,6 +553,36 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
     const desde = req.query.desde || hoy;
     const hasta = req.query.hasta || hoy;
     const data = await dashboardCache.get(`${req.tenantId}|${desde}|${hasta}`);
+
+    // 2026-07-04 F5b (ver_ganancias): response shaping. Sin
+    // `ventas.ver_ganancias`, sacamos los campos de ganancia/margen del
+    // payload — el vendedor no debería saber cuánta ganancia deja el período
+    // ni el margen. Cuidado: la data viene del cache compartido (per-tenant,
+    // por rango de fechas); NO mutamos el objeto cacheado, hacemos shallow
+    // clone. Mantenemos ingresos, costos, egresos, unidades, top productos/
+    // vendedores intactos — son métricas operativas que sí puede ver.
+    const canSeeGanancias = await hasCapability(req.user, 'ventas.ver_ganancias');
+    if (!canSeeGanancias) {
+      const {
+        ganancia_bruta_usd,
+        ganancia_bruta_acreditada_usd,
+        ganancia_neta_usd,
+        margen_pct,
+        ...rest
+      } = data;
+      // El bloque `retail` y `b2b` también exponen ganancia_bruta_usd —
+      // shape recursivo. Los shallow-clonamos también para no mutar el cache.
+      const out = { ...rest };
+      if (rest.retail) {
+        const { ganancia_bruta_usd: _r, ...retailRest } = rest.retail;
+        out.retail = retailRest;
+      }
+      if (rest.b2b) {
+        const { ganancia_bruta_usd: _b, ...b2bRest } = rest.b2b;
+        out.b2b = b2bRest;
+      }
+      return res.json(out);
+    }
     res.json(data);
   } catch (err) { next(err); }
 });
@@ -802,7 +833,17 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
       return { total, data };
     });
 
-    res.json(paginatedResponse(data, total, { page, limit }));
+    // 2026-07-04 F5b (ver_ganancias): response shaping. Sin
+    // `ventas.ver_ganancias`, sacamos `ganancia_usd` de cada fila (retail
+    // + B2B llegan al mismo shape unificado). El frontend ya oculta la
+    // columna cuando el user no tiene la cap; esto es defense in depth +
+    // protege llamadas directas a la API.
+    const canSeeGanancias = await hasCapability(req.user, 'ventas.ver_ganancias');
+    const rowsOut = canSeeGanancias
+      ? data
+      : data.map(({ ganancia_usd, ...rest }) => rest);
+
+    res.json(paginatedResponse(rowsOut, total, { page, limit }));
   } catch (err) { next(err); }
 });
 

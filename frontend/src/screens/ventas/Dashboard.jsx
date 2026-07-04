@@ -21,6 +21,15 @@ import HourChart from './HourChart';
 export default function Dashboard({ d }) {
   if (!d) return null;
   const i = d.ingresos, dif = d.diferencias;
+  // 2026-07-04 (ventas.ver_ganancias): si el backend redactó el bloque de
+  // ganancia (el user no tiene la cap), NO renderizamos la KPI card. Modo
+  // "ocultar completamente" — no mostramos "—" ni placeholder porque queda
+  // más limpio para el vendedor: el dashboard sigue teniendo Unidades /
+  // Costos / Inversión canjes en las otras 3 columnas del grid.
+  // Detectamos por `ganancia_neta_usd === undefined`: es el campo que el
+  // backend saca cuando falta la cap. Si viniera 0 (período sin ventas)
+  // igual debe verse. Owner/admin no entran acá — reciben todo.
+  const showGanancias = d.ganancia_neta_usd !== undefined;
   return (
     <div style={{ marginBottom: 18 }}>
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
@@ -47,7 +56,8 @@ export default function Dashboard({ d }) {
             📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
           </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        {showGanancias && (
+        <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-ganancia">
           <div className="kpi-label">Ganancia neta</div>
           <div className="kpi-value mono pos" style={{ fontSize: 17 }}>u$s{fmt(d.ganancia_neta_usd)}</div>
           {/*
@@ -78,6 +88,7 @@ export default function Dashboard({ d }) {
             {d.margen_pct}% margen
           </div>
         </div>
+        )}
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Costos productos</div>
           <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.costos_usd)}</div>

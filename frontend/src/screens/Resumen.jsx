@@ -243,9 +243,15 @@ export default function Resumen() {
             <div style={{ flex: '1 1 200px' }}>
               <KpiCard label="Ventas totales" unidad="USD" valor={ventasUsdA} comparado={ventasUsdC} />
             </div>
-            <div style={{ flex: '1 1 200px' }}>
-              <KpiCard label="Ganancia bruta" unidad="USD" valor={gananciaA} comparado={gananciaC} />
-            </div>
+            {/* 2026-07-04 (ventas.ver_ganancias): backend redacta ganancia_usd
+                cuando el user no tiene la cap → gananciaA queda undefined y
+                ocultamos la card entera. Owner/admin siempre ven; vendedor
+                sin override, no. Modo "ocultar" (no "—") consensuado con Lucas. */}
+            {gananciaA !== undefined && (
+              <div style={{ flex: '1 1 200px' }} data-testid="kpi-ganancia">
+                <KpiCard label="Ganancia bruta" unidad="USD" valor={gananciaA} comparado={gananciaC} />
+              </div>
+            )}
             <div style={{ flex: '1 1 200px' }}>
               <KpiCard label="Ticket promedio" unidad="USD" valor={ticketA} comparado={ticketC} />
             </div>

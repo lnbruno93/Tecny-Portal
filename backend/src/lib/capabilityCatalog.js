@@ -27,6 +27,12 @@ const PANTALLAS = [
     { id: 'trabajar', label: 'Acceder al módulo' },
     { id: 'eliminar', label: 'Eliminar una venta' },
     { id: 'exportar', label: 'Exportar ventas' },
+    // 2026-07-04: capability para ocultar ganancia/margen a users que no
+    // deben verla (vendedor, encargado sin override). Owner/admin bypass.
+    // Response shaping en /api/ventas/dashboard, GET /api/ventas, y
+    // /api/dashboard/resumen-mensual. Ver migration
+    // 20260704000003_ventas_ver_ganancias_cap.js.
+    { id: 'ver_ganancias', label: 'Ver ganancias y márgenes' },
   ]},
   { id: 'b2b', label: 'Venta & Gestión B2B', capabilities: [
     { id: 'trabajar',        label: 'Acceder al módulo' },

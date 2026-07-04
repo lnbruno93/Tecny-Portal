@@ -243,3 +243,169 @@ describe('GET /api/proyectos — response shaping (F5b)', () => {
     expect(row.detalle).toBeDefined();
   });
 });
+
+// ─── VENTAS — ver_ganancias (2026-07-04) ─────────────────────────────────────
+// Cierra el gap: sin `ventas.ver_ganancias`, ni el dashboard ni la grilla ni
+// el resumen mensual deben exponer ganancia/margen. Owner/admin bypass total.
+
+describe('GET /api/ventas/dashboard — response shaping (ver_ganancias)', () => {
+  let ventaCatId, ventaProdId;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  beforeAll(async () => {
+    // Seed: categoría + producto + venta con ganancia = 100 - 60 = 40 USD.
+    const cat = await request(app).post('/api/inventario/categorias')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Ganancias Cat' });
+    ventaCatId = cat.body.id;
+
+    const prod = await request(app).post('/api/inventario/productos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        nombre: 'Test Ganancias Prod', cantidad: 1, categoria_id: ventaCatId,
+        costo: 60, costo_moneda: 'USD', precio_venta: 100,
+        clase: 'celular', estado: 'disponible', tipo_carga: 'unitario',
+      });
+    ventaProdId = prod.body.id;
+
+    // Alta de venta acreditada, sin comisión / TC.
+    const venta = await request(app).post('/api/ventas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        fecha: hoy, estado: 'acreditado',
+        items: [{
+          producto_id: ventaProdId, descripcion: 'Test Ganancias Prod',
+          cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD',
+        }],
+        pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+      });
+    expect([200, 201]).toContain(venta.status);
+  });
+
+  it('admin (bypass) ve ganancia_bruta_usd, ganancia_neta_usd y margen_pct', async () => {
+    const r = await request(app)
+      .get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(r.body.ganancia_bruta_usd).toBeDefined();
+    expect(r.body.ganancia_bruta_acreditada_usd).toBeDefined();
+    expect(r.body.ganancia_neta_usd).toBeDefined();
+    expect(r.body.margen_pct).toBeDefined();
+    // Los sub-bloques retail/b2b también.
+    expect(r.body.retail.ganancia_bruta_usd).toBeDefined();
+    expect(r.body.b2b.ganancia_bruta_usd).toBeDefined();
+  });
+
+  it('user CON ventas.ver_ganancias también ve ganancia/margen', async () => {
+    const token = signCapToken({
+      'ventas.trabajar': true,
+      'ventas.ver_ganancias': true,
+    });
+    const r = await request(app)
+      .get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(r.body.ganancia_bruta_usd).toBeDefined();
+    expect(r.body.ganancia_neta_usd).toBeDefined();
+    expect(r.body.margen_pct).toBeDefined();
+    expect(r.body.retail.ganancia_bruta_usd).toBeDefined();
+  });
+
+  it('user SIN ventas.ver_ganancias NO recibe ganancia_* ni margen_*, sí ingresos/costos', async () => {
+    const token = signCapToken({ 'ventas.trabajar': true });
+    const r = await request(app)
+      .get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    // Redactados:
+    expect('ganancia_bruta_usd' in r.body).toBe(false);
+    expect('ganancia_bruta_acreditada_usd' in r.body).toBe(false);
+    expect('ganancia_neta_usd' in r.body).toBe(false);
+    expect('margen_pct' in r.body).toBe(false);
+    expect('ganancia_bruta_usd' in r.body.retail).toBe(false);
+    expect('ganancia_bruta_usd' in r.body.b2b).toBe(false);
+    // Intactos — el vendedor sí puede ver actividad operativa.
+    expect(r.body.ingresos).toBeDefined();
+    expect(r.body.costos_usd).toBeDefined();
+    expect(r.body.egresos_usd).toBeDefined();
+    expect(r.body.unidades).toBeDefined();
+    expect(r.body.ticket_promedio_usd).toBeDefined();
+  });
+});
+
+describe('GET /api/ventas — response shaping (ver_ganancias)', () => {
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  it('admin ve ganancia_usd en cada fila de la grilla unificada', async () => {
+    const r = await request(app)
+      .get(`/api/ventas?desde=${hoy}&hasta=${hoy}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(r.body.data.length).toBeGreaterThan(0);
+    for (const row of r.body.data) {
+      expect('ganancia_usd' in row).toBe(true);
+    }
+  });
+
+  it('user SIN ventas.ver_ganancias NO recibe ganancia_usd en las filas', async () => {
+    const token = signCapToken({ 'ventas.trabajar': true });
+    const r = await request(app)
+      .get(`/api/ventas?desde=${hoy}&hasta=${hoy}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(r.body.data.length).toBeGreaterThan(0);
+    for (const row of r.body.data) {
+      expect('ganancia_usd' in row).toBe(false);
+      // Resto del shape intacto — total, cliente, items:
+      expect(row.total_usd).toBeDefined();
+      expect('id' in row).toBe(true);
+    }
+  });
+
+  it('user CON override ventas.ver_ganancias sí ve ganancia_usd', async () => {
+    const token = signCapToken({
+      'ventas.trabajar': true,
+      'ventas.ver_ganancias': true,
+    });
+    const r = await request(app)
+      .get(`/api/ventas?desde=${hoy}&hasta=${hoy}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(r.body.data.length).toBeGreaterThan(0);
+    for (const row of r.body.data) {
+      expect('ganancia_usd' in row).toBe(true);
+    }
+  });
+});
+
+describe('GET /api/dashboard/resumen-mensual — response shaping (ver_ganancias)', () => {
+  const periodo = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+  it('admin ve ventas.ganancia_usd en actual y comparado', async () => {
+    const r = await request(app)
+      .get(`/api/dashboard/resumen-mensual?periodo=${periodo}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(r.body.actual.ventas).toBeDefined();
+    expect('ganancia_usd' in r.body.actual.ventas).toBe(true);
+    expect('ganancia_usd' in r.body.comparado.ventas).toBe(true);
+  });
+
+  it('user SIN ventas.ver_ganancias NO recibe ganancia_usd en ninguno de los 2 bundles', async () => {
+    // Necesita también resumen.ver para pasar el gate del router.
+    const token = signCapToken({
+      'resumen.ver': true,
+    });
+    const r = await request(app)
+      .get(`/api/dashboard/resumen-mensual?periodo=${periodo}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect('ganancia_usd' in r.body.actual.ventas).toBe(false);
+    expect('ganancia_usd' in r.body.comparado.ventas).toBe(false);
+    // Resto de campos operativos siguen:
+    expect(r.body.actual.ventas.ventas_usd).toBeDefined();
+    expect(r.body.actual.ventas.cant_ventas).toBeDefined();
+    expect(r.body.actual.ventas.ticket_promedio_usd).toBeDefined();
+    expect(r.body.actual.cajas).toBeDefined();
+  });
+});

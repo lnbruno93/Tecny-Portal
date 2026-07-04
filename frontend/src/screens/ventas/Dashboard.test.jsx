@@ -78,3 +78,30 @@ describe('Dashboard — desglose de ganancia neta (Tema C.4)', () => {
     expect(cardText).not.toMatch(/−fin/);
   });
 });
+
+// 2026-07-04 (ventas.ver_ganancias): el backend redacta el bloque de
+// ganancia cuando el user no tiene la cap. El componente detecta la ausencia
+// del campo `ganancia_neta_usd` para ocultar la card entera (modo "no mostrar
+// nada" — Lucas prefiere ocultar antes que un guión).
+describe('Dashboard — gating por ventas.ver_ganancias', () => {
+  it('muestra la KPI card de Ganancia neta cuando el backend incluye los campos', () => {
+    render(<Dashboard d={makeDashboard()} />);
+    expect(screen.getByText('Ganancia neta')).toBeInTheDocument();
+    expect(screen.getByTestId('kpi-ganancia')).toBeInTheDocument();
+  });
+
+  it('oculta la KPI card de Ganancia neta cuando el backend redactó los campos', () => {
+    // Backend redacta ganancia_bruta_usd / ganancia_neta_usd / margen_pct
+    // — llegan undefined al frontend. El componente NO renderiza la card.
+    const { ganancia_bruta_usd, ganancia_bruta_acreditada_usd,
+            ganancia_neta_usd, margen_pct, ...redacted } = makeDashboard();
+    render(<Dashboard d={redacted} />);
+    expect(screen.queryByText('Ganancia neta')).toBeNull();
+    expect(screen.queryByTestId('kpi-ganancia')).toBeNull();
+    // Las otras 3 cards del kpi-grid siguen visibles — el vendedor sí ve
+    // unidades / costos / inversión.
+    expect(screen.getByText('Unidades vendidas')).toBeInTheDocument();
+    expect(screen.getByText('Costos productos')).toBeInTheDocument();
+    expect(screen.getByText('Inversión canjes')).toBeInTheDocument();
+  });
+});
