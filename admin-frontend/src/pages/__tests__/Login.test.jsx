@@ -125,4 +125,126 @@ describe('Login', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/respuesta inválida/i);
     });
   });
+
+  // 2FA flow — regresión #510 (2026-07-04). Antes: si el backend respondía
+  // 401 { twofa_required: true }, el frontend mostraba "Usuario o contraseña
+  // incorrectos" (interpretaba el flag como creds mal). Ahora detectamos el
+  // flag y mostramos el input de 6 dígitos para completar el login.
+  describe('flujo 2FA', () => {
+    it('detecta twofa_required y muestra el input de código', async () => {
+      const err = new Error('Se requiere código 2FA.');
+      err.status = 401;
+      err.responseBody = { twofa_required: true, code: 'TWOFA_REQUIRED' };
+      adminApi.login.mockRejectedValueOnce(err);
+
+      renderLogin();
+      fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+      fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+      fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+      // Aparece el input de código y desaparece el de password
+      await waitFor(() => {
+        expect(screen.getByLabelText(/código de 6 dígitos/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText(/contraseña/i)).not.toBeInTheDocument();
+      // NO se muestra error — el 2FA required no es "creds mal"
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      // Título cambia a "Verificación en dos pasos"
+      expect(screen.getByText(/verificación en dos pasos/i)).toBeInTheDocument();
+    });
+
+    it('reintenta con code y guarda token si el TOTP es válido', async () => {
+      const err = new Error('Se requiere código 2FA.');
+      err.status = 401;
+      err.responseBody = { twofa_required: true };
+      adminApi.login
+        .mockRejectedValueOnce(err)
+        .mockResolvedValueOnce({
+          token: 'jwt-abc',
+          user: { id: 1, username: 'lucas', is_super_admin: true },
+        });
+
+      renderLogin();
+      fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+      fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+      fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+      const codeInput = await screen.findByLabelText(/código de 6 dígitos/i);
+      fireEvent.change(codeInput, { target: { value: '123456' } });
+      fireEvent.click(screen.getByRole('button', { name: /verificar código/i }));
+
+      await waitFor(() => {
+        expect(adminApi.login).toHaveBeenCalledTimes(2);
+      });
+      // La 2da llamada debe incluir el code como 3er argumento
+      expect(adminApi.login).toHaveBeenLastCalledWith('lucas', 'ok', '123456');
+
+      const { saveToken } = await import('../../lib/api.js');
+      await waitFor(() => expect(saveToken).toHaveBeenCalledWith('jwt-abc'));
+    });
+
+    it('código TOTP inválido → mensaje específico (no "usuario/contraseña")', async () => {
+      const twofaErr = new Error('Se requiere código 2FA.');
+      twofaErr.status = 401;
+      twofaErr.responseBody = { twofa_required: true };
+      const invalidCodeErr = new Error('Código inválido.');
+      invalidCodeErr.status = 401;
+      invalidCodeErr.responseBody = { code: 'INVALID_2FA_CODE' }; // sin twofa_required
+      adminApi.login
+        .mockRejectedValueOnce(twofaErr)
+        .mockRejectedValueOnce(invalidCodeErr);
+
+      renderLogin();
+      fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+      fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+      fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+      const codeInput = await screen.findByLabelText(/código de 6 dígitos/i);
+      fireEvent.change(codeInput, { target: { value: '999999' } });
+      fireEvent.click(screen.getByRole('button', { name: /verificar código/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(/código.*inválido/i);
+      });
+      // Seguimos en la pantalla de código (no volvió a creds)
+      expect(screen.getByLabelText(/código de 6 dígitos/i)).toBeInTheDocument();
+    });
+
+    it('botón "Usar otra cuenta" resetea el flujo', async () => {
+      const err = new Error('Se requiere código 2FA.');
+      err.status = 401;
+      err.responseBody = { twofa_required: true };
+      adminApi.login.mockRejectedValueOnce(err);
+
+      renderLogin();
+      fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+      fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+      fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+      await screen.findByLabelText(/código de 6 dígitos/i);
+      fireEvent.click(screen.getByRole('button', { name: /usar otra cuenta/i }));
+
+      // Volvimos a los inputs de creds
+      expect(screen.getByLabelText(/usuario/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/código de 6 dígitos/i)).not.toBeInTheDocument();
+    });
+
+    it('input de código filtra no-dígitos y limita a 6', async () => {
+      const err = new Error('2FA');
+      err.status = 401;
+      err.responseBody = { twofa_required: true };
+      adminApi.login.mockRejectedValueOnce(err);
+
+      renderLogin();
+      fireEvent.change(screen.getByLabelText(/usuario/i), { target: { value: 'lucas' } });
+      fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'ok' } });
+      fireEvent.click(screen.getByRole('button', { name: /ingresar/i }));
+
+      const codeInput = await screen.findByLabelText(/código de 6 dígitos/i);
+      fireEvent.change(codeInput, { target: { value: '12abc34567890' } });
+      // Quedan solo los dígitos y máximo 6
+      expect(codeInput.value).toBe('123456');
+    });
+  });
 });
