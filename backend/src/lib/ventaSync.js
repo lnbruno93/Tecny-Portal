@@ -7,7 +7,7 @@
 //   · (los comprobantes de Financiera y los cobros de Tarjeta viven en sus
 //      propios módulos: lib/financiera.js y lib/tarjetas.js)
 
-const { postCajaMovimiento, reverseCajaMovimientos } = require('./cajaLedger');
+const { postCajaMovimientosBulk, reverseCajaMovimientos } = require('./cajaLedger');
 const { round2 } = require('./money');
 const { retieneStock } = require('./ventaCore');
 
@@ -32,15 +32,18 @@ async function syncVentaCaja(client, venta, userId) {
        JOIN metodos_pago mp ON mp.id = vp.metodo_pago_id AND mp.deleted_at IS NULL
       WHERE vp.venta_id = $1 AND vp.es_cuenta_corriente = false AND vp.metodo_pago_id IS NOT NULL`, [venta.id]
   );
-  for (const p of pagos) {
-    if (p.es_financiera || p.es_tarjeta) continue;
-    await postCajaMovimiento(client, {
+  // TANDA 1 Perf #4 (2026-07-05): bulk INSERT en lugar de un round-trip por
+  // pago. Para una venta con 2–4 pagos eso son 6–12 round-trips a PG menos por
+  // request.
+  const movimientos = pagos
+    .filter((p) => !p.es_financiera && !p.es_tarjeta)
+    .map((p) => ({
       caja_id: p.metodo_pago_id, fecha: venta.fecha, tipo: 'ingreso',
       monto: p.monto, moneda: p.moneda, tc: p.tc,
       origen: 'venta', ref_tabla: 'ventas', ref_id: venta.id,
       concepto: `Venta ${venta.order_id}`, user_id: userId,
-    });
-  }
+    }));
+  await postCajaMovimientosBulk(client, movimientos);
 }
 
 // Sincroniza la deuda CC generada por la venta. Idempotente. Sólo crea

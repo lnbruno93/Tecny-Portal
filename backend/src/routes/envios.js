@@ -5,7 +5,7 @@ const audit = require('../lib/audit');
 const { createEnvioSchema, updateEnvioSchema, queryEnviosSchema } = require('../schemas/envios');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const parseId = require('../lib/parseId');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimientosBulk, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { crearVentaDesdeEnvio, actualizarVentaDesdeEnvio } = require('../lib/ventaDesdeEnvio');
 const { revertirEfectosVenta } = require('../lib/cancelarVenta');
 
@@ -22,14 +22,15 @@ async function syncEnvioCaja(client, envioId, fecha, estado, userId) {
       WHERE envio_id = $1 AND tipo = 'pago' AND metodo_pago_id IS NOT NULL AND monto > 0`,
     [envioId]
   );
-  for (const p of pagos) {
-    await postCajaMovimiento(client, {
-      caja_id: p.metodo_pago_id, fecha, tipo: 'ingreso',
-      monto: p.monto, moneda: p.moneda || 'ARS', tc: p.tc ?? null,
-      origen: 'envio', ref_tabla: 'envios', ref_id: envioId,
-      concepto: `Cobro envío #${envioId}`, user_id: userId,
-    });
-  }
+  // TANDA 1 Perf #4 (2026-07-05): bulk INSERT en lugar de un round-trip por
+  // pago. Preserva la misma validación de moneda/saldo que la versión single.
+  const movimientos = pagos.map((p) => ({
+    caja_id: p.metodo_pago_id, fecha, tipo: 'ingreso',
+    monto: p.monto, moneda: p.moneda || 'ARS', tc: p.tc ?? null,
+    origen: 'envio', ref_tabla: 'envios', ref_id: envioId,
+    concepto: `Cobro envío #${envioId}`, user_id: userId,
+  }));
+  await postCajaMovimientosBulk(client, movimientos);
 }
 
 // Inserta los items del envío (incluye producto_id, moneda, tc y es_cuenta_corriente).
