@@ -41,6 +41,20 @@
   --shadow-md: 0 1px 0 rgba(255,255,255,0.04) inset, 0 6px 18px -6px rgba(0,0,0,0.6);
   --shadow-lg: 0 1px 0 rgba(255,255,255,0.05) inset, 0 24px 48px -12px rgba(0,0,0,0.7);
 
+  /* 2026-07-05 TANDA 0.5 (Red B2B U0-1) — CSS vars fantasma.
+     Las pantallas Red B2B referían vars sin declarar (--red-bg, --green-bg,
+     etc.) → colores fallaban a `initial` (transparente/negro). Mapeamos a
+     los tokens semánticos existentes para que hereden dark/light mode. */
+  --red-bg:    var(--neg-soft);
+  --red-fg:    var(--neg);
+  --green-bg:  var(--pos-soft);
+  --green-fg:  var(--pos);
+  --orange-bg: var(--warn-soft);
+  --orange-fg: var(--warn);
+  --gray-bg:   var(--surface-2);
+  --gray-fg:   var(--text-muted);
+  --bg-subtle: var(--surface-2);
+
   --scheme: dark;
 }
 
@@ -520,6 +534,28 @@ body {
 }
 .btn-primary:hover { background: var(--accent-2); border-color: transparent; }
 
+/* 2026-07-05 TANDA 0.5 (Red B2B U0-2): botón destructivo — el sistema no
+   tenía uno y las pantallas Red B2B lo referían como `btn-danger` fantasma.
+   Uso: acciones peligrosas (cancelar operación cross-tenant, borrar, etc).
+   Consumir como `<button className="btn btn-danger">`. */
+.btn-danger {
+  background: var(--neg);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 1px 6px rgba(248,113,113,0.28);
+}
+.btn-danger:hover { background: #ef4444; border-color: transparent; }
+
+/* 2026-07-05 TANDA 0.5 (Red B2B U0-1): alias del wrapper de pantalla. Las
+   pantallas Red B2B lo usaban como `.screen-wrap` fantasma. Ofrece el layout
+   estándar de las screens (padding + max-width). Consistente con lo que
+   otras pantallas escriben inline. Consumir como `<div className="screen-wrap">`. */
+.screen-wrap {
+  padding: var(--pad, 16px);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
 .btn-ghost {
   background: transparent;
   border-color: transparent;
@@ -530,6 +566,160 @@ body {
 .btn-sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
 .btn-icon { padding: 0; width: 34px; justify-content: center; }
 .btn-icon.btn-sm { width: 28px; }
+
+/* ── 2026-07-05 TANDA 0.5 (Red B2B U0-1) — aliases y compatibilidad ─────
+   Las 5 pantallas Red B2B (RedB2BOperaciones/Detalle/Conciliacion/Pending/
+   Config) usaban clases y CSS vars que no existían en styles.css. Efecto:
+   botones y tablas renderizaban con estilo default del browser.
+
+   Este bloque le da vida a esas clases fantasma mapeándolas al sistema real,
+   sin tocar los .jsx — approach A pura (solo CSS). Consistente con el rest
+   del portal, dark-mode-safe (usan `--pos/--neg/--warn/--info` que ya
+   responden al toggle). Documentado como "aliases" para que si a alguien
+   se le ocurre reusarlos en pantallas nuevas, sepa que hay un canónico. */
+
+/* Wrapper de layout — usarlo o no da lo mismo, mismo padding + max-width. */
+/* (.screen-wrap ya declarado arriba, cerca de .btn-danger) */
+
+/* Botones alias: .btn-secondary y .btn-link no existían. */
+.btn-secondary { /* alias — solo `.btn` sin variante primaria. */
+  /* Efecto: si el JSX pone `className="btn-secondary"` (sin `.btn` prefix),
+     igual obtiene el estilo base de botón. */
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 14px;
+  border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  letter-spacing: -0.005em;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background .12s, border-color .12s, transform .06s;
+  white-space: nowrap;
+}
+.btn-secondary:hover { background: var(--surface-2); border-color: var(--border-strong); }
+
+/* .btn-link — link estilado como botón sutil, alias visual de `.btn-ghost`. */
+.btn-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.btn-link:hover { background: var(--accent-soft); color: var(--accent-2); text-decoration: none; }
+
+/* .btn-primary standalone (sin `.btn` prefix): duplicamos el estilo base
+   para que funcione cuando el JSX no pone `.btn`. */
+.btn-primary:not(.btn) {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 14px;
+  border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: background .12s, transform .06s;
+  white-space: nowrap;
+}
+
+/* .btn-danger standalone (mismo motivo). */
+.btn-danger:not(.btn) {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 14px;
+  border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: background .12s, transform .06s;
+  white-space: nowrap;
+}
+
+/* Tabla alias: `.data-table` → mismo estilo que `.tbl`. */
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.data-table thead th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.data-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tbody tr:hover td { background: var(--surface-2); }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Empty state alias — `.empty-state` mimetiza `.empty`. */
+.empty-state {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+/* Status badge alias — `.status-badge` + `.status-{color}`. Se consumen
+   como `className="status-badge status-{green|red|orange|blue|gray}"`. */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--text);
+  white-space: nowrap;
+}
+.status-badge.status-green,
+.status-badge.status-pos {
+  background: var(--pos-soft);
+  color: var(--pos);
+}
+.status-badge.status-red,
+.status-badge.status-neg,
+.status-badge.status-danger {
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+.status-badge.status-orange,
+.status-badge.status-warn,
+.status-badge.status-warning {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.status-badge.status-blue,
+.status-badge.status-info {
+  background: var(--info-soft, var(--accent-soft));
+  color: var(--info, var(--accent));
+}
+.status-badge.status-gray,
+.status-badge.status-muted {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
 
 /* ── Cards ────────────────────────────────────────────────────────── */
 .card {
