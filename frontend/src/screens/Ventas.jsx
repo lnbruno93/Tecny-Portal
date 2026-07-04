@@ -1120,15 +1120,24 @@ export default function Ventas() {
 
   function exportarExcel() {
     if (!lista.length) { toast.error('No hay ventas para exportar.'); return; }
-    const rows = lista.map(v => ({
-      order_id: v.order_id, fecha: (v.fecha || '').substring(0, 10), hora: v.hora ? v.hora.substring(0, 5) : '',
-      cliente: v.cliente_nombre || '', etiqueta: v.etiqueta_nombre || '', estado: v.estado,
-      productos: (v.items || []).map(i => i.descripcion + (i.cantidad > 1 ? ' x' + i.cantidad : '')).join(' | '),
-      imei: (v.items || []).map(i => i.imei).filter(Boolean).join(' | '),
-      pagos: (v.pagos || []).map(p => `${p.metodo_nombre} ${p.moneda} ${p.monto}`).join(' | '),
-      tc_venta: v.tc_venta || '', total_usd: v.total_usd, ganancia_usd: v.ganancia_usd,
-    }));
-    const cols = ['order_id', 'fecha', 'hora', 'cliente', 'etiqueta', 'estado', 'productos', 'imei', 'pagos', 'tc_venta', 'total_usd', 'ganancia_usd'];
+    // 2026-07-04 (ventas.ver_ganancias): si el backend redactó ganancia_usd
+    // (user sin la cap), la columna ganancia queda fuera del CSV — sino
+    // exportaríamos "undefined" y expondríamos el gap. Consistente con la
+    // grilla en pantalla (VentasList oculta la columna en el mismo caso).
+    const showGanancia = 'ganancia_usd' in lista[0];
+    const rows = lista.map(v => {
+      const base = {
+        order_id: v.order_id, fecha: (v.fecha || '').substring(0, 10), hora: v.hora ? v.hora.substring(0, 5) : '',
+        cliente: v.cliente_nombre || '', etiqueta: v.etiqueta_nombre || '', estado: v.estado,
+        productos: (v.items || []).map(i => i.descripcion + (i.cantidad > 1 ? ' x' + i.cantidad : '')).join(' | '),
+        imei: (v.items || []).map(i => i.imei).filter(Boolean).join(' | '),
+        pagos: (v.pagos || []).map(p => `${p.metodo_nombre} ${p.moneda} ${p.monto}`).join(' | '),
+        tc_venta: v.tc_venta || '', total_usd: v.total_usd,
+      };
+      return showGanancia ? { ...base, ganancia_usd: v.ganancia_usd } : base;
+    });
+    const cols = ['order_id', 'fecha', 'hora', 'cliente', 'etiqueta', 'estado', 'productos', 'imei', 'pagos', 'tc_venta', 'total_usd'];
+    if (showGanancia) cols.push('ganancia_usd');
     exportCsv(`ventas_${desde}_${hasta}.csv`, rows, cols.map(k => ({ key: k, label: k })));
   }
 

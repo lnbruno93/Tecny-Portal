@@ -32,6 +32,13 @@ export default function VentasList({
   // que sale en el comprobante. Opcional: si no se pasa, no renderizamos el botón.
   openEditarVendedor,
 }) {
+  // 2026-07-04 (ventas.ver_ganancias): backend redacta `ganancia_usd` cuando
+  // el user no tiene la cap. Si ninguna fila lo trae, ocultamos la columna
+  // entera (header + celda). Detectamos por presencia de la key en la
+  // primera fila — todas vienen del mismo shape unificado del endpoint.
+  // Owner/admin: siempre presente (bypass). Vendedor sin override: siempre
+  // ausente. No mezclamos filas con/sin — todas responden al mismo user.
+  const showGanancia = lista.length > 0 && 'ganancia_usd' in lista[0];
   return (
     <div className="card card-flush">
       <table className="table">
@@ -39,7 +46,8 @@ export default function VentasList({
           <tr>
             <th>Estado</th><th>Fecha</th><th>Cliente</th>
             <th>Productos</th><th>Pagos</th>
-            <th>Ganancia</th><th>Total</th><th></th>
+            {showGanancia && <th data-testid="th-ganancia">Ganancia</th>}
+            <th>Total</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -177,7 +185,9 @@ export default function VentasList({
                       <div key={k}>{p.metodo_nombre}: {sym(p.moneda)}{fmt(p.monto)}</div>
                     ))}
               </td>
-              <td className="mono pos" style={{ fontWeight: 600 }}>u$s{fmt(v.ganancia_usd)}</td>
+              {showGanancia && (
+                <td className="mono pos" style={{ fontWeight: 600 }}>u$s{fmt(v.ganancia_usd)}</td>
+              )}
               <td className="mono" style={{ fontWeight: 600 }}>u$s{fmt(v.total_usd)}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 {/* 2026-06-10: select de estado movido al badge de la izquierda.

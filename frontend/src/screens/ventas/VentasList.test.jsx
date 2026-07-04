@@ -164,3 +164,27 @@ describe('VentasList — acciones', () => {
     expect(props.openComprob).toHaveBeenCalledWith(2); // id de la venta 2
   });
 });
+
+// 2026-07-04 (ventas.ver_ganancias): la columna Ganancia se oculta cuando
+// backend redactó `ganancia_usd` (user sin la cap). Detección por presencia
+// de la key en la primera fila — todas vienen del mismo user.
+describe('VentasList — gating por ventas.ver_ganancias', () => {
+  it('renderiza columna "Ganancia" cuando las filas incluyen ganancia_usd', () => {
+    const { container, queryByTestId } = renderList();
+    expect(queryByTestId('th-ganancia')).toBeInTheDocument();
+    // El texto de la ganancia de la venta 1 (150) aparece.
+    expect(container.textContent).toContain('u$s150');
+  });
+
+  it('oculta columna "Ganancia" cuando el backend redactó ganancia_usd', () => {
+    const listaRedacted = VENTAS_DEMO.map(({ ganancia_usd, ...rest }) => rest);
+    const { queryByTestId, container } = renderList({ lista: listaRedacted });
+    // Header ausente.
+    expect(queryByTestId('th-ganancia')).toBeNull();
+    // Ninguna celda con el valor de ganancia se renderea.
+    expect(container.textContent).not.toContain('u$s150');
+    // El resto de la tabla sigue vivo — total, cliente:
+    expect(container.textContent).toContain('u$s1.000');
+    expect(container.textContent).toContain('Cliente A');
+  });
+});

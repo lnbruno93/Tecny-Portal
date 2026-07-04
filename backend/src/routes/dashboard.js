@@ -25,6 +25,7 @@ const db = require('../config/database');
 const { createTenantScopedCache } = require('../lib/cacheTtl');
 const { DASHBOARD_MENSUAL } = require('../lib/cacheConfig');
 const { kpisDelPeriodo, rangoMes, mesAnterior } = require('../lib/dashboardMensual');
+const { hasCapability } = require('../middleware/requireCapability');
 
 // Caché de funciones por (tenant, periodo, comparado). Cada llamada al endpoint
 // reusa la misma function-instance si las keys coinciden — el dedup interno
@@ -70,6 +71,18 @@ function mesActual() {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+// 2026-07-04 F5b (ver_ganancias): helper para redactar `ganancia_usd` del
+// bundle mensual. El bundle tiene 2 sub-bundles idénticos ({actual, comparado})
+// — la ganancia vive en `bundle.ventas.ganancia_usd`. Devolvemos un clon
+// shallow: NO mutamos porque `data` viene del cache compartido (per-tenant,
+// per par de períodos) y otro request con la cap SÍ debería seguir viendo
+// ganancia sin recomputar.
+function redactGananciaMensual(bundle) {
+  if (!bundle || !bundle.ventas) return bundle;
+  const { ganancia_usd, ...ventasRest } = bundle.ventas;
+  return { ...bundle, ventas: ventasRest };
+}
+
 router.get('/resumen-mensual', async (req, res, next) => {
   try {
     const periodoActual    = req.query.periodo      || mesActual();
@@ -78,6 +91,19 @@ router.get('/resumen-mensual', async (req, res, next) => {
     rangoMes(periodoActual);
     rangoMes(periodoComparado);
     const data = await cache.get(`${req.tenantId}|${periodoActual}|${periodoComparado}`);
+
+    // 2026-07-04 F5b (ver_ganancias): sin `ventas.ver_ganancias`, sacamos
+    // `ganancia_usd` de los bloques `actual` y `comparado`. El frontend
+    // Resumen.jsx ya oculta la KpiCard cuando el valor viene undefined.
+    // Owner/admin bypass — hasCapability retorna true.
+    const canSeeGanancias = await hasCapability(req.user, 'ventas.ver_ganancias');
+    if (!canSeeGanancias) {
+      return res.json({
+        ...data,
+        actual:    redactGananciaMensual(data.actual),
+        comparado: redactGananciaMensual(data.comparado),
+      });
+    }
     res.json(data);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });

@@ -91,7 +91,8 @@ describe('GET /api/capabilities/catalog', () => {
     expect(r.body.pantallas.length).toBe(20);
     const total = r.body.pantallas.reduce((acc, p) => acc + p.capabilities.length, 0);
     // 46 → 49 tras #500 (agregamos inventario.crear/editar/eliminar).
-    expect(total).toBe(49);
+    // 49 → 50 tras 2026-07-04 (agregamos ventas.ver_ganancias).
+    expect(total).toBe(50);
     expect(r.body.roles).toContain('owner');
     expect(r.body.roles).toContain('custom');
   });

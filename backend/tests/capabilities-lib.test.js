@@ -115,6 +115,35 @@ describe('resolveCaps', () => {
     expect(caps.has('ventas.trabajar')).toBe(true); // default sigue
   });
 
+  // 2026-07-04 — nuevo permiso ventas.ver_ganancias (ocultar ganancia/margen
+  // en Ventas/Dashboard/Resumen). Contrato del resolver para esta cap:
+  //   · owner/admin: null (bypass — todos los endpoints ven todo)
+  //   · vendedor/encargado/lectura sin override: NO tienen la cap
+  //   · vendedor con override enabled=true: SÍ la tiene
+  it('ventas.ver_ganancias: owner/admin devuelven null (bypass)', () => {
+    expect(resolveCaps('owner', [])).toBe(null);
+    expect(resolveCaps('admin', [])).toBe(null);
+  });
+
+  it('ventas.ver_ganancias: vendedor sin override NO la tiene', () => {
+    const caps = resolveCaps('vendedor', []);
+    expect(caps.has('ventas.ver_ganancias')).toBe(false);
+  });
+
+  it('ventas.ver_ganancias: encargado sin override NO la tiene', () => {
+    const caps = resolveCaps('encargado', []);
+    expect(caps.has('ventas.ver_ganancias')).toBe(false);
+  });
+
+  it('ventas.ver_ganancias: vendedor con override enabled=true SÍ la tiene', () => {
+    const caps = resolveCaps('vendedor', [
+      { capability_slug: 'ventas.ver_ganancias', enabled: true },
+    ]);
+    expect(caps.has('ventas.ver_ganancias')).toBe(true);
+    // El resto del set default sigue intacto.
+    expect(caps.has('ventas.trabajar')).toBe(true);
+  });
+
   it('override sobre slug fuera del catálogo se ignora silenciosamente', () => {
     const caps = resolveCaps('custom', [
       { capability_slug: 'fake.cap', enabled: true },
