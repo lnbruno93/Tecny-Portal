@@ -106,15 +106,26 @@ function validarCuentaCorriente(pagos, clienteCcId) {
   }
 }
 
-// Exige TC > 0 cuando hay montos en ARS (evita que se contabilicen como USD 0 silenciosamente).
+// Exige TC > 0 cuando hay montos en ARS o UYU (fiat locales — sin TC se
+// contabilizarían como USD 0 silenciosamente, corrompiendo total_usd).
+// BLOCKER 2026-07-05: antes solo chequeaba ARS. Un tenant UY podía persistir
+// venta UYU sin tc_venta → toUsd() retornaba 0 y el dashboard mostraba $0
+// facturación aunque la venta valía USD 1000. Ahora UYU exige TC igual que ARS.
 function validarTc(items, pagos, tcVenta) {
   const tcOk = Number(tcVenta) > 0;
-  if ((items || []).some(it => it.moneda === 'ARS') && !tcOk) {
+  const items_ = items || [];
+  if (items_.some(it => it.moneda === 'ARS') && !tcOk) {
     throw err400('Indicá el tipo de cambio (TC) de la venta para ítems en ARS.');
+  }
+  if (items_.some(it => it.moneda === 'UYU') && !tcOk) {
+    throw err400('Indicá el tipo de cambio (TC) de la venta para ítems en UYU.');
   }
   for (const p of (pagos || [])) {
     if (p.moneda === 'ARS' && !(Number(p.tc) > 0) && !tcOk) {
       throw err400('Indicá el tipo de cambio (TC) para los pagos en ARS.');
+    }
+    if (p.moneda === 'UYU' && !(Number(p.tc) > 0) && !tcOk) {
+      throw err400('Indicá el tipo de cambio (TC) para los pagos en UYU.');
     }
   }
 }
@@ -130,6 +141,25 @@ function calcularTotales(items, tc) {
     comisionUsd += toUsd(it.comision, it.moneda, tc);
   }
   return { totalUsd: round2(totalUsd), gananciaUsd: round2(totalUsd - costoUsd - comisionUsd) };
+}
+
+// BLOCKER 2026-07-05 P1 (seguridad ganancias): helper para redactar los campos
+// sensibles de ganancia del row de venta antes de devolverlo al frontend en
+// endpoints de escritura (POST/PUT). El listado GET (línea ~859) ya redacta;
+// los POST/PUT devolvían `res.json(vrows[0])` con la fila cruda — un vendedor
+// sin `ventas.ver_ganancias` podía leer la ganancia en el response de su propio
+// alta/edición. Owner/admin bypass vía hasCapability. Campos que se ocultan:
+//   · `ganancia_usd` — ganancia bruta persistida en la fila.
+//   · `comision_total_metodos` — costo financiero denormalizado (Tema C);
+//     no es "ganancia" literal pero permite inferirla (venta_total − costo =
+//     ganancia_bruta_menos_comisión_neta si conocés el total_usd, y el user
+//     sí ve total_usd). Mejor ocultarlo también para no exponer margen neto.
+async function redactVentaGananciaIfNeeded(user, ventaRow) {
+  if (!ventaRow) return ventaRow;
+  const canSeeGanancias = await hasCapability(user, 'ventas.ver_ganancias');
+  if (canSeeGanancias) return ventaRow;
+  const { ganancia_usd, comision_total_metodos, ...rest } = ventaRow;
+  return rest;
 }
 
 // Inserta items, pagos y canjes de una venta (usado por crear y editar). El stock
@@ -342,14 +372,17 @@ async function computeDashboard(tenantId, desde, hasta) {
       client.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
                 FROM venta_pagos pp JOIN ventas v ON v.id = pp.venta_id WHERE ${BASE}
                 GROUP BY pp.metodo_nombre, pp.moneda ORDER BY total_usd DESC`, p),
-      // Unidades por clase + costos en USD
+      // Unidades por clase + costos en USD.
+      // BLOCKER 2026-07-05: incluir UYU en la conversión fiat/USD (antes solo
+      // ARS → todos los items UYU se computaban como USD directo, inflando
+      // costos ~40x en tenants UY).
       client.query(`SELECT
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'celular' OR pr.id IS NULL),0) AS celulares,
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'accesorio'),0) AS accesorios,
-                  COALESCE(SUM(CASE WHEN vi.moneda = 'ARS' AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
+                  COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p),
-      // Inversión en canjes (USD)
-      client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda = 'ARS' AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
+      // Inversión en canjes (USD). Mismo fix multi-país que arriba.
+      client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p),
       // Egresos del período (USD)
       client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p),
@@ -362,8 +395,10 @@ async function computeDashboard(tenantId, desde, hasta) {
                   FROM venta_pagos pp JOIN bv ON bv.id = pp.venta_id GROUP BY pp.venta_id
                 ),
                 ca AS (
+                  -- BLOCKER 2026-07-05: incluir UYU además de ARS en la
+                  -- conversión fiat/USD (antes solo ARS).
                   SELECT cc.venta_id,
-                         SUM(CASE WHEN cc.moneda = 'ARS' AND bv.tc_venta > 0 THEN cc.valor_toma/bv.tc_venta ELSE cc.valor_toma END) AS canje_usd
+                         SUM(CASE WHEN cc.moneda IN ('ARS','UYU') AND bv.tc_venta > 0 THEN cc.valor_toma/bv.tc_venta ELSE cc.valor_toma END) AS canje_usd
                   FROM canjes cc JOIN bv ON bv.id = cc.venta_id GROUP BY cc.venta_id
                 ),
                 dif AS (
@@ -397,9 +432,11 @@ async function computeDashboard(tenantId, desde, hasta) {
         ORDER BY unidades DESC, descripcion
         LIMIT 5
       `, p),
-      // Top vendedores (por total facturado en USD)
+      // Top vendedores (por total facturado en USD).
+      // BLOCKER 2026-07-05: incluir UYU además de ARS (antes vendedores UY
+      // veían total_usd inflado 40x en su ranking).
       client.query(`SELECT ve.nombre AS vendedor,
-                       COALESCE(SUM(CASE WHEN vi.moneda='ARS' AND v.tc_venta>0 THEN vi.precio_vendido*vi.cantidad/v.tc_venta ELSE vi.precio_vendido*vi.cantidad END),0) AS total_usd,
+                       COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta>0 THEN vi.precio_vendido*vi.cantidad/v.tc_venta ELSE vi.precio_vendido*vi.cantidad END),0) AS total_usd,
                        COUNT(*)::int AS items
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN vendedores ve ON ve.id = vi.vendedor_id
                 WHERE ${BASE} GROUP BY ve.nombre ORDER BY total_usd DESC LIMIT 5`, p),
@@ -938,7 +975,9 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
       });
     }
 
-    res.status(201).json(venta);
+    // BLOCKER 2026-07-05 P1: redactar ganancia/comisión antes del response
+    // si el user no puede ver ganancias. Ver `redactVentaGananciaIfNeeded`.
+    res.status(201).json(await redactVentaGananciaIfNeeded(req.user, venta));
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -1020,7 +1059,10 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: vrows[0], user_id: req.user.id });
       await client.query('COMMIT');
       invalidateMetricas(req.tenantId);  // edición completa pudo tocar stock
-      return res.json(vrows[0]);
+      // BLOCKER 2026-07-05 P1: redactar ganancia/comisión si el user no puede
+      // verlas. El audit trail se registra con la fila completa (arriba); el
+      // response al cliente sí se recorta.
+      return res.json(await redactVentaGananciaIfNeeded(req.user, vrows[0]));
     }
 
     // ── Solo metadatos ── ajustar stock si cambia el "retener stock" (cancelar / reactivar)
@@ -1051,7 +1093,9 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     await audit(client, 'ventas', 'UPDATE', id, { antes: before, despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
     invalidateMetricas(req.tenantId);
-    res.json(rows[0]);
+    // BLOCKER 2026-07-05 P1: redactar ganancia/comisión si el user no puede
+    // verlas (mismo criterio que fullEdit + POST alta).
+    res.json(await redactVentaGananciaIfNeeded(req.user, rows[0]));
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
