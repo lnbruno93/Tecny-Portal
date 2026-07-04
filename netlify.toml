@@ -3,6 +3,20 @@
   command = "npm run build"
   publish = "dist"
 
+# VITE_API_URL hardcoded acá (2026-07-04 P0). Antes vivía SOLO en Netlify UI
+# → si alguien la borraba o cambiaba desde ahí, el bundle salía con el
+# fallback prod duro del código (frontend/src/lib/api.js) sin que nadie se
+# entere. Post-fix: la variable vive en el repo → cambio requiere commit
+# visible + PR. Sin este cambio, el bug análogo al que rompió admin.tecnyapp.com
+# hoy podía pasarle al portal también sin ser detectado.
+#
+# Contextos de Netlify:
+#   [build.environment]                       → aplica a production (main)
+#   [context.branch-deploy.environment]       → staging + otras branches
+#   [context.deploy-preview.environment]      → PR previews
+[build.environment]
+  VITE_API_URL = "https://tecny-backend-production.up.railway.app"
+
 # Service worker and PWA assets — no redirect, serve as-is
 [[redirects]]
   from   = "/sw.js"
@@ -77,6 +91,9 @@
 # porque Netlify no hace merge — un context-specific block reemplaza el
 # global para los paths que matchea. Si solo pusiéramos CSP acá, perdiéramos
 # HSTS / X-Frame-Options / etc. en staging.
+[context.branch-deploy.environment]
+  VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
+
 [[context.branch-deploy.headers]]
   for = "/*"
   [context.branch-deploy.headers.values]
@@ -90,6 +107,9 @@
 
 # Deploy previews (PR builds): mismo CSP que branch-deploy (postear a staging
 # backend tiene más sentido que a prod para previews — son entornos no-prod).
+[context.deploy-preview.environment]
+  VITE_API_URL = "https://tecny-backend-staging.up.railway.app"
+
 [[context.deploy-preview.headers]]
   for = "/*"
   [context.deploy-preview.headers.values]
