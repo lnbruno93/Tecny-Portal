@@ -467,6 +467,40 @@ export const auth = {
       newPassword,
       ...(twofaCode ? { twofa_code: twofaCode } : {}),
     }),
+
+  // ─── Forgot password / Reset password (2026-07-04) ─────────────────────
+  // Port del flow que ya existe en frontend/src/lib/api.js (TANDA 0 #321).
+  // Endpoints /api/auth/forgot-password y /api/auth/reset-password son PÚBLICOS
+  // (no requieren Bearer). El wrapper `api()` no manda Authorization cuando
+  // getToken() es null, así que este flow funciona con el user deslogueado.
+  //
+  // Diferencia con el portal: acá NO usamos hCaptcha. Rationale — la superficie
+  // de ataque es acotada (el pool de super-admins de Tecny es de <10 personas,
+  // no un signup form público), y no queremos pedirle al backend un endpoint
+  // "sin captcha" adicional. Si el backend enforcea captcha para todos, va a
+  // devolver 400 y el error se surface como mensaje genérico. Trade-off aceptado:
+  // volumen bajísimo, no vale la pena la fricción.
+  //
+  // forgotPassword: backend responde 200 idéntica para email existente vs
+  //   no-existente (anti-enum). El frontend siempre muestra "si existe, mandamos".
+  //   200 body opcional: { reset_token_ttl_hours: number } — usamos como default 1h.
+  //
+  // resetPassword: consume token del email + setea nueva pass. Errores:
+  //   · 200 { ok: true }
+  //   · 401 { code: 'INVALID_RESET_TOKEN' }  → link inválido
+  //   · 401 { code: 'EXPIRED_RESET_TOKEN' }  → link vencido
+  //   · 401 { code: 'USED_RESET_TOKEN' }     → link ya usado
+  //   · 400 { fields: [{ field: 'newPassword', error: '...' }] } → policy fail
+  //
+  // OJO: forgotPassword hace un 200 → el wrapper api() NO limpia el token
+  // (solo limpia en 401). Perfecto para nuestro caso.
+  // resetPassword puede devolver 401, y el wrapper api() clearea el token
+  // en 401 — pero el user no tenía token para arrancar (está deslogueado),
+  // así que el clear es un no-op y no hace daño.
+  forgotPassword: (email) =>
+    api('/api/auth/forgot-password', 'POST', { email }),
+  resetPassword: (token, newPassword) =>
+    api('/api/auth/reset-password', 'POST', { token, newPassword }),
 };
 
 export const twoFa = {

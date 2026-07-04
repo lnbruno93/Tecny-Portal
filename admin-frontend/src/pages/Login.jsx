@@ -4,7 +4,7 @@
 // al back-office aún teniendo creds válidas.
 
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Btn } from '../components/primitives/index.jsx';
@@ -291,6 +291,24 @@ export default function Login() {
             )}
           </div>
         </form>
+
+        {/* 2026-07-04: link a "Olvidé mi contraseña". Solo aparece en el
+            paso de creds — durante el prompt 2FA (twofaRequired=true) no tiene
+            sentido, el user ya autenticó su password y necesita el TOTP, no
+            resetear. Si perdió acceso al 2FA hay que ir por otro flow (soporte). */}
+        {!twofaRequired && (
+          <p
+            className="muted tiny"
+            style={{ textAlign: 'center', margin: '16px 0 0' }}
+          >
+            <Link
+              to="/forgot-password"
+              style={{ color: 'var(--muted)', textDecoration: 'underline' }}
+            >
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </p>
+        )}
 
         <p
           className="muted tiny"
