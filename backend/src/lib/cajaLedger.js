@@ -5,10 +5,22 @@
 // se hace en la moneda de la caja elegida); `monto_usd` se calcula para totales.
 const { toUsd, round2 } = require('./money');
 
-// Agrupa monedas equivalentes para el saldo nativo de una caja: USD y USDT son
-// 1:1 e intercambiables; ARS es su propio grupo. El saldo de una caja suma el
-// `monto` nativo, así que un movimiento solo puede mezclarse con la misma moneda.
-function grupoMoneda(m) { return m === 'ARS' ? 'ARS' : 'USD'; }
+// Agrupa monedas equivalentes para el saldo nativo de una caja. El saldo de
+// una caja suma el `monto` nativo, así que un movimiento solo puede mezclarse
+// con la MISMA moneda o una equivalente 1:1.
+//
+//   - ARS es su propio grupo.
+//   - UYU es su propio grupo (BLOCKER 2026-07-05: antes caía al else y era
+//     tratada como USD, permitiendo que un pago UYU se aceptara en una caja
+//     USD/USDT — el `saldo` nativo terminaba con UYU sumados como si fueran
+//     dólares. Reportado por tenants UY: sus cajas USD tenían saldos absurdos
+//     porque cobros UYU se estaban registrando ahí).
+//   - USD y USDT son 1:1 e intercambiables (mismo grupo).
+function grupoMoneda(m) {
+  if (m === 'ARS') return 'ARS';
+  if (m === 'UYU') return 'UYU';
+  return 'USD';
+}
 
 /**
  * Inserta un movimiento en el ledger de una caja. Debe ejecutarse con un client
@@ -136,4 +148,6 @@ async function reverseCajaMovimientos(client, ref_tabla, ref_id) {
   }
 }
 
-module.exports = { postCajaMovimiento, reverseCajaMovimientos };
+// Exportamos `grupoMoneda` para permitir tests unitarios (regresión BLOCKER
+// 2026-07-05: UYU debe ser su propio grupo, no compartido con USD).
+module.exports = { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda };
