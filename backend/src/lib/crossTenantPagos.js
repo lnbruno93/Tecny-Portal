@@ -27,40 +27,68 @@
 const { round2 } = require('./money');
 
 /**
- * Calcula la diferencia cambiaria en ARS entre TC venta y TC pago.
+ * Calcula la diferencia cambiaria en la moneda local del pago entre TC venta
+ * y TC pago.
  *
  * Lógica:
- *   - Si pago en USD → diferencia = 0 (no hay re-cálculo).
- *   - Si pago en ARS:
- *       valor_en_ars_segun_venta = monto_usd * tc_venta
- *       valor_en_ars_segun_pago  = monto_usd * tc_pago
- *       diferencia = valor_en_ars_segun_pago - valor_en_ars_segun_venta
+ *   - Si pago en USD/USDT → diferencia = 0 (no hay re-cálculo).
+ *   - Si pago en ARS/UYU (fiat local):
+ *       valor_local_segun_venta = monto_usd * tc_venta
+ *       valor_local_segun_pago  = monto_usd * tc_pago
+ *       diferencia = valor_local_segun_pago - valor_local_segun_venta
  *
  *     Si tc_pago > tc_venta → diferencia POSITIVA (el seller recibió MÁS
- *       ARS que lo que esperaba al momento de vender → GANANCIA).
+ *       plata local que lo esperado al momento de vender → GANANCIA).
  *     Si tc_pago < tc_venta → diferencia NEGATIVA (recibió MENOS → PÉRDIDA).
  *
  * Pure function — sin DB, sin side effects. Fácil de testear suelta.
  *
+ * BLOCKER 2026-07-05 (multi-país UYU): antes retornaba `{ diferencia_ars,
+ * ganancia_seller }` y trataba solo ARS. Un pago UYU con TCs distintos caía
+ * al bloque "monedaPago !== USD" y calculaba una "diferencia_ars" que en
+ * realidad era en UYU — el nombre engañaba al call-site. Fix:
+ *   1. Manejo explícito de UYU (misma fórmula que ARS con su propio tc).
+ *   2. El shape retorna `diferencia_local` (nombre neutro por moneda) además
+ *      de `diferencia_ars` (alias legacy = mismo valor si moneda_pago='ARS',
+ *      0 en UYU para no engañar reportes viejos).
+ *   3. Retorna también `moneda_local` para que el call-site sepa en qué
+ *      unidad viene el número (persiste correcto al DB).
+ *   4. Cualquier moneda fiat no reconocida → 0 (defensivo: no computamos
+ *      diferencia contra un TC sin sentido).
+ *
  * @param {number} montoUsd — monto del pago expresado en USD (siempre)
  * @param {number|null} tcVenta — TC original de la venta (de cross_tenant_operations.tc_used)
  * @param {number|null} tcPago — TC efectivo del pago
- * @param {string} monedaPago — 'USD' o 'ARS'
- * @returns {{ diferencia_ars: number, ganancia_seller: boolean }}
+ * @param {string} monedaPago — 'USD' | 'USDT' | 'ARS' | 'UYU'
+ * @returns {{ diferencia_local: number, diferencia_ars: number, moneda_local: string, ganancia_seller: boolean }}
  */
 function calcularDiferenciaCambiaria(montoUsd, tcVenta, tcPago, monedaPago = 'ARS') {
   const usd = Number(montoUsd) || 0;
   const tv = Number(tcVenta) || 0;
   const tp = Number(tcPago) || 0;
 
-  // Pago en USD: no hay diferencia cambiaria (no se cruzan TCs).
-  if (monedaPago === 'USD') {
-    return { diferencia_ars: 0, ganancia_seller: false };
+  // Pago en USD/USDT: no hay diferencia cambiaria (no se cruzan TCs).
+  if (monedaPago === 'USD' || monedaPago === 'USDT') {
+    return {
+      diferencia_local: 0, diferencia_ars: 0,
+      moneda_local: monedaPago, ganancia_seller: false,
+    };
+  }
+
+  // Solo ARS y UYU son fiats locales con diferencia calculable.
+  if (monedaPago !== 'ARS' && monedaPago !== 'UYU') {
+    return {
+      diferencia_local: 0, diferencia_ars: 0,
+      moneda_local: monedaPago, ganancia_seller: false,
+    };
   }
 
   // TCs faltantes o cero → sin diferencia calculable.
   if (tv <= 0 || tp <= 0) {
-    return { diferencia_ars: 0, ganancia_seller: false };
+    return {
+      diferencia_local: 0, diferencia_ars: 0,
+      moneda_local: monedaPago, ganancia_seller: false,
+    };
   }
 
   const valorSegunVenta = usd * tv;
@@ -68,7 +96,12 @@ function calcularDiferenciaCambiaria(montoUsd, tcVenta, tcPago, monedaPago = 'AR
   const diferencia = round2(valorSegunPago - valorSegunVenta);
 
   return {
-    diferencia_ars: diferencia,
+    diferencia_local: diferencia,
+    // Legacy: `diferencia_ars` sólo tiene sentido si moneda_pago='ARS'.
+    // En UYU lo dejamos en 0 para no confundir reportes viejos que asumen
+    // que la key trae ARS literal.
+    diferencia_ars: monedaPago === 'ARS' ? diferencia : 0,
+    moneda_local: monedaPago,
     ganancia_seller: diferencia > 0,
   };
 }
@@ -79,9 +112,15 @@ function calcularDiferenciaCambiaria(montoUsd, tcVenta, tcPago, monedaPago = 'AR
  *
  * Llamada bajo SET LOCAL del tenant (RLS estándar de metodos_pago).
  *
+ * BLOCKER 2026-07-05 (multi-país UYU): la matriz de compatibilidad de cajas
+ * antes trataba UYU implícitamente como "no-ARS" y por eso caía en el grupo
+ * ['USD','USDT'] — un pago UYU podía terminar depositado en una caja USD.
+ * Fix: UYU es su propio grupo estricto (solo compatible con caja UYU),
+ * igual que ARS. La regla operativa es simple: fiat local no se mezcla.
+ *
  * @param {object} client — pg client
  * @param {number} tenantId
- * @param {string} moneda — 'USD' | 'ARS' | 'USDT' (compatibilidad de caja)
+ * @param {string} moneda — 'USD' | 'USDT' | 'ARS' | 'UYU' (compatibilidad de caja)
  * @param {number|null} defaultCajaId — tenants.red_b2b_caja_default_id
  * @returns {Promise<number|null>} caja_id o null si no hay caja compatible
  */
@@ -96,16 +135,22 @@ async function resolveCajaParaTenant(client, tenantId, moneda, defaultCajaId) {
       [defaultCajaId]
     );
     if (q.rows[0]) {
-      // Compatibilidad: USD ↔ USDT son intercambiables, ARS es estricto.
+      // Compatibilidad: USD ↔ USDT intercambiables; ARS y UYU cada uno estricto.
       const cajaMon = q.rows[0].moneda;
       if (moneda === 'ARS' && cajaMon === 'ARS') return q.rows[0].id;
+      if (moneda === 'UYU' && cajaMon === 'UYU') return q.rows[0].id;
       if (moneda === 'USD' && (cajaMon === 'USD' || cajaMon === 'USDT')) return q.rows[0].id;
       if (moneda === 'USDT' && (cajaMon === 'USD' || cajaMon === 'USDT')) return q.rows[0].id;
       // Default existe pero no compatible → caemos a la primera caja compatible.
     }
   }
   // Fallback: primera caja del catálogo con moneda compatible.
-  const grupos = moneda === 'ARS' ? ['ARS'] : ['USD', 'USDT'];
+  // BLOCKER 2026-07-05: UYU es su propio grupo (['UYU']). Antes al no ser 'ARS'
+  // caía a ['USD','USDT'] y proponía cajas USD para pagos en pesos uruguayos.
+  let grupos;
+  if (moneda === 'ARS') grupos = ['ARS'];
+  else if (moneda === 'UYU') grupos = ['UYU'];
+  else grupos = ['USD', 'USDT'];
   const q = await client.query(
     `SELECT id FROM metodos_pago
        WHERE moneda = ANY($1::text[]) AND activo = true AND deleted_at IS NULL
@@ -199,9 +244,12 @@ async function registerSellerCobro(client, sellerTenantId, args) {
   // 2. INSERT movimientos_cc tipo='pago'.
   // El monto_total siempre se guarda en USD (moneda neutra interna del portal,
   // mismo patrón que F3). El TC y monto en moneda_pago van en notas/descripcion.
-  const descripcion = `Red B2B → pago cross-tenant op #${opId} (${moneda_pago === 'USD'
-    ? `USD ${round2(monto_pago)}`
-    : `ARS ${round2(monto_pago)} @ TC ${tc_pago}`})`;
+  // BLOCKER 2026-07-05 (multi-país UYU): la descripción antes hardcodeaba "ARS"
+  // para todo lo no-USD; un pago UYU salía descrito como ARS y confundía el
+  // audit trail. Ahora usa la moneda declarada dinámicamente.
+  const descripcion = (moneda_pago === 'USD' || moneda_pago === 'USDT')
+    ? `Red B2B → pago cross-tenant op #${opId} (${moneda_pago} ${round2(monto_pago)})`
+    : `Red B2B → pago cross-tenant op #${opId} (${moneda_pago} ${round2(monto_pago)} @ TC ${tc_pago})`;
 
   const movQ = await client.query(
     `INSERT INTO movimientos_cc
@@ -229,6 +277,19 @@ async function registerSellerCobro(client, sellerTenantId, args) {
   // 3. Si moneda_pago === 'ARS', registrar la diferencia cambiaria como
   //    movimiento en módulo Cambios de Divisa del seller (decisión #16).
   //    Solo si la diferencia es no-cero (puede ser cero si tc_pago == tc_venta).
+  //
+  // BLOCKER 2026-07-05 (multi-país UYU): la diferencia cambiaria para pagos
+  // UYU EXISTE (y ya se persiste en `cross_tenant_pagos.diferencia_cambiaria_ars`
+  // como snapshot), pero acá NO la asentamos en Cambios de Divisa. El módulo
+  // Cambios está pensado hoy 100% para el par ARS/USD (tipos 'entrega_ars' y
+  // 'recibo_usd' hardcoded, UI que asume pesos). Extenderlo a UYU requiere:
+  //   - migration ampliando el CHECK de cambio_movimientos.tipo (agregar
+  //     'entrega_uyu' + 'recibo_usd_uyu' o rediseñar como fiat neutro)
+  //   - update UI Cambios.jsx para mostrar la moneda local
+  //   - decisión de Lucas: ¿un solo módulo multi-moneda o uno por país?
+  // Queda como deuda técnica trackeada para PR posterior. Mientras tanto el
+  // snapshot en cross_tenant_pagos permite reprocesar el histórico cuando
+  // se decida el diseño final.
   let cambioDivisaId = null;
   if (moneda_pago === 'ARS' && Math.abs(Number(diferencia_cambiaria_ars) || 0) >= 0.01) {
     // El módulo Cambios de Divisa tiene entidades (financieras). Para Red B2B,
@@ -321,11 +382,17 @@ async function registerBuyerPago(client, buyerTenantId, args) {
 
   const proveedorId = await ensureBuyerProveedor(client, buyerTenantId, sellerTenant);
 
-  // Para proveedor_movimientos: monto en moneda_pago, tc si ARS, monto_usd
-  // siempre el USD canónico.
-  const descripcion = `Red B2B ← pago cross-tenant op #${opId} (${moneda_pago === 'USD'
-    ? `USD ${round2(monto_pago)}`
-    : `ARS ${round2(monto_pago)} @ TC ${tc_pago}`})`;
+  // Para proveedor_movimientos: monto en moneda_pago, tc si fiat local
+  // (ARS o UYU), monto_usd siempre el USD canónico.
+  // BLOCKER 2026-07-05 (multi-país UYU): la descripción y la persistencia del
+  // tc asumían ARS o USD binario; un pago UYU se describía como ARS y su tc
+  // se persistía como NULL (por el `moneda_pago === 'ARS' ? tc : null`). Fix:
+  // tratar ARS y UYU como grupo "fiat local" (requieren tc), USD/USDT como
+  // "sin tc" (1:1 con USD canónico).
+  const esFiatLocal = moneda_pago === 'ARS' || moneda_pago === 'UYU';
+  const descripcion = esFiatLocal
+    ? `Red B2B ← pago cross-tenant op #${opId} (${moneda_pago} ${round2(monto_pago)} @ TC ${tc_pago})`
+    : `Red B2B ← pago cross-tenant op #${opId} (${moneda_pago} ${round2(monto_pago)})`;
 
   const movQ = await client.query(
     `INSERT INTO proveedor_movimientos
@@ -343,7 +410,7 @@ async function registerBuyerPago(client, buyerTenantId, args) {
       descripcion,
       round2(Number(monto_pago)),
       moneda_pago,
-      moneda_pago === 'ARS' ? round2(Number(tc_pago)) : null,
+      esFiatLocal ? round2(Number(tc_pago)) : null,
       round2(Number(monto_usd)),
       caja_id,
       args.notas || null,

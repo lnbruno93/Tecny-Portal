@@ -1500,22 +1500,55 @@ describe('calcularDiferenciaCambiaria (helper puro)', () => {
   it('moneda USD → diferencia 0', () => {
     const r = calcularDiferenciaCambiaria(100, 1000, 1500, 'USD');
     expect(r.diferencia_ars).toBe(0);
+    expect(r.diferencia_local).toBe(0);
+    expect(r.moneda_local).toBe('USD');
   });
 
   it('ARS, tc iguales → diferencia 0', () => {
     const r = calcularDiferenciaCambiaria(100, 1000, 1000, 'ARS');
     expect(r.diferencia_ars).toBe(0);
+    expect(r.diferencia_local).toBe(0);
   });
 
   it('ARS, tc_pago > tc_venta → ganancia (positivo)', () => {
     const r = calcularDiferenciaCambiaria(100, 1000, 1200, 'ARS');
     expect(r.diferencia_ars).toBe(20000);
+    expect(r.diferencia_local).toBe(20000);
+    expect(r.moneda_local).toBe('ARS');
     expect(r.ganancia_seller).toBe(true);
   });
 
   it('ARS, tc_pago < tc_venta → pérdida (negativo)', () => {
     const r = calcularDiferenciaCambiaria(100, 1000, 800, 'ARS');
     expect(r.diferencia_ars).toBe(-20000);
+    expect(r.diferencia_local).toBe(-20000);
     expect(r.ganancia_seller).toBe(false);
+  });
+
+  // BLOCKER 2026-07-05 (multi-país UYU): antes UYU caía al bloque ARS y
+  // devolvía la diff en el campo `diferencia_ars` sin serlo. Ahora el campo
+  // legacy `diferencia_ars` queda en 0 para UYU y el valor real vive en
+  // `diferencia_local`. El call-site persiste `diferencia_local` en la
+  // columna `cross_tenant_pagos.diferencia_cambiaria_ars` (nombre legacy).
+  it('UYU, tc_pago > tc_venta → ganancia (positivo) en diferencia_local; diferencia_ars queda en 0', () => {
+    const r = calcularDiferenciaCambiaria(100, 40, 42, 'UYU');
+    expect(r.diferencia_local).toBe(200); // 100 * (42-40)
+    expect(r.moneda_local).toBe('UYU');
+    expect(r.diferencia_ars).toBe(0); // legacy field vacío en UYU
+    expect(r.ganancia_seller).toBe(true);
+  });
+
+  it('UYU, tc_pago < tc_venta → pérdida (negativo)', () => {
+    const r = calcularDiferenciaCambiaria(100, 40, 38, 'UYU');
+    expect(r.diferencia_local).toBe(-200);
+    expect(r.moneda_local).toBe('UYU');
+    expect(r.ganancia_seller).toBe(false);
+  });
+
+  it('USDT → diferencia 0 (tratada como USD)', () => {
+    const r = calcularDiferenciaCambiaria(100, 1000, 1200, 'USDT');
+    expect(r.diferencia_ars).toBe(0);
+    expect(r.diferencia_local).toBe(0);
+    expect(r.moneda_local).toBe('USDT');
   });
 });
