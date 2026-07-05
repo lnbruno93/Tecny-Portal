@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { inventario, proveedores as proveedoresApi, cajas as cajasApi, redB2b } from '../lib/api';
@@ -62,6 +62,23 @@ const ESTADO_DISPLAY = {
   en_tecnico: { label: 'En técnico', tone: 'warn' },
   reservado:  { label: 'Reservado',  tone: 'info' },
 };
+
+// 2026-07-05 TANDA 1 sub-fase C follow-up: helper module-scope para render de
+// estado. Antes era `function estadoBadge` dentro del componente — se recreaba
+// cada render. Al moverlo a module scope no cambia entre renders y se puede
+// usar directo desde <InventarioRow> memoizado sin pasarlo por prop.
+function renderEstadoBadge(s) {
+  const d = ESTADO_DISPLAY[s] || { label: s, tone: 'default' };
+  return <Badge tone={d.tone}>{d.label}</Badge>;
+}
+
+// Options para <EditableCell type="select">, module-scope para no reconstruir
+// el array por render. Consumidas por <InventarioRow>.
+const TIPO_CARGA_OPTIONS = [
+  { value: 'unitario', label: 'Unitario' },
+  { value: 'lote',     label: 'Stock' },
+];
+const ESTADO_OPTIONS = Object.entries(ESTADO_DISPLAY).map(([v, m]) => ({ value: v, label: m.label }));
 
 // Encabezados EXACTOS de la planilla del negocio (misma base para importar y exportar).
 const PLANTILLA_HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
@@ -441,7 +458,10 @@ export default function Inventario() {
     setImeiWarning('');
     lastCheckedImeiRef.current = '';
   }
-  function openEdit(p) {
+  // 2026-07-05 TANDA 1 sub-fase C follow-up: wrapeamos con useCallback para
+  // que <InventarioRow memo> no bail-outee. Todos los setters son estables;
+  // lastCheckedImeiRef.current es un ref (mutable, estable). Deps vacías.
+  const openEdit = useCallback((p) => {
     setEditId(p.id);
     setForm({
       tipo_carga: p.tipo_carga, clase: p.clase, nombre: p.nombre, imei: p.imei ?? '',
@@ -457,7 +477,7 @@ export default function Inventario() {
     // un onBlur no dispare ruido.
     setImeiWarning('');
     lastCheckedImeiRef.current = (p.imei ?? '').trim();
-  }
+  }, []);
 
   // 2026-06-30 #imei-dup: chequeo onBlur del input IMEI en el form de alta.
   // No bloquea por sí solo (handleSave hace el check autoritativo), pero
@@ -547,7 +567,7 @@ export default function Inventario() {
     }
   }
 
-  async function handleDelete(p) {
+  const handleDelete = useCallback(async (p) => {
     const ok = await confirm({ title: 'Eliminar producto', message: `¿Eliminar "${p.nombre}"? Esta acción no se puede deshacer.`, confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
     try {
@@ -555,7 +575,7 @@ export default function Inventario() {
       toast.success('Producto eliminado.');
       await Promise.all([loadProductos(), loadMetricas()]);
     } catch (e) { toast.error(e.message); }
-  }
+  }, [confirm, toast, loadProductos, loadMetricas]);
 
   // ── Export / plantilla / import (misma base de columnas que la planilla) ──
   // Convierte un producto a una fila en el orden EXACTO de PLANTILLA_HEADERS.
@@ -903,10 +923,8 @@ export default function Inventario() {
   // archivo. Filas sin IMEI (accesorios) son legítimas y se ignoran.
   const importDupImeis = useMemo(() => findDuplicateImeis(importRows), [importRows]);
 
-  function estadoBadge(s) {
-    const d = ESTADO_DISPLAY[s] || { label: s, tone: 'default' };
-    return <Badge tone={d.tone}>{d.label}</Badge>;
-  }
+  // estadoBadge extraído a `renderEstadoBadge` a nivel módulo — ver comentario
+  // al inicio del archivo. TANDA 1 sub-fase C follow-up.
 
   return (
     <div>
@@ -1271,167 +1289,21 @@ export default function Inventario() {
               </tr>
             </thead>
             <tbody>
-              {productos.map(p => {
-                const save = (field) => (val) => inlineUpdate(p.id, field, val);
-                // Auditoría 2026-06-30 F-26: catOptions/provOptions ahora
-                // viven arriba en useMemo — antes se reconstruían por fila.
-                // Atenuamos la fila si el producto está oculto: pista visual rápida
-                // sin agregar una columna nueva en una tabla que ya es ancha.
-                return (
-                  <tr key={p.id} style={p.oculto ? { opacity: 0.55 } : undefined}>
-                    {/* Botón Historial — ÚNICA forma de abrir el modal (decisión
-                        UX 2026-06-15): toda la grilla son EditableCells, así que
-                        click en fila chocaría con edit-inline. Una columna
-                        dedicada con ícono es discoverable + 0 conflicto. */}
-                    <td style={{ width: 32, padding: '4px 8px' }}>
-                      <button className="icon-btn"
-                        title="Ver detalle e historial del producto"
-                        onClick={() => setHistorialProductoId(p.id)}>
-                        <Icons.FileText size={14} />
-                      </button>
-                    </td>
-                    <EditableCell
-                      value={p.nombre}
-                      type="text"
-                      align="left"
-                      className="cell-strong"
-                      onSave={save('nombre')}
-                      inputProps={{ maxLength: 200 }}
-                      emptyToNull={false}
-                    />
-                    <EditableCell
-                      value={p.gb || ''}
-                      type="text"
-                      align="left"
-                      className="mono"
-                      onSave={save('gb')}
-                      inputProps={{ maxLength: 20 }}
-                    />
-                    <EditableCell
-                      value={p.bateria}
-                      display={p.bateria != null ? p.bateria + '%' : '—'}
-                      type="number" onKeyDown={blockInvalidNumberKeys}
-                      align="left"
-                      className="mono"
-                      onSave={save('bateria')}
-                      parse={v => v === '' ? null : Number(v)}
-                      inputProps={{ min: 0, max: 100, step: 1 }}
-                    />
-                    <EditableCell
-                      value={p.color || ''}
-                      type="text"
-                      align="left"
-                      onSave={save('color')}
-                      inputProps={{ maxLength: 60 }}
-                    />
-                    <EditableCell
-                      value={p.costo}
-                      display={fmt(p.costo)}
-                      type="number" onKeyDown={blockInvalidNumberKeys}
-                      align="right"
-                      className="mono"
-                      onSave={save('costo')}
-                      parse={v => v === '' ? 0 : Number(v)}
-                      emptyToNull={false}
-                      inputProps={{ min: 0, step: 1 }}
-                    />
-                    <EditableCell
-                      value={p.costo_moneda}
-                      display={<span className="ccy">{p.costo_moneda}</span>}
-                      type="select"
-                      options={Array.from(new Set(['USD', monedaLocal, p.costo_moneda, p.precio_moneda].filter(Boolean))).map(m => ({ value: m, label: m }))}
-                      onSave={save('costo_moneda')}
-                      emptyToNull={false}
-                    />
-                    <EditableCell
-                      value={p.precio_venta}
-                      display={<span className="pos" style={{ fontWeight: 600 }}>{fmt(p.precio_venta)}</span>}
-                      type="number" onKeyDown={blockInvalidNumberKeys}
-                      align="right"
-                      className="mono"
-                      onSave={save('precio_venta')}
-                      parse={v => v === '' ? 0 : Number(v)}
-                      emptyToNull={false}
-                      inputProps={{ min: 0, step: 1 }}
-                    />
-                    <EditableCell
-                      value={p.precio_moneda}
-                      display={<span className="ccy">{p.precio_moneda}</span>}
-                      type="select"
-                      options={Array.from(new Set(['USD', monedaLocal, p.costo_moneda, p.precio_moneda].filter(Boolean))).map(m => ({ value: m, label: m }))}
-                      onSave={save('precio_moneda')}
-                      emptyToNull={false}
-                    />
-                    <EditableCell
-                      value={p.imei || ''}
-                      type="text"
-                      align="left"
-                      className="mono tiny nowrap"
-                      onSave={save('imei')}
-                      inputProps={{ maxLength: 50 }}
-                    />
-                    <EditableCell
-                      value={p.tipo_carga}
-                      display={<span className="muted">{p.tipo_carga === 'lote' ? 'Stock' : 'Unitario'}</span>}
-                      type="select"
-                      options={[{ value: 'unitario', label: 'Unitario' }, { value: 'lote', label: 'Stock' }]}
-                      onSave={save('tipo_carga')}
-                      emptyToNull={false}
-                    />
-                    <EditableCell
-                      value={p.categoria_id}
-                      display={<span className="muted">{p.categoria_nombre || '—'}</span>}
-                      type="combo"
-                      options={catOptions}
-                      onSave={save('categoria_id')}
-                      parse={v => v === '' ? null : Number(v)}
-                    />
-                    <EditableCell
-                      value={p.proveedor || ''}
-                      display={<span className="muted">{p.proveedor || '—'}</span>}
-                      type="combo"
-                      options={provOptions}
-                      className="nowrap"
-                      onSave={save('proveedor')}
-                      inputProps={{ maxLength: 200 }}
-                    />
-                    <EditableCell
-                      value={p.cantidad}
-                      type="number" onKeyDown={blockInvalidNumberKeys}
-                      align="right"
-                      className="mono"
-                      onSave={save('cantidad')}
-                      parse={v => v === '' ? 0 : Number(v)}
-                      emptyToNull={false}
-                      inputProps={{ min: 0, step: 1 }}
-                    />
-                    <EditableCell
-                      value={p.estado}
-                      display={estadoBadge(p.estado)}
-                      type="select"
-                      options={Object.entries(ESTADO_DISPLAY).map(([v, m]) => ({ value: v, label: m.label }))}
-                      onSave={save('estado')}
-                      emptyToNull={false}
-                    />
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button
-                        className="icon-btn"
-                        title={p.oculto ? 'Mostrar (sacar de ocultos)' : 'Ocultar de la vista por defecto'}
-                        onClick={() => inlineUpdate(p.id, 'oculto', !p.oculto).catch(() => {})}
-                        disabled={!canEditProducto}
-                      >
-                        {p.oculto ? <Icons.EyeOff size={14} /> : <Icons.Eye size={14} />}
-                      </button>
-                      {canEditProducto && (
-                        <button className="icon-btn" title="Editar (modal completo)" onClick={() => openEdit(p)}><Icons.Edit size={14} /></button>
-                      )}
-                      {canDeleteProducto && (
-                        <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={() => handleDelete(p)}><Icons.Trash size={14} /></button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {productos.map(p => (
+                <InventarioRow
+                  key={p.id}
+                  p={p}
+                  monedaLocal={monedaLocal}
+                  catOptions={catOptions}
+                  provOptions={provOptions}
+                  canEditProducto={canEditProducto}
+                  canDeleteProducto={canDeleteProducto}
+                  inlineUpdate={inlineUpdate}
+                  openEdit={openEdit}
+                  handleDelete={handleDelete}
+                  onOpenHistorial={setHistorialProductoId}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -2079,3 +1951,212 @@ function DetalleField({ label, value, mono = false }) {
     </div>
   );
 }
+
+// ─── InventarioRow — fila memoizada ────────────────────────────────────────
+//
+// 2026-07-05 TANDA 1 sub-fase C follow-up: extraída de un `.map` inline dentro
+// del componente principal para poder envolverla en React.memo. Antes cada
+// tecla o filtro re-renderizaba la fila entera (13 EditableCells + 3 botones);
+// ahora sólo se recrea cuando cambia el propio `p` (o alguno de los props
+// estables del caller).
+//
+// Punto de mayor derroche del pattern anterior: `const save = (field) => (val)
+// => inlineUpdate(p.id, field, val)` se recreaba por fila cada render. Al
+// vivir DENTRO de una fila memoizada, `save` sólo se recrea cuando el memo
+// no salta — o sea, sólo cuando cambia esta fila puntual.
+//
+// Props estables asumidas (memoizadas por el caller):
+//   · inlineUpdate, openEdit, handleDelete, onOpenHistorial → useCallback
+//   · catOptions, provOptions → useMemo
+//   · monedaLocal, canEditProducto, canDeleteProducto → primitivos/booleans
+const InventarioRow = memo(function InventarioRow({
+  p,
+  monedaLocal,
+  catOptions,
+  provOptions,
+  canEditProducto,
+  canDeleteProducto,
+  inlineUpdate,
+  openEdit,
+  handleDelete,
+  onOpenHistorial,
+}) {
+  // save = curry para no repetir p.id en cada onSave. Al estar la fila
+  // memoizada, este closure sólo se crea cuando cambia `p` o `inlineUpdate`.
+  const save = useCallback(
+    (field) => (val) => inlineUpdate(p.id, field, val),
+    [p.id, inlineUpdate]
+  );
+
+  // Opciones de moneda: dependen de `monedaLocal` + las monedas propias del
+  // producto. Memoizamos para no reconstruir el array por render.
+  const monedaOptions = useMemo(
+    () => Array.from(new Set(['USD', monedaLocal, p.costo_moneda, p.precio_moneda].filter(Boolean)))
+      .map((m) => ({ value: m, label: m })),
+    [monedaLocal, p.costo_moneda, p.precio_moneda]
+  );
+
+  // Handlers pequeños que necesitan capturar `p` — deps sencillas.
+  const handleOpenHistorial = useCallback(() => onOpenHistorial(p.id), [onOpenHistorial, p.id]);
+  const handleToggleOculto = useCallback(
+    () => inlineUpdate(p.id, 'oculto', !p.oculto).catch(() => {}),
+    [inlineUpdate, p.id, p.oculto]
+  );
+  const handleOpenEdit = useCallback(() => openEdit(p), [openEdit, p]);
+  const handleDeleteRow = useCallback(() => handleDelete(p), [handleDelete, p]);
+
+  return (
+    <tr style={p.oculto ? { opacity: 0.55 } : undefined}>
+      {/* Botón Historial — ÚNICA forma de abrir el modal (decisión
+          UX 2026-06-15): toda la grilla son EditableCells, así que
+          click en fila chocaría con edit-inline. Una columna
+          dedicada con ícono es discoverable + 0 conflicto. */}
+      <td style={{ width: 32, padding: '4px 8px' }}>
+        <button className="icon-btn"
+          title="Ver detalle e historial del producto"
+          onClick={handleOpenHistorial}>
+          <Icons.FileText size={14} />
+        </button>
+      </td>
+      <EditableCell
+        value={p.nombre}
+        type="text"
+        align="left"
+        className="cell-strong"
+        onSave={save('nombre')}
+        inputProps={{ maxLength: 200 }}
+        emptyToNull={false}
+      />
+      <EditableCell
+        value={p.gb || ''}
+        type="text"
+        align="left"
+        className="mono"
+        onSave={save('gb')}
+        inputProps={{ maxLength: 20 }}
+      />
+      <EditableCell
+        value={p.bateria}
+        display={p.bateria != null ? p.bateria + '%' : '—'}
+        type="number" onKeyDown={blockInvalidNumberKeys}
+        align="left"
+        className="mono"
+        onSave={save('bateria')}
+        parse={v => v === '' ? null : Number(v)}
+        inputProps={{ min: 0, max: 100, step: 1 }}
+      />
+      <EditableCell
+        value={p.color || ''}
+        type="text"
+        align="left"
+        onSave={save('color')}
+        inputProps={{ maxLength: 60 }}
+      />
+      <EditableCell
+        value={p.costo}
+        display={fmt(p.costo)}
+        type="number" onKeyDown={blockInvalidNumberKeys}
+        align="right"
+        className="mono"
+        onSave={save('costo')}
+        parse={v => v === '' ? 0 : Number(v)}
+        emptyToNull={false}
+        inputProps={{ min: 0, step: 1 }}
+      />
+      <EditableCell
+        value={p.costo_moneda}
+        display={<span className="ccy">{p.costo_moneda}</span>}
+        type="select"
+        options={monedaOptions}
+        onSave={save('costo_moneda')}
+        emptyToNull={false}
+      />
+      <EditableCell
+        value={p.precio_venta}
+        display={<span className="pos" style={{ fontWeight: 600 }}>{fmt(p.precio_venta)}</span>}
+        type="number" onKeyDown={blockInvalidNumberKeys}
+        align="right"
+        className="mono"
+        onSave={save('precio_venta')}
+        parse={v => v === '' ? 0 : Number(v)}
+        emptyToNull={false}
+        inputProps={{ min: 0, step: 1 }}
+      />
+      <EditableCell
+        value={p.precio_moneda}
+        display={<span className="ccy">{p.precio_moneda}</span>}
+        type="select"
+        options={monedaOptions}
+        onSave={save('precio_moneda')}
+        emptyToNull={false}
+      />
+      <EditableCell
+        value={p.imei || ''}
+        type="text"
+        align="left"
+        className="mono tiny nowrap"
+        onSave={save('imei')}
+        inputProps={{ maxLength: 50 }}
+      />
+      <EditableCell
+        value={p.tipo_carga}
+        display={<span className="muted">{p.tipo_carga === 'lote' ? 'Stock' : 'Unitario'}</span>}
+        type="select"
+        options={TIPO_CARGA_OPTIONS}
+        onSave={save('tipo_carga')}
+        emptyToNull={false}
+      />
+      <EditableCell
+        value={p.categoria_id}
+        display={<span className="muted">{p.categoria_nombre || '—'}</span>}
+        type="combo"
+        options={catOptions}
+        onSave={save('categoria_id')}
+        parse={v => v === '' ? null : Number(v)}
+      />
+      <EditableCell
+        value={p.proveedor || ''}
+        display={<span className="muted">{p.proveedor || '—'}</span>}
+        type="combo"
+        options={provOptions}
+        className="nowrap"
+        onSave={save('proveedor')}
+        inputProps={{ maxLength: 200 }}
+      />
+      <EditableCell
+        value={p.cantidad}
+        type="number" onKeyDown={blockInvalidNumberKeys}
+        align="right"
+        className="mono"
+        onSave={save('cantidad')}
+        parse={v => v === '' ? 0 : Number(v)}
+        emptyToNull={false}
+        inputProps={{ min: 0, step: 1 }}
+      />
+      <EditableCell
+        value={p.estado}
+        display={renderEstadoBadge(p.estado)}
+        type="select"
+        options={ESTADO_OPTIONS}
+        onSave={save('estado')}
+        emptyToNull={false}
+      />
+      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <button
+          className="icon-btn"
+          title={p.oculto ? 'Mostrar (sacar de ocultos)' : 'Ocultar de la vista por defecto'}
+          onClick={handleToggleOculto}
+          disabled={!canEditProducto}
+        >
+          {p.oculto ? <Icons.EyeOff size={14} /> : <Icons.Eye size={14} />}
+        </button>
+        {canEditProducto && (
+          <button className="icon-btn" title="Editar (modal completo)" onClick={handleOpenEdit}><Icons.Edit size={14} /></button>
+        )}
+        {canDeleteProducto && (
+          <button className="icon-btn" title="Eliminar" style={{ color: 'var(--neg)' }} onClick={handleDeleteRow}><Icons.Trash size={14} /></button>
+        )}
+      </td>
+    </tr>
+  );
+});
