@@ -256,6 +256,36 @@ async function insertarDetalle(client, venta, b) {
       const obsFinal = c.observaciones?.trim()
         ? `${c.observaciones.trim()}\n— ${autoObs}`
         : autoObs;
+      // 2026-07-05 (Sentry issue 7587634920): validar IMEI dup ANTES del
+      // INSERT. Antes, el INSERT explotaba con violación del constraint
+      // `idx_productos_imei_unique` cuando el user cargaba un canje con un
+      // IMEI ya existente en Inventario disponible — 20 events, 2 users
+      // afectados en prod. El error 500 no dejaba pista de qué hacer.
+      // Ahora devolvemos 409 con contexto claro.
+      //
+      // Sólo validamos si el canje tiene IMEI: canjes sin IMEI (accesorios,
+      // baterías) pueden ser duplicados válidos. El unique index también
+      // filtra `imei IS NOT NULL AND estado='disponible' AND deleted_at IS NULL`
+      // — replicamos la misma condición para no dar falsos positivos con
+      // productos vendidos o soft-deleted.
+      if (c.imei && String(c.imei).trim()) {
+        const { rows: dup } = await client.query(
+          `SELECT id, nombre FROM productos
+            WHERE imei = $1 AND deleted_at IS NULL AND estado = 'disponible'
+            LIMIT 1`,
+          [String(c.imei).trim()]
+        );
+        if (dup.length > 0) {
+          const e = new Error(
+            `El IMEI ${c.imei} ya existe en tu inventario (producto #${dup[0].id}: "${dup[0].nombre}"). ` +
+            `Si querés reingresarlo por canje, primero eliminá o vendé el producto existente. ` +
+            `Alternativa: destildá "Agregar a Inventario" para registrar el canje sin crear un producto nuevo.`
+          );
+          e.status = 409;
+          e.code = 'CANJE_IMEI_DUP';
+          throw e;
+        }
+      }
       const { rows: pr } = await client.query(
         `INSERT INTO productos (
             tipo_carga, clase, nombre, imei, gb, color, bateria,
