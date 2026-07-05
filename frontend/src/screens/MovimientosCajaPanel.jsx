@@ -33,7 +33,13 @@ function grupoMoneda(m) {
 }
 
 export default function MovimientosCajaPanel() {
-  const toast   = useToast();
+  // Bug pre-live (Sentry, jul-2026): `const toast = useToast()` capturaba el
+  // objeto contexto entero `{ toast }`, no el helper con `.error`/`.success`.
+  // Cualquier click en "Registrar transferencia" o "Eliminar" crasheaba con
+  // "Cannot read properties of undefined (reading 'error')". Todo el resto
+  // del portal destructura `const { toast } = useToast()` — este era el
+  // único caller con el patrón roto. Ver ToastContext.jsx:81-85.
+  const { toast } = useToast();
   const confirm = useConfirm();
 
   const [transferencias, setTransferencias] = useState([]);

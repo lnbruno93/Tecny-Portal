@@ -530,7 +530,14 @@ export default function CuentasCC() {
     setLoadingMasMovs(true);
     cuentas.movimientos(selectedId, { page: movsPag.page + 1, limit: 100 })
       .then(r => {
-        setClienteDetail(prev => prev ? { ...prev, movimientos: [...prev.movimientos, ...(r.data || [])] } : prev);
+        // Guard 2026-07-05 (Sentry P2): `prev.movimientos` puede ser undefined
+        // si el fetch inicial falló silenciosamente y solo populó `resumen`.
+        // Sin guard, el spread tira "Cannot read properties of undefined
+        // (reading 'Symbol(Symbol.iterator)')" al hacer "Ver más".
+        setClienteDetail(prev => prev ? {
+          ...prev,
+          movimientos: [...(Array.isArray(prev.movimientos) ? prev.movimientos : []), ...(r.data || [])],
+        } : prev);
         setMovsPag(r.pagination || movsPag);
       })
       .catch(silentReport)
@@ -632,9 +639,11 @@ export default function CuentasCC() {
     const delta  = signo * Number(optMov.monto_total);
     setClienteDetail(prev => {
       if (!prev) return prev;
+      // Guard 2026-07-05 (Sentry P2): mismo motivo que loadMasMovimientos.
+      const prevMovs = Array.isArray(prev.movimientos) ? prev.movimientos : [];
       return {
         ...prev,
-        movimientos: [...prev.movimientos, optMov],
+        movimientos: [...prevMovs, optMov],
         resumen: {
           ...prev.resumen,
           saldo:            Number(prev.resumen.saldo) + delta,
@@ -654,6 +663,8 @@ export default function CuentasCC() {
   function handleSaveDone(tempId, real) {
     setClienteDetail(prev => {
       if (!prev) return prev;
+      // Guard 2026-07-05 (Sentry P2): mismo motivo que loadMasMovimientos.
+      if (!Array.isArray(prev.movimientos)) return prev;
       return {
         ...prev,
         movimientos: prev.movimientos.map(m => m.id === tempId ? real : m),
@@ -666,6 +677,8 @@ export default function CuentasCC() {
     toast.error(errorMsg || 'Error al guardar');
     setClienteDetail(prev => {
       if (!prev) return prev;
+      // Guard 2026-07-05 (Sentry P2): sin array no hay nada que revertir.
+      if (!Array.isArray(prev.movimientos)) return prev;
       const failed = prev.movimientos.find(m => m.id === tempId);
       if (!failed) return prev;
       const signo = TIPO_DISPLAY[failed.tipo]?.signo ?? 1;

@@ -68,12 +68,24 @@ const queryInversionesSchema = z.object({
 // Las cajas son las cuentas donde caen los pagos (USD Efectivo, Banco, Mercado Pago…).
 // Se gestionan desde la hoja "Config Cajas" del módulo Cajas.
 
+// NUMERIC(14,2) — 12 dígitos enteros + 2 decimales. Cualquier valor por encima
+// de este rango provoca "value overflows numeric format" en PostgreSQL, que
+// llega al frontend como 500 crudo (Sentry P2, 2026-07-05). Agregamos `.max()`
+// para atajar en Zod (400 con mensaje amigable) antes de que llegue al INSERT.
+// Redondeo hacia abajo para evitar rounding-up en el borde (1e12 exacto se
+// escribe como 999_999_999_999 sin decimales).
+const NUMERIC_14_2_MAX = 999_999_999_999.99;
+const numericOverflowMsg = 'El monto excede el máximo permitido (12 dígitos enteros)';
+
 const cajaSchema = z.object({
   nombre:        z.string().trim().min(1, 'Nombre requerido').max(80),
   moneda:        MonedaEnum.default('ARS'),
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
-  saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),  // saldo de apertura (en la moneda de la caja)
+  saldo_inicial: z.coerce.number()
+                   .min(0, 'El saldo inicial no puede ser negativo')
+                   .max(NUMERIC_14_2_MAX, numericOverflowMsg)
+                   .optional(),  // saldo de apertura (en la moneda de la caja)
   es_financiera: z.boolean().optional(),         // marca esta caja como "la financiera"
   es_tarjeta:    z.boolean().optional(),         // marca este método como tarjeta (cobro automático desde Ventas)
   comision_pct:  z.coerce.number().min(0).max(100).optional().nullable(), // % que retiene la financiera
@@ -84,7 +96,10 @@ const updateCajaSchema = z.object({
   moneda:        MonedaEnum.optional(),
   activo:        z.boolean().optional(),
   orden:         z.coerce.number().int().min(0).optional(),
-  saldo_inicial: z.coerce.number().min(0, 'El saldo inicial no puede ser negativo').optional(),
+  saldo_inicial: z.coerce.number()
+                   .min(0, 'El saldo inicial no puede ser negativo')
+                   .max(NUMERIC_14_2_MAX, numericOverflowMsg)
+                   .optional(),
   es_financiera: z.boolean().optional(),
   es_tarjeta:    z.boolean().optional(),
   comision_pct:  z.coerce.number().min(0).max(100).optional().nullable(),
@@ -96,7 +111,9 @@ const updateCajaSchema = z.object({
 const cajaAjusteSchema = z.object({
   fecha:    z.string().date('Fecha inválida — usar YYYY-MM-DD'),
   tipo:     z.enum(['ingreso', 'egreso'], { error: 'tipo debe ser: ingreso, egreso' }),
-  monto:    z.coerce.number().positive('El monto debe ser mayor a 0'),
+  monto:    z.coerce.number()
+              .positive('El monto debe ser mayor a 0')
+              .max(NUMERIC_14_2_MAX, numericOverflowMsg),
   tc:       z.coerce.number().positive().optional().nullable(),  // requerido si la caja es ARS
   concepto: z.string().trim().max(300).optional().nullable(),
 }).strict();
