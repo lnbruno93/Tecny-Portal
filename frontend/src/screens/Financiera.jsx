@@ -554,7 +554,7 @@ export default function Financiera() {
     // editando la venta. El backend también lo bloquea con 400.
     const ok = await confirm({
       title: 'Eliminar venta previa',
-      message: `Fecha ${fmtFecha(c.fecha)} · Cliente ${c.cliente} · Neto ARS ${fmt(c.monto_neto)}.\nEsta acción no se puede deshacer.`,
+      message: `Fecha ${fmtFecha(c.fecha)} · Cliente ${c.cliente || 'Sin cliente'} · Neto ARS ${fmt(c.monto_neto)}.\nEsta acción no se puede deshacer.`,
       confirmLabel: 'Eliminar', danger: true,
     });
     if (!ok) return;
@@ -853,7 +853,7 @@ export default function Financiera() {
                   {recentComps.map(c => (
                     <tr key={c.id} className="tbl-row-click">
                       <td className="muted">{fmtFecha(c.fecha)}</td>
-                      <td style={{ fontWeight: 600 }}>{c.cliente}</td>
+                      <td style={{ fontWeight: 600 }}>{c.cliente || <span className="muted">Sin cliente</span>}</td>
                       <td className="muted">{c.vendedor_nombre || vendName(c.vendedor_id)}</td>
                       <td><Badge>{c.referencia || '—'}</Badge></td>
                       <td className="num mono">
@@ -1261,7 +1261,7 @@ export default function Financiera() {
                   return (
                   <tr key={c.id} className="tbl-row-click">
                     <td className="muted">{fmtFecha(c.fecha)}</td>
-                    <td style={{ fontWeight: 600 }}>{c.cliente}</td>
+                    <td style={{ fontWeight: 600 }}>{c.cliente || <span className="muted">Sin cliente</span>}</td>
                     <td>{c.vendedor_nombre || vendName(c.vendedor_id)}</td>
                     <td>
                       {esManual

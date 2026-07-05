@@ -187,6 +187,50 @@ describe('Ledger de cajas', () => {
     expect(list.length).toBe(1); // sigue habiendo un solo comprobante activo
   });
 
+  // Regresión bug prod 2026-06-26 → 2026-07-04 (Sentry issue 7577814718).
+  //
+  // Origen: `POST /api/ventas/:id/comprobantes` explota con
+  //   `null value in column "cliente" of relation "comprobantes" violates
+  //    not-null constraint`
+  // cuando la venta origen tiene `cliente_nombre = NULL` (venta rápida cash
+  // sin identificar cliente) Y usa caja financiera. iostoreuy prod tenía 2
+  // ventas bloqueadas por este bug con 3 usuarios afectados.
+  //
+  // Fix: migration 20260705000002 dropea NOT NULL de `comprobantes.cliente`;
+  // el comprobante se persiste con `cliente = NULL`. UI cambia el render
+  // vacío por "Sin cliente" (Financiera.jsx + MantenimientoSection.jsx).
+  it('venta SIN cliente_nombre + caja financiera: comprobante se crea con cliente NULL (regresión 2026-07-04)', async () => {
+    await request(app).put('/api/config').set(auth()).send({ pct_financiera: 10 });
+    const cajaFin = await crearCaja({ saldo_inicial: 0, es_financiera: true });
+
+    // Alta de venta con cliente_nombre omitido — replica el flujo de venta
+    // rápida cash sin identificar cliente. En prod los tenants pueden crear
+    // ventas sin cliente_nombre, y estas ventas son válidas.
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      // cliente_nombre omitido a propósito
+      estado: 'acreditado',
+      items: [{ descripcion: 'Producto SC', cantidad: 1, precio_vendido: 800, costo: 500, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaFin.id, metodo_nombre: cajaFin.nombre, monto: 800, moneda: 'USD' }],
+    });
+    expect(venta.status).toBe(201);
+
+    // Antes del fix: 500 aquí con violación NOT NULL. Ahora: 201 y el
+    // comprobante Financiera se crea con `cliente = null`.
+    const comp = await request(app).post(`/api/ventas/${venta.body.id}/comprobantes`).set(auth())
+      .send({ archivo_data: 'data:image/png;base64,iVBORw0KGgo=', archivo_nombre: 'sc.png', archivo_tipo: 'image/png' });
+    expect(comp.status).toBe(201);
+    expect(comp.body.comprobante_financiera).toBeTruthy();
+    expect(Number(comp.body.comprobante_financiera.monto)).toBe(800);
+    expect(Number(comp.body.comprobante_financiera.monto_financiera)).toBe(80); // 800 × 10%
+    // Confirmar que la fila persistida tiene cliente NULL — NO placeholder.
+    // Búsqueda por order_id como referencia (única del comprobante).
+    const r = await request(app).get(`/api/comprobantes?buscar=${encodeURIComponent(venta.body.order_id)}`).set(auth());
+    const list = (r.body.data || r.body).filter(c => c.referencia === venta.body.order_id);
+    expect(list.length).toBe(1);
+    expect(list[0].cliente).toBeNull();
+  });
+
   // ── Consistencia del ciclo de vida del comprobante de Financiera ──
   // Helper: comprobantes de Financiera ACTIVOS para una venta (por su order_id en referencia).
   async function compsActivos(orderId) {
