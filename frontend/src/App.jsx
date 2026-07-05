@@ -1,4 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+// 2026-07-05 (Sentry issues 7515527708 y 7514038974): reemplazamos
+// React.lazy por lazyWithRetry — envuelve el import() con retry defensivo
+// (2 retries con backoff 500ms/1500ms) antes de propagar. Ver lib/lazyWithRetry.js.
+import lazy from './lib/lazyWithRetry';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
