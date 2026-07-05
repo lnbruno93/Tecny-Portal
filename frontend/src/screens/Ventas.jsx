@@ -283,7 +283,13 @@ export default function Ventas() {
   const prodReq = useRef(0); // token "última request gana" (evita que una respuesta lenta pise a una nueva)
   const setVF = (k, v) => setVForm(f => ({ ...f, [k]: v }));
 
-  function openEdit(v) {
+  // 2026-07-05 TANDA 1 sub-fase C follow-up: wrapeamos los 7 handlers que
+  // pasamos a <VentasList> con useCallback para que React.memo(VentaRow)
+  // efectivamente skipee re-renders. Sin esto, cada render del padre creaba
+  // funciones nuevas y el memo bail-outeaba. Deps confirmadas: setters son
+  // estables, navigate/newItemId también, EMPTY_VENTA y garantiaFallback son
+  // module scope. openEdit sólo depende de navigate.
+  const openEdit = useCallback((v) => {
     // 2026-06-09: si la fila es una venta B2B (origen='b2b'), no podemos
     // editarla con el modal de retail (estructura distinta). La grilla
     // unificada redirige al cliente B2B para que la edite desde su pantalla
@@ -327,7 +333,7 @@ export default function Ventas() {
       usd_input: '', neto_input: '',
     })));
     setShowVenta(true);
-  }
+  }, [navigate]);
 
   function openVenta(rapida) {
     setVForm({ ...EMPTY_VENTA, fecha: todayStr() });
@@ -857,7 +863,7 @@ export default function Ventas() {
     } catch (err) { setVentaError(err.message); } finally { setSavingVenta(false); }
   }
 
-  async function changeEstado(v, estado) {
+  const changeEstado = useCallback(async (v, estado) => {
     // 2026-06-10: la grilla unificada acepta cambiar estado a B2B también.
     // Origen 'b2b' → PATCH a /api/cuentas/movimientos/:id/estado.
     // Origen 'retail' → PUT a /api/ventas/:id (legacy, sigue igual).
@@ -870,13 +876,13 @@ export default function Ventas() {
       toast.success('Estado actualizado.');
       await Promise.all([loadLista(), loadDash()]);
     } catch (e) { toast.error(e.message); }
-  }
+  }, [toast, loadLista, loadDash]);
 
   // 2026-06-10 — Confirmar entrega de un envío desde la grilla. En el backend
   // pasa el envío a 'Entregado' y la venta asociada de 'pendiente' a
   // 'acreditado' en una sola TX. Sólo se muestra cuando v.envio?.estado no es
   // 'Entregado' ni 'Cancelado'.
-  async function confirmarEntrega(v) {
+  const confirmarEntrega = useCallback(async (v) => {
     if (!v?.envio?.id) return;
     const ok = await confirm({
       title: 'Confirmar entrega',
@@ -889,8 +895,8 @@ export default function Ventas() {
       toast.success('Entrega confirmada.');
       await Promise.all([loadLista(), loadDash()]);
     } catch (e) { toast.error(e.message); }
-  }
-  async function deleteVenta(v) {
+  }, [confirm, toast, loadLista, loadDash]);
+  const deleteVenta = useCallback(async (v) => {
     // Si la fila es B2B (origen='b2b'), el endpoint correcto es el de
     // movimientos_cc (que cascadea: revierte caja + restaura stock + audit).
     // El _b2b_mov_id lo arrastra el backend desde el listado unificado.
@@ -909,7 +915,7 @@ export default function Ventas() {
       toast.success('Venta eliminada.');
       await Promise.all([loadLista(), loadDash()]);
     } catch (e) { toast.error(e.message); }
-  }
+  }, [confirm, toast, loadLista, loadDash]);
   async function deleteRapida(id) {
     const ok = await confirm({ title: 'Eliminar venta rápida', message: '¿Seguro?', confirmLabel: 'Eliminar', danger: true });
     if (!ok) return;
@@ -1030,10 +1036,10 @@ export default function Ventas() {
   }
 
   // ── Comprobantes adjuntos (ver) ──
-  async function openComprob(id) {
+  const openComprob = useCallback(async (id) => {
     setShowComprob(id); setComprobList(null);
     try { setComprobList(await ventas.comprobantes(id)); } catch (_) { setComprobList([]); }
-  }
+  }, []);
   async function abrirComprob(cid) {
     try {
       const c = await ventas.getComprobante(cid);
@@ -1078,7 +1084,7 @@ export default function Ventas() {
   // que abría una ventana nueva. Unificamos en uno solo: ambos puntos de
   // entrada (botón "Descargar comprobante" del modal y icono impresora en
   // la grilla) generan el mismo PDF con el mismo layout sobrio.
-  async function comprobantePDF(v) {
+  const comprobantePDF = useCallback(async (v) => {
     await withPdfLoading(async () => {
       const contactoVinculado = v.cliente_id
         ? contactos.find(c => String(c.id) === String(v.cliente_id))
@@ -1116,7 +1122,14 @@ export default function Ventas() {
         toast.error(`No se pudo generar el comprobante PDF: ${e?.message || e}`, { duration: 12000 });
       }
     });
-  }
+  }, [withPdfLoading, contactos, vendedores, garantias, tenantNombre, toast]);
+
+  // Handler estable para abrir el modal focalizado de "editar vendedor" del
+  // comprobante. Antes se pasaba inline a <VentasList> (nueva ref por render);
+  // ahora es un useCallback vacío-deps para no romper el memo de VentaRow.
+  const openEditarVendedor = useCallback((v) => {
+    setEditarVendedor({ open: true, venta: v });
+  }, []);
 
   function exportarExcel() {
     if (!lista.length) { toast.error('No hay ventas para exportar.'); return; }
@@ -1238,7 +1251,7 @@ export default function Ventas() {
           openComprob={openComprob}
           deleteVenta={deleteVenta}
           confirmarEntrega={confirmarEntrega}
-          openEditarVendedor={(v) => setEditarVendedor({ open: true, venta: v })}
+          openEditarVendedor={openEditarVendedor}
         />
       )}
 
