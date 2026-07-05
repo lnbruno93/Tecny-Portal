@@ -264,9 +264,18 @@ router.post('/cajas', requireCapability('cajas.crear'), validate(cajaSchema), as
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
     if (es_financiera) await client.query('UPDATE metodos_pago SET es_financiera = false WHERE es_financiera = true');
+    // Cast explícito de saldo_inicial (2026-07-05): el `COALESCE($5, 0)` sin
+    // cast infería `$5` como int4 (por el literal `0`), lo que:
+    //   1) truncaba decimales silenciosamente (saldo_inicial=100.5 → 100),
+    //   2) overflow "value out of range for type integer" cuando el operador
+    //      cargaba montos > 2_147_483_647 (INT_MAX), llegando como 500 crudo
+    //      al frontend (Sentry P2).
+    // `COALESCE($5::numeric, 0)` fuerza la inferencia hacia numeric(14,2) que
+    // es el tipo real de la columna, respetando los decimales. Mismo cambio
+    // aplicado en el UPDATE de más abajo.
     const { rows } = await client.query(
       `INSERT INTO metodos_pago (nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct)
-       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0), COALESCE($5, 0), COALESCE($6, false), COALESCE($7, false), $8)
+       VALUES ($1, $2, COALESCE($3, true), COALESCE($4, 0), COALESCE($5::numeric, 0), COALESCE($6, false), COALESCE($7, false), $8)
        RETURNING id, nombre, moneda, activo, orden, saldo_inicial, es_financiera, es_tarjeta, comision_pct`,
       [nombre, moneda, activo ?? null, orden ?? null, saldo_inicial ?? null, es_financiera ?? null, es_tarjeta ?? null, es_tarjeta ? (comision_pct ?? null) : null]
     );
@@ -317,12 +326,14 @@ router.put('/cajas/:id', requireCapability('cajas.crear'), validate(updateCajaSc
     const finalEsTarjeta = es_tarjeta ?? b0.es_tarjeta;
     const finalComision = finalEsTarjeta === false ? null : (comision_pct !== undefined ? comision_pct : b0.comision_pct);
     const { rows } = await client.query(
+      // Cast explícito ::numeric del saldo_inicial — ver comentario en el POST
+      // (línea ~267). Preserva decimales y evita overflow silencioso.
       `UPDATE metodos_pago SET
          nombre        = COALESCE($1, nombre),
          moneda        = COALESCE($2, moneda),
          activo        = COALESCE($3, activo),
          orden         = COALESCE($4, orden),
-         saldo_inicial = COALESCE($5, saldo_inicial),
+         saldo_inicial = COALESCE($5::numeric, saldo_inicial),
          es_financiera = COALESCE($6, es_financiera),
          es_tarjeta    = $7,
          comision_pct  = $8

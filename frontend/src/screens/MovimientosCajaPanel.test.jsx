@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
 import MovimientosCajaPanel from './MovimientosCajaPanel';
@@ -63,6 +63,29 @@ describe('MovimientosCajaPanel — smoke tests (mount + estado inicial)', () => 
       const btn = screen.getByRole('button', { name: /nueva transferencia/i });
       expect(btn).toBeInTheDocument();
       expect(btn).not.toBeDisabled();
+    });
+  });
+
+  // Regresión Sentry P2 (2026-07-05): `const toast = useToast()` (sin
+  // destructure) capturaba el objeto contexto entero. Cualquier `toast.error`
+  // o `toast.success` tiraba "Cannot read properties of undefined". Este test
+  // triggerea el path Guardar sin campos → obliga a `toast.error(...)` a
+  // ejecutarse. Antes del fix: ErrorBoundary / render crash. Después: OK.
+  it('regresión: click "Guardar" con form incompleto llama toast.error sin crash', async () => {
+    renderPanel();
+    // Esperar mount + botón "Nueva transferencia".
+    const nuevaBtn = await screen.findByRole('button', { name: /nueva transferencia/i });
+    fireEvent.click(nuevaBtn);
+    // El modal abre → "Registrar transferencia" aparece.
+    const registrarBtn = await screen.findByRole('button', { name: /registrar transferencia/i });
+    // Click Guardar sin haber elegido origen — toast.error debe dispararse
+    // ("Elegí la caja de origen."). Si `toast` estaba mal destructurado, esto
+    // crashea con "toast.error is not a function".
+    fireEvent.click(registrarBtn);
+    // El toast tiene un rol implícito por su clase — chequeamos que la copia
+    // aparezca en el DOM sin caer en un unhandled exception.
+    await waitFor(() => {
+      expect(screen.getByText(/elegí la caja de origen/i)).toBeInTheDocument();
     });
   });
 });

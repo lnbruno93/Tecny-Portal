@@ -87,4 +87,35 @@ describe('Config Cajas — CRUD', () => {
     const activos = await request(app).get('/api/ventas/metodos-pago').set(auth());
     expect(activos.body.some(m => m.id === created.body.id)).toBe(false);
   });
+
+  // Sentry P2 (2026-07-05): un typo en el input dejaba pasar valores fuera de
+  // NUMERIC(14,2) hasta el INSERT → 500 "value overflows numeric format".
+  // Ahora Zod lo ataja en la capa de schema con 400 amigable.
+  it('rechaza saldo_inicial fuera de NUMERIC(14,2) con 400 amigable', async () => {
+    const res = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Overflow', moneda: 'USD', saldo_inicial: 1_000_000_000_000 });
+    expect(res.status).toBe(400);
+    // El mensaje debe hablar de "dígitos" para que el operador sepa qué corregir,
+    // no un stack-trace de PG.
+    const body = JSON.stringify(res.body).toLowerCase();
+    expect(body).toMatch(/dígitos|maximo|máximo|excede|overflow/);
+  });
+
+  it('acepta saldo_inicial en el borde superior de NUMERIC(14,2)', async () => {
+    // 999_999_999_999.99 es el máximo representable — debe pasar.
+    const res = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Borde Max', moneda: 'USD', saldo_inicial: 999_999_999_999.99 });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.saldo_inicial)).toBe(999_999_999_999.99);
+  });
+
+  // Regresión hidden bug 2026-07-05: sin cast explícito `::numeric` en el SQL,
+  // pg inferia `$5` como int4 y TRUNCABA los decimales de saldo_inicial
+  // (100.50 → 100). No producía error visible — solo mal saldo silencioso.
+  it('preserva decimales del saldo_inicial (bug de int cast)', async () => {
+    const res = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'Caja Decimal', moneda: 'USD', saldo_inicial: 100.5 });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.saldo_inicial)).toBe(100.5);
+  });
 });
