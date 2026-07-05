@@ -181,6 +181,90 @@ describe('POST /api/ventas', () => {
     expect(Number(inv1.body.data[0].costo)).toBe(200);
     expect(Number(inv2.body.data[0].costo)).toBe(150);
   });
+
+  // Regresión Sentry issue 7587634920 (20 events, 2 users afectados en prod).
+  //
+  // Antes: crear/editar una venta con canje `agregar_stock:true` y un IMEI
+  // que ya existía en Inventario disponible reventaba el INSERT INTO
+  // productos con violación del UNIQUE `idx_productos_imei_unique`. Como
+  // el error salía crudo de PG, el user veía un 500 sin explicación y la
+  // TX enterita rollbackeaba.
+  //
+  // Ahora: validación pre-INSERT devuelve 409 con contexto (id + nombre
+  // del producto existente y sugerencia de cómo salir).
+  it('canje con IMEI dup → 409 con contexto claro (regresión Sentry 7587634920)', async () => {
+    // 1) Pre-existe un producto con IMEI X (venta previa que dejó stock).
+    // categoria_id es obligatorio (categoriaRequerida en schema).
+    const catDup = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone IMEI Dup' });
+    const imeiExistente = '905' + Date.now().toString().slice(-12);
+    const preProd = await request(app).post('/api/inventario/productos').set(auth()).send({
+      tipo_carga: 'unitario', clase: 'celular',
+      nombre: 'iPhone Existente', imei: imeiExistente,
+      categoria_id: catDup.body.id,
+      costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+      cantidad: 1, estado: 'disponible',
+    });
+    expect(preProd.status).toBe(201);
+
+    // 2) Se intenta crear una venta con un canje que reutiliza el mismo IMEI.
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 15 nuevo', cantidad: 1, precio_vendido: 1200, costo: 900, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone dup',
+        imei: imeiExistente,       // ← mismo IMEI que el producto pre-existente
+        valor_toma: 300, moneda: 'USD',
+        agregar_stock: true,        // ← clave: intenta crear producto en Inventario
+      }],
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/ya existe en tu inventario/i);
+    // Verificar que la respuesta menciona el nombre del producto existente para
+    // que el user sepa cuál es y pueda decidir qué hacer.
+    expect(res.body.error).toContain('iPhone Existente');
+  });
+
+  it('canje sin IMEI + agregar_stock:true NO es afectado por la validación', async () => {
+    // Accesorios, baterías o repuestos sin serie: pueden repetirse.
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 15 nuevo', cantidad: 1, precio_vendido: 1200, costo: 900, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'Cargador viejo',
+        imei: null,                // ← sin IMEI
+        valor_toma: 10, moneda: 'USD',
+        agregar_stock: true,
+      }],
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('canje con IMEI dup pero agregar_stock:false → OK (no crea producto)', async () => {
+    // Si el operador NO quiere agregar al Inventario, el IMEI dup no
+    // debería importar — el canje sólo queda registrado en la venta.
+    const catB = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'iPhone B ' + Math.random() });
+    const imei = '906' + Date.now().toString().slice(-12);
+    await request(app).post('/api/inventario/productos').set(auth()).send({
+      tipo_carga: 'unitario', clase: 'celular',
+      nombre: 'Existente-B', imei,
+      categoria_id: catB.body.id,
+      costo: 300, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD',
+      cantidad: 1, estado: 'disponible',
+    });
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone nuevo', cantidad: 1, precio_vendido: 1000, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje sin ingresar',
+        imei,
+        valor_toma: 250, moneda: 'USD',
+        agregar_stock: false,    // ← no toca inventario
+      }],
+    });
+    expect(res.status).toBe(201);
+  });
 });
 
 describe('GET /api/ventas', () => {
