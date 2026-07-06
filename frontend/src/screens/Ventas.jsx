@@ -1301,8 +1301,8 @@ export default function Ventas() {
                         // Auditoría 2026-06-30 F-13/14: key={_id} en vez de index.
                         <div key={it._id} data-testid="venta-item-row" className="item-grid" style={{ '--cols': '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
                           <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(it._id, 'cantidad', e.target.value)} />
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(it._id, 'precio_vendido', e.target.value)} />
+                          <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(it._id, 'cantidad', e.target.value)} />
+                          <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(it._id, 'precio_vendido', e.target.value)} />
                           {/* Items de venta retail: USD o moneda local del tenant (no
                               USDT, que es medio de pago, no precio de góndola). Si el
                               record tiene un valor legacy fuera del set (ej. venta
@@ -1322,7 +1322,7 @@ export default function Ventas() {
                   {/* Vendedor / cliente */}
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Vendedor</label><select className="input" value={vForm.vendedor_id} onChange={e => setVF('vendedor_id', e.target.value)}><option value="">—</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Comisión (USD)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">Comisión (USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1, position: 'relative' }}>
@@ -1497,7 +1497,7 @@ export default function Ventas() {
                     })()}
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /><TcWarning tc={vForm.tc_venta} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /><TcWarning tc={vForm.tc_venta} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
                   </div>
                   <div className="field">
@@ -1559,7 +1559,7 @@ export default function Ventas() {
                             </div>
                             <div className="field" style={{ flex: 1 }}>
                               <label className="field-label">Valor toma (USD)</label>
-                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                              <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      placeholder="0" value={c.valor_toma} onChange={e => setCanje(c._id, 'valor_toma', e.target.value)} />
                             </div>
                           </div>
@@ -1578,7 +1578,7 @@ export default function Ventas() {
                             </div>
                             <div className="field" style={{ flex: 0.7 }}>
                               <label className="field-label">% Batería</label>
-                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                              <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      min="0" max="100" placeholder="100"
                                      value={c.bateria} onChange={e => setCanje(c._id, 'bateria', e.target.value)} />
                             </div>
@@ -1607,7 +1607,7 @@ export default function Ventas() {
                             </div>
                             <div className="field" style={{ flex: 1 }}>
                               <label className="field-label">Precio venta sugerido (USD)</label>
-                              <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono"
+                              <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      placeholder="0 (editar en Inventario después)"
                                      value={c.precio_venta_sugerido}
                                      onChange={e => setCanje(c._id, 'precio_venta_sugerido', e.target.value)}
@@ -1665,12 +1665,12 @@ export default function Ventas() {
                             <div key={p._id}>
                               <div data-testid="venta-pago-row" style={{ display: 'grid', gridTemplateColumns: '1fr 90px 78px 78px auto', gap: 6, alignItems: 'center' }}>
                                 <select className="input" value="__CC__" onChange={e => setPagoMetodo(i, e.target.value)}><option value="">Método…</option>{metodos.map(mm => <option key={mm.id} value={mm.nombre}>{mm.nombre}</option>)}<option value="__CC__">Cuenta corriente (deuda)</option></select>
-                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(p._id, 'monto', e.target.value)} />
+                                <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Monto" value={p.monto} onChange={e => setPago(p._id, 'monto', e.target.value)} />
                                 <select className="input" value={p.moneda} onChange={e => setPago(p._id, 'moneda', e.target.value)}>
                                   {Array.from(new Set([...monedas, p.moneda].filter(Boolean)))
                                     .map(mm => <option key={mm} value={mm}>{mm}</option>)}
                                 </select>
-                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(p._id, 'tc', e.target.value)} />
+                                <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(p._id, 'tc', e.target.value)} />
                                 <button type="button" className="icon-btn" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
                               </div>
                               <TcWarning tc={p.tc} />
@@ -1720,7 +1720,7 @@ export default function Ventas() {
                                 </span>
                                 {localDirect ? (
                                   <input
-                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="venta-pago-ars"
                                     className="input mono" placeholder="730.000"
                                     value={p.monto}
@@ -1729,7 +1729,7 @@ export default function Ventas() {
                                   />
                                 ) : (
                                   <input
-                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="venta-pago-usd"
                                     className="input mono" placeholder="500"
                                     value={derivedUsd}
@@ -1742,7 +1742,7 @@ export default function Ventas() {
                                 <div style={{ position: 'relative' }}>
                                   <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
                                   <input
-                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     className="input mono" placeholder="1460"
                                     value={p.tc}
                                     onChange={e => setPagoTc(i, e.target.value)}
@@ -1781,7 +1781,7 @@ export default function Ventas() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(p.moneda)}</span>
                                     <input
-                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"
                                       value={p.bruto_manual ? (p.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
                                       onChange={e => setPagoBruto(i, e.target.value)}
@@ -1797,7 +1797,7 @@ export default function Ventas() {
                                   <div className="muted tiny" style={{ marginBottom: 2 }}>Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                     <input
-                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"
                                       value={p.neto_input || Math.round(det.netoOrig * 100) / 100}
                                       onChange={e => setPagoNeto(i, e.target.value)}

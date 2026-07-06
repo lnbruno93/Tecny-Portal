@@ -271,7 +271,7 @@ export default function Usados() {
                     <div className="input-group" style={{ width: 130, marginLeft: 'auto' }}>
                       <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
                       <input
-                        type="number" onKeyDown={blockInvalidNumberKeys}
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                         className="input mono"
                         style={{
                           textAlign: 'right',
@@ -339,7 +339,7 @@ export default function Usados() {
                       <div className="input-group">
                         <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>
                         <input
-                          type="number" onKeyDown={blockInvalidNumberKeys}
+                          type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                           className="input mono"
                           placeholder="0"
                           value={form.precio_usd}

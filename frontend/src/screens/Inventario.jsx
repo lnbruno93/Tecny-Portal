@@ -1357,7 +1357,7 @@ export default function Inventario() {
                     <input className="input" placeholder="ej. iPhone 15 Pro" value={form.nombre} onChange={e => setF('nombre', e.target.value)} autoFocus />
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Batería (%)</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="85" value={form.bateria} onChange={e => setF('bateria', e.target.value)} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">Batería (%)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="85" value={form.bateria} onChange={e => setF('bateria', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">GB</label><input className="input" placeholder="128" value={form.gb} onChange={e => setF('gb', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Color</label><input className="input" placeholder="Natural" value={form.color} onChange={e => setF('color', e.target.value)} /></div>
                   </div>
@@ -1406,7 +1406,7 @@ export default function Inventario() {
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Costo</label>
                       <div className="flex-row" style={{ gap: 6 }}>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} style={{ flex: 1 }} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} style={{ flex: 1 }} />
                         {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
                         <select className="input" style={{ width: 80 }} value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.costo_moneda].filter(Boolean)))
@@ -1417,7 +1417,7 @@ export default function Inventario() {
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Precio de venta</label>
                       <div className="flex-row" style={{ gap: 6 }}>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} style={{ flex: 1 }} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} style={{ flex: 1 }} />
                         <select className="input" style={{ width: 80 }} value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.precio_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}
@@ -1426,7 +1426,7 @@ export default function Inventario() {
                     </div>
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Cantidad</label><input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} /></div>
+                    <div className="field" style={{ flex: 1 }}><label className="field-label">Cantidad</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} /></div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Estado</label>
                       <select className="input" value={form.estado} onChange={e => setF('estado', e.target.value)}>
@@ -1637,7 +1637,7 @@ export default function Inventario() {
                                 <label className="field-label">
                                   Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span>
                                 </label>
-                                <input type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                                <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                                   className="input mono" placeholder="0"
                                   value={g.monto}
                                   onChange={e => updateImportGroup(g.key, { monto: e.target.value })} />
@@ -1656,7 +1656,7 @@ export default function Inventario() {
                                   <label className="field-label">
                                     TC {monedaSel}→USD <span style={{ color: 'var(--neg)' }}>*</span>
                                   </label>
-                                  <input type="number" onKeyDown={blockInvalidNumberKeys}
+                                  <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     min="0" step="0.01" className="input mono"
                                     placeholder="1000" value={g.tc}
                                     onChange={e => updateImportGroup(g.key, { tc: e.target.value })} />
@@ -2038,7 +2038,7 @@ const InventarioRow = memo(function InventarioRow({
       <EditableCell
         value={p.bateria}
         display={p.bateria != null ? p.bateria + '%' : '—'}
-        type="number" onKeyDown={blockInvalidNumberKeys}
+        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
         align="left"
         className="mono"
         onSave={save('bateria')}
@@ -2055,7 +2055,7 @@ const InventarioRow = memo(function InventarioRow({
       <EditableCell
         value={p.costo}
         display={fmt(p.costo)}
-        type="number" onKeyDown={blockInvalidNumberKeys}
+        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
         align="right"
         className="mono"
         onSave={save('costo')}
@@ -2074,7 +2074,7 @@ const InventarioRow = memo(function InventarioRow({
       <EditableCell
         value={p.precio_venta}
         display={<span className="pos" style={{ fontWeight: 600 }}>{fmt(p.precio_venta)}</span>}
-        type="number" onKeyDown={blockInvalidNumberKeys}
+        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
         align="right"
         className="mono"
         onSave={save('precio_venta')}
@@ -2125,7 +2125,7 @@ const InventarioRow = memo(function InventarioRow({
       />
       <EditableCell
         value={p.cantidad}
-        type="number" onKeyDown={blockInvalidNumberKeys}
+        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
         align="right"
         className="mono"
         onSave={save('cantidad')}

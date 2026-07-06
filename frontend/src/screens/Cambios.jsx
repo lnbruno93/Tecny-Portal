@@ -285,13 +285,13 @@ export default function Cambios() {
                           <option value={TIPOS.reciboUsd}>Recibo USD</option>
                         </select>
                       </td>
-                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={!esEntregaLocal} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
+                      <td><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={!esEntregaLocal} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
                       <td>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={!esEntregaLocal} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={!esEntregaLocal} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
                         {esEntregaLocal && <TcWarning tc={mov.tc} />}
                       </td>
                       <td>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: esEntregaLocal ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: esEntregaLocal ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
                           placeholder="USD" readOnly={esEntregaLocal}
                           value={esEntregaLocal ? (usdPreview || '') : mov.monto_usd}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />
