@@ -212,8 +212,30 @@ function parseConversationId(req, res) {
   return id;
 }
 
+// Audit 2026-07-06 P1 (chat bot capability gates): el ctx ahora incluye
+// caps + role + tenantCapRol para que las tools sensibles del bot puedan
+// aplicar el mismo modelo de autorización que el resto del portal.
+//
+// Diseño:
+//   - `caps`: el objeto plano `{ 'ventas.trabajar': true, ... }` que ya
+//     viene embebido en el JWT (ver middleware auth). Fast path sin pegar
+//     a DB.
+//   - `role`: rol de sistema del user. 'admin' bypassea toda cap (mismo
+//     comportamiento que requireCapability.js:44).
+//   - `tenantCapRol`: rol dentro del tenant. Owner / admin del tenant
+//     también bypassean (mismo isBypassRole()).
+//
+// Con estos 3 campos, `hasCap(ctx, slug)` en chat-tools.js implementa la
+// misma lógica que `hasCapability()` del middleware — sin hacer un round-
+// trip a DB por cada tool call.
 function ctxFromReq(req) {
-  return { tenantId: req.tenantId, userId: req.user?.id };
+  return {
+    tenantId:     req.tenantId,
+    userId:       req.user?.id,
+    caps:         req.user?.caps || {},
+    role:         req.user?.role || null,
+    tenantCapRol: req.user?.tenant_cap_rol || null,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────

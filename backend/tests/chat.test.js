@@ -436,7 +436,10 @@ describe('chatLib.runChatTurn — validaciones', () => {
 // Validan que las queries SQL devuelven números correctos contra datos
 // seedeados en el setup. Cada test limpia + inserta lo que necesita.
 // ─────────────────────────────────────────────────────────────────────────
-const T1_CTX = { tenantId: 1, userId: 1 };
+// role='admin' + tenantCapRol='owner' → bypass total de capability gates
+// (audit 2026-07-06 P1). Los tests focales de gates viven en su propio
+// describe abajo con ctx sin bypass.
+const T1_CTX = { tenantId: 1, userId: 1, role: 'admin', tenantCapRol: 'owner', caps: {} };
 
 describe('Tools Tier 1 — get_ventas_periodo', () => {
   beforeEach(async () => {
@@ -1429,4 +1432,75 @@ describe('TANDA 1 unit — enforceDailyChatLimits', () => {
     expect(rows[0]).toMatchObject({ tenant_id: 1, user_id: 1, messages: 1 });
     expect(rows[1]).toMatchObject({ tenant_id: 2, user_id: tenant2UserId, messages: 1 });
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Audit 2026-07-06 P1: capability gates en tools sensibles del bot.
+//
+// El bot expone data sensible (saldos B2B, ranking vendedores, saldos
+// cajas, deuda a proveedores, saldos tarjetas) a cualquier user con
+// acceso al widget. Sin gates, un vendedor sin permiso a "Contactos"
+// podía preguntarle al bot "¿quién me debe?" y saltarse el gate UI.
+//
+// Contract del gate:
+//   - `ctx.role === 'admin'` bypass total.
+//   - `ctx.tenantCapRol ∈ { owner, admin }` bypass total.
+//   - Cualquier otro rol: chequea `ctx.caps[slug] === true`.
+//   - Si falla → return `{ error: 'no_permission', capability, message }`
+//     (NO throw — el bot lo interpreta y le contesta al user).
+// ─────────────────────────────────────────────────────────────────────────
+describe('Tools capability gates (audit 2026-07-06 P1)', () => {
+  // ctx base para "vendedor" (sin bypass) — sin caps.
+  const VENDEDOR_CTX = {
+    tenantId: 1, userId: 1,
+    role: 'vendedor', tenantCapRol: 'vendedor', caps: {},
+  };
+
+  const CASES = [
+    { tool: 'get_saldos_cajas',            cap: 'cajas.ver',            input: {} },
+    { tool: 'get_top_productos',           cap: 'ventas.trabajar',      input: { periodo: 'hoy' } },
+    { tool: 'get_top_vendedores',          cap: 'ventas.ver_ganancias', input: { periodo: 'hoy' } },
+    { tool: 'get_cc_pendientes',           cap: 'contactos.ver',        input: {} },
+    { tool: 'get_proveedores_pendientes',  cap: 'proveedores.trabajar', input: {} },
+    { tool: 'get_tarjetas_no_liquidadas',  cap: 'tarjetas.trabajar',    input: {} },
+  ];
+
+  it.each(CASES)(
+    '$tool devuelve no_permission cuando falta cap "$cap"',
+    async ({ tool, cap, input }) => {
+      const r = await executeTool(tool, input, VENDEDOR_CTX);
+      expect(r).toEqual({
+        error: 'no_permission',
+        capability: cap,
+        message: expect.stringContaining(cap),
+      });
+    }
+  );
+
+  it.each(CASES)(
+    '$tool NO gatea si ctx.caps["$cap"] === true',
+    async ({ tool, cap, input }) => {
+      const ctxConCap = { ...VENDEDOR_CTX, caps: { [cap]: true } };
+      const r = await executeTool(tool, input, ctxConCap);
+      expect(r).not.toHaveProperty('error', 'no_permission');
+    }
+  );
+
+  it.each(CASES)(
+    '$tool bypass total con role="admin"',
+    async ({ tool, input }) => {
+      const ctxAdmin = { tenantId: 1, userId: 1, role: 'admin', tenantCapRol: null, caps: {} };
+      const r = await executeTool(tool, input, ctxAdmin);
+      expect(r).not.toHaveProperty('error', 'no_permission');
+    }
+  );
+
+  it.each(CASES)(
+    '$tool bypass total con tenantCapRol="owner"',
+    async ({ tool, input }) => {
+      const ctxOwner = { tenantId: 1, userId: 1, role: 'user', tenantCapRol: 'owner', caps: {} };
+      const r = await executeTool(tool, input, ctxOwner);
+      expect(r).not.toHaveProperty('error', 'no_permission');
+    }
+  );
 });

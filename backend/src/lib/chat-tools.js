@@ -37,6 +37,43 @@ const { evaluarTodas } = require('./alertas');
 const { saldoNetoCase } = require('./tarjetasSaldo');
 
 // ──────────────────────────────────────────────────────────────────────────
+// Capability gates para tools sensibles (audit 2026-07-06 P1)
+// ──────────────────────────────────────────────────────────────────────────
+//
+// Motivación: el bot expone data sensible (saldos B2B, ranking de
+// vendedores, saldos de tarjetas) a CUALQUIER user con acceso al widget
+// de chat, ignorando las capabilities del sistema de permisos (F1-F5c).
+// Esto viola el principle of least privilege: un vendedor puede
+// preguntarle "cuánto le debe cada cliente" al bot y saltarse el gate
+// que el módulo UI de CC tiene.
+//
+// Solución: replicar la lógica de `requireCapability.js#hasCapability`
+// en un helper puro. Cada tool sensible chequea la cap y, si no la tiene,
+// devuelve un `{ error: 'no_permission', capability, message }` que el bot
+// interpreta y responde al user como "no tenés permiso para eso".
+//
+// Los bypasses son los mismos que el middleware:
+//   - `role === 'admin'` (rol de sistema super-admin).
+//   - `tenantCapRol ∈ { 'owner', 'admin' }` (rol dentro del tenant).
+// Cualquier otro rol → cae al check de `ctx.caps[slug] === true`.
+function hasCap(ctx, slug) {
+  if (ctx?.role === 'admin') return true;
+  if (ctx?.tenantCapRol === 'owner' || ctx?.tenantCapRol === 'admin') return true;
+  return ctx?.caps?.[slug] === true;
+}
+
+// Return canónico cuando falta una capability. El bot procesa este shape
+// y lo traduce a lenguaje natural para el user (ej: "No podés ver saldos
+// de clientes con tu rol actual — pediselo al owner del negocio").
+function noPermission(capability) {
+  return {
+    error: 'no_permission',
+    capability,
+    message: `Necesitás la capability "${capability}" para acceder a esta información. Pediselo al owner del negocio.`,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // System prompt — instrucciones al bot
 // ──────────────────────────────────────────────────────────────────────────
 // Diseño del prompt:
@@ -646,6 +683,10 @@ const handlers = {
   // Mismo cálculo que cajaLedger.js — replicado acá en SQL pura para no
   // tener que hacer N+1 (1 query agrupa todas las cajas).
   async get_saldos_cajas(_input, ctx) {
+    // Audit 2026-07-06 P1: expone saldos de cajas de todas las monedas.
+    // Un vendedor no tiene por qué saber cuánto USD/ARS hay en cada caja.
+    // Mismo gate que la UI del módulo Cajas.
+    if (!hasCap(ctx, 'cajas.ver')) return noPermission('cajas.ver');
     return db.withTenant(ctx.tenantId, async (client) => {
       const { rows: cajas } = await client.query(
         `SELECT
@@ -740,6 +781,10 @@ const handlers = {
   // ──────────────────────────────────────────────────────────────────────
 
   async get_top_productos(input, ctx) {
+    // Audit 2026-07-06 P1: expone facturación por descripción de producto.
+    // Un vendedor puede querer ver "qué se vendió", pero un rol de solo
+    // lectura restringido no debería. Gate mínimo `ventas.trabajar`.
+    if (!hasCap(ctx, 'ventas.trabajar')) return noPermission('ventas.trabajar');
     const { periodo, desde: desdeIn, hasta: hastaIn } = input || {};
     const { desde, hasta, label } = periodoRange(periodo, { desde: desdeIn, hasta: hastaIn });
     const limit = Math.min(Math.max(1, Number(input?.limit) || 5), 20);
@@ -789,6 +834,13 @@ const handlers = {
   },
 
   async get_top_vendedores(input, ctx) {
+    // Audit 2026-07-06 P1: ranking de vendedores expone facturación por
+    // persona (ingreso_usd). Mismo criterio que /api/ventas/dashboard: la
+    // cap `ventas.ver_ganancias` es la que gatea ver plata en el dashboard,
+    // así que la usamos acá también. Un vendedor con `ventas.trabajar` pero
+    // sin `ventas.ver_ganancias` NO ve el ranking (que también expone
+    // implícitamente los ingresos de sus colegas).
+    if (!hasCap(ctx, 'ventas.ver_ganancias')) return noPermission('ventas.ver_ganancias');
     const { periodo, desde: desdeIn, hasta: hastaIn } = input || {};
     const { desde, hasta, label } = periodoRange(periodo, { desde: desdeIn, hasta: hastaIn });
     const limit = Math.min(Math.max(1, Number(input?.limit) || 5), 20);
@@ -839,6 +891,11 @@ const handlers = {
   },
 
   async get_cc_pendientes(input, ctx) {
+    // Audit 2026-07-06 P1: expone saldos B2B (quién nos debe cuánto).
+    // La pantalla Contactos gatea con `contactos.ver` — replicamos acá.
+    // Sin esto, un vendedor sin acceso a Contactos igual podía preguntarle
+    // al bot "¿quién me debe?" y saltarse el gate.
+    if (!hasCap(ctx, 'contactos.ver')) return noPermission('contactos.ver');
     const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
@@ -902,6 +959,9 @@ const handlers = {
   },
 
   async get_proveedores_pendientes(input, ctx) {
+    // Audit 2026-07-06 P1: expone deuda a proveedores (a quién le debemos).
+    // Mismo gate que el módulo Proveedores: `proveedores.trabajar`.
+    if (!hasCap(ctx, 'proveedores.trabajar')) return noPermission('proveedores.trabajar');
     const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
@@ -1007,6 +1067,10 @@ const handlers = {
   },
 
   async get_tarjetas_no_liquidadas(_input, ctx) {
+    // Audit 2026-07-06 P1: expone saldos adeudados por procesadora de
+    // tarjeta (Mercado Pago, Naranja, etc.). Mismo gate que el módulo
+    // Tarjetas: `tarjetas.trabajar`.
+    if (!hasCap(ctx, 'tarjetas.trabajar')) return noPermission('tarjetas.trabajar');
     return db.withTenant(ctx.tenantId, async (client) => {
       // 2026-06-21 TANDA 2 #341 DRY: usa saldoNetoCase canónico de
       // lib/tarjetasSaldo.js — misma fórmula que /api/tarjetas/saldos-resumen
