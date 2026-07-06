@@ -267,12 +267,15 @@ async function deudaCCClientes(...allArgs) {
 async function deudaProveedores(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
   const [fechaCorte] = restArgs;
-  // Saldo proveedores: compras suman deuda, pagos la restan.
+  // Saldo proveedores: compras suman deuda, pagos + devoluciones la restan.
+  // COR-2 audit 2026-07-06: devolución cross-tenant B2B (buyer devuelve al
+  // seller) baja la deuda del buyer con ese proveedor.
   const { rows } = await exec.query(
     `SELECT COALESCE(SUM(
        CASE m.tipo
-         WHEN 'compra' THEN m.monto_usd
-         WHEN 'pago'   THEN -m.monto_usd
+         WHEN 'compra'     THEN m.monto_usd
+         WHEN 'pago'       THEN -m.monto_usd
+         WHEN 'devolucion' THEN -m.monto_usd
          ELSE 0
        END
      ), 0) AS deuda_usd,

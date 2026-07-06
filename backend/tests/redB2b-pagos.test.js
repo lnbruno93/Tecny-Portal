@@ -958,6 +958,82 @@ describe('POST /operations/:id/devolucion', () => {
     expect(r.status).toBe(409);
     expect(r.body.reason).toBe('op_not_active');
   });
+
+  // COR-2 audit 2026-07-06: proveedor_movimientos.tipo debe ser 'devolucion'
+  // (antes era 'pago' porque el CHECK constraint no admitía 'devolucion' —
+  // workaround explícito en el código con comentario "semánticamente NO ES
+  // un pago"). Ahora la migration 20260706000002 extendió el CHECK.
+  it('COR-2: devolución crea proveedor_mov con tipo=devolucion y baja saldo del proveedor buyer', async () => {
+    // Pre-pago para pasar guard `devolucion_excede_pagado` (200 USD = lo que
+    // vamos a devolver).
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    // Saldo del buyer al proveedor ANTES de la devolución:
+    //   compra (createCrossOp)   +500
+    //   pago    (pre-pago arriba) -200
+    //   ─────────────────────────────
+    //   saldo                     300
+    const saldoBefore = await pool.query(
+      `SELECT COALESCE(SUM(
+         CASE
+           WHEN tipo='pago'                             THEN -monto_usd
+           WHEN tipo='devolucion'                       THEN -monto_usd
+           WHEN tipo='compra' AND caja_id IS NOT NULL   THEN 0
+           ELSE monto_usd
+         END
+       ), 0)::float AS saldo
+         FROM proveedor_movimientos
+        WHERE tenant_id = $1 AND deleted_at IS NULL`,
+      [tenantBId]
+    );
+    expect(saldoBefore.rows[0].saldo).toBe(300);
+
+    // Devolución: 2 items × 100 USD.
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 2 }],
+        motivo: 'COR-2 test',
+      });
+    expect(r.status).toBe(201);
+
+    // El proveedor_mov de la devolución tiene tipo='devolucion' (antes: 'pago').
+    const devMov = await pool.query(
+      `SELECT tipo, monto_usd FROM proveedor_movimientos
+        WHERE tenant_id = $1
+          AND cross_tenant_operation_id IN (
+            SELECT id FROM cross_tenant_operations WHERE parent_op_id = $2
+          )`,
+      [tenantBId, op.opId]
+    );
+    expect(devMov.rows.length).toBe(1);
+    expect(devMov.rows[0].tipo).toBe('devolucion');
+    expect(Number(devMov.rows[0].monto_usd)).toBe(200);
+
+    // Saldo del buyer al proveedor BAJÓ en 200 USD (300 - 200 = 100).
+    const saldoAfter = await pool.query(
+      `SELECT COALESCE(SUM(
+         CASE
+           WHEN tipo='pago'                             THEN -monto_usd
+           WHEN tipo='devolucion'                       THEN -monto_usd
+           WHEN tipo='compra' AND caja_id IS NOT NULL   THEN 0
+           ELSE monto_usd
+         END
+       ), 0)::float AS saldo
+         FROM proveedor_movimientos
+        WHERE tenant_id = $1 AND deleted_at IS NULL`,
+      [tenantBId]
+    );
+    expect(saldoAfter.rows[0].saldo).toBe(100);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

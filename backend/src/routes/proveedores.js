@@ -80,6 +80,9 @@ router.get('/', async (req, res, next) => {
                   COALESCE(SUM(
                     CASE
                       WHEN m.tipo='pago'                                  THEN -m.monto_usd
+                      -- COR-2 audit 2026-07-06: devolución cross-tenant baja
+                      -- la deuda al proveedor (equivalente contable a pago).
+                      WHEN m.tipo='devolucion'                            THEN -m.monto_usd
                       WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
                       ELSE m.monto_usd
                     END
@@ -910,9 +913,11 @@ router.delete('/movimientos/:id', requireCapability('proveedores.eliminar_compra
 router.get('/resumen/saldos', async (req, res, next) => {
   try {
     // Misma regla que el listado: compras con caja_id son contado, no deuda.
+    // COR-2 audit 2026-07-06: 'devolucion' cross-tenant baja la deuda (= pago).
     const SALDO_EXPR = `
       CASE
         WHEN m.tipo='pago'                              THEN -m.monto_usd
+        WHEN m.tipo='devolucion'                        THEN -m.monto_usd
         WHEN m.tipo='compra' AND m.caja_id IS NOT NULL  THEN 0
         ELSE m.monto_usd
       END

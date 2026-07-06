@@ -1052,20 +1052,13 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         const sellerDevMovId = sellerDevMovQ.rows[0].id;
 
         // D. SET LOCAL buyer: stock -= cantidad (sin guard — puede quedar
-        // negativo si ya vendió) + INSERT proveedor_mov tipo='devolucion'
-        // (NOTA: el CHECK de proveedor_movimientos.tipo NO incluye 'devolucion'
-        // — usamos 'pago' con monto negativo NO ES POSIBLE porque monto >= 0
-        // CHECK. Estrategia: insertamos como soft entry con descripción
-        // "devolución" pero usando tipo='pago' (porque es plata que
-        // efectivamente sale de la deuda al proveedor)... pero monto >= 0
-        // hace esto imposible. ALTERNATIVA: hacemos UPDATE del mov original
-        // restando del monto_total, pero no queremos tocar el mov original
-        // por trazabilidad. SOLUCIÓN F4: usamos tipo='pago' con monto >= 0
-        // representando el monto devuelto — describe lo que pasó pero
-        // semánticamente NO ES un pago).
+        // negativo si ya vendió) + INSERT proveedor_mov tipo='devolucion'.
         //
-        // Mejor decisión: INSERT con tipo='pago' (= deuda baja para el buyer)
-        // monto = totalUsdDev (positivo) descripción explícita de devolución.
+        // COR-2 audit 2026-07-06: hasta ahora se usaba tipo='pago' porque el
+        // CHECK de proveedor_movimientos.tipo no admitía 'devolucion'. La
+        // migration 20260706000002 extendió el CHECK y backfilleó las filas
+        // históricas — ahora usamos el tipo correcto para no inflar los KPIs
+        // de "pagos al proveedor" y que los filtros por tipo funcionen bien.
         await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
         await client.query(
           `UPDATE productos p SET
@@ -1088,7 +1081,7 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
              (tenant_id, proveedor_id, fecha, tipo, descripcion, monto, moneda, tc,
               monto_usd, caja_id, notas, created_by_user_id,
               cross_tenant_operation_id)
-           VALUES ($1, $2, CURRENT_DATE, 'pago', $3, $4, 'USD', NULL,
+           VALUES ($1, $2, CURRENT_DATE, 'devolucion', $3, $4, 'USD', NULL,
                    $4, NULL, $5, $6,
                    NULL)
            RETURNING id`,

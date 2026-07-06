@@ -130,8 +130,11 @@ async function evalProveedorAtrasado(client, { dias_sin_movimiento = 30 } = {}) 
     `WITH saldos AS (
        SELECT p.id, p.nombre,
               COALESCE(SUM(CASE m.tipo
-                WHEN 'compra' THEN m.monto_usd
-                WHEN 'pago'   THEN -m.monto_usd
+                WHEN 'compra'     THEN m.monto_usd
+                WHEN 'pago'       THEN -m.monto_usd
+                -- COR-2 audit 2026-07-06: 'devolucion' cross-tenant B2B
+                -- baja la deuda al proveedor (equivalente contable a pago).
+                WHEN 'devolucion' THEN -m.monto_usd
                 ELSE 0
               END), 0) AS saldo,
               MAX(m.fecha) AS ultimo_movimiento
