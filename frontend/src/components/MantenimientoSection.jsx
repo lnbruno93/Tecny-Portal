@@ -90,7 +90,7 @@ function FinancieraReport({ report }) {
                   {report.muestras.comprobantes.map(c => (
                     <tr key={c.id}>
                       <td className="mono tiny">{c.fecha}</td>
-                      <td className="tiny">{c.cliente}</td>
+                      <td className="tiny">{c.cliente || <span className="muted">Sin cliente</span>}</td>
                       <td className="mono tiny" style={{ textAlign: 'right' }}>{fmtARS(c.monto_neto)}</td>
                     </tr>
                   ))}
