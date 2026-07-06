@@ -276,10 +276,20 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
 
         // G. Lookup caja del propio tenant (validar que existe + moneda
         // compatible con el moneda_pago).
+        //
+        // BLOCKER 2026-07-06 SEG-1: bajo `adminQuery` (BYPASSRLS), este SELECT
+        // no filtra por tenant_id → un operador podía pasar la caja_id de
+        // OTRO tenant y persistirla en `movimientos_cc.caja_id` /
+        // `cross_tenant_pagos.caja_seller_id` del suyo, corrompiendo reportes
+        // de caja y potencial leak de metadata. `metodos_pago` es tenant-scoped
+        // desde 20260615000002 (RLS) + 20260616000005/06 (índices per-tenant)
+        // — el comentario histórico que decía "catálogo global" era falso.
+        // Fix: filtro explícito `AND tenant_id = $2` con myTenantId como
+        // ground truth (viene de req.tenantId, no del body).
         const callerCajaQ = await client.query(
           `SELECT id, moneda, nombre FROM metodos_pago
-             WHERE id = $1 AND activo = true AND deleted_at IS NULL`,
-          [body.caja_id]
+             WHERE id = $1 AND tenant_id = $2 AND activo = true AND deleted_at IS NULL`,
+          [body.caja_id, myTenantId]
         );
         const callerCaja = callerCajaQ.rows[0];
         if (!callerCaja) {
