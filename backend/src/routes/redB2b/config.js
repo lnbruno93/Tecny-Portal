@@ -147,7 +147,9 @@ router.get('/', async (req, res, next) => {
 //
 // Validaciones:
 //   - caja_id existe + activo (si no null)
-//   - caja_id ∈ catálogo global (metodos_pago es catálogo, no tenant-scoped)
+//   - caja_id ∈ del propio tenant (metodos_pago ES tenant-scoped desde
+//     20260615000002 + índices 20260616000005/06; el comentario histórico
+//     de "catálogo global" era falso — SEG-2 audit 2026-07-06)
 //
 // PR-C P1-4b (issue #462): adminOnly inline — esta acción re-rutea dónde
 // caen los pagos cross-tenant del lado nuestro. Un member con cap
@@ -162,12 +164,19 @@ router.patch('/caja-default', adminOnly, validate(setCajaDefaultSchema), async (
     const result = await db.adminQuery(async (client) => {
       await client.query('BEGIN');
       try {
-        // Validar caja existe + activa si no null.
+        // Validar caja existe + activa + PROPIA (tenant_id match).
+        //
+        // BLOCKER 2026-07-06 SEG-2: sin `AND tenant_id = $2` un admin del
+        // tenant podía setear como default cross-tenant una caja de OTRO
+        // tenant. Luego `resolveCajaParaTenant` la propagaba a los pagos
+        // cross-tenant nuestros → persistía en `movimientos_cc.caja_id` y
+        // `cross_tenant_pagos.caja_seller_id/buyer_id` una caja ajena.
         if (caja_id != null) {
           const cQ = await client.query(
             `SELECT id, nombre, moneda FROM metodos_pago
-               WHERE id = $1 AND activo = true AND deleted_at IS NULL`,
-            [caja_id]
+               WHERE id = $1 AND tenant_id = $2
+                 AND activo = true AND deleted_at IS NULL`,
+            [caja_id, myTenantId]
           );
           if (!cQ.rows[0]) {
             await client.query('ROLLBACK');

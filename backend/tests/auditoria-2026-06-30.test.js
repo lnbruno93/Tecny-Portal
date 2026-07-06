@@ -272,14 +272,23 @@ beforeAll(async () => {
   tokenUy = signToken({ id: userUyId, username: 'aud-d19-user-uy',
     email: 'aud-d19-uy@test.local', tenant_id: tenantUyId, caps });
 
-  // Cajas seedeadas (catálogo global).
-  const cq = await pool.query(
-    `SELECT id, moneda FROM metodos_pago WHERE activo = true ORDER BY orden`
-  );
-  for (const row of cq.rows) {
-    if (row.moneda === 'USD' && !cajaUsdId) cajaUsdId = row.id;
-    if (row.moneda === 'ARS' && !cajaArsId) cajaArsId = row.id;
+  // SEG-1 (audit 2026-07-06): metodos_pago es tenant-scoped. Los tests que
+  // hacen POST /pagos usan tokenArA (tenantArAId como seller) — creamos
+  // cajas PROPIAS de ese tenant. También seedeamos B para que el
+  // resolveCajaParaTenant(buyer) del propio flow encuentre una caja compatible.
+  async function seedCaja(tId, nombre, moneda) {
+    const r = await pool.query(
+      `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+       VALUES ($1, $2, $3, true) RETURNING id`,
+      [tId, nombre, moneda]
+    );
+    return r.rows[0].id;
   }
+  cajaUsdId = await seedCaja(tenantArAId, 'AUD-2026-06-30 A USD', 'USD');
+  cajaArsId = await seedCaja(tenantArAId, 'AUD-2026-06-30 A ARS', 'ARS');
+  // Buyer seed (para resolveCajaParaTenant del lado B).
+  await seedCaja(tenantArBId, 'AUD-2026-06-30 B USD', 'USD');
+  await seedCaja(tenantArBId, 'AUD-2026-06-30 B ARS', 'ARS');
 });
 
 afterAll(async () => {
@@ -306,6 +315,8 @@ afterAll(async () => {
     await pool.query(`DELETE FROM tenant_admin_actions WHERE tenant_id = ANY($1::int[])`, [ids]);
     await pool.query(`DELETE FROM tenant_users WHERE user_id = ANY($1::int[])`, [userIds]);
     await pool.query(`DELETE FROM users WHERE id = ANY($1::int[])`, [userIds]);
+    // SEG-1 (audit 2026-07-06): borrar cajas seedeadas per-tenant antes de tenants (FK).
+    await pool.query(`DELETE FROM metodos_pago WHERE tenant_id = ANY($1::int[])`, [ids]);
     await pool.query(`DELETE FROM tenants WHERE id = ANY($1::int[])`, [ids]);
   }
   await teardownTestDb(pool);

@@ -125,14 +125,20 @@ function calcularDiferenciaCambiaria(montoUsd, tcVenta, tcPago, monedaPago = 'AR
  * @returns {Promise<number|null>} caja_id o null si no hay caja compatible
  */
 async function resolveCajaParaTenant(client, tenantId, moneda, defaultCajaId) {
-  // Si hay default configurada, validar que existe + es de la moneda compatible.
-  // metodos_pago NO tiene tenant_id directo (es catálogo global del portal —
-  // ver migration 20260524000002). Sin RLS — usamos query directa.
+  // BLOCKER 2026-07-06 COR-3: la función se llama bajo `db.adminQuery`
+  // (BYPASSRLS) — los SET LOCAL del caller NO protegen. Sin `tenant_id` en
+  // el WHERE, resolvíamos cajas de CUALQUIER tenant y las persistíamos en
+  // `cross_tenant_pagos.caja_seller_id/buyer_id` + `movimientos_cc.caja_id`
+  // del tenant destinatario. El comentario histórico de "catálogo global"
+  // era incorrecto — `metodos_pago` tiene `tenant_id` desde
+  // 20260615000002_multitenant_rls.js + índices per-tenant en 20260616.
+  // Fix: filtro explícito `AND tenant_id = $x` en ambos queries.
   if (defaultCajaId) {
     const q = await client.query(
       `SELECT id, moneda FROM metodos_pago
-         WHERE id = $1 AND activo = true AND deleted_at IS NULL`,
-      [defaultCajaId]
+         WHERE id = $1 AND tenant_id = $2
+           AND activo = true AND deleted_at IS NULL`,
+      [defaultCajaId, tenantId]
     );
     if (q.rows[0]) {
       // Compatibilidad: USD ↔ USDT intercambiables; ARS y UYU cada uno estricto.
@@ -144,7 +150,7 @@ async function resolveCajaParaTenant(client, tenantId, moneda, defaultCajaId) {
       // Default existe pero no compatible → caemos a la primera caja compatible.
     }
   }
-  // Fallback: primera caja del catálogo con moneda compatible.
+  // Fallback: primera caja del PROPIO tenant con moneda compatible.
   // BLOCKER 2026-07-05: UYU es su propio grupo (['UYU']). Antes al no ser 'ARS'
   // caía a ['USD','USDT'] y proponía cajas USD para pagos en pesos uruguayos.
   let grupos;
@@ -153,10 +159,12 @@ async function resolveCajaParaTenant(client, tenantId, moneda, defaultCajaId) {
   else grupos = ['USD', 'USDT'];
   const q = await client.query(
     `SELECT id FROM metodos_pago
-       WHERE moneda = ANY($1::text[]) AND activo = true AND deleted_at IS NULL
+       WHERE tenant_id = $2
+         AND moneda = ANY($1::text[])
+         AND activo = true AND deleted_at IS NULL
        ORDER BY orden ASC, id ASC
        LIMIT 1`,
-    [grupos]
+    [grupos, tenantId]
   );
   return q.rows[0]?.id || null;
 }

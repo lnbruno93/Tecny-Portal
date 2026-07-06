@@ -975,14 +975,29 @@ describe('PATCH /api/red-b2b/operations/:id', () => {
 // bilateral o coordina reverso manual.
 // ──────────────────────────────────────────────────────────────────────────
 describe('PR-B Bug H2: cancel guard cuando op tiene pagos', () => {
-  // Lookup cajas seedeadas (catálogo global) — re-usado en estos tests.
-  let cajaUsdIdOps;
+  // SEG-1 (audit 2026-07-06): metodos_pago es tenant-scoped. Caller es tokenA
+  // (seller) → necesitamos caja PROPIA de A. `resolveCajaParaTenant` para el
+  // buyer (B) también filtra por tenant — así que B también necesita su caja.
+  let cajaUsdIdOps, cajaUsdIdOpsB;
 
   beforeAll(async () => {
-    const cQ = await pool.query(
-      `SELECT id, moneda FROM metodos_pago WHERE activo = true AND moneda = 'USD' ORDER BY orden LIMIT 1`
+    const cA = await pool.query(
+      `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+       VALUES ($1, 'RB2B-Ops H2 A USD', 'USD', true) RETURNING id`,
+      [tenantAId]
     );
-    cajaUsdIdOps = cQ.rows[0]?.id;
+    cajaUsdIdOps = cA.rows[0].id;
+    const cB = await pool.query(
+      `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+       VALUES ($1, 'RB2B-Ops H2 B USD', 'USD', true) RETURNING id`,
+      [tenantBId]
+    );
+    cajaUsdIdOpsB = cB.rows[0].id;
+  });
+
+  afterAll(async () => {
+    await pool.query('DELETE FROM metodos_pago WHERE id = ANY($1::int[])',
+      [[cajaUsdIdOps, cajaUsdIdOpsB].filter(Boolean)]);
   });
 
   async function createOpAndPay(montoUsd) {

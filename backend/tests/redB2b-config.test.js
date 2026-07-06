@@ -35,7 +35,8 @@ let pool;
 let tenantId;
 let userAdminId, userMemberId;
 let tokenAdmin, tokenMember;
-let cajaArsId; // id de una metodos_pago para usar en PATCH /caja-default
+let cajaArsId; // id de una metodos_pago del PROPIO tenant
+let otherTenantId, otherCajaArsId; // control cross-tenant SEG-2
 
 function signToken({ id, username, email, tenant_id, tenant_rol, caps = {} }) {
   return jwt.sign(
@@ -89,10 +90,15 @@ async function cleanup() {
     [tenantId]
   );
   await pool.query(
+    `DELETE FROM metodos_pago WHERE nombre IN ($1, $2)`,
+    ['RB2B-P14 Own ARS', 'RB2B-P14 Other ARS']
+  );
+  await pool.query(
     `DELETE FROM users WHERE username IN ($1, $2)`,
     ['rb2b-p14-admin', 'rb2b-p14-member']
   );
-  await pool.query(`DELETE FROM tenants WHERE slug = $1`, [TENANT.slug]);
+  await pool.query(`DELETE FROM tenants WHERE slug IN ($1, $2)`,
+    [TENANT.slug, 'rb2b-p14-other']);
 }
 
 beforeAll(async () => {
@@ -121,13 +127,32 @@ beforeAll(async () => {
     tenant_id: tenantId, tenant_rol: 'member', caps: capsOn,
   });
 
-  // Lookup una caja ARS activa para PATCH /caja-default.
-  const cajaQ = await pool.query(
-    `SELECT id FROM metodos_pago
-       WHERE moneda = 'ARS' AND activo = true AND deleted_at IS NULL
-       ORDER BY id LIMIT 1`
+  // SEG-2 (2026-07-06): crear cajas EN el propio tenant + en OTRO tenant
+  // para probar el filtro `AND tenant_id = $x`. Antes usábamos una caja al
+  // azar del catálogo (asumiendo global), que precisamente es el bug.
+  const ownCajaQ = await pool.query(
+    `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+     VALUES ($1, 'RB2B-P14 Own ARS', 'ARS', true)
+     RETURNING id`,
+    [tenantId]
   );
-  cajaArsId = cajaQ.rows[0].id;
+  cajaArsId = ownCajaQ.rows[0].id;
+
+  // Segundo tenant con su propia caja — control cross-tenant.
+  const otherT = await pool.query(
+    `INSERT INTO tenants (nombre, slug, plan)
+     VALUES ('RB2B-P14 Other', 'rb2b-p14-other', 'starter')
+     ON CONFLICT (slug) DO UPDATE SET nombre = EXCLUDED.nombre
+     RETURNING id`
+  );
+  otherTenantId = otherT.rows[0].id;
+  const otherCajaQ = await pool.query(
+    `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+     VALUES ($1, 'RB2B-P14 Other ARS', 'ARS', true)
+     RETURNING id`,
+    [otherTenantId]
+  );
+  otherCajaArsId = otherCajaQ.rows[0].id;
 });
 
 afterAll(async () => {
@@ -207,6 +232,31 @@ describe('PATCH /api/red-b2b/config/caja-default — adminOnly + audit', () => {
     expect(audit.rows[0].super_admin_user_id).toBe(userAdminId);
     expect(audit.rows[0].before_state).toEqual({ caja_default_id: null });
     expect(audit.rows[0].after_state).toEqual({ caja_default_id: cajaArsId });
+  });
+
+  // SEG-2 regresión (audit 2026-07-06): admin del tenant A intenta setear
+  // como caja default cross-tenant una caja del tenant B. Antes: adminQuery
+  // (BYPASSRLS) + WHERE sin tenant_id → 200 y el default queda ajeno.
+  // Ahora: 404 caja_not_found + nada persistido + nada en audit.
+  it('SEG-2: rechaza caja_id de otro tenant con 404 (no cross-tenant leak)', async () => {
+    const r = await request(app)
+      .patch('/api/red-b2b/config/caja-default')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ caja_id: otherCajaArsId });
+    expect(r.status).toBe(404);
+    // La caja del otro tenant NO se persistió como default nuestro.
+    const t = await pool.query(
+      `SELECT red_b2b_caja_default_id FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    expect(t.rows[0].red_b2b_caja_default_id).toBe(null);
+    // Y no hay audit row.
+    const audit = await pool.query(
+      `SELECT id FROM tenant_admin_actions
+         WHERE tenant_id = $1 AND action = 'cross_tenant_caja_default_updated'`,
+      [tenantId]
+    );
+    expect(audit.rows.length).toBe(0);
   });
 });
 

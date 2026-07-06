@@ -57,7 +57,16 @@ let pool;
 let tenantAId, tenantBId, tenantCId;
 let userAId, userBId, userCId, userANoCapId;
 let tokenA, tokenB, tokenC, tokenANoCap;
-let cajaArsId, cajaUsdId; // ids de cajas seedeadas (catálogo global)
+// SEG-1 (audit 2026-07-06): cajas per-tenant. Antes el test asumía que
+// `metodos_pago` era catálogo global y tomaba cualquier caja del DB —
+// precisamente el bug que estamos parchando. Ahora creamos cajas propias
+// para cada tenant y usamos las de A por default (la caller de casi todos
+// los tests). Los pocos tests con tokenB/tokenC usan las de B/C
+// explícitamente.
+let cajaArsId, cajaUsdId;         // shortcuts a las de tenantA
+let cajaArsAId, cajaUsdAId;
+let cajaArsBId, cajaUsdBId;
+let cajaArsCId, cajaUsdCId;
 
 function signToken({ id, username, email, tenant_id, caps = {} }) {
   return jwt.sign(
@@ -331,14 +340,31 @@ beforeAll(async () => {
     tenant_id: tenantAId, caps: {},
   });
 
-  // Lookup cajas seedeadas (catálogo global).
-  const cQ = await pool.query(
-    `SELECT id, nombre, moneda FROM metodos_pago WHERE activo = true ORDER BY orden`
-  );
-  for (const r of cQ.rows) {
-    if (r.moneda === 'ARS' && !cajaArsId) cajaArsId = r.id;
-    if (r.moneda === 'USD' && !cajaUsdId) cajaUsdId = r.id;
+  // SEG-1 (audit 2026-07-06): seed cajas per-tenant.
+  async function seedCajas(tId, suffix) {
+    const ars = await pool.query(
+      `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+       VALUES ($1, $2, 'ARS', true) RETURNING id`,
+      [tId, `RB2B-Pago ${suffix} ARS`]
+    );
+    const usd = await pool.query(
+      `INSERT INTO metodos_pago (tenant_id, nombre, moneda, activo)
+       VALUES ($1, $2, 'USD', true) RETURNING id`,
+      [tId, `RB2B-Pago ${suffix} USD`]
+    );
+    return { ars: ars.rows[0].id, usd: usd.rows[0].id };
   }
+  const [ca, cb, cc] = await Promise.all([
+    seedCajas(tenantAId, 'A'),
+    seedCajas(tenantBId, 'B'),
+    seedCajas(tenantCId, 'C'),
+  ]);
+  cajaArsAId = ca.ars; cajaUsdAId = ca.usd;
+  cajaArsBId = cb.ars; cajaUsdBId = cb.usd;
+  cajaArsCId = cc.ars; cajaUsdCId = cc.usd;
+  // Aliases retro-compat: casi todos los tests usan tokenA → cajas de A.
+  cajaArsId = cajaArsAId;
+  cajaUsdId = cajaUsdAId;
 });
 
 beforeEach(async () => {
@@ -463,6 +489,8 @@ afterAll(async () => {
   await pool.query(`DELETE FROM tenant_user_roles WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM tenant_users WHERE user_id = ANY($1::int[])`, [userIds]);
   await pool.query(`DELETE FROM users WHERE id = ANY($1::int[])`, [userIds]);
+  // SEG-1 audit 2026-07-06: cajas per-tenant seedeadas.
+  await pool.query(`DELETE FROM metodos_pago WHERE tenant_id = ANY($1::int[])`, [ids]);
   await pool.query(`DELETE FROM tenants WHERE id = ANY($1::int[])`, [ids]);
 
   await teardownTestDb(pool);
@@ -560,7 +588,7 @@ describe('POST /operations/:id/pagos — happy path', () => {
         moneda_pago: 'USD',
         monto_pago: 200,
         tc_pago: 1000,
-        caja_id: cajaUsdId,
+        caja_id: cajaUsdBId,  // SEG-1: caller = tenantB → caja de B
         side: 'buyer',
       });
     expect(r.status).toBe(201);
@@ -1061,10 +1089,10 @@ describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
   });
 
   it('seller pago con red_b2b_caja_default_id configurada → caja_buyer_id matchea default', async () => {
-    // Setear caja default cross-tenant del buyer = cajaUsdId.
+    // SEG-1: el default del buyer debe ser una caja PROPIA de B.
     await pool.query(
       `UPDATE tenants SET red_b2b_caja_default_id = $1 WHERE id = $2`,
-      [cajaUsdId, tenantBId]
+      [cajaUsdBId, tenantBId]
     );
 
     const r = await request(app)
@@ -1072,7 +1100,7 @@ describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({
         monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
-        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller', // caller A → A's caja
       });
     expect(r.status).toBe(201);
 
@@ -1082,10 +1110,10 @@ describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
       [op.opId]
     );
     expect(cp.rows.length).toBe(1);
-    // Caller is seller → caja_seller_id = body.caja_id.
-    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdId);
-    // Default del buyer → caja_buyer_id = default configurado.
-    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdId);
+    // Caller is seller → caja_seller_id = body.caja_id (A's caja).
+    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdAId);
+    // Default del buyer → caja_buyer_id = default configurado (B's caja).
+    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdBId);
     // Ambos NOT NULL (defensa contra el bug original).
     expect(cp.rows[0].caja_seller_id).not.toBeNull();
     expect(cp.rows[0].caja_buyer_id).not.toBeNull();
@@ -1102,7 +1130,7 @@ describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .send({
         monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
-        tc_pago: 1000, caja_id: cajaUsdId, side: 'buyer',
+        tc_pago: 1000, caja_id: cajaUsdBId, side: 'buyer', // SEG-1: B propia
       });
     expect(r.status).toBe(201);
 
@@ -1111,8 +1139,10 @@ describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
          WHERE cross_tenant_operation_id = $1`,
       [op.opId]
     );
-    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdId);
-    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdId);
+    // SEG-1: caller (buyer=B) usa su propia caja; seller (A) usa su
+    // red_b2b_caja_default_id (= cajaUsdAId, la propia de A).
+    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdBId);
+    expect(cp.rows[0].caja_seller_id).toBe(cajaUsdAId);
   });
 
   it('sin caja default → fallback a primera caja con moneda compatible', async () => {
@@ -1131,9 +1161,34 @@ describe('PR-B Bug B1: caja resolve único + sin NULL constraint risk', () => {
          WHERE cross_tenant_operation_id = $1`,
       [op.opId]
     );
-    // caja_buyer_id viene del fallback (primera USD/USDT en metodos_pago).
-    expect(cp.rows[0].caja_buyer_id).not.toBeNull();
+    // caja_buyer_id viene del fallback (primera USD/USDT del PROPIO buyer).
+    expect(cp.rows[0].caja_buyer_id).toBe(cajaUsdBId);
     expect(cp.rows[0].caja_seller_id).toBe(cajaUsdId);
+  });
+
+  // SEG-1 regresión (audit 2026-07-06): seller pasa la caja_id del BUYER
+  // (otro tenant). Antes: adminQuery (BYPASSRLS) + WHERE sin tenant_id →
+  // 201 y persistía la caja ajena en caja_seller_id. Ahora: 404 caja_not_found.
+  it('SEG-1: rechaza caja_id de otro tenant en POST /pagos', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdBId, // ← caja de OTRO tenant
+        side: 'seller',
+      });
+    expect(r.status).toBe(404);
+    // El wrapper del router traduce el error code a `reason` y el user-facing
+    // message a `error`. Chequeamos el code estable.
+    expect(r.body.reason).toBe('caja_not_found');
+    // Verificar que NO se creó ningún pago.
+    const cp = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM cross_tenant_pagos
+         WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(cp.rows[0].n).toBe(0);
   });
 });
 
