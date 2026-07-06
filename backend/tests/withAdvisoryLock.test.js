@@ -102,3 +102,100 @@ describe('withAdvisoryLock', () => {
     await expect(withAdvisoryLock('valid', 'not-a-function')).rejects.toThrow(/fn/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Errores transitorios (Sentry 2026-07-05 issues #Z + #M).
+// El worker de audit corre cada 2s → si el pool DB se satura, `db.connect()`
+// tira "Connection terminated due to connection timeout". Antes eso propagaba
+// → captureException a Sentry cada 2s → 15 events acumulados. Ahora se
+// clasifica como transitorio, no propaga, el próximo tick retryea.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('withAdvisoryLock — errores transitorios', () => {
+  const { isTransientDbError } = withAdvisoryLock;
+  const db = require('../src/config/database');
+
+  describe('isTransientDbError (pure)', () => {
+    it('acepta los mensajes que ve el driver de pg', () => {
+      expect(isTransientDbError(new Error('Connection terminated due to connection timeout'))).toBe(true);
+      expect(isTransientDbError(new Error('Connection terminated unexpectedly'))).toBe(true);
+      expect(isTransientDbError(new Error('Query read timeout'))).toBe(true);
+      expect(isTransientDbError(new Error('timeout expired'))).toBe(true);
+      expect(isTransientDbError(new Error('the pool is draining'))).toBe(true);
+      expect(isTransientDbError(new Error('connect ETIMEDOUT 10.0.0.1:5432'))).toBe(true);
+      expect(isTransientDbError(new Error('read ECONNRESET'))).toBe(true);
+    });
+
+    it('acepta SQLSTATE codes de conexión', () => {
+      // Los códigos vienen sin mensaje matcheable — solo el err.code identifica.
+      const admin = Object.assign(new Error('server going down'), { code: '57P01' });
+      const crash = Object.assign(new Error('sql-y'), { code: '57P02' });
+      const connFail = Object.assign(new Error('nope'), { code: '08006' });
+      expect(isTransientDbError(admin)).toBe(true);
+      expect(isTransientDbError(crash)).toBe(true);
+      expect(isTransientDbError(connFail)).toBe(true);
+    });
+
+    it('rechaza errores reales que NO son transitorios', () => {
+      expect(isTransientDbError(new Error('bug: undefined is not a function'))).toBe(false);
+      expect(isTransientDbError(new Error('duplicate key value violates unique constraint'))).toBe(false);
+      // Constraint violation code
+      const dupe = Object.assign(new Error('dupe'), { code: '23505' });
+      expect(isTransientDbError(dupe)).toBe(false);
+      expect(isTransientDbError(null)).toBe(false);
+      expect(isTransientDbError(undefined)).toBe(false);
+      expect(isTransientDbError('string, not an Error')).toBe(false);
+    });
+  });
+
+  describe('withAdvisoryLock frente a fallos transitorios', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('devuelve { transient:true } cuando db.connect() falla con connection timeout', async () => {
+      // Simulamos pool saturado: el connect() rechaza con el error exacto que
+      // vimos en Sentry (#M — 10 events del audit_queue_worker).
+      const err = new Error('Connection terminated due to connection timeout');
+      jest.spyOn(db, 'connect').mockRejectedValueOnce(err);
+
+      let jobRan = false;
+      const r = await withAdvisoryLock('transient_test_connect', async () => { jobRan = true; });
+
+      expect(r.acquired).toBe(false);
+      expect(r.transient).toBe(true);
+      expect(r.error).toBe(err);
+      expect(jobRan).toBe(false);
+    });
+
+    it('devuelve { transient:true } cuando la query de try_lock falla con query timeout', async () => {
+      // El connect() funciona, pero el pg_try_advisory_lock se corta por
+      // statement_timeout (#Z — 5 events "Query read timeout").
+      const err = new Error('Query read timeout');
+      const realClient = await db.connect();
+      const queryStub = jest.spyOn(realClient, 'query').mockRejectedValueOnce(err);
+      jest.spyOn(db, 'connect').mockResolvedValueOnce(realClient);
+
+      let jobRan = false;
+      const r = await withAdvisoryLock('transient_test_query', async () => { jobRan = true; });
+
+      expect(r.acquired).toBe(false);
+      expect(r.transient).toBe(true);
+      expect(r.error).toBe(err);
+      expect(jobRan).toBe(false);
+      expect(queryStub).toHaveBeenCalled();
+      // Cleanup: el client se libera en el finally.
+      // Nota: liberar dos veces es no-op — el finally del helper ya lo hizo.
+    });
+
+    it('propaga (throw) cuando el error NO es transitorio', async () => {
+      const bug = new Error('bug real en config del pool');
+      jest.spyOn(db, 'connect').mockRejectedValueOnce(bug);
+
+      // Error no-transitorio → sigue propagando como antes. El caller decide
+      // si captureException a Sentry.
+      await expect(
+        withAdvisoryLock('non_transient_test', async () => {})
+      ).rejects.toThrow('bug real en config del pool');
+    });
+  });
+});
