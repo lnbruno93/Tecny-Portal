@@ -22,18 +22,63 @@ vi.mock('../lib/api', () => ({
   cajas: { listCajas: vi.fn().mockResolvedValue([{ id: 9, nombre: 'Caja Pesos', moneda: 'ARS' }, { id: 10, nombre: 'Caja USD', moneda: 'USD' }]) },
 }));
 
+// UYU follow-up audit 2026-07-06: mock de useAuth para inyectar tenant.pais.
+// El default sin mock (undefined → 'AR') cubre el escenario legacy AR; los
+// tests UY re-mockean el módulo con `mockUser.value` mutable (mismo pattern
+// que Ventas.test.jsx, Financiera.test.jsx).
+const mockUser = { value: { tenant: { pais: 'AR', moneda_local: 'ARS' } } };
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: mockUser.value }),
+}));
+
 import Cambios from './Cambios';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ConfirmProvider } from '../components/ConfirmModal';
 import { PageActionsProvider } from '../contexts/PageActionsContext';
 
+const wrap = (ui) => (
+  <ToastProvider>
+    <ConfirmProvider>
+      <PageActionsProvider>{ui}</PageActionsProvider>
+    </ConfirmProvider>
+  </ToastProvider>
+);
+
 describe('Pantalla Cambios de Divisa', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUser.value = { tenant: { pais: 'AR', moneda_local: 'ARS' } };
+  });
 
   it('lista financieras y muestra el saldo del detalle', async () => {
-    render(<ToastProvider><ConfirmProvider><PageActionsProvider><Cambios /></PageActionsProvider></ConfirmProvider></ToastProvider>);
+    render(wrap(<Cambios />));
     expect(await screen.findByText('El Dorado')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Te deben · USD')).toBeInTheDocument());
     expect(screen.getByText('Recibido · USD')).toBeInTheDocument();
+  });
+
+  // UYU follow-up audit 2026-07-06: tenants AR mantienen labels ARS.
+  it('AR: subtítulo dice "entregás ARS", columna header "$ ARS", select "Entrega ARS"', async () => {
+    render(wrap(<Cambios />));
+    expect(await screen.findByText(/entregás ARS y te devuelven USD/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('$ ARS')).toBeInTheDocument());
+    // El option del select se renderiza con el texto "Entrega ARS" (el value
+    // interno sigue siendo 'entrega_ars', pero la etiqueta al usuario cambia).
+    expect(screen.getByRole('option', { name: 'Entrega ARS' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Recibo USD' })).toBeInTheDocument();
+    // Badge del histórico: fila con tipo='entrega_ars' → "Entrega ARS".
+    // "Entrega ARS" aparece 2 veces (badge del histórico + option del select
+    // en la fila de carga), así que usamos getAllByText.
+    expect(screen.getAllByText('Entrega ARS').length).toBeGreaterThanOrEqual(1);
+  });
+
+  // UYU follow-up audit 2026-07-06: tenants UY ven labels UYU en todos lados.
+  it('UY: subtítulo dice "entregás UYU", columna header "$ UYU", select "Entrega UYU"', async () => {
+    mockUser.value = { tenant: { pais: 'UY', moneda_local: 'UYU' } };
+    render(wrap(<Cambios />));
+    expect(await screen.findByText(/entregás UYU y te devuelven USD/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('$ UYU')).toBeInTheDocument());
+    expect(screen.getByRole('option', { name: 'Entrega UYU' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Recibo USD' })).toBeInTheDocument();
   });
 });

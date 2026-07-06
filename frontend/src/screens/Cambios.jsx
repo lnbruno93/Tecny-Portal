@@ -11,17 +11,61 @@ import useLoadingAction from '../lib/useLoadingAction';
 import TcWarning from '../components/TcWarning';
 import CajaSelectHint from '../components/CajaSelectHint';
 import useModal from '../lib/useModal';
+import { useAuth } from '../contexts/AuthContext';
 
 
 
 const todayISO = () => new Date().toLocaleDateString('sv');
-const esArs = (c) => c.moneda === 'ARS';
-const EMPTY_MOV = { tipo: 'entrega_ars', fecha: todayISO(), monto_ars: '', tc: '', monto_usd: '', caja_id: '', comentarios: '' };
+
+// UYU follow-up audit 2026-07-06: helpers derivados del país del tenant.
+// El módulo Cambios de Divisa nació 100% para ARS/USD, pero desde F1-F5
+// multi-país los tenants UY operan en UYU. Backend PR #514 ya soporta el
+// par UYU/USD via CHECK constraint extendido + tipos 'entrega_uyu' /
+// 'recibo_usd_uy'. Este componente ahora usa el país del tenant para:
+//   - Elegir el tipo correcto al crear un movimiento.
+//   - Rotular labels/badges/columnas con la moneda local correcta.
+//   - Filtrar las cajas por la moneda local (no siempre ARS).
+// AR sigue viendo exactamente lo mismo que antes; UY empieza a ver labels
+// "Entrega UYU" / cajas UYU / columna "$ UYU".
+function tiposPorPais(pais) {
+  return pais === 'UY'
+    ? { entregaLocal: 'entrega_uyu', reciboUsd: 'recibo_usd_uy' }
+    : { entregaLocal: 'entrega_ars', reciboUsd: 'recibo_usd' };
+}
+
+// Etiqueta corta del tipo — para el badge en la grilla histórica. Soporta
+// tanto los tipos AR como UY (una financiera en AR nunca tendrá filas UY
+// y viceversa, pero el switch es defensivo por si alguna migración cambia
+// el país del tenant a mitad de camino).
+function labelTipo(tipo) {
+  if (tipo === 'entrega_ars') return 'Entrega ARS';
+  if (tipo === 'entrega_uyu') return 'Entrega UYU';
+  if (tipo === 'recibo_usd' || tipo === 'recibo_usd_uy') return 'Recibo USD';
+  return tipo;
+}
 
 export default function Cambios() {
   const { toast } = useToast();
   const confirm   = useConfirm();
   const { setPrimaryAction } = usePageActions();
+
+  // UYU follow-up: derivamos país + moneda local del user auth. Guard igual
+  // al pattern de otras screens (Ventas.jsx, Envios.jsx, EgresosPanel.jsx):
+  // user puede ser null en mount inicial o si /me falló. Default AR para
+  // no romper el flow en ese edge.
+  const { user } = useAuth() || {};
+  const pais        = user?.tenant?.pais || 'AR';
+  const monedaLocal = user?.tenant?.moneda_local || 'ARS';
+  const TIPOS       = useMemo(() => tiposPorPais(pais), [pais]);
+
+  const EMPTY_MOV = useMemo(
+    () => ({
+      tipo: TIPOS.entregaLocal, fecha: todayISO(),
+      monto_ars: '', tc: '', monto_usd: '',
+      caja_id: '', comentarios: '',
+    }),
+    [TIPOS.entregaLocal]
+  );
 
   const [list, setList] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -61,16 +105,24 @@ export default function Cambios() {
       .then(([det, m]) => { setDetalle(det); setMovs(m.data || []); })
       .catch(e => toast.error(e.message));
   }
-  useEffect(() => { loadDetalle(); setMov(EMPTY_MOV); }, [selectedId]); // eslint-disable-line
+  useEffect(() => { loadDetalle(); setMov(EMPTY_MOV); }, [selectedId, EMPTY_MOV]); // eslint-disable-line
 
-  const cajasFiltradas = useMemo(() => cajas.filter(c => mov.tipo === 'entrega_ars' ? esArs(c) : !esArs(c)), [cajas, mov.tipo]);
+  // Cajas filtradas según el tipo del movimiento en carga:
+  //   - Entrega local (ARS o UYU): solo cajas de esa moneda local.
+  //   - Recibo USD: solo cajas USD.
+  const cajasFiltradas = useMemo(
+    () => cajas.filter(c => mov.tipo === TIPOS.entregaLocal
+      ? c.moneda === monedaLocal
+      : c.moneda !== monedaLocal),
+    [cajas, mov.tipo, monedaLocal, TIPOS.entregaLocal]
+  );
   const usdPreview = useMemo(() => {
-    if (mov.tipo === 'entrega_ars') {
+    if (mov.tipo === TIPOS.entregaLocal) {
       const a = parseFloat(mov.monto_ars), t = parseFloat(mov.tc);
       return (a > 0 && t > 0) ? Math.round((a / t) * 100) / 100 : 0;
     }
     return parseFloat(mov.monto_usd) || 0;
-  }, [mov]);
+  }, [mov, TIPOS.entregaLocal]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -91,9 +143,11 @@ export default function Cambios() {
       try {
         await cambiosApi.createMovimiento({
           entidad_id: selectedId, fecha: mov.fecha, tipo: mov.tipo,
-          monto_ars: mov.tipo === 'entrega_ars' ? Number(mov.monto_ars) || 0 : 0,
-          tc: mov.tipo === 'entrega_ars' ? Number(mov.tc) || null : null,
-          monto_usd: mov.tipo === 'recibo_usd' ? Number(mov.monto_usd) || 0 : 0,
+          // monto_ars es el nombre legacy de la columna DB — contiene el
+          // monto en la moneda local del tenant (ARS o UYU).
+          monto_ars: mov.tipo === TIPOS.entregaLocal ? Number(mov.monto_ars) || 0 : 0,
+          tc:        mov.tipo === TIPOS.entregaLocal ? Number(mov.tc) || null : null,
+          monto_usd: mov.tipo === TIPOS.reciboUsd    ? Number(mov.monto_usd) || 0 : 0,
           caja_id: Number(mov.caja_id), comentarios: mov.comentarios.trim() || null,
         });
         setMov({ ...EMPTY_MOV, tipo: mov.tipo, fecha: mov.fecha });
@@ -122,13 +176,14 @@ export default function Cambios() {
   }
 
   const r = detalle?.resumen || {};
+  const esEntregaLocal = mov.tipo === TIPOS.entregaLocal;
 
   return (
     <div>
       <div className="page-head">
         <div>
           <h1 className="page-title">Cambios de Divisa</h1>
-          <div className="page-sub">Cuenta corriente con financieras de cambio · entregás $ y te devuelven USD</div>
+          <div className="page-sub">Cuenta corriente con financieras de cambio · entregás {monedaLocal} y te devuelven USD</div>
         </div>
       </div>
 
@@ -200,46 +255,50 @@ export default function Cambios() {
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Fecha</th><th>Tipo</th><th style={{ textAlign: 'right' }}>$ ARS</th><th style={{ textAlign: 'right' }}>TC</th>
+                      <th>Fecha</th><th>Tipo</th><th style={{ textAlign: 'right' }}>$ {monedaLocal}</th><th style={{ textAlign: 'right' }}>TC</th>
                       <th style={{ textAlign: 'right' }}>USD</th><th>Caja</th><th>Comentarios</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {movs.map(m => (
-                      <tr key={m.id}>
-                        <td className="mono tiny">{fmtFecha(m.fecha)}</td>
-                        <td><span className={'badge ' + (m.tipo === 'entrega_ars' ? '' : 'badge-info')}>{m.tipo === 'entrega_ars' ? 'Entrega $' : 'Recibo USD'}</span></td>
-                        <td className="mono" style={{ textAlign: 'right' }}>{Number(m.monto_ars) > 0 ? '$ ' + fmt(m.monto_ars) : '—'}</td>
-                        <td className="mono tiny" style={{ textAlign: 'right' }}>{m.tc ? fmt(m.tc) : '—'}</td>
-                        <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>u$s {fmt(m.monto_usd)}</td>
-                        <td className="tiny">{m.caja_nombre || '—'}</td>
-                        <td className="muted tiny">{m.comentarios || '—'}</td>
-                        <td><button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
-                      </tr>
-                    ))}
+                    {movs.map(m => {
+                      const isEntregaLocal = m.tipo === 'entrega_ars' || m.tipo === 'entrega_uyu';
+                      return (
+                        <tr key={m.id}>
+                          <td className="mono tiny">{fmtFecha(m.fecha)}</td>
+                          <td><span className={'badge ' + (isEntregaLocal ? '' : 'badge-info')}>{labelTipo(m.tipo)}</span></td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{Number(m.monto_ars) > 0 ? '$ ' + fmt(m.monto_ars) : '—'}</td>
+                          <td className="mono tiny" style={{ textAlign: 'right' }}>{m.tc ? fmt(m.tc) : '—'}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>u$s {fmt(m.monto_usd)}</td>
+                          <td className="tiny">{m.caja_nombre || '—'}</td>
+                          <td className="muted tiny">{m.comentarios || '—'}</td>
+                          <td><button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
+                        </tr>
+                      );
+                    })}
 
                     {/* Fila de carga */}
                     <tr style={{ background: 'rgba(99,102,241,0.05)' }}>
                       <td><input type="date" className="input" style={{ height: 30, fontSize: 12 }} value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
                       <td>
                         <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.tipo} onChange={e => setMov(m => ({ ...m, tipo: e.target.value, caja_id: '' }))}>
-                          <option value="entrega_ars">Entrega $</option><option value="recibo_usd">Recibo USD</option>
+                          <option value={TIPOS.entregaLocal}>Entrega {monedaLocal}</option>
+                          <option value={TIPOS.reciboUsd}>Recibo USD</option>
                         </select>
                       </td>
-                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={mov.tipo !== 'entrega_ars'} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
+                      <td><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={!esEntregaLocal} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
                       <td>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={mov.tipo !== 'entrega_ars'} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
-                        {mov.tipo === 'entrega_ars' && <TcWarning tc={mov.tc} />}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={!esEntregaLocal} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
+                        {esEntregaLocal && <TcWarning tc={mov.tc} />}
                       </td>
                       <td>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: mov.tipo === 'entrega_ars' ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
-                          placeholder="USD" readOnly={mov.tipo === 'entrega_ars'}
-                          value={mov.tipo === 'entrega_ars' ? (usdPreview || '') : mov.monto_usd}
+                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: esEntregaLocal ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                          placeholder="USD" readOnly={esEntregaLocal}
+                          value={esEntregaLocal ? (usdPreview || '') : mov.monto_usd}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />
                       </td>
                       <td>
                         <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.caja_id} onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
-                          <option value="">{mov.tipo === 'entrega_ars' ? 'Caja $…' : 'Caja USD…'}</option>
+                          <option value="">{esEntregaLocal ? `Caja ${monedaLocal}…` : 'Caja USD…'}</option>
                           {cajasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                           <CajaSelectHint />
                         </select>
