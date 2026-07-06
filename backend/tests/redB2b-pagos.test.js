@@ -829,6 +829,44 @@ describe('GET /partnerships/:id/conciliation', () => {
     expect(r.body.saldos_bilaterales.difieren).toBe(false);
   });
 
+  // COR-hotfix audit 2026-07-06: después de COR-2 (proveedor_movimientos.tipo=
+  // 'devolucion' en vez de 'pago'), la query de saldos bilaterales de
+  // conciliation.js:181-184 no contemplaba el nuevo tipo → el saldo del buyer
+  // en proveedor_movimientos quedaba inflado. La conciliación bilateral
+  // reportaba discrepancia (`difieren: true`) sin razón financiera válida.
+  //
+  // Este test simula el escenario: pago 200 + devolución 1 item (100 USD).
+  // Sin el fix, provMovBuyer sería 200 (compra) − 200 (pago) + 0 (devolución
+  // ignorada) = 0, mientras movCcSeller sería 200 − 200 − 100 = −100. Rompía.
+  it('COR-hotfix: conciliación bilateral matchea cuando hay devolución (tipo=devolucion)', async () => {
+    // Pago completo (200 = cubre 2 items × 100).
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    // Devolución 1 unidad → 100 USD. Fuerza a la conciliación a considerar
+    // los 3 tipos (compra + pago + devolucion) en el CASE del buyer.
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`) // buyer
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+        motivo: 'hotfix conciliation test',
+      })
+      .expect(201);
+
+    const r = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(200);
+    expect(r.body.saldos_bilaterales.difieren).toBe(false);
+  });
+
   // PR-D #463: el cache in-memory fue eliminado (multi-instance bug + frecuencia
   // de hit baja). Verificamos que el response shape ya no expone `cached` ni
   // `cached_at`, y que dos GETs consecutivos devuelven el mismo payload (sin
