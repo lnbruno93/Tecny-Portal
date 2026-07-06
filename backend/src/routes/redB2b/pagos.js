@@ -145,6 +145,27 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
 
   const fecha = body.fecha || new Date().toISOString().slice(0, 10);
 
+  // COR-1 audit 2026-07-06: Idempotency-Key opcional.
+  // El frontend genera un UUID al abrir el modal y lo manda en cada intento.
+  // Doble-click / retry por 502 / dos pestañas mandan el MISMO UUID → el
+  // 1er intento crea el pago con client_generated_id=UUID. Los siguientes
+  // encuentran el pago existente y devuelven un 200 con la MISMA data (sin
+  // ejecutar side effects otra vez). Sin header, comportamiento igual al
+  // anterior (permite duplicados intencionales — ej. pagar 100 USD dos veces).
+  //
+  // UUID validado por parse — si viene malformado, respondemos 400 y evitamos
+  // que un typo del cliente termine bypaseando la idempotency. Uso `uuid` nativo
+  // (crypto.randomUUID hace lo mismo del lado del cliente); acá solo validamos.
+  const idempotencyKeyRaw = req.get('Idempotency-Key') || null;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (idempotencyKeyRaw && !UUID_RE.test(idempotencyKeyRaw)) {
+    return res.status(400).json({
+      error: 'Idempotency-Key debe ser UUID v1-8 (RFC 9562)',
+      reason: 'idempotency_key_invalid',
+    });
+  }
+  const idempotencyKey = idempotencyKeyRaw ? idempotencyKeyRaw.toLowerCase() : null;
+
   try {
     const result = await db.adminQuery(async (client) => {
       await client.query('BEGIN');
@@ -161,6 +182,40 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         if (!op) {
           await client.query('ROLLBACK');
           return { error: 'not_found', status: 404 };
+        }
+
+        // A.1 IDEMPOTENCY (audit 2026-07-06 COR-1): si el caller mandó
+        // Idempotency-Key y ya existe un pago con esa key para esta op, es un
+        // retry — devolvemos el pago original SIN reejecutar el flow.
+        //
+        // El FOR UPDATE arriba serializa las txs concurrentes: si la 1ra aún
+        // no committeó, la 2da espera. Cuando la 1ra committea, la 2da toma
+        // el lock, hace este SELECT y encuentra el pago → early-return.
+        //
+        // Race window residual: 2 requests entran a la 1ra tx en paralelo,
+        // ambos hacen el SELECT y ambos no encuentran nada → ambos intentan
+        // INSERT. El UNIQUE index parcial `idx_ct_pagos_idempotency` atrapa
+        // al 2do en el commit (SQLSTATE 23505) → catch de más abajo detecta
+        // y devuelve 409 idempotency_conflict (cliente puede retryar y esta
+        // vez encontrará el registro).
+        if (idempotencyKey) {
+          const dup = await client.query(
+            `SELECT id, registered_at, monto_usd, monto_ars, moneda_pago, tc_pago
+               FROM cross_tenant_pagos
+               WHERE cross_tenant_operation_id = $1
+                 AND client_generated_id = $2
+               LIMIT 1`,
+            [opId, idempotencyKey]
+          );
+          if (dup.rows[0]) {
+            await client.query('ROLLBACK');
+            return {
+              idempotent_replay: true,
+              existing_pago: dup.rows[0],
+              // Metadata que el response wrapper necesita para el email/notif
+              // path — pero como es replay NO emitimos email de nuevo.
+            };
+          }
         }
         if (op.status === 'cancelled') {
           await client.query('ROLLBACK');
@@ -451,44 +506,61 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           monto_ars_persist = round2(monto_usd * tc_pago);
         }
 
-        const cpQ = await client.query(
-          `INSERT INTO cross_tenant_pagos
-             (cross_tenant_operation_id,
-              seller_cobro_id, buyer_pago_id,
-              monto_usd, monto_ars, tc_used,
-              caja_seller_id, caja_buyer_id,
-              registered_by_side, registered_by_user_id, registered_at,
-              moneda_pago, tc_venta, tc_pago,
-              diferencia_cambiaria_ars, cambio_divisa_id,
-              propagated_at)
-           VALUES ($1,
-                   $2, $3,
-                   $4, $5, $6,
-                   $7, $8,
-                   $9, $10, NOW(),
-                   $11, $12, $13,
-                   $14, $15,
-                   NOW())
-           RETURNING id, registered_at`,
-          [
-            opId,
-            sellerResult.movimiento_id,
-            buyerResult.movimiento_id,
-            monto_usd,
-            monto_ars_persist,
-            // tc_used: F1 legacy column — guardamos tc_pago para retrocompat
-            tc_pago,
-            sellerCajaPersistId,
-            buyerCajaPersistId,
-            callerSide,
-            userId,
-            body.moneda_pago,
-            tc_venta,
-            tc_pago,
-            round2(diferencia_ars),
-            sellerResult.cambio_divisa_id || null,
-          ]
-        );
+        let cpQ;
+        try {
+          cpQ = await client.query(
+            `INSERT INTO cross_tenant_pagos
+               (cross_tenant_operation_id,
+                seller_cobro_id, buyer_pago_id,
+                monto_usd, monto_ars, tc_used,
+                caja_seller_id, caja_buyer_id,
+                registered_by_side, registered_by_user_id, registered_at,
+                moneda_pago, tc_venta, tc_pago,
+                diferencia_cambiaria_ars, cambio_divisa_id,
+                propagated_at, client_generated_id)
+             VALUES ($1,
+                     $2, $3,
+                     $4, $5, $6,
+                     $7, $8,
+                     $9, $10, NOW(),
+                     $11, $12, $13,
+                     $14, $15,
+                     NOW(), $16)
+             RETURNING id, registered_at`,
+            [
+              opId,
+              sellerResult.movimiento_id,
+              buyerResult.movimiento_id,
+              monto_usd,
+              monto_ars_persist,
+              // tc_used: F1 legacy column — guardamos tc_pago para retrocompat
+              tc_pago,
+              sellerCajaPersistId,
+              buyerCajaPersistId,
+              callerSide,
+              userId,
+              body.moneda_pago,
+              tc_venta,
+              tc_pago,
+              round2(diferencia_ars),
+              sellerResult.cambio_divisa_id || null,
+              idempotencyKey,
+            ]
+          );
+        } catch (err) {
+          // COR-1: race del index parcial `idx_ct_pagos_idempotency`.
+          // El SELECT del early-check no encontró duplicado, pero entre ese
+          // SELECT y este INSERT otro request con la misma key ganó. El
+          // UNIQUE viola con SQLSTATE 23505. Devolvemos 409 estable para que
+          // el cliente retryee — el próximo intento encontrará el pago
+          // via el early-check.
+          if (idempotencyKey && err.code === '23505' &&
+              err.constraint === 'idx_ct_pagos_idempotency') {
+            await client.query('ROLLBACK');
+            return { error: 'idempotency_conflict', status: 409 };
+          }
+          throw err;
+        }
         const crossPago = cpQ.rows[0];
 
         // ── NOTIF al otro lado ────────────────────────────────────────────
@@ -563,6 +635,26 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         error: errorMessage(result.error),
         reason: result.error,
         ...(result.details ? { details: result.details } : {}),
+      });
+    }
+
+    // COR-1 audit 2026-07-06: Idempotency-Key replay.
+    // El caller mandó una key ya vista → devolvemos 200 con el pago original.
+    // NO emitimos email/notif/cache-invalidation ni corremos audit — todo
+    // eso ya se ejecutó en la 1ra request y volver a hacerlo confundiría
+    // al usuario ("¿cobré 2 veces? Me llegaron 2 emails").
+    if (result.idempotent_replay) {
+      const p = result.existing_pago;
+      return res.status(200).json({
+        pago: {
+          id: p.id,
+          registered_at: p.registered_at,
+          monto_usd: Number(p.monto_usd),
+          monto_ars: Number(p.monto_ars),
+          moneda_pago: p.moneda_pago,
+          tc_pago: Number(p.tc_pago),
+        },
+        idempotent_replay: true,
       });
     }
 
@@ -1176,6 +1268,8 @@ function errorMessage(reason) {
     // PR-B Bug H3: devolución solo hasta lo pagado (incluyendo crédito de
     // devoluciones previas).
     devolucion_excede_pagado:    'La devolución supera lo efectivamente pagado por esta operación. Sin pagos previos no hay deuda que descontar — pedile al seller que cancele la op o registrá el pago primero.',
+    // COR-1 audit 2026-07-06 — race del index parcial de idempotency.
+    idempotency_conflict:        'Ya hay un pago en proceso con esta clave. Reintentá en 1 segundo.',
   };
   return map[reason] || 'Acción inválida.';
 }

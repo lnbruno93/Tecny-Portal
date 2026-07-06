@@ -1547,6 +1547,108 @@ describe('PR-E F4 atomicity — INSERT cambio_movimientos falla → tx completa 
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// COR-1 (audit 2026-07-06) — idempotency para POST /pagos.
+//
+// Antes: doble-click / retry 502 / dos pestañas creaban 2 cross_tenant_pagos
+// idénticos + 2 movs_cc + 2 proveedor_movs + 2 asientos Cambios. El
+// `FOR UPDATE` sobre la op serializaba pero no impedía el 2do si quedaba
+// saldo. Ahora: `Idempotency-Key` header (UUID). Retry con misma key →
+// 200 + pago original, sin side effects.
+//
+// NOTA: el outer `beforeEach` de este file BORRA cross_tenant_operations
+// para A/B/C antes de cada test → tenemos que crear la op EN CADA test
+// (o dentro de un `beforeEach` interno). Usamos A↔C partnership (fresca)
+// para no chocar con otros describes que crean A↔B.
+// ──────────────────────────────────────────────────────────────────────────
+describe('COR-1 idempotency — Idempotency-Key en POST /pagos', () => {
+  const crypto = require('crypto');
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantCId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantCId,
+      partnershipId, cantidad: 5, precio_usd: 100,
+    });
+    // Fail-fast si el helper no devolvió opId — evita el "404 vago".
+    expect(op.opId).toBeDefined();
+  });
+
+  it('POST sin header → legacy path (client_generated_id NULL, 201)', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdAId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+    const p = await pool.query(
+      `SELECT client_generated_id FROM cross_tenant_pagos WHERE id = $1`,
+      [r.body.pago.id]
+    );
+    expect(p.rows[0].client_generated_id).toBeNull();
+  });
+
+  it('POST con MISMA Idempotency-Key (retry) → 200 + payload original, SIN duplicar cross_tenant_pagos', async () => {
+    const key = crypto.randomUUID();
+
+    // Primer request → crea el pago.
+    const r1 = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Idempotency-Key', key)
+      .send({
+        monto_usd: 70, moneda_pago: 'USD', monto_pago: 70,
+        tc_pago: 1000, caja_id: cajaUsdAId, side: 'seller',
+      });
+    expect(r1.status).toBe(201);
+    const originalPagoId = r1.body.pago.id;
+
+    // Verificar que la key quedó persistida en la 1ra fila.
+    const p1 = await pool.query(
+      `SELECT client_generated_id FROM cross_tenant_pagos WHERE id = $1`,
+      [originalPagoId]
+    );
+    expect(p1.rows[0].client_generated_id).toBe(key);
+
+    // Retry: MISMO body, MISMA key.
+    const r2 = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Idempotency-Key', key)
+      .send({
+        monto_usd: 70, moneda_pago: 'USD', monto_pago: 70,
+        tc_pago: 1000, caja_id: cajaUsdAId, side: 'seller',
+      });
+    expect(r2.status).toBe(200);
+    expect(r2.body.idempotent_replay).toBe(true);
+    expect(r2.body.pago.id).toBe(originalPagoId);
+
+    // Sanity: 1 sola fila de pago en la op (no se duplicó).
+    const count = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM cross_tenant_pagos WHERE cross_tenant_operation_id = $1`,
+      [op.opId]
+    );
+    expect(count.rows[0].n).toBe(1);
+  });
+
+  it('POST con Idempotency-Key malformado → 400 idempotency_key_invalid', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Idempotency-Key', 'not-a-uuid')
+      .send({
+        monto_usd: 10, moneda_pago: 'USD', monto_pago: 10,
+        tc_pago: 1000, caja_id: cajaUsdAId, side: 'seller',
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.reason).toBe('idempotency_key_invalid');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // Helper puro: calcularDiferenciaCambiaria
 // ──────────────────────────────────────────────────────────────────────────
 describe('calcularDiferenciaCambiaria (helper puro)', () => {
