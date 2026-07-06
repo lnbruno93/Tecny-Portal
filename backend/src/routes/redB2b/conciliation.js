@@ -177,10 +177,17 @@ router.get('/:id/conciliation', async (req, res, next) => {
         }
 
         // Saldo según proveedor_movimientos por tenant.
+        // COR-2 audit 2026-07-06 (hotfix post-merge): tras extender el CHECK
+        // de proveedor_movimientos.tipo con 'devolucion', las devoluciones
+        // cross-tenant se registran con ese tipo (antes falseaban como 'pago').
+        // Si acá no lo contemplamos, el saldo del buyer queda inflado en la
+        // conciliación bilateral — reporta discrepancia con el saldo del
+        // seller (que en movimientos_cc arriba SÍ suma 'devolucion' con -monto).
         const provMovQ = await client.query(
           `SELECT tenant_id,
                   SUM(CASE WHEN tipo = 'compra' THEN monto_usd
                            WHEN tipo = 'pago' THEN -monto_usd
+                           WHEN tipo = 'devolucion' THEN -monto_usd
                            ELSE 0 END) AS saldo
              FROM proveedor_movimientos
              WHERE cross_tenant_operation_id = ANY($1::bigint[])

@@ -282,24 +282,27 @@ async function registerSellerCobro(client, sellerTenantId, args) {
   );
   const movimientoId = movQ.rows[0].id;
 
-  // 3. Si moneda_pago === 'ARS', registrar la diferencia cambiaria como
-  //    movimiento en módulo Cambios de Divisa del seller (decisión #16).
-  //    Solo si la diferencia es no-cero (puede ser cero si tc_pago == tc_venta).
+  // 3. Si moneda_pago es fiat local (ARS o UYU), registrar la diferencia
+  //    cambiaria como movimiento en módulo Cambios de Divisa del seller
+  //    (decisión #16). Solo si la diferencia es no-cero (puede ser cero si
+  //    tc_pago == tc_venta).
   //
-  // BLOCKER 2026-07-05 (multi-país UYU): la diferencia cambiaria para pagos
-  // UYU EXISTE (y ya se persiste en `cross_tenant_pagos.diferencia_cambiaria_ars`
-  // como snapshot), pero acá NO la asentamos en Cambios de Divisa. El módulo
-  // Cambios está pensado hoy 100% para el par ARS/USD (tipos 'entrega_ars' y
-  // 'recibo_usd' hardcoded, UI que asume pesos). Extenderlo a UYU requiere:
-  //   - migration ampliando el CHECK de cambio_movimientos.tipo (agregar
-  //     'entrega_uyu' + 'recibo_usd_uyu' o rediseñar como fiat neutro)
-  //   - update UI Cambios.jsx para mostrar la moneda local
-  //   - decisión de Lucas: ¿un solo módulo multi-moneda o uno por país?
-  // Queda como deuda técnica trackeada para PR posterior. Mientras tanto el
-  // snapshot en cross_tenant_pagos permite reprocesar el histórico cuando
-  // se decida el diseño final.
+  // Audit 2026-07-06 correctness P1 (UYU): la migration 20260706000003
+  // extendió el CHECK `cambio_movimientos.tipo` con 'entrega_uyu' y
+  // 'recibo_usd_uy' para poder asentar diferencias cambiarias de pagos UYU.
+  // Antes de este fix la rama UYU se skippeaba silenciosamente — el asiento
+  // solo quedaba en el snapshot `cross_tenant_pagos.diferencia_cambiaria_ars`
+  // (nombre legacy pero contenía UYU) y los reportes financieros de Cambios
+  // subestimaban ganancia/pérdida cambiaria para tenants UY.
+  //
+  // Deuda técnica documentada (PR follow-up): la UI de Cambios (Cambios.jsx)
+  // hardcodea el label "ARS" — post-merge, tenants UY verán el label
+  // incorrecto en la grilla. La columna `monto_ars` de la tabla también
+  // mantiene su nombre legacy pero en filas UYU contiene monto UYU.
   let cambioDivisaId = null;
-  if (moneda_pago === 'ARS' && Math.abs(Number(diferencia_cambiaria_ars) || 0) >= 0.01) {
+  const esFiatLocalConDiff = (moneda_pago === 'ARS' || moneda_pago === 'UYU')
+    && Math.abs(Number(diferencia_cambiaria_ars) || 0) >= 0.01;
+  if (esFiatLocalConDiff) {
     // El módulo Cambios de Divisa tiene entidades (financieras). Para Red B2B,
     // creamos (o reusamos) una entidad llamada "Red B2B — diferencias cambiarias"
     // del seller. Esto centraliza el tracking sin contaminar entidades reales.
@@ -321,24 +324,24 @@ async function registerSellerCobro(client, sellerTenantId, args) {
       entidadId = insEnt.rows[0].id;
     }
 
-    // INSERT cambio_movimientos. Diferencia positiva = ingreso USD (ganancia);
-    // negativa = entrega ARS (pérdida).
+    // Convención de tipos según moneda + signo de la diferencia:
+    //   ARS + ganancia (mejor TC → seller "ganó USD")   → 'recibo_usd'
+    //   ARS + pérdida  (peor TC → seller "perdió" ARS)  → 'entrega_ars'
+    //   UYU + ganancia                                    → 'recibo_usd_uy'
+    //   UYU + pérdida                                     → 'entrega_uyu'
     //
-    // El módulo Cambios maneja 2 tipos: 'entrega_ars' (les damos pesos —
-    // egreso ARS) y 'recibo_usd' (ingreso USD).
-    //
-    // Para Red B2B usamos una convención: diferencia POSITIVA (ganancia
-    // seller) → 'recibo_usd' (mejor TC del esperado → el seller "ganó USD").
-    // diferencia NEGATIVA → 'entrega_ars' (peor TC → "perdió" en ARS).
-    //
-    // El monto_usd se calcula como diferencia_ars / tc_pago (USD equivalente
-    // a la diferencia ARS al TC del pago — coherente con la lógica de
-    // cambio_movimientos).
-    const diffArs = Number(diferencia_cambiaria_ars);
-    const isGanancia = diffArs > 0;
-    const absArs = Math.abs(diffArs);
-    const absUsd = round2(absArs / Number(tc_pago || 1));
-    const tipo = isGanancia ? 'recibo_usd' : 'entrega_ars';
+    // El monto en moneda local va a la columna `monto_ars` (nombre legacy
+    // — deuda técnica de naming). monto_usd es la conversión al TC del pago.
+    const diffLocal = Number(diferencia_cambiaria_ars);
+    const isGanancia = diffLocal > 0;
+    const absLocal = Math.abs(diffLocal);
+    const absUsd = round2(absLocal / Number(tc_pago || 1));
+    let tipo;
+    if (moneda_pago === 'UYU') {
+      tipo = isGanancia ? 'recibo_usd_uy' : 'entrega_uyu';
+    } else {
+      tipo = isGanancia ? 'recibo_usd' : 'entrega_ars';
+    }
 
     const cdQ = await client.query(
       `INSERT INTO cambio_movimientos
@@ -352,10 +355,10 @@ async function registerSellerCobro(client, sellerTenantId, args) {
         entidadId,
         fecha,
         tipo,
-        round2(absArs),
+        round2(absLocal),
         round2(Number(tc_pago)),
         absUsd,
-        `Red B2B op #${opId}: ${isGanancia ? 'ganancia' : 'pérdida'} cambiaria por TC pago ${tc_pago} vs TC venta ${tc_venta} (monto USD ${round2(monto_usd)}).`,
+        `Red B2B op #${opId}: ${isGanancia ? 'ganancia' : 'pérdida'} cambiaria por TC pago ${tc_pago} vs TC venta ${tc_venta} (${moneda_pago} ${round2(absLocal)}, USD ${round2(monto_usd)}).`,
         callerUserId,
       ]
     );
