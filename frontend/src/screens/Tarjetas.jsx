@@ -928,7 +928,7 @@ export default function Tarjetas() {
                     <div className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
                         <label htmlFor="multiliq-usd" className="field-label tiny">USD recibido (caja)</label>
-                        <input id="multiliq-usd" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                        <input id="multiliq-usd" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                                placeholder="0"
                                value={multiLiq.usd_recibido}
                                onChange={e => setUsdRecibido(e.target.value)} />
@@ -938,7 +938,7 @@ export default function Tarjetas() {
                       </div>
                       <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
                         <label htmlFor="multiliq-tc" className="field-label tiny">TC del día</label>
-                        <input id="multiliq-tc" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                        <input id="multiliq-tc" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                                placeholder="0"
                                value={multiLiq.tc}
                                onChange={e => setTcMulti(e.target.value)} />
@@ -951,7 +951,7 @@ export default function Tarjetas() {
                       </div>
                       <div className="field" style={{ flex: '1 1 160px', minWidth: 160 }}>
                         <label htmlFor="multiliq-ars" className="field-label tiny">Total ARS (descuenta del saldo)</label>
-                        <input id="multiliq-ars" type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                        <input id="multiliq-ars" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                                placeholder="0"
                                value={multiLiq.monto}
                                onChange={e => setMontoArs(e.target.value)} />
@@ -986,7 +986,7 @@ export default function Tarjetas() {
                   {!multiLiq.convertir_usd && (
                     <div className="field" style={{ width: 220 }}>
                       <label htmlFor="multiliq-ars-only" className="field-label tiny">Total ARS recibido</label>
-                      <input id="multiliq-ars-only" type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                      <input id="multiliq-ars-only" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                              placeholder="0"
                              value={multiLiq.monto}
                              onChange={e => setMultiLiq(f => ({ ...f, monto: e.target.value }))} />
@@ -1032,7 +1032,7 @@ export default function Tarjetas() {
                               <div style={{ fontWeight: 600, fontSize: 13 }}>{t.nombre}</div>
                               <div className="muted tiny mono">Saldo pendiente: {sym(t.moneda)} {fmt(t.saldo)}</div>
                             </div>
-                            <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                            <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                                    style={{ width: 160, textAlign: 'right' }}
                                    placeholder="0"
                                    value={multiLiq.repartos[t.id] ?? ''}
@@ -1153,7 +1153,7 @@ export default function Tarjetas() {
                 <div className="card-hd"><div style={{ fontWeight: 600, fontSize: 14 }}>Registrar liquidación (te pagaron)</div></div>
                 <form onSubmit={handleLiquidar} className="flex-row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div className="field" style={{ width: 150 }}><label className="field-label tiny">Fecha</label><input type="date" className="input" value={liq.fecha} onChange={e => setLiq(f => ({ ...f, fecha: e.target.value }))} /></div>
-                  <div className="field" style={{ width: 150 }}><label className="field-label tiny">Monto recibido</label><input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
+                  <div className="field" style={{ width: 150 }}><label className="field-label tiny">Monto recibido</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={liq.monto} onChange={e => setLiq(f => ({ ...f, monto: e.target.value }))} /></div>
                   <div className="field" style={{ flex: 1, minWidth: 160 }}><label className="field-label tiny">Entra a la caja</label>
                     <select className="input" value={liq.caja_id} onChange={e => setLiq(f => ({ ...f, caja_id: e.target.value }))}>
                       <option value="">Elegí la caja…</option>
@@ -1253,14 +1253,14 @@ export default function Tarjetas() {
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                              className="input mono" placeholder="0"
                              value={cobroPrev.monto_bruto}
                              onChange={e => setCobroPrev(f => ({ ...f, monto_bruto: e.target.value }))} />
                     </div>
                     <div className="field" style={{ width: 100 }}>
                       <label className="field-label">% comisión</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
                              className="input mono" placeholder="0"
                              value={cobroPrev.pct}
                              onChange={e => setCobroPrev(f => ({ ...f, pct: e.target.value }))} />
@@ -1337,13 +1337,13 @@ export default function Tarjetas() {
                         </div>
                         <div className="field" style={{ flex: 1 }}>
                           <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                          <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                                  className="input mono" value={editForm.monto_bruto || ''}
                                  onChange={e => setEditForm(f => ({ ...f, monto_bruto: e.target.value }))} />
                         </div>
                         <div className="field" style={{ width: 100 }}>
                           <label className="field-label">% comisión</label>
-                          <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
+                          <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
                                  className="input mono" value={editForm.pct || ''}
                                  onChange={e => setEditForm(f => ({ ...f, pct: e.target.value }))} />
                         </div>
@@ -1371,7 +1371,7 @@ export default function Tarjetas() {
                       </div>
                       <div className="field" style={{ width: 150 }}>
                         <label className="field-label">Monto recibido <span style={{ color: 'var(--neg)' }}>*</span></label>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                                className="input mono" value={editForm.monto || ''}
                                onChange={e => setEditForm(f => ({ ...f, monto: e.target.value }))} />
                       </div>

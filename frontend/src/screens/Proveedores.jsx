@@ -640,7 +640,7 @@ export default function Proveedores() {
                   </div>
                   <div className="field" style={{ width: 160 }}>
                     <label className="field-label">Saldo inicial (USD)</label>
-                    <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
+                    <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                       value={provForm.saldo_inicial} onChange={e => setProvForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
                     <div className="muted tiny" style={{ marginTop: 4 }}>{editId ? 'Ajusta la apertura (0 = sin saldo inicial).' : 'Lo que ya le debés (opcional).'}</div>
                   </div>
@@ -701,14 +701,14 @@ export default function Proveedores() {
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                         value={pagoForm.monto} placeholder="0"
                         onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
                     </div>
                     {monedaSel !== 'USD' && (
                       <div className="field" style={{ flex: '0 0 140px' }}>
                         <label className="field-label">TC {monedaSel}→USD <span style={{ color: 'var(--neg)' }}>*</span></label>
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input mono"
                           value={pagoForm.tc}
                           onChange={e => setPagoForm(f => ({ ...f, tc: e.target.value }))} />
                         <TcWarning tc={pagoForm.tc} />

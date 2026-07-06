@@ -246,7 +246,7 @@ function Wizard({ cajas, onCancel, onCreated }) {
             </div>
             <div className="field" style={{ flex: '0 0 140px' }}>
               <label className="field-label">Tolerancia (días)</label>
-              <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="30"
+              <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="30"
                      className="input mono" value={tolerancia}
                      onChange={e => setTolerancia(e.target.value)} />
               <div className="muted tiny" style={{ marginTop: 2 }}>± días para auto-match</div>

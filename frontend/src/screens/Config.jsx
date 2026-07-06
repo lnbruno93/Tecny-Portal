@@ -283,7 +283,7 @@ export default function Config() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div className="input-group" style={{ maxWidth: 160 }}>
                   <input
-                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     step="0.1" min="0" max="100"
                     className="input mono"
                     style={{ fontWeight: 700, fontSize: 16 }}
@@ -319,7 +319,7 @@ export default function Config() {
                         <div style={{ fontSize: 13, fontWeight: 600 }}>{t.nombre}</div>
                         <div className="input-group">
                           <input
-                            type="number" onKeyDown={blockInvalidNumberKeys}
+                            type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                             step="0.1" min="0" max="100"
                             className="input mono"
                             style={{ fontWeight: 700, fontSize: 15 }}

@@ -227,7 +227,7 @@ function TabTarjetas() {
             <div className="input-group" style={{ maxWidth: 240 }}>
               <span className="addon addon-l" style={{ color: 'var(--accent)' }}>{symLocal}</span>
               <input
-                type="number" onKeyDown={blockInvalidNumberKeys}
+                type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
                 value={tc}
                 onChange={e => {
@@ -277,7 +277,7 @@ function TabTarjetas() {
                 <div className="field">
                   <div className="field-label">Precio USD</div>
                   <input
-                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     className="input mono"
                     placeholder="0"
                     value={p.usd}
@@ -525,7 +525,7 @@ function TabUsd() {
             <div className="input-group" style={{ maxWidth: 240 }}>
               <span className="addon addon-l" style={{ color: 'var(--accent)' }}>{symLocal}</span>
               <input
-                type="number" onKeyDown={blockInvalidNumberKeys}
+                type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                 className="input mono"
                 value={tc}
                 onChange={e => {
@@ -575,7 +575,7 @@ function TabUsd() {
                 <div className="field">
                   <div className="field-label">Precio USD</div>
                   <input
-                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     className="input mono"
                     placeholder="0"
                     value={p.usd}

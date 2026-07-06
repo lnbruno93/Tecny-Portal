@@ -1400,7 +1400,7 @@ export default function Envios() {
                               </div>
                               <div className="field" style={{ marginBottom: 0 }}>
                                 <label className="field-label">Monto</label>
-                                <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
+                                <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
                                   value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                               </div>
                               <div className="field" style={{ marginBottom: 0 }}>
@@ -1458,7 +1458,7 @@ export default function Envios() {
                                 </div>
                                 <div className="field" style={{ marginBottom: 0 }}>
                                   <label className="field-label">Precio venta</label>
-                                  <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
+                                  <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0"
                                     value={it.monto} onChange={e => setItem(idx, 'monto', e.target.value)} />
                                 </div>
                                 <div className="field" style={{ marginBottom: 0 }}>
@@ -1537,7 +1537,7 @@ export default function Envios() {
                                 </span>
                                 {arsDirect ? (
                                   <input
-                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="envio-pago-monto"
                                     className="input mono" placeholder="730.000"
                                     value={it.monto}
@@ -1546,7 +1546,7 @@ export default function Envios() {
                                   />
                                 ) : (
                                   <input
-                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     data-testid="envio-pago-monto"
                                     className="input mono" placeholder="500"
                                     value={derivedUsd}
@@ -1559,7 +1559,7 @@ export default function Envios() {
                                 <div style={{ position: 'relative' }}>
                                   <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 11, pointerEvents: 'none' }}>TC</span>
                                   <input
-                                    type="number" onKeyDown={blockInvalidNumberKeys}
+                                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                     className="input mono" placeholder="1460"
                                     value={it.tc}
                                     onChange={e => setPagoTc(idx, e.target.value)}
@@ -1597,7 +1597,7 @@ export default function Envios() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <span className="mono" style={{ fontWeight: 600, fontSize: 13 }}>{sym(it.moneda)}</span>
                                     <input
-                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"
                                       value={it.bruto_manual ? (it.monto ?? '') : Math.round(det.brutoOrig * 100) / 100}
                                       onChange={e => setPagoBruto(idx, e.target.value)}
@@ -1613,7 +1613,7 @@ export default function Envios() {
                                   <div className="muted tiny" style={{ marginBottom: 2 }}>Entra a tu caja <span style={{ color: 'var(--text-muted)' }}>(editable)</span></div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                                     <input
-                                      type="number" onKeyDown={blockInvalidNumberKeys}
+                                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                                       className="input mono"
                                       value={it.neto_input || Math.round(det.netoOrig * 100) / 100}
                                       onChange={e => setPagoNeto(idx, e.target.value)}
@@ -1687,7 +1687,7 @@ export default function Envios() {
                       en el dashboard de ventas. */}
                   <div className="field" style={{ marginBottom: 0 }}>
                     <label className="field-label">Tipo de cambio (TC) del envío <span className="muted tiny">opcional · necesario si hay items en ARS</span></label>
-                    <input type="number" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
+                    <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Ej: 1000"
                            value={form.tc} onChange={e => setF('tc', e.target.value)} />
                   </div>
 

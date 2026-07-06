@@ -297,7 +297,7 @@ export default function MovimientosCajaPanel() {
                 <div className="field">
                   <label className="field-label">Monto {monedaOrigen ? `(${monedaOrigen})` : ''}</label>
                   <input
-                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     className="input mono" placeholder="0"
                     value={form.monto} onChange={e => setF('monto', e.target.value)}
                   />
@@ -307,7 +307,7 @@ export default function MovimientosCajaPanel() {
                     Costo <span className="muted" style={{ fontSize: 11 }}>(opcional)</span>
                   </label>
                   <input
-                    type="number" onKeyDown={blockInvalidNumberKeys}
+                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     className="input mono" placeholder="0"
                     value={form.costo} onChange={e => setF('costo', e.target.value)}
                   />

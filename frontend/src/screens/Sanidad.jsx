@@ -147,7 +147,7 @@ function GastoProyectadoCell({ periodo, recurrente_id, value, isOverride, defaul
       <div style={{ position: 'relative' }}>
         <input
           autoFocus
-          type="number" min="0" step="100"
+          type="number" inputMode="decimal" min="0" step="100"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
@@ -218,7 +218,7 @@ function BrutoProyectadoEditable({ periodo, value, onSave, variacion = null, isG
     return (
       <input
         autoFocus
-        type="number" min="0" step="100"
+        type="number" inputMode="decimal" min="0" step="100"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
@@ -664,7 +664,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
       <td>
         {draft.moneda === 'ARS' ? (
           <input
-            className="input mono" type="number" min="0" step="1000"
+            className="input mono" type="number" inputMode="decimal" min="0" step="1000"
             placeholder="Monto ARS"
             value={draft.monto}
             onChange={(e) => setDraft({ ...draft, monto: e.target.value })}
@@ -688,7 +688,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
               mostrar input TC para convertir a USD. Antes ARS-only. */}
           {(draft.moneda === 'ARS' || draft.moneda === 'UYU') ? (
             <input
-              className="input mono" type="number" min="0" step="50"
+              className="input mono" type="number" inputMode="decimal" min="0" step="50"
               placeholder="TC"
               title="Tipo de cambio para pasar el monto ARS a USD"
               value={draft.tc}
@@ -697,7 +697,7 @@ function RecurrenteEditRow({ draft, setDraft, categorias, onCreateCategoria, onS
             />
           ) : (
             <input
-              className="input mono" type="number" min="0" step="10"
+              className="input mono" type="number" inputMode="decimal" min="0" step="10"
               placeholder="Monto USD"
               value={draft.monto}
               onChange={(e) => setDraft({ ...draft, monto: e.target.value })}

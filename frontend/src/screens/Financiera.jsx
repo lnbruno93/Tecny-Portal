@@ -941,7 +941,7 @@ export default function Financiera() {
                   <div className="input-group">
                     <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
                     <input
-                      type="number" onKeyDown={blockInvalidNumberKeys}
+                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                       className="input mono"
                       placeholder="0,00"
                       value={cMonto}
@@ -1379,7 +1379,7 @@ export default function Financiera() {
                   <div className="row" style={{ marginBottom: 12, alignItems: 'flex-end' }}>
                     <div className="field" style={{ flex: '1 1 140px', minWidth: 140 }}>
                       <label htmlFor="pago-usd" className="field-label">USD recibido (caja)</label>
-                      <input id="pago-usd" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                      <input id="pago-usd" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                         className="input mono" placeholder="0"
                         value={pagoForm.usd_recibido}
                         onChange={e => setPagoUsd(e.target.value)} />
@@ -1387,7 +1387,7 @@ export default function Financiera() {
                     <div aria-hidden="true" style={{ paddingBottom: 8, color: 'var(--text-muted)', fontWeight: 700, fontSize: 18 }}>×</div>
                     <div className="field" style={{ flex: '1 1 120px', minWidth: 120 }}>
                       <label htmlFor="pago-tc" className="field-label">TC del día</label>
-                      <input id="pago-tc" type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                      <input id="pago-tc" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                         className="input mono" placeholder="0"
                         value={pagoForm.tc}
                         onChange={e => setPagoTc(e.target.value)} />
@@ -1398,7 +1398,7 @@ export default function Financiera() {
                       <label htmlFor="pago-ars" className="field-label">Total ARS (descuenta del saldo)</label>
                       <div className="input-group">
                         <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
-                        <input id="pago-ars" type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                        <input id="pago-ars" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                           className="input mono" placeholder="0,00"
                           value={pagoForm.monto}
                           onChange={e => setPagoArs(e.target.value)} />
@@ -1434,7 +1434,7 @@ export default function Financiera() {
                     <label htmlFor="pago-ars-only" className="field-label">Monto (ARS)</label>
                     <div className="input-group">
                       <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
-                      <input id="pago-ars-only" type="number" onKeyDown={blockInvalidNumberKeys} min="0"
+                      <input id="pago-ars-only" type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                         className="input mono" placeholder="0,00"
                         value={pagoForm.monto}
                         onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} />
@@ -1617,14 +1617,14 @@ export default function Financiera() {
                   <div className="row" style={{ gap: 8 }}>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                              className="input mono" placeholder="0"
                              value={manualForm.monto_bruto}
                              onChange={e => setManualForm(f => ({ ...f, monto_bruto: e.target.value }))} />
                     </div>
                     <div className="field" style={{ width: 110 }}>
                       <label className="field-label">% retención</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.01"
                              className="input mono"
                              value={manualForm.pct}
                              onChange={e => setManualForm(f => ({ ...f, pct: e.target.value }))} />

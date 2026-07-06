@@ -923,7 +923,7 @@ export default function Cajas() {
               </div>
               <div className="field" style={{ width: 140 }}>
                 <label className="field-label">Saldo inicial</label>
-                <input type="number" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" placeholder="0"
+                <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" placeholder="0"
                        value={cajaForm.saldo_inicial} onChange={e => setCajaForm(f => ({ ...f, saldo_inicial: e.target.value }))} />
               </div>
               <label className="field" style={{ width: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -933,7 +933,7 @@ export default function Cajas() {
               {cajaForm.es_tarjeta && (
                 <div className="field" style={{ width: 120 }}>
                   <label className="field-label">% comisión</label>
-                  <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.1" className="input mono" placeholder="23.5"
+                  <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" max="100" step="0.1" className="input mono" placeholder="23.5"
                          value={cajaForm.comision_pct} onChange={e => setCajaForm(f => ({ ...f, comision_pct: e.target.value }))} />
                 </div>
               )}
@@ -970,7 +970,7 @@ export default function Cajas() {
                       <td style={{ fontWeight: 600 }}>{c.nombre}</td>
                       <td><span className="ccy">{c.moneda}</span></td>
                       <td className="num">
-                        <input type="number" onKeyDown={blockInvalidNumberKeys} step="0.01" defaultValue={Number(c.saldo_inicial) || 0}
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" defaultValue={Number(c.saldo_inicial) || 0}
                                key={`si-${c.id}-${c.saldo_inicial}`}
                                className="input num" style={{ maxWidth: 110, textAlign: 'right' }}
                                onBlur={e => handleSaldoInicial(c, e.target.value)}
@@ -1041,10 +1041,10 @@ export default function Cajas() {
                   <div className="field" style={{ width: 130 }}><label className="field-label">Fecha</label>
                     <input type="date" className="input" value={ajusteForm.fecha} onChange={e => setAjusteForm(f => ({ ...f, fecha: e.target.value }))} /></div>
                   <div className="field" style={{ width: 110 }}><label className="field-label">Monto</label>
-                    <input type="number" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.monto} onChange={e => setAjusteForm(f => ({ ...f, monto: e.target.value }))} /></div>
+                    <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.monto} onChange={e => setAjusteForm(f => ({ ...f, monto: e.target.value }))} /></div>
                   {cajaSel.moneda === 'ARS' && (
                     <div className="field" style={{ width: 90 }}><label className="field-label">TC</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.tc} onChange={e => setAjusteForm(f => ({ ...f, tc: e.target.value }))} /></div>
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} step="0.01" className="input" value={ajusteForm.tc} onChange={e => setAjusteForm(f => ({ ...f, tc: e.target.value }))} /></div>
                   )}
                   <div className="field" style={{ flex: 1, minWidth: 120 }}><label className="field-label">Concepto</label>
                     <input className="input" placeholder="ej. arqueo, retiro" value={ajusteForm.concepto} onChange={e => setAjusteForm(f => ({ ...f, concepto: e.target.value }))} /></div>
@@ -1175,13 +1175,13 @@ export default function Cajas() {
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Monto ARS</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                         value={deudaForm.monto_ars}
                         onChange={e => setDeudaForm(f => ({ ...f, monto_ars: e.target.value }))} />
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Monto USD</label>
-                      <input type="number" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
+                      <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                         value={deudaForm.monto_usd}
                         onChange={e => setDeudaForm(f => ({ ...f, monto_usd: e.target.value }))} />
                     </div>
@@ -1232,7 +1232,7 @@ export default function Cajas() {
                   <ContactoPickerEmbedded form={invForm} setForm={setInvForm} allContacts={allContacts} />
                   <div className="field">
                     <label className="field-label">Monto USD <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    <input type="number" onKeyDown={blockInvalidNumberKeys} min="1" step="0.01" className="input" placeholder="ej. 5000"
+                    <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="1" step="0.01" className="input" placeholder="ej. 5000"
                       value={invForm.monto}
                       onChange={e => setInvForm(f => ({ ...f, monto: e.target.value }))} />
                   </div>
