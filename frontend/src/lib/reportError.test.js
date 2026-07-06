@@ -78,6 +78,65 @@ describe('reportError — filtro de ruido (NOISE_PATTERNS)', () => {
     expect(url).toContain('/api/client-errors');
     expect(opts.method).toBe('POST');
   });
+
+  // Ampliación 2026-07-06 (post-rebarrer): los errores de chunk load fail se
+  // manejan en `lazyWithRetry` + `ErrorBoundary.reloadForNewVersion()` y NO
+  // aportan valor en Sentry (0 users mapeados, fingerprint persistente 6+
+  // semanas). El fix añade patterns al NOISE_PATTERNS para silenciarlos.
+  describe('chunk load errors (post-rebarrer 2026-07-06)', () => {
+    it('NO reporta "_result.default" (Safari — TECNY-PORTAL-BACKEND-4)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError("undefined is not an object (evaluating 'e._result.default')"));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "Cannot read properties of undefined (reading \'default\')" (Chrome)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError("Cannot read properties of undefined (reading 'default')"));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "Failed to fetch dynamically imported module"', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError('Failed to fetch dynamically imported module: https://.../assets/foo.js'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "Importing a module script failed" (Safari)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError('Importing a module script failed.'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "Loading chunk X failed" (Webpack legacy)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new Error('Loading chunk 42 failed.'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "Dynamic import resolved to invalid module" (guard sintético)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new Error('Dynamic import resolved to invalid module (empty or non-object)'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('NO reporta "valid JavaScript MIME type" (chunk devuelve HTML — variante Safari/legacy)', async () => {
+      const { reportError } = await import('./reportError.js');
+      // Mensaje literal que Safari/legacy emite cuando el chunk devuelve
+      // text/html en lugar de application/javascript.
+      reportError(new TypeError('The service worker responded with a non valid JavaScript MIME type of text/html.'));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // Regresión: NO queremos filtrar todos los "Cannot read properties of
+    // undefined" — solo los que específicamente leen 'default' (chunk load).
+    // Un bug real leyendo otras props debe seguir reportándose.
+    it('SÍ reporta "Cannot read properties of undefined (reading \'foo\')" (bug real, no chunk)', async () => {
+      const { reportError } = await import('./reportError.js');
+      reportError(new TypeError("Cannot read properties of undefined (reading 'foo')"));
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 // Auditoría 2026-06-30 Q-09: si el build sale sin VITE_API_URL, el fallback

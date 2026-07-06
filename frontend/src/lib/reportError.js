@@ -57,6 +57,24 @@ const MIN_INTERVAL_MS = 2000;
  * Si en el futuro queremos OBSERVABILIDAD de estos errores (ej. detectar
  * Railway tirado), mejor hacer un endpoint de health que mida latencia, NO
  * apilar mensajes de UI en Sentry.
+ *
+ * Ampliación 2026-07-06 (post-rebarrer): agregamos los patterns de
+ * "chunk load failure" — chunks JS que fallan al importarse dinámicamente
+ * cuando el user tiene un bundle viejo cacheado y el hash del chunk cambió
+ * post-deploy. Estos errores YA se manejan en 3 capas defensivas:
+ *   1. `lazyWithRetry` reintenta 3 veces con backoff exponencial.
+ *   2. `ErrorBoundary.componentDidCatch` → `reloadForNewVersion()` recarga
+ *      la página automáticamente para tomar el bundle nuevo.
+ *   3. Si el reload no funciona (loop protection), el user ve un botón
+ *      "Reintentar" con `window.location.reload()`.
+ * Reportar a Sentry NO agrega valor:
+ *   - 0 users mapeados (fingerprint de stack minified agrupa todo).
+ *   - No es un bug del código, es un artefacto del deploy.
+ *   - El fingerprint persiste 6+ semanas por el mismo issue (TECNY-PORTAL-
+ *     BACKEND-4 detectado en rebarrer 2026-07-06 con 36 events desde may 29).
+ * Si el issue "vuelve" repetido en el próximo deploy = señal de bug real
+ * (chunk que no existe), no cache stale. Ese path SÍ merece Sentry, pero
+ * requiere lógica distinta (ej. hearbeat cada N reloads sin éxito).
  */
 const NOISE_PATTERNS = [
   /Sin conexi[óo]n con el servidor/i,           // api.js fetch network failure
@@ -69,6 +87,16 @@ const NOISE_PATTERNS = [
   /Network request failed/i,                    // misc
   /The operation was aborted/i,                 // user navegó/cerró
   /AbortError/i,                                // user navegó/cerró
+  // Chunk load failures (ampliación 2026-07-06). Mantener sincronizado
+  // con `chunkReload.js#isChunkLoadError` — los patterns idénticos.
+  /valid JavaScript MIME type/i,                // chunk devolvió HTML (index) en vez de JS
+  /dynamically imported module/i,               // browser genérico
+  /Importing a module script failed/i,          // Safari
+  /Loading chunk\s+\S+\s+failed/i,              // Webpack legacy (por si Vite lo emite)
+  /Failed to fetch dynamically imported/i,      // Chrome/Firefox
+  /Cannot read properties of undefined \(reading 'default'\)/i, // Chrome — mod undefined
+  /_result\.default/i,                          // Safari — mod undefined (TECNY-PORTAL-BACKEND-4)
+  /Dynamic import resolved to invalid module/i, // guard sintético de lazyWithRetry
 ];
 
 function isNoise(error) {
