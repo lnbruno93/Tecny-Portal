@@ -25,9 +25,59 @@
 //
 // Si el lock no se obtiene, la función no se ejecuta y la promesa resuelve
 // con `{ acquired: false }`. Si se ejecutó, resuelve con `{ acquired: true, result }`.
+//
+// Errores transitorios de pool/red (connection timeout, query timeout, socket
+// terminated) NO propagan — el helper los trata como "otra instancia tiene el
+// lock" y devuelve `{ acquired: false, transient: true }`. Motivación (Sentry
+// 2026-07-05 issues #Z + #M, 15 events del audit_queue_worker cada 2s):
+//   · El tick corre cada 2s → si el pool está saturado durante un peak,
+//     `db.connect()` falla con "Connection terminated due to connection
+//     timeout". Antes propagaba → captureException a Sentry → ruido.
+//   · Semánticamente idéntico a "no obtuve el lock ahora, retry en el próximo
+//     tick" — no es un bug del código, es un backpressure signal del pool.
+//   · Errores reales (bug en la fn del caller, permisos DB, etc.) siguen
+//     propagando normalmente.
 
 const db = require('../config/database');
 const logger = require('./logger');
+
+// Errores transitorios de pool/red. Los identificamos por combo message +
+// error code de pg — no por `err instanceof X` porque el driver de pg emite
+// varios tipos distintos según el punto del pipeline en que falla.
+const TRANSIENT_MESSAGE_PATTERNS = [
+  /connection terminated/i,       // pg: socket cerrado o pool timeout
+  /connection timeout/i,          // pg: connectionTimeoutMillis del pool
+  /query read timeout/i,          // pg: query_timeout del client
+  /timeout expired/i,             // pg alt phrasing
+  /the pool is/i,                 // pool state errors (draining, ended, etc.)
+  /connect etimedout/i,           // sistema operativo: TCP connect timeout
+  /read econnreset/i,             // socket reset durante query
+];
+// Códigos SQLSTATE de Postgres que consideramos transitorios (siempre son
+// condiciones de operación/red, no bugs de query o schema):
+const TRANSIENT_PG_CODES = new Set([
+  '57P01',  // admin_shutdown (server restart)
+  '57P02',  // crash_shutdown
+  '57P03',  // cannot_connect_now (server booting)
+  '08000',  // connection_exception (genérico)
+  '08003',  // connection_does_not_exist
+  '08006',  // connection_failure
+  '08001',  // sqlclient_unable_to_establish_sqlconnection
+  '08004',  // sqlserver_rejected_establishment_of_sqlconnection
+]);
+
+/**
+ * @param {Error|unknown} err
+ * @returns {boolean} true si el error es transitorio (pool saturado, red flaky).
+ *   Exportado para que los callers también puedan reutilizar la clasificación
+ *   si algún día quieren distinguir el motivo del skip.
+ */
+function isTransientDbError(err) {
+  if (!err || typeof err !== 'object') return false;
+  if (err.code && TRANSIENT_PG_CODES.has(err.code)) return true;
+  const msg = (err.message || '').toString();
+  return TRANSIENT_MESSAGE_PATTERNS.some((re) => re.test(msg));
+}
 
 /**
  * Envuelve la ejecución de `fn` con un advisory lock global de Postgres.
@@ -39,7 +89,13 @@ const logger = require('./logger');
  * @param {() => Promise<any>} fn  Función async a ejecutar bajo el lock.
  * @param {object} [options]
  * @param {boolean} [options.logSkip=true]  Logear debug cuando otra instancia tiene el lock.
- * @returns {Promise<{ acquired: boolean, result?: any, error?: Error }>}
+ * @returns {Promise<{ acquired: boolean, result?: any, error?: Error, transient?: boolean }>}
+ *   - `acquired: true, result` — el lock se obtuvo y `fn()` corrió con éxito.
+ *   - `acquired: true, error`  — el lock se obtuvo pero `fn()` tiró (propagado por el caller).
+ *   - `acquired: false`        — otra instancia tiene el lock, tick saltado.
+ *   - `acquired: false, transient: true, error` — no se pudo hablar con la DB
+ *     por un problema transitorio (pool saturado, restart de PG). El caller
+ *     debería tratar esto como un skip normal y NO reportar a Sentry.
  */
 async function withAdvisoryLock(lockName, fn, { logSkip = true } = {}) {
   if (!lockName || typeof lockName !== 'string') {
@@ -53,14 +109,42 @@ async function withAdvisoryLock(lockName, fn, { logSkip = true } = {}) {
   // Si soltáramos la conexión al pool entre el lock y el unlock, otro código
   // podría liberar el lock prematuramente (locks de sesión están atados a la
   // conexión, no al request).
-  const client = await db.connect();
+  //
+  // Errores transitorios en el `db.connect()` (pool saturado, PG restart) se
+  // reportan como `{ acquired: false, transient: true }` en vez de propagar.
+  // Ver comentario al tope del archivo — evita ruido en Sentry por backpressure.
+  let client;
+  try {
+    client = await db.connect();
+  } catch (err) {
+    if (isTransientDbError(err)) {
+      logger.debug({ err: err.message, lockName },
+        'advisory_lock: connect transitorio — se salta el tick');
+      return { acquired: false, transient: true, error: err };
+    }
+    throw err;
+  }
+
   let acquired = false;
 
   try {
-    const lockResult = await client.query(
-      'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
-      [lockName]
-    );
+    let lockResult;
+    try {
+      lockResult = await client.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+        [lockName]
+      );
+    } catch (err) {
+      // Mismo criterio que en el `db.connect()` de arriba: si el query
+      // transitorio (statement_timeout, socket cerrado) fallo, no es un bug
+      // — el próximo tick lo reintentará.
+      if (isTransientDbError(err)) {
+        logger.debug({ err: err.message, lockName },
+          'advisory_lock: try_lock transitorio — se salta el tick');
+        return { acquired: false, transient: true, error: err };
+      }
+      throw err;
+    }
     acquired = lockResult.rows[0]?.acquired === true;
 
     if (!acquired) {
@@ -109,3 +193,4 @@ async function withAdvisoryLock(lockName, fn, { logSkip = true } = {}) {
 }
 
 module.exports = withAdvisoryLock;
+module.exports.isTransientDbError = isTransientDbError;
