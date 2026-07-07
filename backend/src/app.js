@@ -287,6 +287,7 @@ const clientErrorLimiter = rateLimit({
   standardHeaders: false, legacyHeaders: false,
   message: { error: 'rate-limit' },
 });
+const { isClientErrorNoise } = require('./lib/clientErrorNoise');
 app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' }), (req, res) => {
   const { message, stack, url, userAgent, source, timestamp,
           build_commit: buildCommit, build_version: buildVersion } = req.body || {};
@@ -297,6 +298,16 @@ app.post('/api/client-errors', clientErrorLimiter, express.json({ limit: '16kb' 
     ua: userAgent, ip: req.ip,
     build_commit: buildCommit, build_version: buildVersion,
   }, 'client error');
+  // 2026-07-07: filtro defensivo de ruido — espejo del NOISE_PATTERNS del
+  // frontend (lib/clientErrorNoise.js). Necesario porque users con bundle
+  // viejo cacheado (localStorage/service worker) reportan errores que el
+  // NOISE_PATTERNS del frontend nuevo debería haber silenciado. Sin este
+  // filtro backend, el chunk-load Safari (TECNY-PORTAL-BACKEND-4) se
+  // regresaba en Sentry cada vez que un user viejo cargaba el portal.
+  // Aún logueamos con logger.warn arriba — solo NO reportamos a Sentry.
+  if (isClientErrorNoise(message)) {
+    return res.status(204).end();
+  }
   try {
     const Sentry = require('@sentry/node');
     if (process.env.SENTRY_DSN) {
