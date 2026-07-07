@@ -897,6 +897,21 @@ body {
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .input::placeholder { color: var(--text-dim); }
 
+/* 2026-07-07 UX: ocultar las flechitas ↑↓ de <input type="number"> en todo
+   el portal. Los inputs monetarios se manejan por teclado (los operadores
+   tipean el monto rápido) — las flechas son ruido visual y confunden en
+   layout compacto. `inputMode="decimal"` mantiene el keypad numérico en
+   mobile. Global para no repetir la regla en cada componente. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;      /* Firefox */
+  appearance: textfield;
+}
+
 .input-group {
   display: flex;
   align-items: stretch;

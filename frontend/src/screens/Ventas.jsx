@@ -55,7 +55,10 @@ ${PLACEHOLDER_NEGOCIO}`;
 
 const EMPTY_VENTA = {
   fecha: todayStr(), hora: '', cliente_nombre: '', cliente_id: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
-  vendedor_id: '', comision: '', tc_venta: '', estado: 'pendiente', notas: '',
+  // 2026-07-07: default `acreditado` — la mayoría de las ventas se cargan
+  // ya cobradas (no en pending). Antes era 'pendiente' y el operador tenía
+  // que cambiarlo manualmente en cada venta cash — fricción innecesaria.
+  vendedor_id: '', comision: '', tc_venta: '', estado: 'acreditado', notas: '',
   // Junio 2026: canjes pasa de 1 sola entrada con 4 campos a array de hasta N
   // canjes con 10 campos c/u — cada canje puede ir a Inventario con todos sus
   // datos. Ver schema canjeSchema en backend/src/schemas/ventas.js.
@@ -537,13 +540,40 @@ export default function Ventas() {
   // Setter del TC (recalcula el bruto desde el USD tipeado).
   // 2026-07-04: al editar TC se pierde el override manual (misma política
   // que setPagoUsd — cualquier cambio en input primario descarta el manual).
+  //
+  // 2026-07-07 FIX (feedback Lucas): si el operador tipeó MONTO primero y
+  // TC después (flow común efectivo ARS/UYU), preservar el monto y calcular
+  // el USD equivalente hacia atrás. Antes borrábamos el monto porque
+  // `brutoFromUsdInput('', ...)` retorna '' cuando usd_input está vacío —
+  // el operador tenía que re-tipear el monto.
   function setPagoTc(i, value) {
     setPagos(p => p.map((pg, j) => {
       if (j !== i) return pg;
       const m = metodos.find(x => x.id === pg.metodo_pago_id);
       const pct = pctMetodo(m);
-      const bruto = brutoFromUsdInput(pg.usd_input, pg.moneda, value, pct);
-      return { ...pg, tc: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
+      const hayUsdInput = pg.usd_input && Number(pg.usd_input) > 0;
+      const hayMonto    = pg.monto && Number(pg.monto) > 0;
+      if (hayUsdInput) {
+        // Flow "cliente paga USD X" → recalcula el bruto en moneda del pago.
+        const bruto = brutoFromUsdInput(pg.usd_input, pg.moneda, value, pct);
+        return { ...pg, tc: value, neto_input: '', bruto_manual: false, monto: bruto !== '' ? String(bruto) : '' };
+      }
+      if (hayMonto) {
+        // Flow "cliente paga $X directo" → preservar monto, derivar USD
+        // desde el monto ahora que tenemos TC. El USD queda como fuente de
+        // verdad para el cálculo del total cubierto.
+        const usdDerivado = usdFromBrutoInput(pg.monto, pg.moneda, value, pct);
+        return {
+          ...pg,
+          tc: value,
+          neto_input: '',
+          bruto_manual: false,
+          // NO tocamos monto — respetamos lo que tipeó el operador.
+          usd_input: usdDerivado !== '' ? String(usdDerivado) : pg.usd_input,
+        };
+      }
+      // Ni monto ni usd_input tipeados — solo actualizamos el TC.
+      return { ...pg, tc: value, neto_input: '', bruto_manual: false };
     }));
   }
   // Setter directo en moneda nativa para EFECTIVO ARS (sin comisión). El operador
