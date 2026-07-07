@@ -18,7 +18,7 @@ import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
-import { fmt, fmtMoney } from '../lib/format';
+import { fmt, fmtMoney, fmtImei } from '../lib/format';
 import { rangeToParams, RANGE_PRESETS } from '../lib/dateRange';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
@@ -583,7 +583,7 @@ export default function Inventario() {
     return [
       p.nombre || '', p.gb || '', p.bateria ?? '', p.color || '',
       p.costo ?? '', p.costo_moneda || '', p.precio_venta ?? '', p.precio_moneda || '',
-      p.imei || '', p.tipo_carga === 'lote' ? 'stock' : 'Unitario',
+      fmtImei(p.imei) || '', p.tipo_carga === 'lote' ? 'stock' : 'Unitario',
       p.categoria_nombre || '', p.proveedor || '',
       p.clase === 'accesorio' ? (p.cantidad ?? '') : '', p.deposito_id ?? '',
     ];
@@ -1523,7 +1523,7 @@ export default function Inventario() {
                       <div style={{ maxHeight: 100, overflowY: 'auto' }}>
                         {importDupImeis.map((d, i) => (
                           <div key={i} className="mono" style={{ fontSize: 11 }}>
-                            · IMEI <strong>{d.imei}</strong> aparece en filas{' '}
+                            · IMEI <strong>{fmtImei(d.imei)}</strong> aparece en filas{' '}
                             {d.rowIndices.map(idx => idx + 2).join(', ')}
                           </div>
                         ))}
@@ -1781,7 +1781,7 @@ export default function Inventario() {
                   {producto?.nombre || 'Producto'}
                   {producto?.imei && (
                     <span className="mono muted" style={{ fontSize: 12, fontWeight: 500, marginLeft: 10 }}>
-                      {producto.imei}
+                      {fmtImei(producto.imei)}
                     </span>
                   )}
                 </h3>
@@ -1848,7 +1848,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
           <DetalleField label="Categoría" value={cat?.nombre || '—'} />
           <DetalleField label="Depósito" value={dep?.nombre || '—'} />
           <DetalleField label="Proveedor" value={producto.proveedor || '—'} />
-          {producto.imei && <DetalleField label="IMEI/Serial" value={producto.imei} mono />}
+          {producto.imei && <DetalleField label="IMEI/Serial" value={fmtImei(producto.imei)} mono />}
           {producto.gb && <DetalleField label="GB" value={producto.gb} />}
           {producto.color && <DetalleField label="Color" value={producto.color} />}
           {producto.bateria != null && <DetalleField label="Batería" value={`${producto.bateria}%`} />}

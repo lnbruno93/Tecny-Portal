@@ -31,6 +31,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { Icons } from '../components/Icons';
 import BarcodeScanner from '../components/BarcodeScanner';
+import { fmtImei } from '../lib/format';
 // 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
 
@@ -397,7 +398,7 @@ export default function RecepcionStock() {
                 {/* Header de card: IMEI + delete */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{it.imei}</div>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{fmtImei(it.imei)}</div>
                     <div style={{ fontSize: 13, marginTop: 2 }}>{it.nombre}</div>
                     <div className="muted" style={{ fontSize: 11 }}>
                       {[it.color, it.gb, it.condicion].filter(Boolean).join(' · ')}

@@ -26,6 +26,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { Icons } from '../components/Icons';
 import useModal from '../lib/useModal';
+import { fmtImei } from '../lib/format';
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -379,7 +380,7 @@ function MergeModal({ source, onClose, onSubmit }) {
                     <div style={{ fontWeight: 600 }}>{p.nombre}</div>
                     <div className="muted tiny">
                       Stock actual: {p.cantidad ?? 0}
-                      {p.imei && ` · IMEI: ${p.imei}`}
+                      {p.imei && ` · IMEI: ${fmtImei(p.imei)}`}
                     </div>
                   </div>
                 </label>
