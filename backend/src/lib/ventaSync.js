@@ -57,6 +57,40 @@ async function syncVentaCaja(client, venta, userId) {
           pagoMoneda: p.moneda, cajaMoneda: p.caja_moneda, tc: p.tc, monto: p.monto },
         '[syncVentaCaja] pago mismatch de moneda sin conversión válida — skip mov para no corromper saldo'
       );
+      // Sentinel Fase B fix #4 (2026-07-07): escalamos este WARN a Sentry con
+      // fingerprint estable por par (pagoMoneda→cajaMoneda) para dimensionar
+      // cuánto mismatch histórico hay en producción. El WARN de pino sólo va
+      // a Railway logs; Sentry lo agrupa por tenant y evolución en el tiempo,
+      // que es lo que necesitamos para planear el backfill de Fase B.
+      // Guarded by SENTRY_DSN + try/catch para que no rompa si Sentry falla
+      // (el skip del mov ya está hecho arriba — la telemetría es best-effort).
+      try {
+        const Sentry = require('@sentry/node');
+        if (process.env.SENTRY_DSN) {
+          Sentry.captureMessage(
+            '[syncVentaCaja] pago mismatch de moneda — skip mov',
+            {
+              level: 'warning',
+              // Fingerprint estable: agrupa TODOS los eventos del mismo par
+              // moneda-src → moneda-dst en un solo issue de Sentry. Sin esto,
+              // cada venta genera un issue nuevo y se vuelve inmanejable.
+              fingerprint: ['sync-venta-caja-mismatch', String(p.moneda), String(p.caja_moneda)],
+              tags: {
+                pago_moneda: String(p.moneda || 'null'),
+                caja_moneda: String(p.caja_moneda || 'null'),
+                has_tc:      p.tc != null && Number(p.tc) > 0 ? 'yes' : 'no',
+              },
+              extra: {
+                ventaId: venta.id,
+                orderId: venta.order_id,
+                cajaId:  p.metodo_pago_id,
+                monto:   p.monto,
+                tc:      p.tc,
+              },
+            }
+          );
+        }
+      } catch { /* Sentry no disponible — no rompemos el sync por telemetría */ }
       continue;
     }
     movimientos.push({
