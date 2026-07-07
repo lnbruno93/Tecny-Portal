@@ -20,6 +20,10 @@ import { fmt, fmt2, fmtImei } from '../lib/format';
 import { useMonedasTenant } from '../lib/useMonedasTenant';
 import { useAuth } from '../contexts/AuthContext';
 import { getMonedasConValor } from '../lib/monedasPais';
+// 2026-07-07: helper puro para sustituir {{negocio}} por tenant.nombre
+// en las plantillas de garantía. Reemplaza el hack anterior donde el
+// nombre del negocio quedaba hardcoded en el texto guardado en DB.
+import { renderPlantilla, PLACEHOLDER_NEGOCIO } from '../lib/renderPlantilla';
 
 // Componentes y helpers locales del módulo Ventas — extraídos a archivos
 // dedicados para mantener este screen enfocado en orchestration.
@@ -38,14 +42,16 @@ const ESTADO_DISPLAY = {
 };
 const ESTADO_LABEL = { acreditado: 'Acreditado', pendiente: 'Pendiente', cancelado: 'Cancelado' };
 // Texto de garantía por defecto cuando el tenant no tiene ninguna plantilla
-// activa. 2026-07-04 (#506): pasa de string constante a función que recibe
-// el nombre del negocio, para no hardcodear "Tecny" en el pie. Si el tenant
-// tiene una plantilla propia guardada (Config → Plantillas de Garantía) esa
-// gana y no pasamos por este fallback.
-function garantiaFallback(tenantNombre) {
-  const marca = (tenantNombre || '').trim() || 'Tecny';
-  return 'Este comprobante es tu nota de compra y avala la operación comercial entre partes. No es una factura ni comprobante fiscal.\n\nNos responsabilizamos por 12 meses, desde la fecha de compra, ante cualquier error, falla o mal funcionamiento propio de software y hardware.\n\n' + marca;
-}
+// activa. 2026-07-07: el pie ahora usa el placeholder `{{negocio}}` en
+// lugar de concatenar el nombre — así es CONSISTENTE con las plantillas
+// guardadas en DB (que también usan `{{negocio}}` tras el backfill de
+// migration 20260707000003). Al pasar por `renderPlantilla(...)` se resuelve
+// al nombre real del tenant.
+const GARANTIA_FALLBACK_TEXTO = `Este comprobante es tu nota de compra y avala la operación comercial entre partes. No es una factura ni comprobante fiscal.
+
+Nos responsabilizamos por 12 meses, desde la fecha de compra, ante cualquier error, falla o mal funcionamiento propio de software y hardware.
+
+${PLACEHOLDER_NEGOCIO}`;
 
 const EMPTY_VENTA = {
   fecha: todayStr(), hora: '', cliente_nombre: '', cliente_id: '', cliente_cc_id: '', etiqueta_id: '', garantia_id: '',
@@ -860,7 +866,7 @@ export default function Ventas() {
           fecha:            venta.fecha   || vForm.fecha,
           notas:            venta.notas   || vForm.notas,
           garantia_nombre:  garantiaSel?.nombre || (vForm.garantia_id ? null : 'Predeterminada'),
-          garantia_texto:   garantiaSel?.texto  || garantiaFallback(tenantNombre),
+          garantia_texto:   renderPlantilla(garantiaSel?.texto || GARANTIA_FALLBACK_TEXTO, tenantNombre),
           items:            itemsPdf,
           pagos:            pagosPdf,
         };
@@ -1118,7 +1124,7 @@ export default function Ventas() {
         cliente_email:    contactoVinculado?.email    || null,
         vendedor_nombre:  vendedorNombre,
         garantia_nombre:  garFuente?.nombre || (v.garantia_id ? null : 'Predeterminada'),
-        garantia_texto:   garFuente?.texto  || garantiaFallback(tenantNombre),
+        garantia_texto:   renderPlantilla(garFuente?.texto || GARANTIA_FALLBACK_TEXTO, tenantNombre),
       };
       try {
         const mod = await import('../lib/generarComprobantePdf');
@@ -1977,7 +1983,9 @@ Pago: Efectivo + Transferencia`}
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (
                   <div key={g.id} className="flex-between" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--hairline)', alignItems: 'flex-start' }}>
-                    <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{g.texto}</div></div>
+                    {/* Preview renderiza `{{negocio}}` como el nombre del tenant así el
+                        operador ve cómo va a quedar el comprobante final, no el placeholder crudo. */}
+                    <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{renderPlantilla(g.texto, tenantNombre)}</div></div>
                     <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
                       <button className="icon-btn" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
                       <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
@@ -1997,6 +2005,9 @@ Pago: Efectivo + Transferencia`}
                     onChange={e => setGForm(f => ({ ...f, texto: e.target.value }))}
                     style={{ height: 'auto', minHeight: 220, padding: '12px 14px', lineHeight: 1.55, fontSize: 14, resize: 'vertical', whiteSpace: 'pre-wrap' }}
                   />
+                  <div className="muted tiny" style={{ marginTop: 4 }}>
+                    Tip: escribí <code>{PLACEHOLDER_NEGOCIO}</code> donde quieras que aparezca el nombre de tu negocio. Al imprimir el comprobante se reemplaza automáticamente por <strong>{tenantNombre}</strong>.
+                  </div>
                 </div>
                 <label className="flex-row" style={{ gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}><input type="checkbox" checked={gForm.es_default} onChange={e => setGForm(f => ({ ...f, es_default: e.target.checked }))} /> Marcar como predeterminada</label>
                 <div className="flex-row" style={{ gap: 8 }}>
