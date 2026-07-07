@@ -424,14 +424,15 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
        WHERE ${where}
     `;
 
-    // 2 queries en paralelo dentro de una sola tx con el tenant context.
-    // withTenant envuelve el callback en BEGIN/COMMIT — las 2 queries comparten
-    // tx y RLS aplica a ambas.
+    // 2 queries serializadas sobre el mismo client dentro de una sola tx con
+    // el tenant context. withTenant envuelve el callback en BEGIN/COMMIT — las
+    // 2 queries comparten tx y RLS aplica a ambas. Obligatorio serializar con
+    // pg@9+: no se pueden ejecutar queries concurrentes sobre el mismo client
+    // (el protocolo Postgres es secuencial → Promise.all no daba paralelismo).
     const [filasRes, totalRes] = await db.withTenant(req.tenantId, async (client) => {
-      return Promise.all([
-        client.query(filasQuery, params),
-        client.query(totalQuery, params),
-      ]);
+      const filas = await client.query(filasQuery, params);
+      const total = await client.query(totalQuery, params);
+      return [filas, total];
     });
 
     const tot = totalRes.rows[0] || {};
@@ -565,10 +566,9 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
     `;
 
     const [countRes, dataRes] = await db.withTenant(req.tenantId, async (client) => {
-      return Promise.all([
-        client.query(countQuery, params),
-        client.query(dataQuery, [...params, limit, offset]),
-      ]);
+      const countRes = await client.query(countQuery, params);
+      const dataRes = await client.query(dataQuery, [...params, limit, offset]);
+      return [countRes, dataRes];
     });
 
     // 2026-06-23 F5b: response shaping. Si el user no tiene
@@ -1230,10 +1230,13 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
   const catIds = [...new Set(productos.map(p => p.categoria_id).filter(Boolean))];
   const depIds = [...new Set(productos.map(p => p.deposito_id).filter(Boolean))];
   const [catValid, depValid] = await db.withTenant(req.tenantId, async (client) => {
-    return Promise.all([
-      catIds.length ? client.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [catIds]) : { rows: [] },
-      depIds.length ? client.query('SELECT id FROM depositos  WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [depIds]) : { rows: [] },
-    ]);
+    const catValid = catIds.length
+      ? await client.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [catIds])
+      : { rows: [] };
+    const depValid = depIds.length
+      ? await client.query('SELECT id FROM depositos  WHERE id = ANY($1::int[]) AND deleted_at IS NULL', [depIds])
+      : { rows: [] };
+    return [catValid, depValid];
   });
   const okCats = new Set(catValid.rows.map(r => r.id));
   const okDeps = new Set(depValid.rows.map(r => r.id));

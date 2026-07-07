@@ -78,18 +78,16 @@ router.get('/:id', async (req, res, next) => {
       const { rows: p } = await client.query('SELECT * FROM proyectos WHERE id = $1 AND deleted_at IS NULL', [id]);
       if (!p[0]) return { notFound: true };
 
-      const [{ rows: parts }, { rows: tot }] = await Promise.all([
-        client.query(
-          `SELECT c.id, c.nombre, c.apellido FROM proyecto_participantes pp
-             JOIN contactos c ON c.id = pp.contacto_id
-            WHERE pp.proyecto_id = $1 ORDER BY c.nombre, c.apellido`, [id]
-        ),
-        client.query(
-          `SELECT COALESCE(SUM(monto), 0) AS total_ars, COALESCE(SUM(monto_usd), 0) AS total_usd,
-                  COUNT(*) AS cant_movimientos, MIN(fecha) AS desde, MAX(fecha) AS hasta
-             FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL`, [id]
-        ),
-      ]);
+      const { rows: parts } = await client.query(
+        `SELECT c.id, c.nombre, c.apellido FROM proyecto_participantes pp
+           JOIN contactos c ON c.id = pp.contacto_id
+          WHERE pp.proyecto_id = $1 ORDER BY c.nombre, c.apellido`, [id]
+      );
+      const { rows: tot } = await client.query(
+        `SELECT COALESCE(SUM(monto), 0) AS total_ars, COALESCE(SUM(monto_usd), 0) AS total_usd,
+                COUNT(*) AS cant_movimientos, MIN(fecha) AS desde, MAX(fecha) AS hasta
+           FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL`, [id]
+      );
       return { proyecto: p[0], parts, tot: tot[0] };
     });
     if (data.notFound) return res.status(404).json({ error: 'Proyecto no encontrado' });
@@ -198,22 +196,20 @@ router.get('/:id/movimientos', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query('SELECT COUNT(*) FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL', [id]),
-        client.query(
-          `SELECT m.*,
-                  (c.nombre || COALESCE(' ' || c.apellido, '')) AS inversor_nombre,
-                  mp.nombre AS caja_nombre,
-                  mp.moneda AS caja_moneda
-             FROM proyecto_movimientos m
-             LEFT JOIN contactos c       ON c.id  = m.inversor_contacto_id
-             LEFT JOIN metodos_pago mp   ON mp.id = m.caja_id
-            WHERE m.proyecto_id = $1 AND m.deleted_at IS NULL
-            ORDER BY m.fecha DESC, m.id DESC
-            LIMIT $2 OFFSET $3`,
-          [id, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query('SELECT COUNT(*) FROM proyecto_movimientos WHERE proyecto_id = $1 AND deleted_at IS NULL', [id]);
+      const dataRes = await client.query(
+        `SELECT m.*,
+                (c.nombre || COALESCE(' ' || c.apellido, '')) AS inversor_nombre,
+                mp.nombre AS caja_nombre,
+                mp.moneda AS caja_moneda
+           FROM proyecto_movimientos m
+           LEFT JOIN contactos c       ON c.id  = m.inversor_contacto_id
+           LEFT JOIN metodos_pago mp   ON mp.id = m.caja_id
+          WHERE m.proyecto_id = $1 AND m.deleted_at IS NULL
+          ORDER BY m.fecha DESC, m.id DESC
+          LIMIT $2 OFFSET $3`,
+        [id, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     // 2026-06-23 F5b: response shaping. Sin `proyectos.ver_costos`,

@@ -410,9 +410,11 @@ async function computeDashboard(tenantId, desde, hasta) {
     // corre dentro de UNA tx con app.current_tenant seteado vía withTenant.
     // RLS filtra automáticamente cada tabla involucrada (ventas, venta_items,
     // venta_pagos, canjes, egresos, movimientos_cc, items_movimiento_cc,
-    // productos, vendedores, etiquetas). El Promise.all sigue siendo dentro
-    // de un solo client → todas las queries comparten el mismo SET LOCAL.
-    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await db.withTenant(tenantId, async (client) => Promise.all([
+    // productos, vendedores, etiquetas). Las 11 queries se serializan sobre
+    // el mismo client (obligatorio con pg@9+: no se puede ejecutar más de
+    // una query concurrente sobre el mismo client; el protocolo Postgres es
+    // secuencial, así que Promise.all no daba paralelismo real).
+    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await db.withTenant(tenantId, async (client) => {
       // Totales de ventas. 2026-06-10: `ganancia_acreditada_usd` agrega FILTER
       // por estado='acreditado' — alimenta la GANANCIA NETA del dashboard, que
       // ahora suma SOLO ventas confirmadas (las pendientes no descuentan
@@ -424,34 +426,34 @@ async function computeDashboard(tenantId, desde, hasta) {
       // por el método de pago (tarjeta + transferencia) que antes inflaba la
       // ganancia bruta — la cascada del KPI ahora es:
       //     bruta_acreditada − costo_financiero_acreditado − egresos = neta
-      client.query(`SELECT
+      const totales = await client.query(`SELECT
                   COUNT(*) AS count,
                   COALESCE(SUM(total_usd),0)                                                AS ingresos_usd,
                   COALESCE(SUM(ganancia_usd),0)                                             AS ganancia_bruta_usd,
                   COALESCE(SUM(ganancia_usd) FILTER (WHERE estado='acreditado'),0)          AS ganancia_acreditada_usd,
                   COALESCE(SUM(comision_total_metodos),0)                                   AS costo_financiero_usd,
                   COALESCE(SUM(comision_total_metodos) FILTER (WHERE estado='acreditado'),0) AS costo_financiero_acreditado_usd
-                FROM ventas v WHERE ${BASE}`, p),
+                FROM ventas v WHERE ${BASE}`, p);
       // Por método de pago (monto en moneda original + equivalente USD)
-      client.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
+      const pagos = await client.query(`SELECT pp.metodo_nombre, pp.moneda, COALESCE(SUM(pp.monto),0) AS total, COALESCE(SUM(pp.monto_usd),0) AS total_usd, COUNT(*) AS n
                 FROM venta_pagos pp JOIN ventas v ON v.id = pp.venta_id WHERE ${BASE}
-                GROUP BY pp.metodo_nombre, pp.moneda ORDER BY total_usd DESC`, p),
+                GROUP BY pp.metodo_nombre, pp.moneda ORDER BY total_usd DESC`, p);
       // Unidades por clase + costos en USD.
       // BLOCKER 2026-07-05: incluir UYU en la conversión fiat/USD (antes solo
       // ARS → todos los items UYU se computaban como USD directo, inflando
       // costos ~40x en tenants UY).
-      client.query(`SELECT
+      const unidades = await client.query(`SELECT
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'celular' OR pr.id IS NULL),0) AS celulares,
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'accesorio'),0) AS accesorios,
                   COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
-                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p),
+                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p);
       // Inversión en canjes (USD). Mismo fix multi-país que arriba.
-      client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
-                FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p),
+      const canjes = await client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
+                FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p);
       // Egresos del período (USD)
-      client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p),
+      const egresos = await client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p);
       // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
-      client.query(`WITH bv AS (
+      const dif = await client.query(`WITH bv AS (
                   SELECT v.id, v.total_usd, v.tc_venta FROM ventas v WHERE ${BASE}
                 ),
                 pa AS (
@@ -472,14 +474,14 @@ async function computeDashboard(tenantId, desde, hasta) {
                   LEFT JOIN ca ON ca.venta_id = bv.id
                 )
                 SELECT COALESCE(SUM(CASE WHEN cubierto-total_usd > 0 THEN cubierto-total_usd ELSE 0 END),0) AS sobrepagos,
-                       COALESCE(SUM(CASE WHEN cubierto-total_usd < 0 THEN total_usd-cubierto ELSE 0 END),0) AS faltantes FROM dif`, p),
+                       COALESCE(SUM(CASE WHEN cubierto-total_usd < 0 THEN total_usd-cubierto ELSE 0 END),0) AS faltantes FROM dif`, p);
       // Ventas por hora
-      client.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p),
+      const horario = await client.query(`SELECT EXTRACT(HOUR FROM v.hora)::int AS hora, COUNT(*) AS n FROM ventas v WHERE ${BASE} AND v.hora IS NOT NULL GROUP BY 1 ORDER BY 1`, p);
       // Ventas por etiqueta
-      client.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p),
+      const etiquetas = await client.query(`SELECT COALESCE(e.nombre,'Sin etiqueta') AS etiqueta, COUNT(*) AS n FROM ventas v LEFT JOIN etiquetas e ON e.id = v.etiqueta_id WHERE ${BASE} GROUP BY 1 ORDER BY n DESC`, p);
       // Top productos (por unidades): UNION retail + B2B. Items B2B devueltos
       // (devuelto_at IS NOT NULL) NO cuentan — la unidad volvió al stock.
-      client.query(`
+      const topProd = await client.query(`
         WITH all_items AS (
           SELECT vi.descripcion, vi.cantidad
             FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
@@ -495,15 +497,15 @@ async function computeDashboard(tenantId, desde, hasta) {
         GROUP BY descripcion
         ORDER BY unidades DESC, descripcion
         LIMIT 5
-      `, p),
+      `, p);
       // Top vendedores (por total facturado en USD).
       // BLOCKER 2026-07-05: incluir UYU además de ARS (antes vendedores UY
       // veían total_usd inflado 40x en su ranking).
-      client.query(`SELECT ve.nombre AS vendedor,
+      const topVend = await client.query(`SELECT ve.nombre AS vendedor,
                        COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta>0 THEN vi.precio_vendido*vi.cantidad/v.tc_venta ELSE vi.precio_vendido*vi.cantidad END),0) AS total_usd,
                        COUNT(*)::int AS items
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN vendedores ve ON ve.id = vi.vendedor_id
-                WHERE ${BASE} GROUP BY ve.nombre ORDER BY total_usd DESC LIMIT 5`, p),
+                WHERE ${BASE} GROUP BY ve.nombre ORDER BY total_usd DESC LIMIT 5`, p);
       // B2B: ventas via movimientos_cc (junio 2026). count + ingresos +
       // costos + ganancia + unidades por clase. Asumimos costos en USD.
       //
@@ -518,7 +520,7 @@ async function computeDashboard(tenantId, desde, hasta) {
       // 2026-06-10: `ingresos_acreditado_usd` y `costos_acreditado_usd` agregan
       // FILTER por m.estado='acreditado'. Alimentan la GANANCIA NETA del
       // dashboard — pendientes no cuentan hasta que pasen a acreditadas.
-      client.query(`
+      const b2b = await client.query(`
         SELECT
           COUNT(DISTINCT m.id) FILTER (WHERE i.devuelto_at IS NULL)::int                            AS count,
           COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL), 0)                AS ingresos_usd,
@@ -531,8 +533,9 @@ async function computeDashboard(tenantId, desde, hasta) {
         LEFT JOIN items_movimiento_cc i ON i.movimiento_cc_id = m.id
         LEFT JOIN productos pr ON pr.id = i.producto_id
         WHERE ${B2B_BASE}
-      `, p),
-    ]));
+      `, p);
+      return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b];
+    });
 
     // Ingresos por moneda (a partir del desglose de métodos)
     const ingresos_por_moneda = { USD: 0, ARS: 0, USDT: 0 };
@@ -805,15 +808,15 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
     const pageParams = [...unionParams, limit, offset];
 
     // 2026-06-15 multi-tenant (PR 4.2): toda la lectura (count + page + detalle
-    // retail + detalle B2B) en UNA tx con app.current_tenant. Mantenemos los
-    // dos Promise.all en paralelo, ambos compartiendo el mismo client. RLS
-    // filtra ventas, movimientos_cc, items_movimiento_cc, venta_items,
+    // retail + detalle B2B) en UNA tx con app.current_tenant. Las queries se
+    // serializan sobre el mismo client (obligatorio con pg@9+: no se pueden
+    // ejecutar dos queries concurrentes sobre el mismo client — el protocolo
+    // Postgres es secuencial, así que Promise.all no daba paralelismo real).
+    // RLS filtra ventas, movimientos_cc, items_movimiento_cc, venta_items,
     // venta_pagos, canjes, envios y etiquetas automáticamente.
     const { total, data } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, pageRes] = await Promise.all([
-        client.query(countSql, unionParams),
-        client.query(pageSql, pageParams),
-      ]);
+      const countRes = await client.query(countSql, unionParams);
+      const pageRes  = await client.query(pageSql,  pageParams);
       const total = countRes.rows[0].n;
       const pageRows = pageRes.rows; // [{ id, origen, fecha }, ...] ya ordenado
 
@@ -884,10 +887,12 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
         WHERE m.id = ANY($1::int[])
       `;
 
-      const [retailDetalleRes, b2bDetalleRes] = await Promise.all([
-        retailIds.length ? client.query(retailDetalleSql, [retailIds]) : Promise.resolve({ rows: [] }),
-        b2bIds.length    ? client.query(b2bDetalleSql,    [b2bIds])    : Promise.resolve({ rows: [] }),
-      ]);
+      const retailDetalleRes = retailIds.length
+        ? await client.query(retailDetalleSql, [retailIds])
+        : { rows: [] };
+      const b2bDetalleRes = b2bIds.length
+        ? await client.query(b2bDetalleSql, [b2bIds])
+        : { rows: [] };
 
       // Indexar por id para hacer el "lookup" en orden de pageRows.
       const retailById = new Map(retailDetalleRes.rows.map(v => [Number(v.id), v]));

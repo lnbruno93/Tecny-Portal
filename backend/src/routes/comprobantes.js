@@ -106,23 +106,21 @@ router.get('/', validate(queryComprobantesSchema, 'query'), async (req, res, nex
     `;
 
     const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) ${baseQuery}`, params),
-        client.query(
-          // Columnas explícitas SIN archivo_data (base64): no debe viajar en el listado.
-          // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay
-          // adjunto en CUALQUIERA de los dos backends — archivo_data (legacy) o
-          // archivo_key (R2, P-03 Fase 3+).
-          `SELECT c.id, c.fecha, c.cliente, c.vendedor_id, c.monto, c.monto_financiera, c.monto_neto,
-                  c.referencia, c.archivo_nombre, c.archivo_tipo, c.venta_id, c.created_at,
-                  (c.archivo_data IS NOT NULL OR c.archivo_key IS NOT NULL) AS tiene_archivo,
-                  v.nombre AS vendedor_nombre
-           ${baseQuery}
-           ORDER BY c.fecha DESC, c.id DESC
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) ${baseQuery}`, params);
+      const dataRes = await client.query(
+        // Columnas explícitas SIN archivo_data (base64): no debe viajar en el listado.
+        // El archivo se sirve aparte por GET /:id/archivo. tiene_archivo indica si hay
+        // adjunto en CUALQUIERA de los dos backends — archivo_data (legacy) o
+        // archivo_key (R2, P-03 Fase 3+).
+        `SELECT c.id, c.fecha, c.cliente, c.vendedor_id, c.monto, c.monto_financiera, c.monto_neto,
+                c.referencia, c.archivo_nombre, c.archivo_tipo, c.venta_id, c.created_at,
+                (c.archivo_data IS NOT NULL OR c.archivo_key IS NOT NULL) AS tiene_archivo,
+                v.nombre AS vendedor_nombre
+         ${baseQuery}
+         ORDER BY c.fecha DESC, c.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { countRes, dataRes };
     });
 

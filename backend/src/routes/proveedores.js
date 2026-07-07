@@ -73,31 +73,29 @@ router.get('/', async (req, res, next) => {
     // 2026-06-15 multi-tenant (PR 4.4): count + data en una sola withTenant
     // → comparten SET LOCAL. RLS filtra proveedores y proveedor_movimientos.
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) FROM proveedores p ${where}`, params),
-        client.query(
-          `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
-                  COALESCE(SUM(
-                    CASE
-                      WHEN m.tipo='pago'                                  THEN -m.monto_usd
-                      -- COR-2 audit 2026-07-06: devolución cross-tenant baja
-                      -- la deuda al proveedor (equivalente contable a pago).
-                      WHEN m.tipo='devolucion'                            THEN -m.monto_usd
-                      WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
-                      ELSE m.monto_usd
-                    END
-                  ), 0) AS saldo_usd,
-                  COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
-                  COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
-             FROM proveedores p
-             LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
-             ${where}
-            GROUP BY p.id
-            ORDER BY p.nombre
-            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) FROM proveedores p ${where}`, params);
+      const dataRes = await client.query(
+        `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
+                COALESCE(SUM(
+                  CASE
+                    WHEN m.tipo='pago'                                  THEN -m.monto_usd
+                    -- COR-2 audit 2026-07-06: devolución cross-tenant baja
+                    -- la deuda al proveedor (equivalente contable a pago).
+                    WHEN m.tipo='devolucion'                            THEN -m.monto_usd
+                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
+                    ELSE m.monto_usd
+                  END
+                ), 0) AS saldo_usd,
+                COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
+                COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
+           FROM proveedores p
+           LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
+           ${where}
+          GROUP BY p.id
+          ORDER BY p.nombre
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));
@@ -426,23 +424,21 @@ router.get('/:id/movimientos', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query('SELECT COUNT(*) FROM proveedor_movimientos WHERE proveedor_id = $1 AND deleted_at IS NULL', [id]),
-        client.query(
-          `SELECT m.*, mp.nombre AS caja_nombre,
-                  COALESCE(
-                    (SELECT json_agg(i.* ORDER BY i.id)
-                       FROM proveedor_movimiento_items i
-                      WHERE i.proveedor_movimiento_id = m.id), '[]'
-                  ) AS items
-             FROM proveedor_movimientos m
-             LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-            WHERE m.proveedor_id = $1 AND m.deleted_at IS NULL
-            ORDER BY m.fecha DESC, m.id DESC
-            LIMIT $2 OFFSET $3`,
-          [id, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query('SELECT COUNT(*) FROM proveedor_movimientos WHERE proveedor_id = $1 AND deleted_at IS NULL', [id]);
+      const dataRes = await client.query(
+        `SELECT m.*, mp.nombre AS caja_nombre,
+                COALESCE(
+                  (SELECT json_agg(i.* ORDER BY i.id)
+                     FROM proveedor_movimiento_items i
+                    WHERE i.proveedor_movimiento_id = m.id), '[]'
+                ) AS items
+           FROM proveedor_movimientos m
+           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+          WHERE m.proveedor_id = $1 AND m.deleted_at IS NULL
+          ORDER BY m.fecha DESC, m.id DESC
+          LIMIT $2 OFFSET $3`,
+        [id, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));

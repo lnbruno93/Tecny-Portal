@@ -162,13 +162,11 @@ router.get('/', async (req, res, next) => {
     const joinBase = `FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ${where}`;
 
     const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) ${joinBase}`, params),
-        client.query(
-          `${HISTORIAL_SELECT} ${where} ORDER BY a.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) ${joinBase}`, params);
+      const dataRes = await client.query(
+        `${HISTORIAL_SELECT} ${where} ORDER BY a.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { countRes, dataRes };
     });
 

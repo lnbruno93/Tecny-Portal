@@ -223,19 +223,17 @@ router.get('/', validate(queryEgresosSchema, 'query'), async (req, res, next) =>
     const where = conditions.join(' AND ');
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) FROM egresos e WHERE ${where}`, params),
-        client.query(
-          `SELECT e.*, c.nombre AS categoria_nombre, mp.nombre AS caja_nombre
-             FROM egresos e
-             LEFT JOIN egreso_categorias c ON c.id = e.categoria_id
-             LEFT JOIN metodos_pago mp ON mp.id = e.metodo_pago_id
-            WHERE ${where}
-            ORDER BY e.fecha DESC, e.id DESC
-            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) FROM egresos e WHERE ${where}`, params);
+      const dataRes = await client.query(
+        `SELECT e.*, c.nombre AS categoria_nombre, mp.nombre AS caja_nombre
+           FROM egresos e
+           LEFT JOIN egreso_categorias c ON c.id = e.categoria_id
+           LEFT JOIN metodos_pago mp ON mp.id = e.metodo_pago_id
+          WHERE ${where}
+          ORDER BY e.fecha DESC, e.id DESC
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));

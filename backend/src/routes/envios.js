@@ -130,10 +130,8 @@ router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => 
     // 2026-06-15 multi-tenant (PR 4.7): count + data en una sola withTenant.
     // RLS filtra envios + envio_items (JOIN agregado en items JSON).
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(countQuery, params),
-        client.query(dataQuery,  [...params, limit, offset]),
-      ]);
+      const countRes = await client.query(countQuery, params);
+      const dataRes  = await client.query(dataQuery,  [...params, limit, offset]);
       return { count: parseInt(countRes.rows[0].count) || 0, dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows.map(r => ({ ...r, items: r.items || [] })), count, { page, limit }));

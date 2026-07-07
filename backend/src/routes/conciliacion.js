@@ -230,25 +230,23 @@ router.get('/', async (req, res, next) => {
     // del listado (sería confuso para auditoría). Mostramos "(caja eliminada)"
     // en su lugar.
     const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) FROM conciliaciones c WHERE ${where}`, params),
-        client.query(
-          `SELECT c.*,
-                  COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
-                  mp.moneda AS caja_moneda,
-                  COUNT(cl.id)::int AS lineas_total,
-                  COUNT(cl.id) FILTER (WHERE cl.matched_caja_mov_id IS NOT NULL)::int AS lineas_matched,
-                  COUNT(cl.id) FILTER (WHERE cl.ignorada)::int AS lineas_ignoradas
-             FROM conciliaciones c
-             LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
-             LEFT JOIN conciliacion_lineas cl ON cl.conciliacion_id = c.id
-            WHERE ${where}
-            GROUP BY c.id, mp.nombre, mp.moneda
-            ORDER BY c.created_at DESC, c.id DESC
-            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) FROM conciliaciones c WHERE ${where}`, params);
+      const dataRes = await client.query(
+        `SELECT c.*,
+                COALESCE(mp.nombre, '(caja eliminada)') AS caja_nombre,
+                mp.moneda AS caja_moneda,
+                COUNT(cl.id)::int AS lineas_total,
+                COUNT(cl.id) FILTER (WHERE cl.matched_caja_mov_id IS NOT NULL)::int AS lineas_matched,
+                COUNT(cl.id) FILTER (WHERE cl.ignorada)::int AS lineas_ignoradas
+           FROM conciliaciones c
+           LEFT JOIN metodos_pago mp ON mp.id = c.caja_id AND mp.deleted_at IS NULL
+           LEFT JOIN conciliacion_lineas cl ON cl.conciliacion_id = c.id
+          WHERE ${where}
+          GROUP BY c.id, mp.nombre, mp.moneda
+          ORDER BY c.created_at DESC, c.id DESC
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { countRes, dataRes };
     });
     res.json(paginatedResponse(dataRes.rows, parseInt(countRes.rows[0].count), { page, limit }));

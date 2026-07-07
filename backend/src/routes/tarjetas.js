@@ -197,16 +197,16 @@ router.get('/movimientos', async (req, res, next) => {
       : null;
 
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      // count + saldo_inicial corren en paralelo (independientes entre sí).
-      // La query de `rango` debe esperar al saldo_inicial porque lo inyecta
-      // como parámetro literal — alternativa con subquery aumentaba el plan
-      // sin beneficio (saldoInicial es un escalar pre-calculado).
-      const [countRes, saldoIniRes] = await Promise.all([
-        client.query('SELECT COUNT(*) FROM tarjeta_movimientos' + countWhere, countParams),
-        saldoInicialSql
-          ? client.query(saldoInicialSql, saldoInicialParams)
-          : Promise.resolve({ rows: [{ saldo: 0 }] }),
-      ]);
+      // count + saldo_inicial + rango se ejecutan secuencialmente sobre el
+      // mismo client (obligatorio con pg@9+: no se pueden ejecutar queries
+      // concurrentes sobre el mismo client — el protocolo Postgres es
+      // secuencial, así que Promise.all no daba paralelismo real). La query
+      // de `rango` inyecta el saldo_inicial como parámetro literal —
+      // alternativa con subquery aumentaba el plan sin beneficio.
+      const countRes = await client.query('SELECT COUNT(*) FROM tarjeta_movimientos' + countWhere, countParams);
+      const saldoIniRes = saldoInicialSql
+        ? await client.query(saldoInicialSql, saldoInicialParams)
+        : { rows: [{ saldo: 0 }] };
       const saldoInicial = Number(saldoIniRes.rows[0]?.saldo || 0);
       const dataRes = await client.query(
         `WITH rango AS (
@@ -336,23 +336,21 @@ router.get('/:id/movimientos', async (req, res, next) => {
     if (hasta) { params.push(hasta); fechaClauses.push(`m.fecha <= $${params.length}`); }
     const whereFecha = fechaClauses.length ? ' AND ' + fechaClauses.join(' AND ') : '';
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(
-          `SELECT COUNT(*) FROM tarjeta_movimientos m
-            WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}`,
-          params
-        ),
-        client.query(
-          `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
-             FROM tarjeta_movimientos m
-             LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-             LEFT JOIN ventas v ON v.id = m.venta_id
-            WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}
-            ORDER BY m.fecha DESC, m.id DESC
-            LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(
+        `SELECT COUNT(*) FROM tarjeta_movimientos m
+          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}`,
+        params
+      );
+      const dataRes = await client.query(
+        `SELECT m.*, mp.nombre AS caja_nombre, v.order_id AS venta_order_id
+           FROM tarjeta_movimientos m
+           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+           LEFT JOIN ventas v ON v.id = m.venta_id
+          WHERE m.metodo_pago_id = $1 AND m.deleted_at IS NULL${whereFecha}
+          ORDER BY m.fecha DESC, m.id DESC
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));
