@@ -9,7 +9,7 @@ const validate = require('../lib/validate');
 const audit = require('../lib/audit');
 const parseId = require('../lib/parseId');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
+const { toUsd, round2, assertMonedaValidaParaPais, validarMonedasPagoCaja } = require('../lib/money');
 const PostgresRateLimitStore = require('../lib/postgresRateLimitStore');
 // TANDA 4 refactor (auditoría 2026-06-17 H3-Hyg): pattern duplicado movido
 // a createTenantScopedCache.
@@ -211,14 +211,48 @@ async function insertarDetalle(client, venta, b) {
   if (b.pagos && b.pagos.length > 0) {
     // Auditoría 2026-06-30 D-01: lookup en bloque de los % actuales de los
     // métodos. Para pagos sin metodo_pago_id (CC), el snapshot queda NULL.
+    //
+    // Fix #4 audit 2026-07-07 (Fase A forward-only): también leemos la
+    // moneda + flags financiera/tarjeta del método. Necesarios para validar
+    // que si el pago va a caja (no CC, no financiera, no tarjeta) y su
+    // moneda difiere de la caja, viene `tc` para convertir. Sin este check
+    // el saldo de la caja acumulaba montos crudos de distintas monedas
+    // como si fueran todos de la moneda de la caja (el bug real reportado
+    // por el tenant UY).
     const mpIds = [...new Set(b.pagos.map(p => p.metodo_pago_id).filter(Boolean))];
     const pctByMpId = new Map();
+    const mpByMpId = new Map();
     if (mpIds.length > 0) {
       const { rows: mps } = await client.query(
-        `SELECT id, comision_pct FROM metodos_pago WHERE id = ANY($1::int[])`,
+        `SELECT id, comision_pct, moneda, es_financiera, es_tarjeta FROM metodos_pago WHERE id = ANY($1::int[])`,
         [mpIds]
       );
-      for (const r of mps) pctByMpId.set(r.id, r.comision_pct);
+      for (const r of mps) {
+        pctByMpId.set(r.id, r.comision_pct);
+        mpByMpId.set(r.id, r);
+      }
+    }
+    // Validación forward: pago.moneda debe ser compatible con caja.moneda.
+    // Solo aplica a pagos que efectivamente irán a caja (los que `syncVentaCaja`
+    // sincroniza — excluye CC, financiera y tarjeta que tienen sus propios flows).
+    for (const p of b.pagos) {
+      if (p.es_cuenta_corriente) continue;
+      if (!p.metodo_pago_id) continue;
+      const mp = mpByMpId.get(p.metodo_pago_id);
+      if (!mp) continue; // método eliminado — el sync ya filtra deleted_at
+      if (mp.es_financiera || mp.es_tarjeta) continue;
+      const tcParaConversion = p.tc ?? b.tc_venta;
+      const v = validarMonedasPagoCaja(p.moneda, mp.moneda, tcParaConversion);
+      if (!v.ok) {
+        // Rollback fuera de la tx (throw sale de la withTenant y hace rollback).
+        // Mensaje operativo para que el operador entienda qué falta.
+        const err = new Error(
+          `Pago con "${p.metodo_nombre}" en ${p.moneda} contra caja en ${mp.moneda}: ${v.reason}`
+        );
+        err.status = 400;
+        err.code = 'MONEDA_PAGO_CAJA_MISMATCH';
+        throw err;
+      }
     }
     await client.query(
       `INSERT INTO venta_pagos

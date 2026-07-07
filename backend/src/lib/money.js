@@ -146,6 +146,74 @@ function toUsd(monto, moneda, tc) {
 // Redondeo a 2 decimales estable.
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
+/**
+ * Conversión pago→caja para syncVentaCaja + validación forward de mismatch
+ * (fix #4 audit 2026-07-07).
+ *
+ * Contexto: un pago con `venta_pagos.moneda` distinta de la caja donde
+ * ingresa hace que el saldo de la caja se calcule sumando montos de
+ * monedas mixtas. El fix forward valida que si hay mismatch, el pago
+ * traiga `tc` para convertir. El caja_movimiento se inserta ya en la
+ * moneda de la caja para que el cálculo de saldo sea coherente.
+ *
+ * `tc` es siempre "local/USD" (ARS o UYU por USD).
+ *
+ * Casos soportados en Fase A:
+ *   - Misma moneda:                monto sin cambio.
+ *   - USD/USDT → ARS/UYU:          monto × tc.
+ *   - ARS/UYU → USD/USDT:          monto / tc.
+ *   - USD ↔ USDT:                  passthrough (paridad 1:1).
+ *   - ARS ↔ UYU sin USD-intermedio: NO soportado (rechazar upstream).
+ *
+ * @param {number|string} monto — cantidad en `monedaSrc`
+ * @param {string} monedaSrc — moneda del pago (source)
+ * @param {string} monedaDst — moneda de la caja destino
+ * @param {number|string} tc — cotización local/USD (obligatorio si hay conversión)
+ * @returns {number|null} monto convertido a `monedaDst`, o null si NO se puede convertir.
+ *   El caller distingue null (error) de 0 (monto original 0 legítimo).
+ */
+function convertirMonto(monto, monedaSrc, monedaDst, tc) {
+  const m = Number(monto) || 0;
+  if (monedaSrc === monedaDst) return round2(m);
+  const src = String(monedaSrc || '');
+  const dst = String(monedaDst || '');
+  const esSrcFuerte = src === 'USD' || src === 'USDT';
+  const esDstFuerte = dst === 'USD' || dst === 'USDT';
+  const esSrcLocal  = src === 'ARS' || src === 'UYU';
+  const esDstLocal  = dst === 'ARS' || dst === 'UYU';
+  // USD ↔ USDT paridad 1:1.
+  if (esSrcFuerte && esDstFuerte) return round2(m);
+  // Local ↔ Local sin USD intermedio: no soportado en Fase A.
+  // El rechazo lo hace el caller (400 en POST venta).
+  if (esSrcLocal && esDstLocal) return null;
+  const t = Number(tc);
+  if (!Number.isFinite(t) || t <= 0) return null;
+  // USD/USDT → ARS/UYU: monto local = monto USD × tc.
+  if (esSrcFuerte && esDstLocal) return round2(m * t);
+  // ARS/UYU → USD/USDT: monto USD = monto local / tc.
+  if (esSrcLocal && esDstFuerte) return round2(m / t);
+  // Combinación no reconocida.
+  return null;
+}
+
+/**
+ * Chequeo puro de si `venta_pagos.moneda` es compatible con la moneda
+ * de su caja destino en Fase A. Usado por la validación del POST/PUT
+ * de venta antes de disparar `syncVentaCaja`.
+ *
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+function validarMonedasPagoCaja(monedaPago, monedaCaja, tc) {
+  const converted = convertirMonto(1, monedaPago, monedaCaja, tc);
+  if (converted !== null) return { ok: true };
+  const src = String(monedaPago || '');
+  const dst = String(monedaCaja || '');
+  if ((src === 'ARS' || src === 'UYU') && (dst === 'ARS' || dst === 'UYU') && src !== dst) {
+    return { ok: false, reason: `Conversión ${src} → ${dst} no soportada (requiere USD como intermedio).` };
+  }
+  return { ok: false, reason: `Falta TC válido para convertir el pago de ${src} a la caja en ${dst}.` };
+}
+
 // Cálculo bruto → comisión → neto usado por Tarjetas (cobros automáticos
 // desde Ventas, cobros previos, edits). Antes el cálculo estaba duplicado en
 // 4 lugares (lib/tarjetas.js, routes/tarjetas.js POST cobros-iniciales y
@@ -169,6 +237,9 @@ module.exports = {
   toUsd,
   round2,
   computeNeto,
+  // fix #4 audit 2026-07-07 — conversión pago→caja Fase A forward-only
+  convertirMonto,
+  validarMonedasPagoCaja,
   // multi-país F1
   MONEDAS_GLOBALES,
   MONEDAS_POR_PAIS,
