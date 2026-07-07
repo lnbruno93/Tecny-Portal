@@ -100,14 +100,19 @@ export function TabActivas({ data }) {
       </div>
     );
   }
+  // Defensive audit 2026-07-06: `data.grupos` viene del backend siempre
+  // como array (fetcher canónico en alertas route line 43), pero un guard
+  // barato hace la pantalla resistente a un rollback/deploy que devuelva
+  // shape parcial. Sin esto un `undefined.filter()` explota el chunk.
+  const grupos = data.grupos || [];
   return (
     <>
-      {data.grupos.filter(g => g.count > 0).map(g => (
+      {grupos.filter(g => g.count > 0).map(g => (
         <GrupoAlerta key={g.tipo} grupo={g} />
       ))}
-      {data.grupos.filter(g => g.count === 0).length > 0 && (
+      {grupos.filter(g => g.count === 0).length > 0 && (
         <div className="muted tiny" style={{ marginTop: 12 }}>
-          ✓ Sin alertas en: {data.grupos.filter(g => g.count === 0).map(g => TITULOS[g.tipo] || g.tipo).join(', ')}
+          ✓ Sin alertas en: {grupos.filter(g => g.count === 0).map(g => TITULOS[g.tipo] || g.tipo).join(', ')}
         </div>
       )}
     </>

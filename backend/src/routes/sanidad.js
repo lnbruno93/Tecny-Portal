@@ -272,11 +272,17 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
             proyectado_usd: neto_proyectado_usd,
             real_usd:       neto_real_usd,
           },
+          // Defensive audit 2026-07-06: `dias` siempre viene de
+          // `diasDelMes(periodo)` que retorna 28-31 con periodo válido, pero
+          // si el schema Zod dejara pasar un periodo malformed (o el JS
+          // Date devuelve NaN por un edge exotic), evitamos propagar
+          // `Infinity`/`NaN` al frontend — que ya no puede diferenciar
+          // "no hay datos" (null) de "tenemos un bug".
           daily: {
-            bruto_proyectado_usd: bruto_proyectado_usd != null ? round2(bruto_proyectado_usd / dias) : null,
-            bruto_real_usd:       round2(bruto_real_usd / dias),
-            neto_proyectado_usd:  neto_proyectado_usd  != null ? round2(neto_proyectado_usd  / dias) : null,
-            neto_real_usd:        round2(neto_real_usd / dias),
+            bruto_proyectado_usd: (bruto_proyectado_usd != null && dias > 0) ? round2(bruto_proyectado_usd / dias) : null,
+            bruto_real_usd:       dias > 0 ? round2(bruto_real_usd / dias)   : null,
+            neto_proyectado_usd:  (neto_proyectado_usd  != null && dias > 0) ? round2(neto_proyectado_usd  / dias) : null,
+            neto_real_usd:        dias > 0 ? round2(neto_real_usd / dias)    : null,
           },
         };
       });

@@ -28,6 +28,7 @@
 // del módulo /api/cuentas + del dashboard. Adoptamos la única fuente de
 // verdad para que las 3 vistas reporten el mismo número.
 const { SALDO_CASE_M } = require('./saldoCC');
+const logger = require('./logger');
 
 // ──────────────────────────────────────────────────────────────────────
 // 1. caja_negativa — cualquier caja con saldo actual < 0.
@@ -240,6 +241,16 @@ async function evaluarTodas({ tenantId, db } = {}) {
           items,
         };
       } catch (err) {
+        // Defensive audit 2026-07-06: si UN evaluator falla (RLS denegada,
+        // tabla que se droppeó, timeout, etc.), antes se tragaba silenciosamente
+        // — el user veía N-1 grupos en /api/alertas sin ninguna pista del
+        // porqué. Ahora logueamos con contexto suficiente para triage en
+        // Railway/Sentry sin escalar (no queremos que UN evaluator roto
+        // rompa toda la respuesta — los otros siguen funcionando).
+        logger.warn(
+          { tipo: cfg.tipo, tenantId, err: err.message },
+          '[alertas] evaluator falló — grupo se devuelve vacío'
+        );
         return { tipo: cfg.tipo, error: err.message, items: [], count: 0 };
       }
     }));

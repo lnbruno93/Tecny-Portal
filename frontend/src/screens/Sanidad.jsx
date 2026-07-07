@@ -799,8 +799,12 @@ export default function Sanidad() {
           neto:  { ...mes.neto,  proyectado_usd: netoProyectado },
           daily: {
             ...mes.daily,
-            bruto_proyectado_usd: monto / mes.dias_mes,
-            neto_proyectado_usd:  netoProyectado / mes.dias_mes,
+            // Defensive audit 2026-07-06: `mes.dias_mes` siempre viene del
+            // backend con 28-31 pero un guard es barato y evita mostrar
+            // `Infinity` en la grilla si el backend regresa 0/null por bug
+            // futuro. Fallback null → el MoneyCell renderiza "—".
+            bruto_proyectado_usd: mes.dias_mes > 0 ? monto / mes.dias_mes : null,
+            neto_proyectado_usd:  mes.dias_mes > 0 ? netoProyectado / mes.dias_mes : null,
           },
         };
       }));

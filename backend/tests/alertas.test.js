@@ -272,4 +272,48 @@ describe('Evaluadores con datos sembrados', () => {
     await expect(evaluarTodas({ tenantId: 0 })).rejects.toThrow(/tenantId inválido/);
     await expect(evaluarTodas({ tenantId: 'one' })).rejects.toThrow(/tenantId inválido/);
   });
+
+  // Defensive audit 2026-07-06: si un evaluador tira, antes se tragaba en
+  // silencio (return { error: err.message, items: [] }) y ningún log salía
+  // — imposible triagear en prod desde Railway/Sentry. Ahora logueamos
+  // warn con { tipo, tenantId, err } antes de devolver el grupo vacío.
+  it('logea warn cuando un evaluador falla (observability)', async () => {
+    const alertasLib = require('../src/lib/alertas');
+    const logger = require('../src/lib/logger');
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    // Monkey-patch temporal: reemplazamos stock_bajo por uno que tira.
+    const original = alertasLib.EVALUADORES.stock_bajo;
+    alertasLib.EVALUADORES.stock_bajo = async () => {
+      throw new Error('boom: tabla droppeada');
+    };
+
+    try {
+      const grupos = await alertasLib.evaluarTodas({ tenantId: 1 });
+
+      // Los OTROS evaluators no se ven afectados — devuelven data normal.
+      // El de stock_bajo devuelve error shape con items vacíos (los grupos
+      // rotos entran sin count/severidad canónica; verificamos el error).
+      const stockBajo = grupos.find(g => g.tipo === 'stock_bajo');
+      expect(stockBajo).toBeDefined();
+      expect(stockBajo.error).toMatch(/boom/);
+      expect(stockBajo.items).toEqual([]);
+      expect(stockBajo.count).toBe(0);
+
+      // La observabilidad debe haber emitido un warn con contexto suficiente
+      // para triage: qué evaluator, qué tenant, y el mensaje del error.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tipo: 'stock_bajo',
+          tenantId: 1,
+          err: expect.stringMatching(/boom/),
+        }),
+        expect.stringContaining('evaluator falló')
+      );
+    } finally {
+      // Restaurar siempre — si dejamos el evaluator roto, contamina otros tests.
+      alertasLib.EVALUADORES.stock_bajo = original;
+      warnSpy.mockRestore();
+    }
+  });
 });
