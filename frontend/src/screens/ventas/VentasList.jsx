@@ -24,7 +24,7 @@
 import { memo } from 'react';
 import { Icons } from '../../components/Icons';
 import Badge from '../../components/Badge';
-import { fmt } from '../../lib/format';
+import { fmt, fmtImei } from '../../lib/format';
 import { sym } from './utils';
 
 // Colores del "badge" de estado, replicados inline para que el <select>
@@ -129,7 +129,7 @@ const VentaRow = memo(function VentaRow({
                     vistazo, especialmente útil con canjes en parte de
                     pago. Para batería de items retail necesitamos un
                     backend join con productos (queda como follow-up). */}
-                {i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>IMEI {i.imei}</span>}
+                {i.imei && <span className="muted tiny mono" style={{ marginLeft: 6 }}>IMEI {fmtImei(i.imei)}</span>}
                 {devuelto && (
                   <span style={{
                     marginLeft: 6, padding: '0 5px', borderRadius: 3,
@@ -160,7 +160,7 @@ const VentaRow = memo(function VentaRow({
             <div key={'c' + k} style={{ color: 'var(--warn)', fontSize: 11, marginTop: 4 }}>
               <div>
                 ↺ {c.descripcion}
-                {c.imei && <span className="muted tiny mono" style={{ marginLeft: 6, color: 'var(--warn)' }}>IMEI {c.imei}</span>}
+                {c.imei && <span className="muted tiny mono" style={{ marginLeft: 6, color: 'var(--warn)' }}>IMEI {fmtImei(c.imei)}</span>}
                 {c.bateria != null && c.bateria > 0 && (
                   <span className="muted tiny" style={{ marginLeft: 6, color: 'var(--warn)' }}>· 🔋 {c.bateria}%</span>
                 )}
