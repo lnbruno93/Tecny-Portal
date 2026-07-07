@@ -142,17 +142,15 @@ router.get('/entidades/:id/movimientos', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query('SELECT COUNT(*) FROM cambio_movimientos WHERE entidad_id = $1 AND deleted_at IS NULL', [id]),
-        client.query(
-          `SELECT m.*, mp.nombre AS caja_nombre
-             FROM cambio_movimientos m
-             LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
-            WHERE m.entidad_id = $1 AND m.deleted_at IS NULL
-            ORDER BY m.fecha DESC, m.id DESC
-            LIMIT $2 OFFSET $3`, [id, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query('SELECT COUNT(*) FROM cambio_movimientos WHERE entidad_id = $1 AND deleted_at IS NULL', [id]);
+      const dataRes = await client.query(
+        `SELECT m.*, mp.nombre AS caja_nombre
+           FROM cambio_movimientos m
+           LEFT JOIN metodos_pago mp ON mp.id = m.caja_id
+          WHERE m.entidad_id = $1 AND m.deleted_at IS NULL
+          ORDER BY m.fecha DESC, m.id DESC
+          LIMIT $2 OFFSET $3`, [id, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));

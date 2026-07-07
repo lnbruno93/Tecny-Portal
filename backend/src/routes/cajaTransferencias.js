@@ -45,23 +45,21 @@ router.get('/', async (req, res, next) => {
       if (hasta) { args.push(hasta); filters.push(`t.fecha <= $${args.length}`); }
       const where = 'WHERE ' + filters.join(' AND ');
 
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) FROM caja_transferencias t ${where}`, args),
-        client.query(
-          `SELECT t.*,
-                  o.nombre AS caja_origen_nombre,
-                  d.nombre AS caja_destino_nombre,
-                  u.nombre AS user_nombre
-             FROM caja_transferencias t
-             LEFT JOIN metodos_pago o ON o.id = t.caja_origen_id
-             LEFT JOIN metodos_pago d ON d.id = t.caja_destino_id
-             LEFT JOIN users        u ON u.id = t.user_id
-             ${where}
-             ORDER BY t.fecha DESC, t.id DESC
-             LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
-          [...args, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) FROM caja_transferencias t ${where}`, args);
+      const dataRes = await client.query(
+        `SELECT t.*,
+                o.nombre AS caja_origen_nombre,
+                d.nombre AS caja_destino_nombre,
+                u.nombre AS user_nombre
+           FROM caja_transferencias t
+           LEFT JOIN metodos_pago o ON o.id = t.caja_origen_id
+           LEFT JOIN metodos_pago d ON d.id = t.caja_destino_id
+           LEFT JOIN users        u ON u.id = t.user_id
+           ${where}
+           ORDER BY t.fecha DESC, t.id DESC
+           LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
+        [...args, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count, 10), dataRows: dataRes.rows };
     });
 

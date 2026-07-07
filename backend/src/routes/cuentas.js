@@ -143,32 +143,30 @@ router.get('/clientes', async (req, res, next) => {
     // 2026-06-15 multi-tenant (PR 4.3): count + data en una sola withTenant
     // → comparten el SET LOCAL. RLS filtra clientes_cc y movimientos_cc.
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) FROM clientes_cc c WHERE ${where}`, params),
-        client.query(
-          `SELECT c.*,
-                  COALESCE(s.saldo, 0) AS saldo
-           FROM clientes_cc c
-           LEFT JOIN (
-             SELECT cliente_cc_id,
-                    SUM(
-                      CASE
-                        WHEN tipo = 'saldo_inicial'                  THEN  monto_total
-                        WHEN tipo = 'compra' AND caja_id IS NOT NULL THEN  0
-                        WHEN tipo = 'compra'                         THEN  monto_total
-                        ELSE -monto_total
-                      END
-                    ) AS saldo
-             FROM movimientos_cc
-             WHERE deleted_at IS NULL
-             GROUP BY cliente_cc_id
-           ) s ON s.cliente_cc_id = c.id
-           WHERE ${where}
-           ORDER BY c.nombre, c.apellido
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) FROM clientes_cc c WHERE ${where}`, params);
+      const dataRes = await client.query(
+        `SELECT c.*,
+                COALESCE(s.saldo, 0) AS saldo
+         FROM clientes_cc c
+         LEFT JOIN (
+           SELECT cliente_cc_id,
+                  SUM(
+                    CASE
+                      WHEN tipo = 'saldo_inicial'                  THEN  monto_total
+                      WHEN tipo = 'compra' AND caja_id IS NOT NULL THEN  0
+                      WHEN tipo = 'compra'                         THEN  monto_total
+                      ELSE -monto_total
+                    END
+                  ) AS saldo
+           FROM movimientos_cc
+           WHERE deleted_at IS NULL
+           GROUP BY cliente_cc_id
+         ) s ON s.cliente_cc_id = c.id
+         WHERE ${where}
+         ORDER BY c.nombre, c.apellido
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));
@@ -317,33 +315,31 @@ router.get('/clientes/:id/delete-preview', async (req, res, next) => {
       );
       if (!cli[0]) return { notFound: true };
 
-      const [{ rows: movsAgg }, { rows: cajaAgg }, { rows: itemsAgg }] = await Promise.all([
-        client.query(
-          `SELECT COUNT(*)::int AS n,
-                  COALESCE(SUM(CASE WHEN tipo IN ('compra','entrega_mercaderia') THEN monto_total ELSE 0 END), 0) AS deuda_a_revertir
-             FROM movimientos_cc
-            WHERE cliente_cc_id = $1 AND deleted_at IS NULL`,
-          [id]
-        ),
-        client.query(
-          `SELECT COALESCE(SUM(cm.monto), 0)::numeric AS total
-             FROM caja_movimientos cm
-             JOIN movimientos_cc m ON m.id = cm.ref_id
-            WHERE cm.ref_tabla = 'movimientos_cc'
-              AND cm.deleted_at IS NULL
-              AND m.cliente_cc_id = $1 AND m.deleted_at IS NULL`,
-          [id]
-        ),
-        client.query(
-          `SELECT COUNT(*)::int AS n
-             FROM items_movimiento_cc i
-             JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
-            WHERE m.cliente_cc_id = $1 AND m.deleted_at IS NULL
-              AND i.producto_id IS NOT NULL
-              AND m.tipo IN ('compra','entrega_mercaderia','devolucion')`,
-          [id]
-        ),
-      ]);
+      const { rows: movsAgg } = await client.query(
+        `SELECT COUNT(*)::int AS n,
+                COALESCE(SUM(CASE WHEN tipo IN ('compra','entrega_mercaderia') THEN monto_total ELSE 0 END), 0) AS deuda_a_revertir
+           FROM movimientos_cc
+          WHERE cliente_cc_id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      const { rows: cajaAgg } = await client.query(
+        `SELECT COALESCE(SUM(cm.monto), 0)::numeric AS total
+           FROM caja_movimientos cm
+           JOIN movimientos_cc m ON m.id = cm.ref_id
+          WHERE cm.ref_tabla = 'movimientos_cc'
+            AND cm.deleted_at IS NULL
+            AND m.cliente_cc_id = $1 AND m.deleted_at IS NULL`,
+        [id]
+      );
+      const { rows: itemsAgg } = await client.query(
+        `SELECT COUNT(*)::int AS n
+           FROM items_movimiento_cc i
+           JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
+          WHERE m.cliente_cc_id = $1 AND m.deleted_at IS NULL
+            AND i.producto_id IS NOT NULL
+            AND m.tipo IN ('compra','entrega_mercaderia','devolucion')`,
+        [id]
+      );
       return {
         cliente: cli[0],
         movimientos_a_cancelar: movsAgg[0].n,
@@ -1230,23 +1226,21 @@ router.get('/resumen-general', async (req, res, next) => {
     `;
 
     const { totals, top } = await db.withTenant(req.tenantId, async (client) => {
-      const [{ rows: totals }, { rows: top }] = await Promise.all([
-        client.query(BASE_CTE + `
-          SELECT
-            COUNT(*)::int                                                   AS cant_clientes,
-            COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)   AS total_deuda,
-            COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)   AS total_credito,
-            COALESCE(SUM(saldo), 0)                                         AS neto
-          FROM saldos
-        `),
-        client.query(BASE_CTE + `
-          SELECT id, nombre, apellido, categoria, saldo
-          FROM saldos
-          WHERE saldo > 0
-          ORDER BY saldo DESC
-          LIMIT 10
-        `),
-      ]);
+      const { rows: totals } = await client.query(BASE_CTE + `
+        SELECT
+          COUNT(*)::int                                                   AS cant_clientes,
+          COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo  ELSE 0 END), 0)   AS total_deuda,
+          COALESCE(SUM(CASE WHEN saldo < 0 THEN -saldo ELSE 0 END), 0)   AS total_credito,
+          COALESCE(SUM(saldo), 0)                                         AS neto
+        FROM saldos
+      `);
+      const { rows: top } = await client.query(BASE_CTE + `
+        SELECT id, nombre, apellido, categoria, saldo
+        FROM saldos
+        WHERE saldo > 0
+        ORDER BY saldo DESC
+        LIMIT 10
+      `);
       return { totals, top };
     });
 

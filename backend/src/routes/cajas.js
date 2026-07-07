@@ -36,18 +36,16 @@ router.get('/deudas', validate(queryDeudasSchema, 'query'), async (req, res, nex
 
     // 2026-06-15 multi-tenant (PR 4.5): count + data en una sola withTenant.
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) ${baseQuery}`, params),
-        client.query(
-          `SELECT m.id, m.fecha, m.contacto_id, m.tipo AS mov_tipo,
-                  m.monto_ars, m.monto_usd, m.concepto, m.created_at,
-                  c.nombre, c.apellido, c.tipo AS contacto_tipo
-           ${baseQuery}
-           ORDER BY m.fecha DESC, m.id DESC
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) ${baseQuery}`, params);
+      const dataRes = await client.query(
+        `SELECT m.id, m.fecha, m.contacto_id, m.tipo AS mov_tipo,
+                m.monto_ars, m.monto_usd, m.concepto, m.created_at,
+                c.nombre, c.apellido, c.tipo AS contacto_tipo
+         ${baseQuery}
+         ORDER BY m.fecha DESC, m.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
 
@@ -135,17 +133,15 @@ router.get('/inversiones', validate(queryInversionesSchema, 'query'), async (req
     `;
 
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) ${baseQuery}`, params),
-        client.query(
-          `SELECT m.id, m.fecha, m.contacto_id, m.monto, m.tasa, m.created_at,
-                  c.nombre, c.apellido, c.tipo AS contacto_tipo
-           ${baseQuery}
-           ORDER BY m.fecha DESC, m.id DESC
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) ${baseQuery}`, params);
+      const dataRes = await client.query(
+        `SELECT m.id, m.fecha, m.contacto_id, m.monto, m.tasa, m.created_at,
+                c.nombre, c.apellido, c.tipo AS contacto_tipo
+         ${baseQuery}
+         ORDER BY m.fecha DESC, m.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
 
@@ -367,10 +363,8 @@ router.delete('/cajas/:id', requireCapability('cajas.crear'), async (req, res, n
       // No permitir borrar una caja en uso: perdería trazabilidad de dinero ya registrado.
       if (caja[0].es_financiera) return { conflict: 'No se puede borrar: es la caja Financiera. Desmarcala primero.' };
       if (caja[0].es_tarjeta)    return { conflict: 'No se puede borrar: es un método tarjeta. Desmarcá "Es tarjeta" primero.' };
-      const [{ rows: mov }, { rows: egr }] = await Promise.all([
-        client.query('SELECT 1 FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL LIMIT 1', [id]),
-        client.query("SELECT 1 FROM egresos WHERE metodo_pago_id = $1 AND estado = 'pendiente' AND deleted_at IS NULL LIMIT 1", [id]),
-      ]);
+      const { rows: mov } = await client.query('SELECT 1 FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL LIMIT 1', [id]);
+      const { rows: egr } = await client.query("SELECT 1 FROM egresos WHERE metodo_pago_id = $1 AND estado = 'pendiente' AND deleted_at IS NULL LIMIT 1", [id]);
       if (mov[0]) return { conflict: 'No se puede borrar: tiene movimientos registrados. Desactivala en su lugar.' };
       if (egr[0]) return { conflict: 'No se puede borrar: tiene egresos pendientes asociados.' };
 
@@ -408,21 +402,19 @@ router.get('/movimientos', validate(queryLedgerSchema, 'query'), async (req, res
     const baseFrom = `FROM caja_movimientos cm JOIN metodos_pago mp ON mp.id = cm.caja_id WHERE ${where}`;
 
     const { count, ingresos_usd_raw, egresos_usd_raw, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, totRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) ${baseFrom}`, params),
-        client.query(
-          `SELECT
-             COALESCE(SUM(CASE WHEN cm.tipo = 'ingreso' THEN cm.monto_usd ELSE 0 END), 0) AS ingresos_usd,
-             COALESCE(SUM(CASE WHEN cm.tipo = 'egreso'  THEN cm.monto_usd ELSE 0 END), 0) AS egresos_usd
-           ${baseFrom}`, params),
-        client.query(
-          `SELECT cm.id, cm.fecha, cm.caja_id, mp.nombre AS caja_nombre, mp.moneda,
-                  cm.tipo, cm.monto, cm.monto_usd, cm.origen, cm.ref_tabla, cm.ref_id, cm.concepto, cm.created_at
-           ${baseFrom}
-           ORDER BY cm.fecha DESC, cm.id DESC
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) ${baseFrom}`, params);
+      const totRes = await client.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN cm.tipo = 'ingreso' THEN cm.monto_usd ELSE 0 END), 0) AS ingresos_usd,
+           COALESCE(SUM(CASE WHEN cm.tipo = 'egreso'  THEN cm.monto_usd ELSE 0 END), 0) AS egresos_usd
+         ${baseFrom}`, params);
+      const dataRes = await client.query(
+        `SELECT cm.id, cm.fecha, cm.caja_id, mp.nombre AS caja_nombre, mp.moneda,
+                cm.tipo, cm.monto, cm.monto_usd, cm.origen, cm.ref_tabla, cm.ref_id, cm.concepto, cm.created_at
+         ${baseFrom}
+         ORDER BY cm.fecha DESC, cm.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]);
       return {
         count: parseInt(countRes.rows[0].count),
         ingresos_usd_raw: totRes.rows[0].ingresos_usd,
@@ -447,17 +439,15 @@ router.get('/cajas/:id/movimientos', async (req, res, next) => {
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100 });
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query('SELECT COUNT(*) FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL', [id]),
-        client.query(
-          `SELECT id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, created_at
-             FROM caja_movimientos
-            WHERE caja_id = $1 AND deleted_at IS NULL
-            ORDER BY fecha DESC, id DESC
-            LIMIT $2 OFFSET $3`,
-          [id, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query('SELECT COUNT(*) FROM caja_movimientos WHERE caja_id = $1 AND deleted_at IS NULL', [id]);
+      const dataRes = await client.query(
+        `SELECT id, fecha, tipo, monto, monto_usd, origen, ref_tabla, ref_id, concepto, created_at
+           FROM caja_movimientos
+          WHERE caja_id = $1 AND deleted_at IS NULL
+          ORDER BY fecha DESC, id DESC
+          LIMIT $2 OFFSET $3`,
+        [id, limit, offset]
+      );
       return { count: parseInt(countRes.rows[0].count), dataRows: dataRes.rows };
     });
     res.json(paginatedResponse(dataRows, count, { page, limit }));
@@ -613,10 +603,8 @@ const resumenCache = createTenantScopedCache({
   fetcher: async (tenantId) => {
     const id = Number(tenantId);
     return db.withTenant(id, async (client) => {
-      const [{ rows: deudas }, { rows: inv }] = await Promise.all([
-        client.query(RESUMEN_DEUDAS_SQL),
-        client.query(RESUMEN_INV_SQL),
-      ]);
+      const { rows: deudas } = await client.query(RESUMEN_DEUDAS_SQL);
+      const { rows: inv } = await client.query(RESUMEN_INV_SQL);
       return { deudas, inversiones: inv };
     });
   },

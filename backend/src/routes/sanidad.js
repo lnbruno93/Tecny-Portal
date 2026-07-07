@@ -74,8 +74,16 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
     const hastaGlobal = `${periodos[periodos.length - 1]}-${String(diasDelMes(periodos[periodos.length - 1])).padStart(2, '0')}`;
 
     const data = await db.withTenant(req.tenantId, async (client) => {
+      // Fix pg deprecation (2026-07-07): las 5 queries salen `await` en
+      // secuencia sobre el mismo `client`. Antes se pre-declaraban como
+      // promises sin await y se lanzaban con `Promise.all` — pero el
+      // protocolo Postgres es sync-request/response por conexión, así que
+      // el driver `pg` las serializaba internamente igual (y emitía un
+      // DeprecationWarning). Sin cambio de performance real, pero sí queda
+      // compatible con `pg@9.0` (que lo convierte en error de runtime).
+
       // 1. Proyecciones del bruto (las que estén cargadas; el resto va null).
-      const proyeccionesQ = client.query(
+      const { rows: proyeccionesRows } = await client.query(
         `SELECT periodo, bruto_proyectado_usd
            FROM proyecciones_mensuales
           WHERE periodo BETWEEN $1 AND $2`,
@@ -88,11 +96,27 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
       // activo se reflejan en sus egresos reales linkeados (con recurrente_id),
       // que sí salen aunque hoy el recurrente esté deleted_at — porque salen
       // de `egresos`, no de `egresos_recurrentes`.
-      const recurrentesQ = client.query(
+      const { rows: recurrentesRows } = await client.query(
         `SELECT id, concepto, monto, moneda, tc, categoria_id
            FROM egresos_recurrentes
           WHERE activo = true AND deleted_at IS NULL
           ORDER BY id`
+      );
+
+      // 3.5. Overrides de presupuesto mensual por recurrente (2026-06-24).
+      // Permiten variar el monto presupuestado de un recurrente sin
+      // reescribir su `monto` default — caso típico: aumento de alquiler
+      // o salario que aplica desde un mes específico. Sanidad resuelve
+      // por mes: si hay override → usa ese; si no → cae al default del
+      // recurrente.
+      //
+      // Buscamos solo overrides dentro del rango de periodos visible (no
+      // todo el histórico). El índice idx_eror_tenant_periodo cubre.
+      const { rows: overridesRows } = await client.query(
+        `SELECT recurrente_id, periodo, monto, moneda, tc
+           FROM egresos_recurrentes_overrides
+          WHERE periodo BETWEEN $1 AND $2`,
+        [periodos[0], periodos[periodos.length - 1]]
       );
 
       // 3. Ventas agregadas por mes — total + desglose retail/B2B. Definición
@@ -101,7 +125,7 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
       // según el cliente_cc_id de la venta asociada).
       // GROUP BY mes con to_char en YYYY-MM para joinear contra el array de
       // periodos. Filtramos canceladas (consistente con dashboardMensual).
-      const ventasQ = client.query(
+      const { rows: ventasRows } = await client.query(
         `SELECT
            to_char(fecha, 'YYYY-MM')                                        AS periodo,
            COALESCE(SUM(total_usd) FILTER (
@@ -116,22 +140,6 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
         [desdeGlobal, hastaGlobal]
       );
 
-      // 3.5. Overrides de presupuesto mensual por recurrente (2026-06-24).
-      // Permiten variar el monto presupuestado de un recurrente sin
-      // reescribir su `monto` default — caso típico: aumento de alquiler
-      // o salario que aplica desde un mes específico. Sanidad resuelve
-      // por mes: si hay override → usa ese; si no → cae al default del
-      // recurrente.
-      //
-      // Buscamos solo overrides dentro del rango de periodos visible (no
-      // todo el histórico). El índice idx_eror_tenant_periodo cubre.
-      const overridesQ = client.query(
-        `SELECT recurrente_id, periodo, monto, moneda, tc
-           FROM egresos_recurrentes_overrides
-          WHERE periodo BETWEEN $1 AND $2`,
-        [periodos[0], periodos[periodos.length - 1]]
-      );
-
       // 4. Egresos pagados del rango, agrupados por mes y por recurrente_id.
       // recurrente_id NULL = gasto extraordinario (no viene de plantilla).
       // El campo `periodo` del egreso puede usarse para los que vienen de
@@ -140,7 +148,7 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
       // es "cuánto plata efectivamente salió este mes". Si después aparece
       // la necesidad de "mes que pertenece el gasto" (matching contable),
       // se cambia a periodo.
-      const egresosQ = client.query(
+      const { rows: egresosRows } = await client.query(
         `SELECT
            to_char(fecha, 'YYYY-MM') AS periodo,
            recurrente_id,
@@ -152,14 +160,6 @@ router.get('/', validate(queryListadoSchema, 'query'), async (req, res, next) =>
          GROUP BY to_char(fecha, 'YYYY-MM'), recurrente_id`,
         [desdeGlobal, hastaGlobal]
       );
-
-      const [
-        { rows: proyeccionesRows },
-        { rows: recurrentesRows },
-        { rows: overridesRows },
-        { rows: ventasRows },
-        { rows: egresosRows },
-      ] = await Promise.all([proyeccionesQ, recurrentesQ, overridesQ, ventasQ, egresosQ]);
 
       // Index por periodo para lookup O(1).
       const proyeccionesByPer = new Map(proyeccionesRows.map(r => [r.periodo, Number(r.bruto_proyectado_usd)]));

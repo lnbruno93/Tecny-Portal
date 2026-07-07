@@ -47,13 +47,11 @@ router.get('/', validate(queryPagosSchema, 'query'), async (req, res, next) => {
     const where = conditions.join(' AND ');
 
     const { countRes, dataRes } = await db.withTenant(req.tenantId, async (client) => {
-      const [countRes, dataRes] = await Promise.all([
-        client.query(`SELECT COUNT(*) FROM pagos WHERE ${where}`, params),
-        client.query(
-          `SELECT * FROM pagos WHERE ${where} ORDER BY fecha DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-      ]);
+      const countRes = await client.query(`SELECT COUNT(*) FROM pagos WHERE ${where}`, params);
+      const dataRes = await client.query(
+        `SELECT * FROM pagos WHERE ${where} ORDER BY fecha DESC, id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
       return { countRes, dataRes };
     });
 
