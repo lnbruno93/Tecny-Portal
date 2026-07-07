@@ -416,7 +416,15 @@ export default function Envios() {
         if (j !== idx) return it;
         const tcUse = it.tc || form.tc;
         if (arsDirect) {
-          // Auto-fill en ARS (cliente paga efectivo).
+          // Auto-fill en moneda local del método (cliente paga efectivo).
+          //
+          // BUG FIX Fase A+ #4 (2026-07-07): esta rama hardcodeaba
+          // `moneda: 'ARS'` incluso cuando el método era UYU (path arsDirect
+          // dispara con newMoneda === 'ARS' || 'UYU'). Para tenants UY, el
+          // pago quedaba con moneda='ARS' contra caja moneda='UYU' → mismatch
+          // en `syncVentaCaja` → data histórica del reporte del tenant UY.
+          // La rama de Ventas.jsx retail ya usa `newMoneda` correctamente
+          // (línea análoga); acá replicamos para paridad de comportamiento.
           let monto = it.monto;
           if (!monto || Number(monto) <= 0) {
             const falt = faltanteUsd(idx, arr);
@@ -427,7 +435,7 @@ export default function Envios() {
             ...it,
             metodo_pago_id: value,
             es_cuenta_corriente: false,
-            moneda: 'ARS',
+            moneda: newMoneda,
             usd_input: '', neto_input: '', bruto_manual: false,
             monto: monto || '',
             tc: it.tc || '',
