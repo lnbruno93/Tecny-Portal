@@ -398,7 +398,13 @@ export default function Ventas() {
   // sin cambios server-side.
   const addPago = () => setPagos(p => [...p, {
     _id: newItemId(),
-    metodo_pago_id: null, metodo_nombre: '', monto: '', moneda: 'ARS', tc: '',
+    // Default a la moneda local del tenant (ARS en AR, UYU en UY). Cuando
+    // el operador elige método, `handleMetodoChange` lo reemplaza con
+    // `m.moneda`. Este default es el estado transitorio entre "click en
+    // + Pago" y "elige método" — usarlo hardcoded en ARS provocaba que si
+    // el operador olvidaba elegir método (edge case), el pago quedaba en
+    // ARS aunque el tenant fuera UY. Fix #4 audit 2026-07-07.
+    metodo_pago_id: null, metodo_nombre: '', monto: '', moneda: monedaLocal, tc: '',
     usd_input: '', neto_input: '', es_cuenta_corriente: false,
   }]);
   // Auditoría 2026-06-30 F-13/14: setPago/rmPago aceptan _id estable. Los
