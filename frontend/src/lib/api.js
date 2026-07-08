@@ -545,16 +545,28 @@ export const inventario = {
   // sus egresos de caja. Compras con algún producto vendido (parciales) NO
   // se tocan. Devuelve { borrados, compras_borradas }.
   bulkDeleteDisponiblesConCompras: () => api('/api/inventario/productos/bulk-delete-disponibles-con-compras', 'POST'),
+  // Sistema legacy renombrado a "Colecciones" en la UI a partir de F3.b
+  // (2026-07-08). El endpoint backend sigue siendo `/categorias` para no
+  // romper compat — es solo un rename de UI. Ver design doc F3 para el
+  // contexto de la desambiguación con el nuevo `clases_producto`.
   categorias:      () => api('/api/inventario/categorias'),
   createCategoria: (data) => api('/api/inventario/categorias', 'POST', data),
   // Bulk resolve-or-create — devuelve { map: { lowercase_nombre: id } } para
-  // todas las categorías pedidas (recién creadas + ya existentes). Usado por
+  // todas las colecciones pedidas (recién creadas + ya existentes). Usado por
   // el import de stock para no hacer N round-trips secuenciales.
   bulkCategorias:  (nombres) => api('/api/inventario/categorias/bulk', 'POST', { nombres }),
   deleteCategoria: (id) => api(`/api/inventario/categorias/${id}`, 'DELETE'),
   depositos:       () => api('/api/inventario/depositos'),
   createDeposito:  (data) => api('/api/inventario/depositos', 'POST', data),
   deleteDeposito:  (id) => api(`/api/inventario/depositos/${id}`, 'DELETE'),
+  // 2026-07-08 F3.b — CRUD de Categorías (clases_producto). Reemplaza el
+  // enum global F1 por una tabla editable por tenant. Endpoints mergeados
+  // en el PR #528 (F3.a). Ver design doc: docs/design/categorias-crud-tenant-f3.md
+  clases:         () => api('/api/inventario/clases'),
+  createClase:    (data)     => api('/api/inventario/clases', 'POST', data),
+  updateClase:    (id, data) => api(`/api/inventario/clases/${id}`, 'PUT', data),
+  deleteClase:    (id)       => api(`/api/inventario/clases/${id}`, 'DELETE'),
+  reorderClases:  (items)    => api('/api/inventario/clases/reorder', 'POST', { items }),
 };
 
 export const ventas = {
