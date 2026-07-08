@@ -1,0 +1,90 @@
+# Auto-sync de main → staging tras cada merge exitoso.
+#
+# Corre después de que el workflow CI termina en main con conclusion=success.
+# Hace fast-forward de staging a main (--ff-only) y pushea. Si staging tiene
+# commits que main no tiene (divergencia), el merge falla y no destroza nada
+# — Lucas ve el error en Actions y decide qué hacer.
+#
+# Trigger:
+#   - workflow_run sobre "CI" completado con éxito en main.
+#   - workflow_dispatch para poder correrlo manualmente si hace falta.
+#
+# Contexto histórico: hasta ~mayo 2026 había commits "Sync main → staging"
+# automáticos que desaparecieron (probablemente al refactor multi-tenant).
+# Re-habilitado 2026-07-08 tras detectar que staging estaba 83 commits atrás
+# de main.
+
+name: Sync main → staging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+# Necesario para pushear a la rama staging con el GITHUB_TOKEN default.
+permissions:
+  contents: write
+
+# Evita múltiples syncs concurrentes: si arranca uno nuevo mientras otro corre,
+# el nuevo se encola y el viejo termina primero. No cancelamos in-progress
+# porque un sync interrumpido podría dejar staging en estado intermedio.
+concurrency:
+  group: sync-main-to-staging
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Fast-forward staging to main
+    runs-on: ubuntu-latest
+    # Solo si el CI en main terminó verde. Los push manuales via
+    # workflow_dispatch NO tienen workflow_run context — el `||` los deja pasar.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          fetch-depth: 0  # historial completo — necesario para ff-only
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch main
+        run: git fetch origin main
+
+      - name: Report gap before sync
+        run: |
+          AHEAD=$(git rev-list --count HEAD..origin/main)
+          BEHIND=$(git rev-list --count origin/main..HEAD)
+          echo "staging is $BEHIND commits ahead of main, $AHEAD commits behind"
+          if [ "$AHEAD" = "0" ]; then
+            echo "✓ staging already up to date — nothing to do"
+          fi
+
+      - name: Fast-forward merge main into staging
+        # --ff-only es la salvaguarda: si staging divergió (tiene commits que
+        # main no tiene), git rechaza el merge y este step falla. Es la señal
+        # explícita que necesitamos — mejor fallar el workflow que hacer un
+        # merge commit o un force-push que destruya algo.
+        run: |
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "staging already contains main — nothing to sync"
+            exit 0
+          fi
+          git merge origin/main --ff-only
+
+      - name: Push to staging
+        run: git push origin staging
+
+      - name: Report final state
+        run: |
+          echo "staging is now at: $(git rev-parse HEAD)"
+          echo "main is at:        $(git rev-parse origin/main)"
