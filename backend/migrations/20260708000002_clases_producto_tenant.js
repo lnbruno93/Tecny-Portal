@@ -51,21 +51,6 @@
  * NO destructivo para `productos.clase` legacy (queda intacto).
  */
 
-// Enum global F1 → filas base insertadas por tenant.
-// Alineado con `backend/src/lib/clasesProducto.js` y `frontend/src/lib/clasesProducto.js`.
-// Si acá cambia, actualizar ambos espejos.
-const CLASES_BASE = [
-  { slug: 'celular_sellado',   nombre: 'Celular Sellado',   emoji: '📲', orden: 10 },
-  { slug: 'celular_usado',     nombre: 'Celular Usado',     emoji: '♻️', orden: 20 },
-  { slug: 'watch',             nombre: 'Watch',             emoji: '⌚', orden: 30 },
-  { slug: 'auriculares',       nombre: 'Auriculares',       emoji: '🎧', orden: 40 },
-  { slug: 'consolas',          nombre: 'Consolas',          emoji: '🎮', orden: 50 },
-  { slug: 'computadoras',      nombre: 'Computadoras',      emoji: '💻', orden: 60 },
-  { slug: 'ipads',             nombre: 'iPads',             emoji: '📱', orden: 70 },
-  { slug: 'cargadores',        nombre: 'Cargadores',        emoji: '🔋', orden: 80 },
-  { slug: 'accesorios_varios', nombre: 'Accesorios/Varios', emoji: '🛍️', orden: 90 },
-];
-
 exports.up = async (pgm) => {
   // ─── 1. Tabla ─────────────────────────────────────────────────────
   pgm.sql(`
@@ -156,39 +141,38 @@ exports.up = async (pgm) => {
 
   // ─── 6. Backfill de tenants existentes ───────────────────────────
   // Por cada tenant activo (deleted_at IS NULL), insertar 9 clases base +
-  // 1 "Sin categoría". Idempotente vía ON CONFLICT.
+  // 1 "Sin categoría". Idempotente vía ON CONFLICT sobre los índices parciales.
   //
-  // Se hace por-tenant con SET LOCAL app.current_tenant para respetar RLS
-  // (mismo patrón que otros seed post-signup).
-  const clasesJson = JSON.stringify(CLASES_BASE).replace(/'/g, "''");
+  // NO usamos SET LOCAL: node-pg-migrate corre como superuser (owner del schema),
+  // que tiene BYPASSRLS por default. Las policies RLS no aplican para esta
+  // sesión — el tenant_id se pasa explícito en cada INSERT como control.
+  // (Mismo enfoque que otros seeds de migrations post-multitenant PR.)
+  //
+  // Las 9 clases base están hardcoded acá (espejo de `lib/seedClasesProducto.js`
+  // y `lib/clasesProducto.js`). Si cambian, actualizar los 3 lugares.
   pgm.sql(`
     DO $$
     DECLARE
       t_id INT;
-      c JSONB;
-      clase_row RECORD;
     BEGIN
       FOR t_id IN SELECT id FROM tenants WHERE deleted_at IS NULL LOOP
-        -- SET LOCAL para RLS (bypass BYPASSRLS por si acaso — el DO $$
-        -- corre como superuser en la migration).
-        EXECUTE format('SET LOCAL app.current_tenant = %L', t_id);
+        -- 9 clases base con emoji, orden y slug_legacy alineado a la F1.
+        INSERT INTO clases_producto (tenant_id, nombre, emoji, orden, es_base, slug_legacy, activa)
+        SELECT t_id, x.nombre, x.emoji, x.orden, true, x.slug, true
+          FROM (VALUES
+            ('Celular Sellado',   E'\\U0001F4F2', 10, 'celular_sellado'),
+            ('Celular Usado',     E'\\U0000267B\\U0000FE0F', 20, 'celular_usado'),
+            ('Watch',             E'\\U0000231A', 30, 'watch'),
+            ('Auriculares',       E'\\U0001F3A7', 40, 'auriculares'),
+            ('Consolas',          E'\\U0001F3AE', 50, 'consolas'),
+            ('Computadoras',      E'\\U0001F4BB', 60, 'computadoras'),
+            ('iPads',             E'\\U0001F4F1', 70, 'ipads'),
+            ('Cargadores',        E'\\U0001F50B', 80, 'cargadores'),
+            ('Accesorios/Varios', E'\\U0001F6CD\\U0000FE0F', 90, 'accesorios_varios')
+          ) AS x(nombre, emoji, orden, slug)
+        ON CONFLICT (tenant_id, LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING;
 
-        -- Insertar las 9 base + "Sin categoría"
-        FOR c IN SELECT jsonb_array_elements('${clasesJson}'::jsonb) LOOP
-          INSERT INTO clases_producto (tenant_id, nombre, emoji, orden, es_base, slug_legacy, activa)
-          VALUES (
-            t_id,
-            c->>'nombre',
-            c->>'emoji',
-            (c->>'orden')::int,
-            true,
-            c->>'slug',
-            true
-          )
-          ON CONFLICT (tenant_id, LOWER(nombre)) WHERE deleted_at IS NULL DO NOTHING;
-        END LOOP;
-
-        -- "Sin categoría" del sistema (para fallback de import XLSX)
+        -- "Sin categoría" del sistema (fallback del import XLSX, no borrable).
         INSERT INTO clases_producto (tenant_id, nombre, orden, es_sin_categoria, activa)
         VALUES (t_id, 'Sin categoría', 999, true, true)
         ON CONFLICT (tenant_id) WHERE es_sin_categoria = true AND deleted_at IS NULL DO NOTHING;
