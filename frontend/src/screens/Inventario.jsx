@@ -40,7 +40,10 @@ const money = fmtMoney;
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const EMPTY_PRODUCTO = {
-  tipo_carga: 'unitario', clase: CLASE_DEFAULT, nombre: '', imei: '', gb: '', color: '',
+  // F3.c: `clase` legacy sigue existiendo para compat (F3.d lo remueve). El
+  // dropdown ahora selecciona clase_id (UUID de clases_producto) y el backend
+  // deriva `clase` desde slug_legacy.
+  tipo_carga: 'unitario', clase: CLASE_DEFAULT, clase_id: '', nombre: '', imei: '', gb: '', color: '',
   bateria: '', categoria_id: '', deposito_id: '', proveedor: '',
   costo: '', costo_moneda: 'USD', precio_venta: '', precio_moneda: 'USD',
   cantidad: '1', estado: 'disponible', observaciones: '',
@@ -155,6 +158,9 @@ export default function Inventario() {
   const [productos, setProductos] = useState([]);
   const [metricas, setMetricas] = useState(null);
   const [categorias, setCategorias] = useState([]);
+  // F3.c: clases_producto del tenant (categorías editables). Se carga en
+  // loadCatalogos. Fallback: si vacío, el dropdown usa CLASES_LABELS hardcoded.
+  const [clases, setClases] = useState([]);
   const [depositos, setDepositos] = useState([]);
   const [proveedoresList, setProveedoresList] = useState([]); // distinct, para combo de edición inline
   // Lista del catálogo formal de proveedores (tabla `proveedores`, con id) —
@@ -390,7 +396,7 @@ export default function Inventario() {
 
   const loadCatalogos = useCallback(async () => {
     try {
-      const [c, d, prov, provCat, cajas] = await Promise.all([
+      const [c, d, prov, provCat, cajas, clasesRes] = await Promise.all([
         inventario.categorias(),
         inventario.depositos(),
         inventario.proveedoresList().catch(() => []),
@@ -402,11 +408,16 @@ export default function Inventario() {
         // de import. Si falla → array vacío (el selector quedará deshabilitado
         // con un mensaje claro).
         cajasApi.listMetodosPago().catch(() => []),
+        // F3.c (2026-07-08): categorías editables por tenant (clases_producto).
+        // Reemplaza el enum global F1 en el dropdown del form de alta/edición.
+        // Si falla → array vacío, el dropdown cae al enum F1 hardcoded (fallback).
+        inventario.clases().catch(() => []),
       ]);
       setCategorias(c); setDepositos(d); setProveedoresList(prov || []);
       // El endpoint paginado devuelve { data, pagination }; unwrap defensivo.
       setProveedoresCatalogo(Array.isArray(provCat) ? provCat : (provCat?.data || []));
       setCajasList(Array.isArray(cajas) ? cajas : []);
+      setClases(Array.isArray(clasesRes) ? clasesRes : []);
     } catch (_) {}
   }, []);
 
@@ -473,7 +484,7 @@ export default function Inventario() {
   const openEdit = useCallback((p) => {
     setEditId(p.id);
     setForm({
-      tipo_carga: p.tipo_carga, clase: p.clase, nombre: p.nombre, imei: p.imei ?? '',
+      tipo_carga: p.tipo_carga, clase: p.clase, clase_id: p.clase_id ?? '', nombre: p.nombre, imei: p.imei ?? '',
       gb: p.gb ?? '', color: p.color ?? '', bateria: p.bateria ?? '',
       categoria_id: p.categoria_id ?? '', deposito_id: p.deposito_id ?? '', proveedor: p.proveedor ?? '',
       costo: p.costo, costo_moneda: p.costo_moneda, precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
@@ -553,7 +564,11 @@ export default function Inventario() {
     setSaving(true); setFormError('');
     const num = (v) => v === '' || v == null ? null : Number(v);
     const payload = {
-      tipo_carga: form.tipo_carga, clase: form.clase, nombre: form.nombre.trim(),
+      // F3.c: mandar clase_id si está seteado; backend deriva `clase` desde
+      // slug_legacy. Mandamos `clase` también por compat (backend acepta ambos
+      // y prefiere clase_id para el derive).
+      tipo_carga: form.tipo_carga, clase: form.clase, clase_id: form.clase_id || null,
+      nombre: form.nombre.trim(),
       imei: form.imei.trim() || null, gb: form.gb.trim() || null, color: form.color.trim() || null,
       bateria: num(form.bateria), categoria_id: form.categoria_id || null, deposito_id: form.deposito_id || null,
       proveedor: form.proveedor.trim() || null,
@@ -1360,19 +1375,41 @@ export default function Inventario() {
                       </select>
                     </div>
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Clase</label>
-                      {/* 2026-07-08 (Fase 1 categorías reales): 9 categorías
-                          reemplazan el par celular/accesorio. El label incluye
-                          emoji para escaneo visual rápido. Legacy 'celular'/
-                          'accesorio' fueron backfilleadas por la migration
-                          20260708000001 — cualquier producto viejo ya tiene un
-                          slug del enum nuevo, así que value siempre matchea
-                          una option. */}
-                      <select className="input" value={form.clase} onChange={e => setF('clase', e.target.value)}>
-                        {CLASES_PRODUCTO.map(slug => (
-                          <option key={slug} value={slug}>{CLASES_LABELS[slug]}</option>
-                        ))}
-                      </select>
+                      <label className="field-label">Categoría</label>
+                      {/* F3.c (2026-07-08): dropdown ahora lista las categorías
+                          editables del tenant (clases_producto). Se envía
+                          `clase_id` al backend, que deriva `clase` legacy
+                          desde slug_legacy. Fallback al enum F1 hardcoded si
+                          la carga del endpoint /clases falló (clases vacío).
+                          "Sin categoría" del sistema queda oculta del dropdown
+                          — es solo fallback interno del import XLSX. */}
+                      {clases.length > 0 ? (
+                        <select
+                          className="input"
+                          value={form.clase_id || ''}
+                          onChange={e => {
+                            const clase_id = e.target.value;
+                            const c = clases.find(x => x.id === clase_id);
+                            // Actualizar ambos: clase_id (nuevo) y clase legacy
+                            // (por si el backend lo lee sin re-derivarlo).
+                            setF('clase_id', clase_id);
+                            if (c?.slug_legacy) setF('clase', c.slug_legacy);
+                          }}
+                        >
+                          <option value="">Seleccionar...</option>
+                          {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select className="input" value={form.clase} onChange={e => setF('clase', e.target.value)}>
+                          {CLASES_PRODUCTO.map(slug => (
+                            <option key={slug} value={slug}>{CLASES_LABELS[slug]}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
                   <div className="field">

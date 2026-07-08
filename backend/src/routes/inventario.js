@@ -475,12 +475,16 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
 
 router.get('/productos', validate(queryProductosSchema, 'query'), async (req, res, next) => {
   try {
-    const { buscar, clase, estado, categoria_id, deposito_id, solo_stock,
+    const { buscar, clase, clase_id, estado, categoria_id, deposito_id, solo_stock,
             nombre, proveedor, gb, color, vista, condicion, desde, hasta } = req.query;
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
     if (clase)        { params.push(clase);        conditions.push(`p.clase = $${params.length}`); }
+    // F3.c: filtro por FK a clases_producto (nueva categoría por tenant). Se
+    // aplica en AND con `clase` legacy si ambos vienen, aunque el frontend
+    // nuevo (F3.c-2) usará solo uno de los dos.
+    if (clase_id)     { params.push(clase_id);     conditions.push(`p.clase_id = $${params.length}`); }
     if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
     if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
     if (deposito_id)  { params.push(deposito_id);  conditions.push(`p.deposito_id = $${params.length}`); }
@@ -772,12 +776,58 @@ router.get('/productos/:id/foto', async (req, res, next) => {
 // en foto_key. Cuando va a path legacy (flag OFF o driver db), foto_key y
 // foto_size quedan NULL y la columna legacy foto_data conserva el base64.
 const PRODUCTO_COLS = [
-  'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
+  'tipo_carga', 'clase', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
   'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
   'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
   'foto_data', 'foto_nombre', 'foto_tipo', 'foto_key', 'foto_size',
   'observaciones', 'condicion', 'oculto',
 ];
+
+// F3.c — Helper: sincroniza `clase` legacy ↔ `clase_id` UUID en cada write.
+// Uno de los dos alcanza: si viene solo `clase_id`, deriva `clase` desde
+// `clases_producto.slug_legacy`. Si viene solo `clase`, busca `clase_id` en
+// la fila `es_base=true AND slug_legacy=$clase` del tenant. Si vienen ambos,
+// respeta lo enviado (útil para el frontend nuevo durante transición).
+//
+// Devuelve `{ clase, clase_id }` para setear en el body antes del INSERT/UPDATE.
+// Lanza 400 si el clase_id no existe o no pertenece al tenant.
+async function resolveClaseAndClaseId(client, tenantId, body) {
+  let { clase, clase_id } = body;
+  if (clase_id) {
+    const { rows } = await client.query(
+      `SELECT id, nombre, slug_legacy FROM clases_producto
+        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [clase_id, tenantId]
+    );
+    if (!rows[0]) {
+      const err = new Error(`La categoría (clase_id=${clase_id}) no existe o fue borrada.`);
+      err.status = 400;
+      err.code = 'clase_id_invalido';
+      throw err;
+    }
+    // Para categorías base (una de las 9 originales), el slug_legacy nos da
+    // el clase enum. Para categorías custom del tenant (agregadas post-F3.b),
+    // slug_legacy es NULL — en ese caso mantenemos el `clase` legacy que el
+    // cliente haya mandado (o el default) por compat con el enum, hasta F3.d
+    // que borre la columna. Es un fallback razonable — el enum ya solo se usa
+    // para reporting cross-tenant que probablemente cambiemos también.
+    clase = rows[0].slug_legacy || clase || 'accesorios_varios';
+  } else if (clase) {
+    // Frontend viejo (F3.b y anterior): solo manda `clase`. Buscamos el
+    // clase_id correspondiente en las 9 base del tenant.
+    const { rows } = await client.query(
+      `SELECT id FROM clases_producto
+        WHERE tenant_id = $1 AND slug_legacy = $2 AND deleted_at IS NULL
+        LIMIT 1`,
+      [tenantId, clase]
+    );
+    clase_id = rows[0]?.id || null;
+    // Nota: clase_id puede quedar en NULL si el tenant borró la fila base
+    // correspondiente (poco probable pero posible). El producto queda con
+    // clase legacy pero sin FK — se puede reasignar desde la UI después.
+  }
+  return { clase: clase || 'accesorios_varios', clase_id: clase_id || null };
+}
 
 router.post('/productos', requireCapability('inventario.crear'), validate(createProductoSchema), async (req, res, next) => {
   try {
@@ -865,9 +915,15 @@ router.post('/productos', requireCapability('inventario.crear'), validate(create
     b.foto_tipo   = fotoFile.tipo;
     b.foto_key    = fotoFile.key;
     b.foto_size   = fotoFile.size;
-    const values = PRODUCTO_COLS.map(c => b[c] ?? null);
     const placeholders = PRODUCTO_COLS.map((_, i) => `$${i + 1}`).join(',');
     const row = await db.withTenant(req.tenantId, async (client) => {
+      // F3.c: derive bidireccional clase ↔ clase_id ANTES del INSERT.
+      // Los productos siempre quedan con ambos campos sync (hasta F3.d cleanup).
+      const claseInfo = await resolveClaseAndClaseId(client, req.tenantId, b);
+      b.clase    = claseInfo.clase;
+      b.clase_id = claseInfo.clase_id;
+
+      const values = PRODUCTO_COLS.map(c => b[c] ?? null);
       const { rows } = await client.query(
         `INSERT INTO productos (${PRODUCTO_COLS.join(',')}) VALUES (${placeholders}) RETURNING *`,
         values
@@ -965,14 +1021,25 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
       }
       return `${c} = COALESCE($${i + 1}, ${c})`;
     }).join(', ');
-    const values = PRODUCTO_COLS.map(c => {
-      if (FOTO_FIELDS.has(c) && fotoUpdated) {
-        // Path foto-updated: tomamos el valor procesado (puede ser null).
-        return req.body[c] ?? null;
-      }
-      return c in req.body ? req.body[c] : null;
-    });
     const row = await db.withTenant(req.tenantId, async (client) => {
+      // F3.c: derive bidireccional clase ↔ clase_id ANTES del UPDATE.
+      // Si el cliente cambia uno de los dos (o ambos), aseguramos que queden
+      // sincronizados. Si no toca ninguno, el COALESCE preserva los valores
+      // viejos y este no-op no hace daño.
+      if (req.body.clase_id !== undefined || req.body.clase !== undefined) {
+        const claseInfo = await resolveClaseAndClaseId(client, req.tenantId, req.body);
+        req.body.clase    = claseInfo.clase;
+        req.body.clase_id = claseInfo.clase_id;
+      }
+      // values se computa DESPUÉS del derive para que el COALESCE reciba los
+      // valores actualizados.
+      const values = PRODUCTO_COLS.map(c => {
+        if (FOTO_FIELDS.has(c) && fotoUpdated) {
+          // Path foto-updated: tomamos el valor procesado (puede ser null).
+          return req.body[c] ?? null;
+        }
+        return c in req.body ? req.body[c] : null;
+      });
       const { rows } = await client.query(
         `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} RETURNING *`,
         [...values, id]
