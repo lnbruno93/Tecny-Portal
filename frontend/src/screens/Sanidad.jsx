@@ -66,10 +66,17 @@ function variacionPct(actual, anterior) {
 // del helper backend lib/money.js toUsd — replicado acá porque la pantalla
 // recibe los recurrentes "raw" del CRUD endpoint y necesita mostrar el USD
 // equivalente sin esperar al refresh del dashboard).
+//
+// 2026-07-08 Multi-país F2: antes solo cubría ARS → un tenant UY veía USD 0
+// para todos sus recurrentes UYU (aunque en DB tuvieran tc>0 válido), y los
+// subtotales/total del panel quedaban subestimados. `MONEDAS_CON_TC` es
+// mirror del backend `schemas/_common.js` (mantener alineado si se agrega
+// una nueva fiat local en el futuro).
+const MONEDAS_CON_TC = ['ARS', 'UYU'];
 function montoUsd(monto, moneda, tc) {
   const m = Number(monto) || 0;
   if (moneda === 'USD' || moneda === 'USDT') return m;
-  if (moneda === 'ARS' && tc && Number(tc) > 0) return m / Number(tc);
+  if (MONEDAS_CON_TC.includes(moneda) && tc && Number(tc) > 0) return m / Number(tc);
   return 0;
 }
 
@@ -356,10 +363,12 @@ function ProyeccionGastosPanel({ onChange }) {
     if (!draft.concepto.trim()) return 'Falta el concepto.';
     const m = Number(draft.monto);
     if (!Number.isFinite(m) || m < 0) return 'Monto inválido.';
-    if (draft.moneda === 'ARS') {
+    // 2026-07-08 Multi-país F2: antes solo pedía TC para ARS. Ahora también
+    // UYU (tenants UY). Mensaje incluye la moneda concreta para claridad.
+    if (MONEDAS_CON_TC.includes(draft.moneda)) {
       const tc = Number(draft.tc);
       if (!Number.isFinite(tc) || tc <= 0) {
-        return 'Para gastos en ARS necesitamos el TC para pasar a USD.';
+        return `Para gastos en ${draft.moneda} necesitamos el TC para pasar a USD.`;
       }
     }
     return null;
@@ -373,7 +382,9 @@ function ProyeccionGastosPanel({ onChange }) {
       concepto: draft.concepto.trim(),
       monto:    Number(draft.monto),
       moneda:   draft.moneda,
-      tc:       draft.moneda === 'ARS' ? Number(draft.tc) : null,
+      // 2026-07-08 Multi-país F2: antes forzaba tc:null para todo lo que no
+      // era ARS → recurrentes UYU perdían el TC aunque el usuario lo tipeara.
+      tc:       MONEDAS_CON_TC.includes(draft.moneda) ? Number(draft.tc) : null,
       categoria_id: draft.categoria_id ? Number(draft.categoria_id) : null,
       activo:   true,
     };

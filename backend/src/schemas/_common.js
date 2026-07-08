@@ -25,6 +25,28 @@ const MonedaEnum = z.enum(
   { error: 'moneda debe ser una de: USD, ARS, USDT, UYU' }
 );
 
+// Monedas fiat locales que requieren tipo de cambio (TC) para convertirse a
+// USD. USD y USDT no requieren TC (USDT es stable, se trata 1:1 con USD).
+//
+// 2026-07-08: antes cada schema/handler hardcodeaba `moneda === 'ARS'` para
+// exigir TC — un pattern que se propagó a 6+ sitios. Al agregar UYU (multi-
+// país F2), ninguno se actualizó → un tenant UY podía persistir cargos UYU
+// sin TC → `toUsd(monto, 'UYU', null)` devolvía 0 → los KPIs mentían silen-
+// ciosamente (dashboard mostraba $0 facturación en UYU, ganancia inflada por
+// egresos "invisibles", etc). Ver `requiereTc()` abajo.
+const MONEDAS_CON_TC = ['ARS', 'UYU'];
+
+// Helper: devuelve true si `moneda` requiere TC para calcular su equivalente
+// en USD. Usar en refines de schemas Zod y validaciones inline de handlers.
+//
+// Ejemplo:
+//   .refine(d => !requiereTc(d.moneda) || (d.tc && d.tc > 0), {
+//     message: 'TC requerido para montos en ARS o UYU', path: ['tc'],
+//   })
+function requiereTc(moneda) {
+  return MONEDAS_CON_TC.includes(moneda);
+}
+
 // Fecha en string ISO (YYYY-MM-DD) que NO puede ser futura ni anterior al
 // 2000-01-01. Comparación date-only contra "hoy UTC" — la misma base que usa
 // el frontend con new Date().toLocaleDateString('sv').
@@ -35,4 +57,4 @@ const fechaNoFutura = z.string()
     return d >= '2000-01-01' && d <= todayUTC;
   }, 'La fecha no puede ser futura ni anterior al año 2000');
 
-module.exports = { fechaNoFutura, MonedaEnum, MONEDAS_PERMITIDAS };
+module.exports = { fechaNoFutura, MonedaEnum, MONEDAS_PERMITIDAS, MONEDAS_CON_TC, requiereTc };

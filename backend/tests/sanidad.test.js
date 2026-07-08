@@ -413,6 +413,28 @@ describe('Override mensual de gastos (egresos_recurrentes_overrides)', () => {
     expect(r.body.error).toMatch(/tc/i);
   });
 
+  // 2026-07-08 Multi-país F2 backfill: idem ARS pero para UYU. Antes: un
+  // tenant UY con override UYU sin tc → tcFinal=null → cálculo USD del
+  // recurrente daba 0 → KPI de "Gastos e inversiones totales" del semestre
+  // subestimado, mostrando falsa mejora contra el período comparado.
+  //
+  // NOTA: TEST_USER = tenant AR, por lo que UYU pega primero con
+  // `assertMonedaValidaParaPais` (400 "no habilitada para país"). El happy-
+  // path UYU requeriría tenant UY y está cubierto por unit tests puros del
+  // helper `requiereTc()` en `tests/schemas-common.test.js`. Acá lockeamos
+  // que en NINGÚN caso un override UYU sin TC llegue a persistirse con
+  // tcFinal=null silencioso.
+  it('PUT con moneda=UYU y sin tc → 400 (rechazado, no persiste con tcFinal=null)', async () => {
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 40000, moneda: 'UYU' });
+    expect(r.status).toBe(400);
+    // El body puede indicar "TC requerido" (schema) o "no habilitada para
+    // país" (guard multi-país) — ambos son rechazos válidos.
+    expect(JSON.stringify(r.body)).toMatch(/tc|UYU|no habilitada/i);
+  });
+
   it('PUT con recurrente_id inexistente → 400 (FK violation atrapada)', async () => {
     const r = await request(app)
       .put('/api/sanidad/override')

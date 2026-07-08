@@ -155,6 +155,28 @@ describe('Proveedores — cuenta corriente', () => {
     expect(sinTc.status).toBe(400);
   });
 
+  // 2026-07-08 Multi-país F2 backfill: mismo guard que ARS, para UYU.
+  // Antes: un tenant UY podía persistir compra UYU sin tc → monto_usd=0 →
+  // saldo del proveedor y CxP corruptos.
+  //
+  // NOTA: TEST_USER = tenant AR default, por lo que UYU pega primero con
+  // `assertMonedaValidaParaPais` (400 "no habilitada para país AR"). El happy-
+  // path UYU requeriría tenant UY y está cubierto por unit tests puros del
+  // helper `requiereTc()` en `tests/schemas-common.test.js`. Acá lockeamos
+  // que en NINGÚN caso una compra UYU sin TC llegue a persistirse con
+  // monto_usd=0 silencioso.
+  it('rechaza compra UYU sin TC (nunca persiste con monto_usd=0)', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor UYU' });
+
+    const sinTc = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 1000, moneda: 'UYU' });
+    expect(sinTc.status).toBe(400);
+    // El body puede indicar "TC requerido" (schema) o "no habilitada para
+    // país" (guard multi-país) — ambos son rechazos válidos que evitan el
+    // bug del monto_usd=0 silencioso.
+    expect(JSON.stringify(sinTc.body)).toMatch(/tc|UYU|no habilitada/i);
+  });
+
   it('lista movimientos, borra uno y rechaza movimiento de proveedor inexistente', async () => {
     const prov = await crearProveedor({ nombre: 'Proveedor Movs' });
     const mov = await request(app).post('/api/proveedores/movimientos').set(auth())

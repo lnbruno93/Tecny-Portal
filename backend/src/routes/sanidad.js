@@ -24,6 +24,7 @@ const validate = require('../lib/validate');
 const audit    = require('../lib/audit');
 const { toUsd, round2 } = require('../lib/money');
 const { queryListadoSchema, upsertProyeccionSchema, upsertOverrideSchema } = require('../schemas/sanidad');
+const { requiereTc } = require('../schemas/_common');
 
 // Devuelve la lista de los últimos N meses como strings 'YYYY-MM', ordenados
 // del más viejo al más reciente (orientado al display en la pantalla). Calcula
@@ -375,13 +376,17 @@ router.delete('/proyeccion/:periodo', async (req, res, next) => {
 router.put('/override', validate(upsertOverrideSchema), async (req, res, next) => {
   try {
     const { recurrente_id, periodo, monto, moneda, tc } = req.body;
-    // tc solo aplica si moneda='ARS'; el schema lo deja pasar opcional, lo
-    // normalizamos acá para no guardar tc=null con moneda=ARS (que dejaría
-    // el override sin forma de calcular USD).
-    if (moneda === 'ARS' && (tc == null || tc <= 0)) {
-      return res.status(400).json({ error: 'Para moneda ARS, debe especificarse un tc > 0.' });
+    // tc solo aplica si la moneda requiere conversión (ARS/UYU); el schema
+    // lo deja pasar opcional, lo normalizamos acá para no guardar tc=null
+    // con moneda que requiere TC (dejaría el override sin forma de calcular USD).
+    // 2026-07-08 Multi-país F2 backfill: antes solo cubría 'ARS'; con UYU
+    // agregado, el override UYU sin TC dejaba a Sanidad calculando USD 0 para
+    // ese recurrente → distorsionaba el KPI de "Gastos e inversiones totales"
+    // del semestre. Este era uno de los P1s de Sanidad identificados.
+    if (requiereTc(moneda) && (tc == null || tc <= 0)) {
+      return res.status(400).json({ error: `Para moneda ${moneda}, debe especificarse un tc > 0.` });
     }
-    const tcFinal = moneda === 'ARS' ? tc : null;
+    const tcFinal = requiereTc(moneda) ? tc : null;
     const row = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `INSERT INTO egresos_recurrentes_overrides (tenant_id, recurrente_id, periodo, monto, moneda, tc)

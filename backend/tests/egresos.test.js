@@ -98,6 +98,44 @@ describe('Egresos — estado y ledger', () => {
     });
   });
 
+  // 2026-07-08 Multi-país F2 backfill: idem SOL-1 pero para UYU. Antes el
+  // refine solo cubría ARS → un tenant UY podía persistir egreso UYU sin tc,
+  // `toUsd(m,'UYU',null)=0`, dashboard mentía. Estos tests lockean el fix.
+  //
+  // NOTA sobre el TEST_USER: el tenant default es AR, por lo que UYU pega
+  // primero con `assertMonedaValidaParaPais` (400 "no habilitada para país").
+  // Aún así los tests son útiles: en cualquier caso el POST/PUT UYU sin TC
+  // debe fallar (nunca persistirse con monto_usd=0). Los happy-path UYU
+  // requerirían tenant UY y están cubiertos por los unit tests puros del
+  // helper `requiereTc()` en `tests/schemas-common.test.js`.
+  describe('Multi-país F2: TC obligatorio en egresos UYU', () => {
+    it('POST con moneda=UYU sin tc → 400 (rechazado, no persiste con monto_usd=0)', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Alquiler UYU', monto: 40000, moneda: 'UYU' });
+      expect(e.status).toBe(400);
+      // El body puede indicar "TC requerido" (schema) o "no habilitada para
+      // país" (guard multi-país) — ambos son rechazos válidos que evitan el
+      // bug del monto_usd=0 silencioso.
+      expect(JSON.stringify(e.body)).toMatch(/tc|UYU|no habilitada/i);
+    });
+
+    it('POST con moneda=UYU con tc=0 → 400', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Servicios UYU', monto: 40000, moneda: 'UYU', tc: 0 });
+      expect(e.status).toBe(400);
+    });
+
+    it('PUT cambiando a moneda=UYU sin tc → 400', async () => {
+      const created = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Gasto USD', monto: 100, moneda: 'USD' });
+      expect(created.status).toBe(201);
+      const upd = await request(app).put(`/api/egresos/${created.body.id}`).set(auth())
+        .send({ moneda: 'UYU' });
+      expect(upd.status).toBe(400);
+      expect(JSON.stringify(upd.body)).toMatch(/tc|UYU|no habilitada/i);
+    });
+  });
+
   it('borrar un egreso pagado revierte la caja', async () => {
     const saldoAntes = await saldoDe(cajaId);
     const e = await request(app).post('/api/egresos').set(auth())
@@ -135,5 +173,28 @@ describe('Egresos — recurrentes', () => {
     const gen = list.body.data.find(e => e.concepto === 'Expensas oficina');
     expect(gen).toBeTruthy();
     expect(Number(gen.monto_usd)).toBe(100); // 142500 / 1425
+  });
+
+  // 2026-07-08 Multi-país F2 backfill: guards TC/país en recurrentes UYU.
+  // El bug era hermano del override (que se fixeó en la misma pasada): antes
+  // el `createRecurrenteSchema` NO tenía refine `requiereTc()` → un tenant UY
+  // podía crear recurrente UYU sin tc → `default_usd = toUsd(m,'UYU',null) = 0`
+  // → subestimaba KPI de Sanidad "Gastos e inversiones totales". Este test
+  // lockea que en NINGÚN caso se persista sin TC.
+  //
+  // NOTA: TEST_USER = tenant AR, entonces UYU pega primero con
+  // `assertMonedaValidaParaPais` (400 "no habilitada para país"). Ambos son
+  // rechazos válidos que evitan el bug del default_usd=0.
+  it('rechaza recurrente UYU sin TC (nunca persiste con default_usd=0)', async () => {
+    const r = await request(app).post('/api/egresos/recurrentes').set(auth())
+      .send({ concepto: 'Alquiler UYU', monto: 40000, moneda: 'UYU', dia_del_mes: 5 });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/tc|UYU|no habilitada/i);
+  });
+
+  it('rechaza recurrente UYU con tc=0', async () => {
+    const r = await request(app).post('/api/egresos/recurrentes').set(auth())
+      .send({ concepto: 'Servicios UYU', monto: 40000, moneda: 'UYU', tc: 0, dia_del_mes: 5 });
+    expect(r.status).toBe(400);
   });
 });
