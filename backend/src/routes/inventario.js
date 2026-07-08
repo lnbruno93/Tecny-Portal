@@ -1373,6 +1373,12 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
 
 // GET /clases — listar todas las clases del tenant, con count de productos
 // asociados (para el guard de delete y para display).
+//
+// Filtro explícito `tenant_id = $1` además del RLS: defensa en profundidad.
+// El RLS es la principal fuente de aislamiento en producción (rol `ipro_app`),
+// pero en tests (donde el pool corre como superuser con BYPASSRLS) el filtro
+// SQL es lo único que evita ver clases de otros tenants residuales del test DB.
+// Mismo pattern se aplica al resto de queries del CRUD abajo.
 router.get('/clases', async (req, res, next) => {
   try {
     const rows = await db.withTenant(req.tenantId, async (client) => {
@@ -1382,10 +1388,11 @@ router.get('/clases', async (req, res, next) => {
                 c.created_at, c.updated_at,
                 COUNT(p.id) FILTER (WHERE p.deleted_at IS NULL)::int AS count_productos
            FROM clases_producto c
-           LEFT JOIN productos p ON p.clase_id = c.id
-          WHERE c.deleted_at IS NULL
+           LEFT JOIN productos p ON p.clase_id = c.id AND p.tenant_id = $1
+          WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
           GROUP BY c.id
-          ORDER BY c.orden ASC, LOWER(c.nombre) ASC`
+          ORDER BY c.orden ASC, LOWER(c.nombre) ASC`,
+        [req.tenantId]
       );
       return rows;
     });
@@ -1445,10 +1452,11 @@ router.put(
       const { nombre, emoji, activa, orden } = req.body;
       const result = await db.withTenant(req.tenantId, async (client) => {
         // Guard: solo edición de filas del tenant, no borradas, no "Sin categoría".
+        // tenant_id explícito además del RLS — ver comentario en GET /clases.
         const { rows: existing } = await client.query(
           `SELECT * FROM clases_producto
-            WHERE id = $1 AND deleted_at IS NULL`,
-          [id]
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+          [id, req.tenantId]
         );
         if (!existing[0]) return { notFound: true };
         if (existing[0].es_sin_categoria) return { protegida: true };
@@ -1466,9 +1474,9 @@ router.put(
                              ELSE $2 END,
                activa = COALESCE($3, activa),
                orden  = COALESCE($4, orden)
-             WHERE id = $5 AND deleted_at IS NULL
+             WHERE id = $5 AND tenant_id = $6 AND deleted_at IS NULL
              RETURNING *`,
-            [nombre ?? null, emojiParam, activa ?? null, orden ?? null, id]
+            [nombre ?? null, emojiParam, activa ?? null, orden ?? null, id, req.tenantId]
           );
           await audit(client, 'clases_producto', 'UPDATE', id, {
             antes: existing[0], despues: rows[0], user_id: req.user.id, req,
@@ -1509,10 +1517,11 @@ router.delete(
         return res.status(400).json({ error: 'ID inválido' });
       }
       const result = await db.withTenant(req.tenantId, async (client) => {
+        // tenant_id explícito además del RLS — ver comentario en GET /clases.
         const { rows: existing } = await client.query(
           `SELECT * FROM clases_producto
-            WHERE id = $1 AND deleted_at IS NULL`,
-          [id]
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+          [id, req.tenantId]
         );
         if (!existing[0]) return { notFound: true };
         if (existing[0].es_sin_categoria) return { protegida: true };
@@ -1520,17 +1529,17 @@ router.delete(
         // Guard: no borrar si hay productos activos asociados.
         const { rows: countRows } = await client.query(
           `SELECT COUNT(*)::int AS n FROM productos
-            WHERE clase_id = $1 AND deleted_at IS NULL`,
-          [id]
+            WHERE clase_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+          [id, req.tenantId]
         );
         const count = countRows[0].n;
         if (count > 0) return { hasProductos: true, count };
 
         const { rows } = await client.query(
           `UPDATE clases_producto SET deleted_at = NOW()
-            WHERE id = $1 AND deleted_at IS NULL
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
             RETURNING *`,
-          [id]
+          [id, req.tenantId]
         );
         await audit(client, 'clases_producto', 'DELETE', id, {
           antes: existing[0], user_id: req.user.id, req,
@@ -1569,10 +1578,11 @@ router.post(
       const updated = await db.withTenant(req.tenantId, async (client) => {
         let n = 0;
         for (const it of items) {
+          // tenant_id explícito además del RLS — ver comentario en GET /clases.
           const { rowCount } = await client.query(
             `UPDATE clases_producto SET orden = $1
-              WHERE id = $2 AND deleted_at IS NULL`,
-            [it.orden, it.id]
+              WHERE id = $2 AND tenant_id = $3 AND deleted_at IS NULL`,
+            [it.orden, it.id, req.tenantId]
           );
           n += rowCount;
         }
