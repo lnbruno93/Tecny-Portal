@@ -63,7 +63,7 @@ async function createProducto(token, over = {}) {
     .set(authHeader(token))
     .send({
       tipo_carga: 'unitario',
-      clase: 'celular',
+      clase: 'celular_sellado',
       nombre: 'iPhone Test ' + Math.random().toString(36).slice(2, 7),
       costo: 500, costo_moneda: 'USD',
       precio_venta: 800, precio_moneda: 'USD',

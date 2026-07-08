@@ -55,7 +55,7 @@ describe('API versioning — H-06', () => {
 
     it('query params se preservan en el rewrite', async () => {
       const v1 = await request(app)
-        .get('/api/v1/inventario/productos?limit=1&clase=celular')
+        .get('/api/v1/inventario/productos?limit=1&clase=celular_sellado')
         .set('Authorization', `Bearer ${token}`);
       expect([200, 403]).toContain(v1.status); // 403 si el user no tiene permiso inventario
       // No es 404 — el rewrite preservó el path y los query params.

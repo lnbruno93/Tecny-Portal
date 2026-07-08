@@ -92,7 +92,7 @@ describe('GET /api/inventario/productos — response shaping (F5b)', () => {
       .send({
         nombre: 'Test Shaping Prod', cantidad: 1, categoria_id: catId,
         costo: 100, costo_moneda: 'USD', precio_venta: 200,
-        clase: 'celular', estado: 'disponible', tipo_carga: 'unitario',
+        clase: 'celular_sellado', estado: 'disponible', tipo_carga: 'unitario',
       });
     expect(prod.status).toBe(201);
     prodId = prod.body.id;
@@ -264,7 +264,7 @@ describe('GET /api/ventas/dashboard — response shaping (ver_ganancias)', () =>
       .send({
         nombre: 'Test Ganancias Prod', cantidad: 1, categoria_id: ventaCatId,
         costo: 60, costo_moneda: 'USD', precio_venta: 100,
-        clase: 'celular', estado: 'disponible', tipo_carga: 'unitario',
+        clase: 'celular_sellado', estado: 'disponible', tipo_carga: 'unitario',
       });
     ventaProdId = prod.body.id;
 

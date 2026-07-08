@@ -58,7 +58,7 @@ async function insertProducto(imei, { deleted = false } = {}) {
   const { rows } = await pool.query(
     `INSERT INTO productos
        (tenant_id, tipo_carga, clase, nombre, imei, costo, costo_moneda, precio_venta, precio_moneda, cantidad, estado, condicion, oculto, deleted_at)
-     VALUES ($1, 'unitario', 'celular', 'iPhone Test', $2, 1000, 'USD', 1100, 'USD', 1, 'disponible', 'nuevo', false, $3)
+     VALUES ($1, 'unitario', 'celular_sellado', 'iPhone Test', $2, 1000, 'USD', 1100, 'USD', 1, 'disponible', 'nuevo', false, $3)
      RETURNING id`,
     [tenantId, imei, deleted ? new Date() : null]
   );

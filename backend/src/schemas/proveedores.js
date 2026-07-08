@@ -23,12 +23,15 @@ const updateProveedorSchema = createProveedorSchema.partial().refine(
 // compra. Reutiliza el mismo schema de Inventario (sin foto, sin estado: la
 // carga arranca como 'disponible' por default de DB). Si no se incluye, el
 // item queda sólo como log de la compra (caso: gasto / flete / servicio).
+// 2026-07-08 Fase 1 categorías reales: unitarias son celular_sellado + usado +
+// ipads. El resto de las 6 clases son "por lote" y aceptan cualquier cantidad.
+const CLASES_UNITARIAS_COMPRA = new Set(['celular_sellado', 'celular_usado', 'ipads']);
 const productoEnCompraSchema = baseProducto
   .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
   .strict()
   // Reglas de coherencia: las mismas que el create normal del Inventario.
-  .refine(p => !(p.clase === 'celular' && p.tipo_carga === 'unitario' && p.cantidad !== 1),
-    { message: 'Un celular unitario debe tener cantidad = 1', path: ['cantidad'] })
+  .refine(p => !(CLASES_UNITARIAS_COMPRA.has(p.clase) && p.tipo_carga === 'unitario' && p.cantidad !== 1),
+    { message: 'Un producto unitario debe tener cantidad = 1', path: ['cantidad'] })
   .refine(p => p.categoria_id != null && Number(p.categoria_id) > 0,
     { message: 'La categoría es obligatoria para crear el producto en stock',
       path: ['categoria_id'] });

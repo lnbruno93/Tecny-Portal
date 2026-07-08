@@ -64,7 +64,7 @@ describe('mapStockRows', () => {
        '355224256215887', 'Unitario', 'iPhone Nuevo', 'Lantronica']]; // sin STOCK ni ID DEP
     const [{ body, error }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
-    expect(body.clase).toBe('celular');
+    expect(body.clase).toBe('celular_sellado');
     expect(body.tipo_carga).toBe('unitario');
     expect(body.cantidad).toBe(1);
     expect(body.imei).toBe('355224256215887');
@@ -94,7 +94,7 @@ describe('mapStockRows', () => {
       ['Funda Silicona', '', '', '', '5', 'USD', '12', 'USD', '', 'stock', 'Fundas', 'MayorAcc', '20', '2']];
     const [{ body, error }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
-    expect(body.clase).toBe('accesorio');
+    expect(body.clase).toBe('accesorios_varios');
     expect(body.tipo_carga).toBe('lote');
     expect(body.cantidad).toBe(20);
     expect(body.deposito_id).toBe(2);
@@ -127,7 +127,7 @@ describe('mapStockRows', () => {
     const [{ body, error, warning }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
     expect(warning).toMatch(/stock en 0/i);
-    expect(body.clase).toBe('accesorio');
+    expect(body.clase).toBe('accesorios_varios');
     expect(body.cantidad).toBe(0);
   });
 

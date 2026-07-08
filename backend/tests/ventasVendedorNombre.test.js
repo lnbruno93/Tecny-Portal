@@ -31,7 +31,7 @@ beforeAll(async () => {
   const cat = await request(app).post('/api/inventario/categorias').set(auth())
     .send({ nombre: 'VendedorTest' });
   const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+    tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
     nombre: 'Test Phone', costo: 500, precio_venta: 800, cantidad: 1,
   });
   const venta = await request(app).post('/api/ventas').set(auth()).send({

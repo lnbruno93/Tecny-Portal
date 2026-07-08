@@ -53,7 +53,7 @@ describe('GET /api/inventario/productos/check-imei', () => {
   beforeAll(async () => {
     // Producto activo (disponible) con IMEI conocido.
     const r1 = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
       nombre: 'iPhone Activo', imei: IMEI_DISPONIBLE,
       costo: 500, costo_moneda: 'USD',
       precio_venta: 700, precio_moneda: 'USD',
@@ -64,7 +64,7 @@ describe('GET /api/inventario/productos/check-imei', () => {
     // Producto vendido (no bloquea — un canje podría reingresar el mismo IMEI).
     // No guardamos el id: el assert es "no aparece en check-imei", no actuar sobre él.
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
       nombre: 'iPhone Vendido', imei: IMEI_VENDIDO,
       costo: 500, costo_moneda: 'USD',
       precio_venta: 700, precio_moneda: 'USD',
@@ -73,7 +73,7 @@ describe('GET /api/inventario/productos/check-imei', () => {
 
     // Producto borrado (soft-delete) — tampoco debería bloquear.
     const r3 = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
       nombre: 'iPhone Borrado', imei: IMEI_BORRADO,
       costo: 500, costo_moneda: 'USD',
       precio_venta: 700, precio_moneda: 'USD',
@@ -197,7 +197,7 @@ describe('GET /productos/check-imei — aislamiento cross-tenant', () => {
       const catX = catRows[0].id;
       await client.query(
         `INSERT INTO productos (tenant_id, tipo_carga, clase, nombre, imei, categoria_id, costo, costo_moneda, precio_venta, precio_moneda, estado)
-         VALUES ($1, 'unitario', 'celular', 'IMEI X Producto', $2, $3, 500, 'USD', 700, 'USD', 'disponible')`,
+         VALUES ($1, 'unitario', 'celular_sellado', 'IMEI X Producto', $2, $3, 500, 'USD', 700, 'USD', 'disponible')`,
         [TENANT_X, IMEI_SHARED, catX]
       );
       await client.query('COMMIT');

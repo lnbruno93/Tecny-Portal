@@ -18,7 +18,7 @@ const hoy  = new Date().toISOString().split('T')[0];
 
 async function crearProducto(over = {}) {
   const res = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase, nombre: 'iPhone 15 Pro',
+    tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase, nombre: 'iPhone 15 Pro',
     costo: 800, precio_venta: 950, cantidad: 1, ...over,
   });
   return res.body;
@@ -199,7 +199,7 @@ describe('POST /api/ventas', () => {
       .send({ nombre: 'iPhone IMEI Dup' });
     const imeiExistente = '905' + Date.now().toString().slice(-12);
     const preProd = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular',
+      tipo_carga: 'unitario', clase: 'celular_sellado',
       nombre: 'iPhone Existente', imei: imeiExistente,
       categoria_id: catDup.body.id,
       costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
@@ -247,7 +247,7 @@ describe('POST /api/ventas', () => {
       .send({ nombre: 'iPhone B ' + Math.random() });
     const imei = '906' + Date.now().toString().slice(-12);
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular',
+      tipo_carga: 'unitario', clase: 'celular_sellado',
       nombre: 'Existente-B', imei,
       categoria_id: catB.body.id,
       costo: 300, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD',
@@ -287,7 +287,7 @@ describe('GET /api/ventas', () => {
       .send({ nombre: 'Grilla Cat' });
     const prod = await request(app).post('/api/inventario/productos').set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'iPhone Grilla', imei: '350888100000001',
         costo: 500, costo_moneda: 'USD',
         precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
@@ -349,13 +349,13 @@ describe('GET /api/ventas', () => {
       .send({ nombre: 'Cat devo dash' });
     const p1 = await request(app).post('/api/inventario/productos').set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'iPhone devoA', imei: '359111111111111',
         costo: 500, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
       });
     const p2 = await request(app).post('/api/inventario/productos').set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'iPhone devoB', imei: '359222222222222',
         costo: 700, costo_moneda: 'USD', precio_venta: 1500, precio_moneda: 'USD', cantidad: 1,
       });
@@ -411,7 +411,7 @@ describe('DELETE /api/ventas/:id repone stock', () => {
 
 describe('Integridad de stock', () => {
   it('rechaza vender más que el stock de un lote → 400', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Cargador X', cantidad: 3 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Cargador X', cantidad: 3 });
     const res = await request(app).post('/api/ventas').set(auth()).send({
       fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Cargador X', cantidad: 5, precio_vendido: 20, costo: 5, moneda: 'USD' }],
     });
@@ -420,7 +420,7 @@ describe('Integridad de stock', () => {
   });
 
   it('descuenta un lote hasta 0 y luego rechaza otra venta', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Cable Y', cantidad: 2 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Cable Y', cantidad: 2 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Cable Y', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
     expect(v.status).toBe(201);
     const inv = await request(app).get('/api/inventario/productos?buscar=Cable Y').set(auth());
@@ -439,7 +439,7 @@ describe('Integridad de stock', () => {
   });
 
   it('al borrar la venta, el lote recupera su stock', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Funda Z', cantidad: 4 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Funda Z', cantidad: 4 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Funda Z', cantidad: 3, precio_vendido: 12, costo: 4, moneda: 'USD' }] });
     await request(app).delete(`/api/ventas/${v.body.id}`).set(auth());
     const inv = await request(app).get('/api/inventario/productos?buscar=Funda Z').set(auth());
@@ -449,7 +449,7 @@ describe('Integridad de stock', () => {
 
 describe('Estado, cancelación y validación de TC', () => {
   it('crear una venta CANCELADA no descuenta stock', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Stock Cancel', cantidad: 5 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Stock Cancel', cantidad: 5 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, estado: 'cancelado', items: [{ producto_id: prod.id, descripcion: 'Stock Cancel', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
     expect(v.status).toBe(201);
     const inv = await request(app).get('/api/inventario/productos?buscar=Stock Cancel').set(auth());
@@ -457,7 +457,7 @@ describe('Estado, cancelación y validación de TC', () => {
   });
 
   it('cancelar repone stock y reactivar lo vuelve a descontar', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Stock Toggle', cantidad: 5 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Stock Toggle', cantidad: 5 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Stock Toggle', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
     await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'cancelado' });
     let inv = await request(app).get('/api/inventario/productos?buscar=Stock Toggle').set(auth());
@@ -468,7 +468,7 @@ describe('Estado, cancelación y validación de TC', () => {
   });
 
   it('borrar una venta cancelada no vuelve a tocar el stock', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Stock DelCancel', cantidad: 5 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Stock DelCancel', cantidad: 5 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Stock DelCancel', cantidad: 2, precio_vendido: 10, costo: 4, moneda: 'USD' }] });
     await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ estado: 'cancelado' });
     await request(app).delete(`/api/ventas/${v.body.id}`).set(auth());
@@ -485,7 +485,7 @@ describe('Estado, cancelación y validación de TC', () => {
 
 describe('Edición de ventas', () => {
   it('editar items repone y re-descuenta stock, recalcula total', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Auric Edit', cantidad: 5 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Auric Edit', cantidad: 5 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Auric Edit', cantidad: 2, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
     expect(v.status).toBe(201);
     let inv = await request(app).get('/api/inventario/productos?buscar=Auric Edit').set(auth());
@@ -499,7 +499,7 @@ describe('Edición de ventas', () => {
   });
 
   it('editar excediendo stock → 400 y el stock no se descuadra (rollback)', async () => {
-    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorio', nombre: 'Auric Edit2', cantidad: 3 });
+    const prod = await crearProducto({ tipo_carga: 'lote', clase: 'accesorios_varios', nombre: 'Auric Edit2', cantidad: 3 });
     const v = await request(app).post('/api/ventas').set(auth()).send({ fecha: hoy, items: [{ producto_id: prod.id, descripcion: 'Auric Edit2', cantidad: 1, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
     const e = await request(app).put(`/api/ventas/${v.body.id}`).set(auth()).send({ items: [{ producto_id: prod.id, descripcion: 'Auric Edit2', cantidad: 10, precio_vendido: 50, costo: 20, moneda: 'USD' }] });
     expect(e.status).toBe(400);
@@ -730,7 +730,7 @@ describe('GET /api/ventas/dashboard', () => {
       .send({ nombre: 'Cat ganancia neta T-09' });
     const prod = await request(app).post('/api/inventario/productos').set(auth())
       .send({
-        nombre: 'Prod T-09', clase: 'celular', tipo_carga: 'unitario',
+        nombre: 'Prod T-09', clase: 'celular_sellado', tipo_carga: 'unitario',
         categoria_id: cat.body.id, costo: 600, costo_moneda: 'USD',
         precio_venta: 850, precio_moneda: 'USD', cantidad: 1,
       });
@@ -769,7 +769,7 @@ describe('GET /api/ventas/dashboard', () => {
       .send({ nombre: 'Cat C.3 ' + Date.now() });
     const prod = await request(app).post('/api/inventario/productos').set(auth())
       .send({
-        nombre: 'Prod C.3', clase: 'celular', tipo_carga: 'unitario',
+        nombre: 'Prod C.3', clase: 'celular_sellado', tipo_carga: 'unitario',
         categoria_id: cat.body.id, costo: 60, costo_moneda: 'USD',
         precio_venta: 100, precio_moneda: 'USD', cantidad: 1,
       });
@@ -814,7 +814,7 @@ describe('GET /api/ventas/dashboard', () => {
       .send({ nombre: 'Cat ganancia neta' });
     const prod = await request(app).post('/api/inventario/productos').set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'iPhone ganancia', imei: '350444000000001',
         costo: 700, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
       });
@@ -878,7 +878,7 @@ describe('GET /api/ventas/dashboard', () => {
 describe('Ventas — stock de lote sin trackear (A2)', () => {
   it('rechaza una venta que supera la cantidad de un lote, aunque trackear_stock=false', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'Lote NoTrackeado A2', clase: 'accesorio', tipo_carga: 'lote',
+      nombre: 'Lote NoTrackeado A2', clase: 'accesorios_varios', tipo_carga: 'lote',
       categoria_id: catBase, costo: 10, precio_venta: 25, cantidad: 3,
       trackear_stock: false,
     });
@@ -895,7 +895,7 @@ describe('Ventas — stock de lote sin trackear (A2)', () => {
 
   it('vender exactamente la cantidad disponible sí funciona', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'Lote NoTrackeado A2 OK', clase: 'accesorio', tipo_carga: 'lote',
+      nombre: 'Lote NoTrackeado A2 OK', clase: 'accesorios_varios', tipo_carga: 'lote',
       categoria_id: catBase, costo: 10, precio_venta: 25, cantidad: 3,
       trackear_stock: false,
     });

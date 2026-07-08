@@ -1,6 +1,8 @@
 const { z } = require('zod');
 // Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
 const { MonedaEnum } = require('./_common');
+// Categorías reales F1 (2026-07-08): 9 categorías en vez de celular/accesorio.
+const { CLASES_PRODUCTO, CLASE_DEFAULT } = require('../lib/clasesProducto');
 
 // --- Catálogos simples ---
 // 2026-06-11 T-06: .strict() añadido — antes aceptaba campos extra silenciosamente.
@@ -17,7 +19,7 @@ const nombresBulkSchema = z.object({
 // --- Productos ---
 const baseProducto = z.object({
   tipo_carga:     z.enum(['unitario', 'lote']).default('unitario'),
-  clase:          z.enum(['celular', 'accesorio']).default('celular'),
+  clase:          z.enum(CLASES_PRODUCTO).default(CLASE_DEFAULT),
   nombre:         z.string().trim().min(1, 'Nombre requerido').max(200),
   imei:           z.string().trim().max(50).optional().nullable(),
   gb:             z.string().trim().max(20).optional().nullable(),
@@ -57,9 +59,12 @@ const baseProducto = z.object({
   oculto:         z.boolean().optional(),
 });
 
-// Regla de coherencia: celular unitario => cantidad = 1.
-const unitarioCoherente = (p) => !(p.clase === 'celular' && p.tipo_carga === 'unitario' && p.cantidad !== 1);
-const unitarioMsg = { message: 'Un celular unitario debe tener cantidad = 1', path: ['cantidad'] };
+// Regla de coherencia: unitario (celular sellado/usado + ipads) => cantidad = 1.
+// Los otros 6 slugs (watch, auriculares, consolas, computadoras, cargadores,
+// accesorios_varios) son "por lote" y aceptan cualquier cantidad.
+const CLASES_UNITARIAS = new Set(['celular_sellado', 'celular_usado', 'ipads']);
+const unitarioCoherente = (p) => !(CLASES_UNITARIAS.has(p.clase) && p.tipo_carga === 'unitario' && p.cantidad !== 1);
+const unitarioMsg = { message: 'Un producto unitario debe tener cantidad = 1', path: ['cantidad'] };
 
 // Categoría obligatoria al crear/cargar bulk (para que el inventario sea analizable).
 // En UPDATE queda opcional: los productos legacy sin categoría se pueden editar
@@ -111,7 +116,7 @@ const VISTAS_INVENTARIO = [
 
 const queryProductosSchema = z.object({
   buscar:       z.string().trim().max(200).optional(),
-  clase:        z.enum(['celular', 'accesorio']).optional(),
+  clase:        z.enum(CLASES_PRODUCTO).optional(),
   estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),
@@ -148,7 +153,7 @@ const queryProductosSchema = z.object({
 const DIMENSIONES_DESGLOSE = ['categoria', 'proveedor', 'modelo', 'estado', 'deposito', 'gb', 'color'];
 const queryDesgloseSchema = z.object({
   por:          z.enum(DIMENSIONES_DESGLOSE),
-  clase:        z.enum(['celular', 'accesorio']).optional(),
+  clase:        z.enum(CLASES_PRODUCTO).optional(),
   estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),

@@ -45,18 +45,27 @@ const db = require('../config/database');
 const logger = require('./logger');
 
 // Query idéntica a la del routes/inventario.js original. Mantener sincronizada.
+//
+// 2026-07-08 Fase 1 categorías reales: `clase` pasó de 2 valores (celular /
+// accesorio) a 9 (celular_sellado, celular_usado, watch, auriculares, consolas,
+// computadoras, ipads, cargadores, accesorios_varios). Los KPIs de dashboard
+// siguen agrupando en 2 buckets para no romper la UI actual:
+//   · equipos    = celular_sellado + celular_usado (histórico "celular")
+//   · accesorios = todo lo demás (7 slugs restantes)
+// Fase 2 rediseñará los KPIs con desglose por categoría real.
+const EQUIPOS_CLASES = "('celular_sellado','celular_usado')";
 const METRICAS_SQL = `
   SELECT
     COUNT(*)                          FILTER (WHERE estado = 'en_tecnico')                                          AS en_tecnico_count,
     COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'USD'), 0)             AS en_tecnico_usd,
     COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'ARS'), 0)             AS en_tecnico_ars,
     COALESCE(SUM(cantidad)            FILTER (WHERE estado = 'disponible'), 0)                                      AS stock_disponible,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'celular'   AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_equipos_usd,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'celular'   AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_equipos_ars,
-    COALESCE(SUM(cantidad)            FILTER (WHERE clase = 'celular'   AND estado = 'disponible'), 0)              AS equipos_count,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'accesorio' AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_accesorios_usd,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase = 'accesorio' AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_accesorios_ars,
-    COALESCE(SUM(cantidad)            FILTER (WHERE clase = 'accesorio' AND estado = 'disponible'), 0)              AS accesorios_count
+    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase IN ${EQUIPOS_CLASES}     AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_equipos_usd,
+    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase IN ${EQUIPOS_CLASES}     AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_equipos_ars,
+    COALESCE(SUM(cantidad)            FILTER (WHERE clase IN ${EQUIPOS_CLASES}     AND estado = 'disponible'), 0)              AS equipos_count,
+    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase NOT IN ${EQUIPOS_CLASES} AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_accesorios_usd,
+    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase NOT IN ${EQUIPOS_CLASES} AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_accesorios_ars,
+    COALESCE(SUM(cantidad)            FILTER (WHERE clase NOT IN ${EQUIPOS_CLASES} AND estado = 'disponible'), 0)              AS accesorios_count
   FROM productos
   WHERE deleted_at IS NULL
 `;

@@ -13,7 +13,7 @@ const auth = () => ({ Authorization: `Bearer ${token}` });
 
 async function crearProducto(over = {}) {
   const res = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase, nombre: 'iPhone Foto',
+    tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase, nombre: 'iPhone Foto',
     costo: 800, precio_venta: 950, cantidad: 1, ...over,
   });
   return res.body;

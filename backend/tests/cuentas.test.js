@@ -601,7 +601,7 @@ describe('DELETE /api/cuentas/clientes/:id — cascada de movimientos', () => {
   async function crearProducto(imei) {
     const r = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: `Cascada ${imei}`, imei, costo: 500, costo_moneda: 'USD',
         precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
       });
@@ -703,7 +703,7 @@ describe('Venta B2B con stock', () => {
     const r = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
         tipo_carga: cantidad > 1 ? 'lote' : 'unitario',
-        clase: cantidad > 1 ? 'accesorio' : 'celular',
+        clase: cantidad > 1 ? 'accesorios_varios' : 'celular_sellado',
         categoria_id: catId, nombre, imei,
         costo: 500, costo_moneda: 'USD',
         precio_venta: 800, precio_moneda: 'USD',
@@ -1133,7 +1133,7 @@ describe('DELETE movimiento B2B — edge cases con stock', () => {
     // 1) Crear producto + venta B2B
     const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'iPhone para borrar', imei: '350909000000001',
         costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
       });
@@ -1159,7 +1159,7 @@ describe('DELETE movimiento B2B — edge cases con stock', () => {
   it('#T-03 — DELETE devolución revierte el aumento de stock (signo correcto)', async () => {
     const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'iPhone Devo DELETE', imei: '350909000000002',
         costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
       });
@@ -1195,7 +1195,7 @@ describe('DELETE movimiento B2B — edge cases con stock', () => {
     // 1) Crear producto, vender (stock 1→0), devolver (0→1), vender de nuevo (1→0)
     const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'iPhone CHECK', imei: '350909000000003',
         costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
       });
@@ -1238,7 +1238,7 @@ describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
     // 2 productos para la venta multi-item
     const p1 = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'iPhone Devo Inline 1', imei: '359000000000001',
         costo: 500, costo_moneda: 'USD',
         precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
@@ -1246,7 +1246,7 @@ describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
     prod1 = p1.body;
     const p2 = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'iPhone Devo Inline 2', imei: '359000000000002',
         costo: 700, costo_moneda: 'USD',
         precio_venta: 1400, precio_moneda: 'USD', cantidad: 1,
@@ -1419,7 +1419,7 @@ describe('POST /api/cuentas/movimientos/:movId/items/:itemId/devolver', () => {
       .send({ nombre: 'Cat destacha' });
     const prod = await request(app).post('/api/inventario/productos').set('Authorization', `Bearer ${adminToken}`)
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'iPhone destacha', imei: '359000000000777',
         costo: 500, costo_moneda: 'USD',
         precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,

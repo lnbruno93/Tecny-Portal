@@ -192,12 +192,14 @@ describe('Pantalla Inventario', () => {
 
   // ─── Auditoría 2026-06-30 F-08: filtros persisten en URL ─────────────────
   describe('F-08 — filtros persisten en URL', () => {
-    it('cambiar tab clase ("Celulares") agrega ?clase=celular', async () => {
+    it('cambiar tab clase ("Celular Sellado") agrega ?clase=celular_sellado', async () => {
+      // 2026-07-08 Fase 1 categorías reales: los tabs cambiaron de
+      // Celulares/Accesorios a las 9 clases nuevas con emojis.
       renderInventario();
       await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-      fireEvent.click(screen.getByText('Celulares'));
+      fireEvent.click(screen.getByText(/Celular Sellado/));
       await waitFor(() => {
-        expect(screen.getByTestId('location').textContent).toMatch(/[?&]clase=celular/);
+        expect(screen.getByTestId('location').textContent).toMatch(/[?&]clase=celular_sellado/);
       });
     });
 
@@ -220,15 +222,17 @@ describe('Pantalla Inventario', () => {
       expect(text).not.toMatch(/[?&]q=/);
     });
 
-    it('re-mount con ?clase=celular activa el tab correcto', async () => {
-      renderInventario(['/inventario?clase=celular']);
+    it('re-mount con ?clase=celular_sellado activa el tab correcto', async () => {
+      // 2026-07-08 Fase 1 categorías reales: el URL param usa el slug nuevo
+      // ('celular_sellado' en vez de 'celular'). Los tabs también.
+      renderInventario(['/inventario?clase=celular_sellado']);
       await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-      // El tab "Celulares" debe estar activo (className 'on').
-      const tabCel = screen.getByText('Celulares');
+      // El tab "Celular Sellado" debe estar activo (className 'on').
+      const tabCel = screen.getByText(/Celular Sellado/);
       expect(tabCel.className).toMatch(/on/);
-      // El backend recibió clase=celular en los params.
+      // El backend recibió clase=celular_sellado en los params.
       expect(inventarioApi.productos).toHaveBeenCalledWith(
-        expect.objectContaining({ clase: 'celular' })
+        expect.objectContaining({ clase: 'celular_sellado' })
       );
     });
   });

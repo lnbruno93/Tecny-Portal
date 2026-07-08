@@ -285,7 +285,7 @@ describe('Proveedores — compra crea producto en Inventario', () => {
           producto: 'iPhone', modelo: '15 Pro', tamano: '256', color: 'Natural',
           imei_serial: '350001000000001', valor: 850,
           producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
             nombre: 'iPhone 15 Pro', imei: '350001000000001',
             gb: '256', color: 'Natural', bateria: 100,
             costo: 850, costo_moneda: 'USD',
@@ -315,7 +315,7 @@ describe('Proveedores — compra crea producto en Inventario', () => {
         proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 800, moneda: 'USD',
         items: [{ producto: 'iPhone', valor: 800,
           producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
             nombre: 'iPhone 14', imei: '350002000000002', cantidad: 1,
             costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
           },
@@ -329,7 +329,7 @@ describe('Proveedores — compra crea producto en Inventario', () => {
         proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 800, moneda: 'USD',
         items: [{ producto: 'iPhone', valor: 800,
           producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
             nombre: 'iPhone 14 (dup)', imei: '350002000000002', cantidad: 1,
             costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
           },
@@ -349,12 +349,12 @@ describe('Proveedores — compra crea producto en Inventario', () => {
         proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 1600, moneda: 'USD',
         items: [
           { valor: 800, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
             nombre: 'iPhone 14', imei: '350003000000003', cantidad: 1,
             costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
           }},
           { valor: 800, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
             nombre: 'iPhone 14', imei: '350003000000003', cantidad: 1,
             costo: 800, costo_moneda: 'USD', precio_venta: 1000, precio_moneda: 'USD',
           }},
@@ -371,7 +371,7 @@ describe('Proveedores — compra crea producto en Inventario', () => {
         proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
         items: [{ valor: 100,
           producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular',
+            tipo_carga: 'unitario', clase: 'celular_sellado',
             nombre: 'Sin categoría', cantidad: 1,
             costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
           },
@@ -474,7 +474,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
           proveedor_id: provA.id, fecha: hoy, tipo: 'compra', monto: 1000, moneda: 'USD',
           descripcion: 'Import XLSX multi-A',
           items: [{ producto: 'iPhone', valor: 1000, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
             nombre: 'iPhone Bulk A', imei: '350010000000A01', cantidad: 1,
             costo: 1000, costo_moneda: 'USD', precio_venta: 1300, precio_moneda: 'USD',
           } }],
@@ -484,12 +484,12 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
           descripcion: 'Import XLSX multi-B',
           items: [
             { producto: 'AirPods', valor: 150, producto_stock: {
-              tipo_carga: 'unitario', clase: 'accesorio', categoria_id: catBulkBase,
+              tipo_carga: 'unitario', clase: 'accesorios_varios', categoria_id: catBulkBase,
               nombre: 'AirPods Pro', cantidad: 1,
               costo: 150, costo_moneda: 'USD', precio_venta: 200, precio_moneda: 'USD',
             } },
             { producto: 'Cargador', valor: 100, producto_stock: {
-              tipo_carga: 'lote', clase: 'accesorio', categoria_id: catBulkBase,
+              tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catBulkBase,
               nombre: 'Cargador USB-C', cantidad: 10,
               costo: 10, costo_moneda: 'USD', precio_venta: 25, precio_moneda: 'USD',
             } },
@@ -513,7 +513,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
     await request(app).post('/api/proveedores/movimientos').set(auth()).send({
       proveedor_id: provA.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
       items: [{ valor: 100, producto_stock: {
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
         nombre: 'Pre-existente', imei: '350011111111111', cantidad: 1,
         costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
       } }],
@@ -527,7 +527,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
         {
           proveedor_id: provA.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD',
           items: [{ valor: 500, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
             nombre: 'BulkAtom-Mov1', imei: '350012222222222', cantidad: 1,
             costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
           } }],
@@ -535,7 +535,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
         {
           proveedor_id: provB.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
           items: [{ valor: 100, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
             nombre: 'BulkAtom-Mov2', imei: '350011111111111', cantidad: 1, // ← dup con el pre-existente
             costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
           } }],
@@ -560,7 +560,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
         {
           proveedor_id: provA.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD',
           items: [{ valor: 500, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
             nombre: 'A', imei: '350013333333333', cantidad: 1,
             costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
           } }],
@@ -568,7 +568,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
         {
           proveedor_id: provB.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD',
           items: [{ valor: 500, producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
             nombre: 'B', imei: '350013333333333', cantidad: 1, // ← MISMO IMEI que mov A
             costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
           } }],
@@ -594,7 +594,7 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
       movimientos: [{
         proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
         items: [{ valor: 100, producto_stock: {
-          tipo_carga: 'unitario', clase: 'celular', categoria_id: catBulkBase,
+          tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBulkBase,
           nombre: 'Rate', imei: '350014444444444', cantidad: 1,
           costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
         } }],
@@ -636,7 +636,7 @@ describe('Proveedores — bulk-delete-all (admin)', () => {
       proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 300, moneda: 'USD',
       caja_id: cajaId,
       items: [{ valor: 300, producto_stock: {
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'TelBulkDel', imei: '350099999999999', cantidad: 1,
         costo: 300, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD',
       } }],
@@ -667,7 +667,7 @@ describe('Proveedores — bulk-delete-all (admin)', () => {
     const compra = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
       proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 200, moneda: 'USD',
       items: [{ valor: 200, producto_stock: {
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: 'TelVendido', imei: '350088888888888', cantidad: 1,
         costo: 200, costo_moneda: 'USD', precio_venta: 350, precio_moneda: 'USD',
       } }],

@@ -539,7 +539,7 @@ describe('Auditoría 2026-06-30 IMEI — UNIQUE PARCIAL + POST single check', ()
       .post('/api/inventario/productos')
       .set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'Audit IMEI Primero', imei: IMEI,
         costo: 500, costo_moneda: 'USD',
         precio_venta: 700, precio_moneda: 'USD',
@@ -551,7 +551,7 @@ describe('Auditoría 2026-06-30 IMEI — UNIQUE PARCIAL + POST single check', ()
       .post('/api/inventario/productos')
       .set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'Audit IMEI Segundo', imei: IMEI,
         costo: 500, costo_moneda: 'USD',
         precio_venta: 700, precio_moneda: 'USD',
@@ -568,7 +568,7 @@ describe('Auditoría 2026-06-30 IMEI — UNIQUE PARCIAL + POST single check', ()
       .post('/api/inventario/productos')
       .set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'Audit IMEI Vendido', imei: IMEI,
         costo: 500, costo_moneda: 'USD',
         precio_venta: 700, precio_moneda: 'USD',
@@ -581,7 +581,7 @@ describe('Auditoría 2026-06-30 IMEI — UNIQUE PARCIAL + POST single check', ()
       .post('/api/inventario/productos')
       .set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: 'Audit IMEI Reingreso', imei: IMEI,
         costo: 500, costo_moneda: 'USD',
         precio_venta: 700, precio_moneda: 'USD',
@@ -593,7 +593,7 @@ describe('Auditoría 2026-06-30 IMEI — UNIQUE PARCIAL + POST single check', ()
   it('2 POST concurrentes con mismo IMEI (Promise.all): solo 1 gana, el otro 409', async () => {
     const IMEI = '356938035644222';
     const body = {
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
       nombre: 'Audit IMEI Race', imei: IMEI,
       costo: 500, costo_moneda: 'USD',
       precio_venta: 700, precio_moneda: 'USD',
@@ -674,7 +674,7 @@ describe('Auditoría 2026-06-30 D-21 — JOIN venta_pagos × metodos_pago filtra
     const prod = await request(app)
       .post('/api/inventario/productos').set(auth())
       .send({
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
         nombre: `D21 Prod ${Date.now()}`,
         costo: 500, precio_venta: 700, cantidad: 1, costo_moneda: 'USD', precio_moneda: 'USD',
       });

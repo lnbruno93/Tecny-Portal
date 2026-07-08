@@ -8,6 +8,8 @@ import { exportCsv } from '../lib/exportCsv';
 import { downloadBlob as downloadBlobShared } from '../lib/downloadBlob';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
+// Categorías reales F1 (2026-07-08): 9 clases con emojis en vez de celular/accesorio.
+import { CLASES_PRODUCTO, CLASES_LABELS, CLASE_DEFAULT, claseLabel } from '../lib/clasesProducto';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -35,7 +37,7 @@ const money = fmtMoney;
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const EMPTY_PRODUCTO = {
-  tipo_carga: 'unitario', clase: 'celular', nombre: '', imei: '', gb: '', color: '',
+  tipo_carga: 'unitario', clase: CLASE_DEFAULT, nombre: '', imei: '', gb: '', color: '',
   bateria: '', categoria_id: '', deposito_id: '', proveedor: '',
   costo: '', costo_moneda: 'USD', precio_venta: '', precio_moneda: 'USD',
   cantidad: '1', estado: 'disponible', observaciones: '',
@@ -351,7 +353,7 @@ export default function Inventario() {
       //   - usados             → params.condicion = usado
       //   - cat:<id>           → params.categoria_id
       //   - todos              → sin filtro extra
-      if (claseFilter === 'celular' || claseFilter === 'accesorio') params.clase = claseFilter;
+      if (CLASES_PRODUCTO.includes(claseFilter)) params.clase = claseFilter;
       else if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
       else if (claseFilter === 'usados') params.condicion = 'usado';
       else if (claseFilter && claseFilter.startsWith('cat:')) params.categoria_id = claseFilter.slice(4);
@@ -1080,8 +1082,13 @@ export default function Inventario() {
             value={claseFilter}
             options={[
               { value: 'todos', label: 'Todos' },
-              { value: 'celular', label: 'Celulares' },
-              { value: 'accesorio', label: 'Accesorios' },
+              // 2026-07-08 Fase 1 categorías reales: 9 tabs (una por clase)
+              // reemplazan el par "Celulares/Accesorios" viejo. El ScrollFadeX
+              // padre habilita scroll horizontal si no entran + categorías
+              // administrables. Legacy tabs "tecnico" (por estado) y "usados"
+              // (por condicion) siguen porque siguen aplicando — cruzan con
+              // filtros distintos al `clase`.
+              ...CLASES_PRODUCTO.map(slug => ({ value: slug, label: CLASES_LABELS[slug] })),
               { value: 'tecnico', label: 'En técnico' },
               { value: 'usados', label: 'Usados' },
               // Categorías administrables → 1 tab por cada una (orden alfabético).
@@ -1346,9 +1353,17 @@ export default function Inventario() {
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Clase</label>
+                      {/* 2026-07-08 (Fase 1 categorías reales): 9 categorías
+                          reemplazan el par celular/accesorio. El label incluye
+                          emoji para escaneo visual rápido. Legacy 'celular'/
+                          'accesorio' fueron backfilleadas por la migration
+                          20260708000001 — cualquier producto viejo ya tiene un
+                          slug del enum nuevo, así que value siempre matchea
+                          una option. */}
                       <select className="input" value={form.clase} onChange={e => setF('clase', e.target.value)}>
-                        <option value="celular">Celular</option>
-                        <option value="accesorio">Accesorio</option>
+                        {CLASES_PRODUCTO.map(slug => (
+                          <option key={slug} value={slug}>{CLASES_LABELS[slug]}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1842,7 +1857,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
 
       {tab === 'detalle' && (
         <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <DetalleField label="Clase" value={producto.clase} />
+          <DetalleField label="Clase" value={claseLabel(producto.clase)} />
           <DetalleField label="Estado" value={producto.estado} />
           <DetalleField label="Condición" value={producto.condicion || 'nuevo'} />
           <DetalleField label="Categoría" value={cat?.nombre || '—'} />
