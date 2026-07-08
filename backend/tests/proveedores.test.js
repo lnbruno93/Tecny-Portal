@@ -155,6 +155,24 @@ describe('Proveedores — cuenta corriente', () => {
     expect(sinTc.status).toBe(400);
   });
 
+  // 2026-07-08 Multi-país F2 backfill: mismo guard que ARS, para UYU.
+  // Antes: un tenant UY podía persistir compra UYU sin tc → monto_usd=0 →
+  // saldo del proveedor y CxP corruptos.
+  it('convierte UYU a USD con el TC; rechaza UYU sin TC', async () => {
+    const prov = await crearProveedor({ nombre: 'Proveedor UYU' });
+
+    // 40 UYU / 40 = 1 USD
+    const ok = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 40, moneda: 'UYU', tc: 40 });
+    expect(ok.status).toBe(201);
+    expect(Number(ok.body.monto_usd)).toBe(1);
+
+    const sinTc = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 1000, moneda: 'UYU' });
+    expect(sinTc.status).toBe(400);
+    expect(JSON.stringify(sinTc.body)).toMatch(/tc|ARS o UYU/i);
+  });
+
   it('lista movimientos, borra uno y rechaza movimiento de proveedor inexistente', async () => {
     const prov = await crearProveedor({ nombre: 'Proveedor Movs' });
     const mov = await request(app).post('/api/proveedores/movimientos').set(auth())

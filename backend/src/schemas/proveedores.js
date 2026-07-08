@@ -1,6 +1,6 @@
 const { z } = require('zod');
 const { baseProducto } = require('./inventario');
-const { fechaNoFutura, MonedaEnum } = require('./_common');
+const { fechaNoFutura, MonedaEnum, requiereTc } = require('./_common');
 
 const createProveedorSchema = z.object({
   nombre:            z.string().trim().min(1, 'Nombre del proveedor requerido').max(120),
@@ -68,8 +68,10 @@ const createMovimientoProveedorSchema = z.object({
   // items solo aplica a 'compra' (productos comprados); la ruta los ignora en 'pago'
   items:        z.array(itemProveedorSchema).max(200, 'Máximo 200 ítems por compra').optional().default([]),
 }).strict()
-  .refine(d => d.moneda !== 'ARS' || (d.tc && d.tc > 0), {
-    message: 'Para montos en ARS se requiere el tipo de cambio (tc)',
+  // 2026-07-08 Multi-país F2 backfill: antes solo cubría ARS; UYU tenía el
+  // mismo bug (`toUsd(m,'UYU',null)=0` → saldo del proveedor corrupto).
+  .refine(d => !requiereTc(d.moneda) || (d.tc && d.tc > 0), {
+    message: 'Para montos en ARS o UYU se requiere el tipo de cambio (tc)',
     path: ['tc'],
   })
   // #M-02: si la compra crea productos, el monto debe ser > 0 (antes se

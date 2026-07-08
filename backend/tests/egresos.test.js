@@ -98,6 +98,42 @@ describe('Egresos — estado y ledger', () => {
     });
   });
 
+  // 2026-07-08 Multi-país F2 backfill: idem SOL-1 pero para UYU. Antes el
+  // refine solo cubría ARS → un tenant UY podía persistir egreso UYU sin tc,
+  // `toUsd(m,'UYU',null)=0`, dashboard mentía. Estos tests lockean el fix.
+  describe('Multi-país F2: TC obligatorio en egresos UYU', () => {
+    it('POST con moneda=UYU sin tc → 400 con mensaje claro', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Alquiler UYU', monto: 40000, moneda: 'UYU' });
+      expect(e.status).toBe(400);
+      expect(JSON.stringify(e.body)).toMatch(/TC.*requerido.*UYU|ARS o UYU/i);
+    });
+
+    it('POST con moneda=UYU con tc=0 → 400', async () => {
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Servicios UYU', monto: 40000, moneda: 'UYU', tc: 0 });
+      expect(e.status).toBe(400);
+    });
+
+    it('POST con moneda=UYU con tc>0 → 201 (happy path)', async () => {
+      // 40 UYU / 40 = 1 USD. Chequeamos que el egreso NO se persiste como 0 USD.
+      const e = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Internet UYU', monto: 40, moneda: 'UYU', tc: 40 });
+      expect(e.status).toBe(201);
+      expect(Number(e.body.monto_usd)).toBeCloseTo(1, 1);
+    });
+
+    it('PUT cambiando a moneda=UYU sin tc → 400', async () => {
+      const created = await request(app).post('/api/egresos').set(auth())
+        .send({ fecha: hoy, concepto: 'Gasto USD', monto: 100, moneda: 'USD' });
+      expect(created.status).toBe(201);
+      const upd = await request(app).put(`/api/egresos/${created.body.id}`).set(auth())
+        .send({ moneda: 'UYU' });
+      expect(upd.status).toBe(400);
+      expect(JSON.stringify(upd.body)).toMatch(/TC.*requerido.*UYU|ARS o UYU/i);
+    });
+  });
+
   it('borrar un egreso pagado revierte la caja', async () => {
     const saldoAntes = await saldoDe(cajaId);
     const e = await request(app).post('/api/egresos').set(auth())

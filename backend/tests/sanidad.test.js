@@ -413,6 +413,27 @@ describe('Override mensual de gastos (egresos_recurrentes_overrides)', () => {
     expect(r.body.error).toMatch(/tc/i);
   });
 
+  // 2026-07-08 Multi-país F2 backfill: idem ARS pero para UYU. Antes: un
+  // tenant UY con override UYU sin tc → tcFinal=null → cálculo USD del
+  // recurrente daba 0 → KPI de "Gastos e inversiones totales" del semestre
+  // subestimado, mostrando falsa mejora contra el período comparado.
+  it('PUT con moneda=UYU y sin tc → 400', async () => {
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 40000, moneda: 'UYU' });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/tc/i);
+  });
+
+  it('PUT con moneda=UYU y tc>0 → 200 (happy path)', async () => {
+    const r = await request(app)
+      .put('/api/sanidad/override')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ recurrente_id: recurrenteId, periodo: '2026-03', monto: 40, moneda: 'UYU', tc: 40 });
+    expect([200, 201]).toContain(r.status);
+  });
+
   it('PUT con recurrente_id inexistente → 400 (FK violation atrapada)', async () => {
     const r = await request(app)
       .put('/api/sanidad/override')

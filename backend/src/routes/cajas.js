@@ -15,6 +15,7 @@ const {
   createInversionSchema, queryInversionesSchema,
   cajaSchema, updateCajaSchema, cajaAjusteSchema, queryLedgerSchema,
 } = require('../schemas/cajas');
+const { requiereTc } = require('../schemas/_common');
 
 
 // ─── DEUDAS ─────────────────────────────────────────────────
@@ -485,8 +486,11 @@ router.post('/cajas/:id/movimientos', requireCapability('cajas.crear'), validate
         if (!cajaRows[0]) return { notFound: true };
 
         const moneda = cajaRows[0].moneda;
-        if (moneda === 'ARS' && !(tc && tc > 0)) {
-          return { badRequest: 'Para una caja en ARS se requiere el tipo de cambio (tc)' };
+        // 2026-07-08 Multi-país F2 backfill: antes solo cubría ARS; UYU tenía
+        // el mismo bug (ajuste manual UYU sin TC → monto_usd=0 → saldo caja
+        // en USD equiv. mentiroso en historiales cross-moneda).
+        if (requiereTc(moneda) && !(tc && tc > 0)) {
+          return { badRequest: `Para una caja en ${moneda} se requiere el tipo de cambio (tc)` };
         }
 
         const mov = await postCajaMovimiento(client, {

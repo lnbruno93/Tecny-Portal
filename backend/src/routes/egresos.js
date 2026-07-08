@@ -22,6 +22,7 @@ const {
   createRecurrenteSchema, updateRecurrenteSchema,
   createEgresoSchema, updateEgresoSchema, queryEgresosSchema, generarPeriodoSchema,
 } = require('../schemas/egresos');
+const { requiereTc } = require('../schemas/_common');
 
 // Postea el egreso al ledger de su caja (solo si está pagado y tiene caja).
 async function postEgresoLedger(client, e) {
@@ -300,14 +301,17 @@ router.put('/:id', egresosCargar, validate(updateEgresoSchema), async (req, res,
       await client.query('ROLLBACK');
       return next(err);
     }
-    // 2026-06-24 SOL-1 (audit pre-live): validar el merged result. Si moneda
-    // queda en ARS, tc TIENE que ser > 0 — sin esto, toUsd(monto, 'ARS', null)
-    // devuelve 0 y el dashboard descuenta USD 0 de la ganancia neta (silent).
-    // El schema valida shape (`tc` undefined → ok porque hidrata de fila vieja),
-    // pero post-merge hay que re-chequear.
-    if (next_.moneda === 'ARS' && (!next_.tc || Number(next_.tc) <= 0)) {
+    // 2026-06-24 SOL-1 (audit pre-live): validar el merged result. Si la moneda
+    // requiere TC (ARS/UYU) y `tc` no llegó a hidratarse a un valor > 0, aborta.
+    // Sin esto, `toUsd(monto, moneda, null)` devuelve 0 y el dashboard descuenta
+    // USD 0 de la ganancia neta silenciosamente. El schema valida shape (`tc`
+    // undefined → ok porque hidrata de fila vieja), pero post-merge hay que
+    // re-chequear con el resultado real.
+    // 2026-07-08 Multi-país F2 backfill: antes solo cubría ARS; UYU tenía el
+    // mismo bug (ver PR "fix(multi-pais): guards TC para UYU").
+    if (requiereTc(next_.moneda) && (!next_.tc || Number(next_.tc) <= 0)) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'TC requerido para egresos en ARS', path: ['tc'] });
+      return res.status(400).json({ error: `TC requerido para egresos en ${next_.moneda}`, path: ['tc'] });
     }
     const monto_usd = round2(toUsd(Number(next_.monto), next_.moneda, next_.tc));
     const { rows } = await client.query(
