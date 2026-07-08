@@ -73,6 +73,30 @@ function buildIdx(headerRow) {
 const cleanMoneda = (v) => (String(v ?? '').trim().toUpperCase().startsWith('ARS') ? 'ARS' : 'USD');
 const cleanGb = (v) => String(v ?? '').trim().replace(/\.0+$/, '');  // "128.0" → "128"
 
+// Excel/Google Sheets guarda IMEIs de 15 dígitos como notación científica
+// ("3.5342733941411E14") porque los trata como número. El pipeline actual
+// (xlsx.js → mapStockRows → POST /productos/bulk) persistía el string tal
+// cual, y luego la búsqueda ILIKE "%4110%" del picker de Ventas fallaba
+// porque el sufijo real "...4110" no existe contiguo en "3.53...E14".
+//
+// Bug reportado por Lucas 2026-07-07 (picker Nueva Venta). Fix estructural:
+// normalizar acá antes del bulk, y backfillear registros ya cargados con
+// migration 20260707000004_productos_imei_normalize_scientific.js.
+//
+// Idempotente con IMEIs limpios ("353427...") y seriales alfa-numéricos
+// ("SJW0KF7C5P6"): la regex sólo matchea el patrón científico. Mismo
+// tratamiento que fmtImei() del frontend, pero acá se aplica al VALUE que
+// termina en DB (allá se aplicaba solo al display).
+export function cleanImei(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  if (/^-?\d+(\.\d+)?[eE]\+?\d+$/.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) return Math.round(n).toString();
+  }
+  return s;
+}
+
 // rows: string[][] (incluye fila de encabezados). ctx: { categorias, depositos, proveedores }.
 // Devuelve [{ body, error, warning, _categoriaNueva, _proveedorNuevo }]:
 //   · body listo para POST /inventario/productos/bulk (categoria_id puede ser
@@ -104,7 +128,10 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       const get = (key) => { const i = idx(key); return (i >= 0 ? r[i] : '') ?? ''; };
 
       const nombre = String(get('nombre')).trim();
-      const imei = String(get('imei')).trim();
+      // cleanImei: normaliza notación científica de Excel/Sheets antes de
+      // persistir. Ver comentario en el helper. Fix estructural bug picker
+      // Ventas (Lucas 2026-07-07).
+      const imei = cleanImei(get('imei'));
       const stockRaw = String(get('cantidad')).trim();
       const hasStock = stockRaw !== '';
       const tipoRaw = String(get('tipo_carga')).trim().toLowerCase();
