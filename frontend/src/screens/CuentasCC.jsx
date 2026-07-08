@@ -934,8 +934,21 @@ export default function CuentasCC() {
   const detail      = clienteDetail;
   const cliente     = detail?.resumen?.cliente || null;
   const resumen     = detail?.resumen || null;
-  // Orden ASC (cronológico, como un libro mayor) para que la fila nueva quede al pie
-  const movimientos = detail ? [...(detail.movimientos || [])].reverse() : [];
+  // Orden ASC (cronológico, como un libro mayor) para que la fila nueva quede al pie.
+  //
+  // Defensive Array.isArray() 2026-07-08 (Sentry #7587853566): antes usábamos
+  // `detail.movimientos || []`, que asume que `movimientos` es array o falsy.
+  // Sentry registró 3 crashes con "(Xe.movimientos || []) is not iterable" —
+  // el fallback `|| []` NO protege cuando el valor es `{}` u otro objeto no-
+  // array (un objeto vacío es truthy → se retorna tal cual → `[...{}]`
+  // explota porque los objetos planos no tienen Symbol.iterator).
+  //
+  // Se dispara si el backend responde con un shape inesperado (ej. body de
+  // error `{}` en vez del payload normal) — el frontend debe degradar a lista
+  // vacía en vez de tumbar el ErrorBoundary.
+  const movimientos = detail && Array.isArray(detail.movimientos)
+    ? [...detail.movimientos].reverse()
+    : [];
 
   // Estilo de celda en tabla existente
   const cell = { padding: '7px 8px', fontSize: 13 };
