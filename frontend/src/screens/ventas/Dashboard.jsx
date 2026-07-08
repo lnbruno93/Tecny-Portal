@@ -17,6 +17,7 @@
 import { fmt } from '../../lib/format';
 import { sym } from './utils';
 import { useMonedasTenant } from '../../lib/useMonedasTenant';
+import { CLASES_LABELS, claseLabel } from '../../lib/clasesProducto';
 import HourChart from './HourChart';
 
 export default function Dashboard({ d }) {
@@ -63,11 +64,37 @@ export default function Dashboard({ d }) {
           exprimidos en 4 cols estrechas en <414px, los labels wrappeaban a
           3 líneas y se veía horrible. Reportado por Lucas con screenshot. */}
       <div className="kpi-grid" style={{ marginBottom: 12 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-unidades">
           <div className="kpi-label">Unidades vendidas</div>
-          <div className="kpi-value" style={{ fontSize: 17 }}>
-            📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
-          </div>
+          {/*
+            Fase 2 categorías reales (2026-07-08): antes mostrábamos el bucket
+            binario `📱 celulares · 🎧 accesorios`. Ahora renderizamos un chip
+            por cada una de las 9 clases con ventas del período, ordenadas por
+            unidades desc. Solo se muestran las clases con ventas > 0 — un
+            período sin ventas de watches no ensucia el KPI con "⌚ 0".
+            Fallback al render viejo si el backend no envía `unidades_por_clase`
+            (cache pre-fix o rollback).
+          */}
+          {d.unidades_por_clase && Object.keys(d.unidades_por_clase).length > 0 ? (
+            <div className="kpi-clases" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+              {Object.entries(d.unidades_por_clase)
+                .sort(([, a], [, b]) => Number(b) - Number(a))
+                .map(([slug, n]) => (
+                  <span
+                    key={slug}
+                    className="chip mono"
+                    style={{ fontSize: 13 }}
+                    title={`${n} unidad${n === 1 ? '' : 'es'} de ${claseLabel(slug)}`}
+                  >
+                    {CLASES_LABELS[slug] || slug} <strong>{n}</strong>
+                  </span>
+                ))}
+            </div>
+          ) : (
+            <div className="kpi-value" style={{ fontSize: 17 }}>
+              📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
+            </div>
+          )}
         </div>
         {showGanancias && (
         <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-ganancia">

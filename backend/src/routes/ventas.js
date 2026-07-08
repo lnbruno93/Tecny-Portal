@@ -423,7 +423,7 @@ async function computeDashboard(tenantId, desde, hasta) {
     // el mismo client (obligatorio con pg@9+: no se puede ejecutar más de
     // una query concurrente sobre el mismo client; el protocolo Postgres es
     // secuencial, así que Promise.all no daba paralelismo real).
-    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b] = await db.withTenant(tenantId, async (client) => {
+    const [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b, unidadesPorClaseRetail, unidadesPorClaseB2B] = await db.withTenant(tenantId, async (client) => {
       // Totales de ventas. 2026-06-10: `ganancia_acreditada_usd` agrega FILTER
       // por estado='acreditado' — alimenta la GANANCIA NETA del dashboard, que
       // ahora suma SOLO ventas confirmadas (las pendientes no descuentan
@@ -560,7 +560,20 @@ async function computeDashboard(tenantId, desde, hasta) {
         LEFT JOIN productos pr ON pr.id = i.producto_id
         WHERE ${B2B_BASE}
       `, p);
-      return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b];
+      // 2026-07-08 Fase 2 categorías reales: desglose de unidades por las 9
+      // clases de F1, retail + B2B por separado (se combinan abajo). Filtra
+      // items sin producto (pr.clase NULL) — no representan mercadería física.
+      // Los items B2B devueltos también quedan fuera (i.devuelto_at IS NULL).
+      // El GROUP BY sobre clase entrega solo las clases con ventas > 0, así
+      // el frontend renderiza chips únicamente para las categorías vendidas
+      // (Lucas confirmó "solo categorías con ventas del período").
+      const unidadesPorClaseRetail = await client.query(`SELECT pr.clase, SUM(vi.cantidad)::int AS n
+                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN productos pr ON pr.id = vi.producto_id
+                WHERE ${BASE} GROUP BY pr.clase`, p);
+      const unidadesPorClaseB2B = await client.query(`SELECT pr.clase, SUM(i.cantidad)::int AS n
+                FROM items_movimiento_cc i JOIN movimientos_cc m ON m.id = i.movimiento_cc_id JOIN productos pr ON pr.id = i.producto_id
+                WHERE ${B2B_BASE} AND i.devuelto_at IS NULL GROUP BY pr.clase`, p);
+      return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b, unidadesPorClaseRetail, unidadesPorClaseB2B];
     });
 
     // Ingresos por moneda (a partir del desglose de métodos).
@@ -649,6 +662,27 @@ async function computeDashboard(tenantId, desde, hasta) {
         celulares: parseInt(unidades.rows[0].celulares) + parseInt(b.celulares),
         accesorios: parseInt(unidades.rows[0].accesorios) + parseInt(b.accesorios),
       },
+      // 2026-07-08 Fase 2: desglose por las 9 categorías de F1. Retail + B2B
+      // combinados, solo clases con ventas > 0. Frontend renderiza chips
+      // ordenados por conteo desc.
+      //
+      // Shape: { celular_sellado: 3, watch: 1, cargadores: 12, ... }
+      // Frontend usa CLASES_LABELS para el emoji + label. Si una clase que
+      // el frontend conoce NO viene acá → no se renderiza (no hubo ventas).
+      // Si viene una clase que el frontend NO conoce (defensive: backend
+      // agregó slug nuevo antes que el frontend deploye) → cae a fmt raw.
+      unidades_por_clase: (() => {
+        const combined = {};
+        for (const row of unidadesPorClaseRetail.rows) {
+          combined[row.clase] = (combined[row.clase] || 0) + Number(row.n);
+        }
+        for (const row of unidadesPorClaseB2B.rows) {
+          combined[row.clase] = (combined[row.clase] || 0) + Number(row.n);
+        }
+        // Filtramos 0 defensivamente por si alguna query devuelve 0 (no debería
+        // por el HAVING implícito del GROUP BY, pero por si acaso).
+        return Object.fromEntries(Object.entries(combined).filter(([, n]) => n > 0));
+      })(),
       ganancia_bruta_usd: round2(gananciaBruta),
       // 2026-06-10: ganancia bruta restringida a ventas acreditadas (es la
       // base de la ganancia neta). El total bruto sigue arriba para el
