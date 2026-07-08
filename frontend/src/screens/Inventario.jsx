@@ -16,6 +16,9 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner gating
 import { useConfirm } from '../components/ConfirmModal';
+// F3.b (2026-07-08): modal de gestión de las Categorías (clases_producto)
+// nuevo — ver design doc `docs/design/categorias-crud-tenant-f3.md`.
+import CategoriasProductoModal from '../components/CategoriasProductoModal';
 import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
@@ -302,11 +305,15 @@ export default function Inventario() {
   // saldos. Cargada una vez en loadCatalogos.
   const [cajasList, setCajasList] = useState([]);
 
-  // Modal catálogos (categorías + depósitos)
+  // Modal catálogos (colecciones + depósitos — sistema legacy renombrado
+  // a "Colecciones" en la UI a partir de F3.b 2026-07-08).
   const [showCatalogos, setShowCatalogos] = useState(false);
   const [nuevaCat, setNuevaCat] = useState('');
   const [nuevoDep, setNuevoDep] = useState('');
   const [catError, setCatError] = useState('');
+
+  // F3.b — Modal nuevo de gestión de Categorías (clases_producto).
+  const [showClasesModal, setShowClasesModal] = useState(false);
 
   // useModal hooks — auditoría 2026-06-06 UX B2: Esc cierra los 3 modales
   // (form de producto, import xlsx, catálogos), focus trap, body scroll lock.
@@ -1015,7 +1022,8 @@ export default function Inventario() {
             prueba con equipo (junio 2026). Para reactivar, descomentar el
             <Link/> y listo. */}
         <button className="btn mobile-hide" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
-        <button className="btn mobile-hide" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Categorías &amp; Depósitos</button>
+        <button className="btn mobile-hide" onClick={() => setShowClasesModal(true)}><Icons.Tag size={14} /> Categorías</button>
+        <button className="btn mobile-hide" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Colecciones &amp; Depósitos</button>
         {/* Acción destructiva — separada visualmente con color rojo del ícono y
             texto en variante ghost. El ConfirmModal con danger:true protege
             contra clicks accidentales. */}
@@ -1163,10 +1171,10 @@ export default function Inventario() {
           {Object.entries(drillFilters).map(([k, v]) => {
             // Mostramos el nombre humano cuando podamos resolverlo
             let label = v;
-            if (k === 'categoria_id') label = categorias.find(c => String(c.id) === String(v))?.nombre || `Categoría #${v}`;
+            if (k === 'categoria_id') label = categorias.find(c => String(c.id) === String(v))?.nombre || `Colección #${v}`;
             if (k === 'deposito_id')  label = depositos.find(d => String(d.id) === String(v))?.nombre || `Depósito #${v}`;
             if (k === 'estado')       label = ({ disponible: 'Disponible', vendido: 'Vendido', en_tecnico: 'En técnico', reservado: 'Reservado' }[v]) || v;
-            const niceKey = ({ categoria_id: 'Categoría', deposito_id: 'Depósito', estado: 'Estado', proveedor: 'Proveedor', nombre: 'Modelo', gb: 'GB', color: 'Color' })[k] || k;
+            const niceKey = ({ categoria_id: 'Colección', deposito_id: 'Depósito', estado: 'Estado', proveedor: 'Proveedor', nombre: 'Modelo', gb: 'GB', color: 'Color' })[k] || k;
             return (
               <span key={k} className="badge badge-info" style={{ fontSize: 12 }}>{niceKey}: {label}</span>
             );
@@ -1206,7 +1214,7 @@ export default function Inventario() {
                 <th style={{ width: 72 }}>Mon. Venta</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
                 <th style={{ width: 84 }}>Tipo</th>
-                <th style={{ minWidth: 130 }}>Categoría</th>
+                <th style={{ minWidth: 130 }}>Colección</th>
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
                 <th style={{ width: 110 }}>Estado</th>
@@ -1288,7 +1296,7 @@ export default function Inventario() {
                 <th style={{ width: 72 }}>Mon. Venta</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
                 <th style={{ width: 84 }}>Tipo</th>
-                <th style={{ minWidth: 130 }}>Categoría</th>
+                <th style={{ minWidth: 130 }}>Colección</th>
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
                 <th style={{ width: 110 }}>Estado</th>
@@ -1403,7 +1411,7 @@ export default function Inventario() {
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Categoría <span style={{ color: 'var(--neg)' }}>*</span></label>
+                      <label className="field-label">Colección <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <select className="input" value={form.categoria_id} onChange={e => setF('categoria_id', e.target.value)} required>
                         <option value="">— Elegir —</option>
                         {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -1720,19 +1728,27 @@ export default function Inventario() {
       )}
 
       {/* ── Modal catálogos ── */}
+      {/* F3.b — Modal nuevo de Categorías (clases_producto). Ver design doc
+          `docs/design/categorias-crud-tenant-f3.md`. */}
+      <CategoriasProductoModal
+        open={showClasesModal}
+        onClose={() => setShowClasesModal(false)}
+        toast={toast}
+      />
+
       {showCatalogos && (
         <div ref={catalogosModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCatalogos(false)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Categorías &amp; Depósitos</h3>
+              <h3>Colecciones &amp; Depósitos</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCatalogos(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               <div className="row">
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Categorías</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Colecciones</div>
                   <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
-                    <input className="input" placeholder="Nueva categoría" value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategoria(); } }} />
+                    <input className="input" placeholder="Nueva colección" value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategoria(); } }} />
                     <button className="btn btn-sm" onClick={addCategoria}><Icons.Plus size={13} /></button>
                   </div>
                   <div className="stack" style={{ gap: 4 }}>
@@ -1860,7 +1876,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
           <DetalleField label="Clase" value={claseLabel(producto.clase)} />
           <DetalleField label="Estado" value={producto.estado} />
           <DetalleField label="Condición" value={producto.condicion || 'nuevo'} />
-          <DetalleField label="Categoría" value={cat?.nombre || '—'} />
+          <DetalleField label="Colección" value={cat?.nombre || '—'} />
           <DetalleField label="Depósito" value={dep?.nombre || '—'} />
           <DetalleField label="Proveedor" value={producto.proveedor || '—'} />
           {producto.imei && <DetalleField label="IMEI/Serial" value={fmtImei(producto.imei)} mono />}
