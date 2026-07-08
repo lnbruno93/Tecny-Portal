@@ -24,7 +24,13 @@ const updateCategoriaSchema = createCategoriaSchema.partial().refine(
 // totales" del semestre subestimado en tenants UY. Es el hermano del override
 // que ya se fixeó en `upsertOverrideSchema` (routes/sanidad.js:381) en este
 // mismo PR. Fixear también el default para cerrar el path desde arriba.
-const createRecurrenteSchema = z.object({
+//
+// NOTA de estructura: Zod no permite `.partial()` sobre un schema que ya tiene
+// `.refine()` (throw: "cannot be used on object schemas containing refinements").
+// Por eso mantenemos `_recurrenteBase` sin refine como fuente, y le agregamos
+// el refine por separado a create/update. Mismo problema que resolvió en
+// `updateEgresoSchema` redefinir todo con `.optional()`.
+const _recurrenteBase = z.object({
   concepto:       z.string().trim().min(1, 'Concepto requerido').max(200),
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   monto:          z.coerce.number().min(0).default(0),
@@ -33,21 +39,23 @@ const createRecurrenteSchema = z.object({
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   dia_del_mes:    z.coerce.number().int().min(1).max(31).default(1),
   activo:         z.boolean().optional().default(true),
-}).strict()
-  .refine(d => !requiereTc(d.moneda) || (d.tc && d.tc > 0), {
-    message: 'TC requerido para recurrentes en ARS o UYU',
-    path: ['tc'],
-  });
-// Update: partial + refine defensivo (mismo patrón que updateEgresoSchema).
+}).strict();
+
+const createRecurrenteSchema = _recurrenteBase.refine(
+  d => !requiereTc(d.moneda) || (d.tc && d.tc > 0),
+  { message: 'TC requerido para recurrentes en ARS o UYU', path: ['tc'] }
+);
+
+// Update: partial sobre el base (sin refine) + refine defensivo aparte.
 // Solo rechaza si el caller pasa explícitamente `moneda: 'ARS'|'UYU'` Y
 // `tc` explícitamente null/0. Si pasa solo `moneda` sin `tc`, el handler
 // debe re-validar tras hidratar de la fila vieja (mismo criterio SOL-1).
-const updateRecurrenteSchema = createRecurrenteSchema.partial().refine(
-  d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' }
-).refine(
-  d => !requiereTc(d.moneda) || d.tc === undefined || (d.tc && d.tc > 0),
-  { message: 'TC requerido para recurrentes en ARS o UYU', path: ['tc'] }
-);
+const updateRecurrenteSchema = _recurrenteBase.partial()
+  .refine(d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' })
+  .refine(
+    d => !requiereTc(d.moneda) || d.tc === undefined || (d.tc && d.tc > 0),
+    { message: 'TC requerido para recurrentes en ARS o UYU', path: ['tc'] }
+  );
 
 // ── Egresos ──
 // 2026-06-24 SOL-1 (audit pre-live): TC obligatorio cuando la moneda requiere
