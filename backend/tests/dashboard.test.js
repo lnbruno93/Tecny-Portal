@@ -191,6 +191,80 @@ describe('Agregaciones reales con datos sembrados (SQL directo)', () => {
     expect(Number(c.saldo)).toBeCloseTo(2000, 2);
   });
 
+  // 2026-07-08 bug UY: pagos_por_metodo mostraba UYU/ARS como USD.
+  it('bug UY: pagos UYU sin tc convierten con tc_defaults_pais (no 1:1)', async () => {
+    // Reproduce el bug del owner UY: la tabla "Pagos por método" mostraba
+    // UYU 113.136 como si fueran USD, cuando debía dividir por el TC UYU.
+    // Sembramos una venta 100% UYU sin tc_venta ni vp.tc — antes del fix,
+    // el CASE caía en `ELSE 1` y devolvía 4000 USD (=4000 UYU tal cual).
+    // Post-fix: usa tc_defaults_pais.UYU (~40) → 100 USD.
+    const { rows: [caja] } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial)
+       VALUES ('MercadoPago UY Test', 'UYU', 0) RETURNING id`
+    );
+    // Venta 2026-04-20, tenant_id=1 (test admin), SIN tc_venta.
+    const { rows: [venta] } = await pool.query(
+      `INSERT INTO ventas (tenant_id, order_id, fecha, cliente_nombre, total_usd, ganancia_usd, estado, tc_venta)
+       VALUES (1, 'test-uy-null-tc-' || floor(random()*1000000), '2026-04-20', 'Cliente UY', 100, 20, 'acreditado', NULL)
+       RETURNING id`
+    );
+    // Pago UYU sin tc — el caso real del owner UY.
+    await pool.query(
+      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd)
+       VALUES ($1, $2, 'MercadoPago UY Test', 4000, 'UYU', NULL, 100)`,
+      [venta.id, caja.id]
+    );
+    // Consulta el resumen del período que contiene esa venta.
+    const res = await request(app)
+      .get('/api/dashboard/resumen-mensual?periodo=2026-04&comparar_con=2026-03')
+      .set(auth());
+    expect(res.status).toBe(200);
+    const pago = res.body.actual.ventas.pagos_por_metodo.find(
+      p => p.metodo === 'MercadoPago UY Test'
+    );
+    expect(pago).toBeTruthy();
+    // TC default UY seed = 40 → 4000 UYU / 40 = 100 USD.
+    // Antes del fix: total_usd = 4000 (dividía por 1).
+    expect(Number(pago.total_usd)).toBeCloseTo(100, 1);
+    // Cleanup: soft-delete la venta y el pago para no contaminar otros tests.
+    await pool.query('DELETE FROM venta_pagos WHERE venta_id = $1', [venta.id]);
+    await pool.query('DELETE FROM ventas WHERE id = $1', [venta.id]);
+    await pool.query('DELETE FROM metodos_pago WHERE id = $1', [caja.id]);
+  });
+
+  it('bug UY: pago con vp.tc explícito, gana sobre tc_defaults_pais', async () => {
+    // Si el operador tipeó un TC en el pago mismo, usarlo (más preciso que
+    // el fallback del catálogo país). Esto valida la prioridad de la cadena
+    // de COALESCE: vp.tc > v.tc_venta > tc_defaults_pais.
+    const { rows: [caja] } = await pool.query(
+      `INSERT INTO metodos_pago (nombre, moneda, saldo_inicial)
+       VALUES ('Efectivo UYU Test', 'UYU', 0) RETURNING id`
+    );
+    const { rows: [venta] } = await pool.query(
+      `INSERT INTO ventas (tenant_id, order_id, fecha, cliente_nombre, total_usd, ganancia_usd, estado, tc_venta)
+       VALUES (1, 'test-uy-with-tc-' || floor(random()*1000000), '2026-04-21', 'Cliente UY 2', 50, 10, 'acreditado', NULL)
+       RETURNING id`
+    );
+    // Pago UYU con tc=50 (distinto del default 40).
+    await pool.query(
+      `INSERT INTO venta_pagos (venta_id, metodo_pago_id, metodo_nombre, monto, moneda, tc, monto_usd)
+       VALUES ($1, $2, 'Efectivo UYU Test', 2500, 'UYU', 50, 50)`,
+      [venta.id, caja.id]
+    );
+    const res = await request(app)
+      .get('/api/dashboard/resumen-mensual?periodo=2026-04&comparar_con=2026-03')
+      .set(auth());
+    const pago = res.body.actual.ventas.pagos_por_metodo.find(
+      p => p.metodo === 'Efectivo UYU Test'
+    );
+    expect(pago).toBeTruthy();
+    // 2500 UYU / tc=50 (el del pago, NO el default 40) = 50 USD.
+    expect(Number(pago.total_usd)).toBeCloseTo(50, 1);
+    await pool.query('DELETE FROM venta_pagos WHERE venta_id = $1', [venta.id]);
+    await pool.query('DELETE FROM ventas WHERE id = $1', [venta.id]);
+    await pool.query('DELETE FROM metodos_pago WHERE id = $1', [caja.id]);
+  });
+
   // TANDA 0 #5: TC fallback
   it('TANDA 0 #5: si no hay TC de venta ni config, tc_referencia es null', async () => {
     // En tests, las tablas están casi vacías y tc_referencia config se setea

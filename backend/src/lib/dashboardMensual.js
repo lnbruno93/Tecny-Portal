@@ -107,13 +107,47 @@ async function pagosPorMetodo(...allArgs) {
   // 2026-06-10 S-19: Bug numérico. Antes el CASE solo distinguía 'USD' → cuando
   // venía 'USDT' caía al WHEN v.tc_venta > 0 y dividía por el TC ARS, dando
   // un monto subdimensionado por ~1000×. USDT debe tratarse 1:1 con USD.
+  //
+  // 2026-07-08 (tenant UY): bug reportado por owner. La tabla "Pagos por
+  // método" del Resumen mensual mostraba `Mercadopago | UYU | 113.136` en la
+  // columna USD — cuando eran 113.136 UYU (~2.828 USD al TC 40). Root cause:
+  // el CASE anterior priorizaba `v.tc_venta` y caía en `ELSE 1` cuando no
+  // había TC — típico de tenants UY (o AR) con ventas 100% en moneda local
+  // donde el operador nunca setea `v.tc_venta` porque no está convirtiendo.
+  // El pago tampoco trae TC propio (`vp.tc IS NULL`), así que el CASE dividía
+  // por 1 → montos locales aparecían como USD.
+  //
+  // Fix estructural: cadena de fallbacks para el divisor:
+  //   1) vp.tc  — TC del pago si el operador lo tipeó
+  //   2) v.tc_venta — TC principal de la venta
+  //   3) TC de referencia del país por moneda (catálogo global
+  //      `tc_defaults_pais`). Misma fuente que `snapshotCajas` ya usa hoy
+  //      para el capital agregado (seed AR=1400, UY=40).
+  // Si aún así no hay TC (país sin seed), NULLIF(..., 0) → NULL → SUM ignora
+  // esa fila (no leak silencioso). Idem con NULLIF sobre vp.tc y v.tc_venta.
+  //
+  // Los TCs default vienen del catálogo global — no dependen del tenant que
+  // llama, mismo criterio que la conversión de cajas. Se leen en paralelo con
+  // el query principal para no agregar latencia (2 lookups baratos sobre
+  // tabla de 2 filas).
+  const [tcUYU, tcARS] = await Promise.all([
+    getTcDefaultPais(exec, 'UY'),
+    getTcDefaultPais(exec, 'AR'),
+  ]);
   const { rows } = await exec.query(
     `SELECT mp.nombre AS metodo, mp.moneda,
             COALESCE(SUM(vp.monto / NULLIF(
               CASE
                 WHEN vp.moneda IN ('USD','USDT') THEN 1
-                WHEN v.tc_venta > 0              THEN v.tc_venta
-                ELSE 1
+                ELSE COALESCE(
+                  NULLIF(vp.tc, 0),
+                  NULLIF(v.tc_venta, 0),
+                  CASE vp.moneda
+                    WHEN 'UYU' THEN $3::numeric
+                    WHEN 'ARS' THEN $4::numeric
+                    ELSE NULL
+                  END
+                )
               END, 0)), 0) AS total_usd
        FROM venta_pagos vp
        JOIN ventas v       ON v.id = vp.venta_id
@@ -123,7 +157,7 @@ async function pagosPorMetodo(...allArgs) {
         AND vp.metodo_pago_id IS NOT NULL
       GROUP BY mp.id, mp.nombre, mp.moneda
       ORDER BY total_usd DESC`,
-    [desde, hasta]
+    [desde, hasta, tcUYU, tcARS]
   );
   return rows.map(r => ({ ...r, total_usd: round2(r.total_usd) }));
 }
