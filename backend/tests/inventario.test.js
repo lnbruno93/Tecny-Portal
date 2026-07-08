@@ -80,7 +80,7 @@ describe('Productos', () => {
   it('crea un producto unitario → 201', async () => {
     const res = await request(app).post('/api/inventario/productos').set(auth()).send({
       tipo_carga: 'unitario',
-      clase: 'celular',
+      clase: 'celular_sellado',
       categoria_id: catBase,
       nombre: 'iPhone 15 Pro',
       imei: '356938035643809',
@@ -101,7 +101,7 @@ describe('Productos', () => {
 
   it('rechaza producto sin nombre → 400', async () => {
     const res = await request(app).post('/api/inventario/productos')
-      .set(auth()).send({ clase: 'celular' });
+      .set(auth()).send({ clase: 'celular_sellado' });
     expect(res.status).toBe(400);
   });
 
@@ -126,11 +126,11 @@ describe('Productos', () => {
 
   it('filtra por clase accesorio (no incluye el celular)', async () => {
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      clase: 'accesorio', tipo_carga: 'lote', categoria_id: catBase, nombre: 'AirPods Pro 3', cantidad: 22, costo: 150,
+      clase: 'accesorios_varios', tipo_carga: 'lote', categoria_id: catBase, nombre: 'AirPods Pro 3', cantidad: 22, costo: 150,
     });
-    const res = await request(app).get('/api/inventario/productos?clase=accesorio').set(auth());
+    const res = await request(app).get('/api/inventario/productos?clase=accesorios_varios').set(auth());
     expect(res.status).toBe(200);
-    expect(res.body.data.every(p => p.clase === 'accesorio')).toBe(true);
+    expect(res.body.data.every(p => p.clase === 'accesorios_varios')).toBe(true);
     expect(res.body.data.map(p => p.id)).not.toContain(prodId);
   });
 
@@ -162,7 +162,7 @@ describe('Foto del producto (lazy load)', () => {
   const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   it('el listado NO incluye foto_data pero marca tiene_foto', async () => {
     const c = await request(app).post('/api/inventario/productos').set(auth())
-      .send({ nombre: 'Con Foto', clase: 'celular', categoria_id: catBase, foto_data: b64, foto_nombre: 'f.png', foto_tipo: 'image/png' });
+      .send({ nombre: 'Con Foto', clase: 'celular_sellado', categoria_id: catBase, foto_data: b64, foto_nombre: 'f.png', foto_tipo: 'image/png' });
     const list = await request(app).get('/api/inventario/productos?buscar=Con Foto').set(auth());
     const p = list.body.data.find(x => x.id === c.body.id);
     expect(p).toBeDefined();
@@ -175,7 +175,7 @@ describe('Foto del producto (lazy load)', () => {
   });
 
   it('producto sin foto → 404 en el endpoint de foto', async () => {
-    const c = await request(app).post('/api/inventario/productos').set(auth()).send({ nombre: 'Sin Foto', clase: 'celular', categoria_id: catBase });
+    const c = await request(app).post('/api/inventario/productos').set(auth()).send({ nombre: 'Sin Foto', clase: 'celular_sellado', categoria_id: catBase });
     const foto = await request(app).get(`/api/inventario/productos/${c.body.id}/foto`).set(auth());
     expect(foto.status).toBe(404);
   });
@@ -197,15 +197,15 @@ describe('GET /api/inventario/productos/proveedores', () => {
   it('devuelve los proveedores únicos vistos en productos vivos', async () => {
     // Sumamos algunos productos con proveedor para que aparezcan
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'ProvProd 1', clase: 'celular', categoria_id: catBase,
+      nombre: 'ProvProd 1', clase: 'celular_sellado', categoria_id: catBase,
       costo: 100, precio_venta: 200, proveedor: 'Mayorista Alfa',
     });
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'ProvProd 2', clase: 'celular', categoria_id: catBase,
+      nombre: 'ProvProd 2', clase: 'celular_sellado', categoria_id: catBase,
       costo: 100, precio_venta: 200, proveedor: '  Mayorista Alfa  ', // mismo, con espacios
     });
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'ProvProd 3', clase: 'celular', categoria_id: catBase,
+      nombre: 'ProvProd 3', clase: 'celular_sellado', categoria_id: catBase,
       costo: 100, precio_venta: 200, proveedor: 'Zeta Distribuidor',
     });
     const res = await request(app).get('/api/inventario/productos/proveedores').set(auth());
@@ -255,7 +255,7 @@ describe('GET /api/inventario/desglose', () => {
     // Productos cargados en el test de proveedores (3 con Mayorista Alfa / Zeta).
     // Sumamos uno con cantidad > 1 para validar SUM(cantidad).
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'Lote Test', clase: 'accesorio', tipo_carga: 'lote',
+      nombre: 'Lote Test', clase: 'accesorios_varios', tipo_carga: 'lote',
       categoria_id: catBase, costo: 10, precio_venta: 25, cantidad: 5,
       proveedor: 'Mayorista Alfa',
     });
@@ -298,7 +298,7 @@ describe('GET /api/inventario/desglose', () => {
   });
 
   it('respeta el filtro clase', async () => {
-    const res = await request(app).get('/api/inventario/desglose?por=modelo&clase=accesorio').set(auth());
+    const res = await request(app).get('/api/inventario/desglose?por=modelo&clase=accesorios_varios').set(auth());
     expect(res.status).toBe(200);
     // Solo accesorios → los modelos celulares no deberían aparecer
     expect(res.body.filas.find(f => f.valor === 'iPhone 13')).toBeUndefined();
@@ -344,8 +344,8 @@ describe('POST /api/inventario/productos/bulk', () => {
   it('crea varios productos en una transacción', async () => {
     const res = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
       productos: [
-        { nombre: 'iPhone 13', clase: 'celular', categoria_id: catBase, costo: 400, precio_venta: 500 },
-        { nombre: 'iPhone 14', clase: 'celular', categoria_id: catBase, costo: 500, precio_venta: 620 },
+        { nombre: 'iPhone 13', clase: 'celular_sellado', categoria_id: catBase, costo: 400, precio_venta: 500 },
+        { nombre: 'iPhone 14', clase: 'celular_sellado', categoria_id: catBase, costo: 500, precio_venta: 620 },
       ],
     });
     expect(res.status).toBe(201);
@@ -364,15 +364,15 @@ describe('POST /api/inventario/productos/bulk', () => {
   it('rechaza IMEIs ya existentes en inventario → 409 con lista de duplicados', async () => {
     // Crear un producto con IMEI conocido.
     await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'iPhone existente', clase: 'celular', categoria_id: catBase,
+      nombre: 'iPhone existente', clase: 'celular_sellado', categoria_id: catBase,
       imei: '359123456789012', costo: 400, precio_venta: 500,
     });
 
     // Intentar bulk con un producto cuyo IMEI ya existe + otros nuevos.
     const res = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
       productos: [
-        { nombre: 'Nuevo OK', clase: 'celular', categoria_id: catBase, imei: '359999999999999', costo: 400, precio_venta: 500 },
-        { nombre: 'Choque IMEI', clase: 'celular', categoria_id: catBase, imei: '359123456789012', costo: 400, precio_venta: 500 },
+        { nombre: 'Nuevo OK', clase: 'celular_sellado', categoria_id: catBase, imei: '359999999999999', costo: 400, precio_venta: 500 },
+        { nombre: 'Choque IMEI', clase: 'celular_sellado', categoria_id: catBase, imei: '359123456789012', costo: 400, precio_venta: 500 },
       ],
     });
     expect(res.status).toBe(409);
@@ -385,7 +385,7 @@ describe('POST /api/inventario/productos/bulk', () => {
   it('acepta bulk sin IMEIs (accesorios, lotes) sin chequear duplicados', async () => {
     const res = await request(app).post('/api/inventario/productos/bulk').set(auth()).send({
       productos: [
-        { nombre: 'Funda Genérica X', clase: 'accesorio', categoria_id: catBase, costo: 5, precio_venta: 10, tipo_carga: 'lote', cantidad: 50 },
+        { nombre: 'Funda Genérica X', clase: 'accesorios_varios', categoria_id: catBase, costo: 5, precio_venta: 10, tipo_carga: 'lote', cantidad: 50 },
       ],
     });
     expect(res.status).toBe(201);
@@ -404,7 +404,7 @@ describe('Filtros: vista (oculto/estado) y condicion', () => {
     const TAG = '__VistaSuite__';
     const mk = (extra) => ({
       nombre: `${TAG} ${extra.label}`,
-      clase: 'accesorio',
+      clase: 'accesorios_varios',
       categoria_id: catBase,
       costo: 1,
       precio_venta: 2,
@@ -530,7 +530,7 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles', () => {
     const mkProducto = async (estado, suffix) => {
       const r = await request(app).post('/api/inventario/productos').set(auth()).send({
         nombre: 'iPhone Bulk Del ' + suffix,
-        clase: 'celular', tipo_carga: 'unitario', categoria_id: catBulk,
+        clase: 'celular_sellado', tipo_carga: 'unitario', categoria_id: catBulk,
         imei: '550' + Date.now().toString().slice(-11) + suffix,
         costo: 100, precio_venta: 200, cantidad: 1, estado,
       });
@@ -704,7 +704,7 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles-con-compras (ad
       proveedor_id: provR.body.id, fecha: '2026-06-15', tipo: 'compra',
       monto: 200, moneda: 'USD', caja_id: cajaId,
       items: [{ valor: 200, producto_stock: {
-        tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+        tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
         nombre: `WipeCompraProd ${Date.now()}`, imei: `35001${Date.now()}`.slice(0, 15),
         cantidad: 1, costo: 200, costo_moneda: 'USD',
         precio_venta: 300, precio_moneda: 'USD',
@@ -748,13 +748,13 @@ describe('POST /api/inventario/productos/bulk-delete-disponibles-con-compras (ad
       monto: 400, moneda: 'USD',  // sin caja_id (crédito) — más simple
       items: [
         { valor: 200, producto_stock: {
-          tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+          tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
           nombre: `Parcial-A-${stamp}`, imei: `35002A${stamp}`.slice(0, 15),
           cantidad: 1, costo: 200, costo_moneda: 'USD',
           precio_venta: 300, precio_moneda: 'USD',
         } },
         { valor: 200, producto_stock: {
-          tipo_carga: 'unitario', clase: 'celular', categoria_id: cat.body.id,
+          tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: cat.body.id,
           nombre: `Parcial-B-${stamp}`, imei: `35002B${stamp}`.slice(0, 15),
           cantidad: 1, costo: 200, costo_moneda: 'USD',
           precio_venta: 300, precio_moneda: 'USD',
@@ -895,7 +895,7 @@ describe('GET /api/inventario/productos/:id/historial', () => {
   it('producto sin IMEI ni venta → { compra: null, venta: null }', async () => {
     // Accesorio sin imei: no hay match posible en compras (no es bug, es señal).
     const p = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'Funda Historial', clase: 'accesorio', tipo_carga: 'lote',
+      nombre: 'Funda Historial', clase: 'accesorios_varios', tipo_carga: 'lote',
       categoria_id: catHist, costo: 5, costo_moneda: 'USD',
       precio_venta: 10, precio_moneda: 'USD', cantidad: 50,
     });
@@ -920,7 +920,7 @@ describe('GET /api/inventario/productos/:id/historial', () => {
         imei_serial: imei,
         valor: 1450,
         producto_stock: {
-          nombre: 'iPhone Test Hist', clase: 'celular', tipo_carga: 'unitario',
+          nombre: 'iPhone Test Hist', clase: 'celular_sellado', tipo_carga: 'unitario',
           imei, categoria_id: catHist, costo: 1450, costo_moneda: 'USD',
           precio_venta: 1650, precio_moneda: 'USD', cantidad: 1,
         },

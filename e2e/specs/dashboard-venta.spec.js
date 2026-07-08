@@ -156,10 +156,11 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
     expect(Number(d.ticket_promedio_usd)).toBe(200);
     expect(Number(d.ingresos.usd)).toBe(200);
     // Unidades vendidas — items sin producto_id NO se cuentan en el KPI
-    // (fix 2026-07-08). El backend hace `FILTER (WHERE pr.clase = 'celular'
-    // OR pr.clase = 'accesorio')`; items manuales sin producto asociado
-    // (diferencias de cambio, ajustes, canjes) quedan fuera del split. Este
-    // spec crea 1 item manual → 0 unidades esperado.
+    // (fix 2026-07-08). El backend agrupa por las 9 clases nuevas de F1:
+    // celulares = clase IN ('celular_sellado','celular_usado'); accesorios =
+    // el resto de las 7 slugs con producto asociado. Items manuales (sin
+    // producto_id → clase NULL) quedan fuera de ambos buckets. Este spec
+    // crea 1 item manual → 0 unidades esperado.
     const totalUnidades = Number(d.unidades.celulares || 0) + Number(d.unidades.accesorios || 0);
     expect(totalUnidades).toBe(0);
     await apiReq.dispose();
@@ -213,10 +214,11 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
 
     // ── KPI: Unidades vendidas ───────────────────────────────────────────
     // Render: "📱 {celulares} · 🎧 {accesorios}" en .kpi-value. Para nuestro
-    // item (sin producto_id) el backend NO lo cuenta (fix 2026-07-08) porque
-    // el CASE ahora es `FILTER (WHERE pr.clase = 'celular' | 'accesorio')` —
-    // sin brazo `pr.id IS NULL`. Items manuales (diferencias, ajustes) no
-    // contaminan el KPI. Esperamos "0 · 0" (con separador variable).
+    // item (sin producto_id) el backend NO lo cuenta — el FILTER de F1 usa
+    // `pr.clase IN ('celular_sellado','celular_usado')` para celulares y
+    // `pr.clase NOT IN (...) AND pr.id IS NOT NULL` para accesorios. Sin
+    // producto → pr.clase es NULL → NULL falla ambos IN. Items manuales
+    // (diferencias, ajustes) no contaminan el KPI. Esperamos "0 · 0".
     const unidadesCard = page.locator('.card-tight', { has: page.getByText('Unidades vendidas', { exact: true }) });
     await expect(unidadesCard).toBeVisible();
     await expect(unidadesCard.locator('.kpi-value')).toHaveText(/(?:^|\D)0\s+·.*?\s+0(?:\D|$)/);

@@ -73,6 +73,38 @@ function buildIdx(headerRow) {
 const cleanMoneda = (v) => (String(v ?? '').trim().toUpperCase().startsWith('ARS') ? 'ARS' : 'USD');
 const cleanGb = (v) => String(v ?? '').trim().replace(/\.0+$/, '');  // "128.0" → "128"
 
+// Fase 1 categorías reales (2026-07-08): mapping desde el string que el
+// operador pone en la columna CLASE del XLSX → slug del enum del sistema.
+// Acepta:
+//   - los 9 slugs canónicos (case-insensitive, con o sin underscores)
+//   - los labels con emoji ("📲 Celular Sellado")
+//   - los legacy 'celular' / 'accesorio' (mapean con heurística por condicion/hasStock)
+// Devuelve null si no reconoce nada — el caller decide el fallback.
+const CLASE_ALIASES = {
+  // Canónicos + variantes con espacio.
+  'celular_sellado':   'celular_sellado',  'celular sellado':   'celular_sellado',  'sellado': 'celular_sellado',
+  'celular_usado':     'celular_usado',    'celular usado':     'celular_usado',    'usado': 'celular_usado',
+  'watch':             'watch',            'reloj':             'watch',
+  'auriculares':       'auriculares',      'auricular':         'auriculares',      'airpods': 'auriculares',
+  'consolas':          'consolas',         'consola':           'consolas',
+  'computadoras':      'computadoras',     'computadora':       'computadoras',     'notebook': 'computadoras', 'laptop': 'computadoras',
+  'ipads':             'ipads',            'ipad':              'ipads',            'tablet':   'ipads',
+  'cargadores':        'cargadores',       'cargador':          'cargadores',
+  'accesorios_varios': 'accesorios_varios','accesorios varios': 'accesorios_varios','accesorio':'accesorios_varios','accesorios':'accesorios_varios',
+  // Legacy: se mapean con heurística — 'celular' sin más contexto va a
+  // sellado (más común). Si el operador quiere usado, usa la variante
+  // 'celular usado' o el slug directo.
+  'celular': 'celular_sellado',
+};
+function resolveClaseXlsx(raw) {
+  if (!raw) return null;
+  // Quitar emoji leading + normalizar case + espacio simple.
+  const norm = String(raw).trim()
+    .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/u, '')  // strip leading emoji
+    .toLowerCase();
+  return CLASE_ALIASES[norm] || null;
+}
+
 // Excel/Google Sheets guarda IMEIs de 15 dígitos como notación científica
 // ("3.5342733941411E14") porque los trata como número. El pipeline actual
 // (xlsx.js → mapStockRows → POST /productos/bulk) persistía el string tal
@@ -136,10 +168,25 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       const hasStock = stockRaw !== '';
       const tipoRaw = String(get('tipo_carga')).trim().toLowerCase();
 
-      // Reglas del negocio: accesorio si trae STOCK; celular si trae IMEI.
-      const clase = hasStock ? 'accesorio' : 'celular';
+      // Clase: 2 caminos.
+      //   1) Si el XLSX trae columna CLASE con un valor reconocible, lo usamos.
+      //      Acepta los 9 slugs nuevos, sus labels con emoji, y los legacy
+      //      'celular'/'accesorio' (mapean vía resolveClaseXlsx).
+      //   2) Si no trae CLASE, heurística vieja: hasStock → accesorios_varios,
+      //      else → celular_sellado. Mismo comportamiento que antes con
+      //      celular/accesorio pero apuntando al slug del enum nuevo (Fase 1
+      //      2026-07-08). El operador puede editar la clase desde Inventario
+      //      después del import si el heurístico se equivocó.
+      const claseXlsx = resolveClaseXlsx(get('clase'));
+      const clase = claseXlsx || (hasStock ? 'accesorios_varios' : 'celular_sellado');
       const tipo_carga = (hasStock || tipoRaw === 'stock' || tipoRaw === 'lote') ? 'lote' : 'unitario';
-      const cantidad = clase === 'accesorio' ? Math.max(0, Math.round(parseNum(stockRaw))) : 1;
+      // Regla de cantidad: si el operador pasó una clase que NO es de las
+      // "por-unidad" (celular sellado/usado o ipads), asumimos que trackea
+      // stock por lote → cantidad = STOCK del XLSX (0 si no viene). Idem
+      // legacy con hasStock. Los celulares e iPads suelen tener IMEI y
+      // cantidad=1; el resto va por stock.
+      const esUnitario = (clase === 'celular_sellado' || clase === 'celular_usado' || clase === 'ipads');
+      const cantidad = esUnitario ? 1 : Math.max(0, Math.round(parseNum(stockRaw)));
 
       // Depósito por ID numérico (lo que usa la planilla); si no, por nombre.
       const depRaw = String(get('deposito')).trim();
@@ -202,7 +249,7 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       // el preview para tomar la decisión con contexto (ej. alta de modelo
       // vacío para preparar catálogo antes de recibir mercadería).
       let warning = null;
-      if (!error && clase === 'accesorio' && cantidad < 1) {
+      if (!error && !esUnitario && cantidad < 1) {
         warning = 'Stock en 0 — el producto se dará de alta sin unidades disponibles';
       }
 

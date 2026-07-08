@@ -22,7 +22,7 @@ const hoy  = new Date().toISOString().split('T')[0];
 
 async function crearProducto(over = {}) {
   const res = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase, nombre: 'iPhone Test ' + Math.random(),
+    tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase, nombre: 'iPhone Test ' + Math.random(),
     costo: 100, precio_venta: 200, cantidad: 1, ...over,
   });
   return res.body;

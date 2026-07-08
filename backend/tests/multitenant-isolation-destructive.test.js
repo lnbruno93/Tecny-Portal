@@ -111,7 +111,7 @@ const TABLES = [
     name: 'productos',
     insertSql: (label, tenantId) => ({
       sql: `INSERT INTO productos (tipo_carga, clase, nombre, costo, costo_moneda, precio_venta, precio_moneda, cantidad, tenant_id)
-            VALUES ('unitario', 'celular', $1, 100, 'USD', 200, 'USD', 1, $2) RETURNING id`,
+            VALUES ('unitario', 'celular_sellado', $1, 100, 'USD', 200, 'USD', 1, $2) RETURNING id`,
       params: [label, tenantId],
     }),
     labelCol: 'nombre',

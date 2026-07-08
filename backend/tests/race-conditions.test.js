@@ -26,7 +26,7 @@ afterAll(async () => { await teardownTestDb(pool); });
 describe('Race condition — stock unitario', () => {
   it('dos ventas concurrentes del mismo producto unitario: solo una gana', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'iPhone Race', clase: 'celular', tipo_carga: 'unitario',
+      nombre: 'iPhone Race', clase: 'celular_sellado', tipo_carga: 'unitario',
       categoria_id: catBase, costo: 500, precio_venta: 700, cantidad: 1,
     });
     expect(prod.status).toBe(201);
@@ -52,7 +52,7 @@ describe('Race condition — stock unitario', () => {
 describe('Race condition — lote con cantidad limitada', () => {
   it('cinco ventas simultáneas de 1u sobre un lote de 3u: solo 3 ganan', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'AirPods Race', clase: 'accesorio', tipo_carga: 'lote',
+      nombre: 'AirPods Race', clase: 'accesorios_varios', tipo_carga: 'lote',
       categoria_id: catBase, costo: 100, precio_venta: 200, cantidad: 3,
     });
     expect(prod.status).toBe(201);
@@ -86,7 +86,7 @@ describe('Race condition — venta B2B con producto_id (#T-01)', () => {
     const cli = await request(app).post('/api/cuentas/clientes').set(auth())
       .send({ nombre: 'B2B Race ' + Math.random(), categoria: 'A+' });
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
       nombre: 'iPhone B2B Race', imei: '350777' + Math.floor(Math.random() * 1e9),
       costo: 500, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD', cantidad: 1,
     });
@@ -114,7 +114,7 @@ describe('Race condition — venta B2B con producto_id (#T-01)', () => {
     const cli = await request(app).post('/api/cuentas/clientes').set(auth())
       .send({ nombre: 'B2B Race Lote ' + Math.random(), categoria: 'A-' });
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'lote', clase: 'accesorio', categoria_id: catBase,
+      tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catBase,
       nombre: 'Funda B2B Race', costo: 5, costo_moneda: 'USD',
       precio_venta: 10, precio_moneda: 'USD', cantidad: 3,
     });
@@ -141,7 +141,7 @@ describe('Race condition — venta B2B con producto_id (#T-01)', () => {
     const cli = await request(app).post('/api/cuentas/clientes').set(auth())
       .send({ nombre: 'B2B Race Mix ' + Math.random(), categoria: 'VIP' });
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'lote', clase: 'accesorio', categoria_id: catBase,
+      tipo_carga: 'lote', clase: 'accesorios_varios', categoria_id: catBase,
       nombre: 'Cargador B2B+B2C Race', costo: 2, costo_moneda: 'USD',
       precio_venta: 5, precio_moneda: 'USD', cantidad: 2,
     });
@@ -197,7 +197,7 @@ describe('Race condition — advisory lock por IMEI en compra-a-proveedor (B5)',
           producto: 'iPhone IMEI Race', valor: 900,
           imei_serial: sharedImei,
           producto_stock: {
-            tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+            tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
             nombre: 'iPhone IMEI Race', imei: sharedImei,
             costo: 900, costo_moneda: 'USD',
             precio_venta: 1100, precio_moneda: 'USD',

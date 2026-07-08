@@ -246,7 +246,7 @@ describe('Envío → Venta (registrar_venta)', () => {
   it('con tc + producto_id: la venta tiene total_usd real y descuenta stock', async () => {
     // Producto unitario para linkear desde el envío
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'iPhone Test', clase: 'celular', tipo_carga: 'unitario', categoria_id: catBase,
+      nombre: 'iPhone Test', clase: 'celular_sellado', tipo_carga: 'unitario', categoria_id: catBase,
       costo: 600, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD', cantidad: 1,
     });
     expect(prod.status).toBe(201);
@@ -366,7 +366,7 @@ describe('Envío → Venta (registrar_venta)', () => {
 
   it('cancelar el envío revierte los efectos de la venta y la marca cancelada', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'iPhone Cancel', clase: 'celular', tipo_carga: 'unitario', categoria_id: catBase,
+      nombre: 'iPhone Cancel', clase: 'celular_sellado', tipo_carga: 'unitario', categoria_id: catBase,
       costo: 400, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD', cantidad: 1,
     });
     const env = await request(app).post('/api/envios').set(auth()).send({

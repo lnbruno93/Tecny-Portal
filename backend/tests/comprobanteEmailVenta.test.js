@@ -33,7 +33,7 @@ beforeAll(async () => {
     .send({ nombre: 'Base Comp Email' });
   catBase = cat.body.id;
   const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+    tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
     nombre: 'iPhone 15 Comp Email', costo: 800, precio_venta: 950, cantidad: 1,
   });
   prodBase = prod.body;
@@ -45,7 +45,7 @@ afterAll(async () => { await teardownTestDb(pool); });
 async function crearVentaRetail(over = {}) {
   // Necesitamos un producto fresco para cada venta (descontamos stock).
   const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-    tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+    tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
     nombre: `Test ${Date.now()}-${Math.random()}`,
     costo: 800, precio_venta: 950, cantidad: 1,
   });
@@ -175,7 +175,7 @@ describe('POST /api/ventas con enviar_comprobante_email', () => {
 
   it('email inválido en alta → 400 (Zod rebota)', async () => {
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catBase,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catBase,
       nombre: `EmailInvalid ${Date.now()}`, costo: 800, precio_venta: 950, cantidad: 1,
     });
     const res = await request(app).post('/api/ventas').set(auth()).send({

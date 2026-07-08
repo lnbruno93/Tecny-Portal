@@ -51,7 +51,7 @@ afterAll(async () => { await teardownTestDb(pool); });
 async function crearProducto(imei) {
   const r = await request(app).post('/api/inventario/productos').set(auth())
     .send({
-      tipo_carga: 'unitario', clase: 'celular', categoria_id: catId,
+      tipo_carga: 'unitario', clase: 'celular_sellado', categoria_id: catId,
       nombre: `Orph ${imei}`, imei, costo: 500, costo_moneda: 'USD',
       precio_venta: 1000, precio_moneda: 'USD', cantidad: 1,
     });

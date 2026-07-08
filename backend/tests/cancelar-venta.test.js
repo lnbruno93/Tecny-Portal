@@ -47,7 +47,7 @@ describe('revertirEfectosVenta — todos los efectos a la vez', () => {
   it('cancelar una venta compleja (stock + financiera + tarjeta + archivo) revierte todo', async () => {
     // 1) Producto que descuenta stock
     const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
-      nombre: 'Producto Cancel', clase: 'celular', tipo_carga: 'unitario',
+      nombre: 'Producto Cancel', clase: 'celular_sellado', tipo_carga: 'unitario',
       categoria_id: catBase, costo: 500, precio_venta: 1000, cantidad: 1,
     });
 

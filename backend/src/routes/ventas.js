@@ -320,6 +320,14 @@ async function insertarDetalle(client, venta, b) {
           throw e;
         }
       }
+      // 2026-07-08 Fase 1 categorías reales: un canje casi siempre es un celular
+      // usado (así lo asumía la lógica original con `condicion ?? 'usado'`). Si
+      // el cliente envía `condicion: 'nuevo'` el canje se registra como celular
+      // sellado; sino cae a `celular_usado`. Los canjes de otros tipos de producto
+      // (watch, ipad, etc.) son raros — si aparece el caso, el operador puede
+      // re-clasificar desde Inventario.
+      const condicionCanje = c.condicion ?? 'usado';
+      const claseCanje = condicionCanje === 'nuevo' ? 'celular_sellado' : 'celular_usado';
       const { rows: pr } = await client.query(
         `INSERT INTO productos (
             tipo_carga, clase, nombre, imei, gb, color, bateria,
@@ -327,14 +335,15 @@ async function insertarDetalle(client, venta, b) {
             costo, costo_moneda, precio_venta, precio_moneda,
             estado, observaciones
          ) VALUES (
-            'unitario','celular',$1,$2,$3,$4,$5,
-            $6,$7,
-            $8,$9,$10,$9,
-            'disponible',$11
+            'unitario',$1,$2,$3,$4,$5,$6,
+            $7,$8,
+            $9,$10,$11,$10,
+            'disponible',$12
          ) RETURNING id`,
         [
+          claseCanje,
           c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null,
-          c.categoria_id ?? null, c.condicion ?? 'usado', // default 'usado' — un canje casi siempre lo es
+          c.categoria_id ?? null, condicionCanje,
           c.valor_toma, c.moneda, c.precio_venta_sugerido ?? 0,
           obsFinal,
         ]
@@ -443,20 +452,25 @@ async function computeDashboard(tenantId, desde, hasta) {
       // ARS → todos los items UYU se computaban como USD directo, inflando
       // costos ~40x en tenants UY).
       //
-      // 2026-07-08 (bug reportado por iOStoreUY): items SIN producto asociado
-      // (ítems manuales — "Diferencia de cambio a favor/en contra", ajustes,
-      // canjes reflejados como venta, etc) NO deben contarse como celulares.
-      // Antes el CASE tenía `pr.clase = 'celular' OR pr.id IS NULL` — el
-      // segundo brazo hacía que TODO ítem manual cayera como celular. En una
-      // venta con 1 iPhone + 2 diferencias de cambio, "Unidades vendidas"
-      // decía "3 celulares · 0 accesorios" cuando la venta real fue 1
-      // celular. Fix: contar SOLO items con `pr.clase` conocido; los items
-      // manuales quedan fuera del KPI de unidades (no representan mercadería
-      // física vendida). El feature de "categorías reales" (con más clases
-      // que celular/accesorio) queda como PR aparte con diseño propio.
+      // 2026-07-08 (bug reportado por iOStoreUY, PR #522): items SIN producto
+      // asociado (ítems manuales — "Diferencia de cambio a favor/en contra",
+      // ajustes, canjes reflejados como venta, etc) NO deben contarse como
+      // celulares. Antes el CASE tenía `pr.clase = 'celular' OR pr.id IS NULL`
+      // — el segundo brazo hacía que TODO ítem manual cayera como celular.
+      //
+      // 2026-07-08 Fase 1 categorías reales (este PR): `clase` pasó de 2
+      // valores a 9. Los KPIs del dashboard siguen agrupando en 2 buckets
+      // (Fase 2 los desglosa por categoría real):
+      //   · celulares  = celular_sellado + celular_usado
+      //   · accesorios = todo el resto (7 slugs restantes)
+      //
+      // La combinación de ambos: ambos FILTERs requieren `pr.clase IN (...)` o
+      // `NOT IN`, así los items manuales (pr.id IS NULL → pr.clase NULL →
+      // NULL evalúa false en ambos IN/NOT IN) quedan fuera de los dos buckets.
+      // Es exactamente el fix de #522 preservado + el nuevo enum de F1.
       const unidades = await client.query(`SELECT
-                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'celular'),0) AS celulares,
-                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'accesorio'),0) AS accesorios,
+                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase IN ('celular_sellado','celular_usado')),0) AS celulares,
+                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase NOT IN ('celular_sellado','celular_usado') AND pr.id IS NOT NULL),0) AS accesorios,
                   COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p);
       // Inversión en canjes (USD). Mismo fix multi-país que arriba.
@@ -539,8 +553,8 @@ async function computeDashboard(tenantId, desde, hasta) {
           COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL), 0)          AS costos_usd,
           COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL AND m.estado = 'acreditado'), 0) AS ingresos_acreditado_usd,
           COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL AND m.estado = 'acreditado'), 0) AS costos_acreditado_usd,
-          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'celular'   AND i.devuelto_at IS NULL), 0)::int AS celulares,
-          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase = 'accesorio' AND i.devuelto_at IS NULL), 0)::int AS accesorios
+          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase IN ('celular_sellado','celular_usado')     AND i.devuelto_at IS NULL), 0)::int AS celulares,
+          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase NOT IN ('celular_sellado','celular_usado') AND pr.id IS NOT NULL AND i.devuelto_at IS NULL), 0)::int AS accesorios
         FROM movimientos_cc m
         LEFT JOIN items_movimiento_cc i ON i.movimiento_cc_id = m.id
         LEFT JOIN productos pr ON pr.id = i.producto_id

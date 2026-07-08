@@ -131,13 +131,17 @@ async function seedProductoForB2B(
 
   // 2) Crear el producto. `tipo_carga: 'lote'` para permitir cantidad > 1
   //    (la fila 2 del spec vende 5 unidades de "Cargador E2E"). 'lote' también
-  //    salta el refine `unitarioCoherente` que exige cantidad=1 en celulares
-  //    unitarios.
+  //    salta el refine `unitarioCoherente` que exige cantidad=1 en clases
+  //    unitarias (celular_sellado, celular_usado, ipads).
+  //
+  //    2026-07-08 Fase 1 categorías reales: `clase` pasó de 'accesorio' a
+  //    'cargadores' (el helper seedea explícitamente "Cargador E2E"), que es
+  //    uno de los 9 slugs nuevos del enum. Ver backend/src/lib/clasesProducto.js.
   const producto = await apiCall({
     token, method: 'POST', path: '/api/inventario/productos', apiUrl,
     body: {
       tipo_carga: 'lote',
-      clase: 'accesorio',
+      clase: 'cargadores',
       nombre,
       categoria_id: categoriaId,
       costo,
