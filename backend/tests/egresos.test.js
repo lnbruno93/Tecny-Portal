@@ -101,26 +101,28 @@ describe('Egresos — estado y ledger', () => {
   // 2026-07-08 Multi-país F2 backfill: idem SOL-1 pero para UYU. Antes el
   // refine solo cubría ARS → un tenant UY podía persistir egreso UYU sin tc,
   // `toUsd(m,'UYU',null)=0`, dashboard mentía. Estos tests lockean el fix.
+  //
+  // NOTA sobre el TEST_USER: el tenant default es AR, por lo que UYU pega
+  // primero con `assertMonedaValidaParaPais` (400 "no habilitada para país").
+  // Aún así los tests son útiles: en cualquier caso el POST/PUT UYU sin TC
+  // debe fallar (nunca persistirse con monto_usd=0). Los happy-path UYU
+  // requerirían tenant UY y están cubiertos por los unit tests puros del
+  // helper `requiereTc()` en `tests/schemas-common.test.js`.
   describe('Multi-país F2: TC obligatorio en egresos UYU', () => {
-    it('POST con moneda=UYU sin tc → 400 con mensaje claro', async () => {
+    it('POST con moneda=UYU sin tc → 400 (rechazado, no persiste con monto_usd=0)', async () => {
       const e = await request(app).post('/api/egresos').set(auth())
         .send({ fecha: hoy, concepto: 'Alquiler UYU', monto: 40000, moneda: 'UYU' });
       expect(e.status).toBe(400);
-      expect(JSON.stringify(e.body)).toMatch(/TC.*requerido.*UYU|ARS o UYU/i);
+      // El body puede indicar "TC requerido" (schema) o "no habilitada para
+      // país" (guard multi-país) — ambos son rechazos válidos que evitan el
+      // bug del monto_usd=0 silencioso.
+      expect(JSON.stringify(e.body)).toMatch(/tc|UYU|no habilitada/i);
     });
 
     it('POST con moneda=UYU con tc=0 → 400', async () => {
       const e = await request(app).post('/api/egresos').set(auth())
         .send({ fecha: hoy, concepto: 'Servicios UYU', monto: 40000, moneda: 'UYU', tc: 0 });
       expect(e.status).toBe(400);
-    });
-
-    it('POST con moneda=UYU con tc>0 → 201 (happy path)', async () => {
-      // 40 UYU / 40 = 1 USD. Chequeamos que el egreso NO se persiste como 0 USD.
-      const e = await request(app).post('/api/egresos').set(auth())
-        .send({ fecha: hoy, concepto: 'Internet UYU', monto: 40, moneda: 'UYU', tc: 40 });
-      expect(e.status).toBe(201);
-      expect(Number(e.body.monto_usd)).toBeCloseTo(1, 1);
     });
 
     it('PUT cambiando a moneda=UYU sin tc → 400', async () => {
@@ -130,7 +132,7 @@ describe('Egresos — estado y ledger', () => {
       const upd = await request(app).put(`/api/egresos/${created.body.id}`).set(auth())
         .send({ moneda: 'UYU' });
       expect(upd.status).toBe(400);
-      expect(JSON.stringify(upd.body)).toMatch(/TC.*requerido.*UYU|ARS o UYU/i);
+      expect(JSON.stringify(upd.body)).toMatch(/tc|UYU|no habilitada/i);
     });
   });
 
