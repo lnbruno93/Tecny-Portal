@@ -384,6 +384,13 @@ export default function Ventas() {
       // 2026-07-04: fmtImei normaliza notación científica (p.ej. "3.5E14" → "350000000000000")
       // heredada de imports XLSX viejos, para que la venta quede persistida limpia.
       imei: fmtImei(p.imei), cantidad: 1, precio_vendido: Number(p.precio_venta) || 0, costo: Number(p.costo) || 0, moneda: p.precio_moneda || 'USD',
+      // 2026-07-07 (Lucas #525): preservamos `bateria` y `condicion` en el
+      // item para renderizar la chip "IMEI · Bat X%" debajo de la descripción
+      // — sin eso, dos iPhones usados con la misma descripción son
+      // indistinguibles en la grilla del cart. Estos campos NO viajan al
+      // backend: handleSaveVenta filtra explícitamente el shape del item, por
+      // lo que agregarlos no altera el payload del POST /ventas.
+      bateria: p.bateria, condicion: p.condicion,
     }]);
     setProdSearch(''); setProdResults([]);
   }
@@ -1326,7 +1333,13 @@ export default function Ventas() {
                         <div className="card" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60, maxHeight: 220, overflowY: 'auto', marginTop: 2, padding: 4 }}>
                           {prodResults.map(p => (
                             <div key={p.id} className="nav-item" style={{ cursor: 'pointer', fontSize: 13 }} onClick={() => addProd(p)}>
-                              <strong>{p.nombre}</strong>&nbsp;{p.color || ''} {p.gb ? p.gb + 'GB' : ''} · {sym(p.precio_moneda)}{fmt(p.precio_venta)}{p.imei ? ' · IMEI ' + fmtImei(p.imei) : ''}
+                              {/* 2026-07-07 (Lucas #525): mostramos batería si el
+                                  producto es usado — sin eso, dos iPhones "usado
+                                  256GB Deep Blue" son indistinguibles en el
+                                  dropdown. Batería es el criterio de decisión
+                                  del operador para elegir cuál agregar. Nuevos
+                                  no muestran batería porque siempre es 100%. */}
+                              <strong>{p.nombre}</strong>&nbsp;{p.color || ''} {p.gb ? p.gb + 'GB' : ''} · {sym(p.precio_moneda)}{fmt(p.precio_venta)}{p.condicion === 'usado' && p.bateria != null ? ' · Bat ' + p.bateria + '%' : ''}{p.imei ? ' · IMEI ' + fmtImei(p.imei) : ''}
                             </div>
                           ))}
                         </div>
@@ -1342,7 +1355,24 @@ export default function Ventas() {
                         // (stack vertical, delete right-aligned). Desktop sin cambios.
                         // Auditoría 2026-06-30 F-13/14: key={_id} en vez de index.
                         <div key={it._id} data-testid="venta-item-row" className="item-grid" style={{ '--cols': '1fr 60px 90px 78px auto', gap: 6, alignItems: 'center' }}>
-                          <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
+                          {/* 2026-07-07 (Lucas #525): wrapper vertical en la
+                              1ra columna para mostrar la chip "IMEI · Bat X%"
+                              debajo del input cuando el ítem vino de un pick
+                              del inventario. La chip solo se muestra si hay
+                              IMEI o (batería + condicion=usado) — items
+                              manuales quedan como antes (solo input). No
+                              rompe layout: el <div> hereda el grid-cell 1fr
+                              y el input adentro estira al 100%. */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                            <input className="input" placeholder="Producto" value={it.descripcion} onChange={e => setItem(it._id, 'descripcion', e.target.value)} />
+                            {(it.imei || (it.condicion === 'usado' && it.bateria != null)) && (
+                              <div style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {it.imei ? 'IMEI ' + fmtImei(it.imei) : ''}
+                                {it.imei && it.condicion === 'usado' && it.bateria != null ? ' · ' : ''}
+                                {it.condicion === 'usado' && it.bateria != null ? 'Bat ' + it.bateria + '%' : ''}
+                              </div>
+                            )}
+                          </div>
                           <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1" value={it.cantidad} onChange={e => setItem(it._id, 'cantidad', e.target.value)} />
                           <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="Precio" value={it.precio_vendido} onChange={e => setItem(it._id, 'precio_vendido', e.target.value)} />
                           {/* Items de venta retail: USD o moneda local del tenant (no

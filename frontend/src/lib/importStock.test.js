@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapStockRows, normHeader, parseNum, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from './importStock';
+import { mapStockRows, normHeader, parseNum, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis, cleanImei } from './importStock';
 
 // Encabezados reales del negocio (con aclaraciones entre paréntesis).
 const HEADERS = ['Nombre', 'GB(solo iph)', 'BATERIA(solo iph)', 'COLOR(solo iph)', 'COSTO',
@@ -17,6 +17,33 @@ describe('normHeader', () => {
     expect(normHeader('MONEDA COSTO(ARS/USD)')).toBe('monedacosto');
     expect(normHeader('STOCK(solo acc)')).toBe('stock');
     expect(normHeader('ID DEPOSITO(SÓLO NÚMERO)')).toBe('iddeposito');
+  });
+});
+
+describe('cleanImei', () => {
+  // Bug reportado por Lucas 2026-07-07: el picker de productos no encontraba
+  // productos por sufijo de IMEI porque el XLSX importado guardaba el número
+  // en notación científica ("3.5342733941411E14") en vez del string de 15
+  // dígitos que el operador ve en pantalla.
+  it('normaliza notación científica de 15 dígitos', () => {
+    // Excel/Sheets emite el 0 trailing como parte del número aunque no lo
+    // muestre en el <v> científico. Number() lo reconstruye.
+    expect(cleanImei('3.5342733941411E14')).toBe('353427339414110');
+    expect(cleanImei('3.51668142411E14')).toBe('351668142411000');
+    expect(cleanImei('1.23E15')).toBe('1230000000000000');
+    expect(cleanImei('3.5E+14')).toBe('350000000000000');
+  });
+  it('IMEI ya limpio pasa sin cambio (idempotente)', () => {
+    expect(cleanImei('353427339414110')).toBe('353427339414110');
+    expect(cleanImei('  355224256215887  ')).toBe('355224256215887');
+  });
+  it('serial alfanumérico (ej. AirPods) pasa sin cambio', () => {
+    expect(cleanImei('SJW0KF7C5P6')).toBe('SJW0KF7C5P6');
+  });
+  it('vacío o null → ""', () => {
+    expect(cleanImei('')).toBe('');
+    expect(cleanImei(null)).toBe('');
+    expect(cleanImei(undefined)).toBe('');
   });
 });
 
@@ -47,6 +74,19 @@ describe('mapStockRows', () => {
     expect(body.precio_venta).toBe(1390);
     expect(body.categoria_id).toBe(11);
     expect(body.deposito_id).toBeNull();
+  });
+
+  it('IMEI en notación científica se normaliza al mapear (bug picker 2026-07-07)', () => {
+    // Excel emite "353427339414110" como "3.5342733941411E14" en el <v> del XML
+    // porque su motor de números trata IMEIs de 15 dígitos como float. Sin
+    // el fix, el string entraba en DB así y la búsqueda ILIKE "%4110%" no
+    // matcheaba (root cause del dropdown vacío del picker).
+    const rows = [HEADERS,
+      ['iPhone 17 Pro Max', '256', '87', 'Cosmic Orange', '1200', 'USD', '1350', 'USD',
+       '3.5342733941411E14', 'Unitario', 'iPhone Nuevo', 'P']];
+    const [{ body, error }] = mapStockRows(rows, ctx);
+    expect(error).toBeNull();
+    expect(body.imei).toBe('353427339414110');
   });
 
   it('accesorio: fila con STOCK → lote, cantidad = STOCK, depósito por ID', () => {
