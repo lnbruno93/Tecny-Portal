@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { computeVentaTotales } from './utils';
+import { computeVentaTotales, sym } from './utils';
+
+// 2026-07-08 (bug iOStoreUY): antes `sym('UYU')` caía en el default 'u$s'
+// porque el helper era `m === 'ARS' ? '$' : 'u$s'`. En "Métodos de pago" del
+// dashboard, un pago Mercadopago UYU 2.744 se mostraba como "u$s2.744"
+// dando la impresión de que eran dólares. Ahora UYU mapea a "$U".
+describe('sym', () => {
+  it('ARS → "$"', () => expect(sym('ARS')).toBe('$'));
+  it('UYU → "$U" (fix bug 2026-07-08)', () => expect(sym('UYU')).toBe('$U'));
+  it('USD → "u$s"', () => expect(sym('USD')).toBe('u$s'));
+  it('USDT → "u$s"', () => expect(sym('USDT')).toBe('u$s'));
+  it('desconocido → "u$s" (default seguro)', () => expect(sym('XYZ')).toBe('u$s'));
+});
 
 // Auditoría 2026-07-04 TANDA 0: tests de regresión para `computeVentaTotales`,
 // la lógica extraída del useMemo de Ventas.jsx. Cubre el cambio de criterio

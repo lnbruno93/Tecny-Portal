@@ -7,9 +7,24 @@
  * regresiones: si alguien remueve o renombra los campos del breakdown, se
  * cae acá.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+
+// Mock del hook de moneda del tenant. Cada test setea el valor que quiere
+// para simular tenants AR (default) o UY. El hook real depende de
+// AuthContext + user.tenant.pais, cadena que no necesitamos para tests
+// unitarios del componente. Ver useMonedasTenant.test.jsx para el hook.
+vi.mock('../../lib/useMonedasTenant', () => ({
+  useMonedasTenant: vi.fn(),
+}));
+
 import Dashboard from './Dashboard';
+import { useMonedasTenant } from '../../lib/useMonedasTenant';
+
+beforeEach(() => {
+  // Default: tenant AR — la mayoría de tests preexistentes asumen ARS.
+  useMonedasTenant.mockReturnValue({ monedaLocal: 'ARS' });
+});
 
 // Factory de un objeto de dashboard mínimo. Solo carga los campos que el
 // componente lee — el resto se queda en sus defaults para no acoplar el test
@@ -103,5 +118,52 @@ describe('Dashboard — gating por ventas.ver_ganancias', () => {
     expect(screen.getByText('Unidades vendidas')).toBeInTheDocument();
     expect(screen.getByText('Costos productos')).toBeInTheDocument();
     expect(screen.getByText('Inversión canjes')).toBeInTheDocument();
+  });
+});
+
+// 2026-07-08 (bug iOStoreUY): antes la card "INGRESOS TOTALES" mostraba
+// `u$s{usd} + ${ars} ARS` hardcoded. En tenants UY los pagos UYU
+// desaparecían del display superior aunque el "USD equivalente" sí los
+// reflejara. Ahora el frontend lee `monedaLocal` del tenant y muestra el
+// complemento correcto (ARS en AR, UYU en UY).
+describe('Dashboard — moneda local del tenant en INGRESOS TOTALES', () => {
+  it('tenant AR: muestra "u$s + $ ARS" (comportamiento previo preservado)', () => {
+    useMonedasTenant.mockReturnValue({ monedaLocal: 'ARS' });
+    render(<Dashboard d={makeDashboard({
+      ingresos: { usd: 100, ars: 25000, uyu: 0, usdt: 0, total_usd_equiv: 120, ventas_total_usd: 100 },
+    })} />);
+    // "Ingresos totales" en el DOM (el uppercase visual es CSS text-transform).
+    const bigNum = screen.getByText('Ingresos totales').parentElement;
+    const txt = bigNum.textContent.replace(/\s+/g, ' ');
+    expect(txt).toMatch(/u\$s100 \+ \$25\.000 ARS/);
+    expect(txt).not.toMatch(/UYU/);
+  });
+
+  it('tenant UY: muestra "u$s + $U UYU" (fix bug 2026-07-08)', () => {
+    useMonedasTenant.mockReturnValue({ monedaLocal: 'UYU' });
+    render(<Dashboard d={makeDashboard({
+      ingresos: { usd: 100, ars: 0, uyu: 66167, usdt: 0, total_usd_equiv: 1755, ventas_total_usd: 100 },
+    })} />);
+    // "Ingresos totales" en el DOM (el uppercase visual es CSS text-transform).
+    const bigNum = screen.getByText('Ingresos totales').parentElement;
+    const txt = bigNum.textContent.replace(/\s+/g, ' ');
+    expect(txt).toMatch(/u\$s100 \+ \$U66\.167 UYU/);
+    expect(txt).not.toMatch(/ARS/);
+  });
+
+  it('tenant UY sin campo uyu (backend viejo pre-fix o cache stale): fallback a 0 (no NaN)', () => {
+    // Defense en el frontend: si el backend NO devuelve `uyu` (cache viejo,
+    // rollback, etc.), mostramos "$U0 UYU" en vez de "$UNaN UYU". Idem para
+    // ars si estuviera undefined.
+    useMonedasTenant.mockReturnValue({ monedaLocal: 'UYU' });
+    render(<Dashboard d={makeDashboard({
+      // Sin uyu.
+      ingresos: { usd: 100, ars: 0, usdt: 0, total_usd_equiv: 100, ventas_total_usd: 100 },
+    })} />);
+    // "Ingresos totales" en el DOM (el uppercase visual es CSS text-transform).
+    const bigNum = screen.getByText('Ingresos totales').parentElement;
+    const txt = bigNum.textContent;
+    expect(txt).toMatch(/\$U0 UYU/);
+    expect(txt).not.toMatch(/NaN/);
   });
 });

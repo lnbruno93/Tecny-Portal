@@ -442,8 +442,20 @@ async function computeDashboard(tenantId, desde, hasta) {
       // BLOCKER 2026-07-05: incluir UYU en la conversión fiat/USD (antes solo
       // ARS → todos los items UYU se computaban como USD directo, inflando
       // costos ~40x en tenants UY).
+      //
+      // 2026-07-08 (bug reportado por iOStoreUY): items SIN producto asociado
+      // (ítems manuales — "Diferencia de cambio a favor/en contra", ajustes,
+      // canjes reflejados como venta, etc) NO deben contarse como celulares.
+      // Antes el CASE tenía `pr.clase = 'celular' OR pr.id IS NULL` — el
+      // segundo brazo hacía que TODO ítem manual cayera como celular. En una
+      // venta con 1 iPhone + 2 diferencias de cambio, "Unidades vendidas"
+      // decía "3 celulares · 0 accesorios" cuando la venta real fue 1
+      // celular. Fix: contar SOLO items con `pr.clase` conocido; los items
+      // manuales quedan fuera del KPI de unidades (no representan mercadería
+      // física vendida). El feature de "categorías reales" (con más clases
+      // que celular/accesorio) queda como PR aparte con diseño propio.
       const unidades = await client.query(`SELECT
-                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'celular' OR pr.id IS NULL),0) AS celulares,
+                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'celular'),0) AS celulares,
                   COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase = 'accesorio'),0) AS accesorios,
                   COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
                 FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p);
@@ -537,8 +549,18 @@ async function computeDashboard(tenantId, desde, hasta) {
       return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b];
     });
 
-    // Ingresos por moneda (a partir del desglose de métodos)
-    const ingresos_por_moneda = { USD: 0, ARS: 0, USDT: 0 };
+    // Ingresos por moneda (a partir del desglose de métodos).
+    //
+    // 2026-07-08: agregado UYU. Antes el diccionario tenía { USD, ARS, USDT }
+    // hardcoded — los pagos UYU se sumaban en `ingresos_usd_equiv` (ese usa
+    // `total_usd` del pago, que sí viene convertido) pero desaparecían del
+    // desglose por moneda. Como la card "INGRESOS TOTALES" del frontend
+    // mostraba solo `usd + ars`, los tenants UY veían "u$s2.744 + $0 ARS"
+    // ignorando por completo los pagos UYU (aunque la línea "USD equivalente"
+    // sí los reflejaba, generando desconcierto). El fallback `|| 0` de la
+    // línea siguiente ya soportaba monedas arbitrarias, pero luego el return
+    // no exponía UYU. Ahora sí.
+    const ingresos_por_moneda = { USD: 0, ARS: 0, UYU: 0, USDT: 0 };
     let ingresos_usd_equiv = 0;
     for (const r of pagos.rows) {
       ingresos_por_moneda[r.moneda] = (ingresos_por_moneda[r.moneda] || 0) + Number(r.total);
@@ -602,6 +624,9 @@ async function computeDashboard(tenantId, desde, hasta) {
       ingresos: {
         usd: round2(ingresos_por_moneda.USD),
         ars: round2(ingresos_por_moneda.ARS),
+        // 2026-07-08: expuesto para tenants UY. El frontend elige qué moneda
+        // local mostrar según el país del tenant.
+        uyu: round2(ingresos_por_moneda.UYU),
         usdt: round2(ingresos_por_moneda.USDT),
         total_usd_equiv: round2(ingresos_usd_equiv + b2bIngresosUsd),
         ventas_total_usd: round2(ingresosVentas),
