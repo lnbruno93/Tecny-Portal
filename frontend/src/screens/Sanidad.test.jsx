@@ -149,6 +149,30 @@ describe('Pantalla Sanidad del Negocio', () => {
     });
   });
 
+  it('regression: no crashea si el fetch inicial falla (bug Sentry #7599311233)', async () => {
+    // 2026-07-08: un user vio pantalla blanca del ErrorBoundary global con
+    // el error "null is not an object (evaluating 'n.map')" a las 1:05 AM
+    // (Safari 18.1). Root cause: primer fetch fallaba → catch seteaba
+    // error sin tocar data → data seguía en null → segundo render con
+    // loading=false, data=null, guard `loading && !data` NO aplicaba →
+    // caía a `data.map(...)` en el JSX principal → crash.
+    //
+    // Este test reproduce ese path: mockeamos rechazo del fetch y
+    // verificamos que:
+    //   1) NO se lanza excepción (nadie hace .map sobre null)
+    //   2) Se muestra el mensaje de error al usuario
+    //   3) Aparece el botón "Reintentar" para poder salir del estado
+    sanidad.list.mockRejectedValueOnce(new Error('Network error'));
+    renderScreen();
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/Network error/i);
+      expect(screen.getByRole('button', { name: /Reintentar/i })).toBeInTheDocument();
+    });
+    // Sanity check: el título de la página sigue visible (no cayó al
+    // ErrorBoundary global).
+    expect(screen.getByRole('heading', { name: /Sanidad del Negocio/i })).toBeInTheDocument();
+  });
+
   it('botón "Agregar gasto" abre el form inline', async () => {
     const user = userEvent.setup();
     renderScreen();

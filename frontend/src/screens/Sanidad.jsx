@@ -789,7 +789,12 @@ export default function Sanidad() {
     try {
       await sanidadApi.upsertProyeccion(periodo, monto);
       // Optimistic: actualizamos solo ese mes en memoria.
-      setData((prev) => prev.map((mes) => {
+      // Defensive `prev || []` (2026-07-08 Sentry #7599311233): si el fetch
+      // inicial falló y `data` quedó null, este save llegaría con prev=null
+      // y crashearía. En ese path el usuario probablemente no puede ni
+      // llegar al handler, pero el guard es barato y evita un crash del
+      // ErrorBoundary si algún flow raro lo dispara.
+      setData((prev) => (prev || []).map((mes) => {
         if (mes.periodo !== periodo) return mes;
         const totalGastosProy = mes.total_gastos.proyectado_usd;
         const netoProyectado  = monto - totalGastosProy;
@@ -836,15 +841,43 @@ export default function Sanidad() {
     }
   }
 
-  if (loading && !data) {
+  // Estado sin data (loading inicial O error del primer fetch).
+  //
+  // Bug 2026-07-08 (Sentry issue #7599311233, "null is not an object
+  // evaluating 'n.map'"): el guard anterior era `loading && !data`. Si el
+  // primer fetch fallaba (Safari 1AM, network hiccup), el catch seteaba
+  // `error` sin tocar `data`, y `finally` bajaba `loading` a false. Segundo
+  // render: `loading=false, data=null` → guard NO aplicaba → caía al render
+  // principal → `data.map(...)` (líneas 886/896/etc) crasheaba el
+  // ErrorBoundary y el user veía la pantalla de fallback global.
+  //
+  // Fix: cortar sobre `!data` — si no hay data (por cualquier motivo:
+  // loading inicial o fetch fallido) mostramos el chrome de la página con
+  // "Cargando…" o el `error` si existe. Los `.map()` posteriores quedan
+  // garantizados con data:array.
+  if (!data) {
     return (
       <div>
         <div className="page-head" style={{ marginBottom: 20 }}>
           <div>
             <h1 className="page-title">Sanidad del Negocio</h1>
-            <div className="page-sub">Cargando…</div>
+            <div className="page-sub">{error ? '' : 'Cargando…'}</div>
           </div>
         </div>
+        {error && (
+          <div role="alert" className="banner" style={{
+            background: 'var(--neg-soft)', color: 'var(--neg)',
+            padding: 10, borderRadius: 6, fontSize: 13, marginBottom: 12,
+          }}>
+            {error}
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={fetchData}
+              style={{ marginLeft: 12 }}
+            >Reintentar</button>
+          </div>
+        )}
       </div>
     );
   }
