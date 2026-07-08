@@ -120,6 +120,11 @@ router.get('/recurrentes', async (req, res, next) => {
 router.post('/recurrentes', egresosCargar, validate(createRecurrenteSchema), async (req, res, next) => {
   try {
     const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
+    // 2026-07-08 Multi-país F2 backfill: mismo guard que POST /egresos:249.
+    // Rechaza si el tenant AR intenta cargar recurrente UYU (o viceversa),
+    // ANTES de tocar la DB. Sin esto, se persistía un recurrente con moneda
+    // inválida para el país → cálculos USD dependían del código cliente.
+    assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
     const row = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `INSERT INTO egresos_recurrentes (concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo)
@@ -138,6 +143,13 @@ router.put('/recurrentes/:id', egresosCargar, validate(updateRecurrenteSchema), 
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
     const { concepto, categoria_id, monto, moneda, tc, metodo_pago_id, dia_del_mes, activo } = req.body;
+    // 2026-07-08 Multi-país F2 backfill: guard país en cambio de moneda del
+    // recurrente. Si el partial trae `moneda` (definido), validamos ANTES del
+    // UPDATE. Si no viene, la fila vieja mantiene su moneda (que ya pasó por
+    // este guard en el INSERT), así no re-chequeamos.
+    if (moneda !== undefined) {
+      assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
+    }
     const row = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `UPDATE egresos_recurrentes SET

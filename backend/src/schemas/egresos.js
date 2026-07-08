@@ -17,18 +17,36 @@ const updateCategoriaSchema = createCategoriaSchema.partial().refine(
 );
 
 // ── Recurrentes (plantillas mensuales) ──
+// 2026-07-08 Multi-país F2 backfill: mismo guard TC que create/update egreso.
+// Antes: schema aceptaba `moneda='UYU'` sin `tc` → `default_usd = round2(toUsd(
+// monto, 'UYU', null)) = 0` en `sanidad.js:183` → ese 0 propagaba a
+// `proyectado_usd` de todos los meses sin override → KPI "Gastos e inversiones
+// totales" del semestre subestimado en tenants UY. Es el hermano del override
+// que ya se fixeó en `upsertOverrideSchema` (routes/sanidad.js:381) en este
+// mismo PR. Fixear también el default para cerrar el path desde arriba.
 const createRecurrenteSchema = z.object({
   concepto:       z.string().trim().min(1, 'Concepto requerido').max(200),
   categoria_id:   z.coerce.number().int().positive().optional().nullable(),
   monto:          z.coerce.number().min(0).default(0),
   moneda:         MonedaEnum.default('USD'),
-  tc:             z.coerce.number().positive().optional().nullable(),  // TC para recurrentes en ARS
+  tc:             z.coerce.number().positive().optional().nullable(),
   metodo_pago_id: z.coerce.number().int().positive().optional().nullable(),
   dia_del_mes:    z.coerce.number().int().min(1).max(31).default(1),
   activo:         z.boolean().optional().default(true),
-}).strict();
+}).strict()
+  .refine(d => !requiereTc(d.moneda) || (d.tc && d.tc > 0), {
+    message: 'TC requerido para recurrentes en ARS o UYU',
+    path: ['tc'],
+  });
+// Update: partial + refine defensivo (mismo patrón que updateEgresoSchema).
+// Solo rechaza si el caller pasa explícitamente `moneda: 'ARS'|'UYU'` Y
+// `tc` explícitamente null/0. Si pasa solo `moneda` sin `tc`, el handler
+// debe re-validar tras hidratar de la fila vieja (mismo criterio SOL-1).
 const updateRecurrenteSchema = createRecurrenteSchema.partial().refine(
   d => Object.values(d).some(v => v !== undefined), { message: 'Al menos un campo es requerido' }
+).refine(
+  d => !requiereTc(d.moneda) || d.tc === undefined || (d.tc && d.tc > 0),
+  { message: 'TC requerido para recurrentes en ARS o UYU', path: ['tc'] }
 );
 
 // ── Egresos ──

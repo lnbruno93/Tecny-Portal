@@ -174,4 +174,27 @@ describe('Egresos — recurrentes', () => {
     expect(gen).toBeTruthy();
     expect(Number(gen.monto_usd)).toBe(100); // 142500 / 1425
   });
+
+  // 2026-07-08 Multi-país F2 backfill: guards TC/país en recurrentes UYU.
+  // El bug era hermano del override (que se fixeó en la misma pasada): antes
+  // el `createRecurrenteSchema` NO tenía refine `requiereTc()` → un tenant UY
+  // podía crear recurrente UYU sin tc → `default_usd = toUsd(m,'UYU',null) = 0`
+  // → subestimaba KPI de Sanidad "Gastos e inversiones totales". Este test
+  // lockea que en NINGÚN caso se persista sin TC.
+  //
+  // NOTA: TEST_USER = tenant AR, entonces UYU pega primero con
+  // `assertMonedaValidaParaPais` (400 "no habilitada para país"). Ambos son
+  // rechazos válidos que evitan el bug del default_usd=0.
+  it('rechaza recurrente UYU sin TC (nunca persiste con default_usd=0)', async () => {
+    const r = await request(app).post('/api/egresos/recurrentes').set(auth())
+      .send({ concepto: 'Alquiler UYU', monto: 40000, moneda: 'UYU', dia_del_mes: 5 });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/tc|UYU|no habilitada/i);
+  });
+
+  it('rechaza recurrente UYU con tc=0', async () => {
+    const r = await request(app).post('/api/egresos/recurrentes').set(auth())
+      .send({ concepto: 'Servicios UYU', monto: 40000, moneda: 'UYU', tc: 0, dia_del_mes: 5 });
+    expect(r.status).toBe(400);
+  });
 });
