@@ -41,6 +41,8 @@ const audit = require('../lib/audit');
 const logger = require('../lib/logger');
 const { sendVerificationEmail, sendWelcomeEmail } = require('../lib/email');
 const { signupSchema, verifyEmailSchema } = require('../schemas/signup');
+// F3.a: seed de las 9 clases base + "Sin categoría" en clases_producto.
+const { seedClasesProducto } = require('../lib/seedClasesProducto');
 // 2026-06-23 F4: TOOLS murió. El signup ahora crea al owner con rol='owner'
 // en tenant_user_roles, que en el nuevo sistema capability-based equivale
 // a bypass total (igual que admin global del sistema viejo).
@@ -347,6 +349,14 @@ router.post('/signup', validate(signupSchema), async (req, res, next) => {
       `INSERT INTO vendedores (nombre, tenant_id) VALUES ($1, $2)`,
       [nombre, tenant.id]
     );
+
+    // 5c-bis. 2026-07-08 Categorías reales F3.a: seed de las 9 clases base +
+    // "Sin categoría" del sistema en `clases_producto`. Reemplaza el enum
+    // hardcoded de F1 por una tabla editable por tenant. Requiere el SET LOCAL
+    // del paso 1.5 (RLS enforced en clases_producto). Idempotente vía ON
+    // CONFLICT — safe si se re-corre el flujo por retry.
+    // Helper: backend/src/lib/seedClasesProducto.js (mirror en la migration).
+    await seedClasesProducto(client, tenant.id);
 
     // 5cb. 2026-06-29 Multi-país F2 (#471): seed de alertas_config para el
     // tenant nuevo. Sin esto el tool get_alertas del bot devuelve vacío y
