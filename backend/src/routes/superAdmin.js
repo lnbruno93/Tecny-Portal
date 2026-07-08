@@ -65,6 +65,8 @@ const { invalidateUserAuth } = require('../lib/userAuthCache');
 // "cambiar país" matchee 1:1 al que recibe un tenant nuevo del país destino.
 const { getDefaultCajasPorPais } = require('./signup');
 const { computeHealthScore } = require('../lib/tenantHealth');
+// F3.a: seed de las 9 clases base + "Sin categoría" en clases_producto.
+const { seedClasesProducto } = require('../lib/seedClasesProducto');
 const { sendPasswordResetEmail } = require('../lib/email');
 const { randomBytes } = require('crypto');
 const logger = require('../lib/logger');
@@ -692,6 +694,9 @@ async function createTenantTx(client, req, body) {
         `INSERT INTO vendedores (nombre, tenant_id) VALUES ($1, $2)`,
         [nombre, tenant.id]
       );
+      // 2026-07-08 F3.a: seed de las 9 clases base + "Sin categoría" en
+      // clases_producto. Réplica del seed de signup.js — mantener alineado.
+      await seedClasesProducto(client, tenant.id);
       await client.query(
         `INSERT INTO config (id, pct_financiera, tenant_id) VALUES (1, 0, $1)
          ON CONFLICT (tenant_id, id) DO NOTHING`,

@@ -41,6 +41,13 @@ const {
   queryProductosSchema,
   queryDesgloseSchema,
 } = require('../schemas/inventario');
+// F3.a — CRUD de categorías (clases_producto) por tenant. Ver design doc:
+// `docs/design/categorias-crud-tenant-f3.md`.
+const {
+  createClaseProductoSchema,
+  updateClaseProductoSchema,
+  reorderClasesProductoSchema,
+} = require('../schemas/clasesProducto');
 
 router.use(requireAuth);
 
@@ -1347,5 +1354,237 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
     client.release();
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// CATEGORÍAS (clases_producto) — CRUD por tenant — F3.a
+// ─────────────────────────────────────────────────────────────────────
+//
+// Reemplaza el enum global de 9 slugs (`productos.clase`) por una tabla
+// editable por tenant. Design doc: `docs/design/categorias-crud-tenant-f3.md`.
+//
+// Notas de política:
+//   - La fila `es_sin_categoria=true` es de sistema — no se puede renombrar,
+//     desactivar ni borrar. Es el fallback del importador XLSX.
+//   - Delete con productos activos: BLOQUEA con 409 (el operador debe reasignar
+//     primero). Alternativas evaluadas y descartadas: reasignar a otra clase
+//     en el mismo request, orphan silencioso.
+//   - Unique (tenant_id, LOWER(nombre)) case-insensitive, ignorando soft-deleted
+//     — reusar un nombre borrado es válido.
+
+// GET /clases — listar todas las clases del tenant, con count de productos
+// asociados (para el guard de delete y para display).
+router.get('/clases', async (req, res, next) => {
+  try {
+    const rows = await db.withTenant(req.tenantId, async (client) => {
+      const { rows } = await client.query(
+        `SELECT c.id, c.nombre, c.emoji, c.orden, c.activa,
+                c.es_base, c.es_sin_categoria, c.slug_legacy,
+                c.created_at, c.updated_at,
+                COUNT(p.id) FILTER (WHERE p.deleted_at IS NULL)::int AS count_productos
+           FROM clases_producto c
+           LEFT JOIN productos p ON p.clase_id = c.id
+          WHERE c.deleted_at IS NULL
+          GROUP BY c.id
+          ORDER BY c.orden ASC, LOWER(c.nombre) ASC`
+      );
+      return rows;
+    });
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// POST /clases — crear una clase nueva (custom del tenant).
+router.post(
+  '/clases',
+  requireCapability('inventario.crear'),
+  validate(createClaseProductoSchema),
+  async (req, res, next) => {
+    try {
+      const { nombre, emoji, activa, orden } = req.body;
+      const row = await db.withTenant(req.tenantId, async (client) => {
+        try {
+          const { rows } = await client.query(
+            `INSERT INTO clases_producto (tenant_id, nombre, emoji, orden, activa)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [req.tenantId, nombre, emoji ?? null, orden ?? 0, activa]
+          );
+          await audit(client, 'clases_producto', 'INSERT', rows[0].id, {
+            despues: rows[0], user_id: req.user.id, req,
+          });
+          return rows[0];
+        } catch (err) {
+          // Unique (tenant_id, LOWER(nombre)) → conflict amigable.
+          if (err.code === '23505' && err.constraint === 'uq_clases_producto_tenant_nombre') {
+            const e = new Error('Ya existe una categoría con ese nombre');
+            e.status = 409;
+            e.code = 'nombre_duplicado';
+            throw e;
+          }
+          throw err;
+        }
+      });
+      res.status(201).json(row);
+    } catch (err) { next(err); }
+  }
+);
+
+// PUT /clases/:id — editar (nombre, emoji, activa, orden).
+// La fila `es_sin_categoria=true` NO se puede editar (400).
+router.put(
+  '/clases/:id',
+  requireCapability('inventario.editar'),
+  validate(updateClaseProductoSchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      // No hacemos parseId (UUID, no int). Chequeo básico defensivo.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return res.status(400).json({ error: 'ID inválido' });
+      }
+      const { nombre, emoji, activa, orden } = req.body;
+      const result = await db.withTenant(req.tenantId, async (client) => {
+        // Guard: solo edición de filas del tenant, no borradas, no "Sin categoría".
+        const { rows: existing } = await client.query(
+          `SELECT * FROM clases_producto
+            WHERE id = $1 AND deleted_at IS NULL`,
+          [id]
+        );
+        if (!existing[0]) return { notFound: true };
+        if (existing[0].es_sin_categoria) return { protegida: true };
+
+        try {
+          // Distinguir "no mandado" (mantener valor viejo) de "explicit null"
+          // (borrar emoji). El schema Zod permite emoji: null; Postgres COALESCE
+          // no diferencia — usamos un sentinel string improbable.
+          const emojiParam = emoji === null ? '__unset__' : (emoji ?? null);
+          const { rows } = await client.query(
+            `UPDATE clases_producto SET
+               nombre = COALESCE($1, nombre),
+               emoji  = CASE WHEN $2::text = '__unset__' THEN NULL
+                             WHEN $2 IS NULL THEN emoji
+                             ELSE $2 END,
+               activa = COALESCE($3, activa),
+               orden  = COALESCE($4, orden)
+             WHERE id = $5 AND deleted_at IS NULL
+             RETURNING *`,
+            [nombre ?? null, emojiParam, activa ?? null, orden ?? null, id]
+          );
+          await audit(client, 'clases_producto', 'UPDATE', id, {
+            antes: existing[0], despues: rows[0], user_id: req.user.id, req,
+          });
+          return { ok: rows[0] };
+        } catch (err) {
+          if (err.code === '23505' && err.constraint === 'uq_clases_producto_tenant_nombre') {
+            const e = new Error('Ya existe otra categoría con ese nombre');
+            e.status = 409;
+            e.code = 'nombre_duplicado';
+            throw e;
+          }
+          throw err;
+        }
+      });
+      if (result.notFound) return res.status(404).json({ error: 'Categoría no encontrada' });
+      if (result.protegida) {
+        return res.status(400).json({
+          error: 'La categoría "Sin categoría" es del sistema y no se puede editar.',
+          code: 'categoria_protegida',
+        });
+      }
+      res.json(result.ok);
+    } catch (err) { next(err); }
+  }
+);
+
+// DELETE /clases/:id — soft-delete. Bloquea con 409 si hay productos activos
+// asociados; el operador debe reasignarlos primero. Bloquea con 400 si es
+// la fila "Sin categoría" del sistema.
+router.delete(
+  '/clases/:id',
+  requireCapability('inventario.eliminar'),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return res.status(400).json({ error: 'ID inválido' });
+      }
+      const result = await db.withTenant(req.tenantId, async (client) => {
+        const { rows: existing } = await client.query(
+          `SELECT * FROM clases_producto
+            WHERE id = $1 AND deleted_at IS NULL`,
+          [id]
+        );
+        if (!existing[0]) return { notFound: true };
+        if (existing[0].es_sin_categoria) return { protegida: true };
+
+        // Guard: no borrar si hay productos activos asociados.
+        const { rows: countRows } = await client.query(
+          `SELECT COUNT(*)::int AS n FROM productos
+            WHERE clase_id = $1 AND deleted_at IS NULL`,
+          [id]
+        );
+        const count = countRows[0].n;
+        if (count > 0) return { hasProductos: true, count };
+
+        const { rows } = await client.query(
+          `UPDATE clases_producto SET deleted_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING *`,
+          [id]
+        );
+        await audit(client, 'clases_producto', 'DELETE', id, {
+          antes: existing[0], user_id: req.user.id, req,
+        });
+        return { ok: rows[0] };
+      });
+      if (result.notFound) return res.status(404).json({ error: 'Categoría no encontrada' });
+      if (result.protegida) {
+        return res.status(400).json({
+          error: 'La categoría "Sin categoría" es del sistema y no se puede borrar.',
+          code: 'categoria_protegida',
+        });
+      }
+      if (result.hasProductos) {
+        return res.status(409).json({
+          error: `No se puede borrar: hay ${result.count} producto${result.count === 1 ? '' : 's'} en esta categoría. Reasignalos primero.`,
+          code: 'has_productos',
+          count_productos: result.count,
+        });
+      }
+      res.status(204).end();
+    } catch (err) { next(err); }
+  }
+);
+
+// POST /clases/reorder — batch update del orden. Recibe array de {id, orden}.
+// Transaccional (dentro de la withTenant tx). Silenciosamente skipea IDs
+// que no pertenecen al tenant (RLS los filtra en el UPDATE) o ya borrados.
+router.post(
+  '/clases/reorder',
+  requireCapability('inventario.editar'),
+  validate(reorderClasesProductoSchema),
+  async (req, res, next) => {
+    try {
+      const { items } = req.body;
+      const updated = await db.withTenant(req.tenantId, async (client) => {
+        let n = 0;
+        for (const it of items) {
+          const { rowCount } = await client.query(
+            `UPDATE clases_producto SET orden = $1
+              WHERE id = $2 AND deleted_at IS NULL`,
+            [it.orden, it.id]
+          );
+          n += rowCount;
+        }
+        await audit(client, 'clases_producto', 'REORDER', null, {
+          despues: { count: n, ids: items.map(i => i.id) },
+          user_id: req.user.id, req,
+        });
+        return n;
+      });
+      res.json({ updated });
+    } catch (err) { next(err); }
+  }
+);
 
 module.exports = router;
