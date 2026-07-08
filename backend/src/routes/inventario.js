@@ -562,7 +562,7 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
 
     const countQuery = `SELECT COUNT(*) FROM productos p WHERE ${where}`;
     const dataQuery = `
-      SELECT p.id, p.tipo_carga, p.clase, p.nombre, p.imei, p.gb, p.color, p.bateria,
+      SELECT p.id, p.tipo_carga, p.clase, p.clase_id, p.nombre, p.imei, p.gb, p.color, p.bateria,
              p.categoria_id, p.deposito_id, p.proveedor, p.costo, p.costo_moneda,
              p.precio_venta, p.precio_moneda, p.trackear_stock, p.cantidad, p.estado,
              p.observaciones, p.condicion, p.oculto, p.created_at,
@@ -1351,11 +1351,24 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
     const cols = PRODUCTO_COLS.filter(c => !c.startsWith('foto_'));
 
     // Mismo default explícito que en el POST simple: columnas NOT NULL nuevas.
-    const buf = productos.map(p => ({
-      ...p,
-      condicion: p.condicion ?? 'nuevo',
-      oculto:    p.oculto    ?? false,
-    }));
+    // F3.c: además, resolveClaseAndClaseId por cada producto para poblar el
+    // `clase_id` desde el `slug_legacy` (o viceversa). Se hace en el bucle
+    // para no tener que agrupar por clase — cada producto puede tener una
+    // clase distinta y el catálogo `clases_producto` es chico (10-30 filas),
+    // por lo que el SELECT es cheap. En producción, si el bulk es grande
+    // y hace muchas categorías, se puede optimizar con un cache in-memory
+    // por request; hoy no vale la pena.
+    const buf = [];
+    for (const p of productos) {
+      const claseInfo = await resolveClaseAndClaseId(client, req.tenantId, p);
+      buf.push({
+        ...p,
+        clase:     claseInfo.clase,
+        clase_id:  claseInfo.clase_id,
+        condicion: p.condicion ?? 'nuevo',
+        oculto:    p.oculto    ?? false,
+      });
+    }
 
     // Perf H2 auditoría 2026-06-06: bulk INSERT con UNNEST en una sola query.
     // Antes hacíamos un INSERT por producto dentro del for → 500 productos =
@@ -1368,6 +1381,7 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
     // PG_TYPES acá. Mismo patrón que items_movimiento_cc en cuentas.js:470.
     const PG_TYPES = {
       tipo_carga:    'text',    clase:         'text',
+      clase_id:      'uuid',    // F3.c (2026-07-08): FK a clases_producto
       nombre:        'text',    imei:          'text',
       gb:            'text',    color:         'text',
       bateria:       'smallint', categoria_id: 'int',

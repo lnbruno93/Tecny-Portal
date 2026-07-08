@@ -121,6 +121,20 @@ describe('Productos', () => {
   // Cada tenant tiene 9 filas base en clases_producto (seedeadas por la migration
   // 20260708000002). El slug_legacy de cada base matchea el enum viejo.
   describe('F3.c derive bidireccional clase ↔ clase_id', () => {
+    const productosCreados = [];
+    afterAll(async () => {
+      // Cleanup: hard-delete los productos creados en este describe para no
+      // contaminar los tests siguientes (métricas, count por categoría, etc).
+      // Usamos DELETE directo del pool (bypassa auth y capabilities) porque
+      // el endpoint DELETE hace soft-delete y los soft-deleted aún cuentan
+      // en algunos KPIs históricos. Los productos creados acá son test-only.
+      for (const id of productosCreados) {
+        await pool.query('DELETE FROM productos WHERE id = $1', [id]);
+      }
+    });
+    function pushId(res) {
+      if (res.body?.id) productosCreados.push(res.body.id);
+    }
     async function claseIdDe(slug) {
       const list = await request(app).get('/api/inventario/clases').set(auth());
       return list.body.find(c => c.slug_legacy === slug)?.id;
@@ -137,6 +151,7 @@ describe('Productos', () => {
       // El clase_id debería matchear la fila base del slug watch
       const expected = await claseIdDe('watch');
       expect(res.body.clase_id).toBe(expected);
+      pushId(res);
     });
 
     it('POST con solo `clase_id` → backend deriva clase desde slug_legacy', async () => {
@@ -151,6 +166,7 @@ describe('Productos', () => {
       expect(res.status).toBe(201);
       expect(res.body.clase_id).toBe(clase_id);
       expect(res.body.clase).toBe('cargadores');
+      pushId(res);
     });
 
     it('POST con clase_id inexistente → 400', async () => {
@@ -170,6 +186,7 @@ describe('Productos', () => {
         nombre: 'Cambio de clase', cantidad: 1, costo: 100,
       });
       expect(created.status).toBe(201);
+      pushId(created);
       const consolasId = await claseIdDe('consolas');
       const updated = await request(app).put(`/api/inventario/productos/${created.body.id}`)
         .set(auth()).send({ clase_id: consolasId });
