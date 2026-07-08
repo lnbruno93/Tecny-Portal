@@ -2,9 +2,17 @@
 // pero tampoco está usado en otros screens hoy. Si en algún momento se reusa,
 // promover a `frontend/src/lib/`.
 
-// Símbolo de moneda — ARS = "$", USD/USDT = "u$s".
+// Símbolo de moneda — ARS = "$", UYU = "$U", USD/USDT = "u$s".
+//
+// 2026-07-08 (bug iOStoreUY): antes el default para todo lo que no era ARS
+// era "u$s" — un pago Mercadopago UYU 2.744 se mostraba como "u$s2.744" en
+// la tabla "Métodos de pago" del dashboard, dando la impresión de que eran
+// dólares. Agregamos UYU al mapeo (mismo símbolo que usa lib/format.ts en
+// fmtMoney para consistencia visual con Cotizador y Cambios).
 export function sym(m) {
-  return m === 'ARS' ? '$' : 'u$s';
+  if (m === 'ARS') return '$';
+  if (m === 'UYU') return '$U';
+  return 'u$s';
 }
 
 // 2026-06-10 — `toUsd` se promovió a frontend/src/lib/money.js para poder

@@ -16,11 +16,24 @@
 
 import { fmt } from '../../lib/format';
 import { sym } from './utils';
+import { useMonedasTenant } from '../../lib/useMonedasTenant';
 import HourChart from './HourChart';
 
 export default function Dashboard({ d }) {
+  // 2026-07-08 (bug reportado por iOStoreUY): antes la card "INGRESOS
+  // TOTALES" mostraba siempre `u$s{usd} + ${ars} ARS` hardcoded — en tenants
+  // UY los pagos UYU desaparecían del display superior aunque el "USD
+  // equivalente" sí los reflejara. Ahora leemos la moneda local del tenant
+  // y mostramos el complemento correcto: UYU en tenants UY, ARS en AR.
+  const { monedaLocal } = useMonedasTenant();
   if (!d) return null;
   const i = d.ingresos, dif = d.diferencias;
+  // Complemento en moneda local. En AR toma `ars`, en UY toma `uyu`. Si el
+  // backend devolvió el campo (ver computeDashboard 2026-07-08) lo usamos;
+  // si no (rollback futuro o cache viejo pre-fix), fallback a 0 en vez de
+  // undefined para que fmt() no muestre "NaN".
+  const localAmt = monedaLocal === 'UYU' ? Number(i.uyu ?? 0) : Number(i.ars ?? 0);
+  const localSymbol = monedaLocal === 'UYU' ? '$U' : '$';
   // 2026-07-04 (ventas.ver_ganancias): si el backend redactó el bloque de
   // ganancia (el user no tiene la cap), NO renderizamos la KPI card. Modo
   // "ocultar completamente" — no mostramos "—" ni placeholder porque queda
@@ -36,7 +49,7 @@ export default function Dashboard({ d }) {
         <div className="kpi-label">Ingresos totales</div>
         <div style={{ fontSize: 26, fontWeight: 700, margin: '4px 0' }}>
           <span className="mono">u$s{fmt(i.usd)}</span>{' '}
-          <span className="muted" style={{ fontSize: 17 }}>+ ${fmt(i.ars)} ARS</span>
+          <span className="muted" style={{ fontSize: 17 }}>+ {localSymbol}{fmt(localAmt)} {monedaLocal}</span>
         </div>
         <div className="muted" style={{ fontSize: 12 }}>
           USD equivalente:{' '}

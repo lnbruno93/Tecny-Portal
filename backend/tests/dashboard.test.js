@@ -289,3 +289,74 @@ describe('Agregaciones reales con datos sembrados (SQL directo)', () => {
     }
   });
 });
+
+// 2026-07-08 (bug reportado por iOStoreUY): el dashboard operativo de
+// Ventas (GET /api/ventas/dashboard) tenía 2 bugs de shape que impactaban
+// tenants UY y AR con ventas locales.
+describe('GET /api/ventas/dashboard — bugs iOStoreUY 2026-07-08', () => {
+  it('devuelve `ingresos.uyu` en el shape (antes solo había usd/ars/usdt)', async () => {
+    // No requiere seed: incluso con 0 ventas el campo tiene que existir en el
+    // response para que el frontend pueda leer `i.uyu` sin caer en undefined
+    // (el fallback `?? 0` lo cubre, pero el contrato del backend debe
+    // exponer el campo consistentemente).
+    const res = await request(app)
+      .get('/api/ventas/dashboard?desde=2026-07-08&hasta=2026-07-08')
+      .set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.ingresos).toHaveProperty('uyu');
+    expect(typeof res.body.ingresos.uyu).toBe('number');
+    // Y los que ya estaban no se rompieron.
+    expect(res.body.ingresos).toHaveProperty('usd');
+    expect(res.body.ingresos).toHaveProperty('ars');
+    expect(res.body.ingresos).toHaveProperty('usdt');
+    expect(res.body.ingresos).toHaveProperty('total_usd_equiv');
+  });
+
+  it('items sin producto (diferencia de cambio, ajustes) NO cuentan como celulares', async () => {
+    // Bug: la query anterior tenía `pr.clase = 'celular' OR pr.id IS NULL`.
+    // El segundo brazo hacía que TODO item manual cayera como celular. Ahora
+    // sólo se cuentan items con producto asociado + clase = 'celular'.
+    //
+    // Setup: creamos una venta con 1 item manual (sin producto_id — ej.
+    // "Diferencia de cambio a favor"). Antes del fix, unidades.celulares = 1;
+    // ahora unidades.celulares = 0 (no hay mercadería física vendida).
+    const hoy = new Date().toISOString().split('T')[0];
+    // Vendedor requerido por el schema de venta_items (venta_items.vendedor_id
+    // referencia vendedores; puede ser NULL en el schema pero el test seed
+    // lo setea para facilitar la cuenta).
+    const { rows: vRows } = await pool.query(
+      `INSERT INTO vendedores (nombre) VALUES ('DiffCambio Test') RETURNING id`
+    );
+    const vendedorId = vRows[0].id;
+    // Insertar la venta cruda vía SQL directo (evita depender del schema del
+    // POST /api/ventas que evoluciona con features de negocio). tenant_id=1
+    // es el test admin (mismo que el resto de este suite). order_id NOT NULL
+    // — usamos un valor pseudo-aleatorio para no chocar en re-corridas.
+    const { rows: sRows } = await pool.query(
+      `INSERT INTO ventas (tenant_id, order_id, fecha, total_usd, ganancia_usd, estado, cliente_nombre)
+       VALUES (1, 'test-diffcambio-' || floor(random()*1000000), $1, 50, 50, 'acreditado', 'Cliente diff-cambio test')
+       RETURNING id`,
+      [hoy]
+    );
+    const ventaId = sRows[0].id;
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda, producto_id, vendedor_id)
+       VALUES ($1, 'Diferencia de cambio (a favor)', 1, 50, 0, 'USD', NULL, $2)`,
+      [ventaId, vendedorId]
+    );
+
+    const res = await request(app)
+      .get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`)
+      .set(auth());
+    expect(res.status).toBe(200);
+    // El item de diferencia de cambio NO debe contarse como celular.
+    // (Puede haber otras ventas hoy del setup — chequeamos que el número no
+    // suba por ESTE item específico. Si ANTES había 0 celulares y este item
+    // no existía, el fix garantiza que sigue en 0 con el item agregado.)
+    expect(res.body.unidades.celulares).toBe(0);
+    expect(res.body.unidades.accesorios).toBe(0);
+    // La venta sí impacta en ingresos/ganancia (el item aporta 50 USD) — el
+    // fix es específico al KPI de unidades, no a la contabilidad general.
+    expect(res.body.ventas_count).toBeGreaterThanOrEqual(1);
+  });
+});

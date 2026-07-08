@@ -116,7 +116,11 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
 
     // ── Pre-condición vía API ────────────────────────────────────────────
     // Item: descripcion única para no chocar con otros specs. Sin producto_id
-    // → cae como "accesorio" en el split de unidades del dashboard.
+    // → NO cuenta en el KPI de unidades del dashboard (fix 2026-07-08 bug
+    // iOStoreUY: antes items sin producto caían como "celular" por el brazo
+    // `pr.id IS NULL` del CASE, contaminando el KPI con diferencias de cambio,
+    // ajustes y canjes). Ingresos/costos/ganancia SÍ impactan — este item
+    // aporta 200 USD ingreso y 50 USD costo.
     const venta = await createVentaViaApi({
       fecha,
       items: [{
@@ -151,10 +155,13 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
     expect(Number(d.ventas_count)).toBe(1);
     expect(Number(d.ticket_promedio_usd)).toBe(200);
     expect(Number(d.ingresos.usd)).toBe(200);
-    // Unidades vendidas — el item sin producto_id cuenta como accesorio
-    // en el backend (split por clase del producto, NULL → accesorio default).
+    // Unidades vendidas — items sin producto_id NO se cuentan en el KPI
+    // (fix 2026-07-08). El backend hace `FILTER (WHERE pr.clase = 'celular'
+    // OR pr.clase = 'accesorio')`; items manuales sin producto asociado
+    // (diferencias de cambio, ajustes, canjes) quedan fuera del split. Este
+    // spec crea 1 item manual → 0 unidades esperado.
     const totalUnidades = Number(d.unidades.celulares || 0) + Number(d.unidades.accesorios || 0);
-    expect(totalUnidades).toBe(1);
+    expect(totalUnidades).toBe(0);
     await apiReq.dispose();
 
     // ── UI ───────────────────────────────────────────────────────────────
@@ -206,13 +213,13 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
 
     // ── KPI: Unidades vendidas ───────────────────────────────────────────
     // Render: "📱 {celulares} · 🎧 {accesorios}" en .kpi-value. Para nuestro
-    // item (sin producto_id) el backend lo clasifica como celular por default
-    // (rama del CASE: COALESCE(p.clase, 'celular')). El total = 1; no asertamos
-    // qué bucket (eso ya lo verifica el bloque de API arriba) — sólo que la
-    // suma sea 1 unidad. Regex tolera ambas combinaciones (0·1 o 1·0).
+    // item (sin producto_id) el backend NO lo cuenta (fix 2026-07-08) porque
+    // el CASE ahora es `FILTER (WHERE pr.clase = 'celular' | 'accesorio')` —
+    // sin brazo `pr.id IS NULL`. Items manuales (diferencias, ajustes) no
+    // contaminan el KPI. Esperamos "0 · 0" (con separador variable).
     const unidadesCard = page.locator('.card-tight', { has: page.getByText('Unidades vendidas', { exact: true }) });
     await expect(unidadesCard).toBeVisible();
-    await expect(unidadesCard.locator('.kpi-value')).toHaveText(/(?:^|\D)(?:0\s+·.*?\s+1|1\s+·.*?\s+0)(?:\D|$)/);
+    await expect(unidadesCard.locator('.kpi-value')).toHaveText(/(?:^|\D)0\s+·.*?\s+0(?:\D|$)/);
 
     // ── KPI: Ganancia neta ───────────────────────────────────────────────
     // Render: <.kpi-value>u$s150</.kpi-value> + <.muted><.margen> 75% · egresos…
