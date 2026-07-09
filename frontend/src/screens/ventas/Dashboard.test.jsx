@@ -188,15 +188,20 @@ describe('Dashboard — moneda local del tenant en INGRESOS TOTALES', () => {
       expect(txt).not.toMatch(/null|undefined/);
     });
 
-    it('shape LEGACY F2 (object {slug: n}): usa CLASES_LABELS hardcoded (backend viejo + client nuevo)', () => {
+    it('shape LEGACY F2 (object {slug: n}): F3.d-1 removió el path — cae al fallback binario', () => {
+      // F3.d-1 (2026-07-09): removimos el path 2-way del object legacy F2.
+      // Si un backend viejo respondiera con el shape object (edge case: cache
+      // CDN durante rollout), el frontend detecta que NO es Array y cae al
+      // bucket binario. Preferible a mantener CLASES_LABELS solo para este
+      // path efímero.
       render(<Dashboard d={makeDashboard({
+        unidades: { celulares: 7, accesorios: 3 },
         unidades_por_clase: { celular_sellado: 5, watch: 2 },
       })} />);
       const card = screen.getByTestId('kpi-unidades');
       const txt = card.textContent;
-      // El client usa CLASES_LABELS del enum F1 hardcoded para el chip.
-      expect(txt).toMatch(/Celular Sellado.*5|5.*Celular Sellado/);
-      expect(txt).toMatch(/Watch.*2|2.*Watch/);
+      // Cae al bucket binario porque no es array.
+      expect(txt).toMatch(/📱\s*7\s*·\s*🎧\s*3/);
     });
 
     it('shape PRE-F2 (undefined): fallback al bucket binario', () => {

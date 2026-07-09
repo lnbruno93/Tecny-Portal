@@ -17,7 +17,12 @@
 import { fmt } from '../../lib/format';
 import { sym } from './utils';
 import { useMonedasTenant } from '../../lib/useMonedasTenant';
-import { CLASES_LABELS, claseLabel } from '../../lib/clasesProducto';
+// F3.d-1 (2026-07-09): CLASES_LABELS y claseLabel se removieron. Los chips
+// del KPI "Unidades vendidas" ahora usan directo el nombre + emoji del
+// backend (shape array F3.c-2 PR-2 #533). El shape legacy F2 object
+// {slug: n} también se removió del renderer 3-way — asumimos que el
+// backend siempre responde con array. Si el backend antiguo estuviera
+// activo (rollback), el frontend cae al bucket binario pre-F2.
 import HourChart from './HourChart';
 
 export default function Dashboard({ d }) {
@@ -67,21 +72,19 @@ export default function Dashboard({ d }) {
         <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-unidades">
           <div className="kpi-label">Unidades vendidas</div>
           {/*
-            F3.c-2 (2026-07-09): backend cambió el shape de `unidades_por_clase`.
-            - Nuevo (post PR de este cambio): array `[{clase_id, nombre, emoji, n}]`
-              ordenado desc por `n` server-side. Nombre + emoji vienen del JOIN
-              con `clases_producto` — labels editables por tenant.
-            - Legacy (F2 #524): object `{slug: n}` mapeando slug F1 → count.
-              Requería CLASES_LABELS[slug] client-side para armar el chip.
-            - Fallback viejo pre-F2: bucket binario `📱 celulares · 🎧 accesorios`
-              con d.unidades.{celulares,accesorios}.
+            F3.d-1 (2026-07-09): 2-way render.
+            - Shape principal (F3.c-2 PR-2 #533): array pre-ordenado
+              `[{clase_id, nombre, emoji, n}]` con labels editables por tenant.
+            - Fallback: bucket binario `📱 celulares · 🎧 accesorios` cuando el
+              array viene vacío/undefined (edge case: backend viejo post-rollback,
+              o rango sin ventas donde el array queda []).
 
-            Detectamos qué shape es y renderizamos acorde. La transición backend→
-            frontend rara vez es sincrónica (cache CDN, service worker), así que
-            los 3 paths de render conviven durante el rollout.
+            El shape legacy F2 (object `{slug: n}`) se removió — asumimos que
+            el backend siempre responde con array post PR #533. Si algún cache
+            CDN sirviera el object legacy durante ~5min de rollout, cae al
+            bucket binario silenciosamente (sin crash).
           */}
           {Array.isArray(d.unidades_por_clase) && d.unidades_por_clase.length > 0 ? (
-            // Nuevo shape F3.c-2: array pre-ordenado, nombre+emoji del backend.
             <div className="kpi-clases" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
               {d.unidades_por_clase.map(item => (
                 <span
@@ -94,25 +97,7 @@ export default function Dashboard({ d }) {
                 </span>
               ))}
             </div>
-          ) : d.unidades_por_clase && typeof d.unidades_por_clase === 'object' && Object.keys(d.unidades_por_clase).length > 0 ? (
-            // Shape legacy F2 (object {slug: n}) — server viejo + client nuevo
-            // durante rollout. Usamos CLASES_LABELS hardcoded del enum F1.
-            <div className="kpi-clases" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-              {Object.entries(d.unidades_por_clase)
-                .sort(([, a], [, b]) => Number(b) - Number(a))
-                .map(([slug, n]) => (
-                  <span
-                    key={slug}
-                    className="chip mono"
-                    style={{ fontSize: 13 }}
-                    title={`${n} unidad${n === 1 ? '' : 'es'} de ${claseLabel(slug)}`}
-                  >
-                    {CLASES_LABELS[slug] || slug} <strong>{n}</strong>
-                  </span>
-                ))}
-            </div>
           ) : (
-            // Fallback pre-F2: bucket binario.
             <div className="kpi-value" style={{ fontSize: 17 }}>
               📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
             </div>
