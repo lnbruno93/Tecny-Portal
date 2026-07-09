@@ -835,7 +835,6 @@ async function resolveClaseInfo(client, tenantId, body) {
     );
     if (rows[0]) {
       body.clase_id = rows[0].id;   // muta body para que el INSERT use el UUID
-      clase_id = rows[0].id;
       return { slug_legacy: rows[0].slug_legacy };
     }
     // slug no matcheó → dejamos clase_id null (edge case: tenant sin esa base)
