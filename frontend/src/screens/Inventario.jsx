@@ -28,6 +28,10 @@ import { useConfirm } from '../components/ConfirmModal';
 // F3.b (2026-07-08): modal de gestión de las Categorías (clases_producto)
 // nuevo — ver design doc `docs/design/categorias-crud-tenant-f3.md`.
 import CategoriasProductoModal from '../components/CategoriasProductoModal';
+// F3-Fase2b (2026-07-09): modal de detalle "Inversión por categoría" — expande
+// el KPI Total valorizado con el breakdown granular por clase_id del catálogo
+// del tenant. Consume `inv_por_clase[]` del endpoint /productos/metricas.
+import InventarioPorCategoriaModal from '../components/InventarioPorCategoriaModal';
 import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
@@ -327,6 +331,10 @@ export default function Inventario() {
 
   // F3.b — Modal nuevo de gestión de Categorías (clases_producto).
   const [showClasesModal, setShowClasesModal] = useState(false);
+
+  // F3-Fase2b — Modal de detalle "Inversión por categoría" (drawer visual
+  // reservado del KPI total valorizado, Opción B de los mockups).
+  const [showInvPorCat, setShowInvPorCat] = useState(false);
 
   // useModal hooks — auditoría 2026-06-06 UX B2: Esc cierra los 3 modales
   // (form de producto, import xlsx, catálogos), focus trap, body scroll lock.
@@ -1104,12 +1112,23 @@ export default function Inventario() {
       {/* ── KPIs ── */}
       {/* 2026-06-24 mobile fix: usar .kpi-grid (no .row) — heredamos el
           breakpoint <880px → repeat(2, 1fr) del styles.css:1150, que evita
-          que los 4 cards se exprimen a ~70px en SE/S20. */}
-      <div className="kpi-grid" style={{ marginBottom: 18 }}>
+          que los cards se exprimen a ~70px en SE/S20.
+          F3-Fase2b (2026-07-09): 4 cards (En técnico / Stock / Equipos / Accesorios)
+          → 3 cards (En técnico / Stock disponible / Total valorizado USD).
+          Los buckets equipos/accesorios eran una simplificación pre-F3 (2 tipos
+          fijos); con categorías reales por tenant no tiene sentido colapsar en 2
+          buckets arbitrarios en la vista principal. El desglose granular vive en
+          el modal InventarioPorCategoriaModal — 1 click desde el botón abajo. */}
+      <div
+        className="kpi-grid"
+        style={{ marginBottom: 12, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+      >
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">En técnico</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{metricas ? metricas.en_tecnico_count : '—'}</div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{metricas ? money(metricas.en_tecnico_usd, 'USD') : ''}</div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>
+            {metricas && metricas.en_tecnico_usd != null ? money(metricas.en_tecnico_usd, 'USD') : ''}
+          </div>
         </div>
         <div className="card card-tight" style={{ flex: 1 }}>
           <div className="kpi-label">Stock disponible</div>
@@ -1117,15 +1136,47 @@ export default function Inventario() {
           <div className="muted tiny" style={{ marginTop: 6 }}>unidades</div>
         </div>
         <div className="card card-tight" style={{ flex: 1 }}>
-          <div className="kpi-label">Inversión equipos</div>
-          <div className="kpi-value"><span className="ccy">USD</span><span className="mono">{metricas ? fmt(metricas.inv_equipos_usd) : '—'}</span></div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{metricas ? `${metricas.equipos_count} equipos` : ''}</div>
+          <div className="kpi-label">Total valorizado</div>
+          <div className="kpi-value">
+            <span className="ccy">USD</span>
+            <span className="mono">{
+              (() => {
+                // Nueva metric: SUM de todos los usd del array por-categoría
+                // (stock disponible). Si el backend redactó por caps (usd
+                // === null en cada fila), mostramos "—".
+                if (!metricas || !Array.isArray(metricas.inv_por_clase)) return '—';
+                const filas = metricas.inv_por_clase;
+                if (filas.length === 0) return '0';
+                const allRedacted = filas.every(r => r.usd === null);
+                if (allRedacted) return '—';
+                const total = filas.reduce((s, r) => s + (Number(r.usd) || 0), 0);
+                return fmt(total);
+              })()
+            }</span>
+          </div>
+          <div className="muted tiny" style={{ marginTop: 6 }}>
+            {metricas && Array.isArray(metricas.inv_por_clase)
+              ? (() => {
+                  const cats = metricas.inv_por_clase.filter(r => (r.count > 0) || (Number(r.usd) > 0));
+                  return `${cats.length} ${cats.length === 1 ? 'categoría' : 'categorías'} con stock`;
+                })()
+              : ''}
+          </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
-          <div className="kpi-label">Inversión accesorios</div>
-          <div className="kpi-value"><span className="ccy">USD</span><span className="mono">{metricas ? fmt(metricas.inv_accesorios_usd) : '—'}</span></div>
-          <div className="muted tiny" style={{ marginTop: 6 }}>{metricas ? `${metricas.accesorios_count} unidades` : ''}</div>
-        </div>
+      </div>
+
+      {/* Botón detalle: abre el modal con breakdown por categoría real.
+          Deshabilitado mientras las métricas están cargando o no tenemos data. */}
+      <div style={{ marginBottom: 18 }}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => setShowInvPorCat(true)}
+          disabled={!metricas || !Array.isArray(metricas.inv_por_clase) || metricas.inv_por_clase.length === 0}
+          title="Ver breakdown del stock por categoría"
+        >
+          Ver detalle por categoría →
+        </button>
       </div>
 
       {/* ── Filtros ──
@@ -1823,6 +1874,15 @@ export default function Inventario() {
         open={showClasesModal}
         onClose={() => setShowClasesModal(false)}
         toast={toast}
+      />
+
+      {/* F3-Fase2b — Detalle "Inversión por categoría" (drawer del KPI Total
+          valorizado). Le pasamos el array crudo del backend — el modal maneja
+          filtrado, orden y redact caps solo. */}
+      <InventarioPorCategoriaModal
+        open={showInvPorCat}
+        onClose={() => setShowInvPorCat(false)}
+        invPorClase={metricas?.inv_por_clase || []}
       />
 
       {showCatalogos && (
