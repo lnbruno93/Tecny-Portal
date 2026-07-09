@@ -18,6 +18,10 @@ vi.mock('../lib/api', () => {
       productos:        vi.fn().mockResolvedValue(paginated),
       metricas:         vi.fn().mockResolvedValue({ total: 0 }),
       categorias:       vi.fn().mockResolvedValue([]),
+      // F3.c-1: clases_producto (categorías editables por tenant). Default
+      // vacío → los tests caen al fallback F1 hardcoded (comportamiento
+      // pre-F3), preservando compat con los tests preexistentes.
+      clases:           vi.fn().mockResolvedValue([]),
       depositos:        vi.fn().mockResolvedValue([]),
       proveedoresList:  vi.fn().mockResolvedValue([]),
       createProducto:   vi.fn(),
@@ -81,6 +85,11 @@ describe('Pantalla Inventario', () => {
     // no esperan el tab Red B2B).
     mockUser.value = null;
     redB2b.productosPendingReview.list.mockResolvedValue({ pendientes: [] });
+    // F3.c-2: reseteamos el default de clases a [] porque vi.clearAllMocks
+    // NO restaura los .mockResolvedValue() que aplican tests específicos.
+    // Sin este reset, tests que corran después de uno que setea clases con
+    // datos verían esos datos y romperían el fallback F1.
+    inventarioApi.clases.mockResolvedValue([]);
   });
 
   it('monta sin crashear y carga catálogos + grilla', async () => {
@@ -234,6 +243,73 @@ describe('Pantalla Inventario', () => {
       expect(inventarioApi.productos).toHaveBeenCalledWith(
         expect.objectContaining({ clase: 'celular_sellado' })
       );
+    });
+  });
+
+  // ─── F3.c-2 (2026-07-09) — tabs filtro migrados a `clase_id` ────────────
+  // El state `clases` (clases_producto del tenant, mergeado en F3.a #528)
+  // alimenta los tabs de categoría. Reemplaza el enum F1 hardcoded.
+  // Fallback al enum viejo si `clases` no cargó (network fail o mock vacío).
+  describe('F3.c-2 — tabs filtro categorías dinámicas', () => {
+    it('con `clases` cargadas: tabs renderean las categorías del tenant (nombre + emoji)', async () => {
+      inventarioApi.clases.mockResolvedValue([
+        { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'Watch',    emoji: '⌚', orden: 30, activa: true,  es_base: true,  es_sin_categoria: false, slug_legacy: 'watch',   count_productos: 0 },
+        { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', nombre: 'Repuestos', emoji: '🔧', orden: 100, activa: true, es_base: false, es_sin_categoria: false, slug_legacy: null,      count_productos: 0 },
+        { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', nombre: 'Sin categoría',           orden: 999, activa: true, es_base: false, es_sin_categoria: true,  slug_legacy: null,      count_productos: 0 },
+        { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', nombre: 'Inactiva', emoji: '💤', orden: 200, activa: false, es_base: false, es_sin_categoria: false, slug_legacy: null,      count_productos: 0 },
+      ]);
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.clases).toHaveBeenCalled());
+      // Los 2 activos NO-sistema aparecen como tabs. Match por nombre (los
+      // emojis pueden serializar distinto en JSDOM por selectores de variación).
+      expect(await screen.findByText(/Watch\b/)).toBeInTheDocument();
+      expect(await screen.findByText(/Repuestos/)).toBeInTheDocument();
+      // La fila `es_sin_categoria` (fallback del import) NO aparece.
+      expect(screen.queryByText(/Sin categoría/)).not.toBeInTheDocument();
+      // Las inactivas tampoco.
+      expect(screen.queryByText(/Inactiva/)).not.toBeInTheDocument();
+    });
+
+    it('sin `clases` cargadas: fallback al enum F1 hardcoded (compat)', async () => {
+      // Default mock devuelve []. El fallback renderea los 9 slugs F1.
+      renderInventario();
+      // Esperamos primero que el catalogos load haya terminado.
+      await waitFor(() => expect(inventarioApi.clases).toHaveBeenCalled());
+      // Tab de F1 hardcoded → renderea con label del helper CLASES_LABELS.
+      // Los emojis pueden salir con selector de variación (VS16) — usamos
+      // solo el texto del nombre para evitar mismatches.
+      expect(await screen.findByText(/Celular Sellado/)).toBeInTheDocument();
+      expect(await screen.findByText(/Cargadores/)).toBeInTheDocument();
+    });
+
+    it('click en un tab de categoría envía `clase_id` (UUID) al backend, no `clase`', async () => {
+      const claseId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+      inventarioApi.clases.mockResolvedValue([
+        { id: claseId, nombre: 'Watch', emoji: '⌚', orden: 30, activa: true, es_base: true, es_sin_categoria: false, slug_legacy: 'watch', count_productos: 0 },
+      ]);
+      renderInventario();
+      await waitFor(() => expect(inventarioApi.clases).toHaveBeenCalled());
+      const tab = await screen.findByText(/Watch\b/);
+      fireEvent.click(tab);
+      await waitFor(() => {
+        expect(inventarioApi.productos).toHaveBeenCalledWith(
+          expect.objectContaining({ clase_id: claseId })
+        );
+      });
+      // Y NO debería mandar `clase` (el legacy) para este tab.
+      const lastCall = inventarioApi.productos.mock.calls.at(-1)[0];
+      expect(lastCall).not.toHaveProperty('clase');
+    });
+
+    it('URL legacy `?clase=<slug>` sigue funcionando (fallback: envía `clase` no `clase_id`)', async () => {
+      renderInventario(['/inventario?clase=cargadores']);
+      await waitFor(() => {
+        expect(inventarioApi.productos).toHaveBeenCalledWith(
+          expect.objectContaining({ clase: 'cargadores' })
+        );
+      });
+      const lastCall = inventarioApi.productos.mock.calls.at(-1)[0];
+      expect(lastCall).not.toHaveProperty('clase_id');
     });
   });
 
