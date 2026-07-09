@@ -67,7 +67,10 @@ export default function Desglose360() {
   const { monedaLocal } = useMonedasTenant();
 
   const [por, setPor] = useState('categoria');
-  const [clase, setClase] = useState(''); // '' | 'celular' | 'accesorio'
+  // F3.d-3: el filtro por categoría ahora usa clase_id (UUID de clases_producto).
+  // Antes era `'celular' | 'accesorio'` pre-F1 hardcoded — enum obsoleto.
+  const [claseId, setClaseId] = useState('');
+  const [clases, setClases] = useState([]);
   const [estadoFiltro, setEstadoFiltro] = useState(''); // '' | 'disponible' | ...
   const [soloStock, setSoloStock] = useState(true);
   const [buscar, setBuscar] = useState('');
@@ -83,7 +86,7 @@ export default function Desglose360() {
   useEffect(() => {
     const t = setTimeout(() => {
       const params = { por };
-      if (clase) params.clase = clase;
+      if (claseId) params.clase_id = claseId;
       if (estadoFiltro) params.estado = estadoFiltro;
       if (soloStock) params.solo_stock = 'true';
       if (buscar.trim()) params.buscar = buscar.trim();
@@ -96,7 +99,12 @@ export default function Desglose360() {
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(t);
-  }, [por, clase, estadoFiltro, soloStock, buscar]);
+  }, [por, claseId, estadoFiltro, soloStock, buscar]);
+
+  // F3.d-3: cargar catálogo de clases_producto del tenant para poblar el dropdown.
+  useEffect(() => {
+    inventario.clases().then(setClases).catch(() => setClases([]));
+  }, []);
 
   // Sort: por inversión total descendente (lo más invertido primero, "dónde está la plata").
   const filasOrdenadas = useMemo(() => {
@@ -195,11 +203,12 @@ export default function Desglose360() {
           </div>
           <div style={{ flex: 1 }} />
           <div>
-            <div className="muted tiny" style={{ marginBottom: 4 }}>Clase</div>
-            <select className="input" style={{ minWidth: 130 }} value={clase} onChange={e => setClase(e.target.value)}>
+            <div className="muted tiny" style={{ marginBottom: 4 }}>Categoría</div>
+            <select className="input" style={{ minWidth: 130 }} value={claseId} onChange={e => setClaseId(e.target.value)}>
               <option value="">Todas</option>
-              <option value="celular">Celulares</option>
-              <option value="accesorio">Accesorios</option>
+              {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
+                <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
+              ))}
             </select>
           </div>
           <div>

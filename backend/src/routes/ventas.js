@@ -171,7 +171,10 @@ async function redactVentaGananciaIfNeeded(user, ventaRow) {
 // productos por canje + lookup del id devuelto (FK al canje) requiere lógica
 // per-row que no se mapea limpio a UNNEST. Frecuencia chica (1-2 canjes por
 // venta típica) → no vale la complejidad.
-async function insertarDetalle(client, venta, b) {
+async function insertarDetalle(client, venta, b, ctx = {}) {
+  // 2026-07-09 F3.d-3: `ctx.tenantId` requerido si el body incluye canjes con
+  // `agregar_stock=true` — necesitamos resolver `clase_id` desde el catálogo
+  // por-tenant. Callers pasan `{ tenantId: req.tenantId }`.
   // Items: bulk INSERT con UNNEST.
   if (b.items && b.items.length > 0) {
     await client.query(
@@ -326,11 +329,24 @@ async function insertarDetalle(client, venta, b) {
       // sellado; sino cae a `celular_usado`. Los canjes de otros tipos de producto
       // (watch, ipad, etc.) son raros — si aparece el caso, el operador puede
       // re-clasificar desde Inventario.
+      //
+      // 2026-07-09 F3.d-3: `productos.clase` VARCHAR dropeada — resolvemos
+      // `clase_id` UUID desde `clases_producto.slug_legacy` para el tenant
+      // actual. La fila base viene del seed (F3.a) — siempre existe para
+      // tenants creados via signup/superAdmin.
       const condicionCanje = c.condicion ?? 'usado';
-      const claseCanje = condicionCanje === 'nuevo' ? 'celular_sellado' : 'celular_usado';
+      const slugCanje = condicionCanje === 'nuevo' ? 'celular_sellado' : 'celular_usado';
+      const { rows: claseRows } = await client.query(
+        `SELECT id FROM clases_producto
+          WHERE tenant_id = $1 AND slug_legacy = $2 AND es_base = true
+            AND deleted_at IS NULL
+          LIMIT 1`,
+        [ctx.tenantId, slugCanje]
+      );
+      const claseIdCanje = claseRows[0]?.id ?? null;
       const { rows: pr } = await client.query(
         `INSERT INTO productos (
-            tipo_carga, clase, nombre, imei, gb, color, bateria,
+            tipo_carga, clase_id, nombre, imei, gb, color, bateria,
             categoria_id, condicion,
             costo, costo_moneda, precio_venta, precio_moneda,
             estado, observaciones
@@ -341,7 +357,7 @@ async function insertarDetalle(client, venta, b) {
             'disponible',$12
          ) RETURNING id`,
         [
-          claseCanje,
+          claseIdCanje,
           c.descripcion, c.imei ?? null, c.gb ?? null, c.color ?? null, c.bateria ?? null,
           c.categoria_id ?? null, condicionCanje,
           c.valor_toma, c.moneda, c.precio_venta_sugerido ?? 0,
@@ -1107,7 +1123,7 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     // Stock: descontar solo si la venta retiene stock (no cancelada). Bloquea y valida disponibilidad.
     if (retieneStock(b.estado)) await descontarStock(client, b.items);
     // Ítems, pagos y canjes
-    await insertarDetalle(client, venta, b);
+    await insertarDetalle(client, venta, b, { tenantId: req.tenantId });
     // Deuda de cuenta corriente (si corresponde)
     await sincronizarCuentaCorriente(client, venta);
     // Ingresos de caja por los pagos (Fase 2b)
@@ -1229,7 +1245,7 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
          vendedor_nombre !== undefined && vendedor_nombre && vendedor_nombre.trim() ? vendedor_nombre.trim() : (vendedor_nombre === '' ? null : vendedor_nombre),
          id]
       );
-      await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc });
+      await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc }, { tenantId: req.tenantId });
       await sincronizarCuentaCorriente(client, vrows[0]);
       await syncVentaCaja(client, vrows[0], req.user.id);
       // Re-derivar el comprobante de Financiera (cancelación, o quitar/agregar el pago financiera)

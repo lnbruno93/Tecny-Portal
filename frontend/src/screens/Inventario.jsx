@@ -8,14 +8,10 @@ import { exportCsv } from '../lib/exportCsv';
 import { downloadBlob as downloadBlobShared } from '../lib/downloadBlob';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
-// Categorías reales F1 (2026-07-08): 9 clases con emojis en vez de celular/accesorio.
-// F3.d-1 (2026-07-09): tras la migración completa a `clases_producto` (F3.c),
-// solo mantenemos `CLASES_PRODUCTO` para detectar slugs F1 en URLs legacy
-// (`?clase=watch`) y `CLASE_DEFAULT` para el EMPTY_PRODUCTO — mientras el
-// backend siga consumiendo `productos.clase` (F3.d-2/3 lo dropea).
-// CLASES_LABELS y claseLabel se removieron: los labels vienen del state
-// `clases` (backend con emoji + nombre editables por tenant).
-import { CLASES_PRODUCTO, CLASE_DEFAULT } from '../lib/clasesProducto';
+// F3.d-3 (2026-07-09): removimos el import de `../lib/clasesProducto` — la
+// serie categorías reales cerró la transición a `clases_producto` (tabla
+// editable por tenant) y el enum global F1 hardcoded ya no se usa. El
+// backend dropeó `productos.clase` en la migration 20260709000001.
 
 // F3.c-2 (2026-07-09): helper para detectar si un value de tab es un UUID
 // (categoría del tenant, tabla `clases_producto`) vs un slug F1 legacy o un
@@ -53,10 +49,8 @@ const money = fmtMoney;
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const EMPTY_PRODUCTO = {
-  // F3.c: `clase` legacy sigue existiendo para compat (F3.d lo remueve). El
-  // dropdown ahora selecciona clase_id (UUID de clases_producto) y el backend
-  // deriva `clase` desde slug_legacy.
-  tipo_carga: 'unitario', clase: CLASE_DEFAULT, clase_id: '', nombre: '', imei: '', gb: '', color: '',
+  // F3.d-3: `clase` VARCHAR se dropeó. El form solo maneja `clase_id`.
+  tipo_carga: 'unitario', clase_id: '', nombre: '', imei: '', gb: '', color: '',
   bateria: '', categoria_id: '', deposito_id: '', proveedor: '',
   costo: '', costo_moneda: 'USD', precio_venta: '', precio_moneda: 'USD',
   cantidad: '1', estado: 'disponible', observaciones: '',
@@ -380,11 +374,27 @@ export default function Inventario() {
       //   - usados             → params.condicion = usado
       //   - cat:<id>           → params.categoria_id (Colección legacy)
       //   - todos              → sin filtro extra
-      if (isUuid(claseFilter)) params.clase_id = claseFilter;
-      else if (CLASES_PRODUCTO.includes(claseFilter)) params.clase = claseFilter;
-      else if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
-      else if (claseFilter === 'usados') params.condicion = 'usado';
-      else if (claseFilter && claseFilter.startsWith('cat:')) params.categoria_id = claseFilter.slice(4);
+      // F3.d-3: preferimos UUID (clase_id). URLs legacy con slug F1
+      // (`?clase=watch`) tratan de resolver el slug contra el catálogo
+      // `clases` cargado del backend — el UUID resultante se manda como
+      // `params.clase_id`. Si el catálogo no cargó (mock vacío / network
+      // fail) o el slug es de una fila que fue borrada, hacemos fallback
+      // enviando el slug crudo como `params.clase` — el backend acepta
+      // ambos (compat via schema queryProductosSchema).
+      if (isUuid(claseFilter)) {
+        params.clase_id = claseFilter;
+      } else if (claseFilter === 'tecnico') {
+        params.estado = 'en_tecnico';
+      } else if (claseFilter === 'usados') {
+        params.condicion = 'usado';
+      } else if (claseFilter && claseFilter.startsWith('cat:')) {
+        params.categoria_id = claseFilter.slice(4);
+      } else if (claseFilter && claseFilter !== 'todos') {
+        // URL legacy `?clase=slug`.
+        const c = clases.find(x => x.slug_legacy === claseFilter);
+        if (c) params.clase_id = c.id;
+        else params.clase = claseFilter;  // fallback compat: backend acepta slug
+      }
       if (dSearch.trim()) params.buscar = dSearch.trim();
       // Drill-down: aplicamos los filtros que vinieron por URL al fetch.
       // El backend rechaza claves desconocidas (Zod), así que sólo pasamos lo válido.
@@ -403,6 +413,13 @@ export default function Inventario() {
     } finally {
       setLoading(false);
     }
+  // Nota (F3.d-3): `clases` NO va en las deps a propósito — así evitamos
+  // un segundo fetch cuando el catálogo carga. En la primera carga con
+  // ?clase=<slug> legacy y `clases` aún vacío, el filtro cae al fallback
+  // `params.clase = slug` (backend acepta ambos). Cuando el user tocá
+  // otro filtro, el re-fetch usa `clases` ya poblado y canonicaliza a
+  // clase_id. Trade-off consciente: 1 request extra si añadiéramos
+  // `clases` a deps rompía tests con `mockResolvedValueOnce`.
   }, [page, claseFilter, vistaFiltro, dSearch, toast, drillFilters, vendidosRange]);
 
   const loadMetricas = useCallback(async () => {
@@ -499,7 +516,7 @@ export default function Inventario() {
   const openEdit = useCallback((p) => {
     setEditId(p.id);
     setForm({
-      tipo_carga: p.tipo_carga, clase: p.clase, clase_id: p.clase_id ?? '', nombre: p.nombre, imei: p.imei ?? '',
+      tipo_carga: p.tipo_carga, clase_id: p.clase_id ?? '', nombre: p.nombre, imei: p.imei ?? '',
       gb: p.gb ?? '', color: p.color ?? '', bateria: p.bateria ?? '',
       categoria_id: p.categoria_id ?? '', deposito_id: p.deposito_id ?? '', proveedor: p.proveedor ?? '',
       costo: p.costo, costo_moneda: p.costo_moneda, precio_venta: p.precio_venta, precio_moneda: p.precio_moneda,
@@ -579,10 +596,8 @@ export default function Inventario() {
     setSaving(true); setFormError('');
     const num = (v) => v === '' || v == null ? null : Number(v);
     const payload = {
-      // F3.c: mandar clase_id si está seteado; backend deriva `clase` desde
-      // slug_legacy. Mandamos `clase` también por compat (backend acepta ambos
-      // y prefiere clase_id para el derive).
-      tipo_carga: form.tipo_carga, clase: form.clase, clase_id: form.clase_id || null,
+      // F3.d-3: `clase` VARCHAR se dropeó — solo mandamos `clase_id`.
+      tipo_carga: form.tipo_carga, clase_id: form.clase_id || null,
       nombre: form.nombre.trim(),
       imei: form.imei.trim() || null, gb: form.gb.trim() || null, color: form.color.trim() || null,
       bateria: num(form.bateria), categoria_id: form.categoria_id || null, deposito_id: form.deposito_id || null,
@@ -624,7 +639,10 @@ export default function Inventario() {
       p.costo ?? '', p.costo_moneda || '', p.precio_venta ?? '', p.precio_moneda || '',
       fmtImei(p.imei) || '', p.tipo_carga === 'lote' ? 'stock' : 'Unitario',
       p.categoria_nombre || '', p.proveedor || '',
-      p.clase === 'accesorio' ? (p.cantidad ?? '') : '', p.deposito_id ?? '',
+      // F3.d-3: antes filtrábamos por `p.clase === 'accesorio'` (slug legacy).
+      // Ahora `p.tipo_carga === 'lote'` es el equivalente semántico — productos
+      // no-unitarios exportan su cantidad de stock.
+      p.tipo_carga === 'lote' ? (p.cantidad ?? '') : '', p.deposito_id ?? '',
     ];
   }
   // Filas (arrays) → objetos keyed por header, para exportCsv.

@@ -40,6 +40,7 @@ const {
   bulkProductoSchema,
   queryProductosSchema,
   queryDesgloseSchema,
+  SLUGS_UNITARIOS,           // F3.d-3: para validarUnitarioCoherente post-derive
 } = require('../schemas/inventario');
 // F3.a — CRUD de categorías (clases_producto) por tenant. Ver design doc:
 // `docs/design/categorias-crud-tenant-f3.md`.
@@ -388,23 +389,26 @@ const DIM_CONFIG = {
 // hay shape parcial razonable — devolvemos 403 directo.
 router.get('/desglose', requireCapability('inventario.ver_costos'), validate(queryDesgloseSchema, 'query'), async (req, res, next) => {
   try {
-    const { por, clase, estado, categoria_id, deposito_id, proveedor, solo_stock, buscar } = req.query;
+    const { por, clase_id, clase, estado, categoria_id, deposito_id, proveedor, solo_stock, buscar } = req.query;
     const dim = DIM_CONFIG[por];
     if (!dim) return res.status(400).json({ error: 'Dimensión inválida' });
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
-    // F3.d-2 (2026-07-09): el filter `?clase=slug` (URLs legacy) ahora se
-    // resuelve via JOIN con `clases_producto.slug_legacy` en vez de leer
-    // `p.clase` directo. Esto NO cambia el contrato del endpoint (mismo
-    // param, mismo comportamiento), pero elimina la dependencia de
-    // `productos.clase` como columna — F3.d-3 podrá dropearla sin romper.
-    if (clase) {
+    // F3.d-3 (2026-07-09): filtro principal `?clase_id=UUID`.
+    // Compat legacy: `?clase=<slug>` sigue soportado — mismo EXISTS que en
+    // GET /productos.
+    if (clase_id) {
+      params.push(clase_id);
+      conditions.push(`p.clase_id = $${params.length}`);
+    } else if (clase) {
       params.push(clase);
-      conditions.push(
-        `EXISTS (SELECT 1 FROM clases_producto cp
-                  WHERE cp.id = p.clase_id AND cp.slug_legacy = $${params.length})`
-      );
+      conditions.push(`EXISTS (
+        SELECT 1 FROM clases_producto cpf
+         WHERE cpf.id = p.clase_id
+           AND cpf.slug_legacy = $${params.length}
+           AND cpf.deleted_at IS NULL
+      )`);
     }
     if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
     if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
@@ -486,23 +490,26 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
 
 router.get('/productos', validate(queryProductosSchema, 'query'), async (req, res, next) => {
   try {
-    const { buscar, clase, clase_id, estado, categoria_id, deposito_id, solo_stock,
+    const { buscar, clase_id, clase, estado, categoria_id, deposito_id, solo_stock,
             nombre, proveedor, gb, color, vista, condicion, desde, hasta } = req.query;
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
-    // F3.d-2 (2026-07-09): el filter `?clase=slug` legacy ahora resuelve via
-    // JOIN con `clases_producto.slug_legacy` — elimina la dependencia de
-    // `productos.clase`. `?clase_id=UUID` (F3.c) sigue igual, es la ruta
-    // principal desde el frontend post-F3.c-2 PR-1 #532.
-    if (clase) {
-      params.push(clase);
-      conditions.push(
-        `EXISTS (SELECT 1 FROM clases_producto cp
-                  WHERE cp.id = p.clase_id AND cp.slug_legacy = $${params.length})`
-      );
-    }
+    // F3.d-3 (2026-07-09): filtro principal `?clase_id=UUID`.
+    // Compat legacy: `?clase=<slug>` sigue soportado — resolvemos vía EXISTS
+    // en clases_producto.slug_legacy para no obligar a los tests / bookmarks
+    // viejos a regenerar la URL. Ambos aceptados; si vienen los dos, gana
+    // clase_id (más específico).
     if (clase_id)     { params.push(clase_id);     conditions.push(`p.clase_id = $${params.length}`); }
+    else if (clase)   {
+      params.push(clase);
+      conditions.push(`EXISTS (
+        SELECT 1 FROM clases_producto cpf
+         WHERE cpf.id = p.clase_id
+           AND cpf.slug_legacy = $${params.length}
+           AND cpf.deleted_at IS NULL
+      )`);
+    }
     if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
     if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
     if (deposito_id)  { params.push(deposito_id);  conditions.push(`p.deposito_id = $${params.length}`); }
@@ -580,7 +587,8 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
 
     const countQuery = `SELECT COUNT(*) FROM productos p WHERE ${where}`;
     const dataQuery = `
-      SELECT p.id, p.tipo_carga, p.clase, p.clase_id, p.nombre, p.imei, p.gb, p.color, p.bateria,
+      SELECT p.id, p.tipo_carga, p.clase_id, cp.slug_legacy AS clase,
+             p.nombre, p.imei, p.gb, p.color, p.bateria,
              p.categoria_id, p.deposito_id, p.proveedor, p.costo, p.costo_moneda,
              p.precio_venta, p.precio_moneda, p.trackear_stock, p.cantidad, p.estado,
              p.observaciones, p.condicion, p.oculto, p.created_at,
@@ -589,6 +597,7 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
       FROM productos p
       LEFT JOIN categorias c ON c.id = p.categoria_id
       LEFT JOIN depositos  d ON d.id = p.deposito_id
+      LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
       WHERE ${where}
       ORDER BY p.nombre, p.id DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -793,58 +802,86 @@ router.get('/productos/:id/foto', async (req, res, next) => {
 // va a R2 (flag ON + driver r2), foto_data queda NULL y la referencia vive
 // en foto_key. Cuando va a path legacy (flag OFF o driver db), foto_key y
 // foto_size quedan NULL y la columna legacy foto_data conserva el base64.
+// F3.d-3 (2026-07-09): `clase` VARCHAR se dropeó (migration 20260709000001).
+// PRODUCTO_COLS ya no incluye la columna legacy — solo `clase_id`.
 const PRODUCTO_COLS = [
-  'tipo_carga', 'clase', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
+  'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
   'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
   'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
   'foto_data', 'foto_nombre', 'foto_tipo', 'foto_key', 'foto_size',
   'observaciones', 'condicion', 'oculto',
 ];
 
-// F3.c — Helper: sincroniza `clase` legacy ↔ `clase_id` UUID en cada write.
-// Uno de los dos alcanza: si viene solo `clase_id`, deriva `clase` desde
-// `clases_producto.slug_legacy`. Si viene solo `clase`, busca `clase_id` en
-// la fila `es_base=true AND slug_legacy=$clase` del tenant. Si vienen ambos,
-// respeta lo enviado (útil para el frontend nuevo durante transición).
+// F3.d-3: helper que resuelve la categoría para el body del producto.
 //
-// Devuelve `{ clase, clase_id }` para setear en el body antes del INSERT/UPDATE.
-// Lanza 400 si el clase_id no existe o no pertenece al tenant.
-async function resolveClaseAndClaseId(client, tenantId, body) {
-  let { clase, clase_id } = body;
-  if (clase_id) {
+// Nueva ruta (post-F3.c-2): body trae `clase_id` UUID → valida que exista +
+// devuelve `slug_legacy` (para validar coherencia unitario ↔ cantidad).
+//
+// Ruta legacy (deprecated compat): body trae solo `clase` = slug F1 →
+// buscamos el `clase_id` de la fila base (`es_base=true AND slug_legacy=$clase`).
+// Sirve para clientes viejos que aún envían slug + tests preexistentes.
+// El body.clase se ignora en el INSERT/UPDATE — solo persiste `clase_id`.
+async function resolveClaseInfo(client, tenantId, body) {
+  let clase_id = body.clase_id;
+  const claseSlug = body.clase;
+  if (!clase_id && claseSlug) {
+    // Compat: derive clase_id desde slug legacy.
     const { rows } = await client.query(
-      `SELECT id, nombre, slug_legacy FROM clases_producto
-        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-      [clase_id, tenantId]
-    );
-    if (!rows[0]) {
-      const err = new Error(`La categoría (clase_id=${clase_id}) no existe o fue borrada.`);
-      err.status = 400;
-      err.code = 'clase_id_invalido';
-      throw err;
-    }
-    // Para categorías base (una de las 9 originales), el slug_legacy nos da
-    // el clase enum. Para categorías custom del tenant (agregadas post-F3.b),
-    // slug_legacy es NULL — en ese caso mantenemos el `clase` legacy que el
-    // cliente haya mandado (o el default) por compat con el enum, hasta F3.d
-    // que borre la columna. Es un fallback razonable — el enum ya solo se usa
-    // para reporting cross-tenant que probablemente cambiemos también.
-    clase = rows[0].slug_legacy || clase || 'accesorios_varios';
-  } else if (clase) {
-    // Frontend viejo (F3.b y anterior): solo manda `clase`. Buscamos el
-    // clase_id correspondiente en las 9 base del tenant.
-    const { rows } = await client.query(
-      `SELECT id FROM clases_producto
-        WHERE tenant_id = $1 AND slug_legacy = $2 AND deleted_at IS NULL
+      `SELECT id, slug_legacy FROM clases_producto
+        WHERE tenant_id = $1 AND slug_legacy = $2 AND es_base = true
+          AND deleted_at IS NULL
         LIMIT 1`,
-      [tenantId, clase]
+      [tenantId, claseSlug]
     );
-    clase_id = rows[0]?.id || null;
-    // Nota: clase_id puede quedar en NULL si el tenant borró la fila base
-    // correspondiente (poco probable pero posible). El producto queda con
-    // clase legacy pero sin FK — se puede reasignar desde la UI después.
+    if (rows[0]) {
+      body.clase_id = rows[0].id;   // muta body para que el INSERT use el UUID
+      clase_id = rows[0].id;
+      return { slug_legacy: rows[0].slug_legacy };
+    }
+    // slug no matcheó → dejamos clase_id null (edge case: tenant sin esa base)
   }
-  return { clase: clase || 'accesorios_varios', clase_id: clase_id || null };
+  if (!clase_id) return { slug_legacy: null };
+  const { rows } = await client.query(
+    `SELECT slug_legacy FROM clases_producto
+      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+    [clase_id, tenantId]
+  );
+  if (!rows[0]) {
+    const err = new Error(`La categoría (clase_id=${clase_id}) no existe o fue borrada.`);
+    err.status = 400;
+    err.code = 'clase_id_invalido';
+    throw err;
+  }
+  return { slug_legacy: rows[0].slug_legacy };
+}
+
+// F3.d-3: agrega `clase` sintético al row del producto para compat con
+// clientes que aún esperan ese field en el response. El slug viene del JOIN
+// a `clases_producto.slug_legacy`. Solo se ejecuta para responses (nunca
+// muta la DB). Un extra SELECT por producto — costo aceptable durante la
+// transición de F3.
+async function agregarClaseCompat(client, row) {
+  if (!row || !row.clase_id) return row;
+  const { rows } = await client.query(
+    `SELECT slug_legacy FROM clases_producto WHERE id = $1 AND deleted_at IS NULL`,
+    [row.clase_id]
+  );
+  if (rows[0]) row.clase = rows[0].slug_legacy;
+  return row;
+}
+
+// F3.d-3: valida coherencia unitario ↔ cantidad post-derive del slug_legacy.
+// Antes vivía como refine Zod en el schema; ahora acá porque necesita el
+// slug_legacy que sale de `clases_producto` (no del body).
+function validarUnitarioCoherente(slug_legacy, body) {
+  if (!slug_legacy) return; // categoría custom del tenant (no base) — sin regla
+  if (!SLUGS_UNITARIOS.has(slug_legacy)) return;
+  if (body.tipo_carga !== 'unitario') return;
+  if (Number(body.cantidad) === 1 || body.cantidad == null) return;
+  const err = new Error('Un producto unitario debe tener cantidad = 1');
+  err.status = 400;
+  err.path = ['cantidad'];
+  throw err;
 }
 
 router.post('/productos', requireCapability('inventario.crear'), validate(createProductoSchema), async (req, res, next) => {
@@ -935,17 +972,18 @@ router.post('/productos', requireCapability('inventario.crear'), validate(create
     b.foto_size   = fotoFile.size;
     const placeholders = PRODUCTO_COLS.map((_, i) => `$${i + 1}`).join(',');
     const row = await db.withTenant(req.tenantId, async (client) => {
-      // F3.c: derive bidireccional clase ↔ clase_id ANTES del INSERT.
-      // Los productos siempre quedan con ambos campos sync (hasta F3.d cleanup).
-      const claseInfo = await resolveClaseAndClaseId(client, req.tenantId, b);
-      b.clase    = claseInfo.clase;
-      b.clase_id = claseInfo.clase_id;
+      // F3.d-3: valida clase_id + coherencia unitario ↔ cantidad. Sin derive
+      // bidireccional (columna `clase` dropeada en migration 20260709000001).
+      const { slug_legacy } = await resolveClaseInfo(client, req.tenantId, b);
+      validarUnitarioCoherente(slug_legacy, b);
 
       const values = PRODUCTO_COLS.map(c => b[c] ?? null);
       const { rows } = await client.query(
         `INSERT INTO productos (${PRODUCTO_COLS.join(',')}) VALUES (${placeholders}) RETURNING *`,
         values
       );
+      // F3.d-3: hidrata `clase` sintético en el response (compat).
+      await agregarClaseCompat(client, rows[0]);
       await audit(client, 'productos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
       return rows[0];
     });
@@ -1041,13 +1079,17 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
     }).join(', ');
     const row = await db.withTenant(req.tenantId, async (client) => {
       // F3.c: derive bidireccional clase ↔ clase_id ANTES del UPDATE.
-      // Si el cliente cambia uno de los dos (o ambos), aseguramos que queden
-      // sincronizados. Si no toca ninguno, el COALESCE preserva los valores
-      // viejos y este no-op no hace daño.
-      if (req.body.clase_id !== undefined || req.body.clase !== undefined) {
-        const claseInfo = await resolveClaseAndClaseId(client, req.tenantId, req.body);
-        req.body.clase    = claseInfo.clase;
-        req.body.clase_id = claseInfo.clase_id;
+      // F3.d-3: si el cliente toca `clase_id`, validamos que exista + coherencia
+      // unitario ↔ cantidad. Si no lo toca, el COALESCE preserva el valor viejo.
+      if (req.body.clase_id !== undefined) {
+        const { slug_legacy } = await resolveClaseInfo(client, req.tenantId, req.body);
+        // Para la coherencia unitario usamos el shape mezclado — cantidad
+        // puede venir en el partial o quedar del DB. Sin cantidad en el
+        // partial, se asume "no cambia" y no validamos (defense: el INSERT
+        // original ya validó).
+        if (req.body.cantidad !== undefined) {
+          validarUnitarioCoherente(slug_legacy, req.body);
+        }
       }
       // values se computa DESPUÉS del derive para que el COALESCE reciba los
       // valores actualizados.
@@ -1062,6 +1104,8 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
         `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} RETURNING *`,
         [...values, id]
       );
+      // F3.d-3: hidrata `clase` sintético en el response (compat).
+      await agregarClaseCompat(client, rows[0]);
       await audit(client, 'productos', 'UPDATE', id, { antes: before[0], despues: rows[0], user_id: req.user.id });
       return rows[0];
     });
@@ -1378,11 +1422,13 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
     // por request; hoy no vale la pena.
     const buf = [];
     for (const p of productos) {
-      const claseInfo = await resolveClaseAndClaseId(client, req.tenantId, p);
+      // F3.d-3: validamos clase_id + coherencia unitario ↔ cantidad. Sin
+      // derive de `clase` legacy (columna dropeada). El body ya contiene
+      // clase_id — solo verificamos que exista en el catálogo del tenant.
+      const { slug_legacy } = await resolveClaseInfo(client, req.tenantId, p);
+      validarUnitarioCoherente(slug_legacy, p);
       buf.push({
         ...p,
-        clase:     claseInfo.clase,
-        clase_id:  claseInfo.clase_id,
         condicion: p.condicion ?? 'nuevo',
         oculto:    p.oculto    ?? false,
       });
@@ -1398,7 +1444,8 @@ router.post('/productos/bulk', requireCapability('inventario.crear'), bulkLimite
     // (tabla productos). Si se agrega una columna a productos, actualizar
     // PG_TYPES acá. Mismo patrón que items_movimiento_cc en cuentas.js:470.
     const PG_TYPES = {
-      tipo_carga:    'text',    clase:         'text',
+      tipo_carga:    'text',
+      // F3.d-3: `clase` VARCHAR dropeada — solo queda clase_id UUID.
       clase_id:      'uuid',    // F3.c (2026-07-08): FK a clases_producto
       nombre:        'text',    imei:          'text',
       gb:            'text',    color:         'text',

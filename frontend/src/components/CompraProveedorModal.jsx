@@ -130,6 +130,8 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
   const [categorias, setCategorias] = useState([]);
   const [depositos,  setDepositos]  = useState([]);
   const [cajas,      setCajas]      = useState([]);
+  // F3.d-3: clases_producto del tenant (para el dropdown Categoría).
+  const [clases,     setClases]     = useState([]);
   const [saving,     setSaving]     = useState(false);
   // #B-10: IMEIs que el backend devolvió como conflictivos en el último save.
   // Sus filas se marcan en rojo para que el user pueda identificar y corregir.
@@ -143,14 +145,24 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
       invApi.categorias(),
       invApi.depositos(),
       cajasApi.listCajas(),
-    ]).then(([rc, rd, rk]) => {
+      invApi.clases(),   // F3.d-3
+    ]).then(([rc, rd, rk, rcl]) => {
       const errores = [];
       if (rc.status === 'fulfilled') setCategorias(rc.value || []); else errores.push('categorías');
       if (rd.status === 'fulfilled') setDepositos(rd.value || []); else errores.push('depósitos');
       if (rk.status === 'fulfilled') setCajas((rk.value || []).filter(x => x.activo !== false)); else errores.push('cajas');
+      if (rcl.status === 'fulfilled') setClases(rcl.value || []); else errores.push('categorías de producto');
       if (errores.length > 0) setCatalogosError(errores);
     });
   }, []);
+
+  // F3.d-3: helper para saber si una clase_id corresponde a un slug unitario
+  // (celular sellado/usado o ipads). Se usa en validación de coherencia.
+  const SLUGS_UNITARIOS = new Set(['celular_sellado', 'celular_usado', 'ipads']);
+  const esUnitario = (clase_id) => {
+    const c = clases.find(x => x.id === clase_id);
+    return c && SLUGS_UNITARIOS.has(c.slug_legacy);
+  };
 
   // Moneda de la caja seleccionada → si no es USD pedimos TC.
   const monedaCaja = useMemo(() => {
@@ -254,8 +266,10 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
       if (r.crear_stock) {
         if (!r.nombre?.trim()) return `Fila ${i + 1}: el nombre es obligatorio para crear stock`;
         if (!r.categoria_id) return `Fila ${i + 1}: elegí categoría`;
-        if (r.clase === 'celular' && r.tipo_carga === 'unitario' && Number(r.cantidad) !== 1)
-          return `Fila ${i + 1}: un celular unitario debe tener cantidad = 1`;
+        // F3.d-3: coherencia unitario ↔ cantidad basada en slug_legacy del
+        // catálogo del tenant. Antes usaba `r.clase === 'celular'` hardcoded.
+        if (esUnitario(r.clase_id) && r.tipo_carga === 'unitario' && Number(r.cantidad) !== 1)
+          return `Fila ${i + 1}: un producto unitario debe tener cantidad = 1`;
       }
     }
     // IMEI duplicados internos
@@ -305,7 +319,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
             ...baseLog,
             producto_stock: {
               tipo_carga:    r.tipo_carga,
-              clase:         r.clase,
+              clase_id:      r.clase_id || null,   // F3.d-3
               nombre:        r.nombre.trim(),
               imei:          r.imei.trim() || null,
               gb:            r.gb.trim() || null,
@@ -426,8 +440,12 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               </button>
             </div>
             <div className="row" style={{ gap: 8 }}>
-              <Field label="Tipo"><select className="input" value={defs.clase} onChange={e => setDef('clase', e.target.value)}>
-                <option value="celular">Celular</option><option value="accesorio">Accesorio</option></select></Field>
+              <Field label="Categoría"><select className="input" value={defs.clase_id} onChange={e => setDef('clase_id', e.target.value)}>
+                <option value="">— Sin default —</option>
+                {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
+                  <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
+                ))}
+              </select></Field>
               <Field label="Categoría"><select className="input" value={defs.categoria_id} onChange={e => setDef('categoria_id', e.target.value)}>
                 <option value="">— Sin default —</option>
                 {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -541,10 +559,12 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
                           placeholder="100" onChange={e => updCell(idx, 'bateria', e.target.value)} />
                       </td>
                       <td style={{ padding: '3px 4px' }}>
-                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.clase}
-                          onChange={e => updCell(idx, 'clase', e.target.value)}>
-                          <option value="celular">Celular</option>
-                          <option value="accesorio">Accesorio</option>
+                        <select style={{ ...cellInp, cursor: 'pointer' }} value={r.clase_id || ''}
+                          onChange={e => updCell(idx, 'clase_id', e.target.value)}>
+                          <option value="">—</option>
+                          {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
+                            <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
+                          ))}
                         </select>
                       </td>
                       <td style={{ padding: '3px 4px' }}>

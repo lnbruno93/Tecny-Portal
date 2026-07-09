@@ -249,10 +249,9 @@ router.get('/diagnose-producto', async (req, res, next) => {
         id: p.id,
         nombre: p.nombre,
         imei: p.imei,
-        // F3.d-2: `clase_slug` viene del JOIN a `clases_producto.slug_legacy`.
-        // Fallback a `p.clase` legacy si por alguna razón el JOIN no matchea
-        // (producto sin clase_id — edge case del backfill de F3.a).
-        clase: p.clase_slug || p.clase,
+        // F3.d-3: `clase_slug` del JOIN a clases_producto.slug_legacy.
+        // `p.clase` VARCHAR fue dropeado — el response usa solo el JOIN.
+        clase: p.clase_slug || null,
         cantidad: Number(p.cantidad),
         estado: p.estado,
         costo: p.costo,

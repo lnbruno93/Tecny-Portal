@@ -22,8 +22,9 @@ const {
 
 // Mapeo de columnas de productos a su tipo PostgreSQL para UNNEST batched
 // inserts (#P-01). Se actualiza si STOCK_COLS cambia.
+// F3.d-3 (2026-07-09): `clase` VARCHAR dropeada. STOCK_COLS solo usa clase_id.
 const PRODUCT_COL_TYPES = {
-  tipo_carga: 'text', clase: 'text', nombre: 'text', imei: 'text',
+  tipo_carga: 'text', clase_id: 'uuid', nombre: 'text', imei: 'text',
   gb: 'text', color: 'text', bateria: 'int',
   categoria_id: 'int', deposito_id: 'int', proveedor: 'text',
   costo: 'numeric', costo_moneda: 'text',
@@ -564,7 +565,7 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
       const stockItems = items.filter(it => it.producto_stock);
       if (stockItems.length > 0) {
         const STOCK_COLS = [
-          'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
+          'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
           'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
           'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
           'observaciones', 'condicion', 'oculto', 'proveedor_movimiento_id',
@@ -758,7 +759,7 @@ router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMov
         const stockItems = items.filter(it => it.producto_stock);
         if (stockItems.length > 0) {
           const STOCK_COLS = [
-            'tipo_carga', 'clase', 'nombre', 'imei', 'gb', 'color', 'bateria',
+            'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
             'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
             'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
             'observaciones', 'condicion', 'oculto', 'proveedor_movimiento_id',
