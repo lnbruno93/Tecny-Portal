@@ -468,11 +468,21 @@ async function computeDashboard(tenantId, desde, hasta) {
       // `NOT IN`, así los items manuales (pr.id IS NULL → pr.clase NULL →
       // NULL evalúa false en ambos IN/NOT IN) quedan fuera de los dos buckets.
       // Es exactamente el fix de #522 preservado + el nuevo enum de F1.
+      // F3.d-2 (2026-07-09): buckets `celulares`/`accesorios` ahora clasifican
+      // via JOIN con `clases_producto.slug_legacy` en vez de leer `pr.clase`
+      // directo. Prepara F3.d-3 (DROP COLUMN productos.clase) sin cambiar
+      // shape ni comportamiento. `pr.id IS NULL` sigue quedando fuera de
+      // ambos buckets (items manuales — diferencias, ajustes — no cuentan
+      // como mercadería física).
       const unidades = await client.query(`SELECT
-                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase IN ('celular_sellado','celular_usado')),0) AS celulares,
-                  COALESCE(SUM(vi.cantidad) FILTER (WHERE pr.clase NOT IN ('celular_sellado','celular_usado') AND pr.id IS NOT NULL),0) AS accesorios,
+                  COALESCE(SUM(vi.cantidad) FILTER (WHERE cp.slug_legacy IN ('celular_sellado','celular_usado')),0) AS celulares,
+                  COALESCE(SUM(vi.cantidad) FILTER (WHERE cp.slug_legacy NOT IN ('celular_sellado','celular_usado') AND cp.slug_legacy IS NOT NULL),0) AS accesorios,
                   COALESCE(SUM(CASE WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN vi.costo*vi.cantidad/v.tc_venta ELSE vi.costo*vi.cantidad END),0) AS costos_usd
-                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id LEFT JOIN productos pr ON pr.id = vi.producto_id WHERE ${BASE}`, p);
+                FROM venta_items vi
+                JOIN ventas v ON v.id = vi.venta_id
+                LEFT JOIN productos pr ON pr.id = vi.producto_id
+                LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
+                WHERE ${BASE}`, p);
       // Inversión en canjes (USD). Mismo fix multi-país que arriba.
       const canjes = await client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
                 FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p);
@@ -553,11 +563,12 @@ async function computeDashboard(tenantId, desde, hasta) {
           COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL), 0)          AS costos_usd,
           COALESCE(SUM(i.valor)             FILTER (WHERE i.devuelto_at IS NULL AND m.estado = 'acreditado'), 0) AS ingresos_acreditado_usd,
           COALESCE(SUM(i.costo_unit * i.cantidad) FILTER (WHERE i.devuelto_at IS NULL AND m.estado = 'acreditado'), 0) AS costos_acreditado_usd,
-          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase IN ('celular_sellado','celular_usado')     AND i.devuelto_at IS NULL), 0)::int AS celulares,
-          COALESCE(SUM(i.cantidad) FILTER (WHERE pr.clase NOT IN ('celular_sellado','celular_usado') AND pr.id IS NOT NULL AND i.devuelto_at IS NULL), 0)::int AS accesorios
+          COALESCE(SUM(i.cantidad) FILTER (WHERE cp.slug_legacy IN ('celular_sellado','celular_usado')     AND i.devuelto_at IS NULL), 0)::int AS celulares,
+          COALESCE(SUM(i.cantidad) FILTER (WHERE cp.slug_legacy NOT IN ('celular_sellado','celular_usado') AND cp.slug_legacy IS NOT NULL AND i.devuelto_at IS NULL), 0)::int AS accesorios
         FROM movimientos_cc m
         LEFT JOIN items_movimiento_cc i ON i.movimiento_cc_id = m.id
         LEFT JOIN productos pr ON pr.id = i.producto_id
+        LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
         WHERE ${B2B_BASE}
       `, p);
       // 2026-07-08 Fase 2 categorías reales: desglose de unidades por las 9

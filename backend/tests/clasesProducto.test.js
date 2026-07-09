@@ -25,6 +25,18 @@ beforeAll(async () => {
   const res = await request(app).post('/api/auth/login')
     .send({ username: TEST_USER.username, password: TEST_USER.password });
   token = res.body.token;
+  // `clases_producto` NO está en el TRUNCATE de setupTestDb (habría que
+  // re-seedear las 9 base + Sin categoría del tenant test, y la migration
+  // solo backfillea al correrse una vez). Cleanup selectivo: borrar solo
+  // las categorías custom (no es_base, no es_sin_categoria) del tenant
+  // de test que hayan quedado de corridas previas. Las base + sistema se
+  // preservan porque los tests las esperan.
+  await pool.query(`
+    DELETE FROM clases_producto
+     WHERE tenant_id = 1
+       AND NOT es_base
+       AND NOT es_sin_categoria
+  `);
 });
 afterAll(async () => { await teardownTestDb(pool); });
 

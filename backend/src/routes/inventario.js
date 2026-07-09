@@ -394,7 +394,18 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
-    if (clase)        { params.push(clase);        conditions.push(`p.clase = $${params.length}`); }
+    // F3.d-2 (2026-07-09): el filter `?clase=slug` (URLs legacy) ahora se
+    // resuelve via JOIN con `clases_producto.slug_legacy` en vez de leer
+    // `p.clase` directo. Esto NO cambia el contrato del endpoint (mismo
+    // param, mismo comportamiento), pero elimina la dependencia de
+    // `productos.clase` como columna — F3.d-3 podrá dropearla sin romper.
+    if (clase) {
+      params.push(clase);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM clases_producto cp
+                  WHERE cp.id = p.clase_id AND cp.slug_legacy = $${params.length})`
+      );
+    }
     if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
     if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
     if (deposito_id)  { params.push(deposito_id);  conditions.push(`p.deposito_id = $${params.length}`); }
@@ -480,10 +491,17 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
 
     const conditions = ['p.deleted_at IS NULL'];
     const params = [];
-    if (clase)        { params.push(clase);        conditions.push(`p.clase = $${params.length}`); }
-    // F3.c: filtro por FK a clases_producto (nueva categoría por tenant). Se
-    // aplica en AND con `clase` legacy si ambos vienen, aunque el frontend
-    // nuevo (F3.c-2) usará solo uno de los dos.
+    // F3.d-2 (2026-07-09): el filter `?clase=slug` legacy ahora resuelve via
+    // JOIN con `clases_producto.slug_legacy` — elimina la dependencia de
+    // `productos.clase`. `?clase_id=UUID` (F3.c) sigue igual, es la ruta
+    // principal desde el frontend post-F3.c-2 PR-1 #532.
+    if (clase) {
+      params.push(clase);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM clases_producto cp
+                  WHERE cp.id = p.clase_id AND cp.slug_legacy = $${params.length})`
+      );
+    }
     if (clase_id)     { params.push(clase_id);     conditions.push(`p.clase_id = $${params.length}`); }
     if (estado)       { params.push(estado);       conditions.push(`p.estado = $${params.length}`); }
     if (categoria_id) { params.push(categoria_id); conditions.push(`p.categoria_id = $${params.length}`); }
