@@ -14,6 +14,7 @@
 //   │ Ticket   │ Top productos            │ Top vend. │
 //   └──────────┴──────────────────────────┴───────────┘
 
+import { useState } from 'react';
 import { fmt } from '../../lib/format';
 import { sym } from './utils';
 import { useMonedasTenant } from '../../lib/useMonedasTenant';
@@ -24,8 +25,17 @@ import { useMonedasTenant } from '../../lib/useMonedasTenant';
 // backend siempre responde con array. Si el backend antiguo estuviera
 // activo (rollback), el frontend cae al bucket binario pre-F2.
 import HourChart from './HourChart';
+// 2026-07-09 (post-Fase 2b Inventario): rediseño del card "Unidades vendidas"
+// bajo el patrón Opción C — resumen numérico + botón que abre modal detalle.
+// Consistente con InventarioPorCategoriaModal (Fase 2b). Resuelve el desbalance
+// vertical del card cuando el tenant vende en 8+ categorías del rango.
+import VentasPorCategoriaModal from '../../components/VentasPorCategoriaModal';
 
 export default function Dashboard({ d }) {
+  // Estado del modal de detalle "Unidades vendidas por categoría". Local al
+  // Dashboard porque el modal solo se usa desde el card KPI de acá — no hay
+  // razón para elevarlo a un contexto compartido.
+  const [showUnidadesModal, setShowUnidadesModal] = useState(false);
   // 2026-07-08 (bug reportado por iOStoreUY): antes la card "INGRESOS
   // TOTALES" mostraba siempre `u$s{usd} + ${ars} ARS` hardcoded — en tenants
   // UY los pagos UYU desaparecían del display superior aunque el "USD
@@ -72,31 +82,53 @@ export default function Dashboard({ d }) {
         <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-unidades">
           <div className="kpi-label">Unidades vendidas</div>
           {/*
-            F3.d-1 (2026-07-09): 2-way render.
-            - Shape principal (F3.c-2 PR-2 #533): array pre-ordenado
-              `[{clase_id, nombre, emoji, n}]` con labels editables por tenant.
-            - Fallback: bucket binario `📱 celulares · 🎧 accesorios` cuando el
-              array viene vacío/undefined (edge case: backend viejo post-rollback,
-              o rango sin ventas donde el array queda []).
+            2026-07-09 (Opción C rediseño post-Fase 2b): card compacto con
+            total + top categoría al vuelo + botón que abre modal de detalle.
+            Reemplaza el layout de chips inline que se desbalanceaba cuando
+            el tenant vendía en 8+ categorías.
 
-            El shape legacy F2 (object `{slug: n}`) se removió — asumimos que
-            el backend siempre responde con array post PR #533. Si algún cache
-            CDN sirviera el object legacy durante ~5min de rollout, cae al
-            bucket binario silenciosamente (sin crash).
+            2-way render:
+            - Shape principal (F3.c-2 PR-2 #533): array pre-ordenado
+              `[{clase_id, nombre, emoji, n}]` → resumen + botón → modal.
+            - Fallback: bucket binario pre-F2 `📱 celulares · 🎧 accesorios`
+              cuando el array viene vacío/undefined (edge case: backend viejo
+              post-rollback, o rango sin ventas del período).
+
+            El shape legacy F2 (object `{slug: n}`) también cae al fallback
+            binario porque no pasa `Array.isArray`. No mantenemos path para
+            el object — Se removió en F3.d-1.
           */}
           {Array.isArray(d.unidades_por_clase) && d.unidades_por_clase.length > 0 ? (
-            <div className="kpi-clases" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-              {d.unidades_por_clase.map(item => (
-                <span
-                  key={item.clase_id}
-                  className="chip mono"
-                  style={{ fontSize: 13 }}
-                  title={`${item.n} unidad${item.n === 1 ? '' : 'es'} de ${item.nombre}`}
-                >
-                  {item.emoji ? `${item.emoji} ` : ''}{item.nombre} <strong>{item.n}</strong>
-                </span>
-              ))}
-            </div>
+            (() => {
+              // Total agregado + top categoría por count DESC. Cálculo local
+              // (backend ya viene ordenado pero por si acaso). Cheap: N chico.
+              const filas = d.unidades_por_clase;
+              const total = filas.reduce((s, r) => s + (Number(r.n) || 0), 0);
+              const top = filas.slice().sort((a, b) => (Number(b.n) || 0) - (Number(a.n) || 0))[0];
+              const catsConVentas = filas.filter(r => (Number(r.n) || 0) > 0).length;
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                    <span className="kpi-value mono" style={{ fontSize: 17 }}>{fmt(total)}</span>
+                    <span className="muted tiny">en {catsConVentas} {catsConVentas === 1 ? 'categoría' : 'categorías'}</span>
+                  </div>
+                  {top && (
+                    <div className="muted tiny" style={{ marginTop: 4 }} title={`Top: ${top.nombre} (${top.n} unidades)`}>
+                      Top: {top.emoji ? `${top.emoji} ` : ''}{top.nombre} <strong style={{ color: 'var(--fg)' }}>{top.n}</strong>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{ marginTop: 8, fontSize: 12 }}
+                    onClick={() => setShowUnidadesModal(true)}
+                    title="Ver detalle por categoría"
+                  >
+                    Ver detalle →
+                  </button>
+                </>
+              );
+            })()
           ) : (
             <div className="kpi-value" style={{ fontSize: 17 }}>
               📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
@@ -227,6 +259,16 @@ export default function Dashboard({ d }) {
               ))}
         </div>
       </div>
+
+      {/* Modal de detalle del KPI "Unidades vendidas" (Opción C rediseño).
+          Le pasamos el array crudo — el modal maneja filtrado, orden y
+          total agregado. Solo se monta cuando `showUnidadesModal=true` (el
+          componente hace `if (!open) return null` internamente). */}
+      <VentasPorCategoriaModal
+        open={showUnidadesModal}
+        onClose={() => setShowUnidadesModal(false)}
+        unidadesPorClase={d.unidades_por_clase || []}
+      />
     </div>
   );
 }
