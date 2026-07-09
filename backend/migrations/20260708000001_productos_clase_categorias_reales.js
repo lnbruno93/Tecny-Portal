@@ -55,6 +55,30 @@ exports.shorthands = undefined;
 
 exports.up = (pgm) => {
   pgm.sql(`
+    -- 0. RLS bypass para bulk UPDATE.
+    --
+    -- Incidente 2026-07-09: esta migration falló 10 veces en Railway prod
+    -- + 1 vez en staging al intentar auto-deploy post-merge. Root cause:
+    -- productos tiene FORCE ROW LEVEL SECURITY (migration 20260615000001
+    -- multi-tenant) que aplica también al owner del schema (ipro_app). El
+    -- backend Node corre 'npm run migrate' con user ipro_app; sin
+    -- app.current_tenant seteado en la sesión, los UPDATE de los pasos
+    -- 2-4 son filtrados por RLS y afectan 0 filas. El ADD CONSTRAINT
+    -- final (paso 5) valida contra TODA la tabla física y encuentra
+    -- filas con clase='celular'/'accesorio' no migradas → violation.
+    --
+    -- Fix: como owner, el rol ipro_app puede desactivar FORCE RLS
+    -- transaccionalmente, hacer el bulk UPDATE, y restaurarlo al final.
+    -- Alternativas descartadas:
+    --   · SET LOCAL row_security = off — no funciona con FORCE RLS.
+    --   · SET SESSION AUTHORIZATION postgres — requiere superuser en el
+    --     pool del backend; no queremos elevar el user prod solo por esto.
+    --   · UPDATE por-tenant en loop con SET LOCAL app.current_tenant —
+    --     requiere enumerar tenants; complejo si la tabla se vacía.
+    --
+    -- Ver runbook: docs/runbooks/rls-bulk-migration.md
+    ALTER TABLE productos NO FORCE ROW LEVEL SECURITY;
+
     -- 1. Ampliar el CHECK constraint de productos.clase para aceptar las 9
     --    categorías nuevas + preservar 'celular' y 'accesorio' legacy hasta
     --    que el backfill migre todo. Después del UPDATE, hacemos un segundo
@@ -132,6 +156,11 @@ exports.up = (pgm) => {
     --    'celular_sellado' que es la categoría más común y equivalente
     --    semántica del default anterior (venta nueva de celular sellado).
     ALTER TABLE productos ALTER COLUMN clase SET DEFAULT 'celular_sellado';
+
+    -- 6. Restauramos FORCE RLS (paso 0 lo desactivó para el bulk UPDATE).
+    --    El estado post-migration es idéntico al pre-migration en cuanto a
+    --    RLS enforcement — el bypass fue solo transitorio dentro de esta tx.
+    ALTER TABLE productos FORCE ROW LEVEL SECURITY;
   `);
 };
 
