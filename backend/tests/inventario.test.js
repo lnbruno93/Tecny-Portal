@@ -117,6 +117,93 @@ describe('Productos', () => {
     expect(res.status).toBe(400);
   });
 
+  // F3.c (2026-07-08): derive bidireccional clase ↔ clase_id.
+  // Cada tenant tiene 9 filas base en clases_producto (seedeadas por la migration
+  // 20260708000002). El slug_legacy de cada base matchea el enum viejo.
+  describe('F3.c derive bidireccional clase ↔ clase_id', () => {
+    const productosCreados = [];
+    afterAll(async () => {
+      // Cleanup: hard-delete los productos creados en este describe para no
+      // contaminar los tests siguientes (métricas, count por categoría, etc).
+      // Usamos DELETE directo del pool (bypassa auth y capabilities) porque
+      // el endpoint DELETE hace soft-delete y los soft-deleted aún cuentan
+      // en algunos KPIs históricos. Los productos creados acá son test-only.
+      for (const id of productosCreados) {
+        await pool.query('DELETE FROM productos WHERE id = $1', [id]);
+      }
+    });
+    function pushId(res) {
+      if (res.body?.id) productosCreados.push(res.body.id);
+    }
+    async function claseIdDe(slug) {
+      const list = await request(app).get('/api/inventario/clases').set(auth());
+      return list.body.find(c => c.slug_legacy === slug)?.id;
+    }
+
+    it('POST con solo `clase` → backend deriva clase_id desde slug_legacy', async () => {
+      const res = await request(app).post('/api/inventario/productos').set(auth()).send({
+        clase: 'watch', tipo_carga: 'lote', categoria_id: catBase,
+        nombre: 'Apple Watch S9 45mm', cantidad: 3, costo: 400,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.clase).toBe('watch');
+      expect(res.body.clase_id).toBeTruthy();
+      // El clase_id debería matchear la fila base del slug watch
+      const expected = await claseIdDe('watch');
+      expect(res.body.clase_id).toBe(expected);
+      pushId(res);
+    });
+
+    it('POST con solo `clase_id` → backend deriva clase desde slug_legacy', async () => {
+      const clase_id = await claseIdDe('cargadores');
+      expect(clase_id).toBeTruthy();
+      const res = await request(app).post('/api/inventario/productos').set(auth()).send({
+        clase_id,
+        tipo_carga: 'lote', categoria_id: catBase,
+        nombre: 'Cargador 20W USB-C',
+        cantidad: 12, costo: 10,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.clase_id).toBe(clase_id);
+      expect(res.body.clase).toBe('cargadores');
+      pushId(res);
+    });
+
+    it('POST con clase_id inexistente → 400', async () => {
+      const res = await request(app).post('/api/inventario/productos').set(auth()).send({
+        clase_id: '00000000-0000-0000-0000-000000000001',
+        tipo_carga: 'lote', categoria_id: catBase, nombre: 'X', cantidad: 1, costo: 1,
+      });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toMatch(/clase_id|categor/i);
+    });
+
+    it('PUT cambiando clase_id → deriva clase automáticamente', async () => {
+      // Crear producto con clase 'auriculares' y luego cambiarle clase_id a
+      // 'consolas'. Debe actualizar ambos campos.
+      const created = await request(app).post('/api/inventario/productos').set(auth()).send({
+        clase: 'auriculares', tipo_carga: 'lote', categoria_id: catBase,
+        nombre: 'Cambio de clase', cantidad: 1, costo: 100,
+      });
+      expect(created.status).toBe(201);
+      pushId(created);
+      const consolasId = await claseIdDe('consolas');
+      const updated = await request(app).put(`/api/inventario/productos/${created.body.id}`)
+        .set(auth()).send({ clase_id: consolasId });
+      expect(updated.status).toBe(200);
+      expect(updated.body.clase_id).toBe(consolasId);
+      expect(updated.body.clase).toBe('consolas');
+    });
+
+    it('GET con filtro ?clase_id=X devuelve solo productos con esa clase_id', async () => {
+      const watchId = await claseIdDe('watch');
+      const res = await request(app).get(`/api/inventario/productos?clase_id=${watchId}`).set(auth());
+      expect(res.status).toBe(200);
+      expect(res.body.data.every(p => p.clase_id === watchId)).toBe(true);
+      expect(res.body.data.length).toBeGreaterThan(0);
+    });
+  });
+
   it('busca el producto por IMEI', async () => {
     const res = await request(app).get('/api/inventario/productos?buscar=356938').set(auth());
     expect(res.status).toBe(200);

@@ -17,9 +17,22 @@ const nombresBulkSchema = z.object({
 }).strict();
 
 // --- Productos ---
+// UUID loose regex — coherente con schemas/clasesProducto.js (F3.a).
+const uuidLoose = z.string().regex(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  'clase_id inválido'
+);
+
 const baseProducto = z.object({
   tipo_carga:     z.enum(['unitario', 'lote']).default('unitario'),
+  // F1: enum legacy — sigue existiendo hasta F3.d cleanup. El handler
+  // sincroniza `clase` ↔ `clase_id` en cada POST/PUT (derive bidireccional).
   clase:          z.enum(CLASES_PRODUCTO).default(CLASE_DEFAULT),
+  // F3.c (2026-07-08): FK a `clases_producto` (categoría editable por tenant).
+  // Opcional en el shape para no romper clientes viejos que solo mandan `clase`.
+  // El handler resuelve la falta con `slug_legacy` = clase; y si el frontend
+  // manda solo `clase_id`, deriva `clase` desde `slug_legacy`.
+  clase_id:       uuidLoose.optional().nullable(),
   nombre:         z.string().trim().min(1, 'Nombre requerido').max(200),
   imei:           z.string().trim().max(50).optional().nullable(),
   gb:             z.string().trim().max(20).optional().nullable(),
@@ -117,6 +130,11 @@ const VISTAS_INVENTARIO = [
 const queryProductosSchema = z.object({
   buscar:       z.string().trim().max(200).optional(),
   clase:        z.enum(CLASES_PRODUCTO).optional(),
+  // F3.c: filtro por FK a clases_producto (nueva categoría por tenant).
+  // Los tabs del frontend enviarán `clase_id` en vez de `clase` a partir
+  // de F3.c-2. Los dos pueden coexistir durante la transición (se aplican
+  // con AND si ambos vienen, aunque el frontend nuevo usa solo uno).
+  clase_id:     uuidLoose.optional(),
   estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),
