@@ -170,7 +170,11 @@ describe('Dashboard — moneda local del tenant en INGRESOS TOTALES', () => {
   // F3.c-2 (2026-07-09) — 3 shapes de `unidades_por_clase` que el Dashboard
   // debe manejar sin crashear durante la transición backend→frontend:
   describe('F3.c-2 — unidades_por_clase 3 shapes de compat', () => {
-    it('shape NUEVO (array): renderea chip por cada item con emoji + nombre + n', () => {
+    // 2026-07-09 rediseño Opción C: el shape ARRAY ya no renderiza chips
+    // inline. En su lugar: total agregado + label "en N categorías" + top
+    // categoría + botón "Ver detalle" que abre modal (VentasPorCategoriaModal).
+    // Los tests del modal viven en VentasPorCategoriaModal.test.jsx.
+    it('shape NUEVO (array): renderea resumen + top categoría + botón detalle', () => {
       render(<Dashboard d={makeDashboard({
         unidades_por_clase: [
           { clase_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'Watch',      emoji: '⌚', n: 3 },
@@ -180,11 +184,15 @@ describe('Dashboard — moneda local del tenant en INGRESOS TOTALES', () => {
       })} />);
       const card = screen.getByTestId('kpi-unidades');
       const txt = card.textContent;
-      // Chips render: {emoji} {nombre} {n}
-      expect(txt).toMatch(/⌚ Watch\s*3/);
-      expect(txt).toMatch(/🔋 Cargadores\s*12/);
-      // Sin emoji: solo nombre + n (no debe aparecer null ni undefined).
-      expect(txt).toMatch(/Sin emoji\s*1/);
+      // Total agregado (16 unidades) + label del count de categorías.
+      expect(txt).toMatch(/16/);
+      expect(txt).toMatch(/en 3 categorías/);
+      // Top categoría: Cargadores tiene el n más alto (12) → aparece como top.
+      expect(txt).toMatch(/Top:\s*🔋 Cargadores/);
+      expect(txt).toMatch(/12/);
+      // Botón "Ver detalle" presente y clickeable.
+      expect(txt).toMatch(/Ver detalle/);
+      // Sin renders de null/undefined en el card.
       expect(txt).not.toMatch(/null|undefined/);
     });
 
