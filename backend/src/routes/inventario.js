@@ -240,9 +240,18 @@ router.get('/productos/metricas', async (req, res, next) => {
       res.json(metricas);
       return;
     }
-    // Redact los 6 campos monetarios. Devolvemos null (no undefined ni
-    // delete) para que el frontend reconozca la ausencia y muestre "—" en
-    // vez de "$0" — bug U1 también detectado en la auditoría.
+    // Redact los 6 campos monetarios legacy + los montos por-categoría en
+    // `inv_por_clase[]` (Fase 2a). Devolvemos null (no undefined ni delete)
+    // para que el frontend reconozca la ausencia y muestre "—" en vez de
+    // "$0" — bug U1 también detectado en la auditoría.
+    // Los `count` NO se redactan: un vendedor puede saber cuántos equipos
+    // hay por categoría, solo no cuánta plata representan (mismo criterio
+    // que los campos legacy count_*).
+    const invPorClaseRedacted = (metricas.inv_por_clase || []).map(c => ({
+      ...c,
+      usd: null,
+      ars: null,
+    }));
     res.json({
       ...metricas,
       en_tecnico_usd:    null,
@@ -251,6 +260,7 @@ router.get('/productos/metricas', async (req, res, next) => {
       inv_equipos_ars:   null,
       inv_accesorios_usd: null,
       inv_accesorios_ars: null,
+      inv_por_clase:     invPorClaseRedacted,
     });
   } catch (err) { next(err); }
 });
