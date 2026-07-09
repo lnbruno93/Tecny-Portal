@@ -567,12 +567,29 @@ async function computeDashboard(tenantId, desde, hasta) {
       // El GROUP BY sobre clase entrega solo las clases con ventas > 0, así
       // el frontend renderiza chips únicamente para las categorías vendidas
       // (Lucas confirmó "solo categorías con ventas del período").
-      const unidadesPorClaseRetail = await client.query(`SELECT pr.clase, SUM(vi.cantidad)::int AS n
-                FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id JOIN productos pr ON pr.id = vi.producto_id
-                WHERE ${BASE} GROUP BY pr.clase`, p);
-      const unidadesPorClaseB2B = await client.query(`SELECT pr.clase, SUM(i.cantidad)::int AS n
-                FROM items_movimiento_cc i JOIN movimientos_cc m ON m.id = i.movimiento_cc_id JOIN productos pr ON pr.id = i.producto_id
-                WHERE ${B2B_BASE} AND i.devuelto_at IS NULL GROUP BY pr.clase`, p);
+      // F3.c-2 (2026-07-09): agregado JOIN con clases_producto para traer
+      // clase_id + nombre + emoji al frontend, en vez del slug legacy que
+      // exigía al frontend un helper de labels/emojis. Ahora el label es
+      // editable por tenant (F3.a #528).
+      //
+      // Productos con clase_id NULL (edge case del backfill de F3.a — un
+      // producto viejo que no matcheó ningún slug base y quedó sin FK):
+      // FILTER WHERE clase_id IS NOT NULL — no aportan al KPI. El operador
+      // puede reasignarlos desde el modal de Categorías. Es un caso raro.
+      const unidadesPorClaseRetail = await client.query(`SELECT pr.clase_id, cp.nombre, cp.emoji, SUM(vi.cantidad)::int AS n
+                FROM venta_items vi
+                JOIN ventas v ON v.id = vi.venta_id
+                JOIN productos pr ON pr.id = vi.producto_id
+                JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
+                WHERE ${BASE} AND pr.clase_id IS NOT NULL
+                GROUP BY pr.clase_id, cp.nombre, cp.emoji`, p);
+      const unidadesPorClaseB2B = await client.query(`SELECT pr.clase_id, cp.nombre, cp.emoji, SUM(i.cantidad)::int AS n
+                FROM items_movimiento_cc i
+                JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
+                JOIN productos pr ON pr.id = i.producto_id
+                JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
+                WHERE ${B2B_BASE} AND i.devuelto_at IS NULL AND pr.clase_id IS NOT NULL
+                GROUP BY pr.clase_id, cp.nombre, cp.emoji`, p);
       return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b, unidadesPorClaseRetail, unidadesPorClaseB2B];
     });
 
@@ -662,26 +679,37 @@ async function computeDashboard(tenantId, desde, hasta) {
         celulares: parseInt(unidades.rows[0].celulares) + parseInt(b.celulares),
         accesorios: parseInt(unidades.rows[0].accesorios) + parseInt(b.accesorios),
       },
-      // 2026-07-08 Fase 2: desglose por las 9 categorías de F1. Retail + B2B
-      // combinados, solo clases con ventas > 0. Frontend renderiza chips
-      // ordenados por conteo desc.
+      // F3.c-2 (2026-07-09): shape actualizado a array `[{clase_id, nombre,
+      // emoji, n}]`. Antes era `{slug: n}` con el frontend consultando
+      // CLASES_LABELS[slug] para el emoji + label. Ahora backend trae todo
+      // pre-armado (leído del JOIN con `clases_producto` — labels editables
+      // por tenant desde F3.a #528).
       //
-      // Shape: { celular_sellado: 3, watch: 1, cargadores: 12, ... }
-      // Frontend usa CLASES_LABELS para el emoji + label. Si una clase que
-      // el frontend conoce NO viene acá → no se renderiza (no hubo ventas).
-      // Si viene una clase que el frontend NO conoce (defensive: backend
-      // agregó slug nuevo antes que el frontend deploye) → cae a fmt raw.
+      // El array se combina retail + B2B por clase_id, se filtra `n > 0`, y
+      // se ordena DESC por `n` (misma UX del frontend: chips más grandes
+      // primero). El frontend Dashboard.jsx renderea con fallback al shape
+      // viejo si detecta object (defensive: server viejo + client nuevo).
       unidades_por_clase: (() => {
-        const combined = {};
-        for (const row of unidadesPorClaseRetail.rows) {
-          combined[row.clase] = (combined[row.clase] || 0) + Number(row.n);
-        }
-        for (const row of unidadesPorClaseB2B.rows) {
-          combined[row.clase] = (combined[row.clase] || 0) + Number(row.n);
-        }
-        // Filtramos 0 defensivamente por si alguna query devuelve 0 (no debería
-        // por el HAVING implícito del GROUP BY, pero por si acaso).
-        return Object.fromEntries(Object.entries(combined).filter(([, n]) => n > 0));
+        const combined = new Map();
+        const acumular = (rows) => {
+          for (const r of rows) {
+            const key = r.clase_id;
+            if (!combined.has(key)) {
+              combined.set(key, {
+                clase_id: r.clase_id,
+                nombre:   r.nombre,
+                emoji:    r.emoji ?? null,
+                n:        0,
+              });
+            }
+            combined.get(key).n += Number(r.n);
+          }
+        };
+        acumular(unidadesPorClaseRetail.rows);
+        acumular(unidadesPorClaseB2B.rows);
+        return Array.from(combined.values())
+          .filter(x => x.n > 0)
+          .sort((a, b) => b.n - a.n);
       })(),
       ganancia_bruta_usd: round2(gananciaBruta),
       // 2026-06-10: ganancia bruta restringida a ventas acreditadas (es la

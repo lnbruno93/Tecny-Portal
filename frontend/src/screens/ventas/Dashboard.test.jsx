@@ -166,4 +166,58 @@ describe('Dashboard — moneda local del tenant en INGRESOS TOTALES', () => {
     expect(txt).toMatch(/\$U0 UYU/);
     expect(txt).not.toMatch(/NaN/);
   });
+
+  // F3.c-2 (2026-07-09) — 3 shapes de `unidades_por_clase` que el Dashboard
+  // debe manejar sin crashear durante la transición backend→frontend:
+  describe('F3.c-2 — unidades_por_clase 3 shapes de compat', () => {
+    it('shape NUEVO (array): renderea chip por cada item con emoji + nombre + n', () => {
+      render(<Dashboard d={makeDashboard({
+        unidades_por_clase: [
+          { clase_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'Watch',      emoji: '⌚', n: 3 },
+          { clase_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', nombre: 'Cargadores', emoji: '🔋', n: 12 },
+          { clase_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', nombre: 'Sin emoji',  emoji: null, n: 1 },
+        ],
+      })} />);
+      const card = screen.getByTestId('kpi-unidades');
+      const txt = card.textContent;
+      // Chips render: {emoji} {nombre} {n}
+      expect(txt).toMatch(/⌚ Watch\s*3/);
+      expect(txt).toMatch(/🔋 Cargadores\s*12/);
+      // Sin emoji: solo nombre + n (no debe aparecer null ni undefined).
+      expect(txt).toMatch(/Sin emoji\s*1/);
+      expect(txt).not.toMatch(/null|undefined/);
+    });
+
+    it('shape LEGACY F2 (object {slug: n}): usa CLASES_LABELS hardcoded (backend viejo + client nuevo)', () => {
+      render(<Dashboard d={makeDashboard({
+        unidades_por_clase: { celular_sellado: 5, watch: 2 },
+      })} />);
+      const card = screen.getByTestId('kpi-unidades');
+      const txt = card.textContent;
+      // El client usa CLASES_LABELS del enum F1 hardcoded para el chip.
+      expect(txt).toMatch(/Celular Sellado.*5|5.*Celular Sellado/);
+      expect(txt).toMatch(/Watch.*2|2.*Watch/);
+    });
+
+    it('shape PRE-F2 (undefined): fallback al bucket binario', () => {
+      render(<Dashboard d={makeDashboard({
+        unidades: { celulares: 5, accesorios: 3 },
+        // Sin unidades_por_clase.
+      })} />);
+      const card = screen.getByTestId('kpi-unidades');
+      const txt = card.textContent;
+      expect(txt).toMatch(/📱\s*5\s*·\s*🎧\s*3/);
+    });
+
+    it('array vacío: fallback al bucket binario (no chips vacíos)', () => {
+      // Backend nuevo pero sin ventas del período → array [] → mostrar
+      // el bucket viejo con 0/0 en vez de un card vacío.
+      render(<Dashboard d={makeDashboard({
+        unidades: { celulares: 0, accesorios: 0 },
+        unidades_por_clase: [],
+      })} />);
+      const card = screen.getByTestId('kpi-unidades');
+      expect(card.textContent).toMatch(/0\s*·.*0/);
+    });
+  });
 });
