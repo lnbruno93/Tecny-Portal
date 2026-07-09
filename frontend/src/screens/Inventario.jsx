@@ -10,6 +10,13 @@ import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
 // Categorías reales F1 (2026-07-08): 9 clases con emojis en vez de celular/accesorio.
 import { CLASES_PRODUCTO, CLASES_LABELS, CLASE_DEFAULT, claseLabel } from '../lib/clasesProducto';
+
+// F3.c-2 (2026-07-09): helper para detectar si un value de tab es un UUID
+// (categoría del tenant, tabla `clases_producto`) vs un slug F1 legacy o un
+// filtro especial ('todos', 'tecnico', 'usados', 'cat:X'). Match del pattern
+// hex-loose que usa el backend en routes/inventario.js (F3.a).
+const isUuid = (s) => typeof s === 'string'
+  && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { usePageActions } from '../contexts/PageActionsContext';
 import { useToast } from '../contexts/ToastContext';
@@ -361,12 +368,14 @@ export default function Inventario() {
       // rangeToParams devuelve {} para preset='todo', así que no rompe otras vistas.
       if (vistaFiltro === 'vendidos') Object.assign(params, rangeToParams(vendidosRange));
       // Resolución del tab activo:
-      //   - celular / accesorio → params.clase
+      //   - UUID (F3.c-2)      → params.clase_id (nuevo: categoría del tenant)
+      //   - slug F1 legacy     → params.clase (compat con URLs viejas y fallback)
       //   - tecnico            → params.estado = en_tecnico
       //   - usados             → params.condicion = usado
-      //   - cat:<id>           → params.categoria_id
+      //   - cat:<id>           → params.categoria_id (Colección legacy)
       //   - todos              → sin filtro extra
-      if (CLASES_PRODUCTO.includes(claseFilter)) params.clase = claseFilter;
+      if (isUuid(claseFilter)) params.clase_id = claseFilter;
+      else if (CLASES_PRODUCTO.includes(claseFilter)) params.clase = claseFilter;
       else if (claseFilter === 'tecnico') params.estado = 'en_tecnico';
       else if (claseFilter === 'usados') params.condicion = 'usado';
       else if (claseFilter && claseFilter.startsWith('cat:')) params.categoria_id = claseFilter.slice(4);
@@ -1105,17 +1114,35 @@ export default function Inventario() {
             value={claseFilter}
             options={[
               { value: 'todos', label: 'Todos' },
-              // 2026-07-08 Fase 1 categorías reales: 9 tabs (una por clase)
-              // reemplazan el par "Celulares/Accesorios" viejo. El ScrollFadeX
-              // padre habilita scroll horizontal si no entran + categorías
-              // administrables. Legacy tabs "tecnico" (por estado) y "usados"
-              // (por condicion) siguen porque siguen aplicando — cruzan con
-              // filtros distintos al `clase`.
-              ...CLASES_PRODUCTO.map(slug => ({ value: slug, label: CLASES_LABELS[slug] })),
+              // F3.c-2 (2026-07-09): tabs de categorías vienen del state `clases`
+              // (tabla `clases_producto` del tenant, editable desde el modal
+              // "Categorías"). Reemplazan el enum F1 hardcoded — antes eran
+              // 9 tabs fijos globales, ahora N según lo que el tenant configuró.
+              //
+              // Filtramos:
+              //   · `!es_sin_categoria` — la fila del sistema (fallback del
+              //     import XLSX) no aparece como tab. El operador NO debería
+              //     filtrar por "Sin categoría" desde acá.
+              //   · `activa` — categorías desactivadas se ocultan del filtro
+              //     (siguen visibles en la pantalla "Categorías" para reactivar).
+              // Orden: `orden` ASC + nombre como tiebreaker (mismo que el
+              // dropdown de alta/edición en F3.c-1).
+              //
+              // Fallback al enum F1 hardcoded si `clases` está vacío (network
+              // fail en loadCatalogos o tenant sin seed) — preserva UX pre-F3.
+              ...(clases.filter(c => c.activa && !c.es_sin_categoria).length > 0
+                ? clases
+                  .filter(c => c.activa && !c.es_sin_categoria)
+                  .map(c => ({
+                    value: c.id,
+                    label: c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre,
+                  }))
+                : CLASES_PRODUCTO.map(slug => ({ value: slug, label: CLASES_LABELS[slug] }))),
               { value: 'tecnico', label: 'En técnico' },
               { value: 'usados', label: 'Usados' },
-              // Categorías administrables → 1 tab por cada una (orden alfabético).
-              // El usuario las crea/edita desde "Gestionar categorías" sin tocar código.
+              // Colecciones (tabla legacy `categorias`, renombrada en UI por
+              // F3.b) → 1 tab por cada una (orden alfabético). El usuario las
+              // crea/edita desde "Colecciones & Depósitos".
               ...[...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
                 .map(c => ({ value: `cat:${c.id}`, label: c.nombre })),
             ]}
