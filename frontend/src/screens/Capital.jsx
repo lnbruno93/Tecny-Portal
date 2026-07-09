@@ -106,8 +106,26 @@ export default function Capital() {
     // Campos `_ars` del backend = moneda local del tenant (en AR son ARS,
     // en UY el backend los rellena con UYU). Renombrar requiere migration de
     // shape de la API; queda para F-06.
-    const invLocal  = n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
-    const invUsd    = n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
+    //
+    // F3-Fase2b (2026-07-09): "Stock valorizado" ahora se calcula desde
+    // `inv_por_clase[]` (post-Fase 2a) — reduce SUM sobre todas las
+    // categorías reales del tenant. El `+ en_tecnico_*` sigue igual
+    // (equipos en servicio técnico son parte del capital pero no del
+    // desglose por-categoría del array).
+    //
+    // Fallback: si el backend no devolvió `inv_por_clase` (versión previa
+    // desplegada) o devolvió redact (todas las filas con usd=null), caemos
+    // a los buckets legacy `inv_equipos_* + inv_accesorios_*`. Este fallback
+    // se retira en Fase 2c cuando los buckets legacy dejen de existir.
+    const filas = Array.isArray(inv.inv_por_clase) ? inv.inv_por_clase : [];
+    const allRedactedUsd = filas.length > 0 && filas.every(r => r.usd === null);
+    const allRedactedArs = filas.length > 0 && filas.every(r => r.ars === null);
+    const invLocal = (filas.length > 0 && !allRedactedArs)
+      ? filas.reduce((s, r) => s + n(r.ars), 0) + n(inv.en_tecnico_ars)
+      : n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
+    const invUsd = (filas.length > 0 && !allRedactedUsd)
+      ? filas.reduce((s, r) => s + n(r.usd), 0) + n(inv.en_tecnico_usd)
+      : n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
     const deudasLocal = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
     const deudasUsd   = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
     const b2bUsd = n(ccGeneral.neto);
