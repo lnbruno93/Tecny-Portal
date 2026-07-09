@@ -359,4 +359,50 @@ describe('GET /api/ventas/dashboard — bugs iOStoreUY 2026-07-08', () => {
     // fix es específico al KPI de unidades, no a la contabilidad general.
     expect(res.body.ventas_count).toBeGreaterThanOrEqual(1);
   });
+
+  // 2026-07-09 (bug reportado por Lucas post-Dashboard rediseño #541):
+  // los items sin producto_id NO aparecían en `unidades_por_clase[]`
+  // porque las queries usaban INNER JOIN con productos. Con el card KPI
+  // rediseñado (Opción C: total + top + botón), un tenant que carga
+  // ventas con item manual (tipeando el producto) veía "0" en el card
+  // aunque total_usd/ganancia reflejaban la venta. Ahora incluimos los
+  // items manuales como una fila "Sin categoría" (clase_id=NULL) en el
+  // array. Los buckets legacy (unidades.celulares/accesorios) siguen
+  // excluyéndolos por el fix iOStoreUY — comportamiento aditivo Fase 2.
+  it('items sin producto_id aparecen como "Sin categoría" en unidades_por_clase', async () => {
+    const hoy = new Date().toISOString().split('T')[0];
+    const { rows: vRows } = await pool.query(
+      `INSERT INTO vendedores (nombre) VALUES ('ItemManual Test') RETURNING id`
+    );
+    const vendedorId = vRows[0].id;
+    const { rows: sRows } = await pool.query(
+      `INSERT INTO ventas (tenant_id, order_id, fecha, total_usd, ganancia_usd, estado, cliente_nombre)
+       VALUES (1, 'test-item-manual-' || floor(random()*1000000), $1, 910, 610, 'acreditado', 'Cliente item-manual test')
+       RETURNING id`,
+      [hoy]
+    );
+    const ventaId = sRows[0].id;
+    // Item manual: descripcion sin producto_id (reproducción del bug real
+    // reportado por Lucas — venta cargada con producto tipeado a mano).
+    await pool.query(
+      `INSERT INTO venta_items (venta_id, descripcion, cantidad, precio_vendido, costo, moneda, producto_id, vendedor_id)
+       VALUES ($1, 'iPhone 17', 1, 910, 0, 'USD', NULL, $2)`,
+      [ventaId, vendedorId]
+    );
+
+    const res = await request(app)
+      .get(`/api/ventas/dashboard?desde=${hoy}&hasta=${hoy}`)
+      .set(auth());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.unidades_por_clase)).toBe(true);
+    // La fila "Sin categoría" existe con al menos la cantidad de este item.
+    const sinCategoria = res.body.unidades_por_clase.find(r => r.clase_id === null);
+    expect(sinCategoria).toBeDefined();
+    expect(sinCategoria.nombre).toBe('Sin categoría');
+    expect(sinCategoria.emoji).toBe('📦');
+    expect(sinCategoria.n).toBeGreaterThanOrEqual(1);
+    // Los buckets legacy siguen excluyendo items manuales (fix iOStoreUY).
+    expect(res.body.unidades.celulares).toBe(0);
+    expect(res.body.unidades.accesorios).toBe(0);
+  });
 });
