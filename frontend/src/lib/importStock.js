@@ -96,13 +96,63 @@ const CLASE_ALIASES = {
   // 'celular usado' o el slug directo.
   'celular': 'celular_sellado',
 };
-function resolveClaseXlsx(raw) {
-  if (!raw) return null;
-  // Quitar emoji leading + normalizar case + espacio simple.
+// F3.c-2 (2026-07-09): la resolución ahora usa el catálogo `clases` del
+// tenant (tabla `clases_producto` de F3.a #528) — permite categorías
+// custom del tenant (ej. "Repuestos", "Camisetas") además de los 9 slugs
+// F1 base. Devuelve `{ clase, clase_id }` — el body del producto puede
+// mandar ambos; backend deriva lo que falte (PR #530).
+//
+// Prioridad de match:
+//   1. Nombre exacto (case-insensitive) en `clases` activas → cubre las
+//      base + custom del tenant.
+//   2. Slug F1 legacy vía CLASE_ALIASES → mapea a la fila base
+//      correspondiente en `clases` por `slug_legacy`.
+//   3. Fallback: fila `es_sin_categoria=true` del sistema. El operador
+//      la reclasifica desde el modal Categorías después del import.
+//
+// Return type: `{ clase: string|null, clase_id: string|null }`. `clase`
+// se preserva para retrocompatibilidad con el schema de productos (backend
+// también actualiza `productos.clase` legacy hasta F3.d cleanup).
+function resolveClaseXlsx(raw, clases = []) {
+  const noMatch = { clase: null, clase_id: null };
+  if (!raw) return noMatch;
+  // Strip emoji leading. Rangos:
+  //   · U+1F300–U+1FAFF: pictographs (📲 📱 💻 🔋 etc.)
+  //   · U+2300–U+27BF: technical + misc symbols (⌚ ♻ etc.)
+  //   · U+FE0F: variation selector (aparece después del symbol en algunos
+  //     emojis compuestos como ♻️).
   const norm = String(raw).trim()
-    .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\s*/u, '')  // strip leading emoji
+    .replace(/^[\u{1F300}-\u{1FAFF}\u{2300}-\u{27BF}]\u{FE0F}?\s*/u, '')
     .toLowerCase();
-  return CLASE_ALIASES[norm] || null;
+
+  // 1) Nombre exacto en clases del tenant (base + custom).
+  const byNombre = clases.find(c =>
+    c.activa && !c.es_sin_categoria && c.nombre && c.nombre.toLowerCase() === norm
+  );
+  if (byNombre) {
+    return { clase: byNombre.slug_legacy || null, clase_id: byNombre.id };
+  }
+
+  // 2) Alias F1 → slug_legacy → clase_id.
+  const slug = CLASE_ALIASES[norm];
+  if (slug) {
+    const byBase = clases.find(c =>
+      c.activa && c.es_base && c.slug_legacy === slug
+    );
+    return {
+      clase: slug,
+      clase_id: byBase ? byBase.id : null,
+    };
+  }
+
+  // 3) Fallback: "Sin categoría" del sistema (fila `es_sin_categoria`).
+  //    El operador la reclasifica desde el modal después del import.
+  const sinCat = clases.find(c => c.es_sin_categoria);
+  if (sinCat) {
+    return { clase: null, clase_id: sinCat.id };
+  }
+
+  return noMatch;
 }
 
 // Excel/Google Sheets guarda IMEIs de 15 dígitos como notación científica
@@ -146,7 +196,7 @@ export function cleanImei(v) {
 // (Inventario.jsx → confirmImport) hace el create antes del bulk de productos.
 // Julio 2026: "Stock en 0" pasó de error a warning — permite dar de alta el
 // producto aunque todavía no haya stock físico (feature pedida por owner).
-export function mapStockRows(rows, { categorias = [], depositos = [], proveedores = [] } = {}) {
+export function mapStockRows(rows, { categorias = [], depositos = [], proveedores = [], clases = [] } = {}) {
   if (!Array.isArray(rows) || rows.length < 2) return [];
   const idx = buildIdx(rows[0]);
 
@@ -177,8 +227,20 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       //      celular/accesorio pero apuntando al slug del enum nuevo (Fase 1
       //      2026-07-08). El operador puede editar la clase desde Inventario
       //      después del import si el heurístico se equivocó.
-      const claseXlsx = resolveClaseXlsx(get('clase'));
-      const clase = claseXlsx || (hasStock ? 'accesorios_varios' : 'celular_sellado');
+      // F3.c-2: resolveClaseXlsx ahora devuelve { clase, clase_id }.
+      const claseXlsx = resolveClaseXlsx(get('clase'), clases);
+      const clase = claseXlsx.clase || (hasStock ? 'accesorios_varios' : 'celular_sellado');
+      // clase_id: preferimos el resuelto por nombre/alias. Si el XLSX no
+      // trajo columna o no matcheó nada, intentamos derivarlo del slug
+      // fallback heurístico (accesorios_varios/celular_sellado) — vale
+      // solo si el tenant tiene esas base activas. Post-F3.a seed → sí.
+      let clase_id = claseXlsx.clase_id;
+      if (!clase_id) {
+        const byFallback = clases.find(c =>
+          c.activa && c.es_base && c.slug_legacy === clase
+        );
+        if (byFallback) clase_id = byFallback.id;
+      }
       const tipo_carga = (hasStock || tipoRaw === 'stock' || tipoRaw === 'lote') ? 'lote' : 'unitario';
       // Regla de cantidad: si el operador pasó una clase que NO es de las
       // "por-unidad" (celular sellado/usado o ipads), asumimos que trackea
@@ -213,6 +275,10 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       const body = {
         nombre,
         clase,
+        // F3.c-2: agregamos clase_id además de clase legacy. Backend acepta
+        // ambos y hace derive bidireccional (PR #530). Cuando F3.d haga
+        // el DROP COLUMN, este campo pasa a ser el único.
+        clase_id,
         tipo_carga,
         estado: 'disponible',
         imei: imei || null,

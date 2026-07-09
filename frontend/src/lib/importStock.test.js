@@ -505,3 +505,73 @@ describe('findDuplicateImeis', () => {
     expect(findDuplicateImeis([])).toEqual([]);
   });
 });
+
+// F3.c-2 (2026-07-09) — resolveClaseXlsx recibe `clases` del tenant y
+// devuelve `clase_id` además del slug legacy. Cuando el import no matchea
+// nada, cae a la fila `es_sin_categoria=true` del sistema.
+describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
+  const CATEGORIAS = [{ id: 1, nombre: 'Celulares' }];
+  const CLASES = [
+    { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'Watch',              emoji: '⌚', activa: true,  es_base: true,  es_sin_categoria: false, slug_legacy: 'watch' },
+    { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', nombre: 'Celular Sellado',    emoji: '📲', activa: true,  es_base: true,  es_sin_categoria: false, slug_legacy: 'celular_sellado' },
+    { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', nombre: 'Repuestos',          emoji: '🔧', activa: true,  es_base: false, es_sin_categoria: false, slug_legacy: null },
+    { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', nombre: 'Sin categoría',                   activa: true,  es_base: false, es_sin_categoria: true,  slug_legacy: null },
+    { id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', nombre: 'Inactiva',           emoji: '💤', activa: false, es_base: false, es_sin_categoria: false, slug_legacy: null },
+  ];
+  const HEAD = ['nombre', 'categoria', 'costo', 'precio_venta', 'clase', 'cantidad'];
+  const rowsWith = (clase, cantidad = 1) => [HEAD, ['iPhone 15', 'Celulares', 100, 200, clase, cantidad]];
+
+  it('slug F1 estándar ("watch") → clase_id de la fila base es_base', () => {
+    const [row] = mapStockRows(rowsWith('watch'), { categorias: CATEGORIAS, clases: CLASES });
+    expect(row.body.clase).toBe('watch');
+    expect(row.body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  });
+
+  it('nombre exacto de categoría custom del tenant ("Repuestos") → clase_id (sin slug_legacy)', () => {
+    const [row] = mapStockRows(rowsWith('Repuestos'), { categorias: CATEGORIAS, clases: CLASES });
+    expect(row.body.clase_id).toBe('cccccccc-cccc-cccc-cccc-cccccccccccc');
+    // slug_legacy es null en custom → clase legacy cae al fallback heurístico.
+    expect(row.body.clase).toBeTruthy();
+  });
+
+  it('alias legacy ("sellado") → clase_id de la fila base "celular_sellado"', () => {
+    const [row] = mapStockRows(rowsWith('sellado'), { categorias: CATEGORIAS, clases: CLASES });
+    expect(row.body.clase).toBe('celular_sellado');
+    expect(row.body.clase_id).toBe('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  });
+
+  it('emoji leading + case-insensitive → normaliza y matchea', () => {
+    // '⌚ WATCH' → strip emoji → 'WATCH' → lowercase → 'watch' → match
+    const [row] = mapStockRows(rowsWith('⌚ WATCH'), { categorias: CATEGORIAS, clases: CLASES });
+    expect(row.body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  });
+
+  it('sin match ("Fundas de neopreno") → fallback a "Sin categoría" del sistema', () => {
+    const [row] = mapStockRows(rowsWith('Fundas de neopreno'), { categorias: CATEGORIAS, clases: CLASES });
+    expect(row.body.clase_id).toBe('dddddddd-dddd-dddd-dddd-dddddddddddd');
+    // El clase legacy cae al fallback heurístico (backend deriva o queda como está).
+    expect(row.body.clase).toBeTruthy();
+  });
+
+  it('categoría inactiva NO matchea (aunque el nombre coincida)', () => {
+    const [row] = mapStockRows(rowsWith('Inactiva'), { categorias: CATEGORIAS, clases: CLASES });
+    // No matchea "Inactiva" (activa=false) → cae al fallback "Sin categoría".
+    expect(row.body.clase_id).toBe('dddddddd-dddd-dddd-dddd-dddddddddddd');
+  });
+
+  it('sin `clases` en ctx → devuelve slug F1 heurístico y clase_id=null (compat, backend deriva)', () => {
+    const [row] = mapStockRows(rowsWith('watch'), { categorias: CATEGORIAS });
+    // Sin `clases` catálogo, el alias resuelve a slug pero clase_id queda null.
+    // Backend deriva clase_id via resolveClaseAndClaseId (F3.c-1 #530).
+    expect(row.body.clase).toBe('watch');
+    expect(row.body.clase_id).toBeNull();
+  });
+
+  it('celda `clase` vacía → fallback heurístico (con stock → accesorios_varios) + clase_id NULL', () => {
+    // Sin columna clase, hasStock (5) → 'accesorios_varios' heurístico. Como
+    // este CLASES de test no tiene accesorios_varios base, clase_id queda null.
+    const [row] = mapStockRows([HEAD, ['iPhone 15', 'Celulares', 100, 200, '', 5]], { categorias: CATEGORIAS, clases: CLASES });
+    expect(row.body.clase).toBe('accesorios_varios');
+    expect(row.body.clase_id).toBeNull();
+  });
+});
