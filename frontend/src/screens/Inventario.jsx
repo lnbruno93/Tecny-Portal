@@ -734,7 +734,10 @@ export default function Inventario() {
         ? await readXlsxRows(await file.arrayBuffer())
         : parseCsv(await file.text());
       if (!rows || rows.length < 2) { setImportError('El archivo no tiene filas de datos.'); return; }
-      const mapped = mapStockRows(rows, { categorias, depositos, proveedores: proveedoresCatalogo });
+      // F3.c-2 (2026-07-09): pasamos `clases` (clases_producto del tenant)
+      // para que resolveClaseXlsx pueda resolver el clase_id además del slug
+      // legacy. Sin clases → cae al enum F1 hardcoded (comportamiento pre-F3).
+      const mapped = mapStockRows(rows, { categorias, depositos, proveedores: proveedoresCatalogo, clases });
       if (mapped.length === 0) { setImportError('No se encontraron filas con datos.'); return; }
       setImportRows(mapped);
       // Multi-proveedor: agrupa las filas válidas por proveedor → un movimiento
