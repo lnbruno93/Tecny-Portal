@@ -38,8 +38,9 @@ npm run dev                # → http://localhost:5173
 ## Tests
 
 ```bash
-# Backend
-cd backend && npm test                # Jest + supertest + DB real de tests
+# Backend — requiere Postgres corriendo (ver setup abajo)
+cd backend && npm test                # Jest + supertest + DB real
+cd backend && npm run test:local      # levanta PG con docker compose + jest
 
 # Frontend
 cd frontend && npm test -- --run      # Vitest single-run
@@ -50,6 +51,9 @@ npm run e2e:install   # primera vez: descarga Chromium
 npm run e2e           # corre la suite (arranca backend+frontend automáticamente)
 npm run e2e:headed    # con browser visible (debug)
 ```
+
+**Setup de Postgres local para tests:** ver [`docs/LOCAL_DEV.md`](./docs/LOCAL_DEV.md).
+Corren en ~3-4 segundos vs 6-8 minutos del CI — recomendado para cazar errores antes del push.
 
 Ver [`e2e/README.md`](./e2e/README.md) para setup completo del E2E (DB dedicada, variables, troubleshooting).
 
