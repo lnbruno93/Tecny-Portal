@@ -1,0 +1,55 @@
+# docker-compose.yml — Postgres local para tests de integración.
+#
+# Contexto: replica el Postgres 16 que corre en el CI de GitHub Actions
+# (ver .github/workflows/ci.yml → services.postgres). Permite correr
+# `npm test` contra un PG local en vez de esperar 6-8min por el CI cada
+# vez que empujamos un cambio del backend.
+#
+# Uso rápido (desde el root del repo, `iPro-Portal/`):
+#
+#   docker-compose up -d --wait     # levanta PG en background + espera health
+#   cd backend && npm test          # corre tests contra el PG local
+#   docker-compose down             # apaga PG (data preservada en volumen)
+#   docker-compose down -v          # apaga PG Y borra data (reset completo)
+#
+# Atajo desde backend:
+#   npm run test:local              # up + wait + jest (ver backend/package.json)
+#
+# NOTA: la config exacta (user, password, db, port) DEBE matchear con
+# backend/.env.test. Si cambia acá, actualizar el .env.test también.
+#
+# Diferencias con el CI:
+#   - CI usa GitHub Actions service container (no docker-compose) pero con
+#     la MISMA imagen postgres:16 + variables idénticas. Los tests son
+#     agnósticos al orchestrator — solo importa la connection string.
+#   - E2E en CI usa una DB separada (`ipro_e2e`). Localmente reusamos
+#     `ipro_test` para ambos casos — es raro que un dev necesite E2E local.
+#     Si hace falta, agregar una segunda DB via initdb.d script.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: tecny-postgres-test
+    environment:
+      POSTGRES_USER: ipro
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: ipro_test
+    ports:
+      - "5432:5432"
+    volumes:
+      # Volumen nombrado: la data persiste entre `up`/`down` para no re-migrar
+      # cada vez. Para reset completo → `docker-compose down -v`.
+      - tecny_pg_test_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready es más rápido que un query real; para el uso `--wait`
+      # de docker-compose alcanza para detectar que el server acepta
+      # conexiones. `-U ipro -d ipro_test` valida contra el user/db reales.
+      test: ["CMD-SHELL", "pg_isready -U ipro -d ipro_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  tecny_pg_test_data:
+    # Volumen nombrado — sobrevive a `docker-compose down`, se borra con `-v`.
