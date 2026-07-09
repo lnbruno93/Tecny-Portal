@@ -177,13 +177,26 @@ router.get('/diagnose-producto', async (req, res, next) => {
       let productos;
       if (producto_id) {
         const id = parseId(producto_id);
-        const r = await client.query('SELECT * FROM productos WHERE id = $1', [id]);
+        // F3.d-2 (2026-07-09): traemos slug_legacy vía JOIN a `clases_producto`
+        // en vez de leer `p.clase` directo. `clase_slug` termina siendo el
+        // valor que expone el response (mismo shape que antes).
+        const r = await client.query(
+          `SELECT p.*, cp.slug_legacy AS clase_slug
+             FROM productos p
+             LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
+            WHERE p.id = $1`,
+          [id]
+        );
         productos = r.rows;
       } else {
         // Sin filtro deleted_at: queremos ver también los soft-deleted (huérfanos
         // de vaciados + reimportaciones).
+        // F3.d-2: mismo JOIN para exponer `slug_legacy` en vez de leer p.clase.
         const r = await client.query(
-          'SELECT * FROM productos WHERE imei = $1 ORDER BY id DESC',
+          `SELECT p.*, cp.slug_legacy AS clase_slug
+             FROM productos p
+             LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
+            WHERE p.imei = $1 ORDER BY p.id DESC`,
           [imei.trim()]
         );
         productos = r.rows;
@@ -236,7 +249,10 @@ router.get('/diagnose-producto', async (req, res, next) => {
         id: p.id,
         nombre: p.nombre,
         imei: p.imei,
-        clase: p.clase,
+        // F3.d-2: `clase_slug` viene del JOIN a `clases_producto.slug_legacy`.
+        // Fallback a `p.clase` legacy si por alguna razón el JOIN no matchea
+        // (producto sin clase_id — edge case del backfill de F3.a).
+        clase: p.clase_slug || p.clase,
         cantidad: Number(p.cantidad),
         estado: p.estado,
         costo: p.costo,
