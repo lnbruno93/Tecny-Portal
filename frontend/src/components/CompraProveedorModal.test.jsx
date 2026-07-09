@@ -19,6 +19,12 @@ vi.mock('../lib/api', () => ({
       { id: 2, nombre: 'Accesorios' },
     ])),
     depositos: vi.fn(() => Promise.resolve([{ id: 1, nombre: 'Principal' }])),
+    // F3.d-3: CompraProveedorModal ahora consume el catálogo de clases_producto
+    // por-tenant para armar los dropdowns dinámicos.
+    clases: vi.fn(() => Promise.resolve([
+      { id: '11111111-1111-1111-1111-111111111111', nombre: 'Celular Sellado', slug_legacy: 'celular_sellado', emoji: '📲', es_base: true, activa: true },
+      { id: '22222222-2222-2222-2222-222222222222', nombre: 'Accesorios/Varios', slug_legacy: 'accesorios_varios', emoji: '🛍️', es_base: true, activa: true },
+    ])),
   },
   cajas: {
     listCajas: vi.fn(() => Promise.resolve([

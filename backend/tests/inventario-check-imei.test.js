@@ -186,19 +186,32 @@ describe('GET /productos/check-imei — aislamiento cross-tenant', () => {
     // Sembrar categoría + producto disponible en TENANT_X con el IMEI compartido.
     // El INSERT directo en DB necesita el context de tenant porque productos
     // tiene FORCE RLS — usamos una conexión dedicada con SET LOCAL.
+    // F3.d-3: `productos.clase` VARCHAR fue dropeada — ahora usamos clase_id
+    // (FK a clases_producto). Seedeamos las 9 clases base para TENANT_X y
+    // resolvemos el UUID de `celular_sellado`.
+    const { seedClasesProducto } = require('../src/lib/seedClasesProducto');
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(`SET LOCAL app.current_tenant = ${TENANT_X}`);
+      await seedClasesProducto(client, TENANT_X);
+      const { rows: claseRows } = await client.query(
+        `SELECT id FROM clases_producto
+          WHERE tenant_id = $1 AND slug_legacy = 'celular_sellado' AND es_base = true
+            AND deleted_at IS NULL
+          LIMIT 1`,
+        [TENANT_X]
+      );
+      const claseIdX = claseRows[0].id;
       const { rows: catRows } = await client.query(
         `INSERT INTO categorias (nombre, tenant_id) VALUES ('IMEI X Cat', $1) RETURNING id`,
         [TENANT_X]
       );
       const catX = catRows[0].id;
       await client.query(
-        `INSERT INTO productos (tenant_id, tipo_carga, clase, nombre, imei, categoria_id, costo, costo_moneda, precio_venta, precio_moneda, estado)
-         VALUES ($1, 'unitario', 'celular_sellado', 'IMEI X Producto', $2, $3, 500, 'USD', 700, 'USD', 'disponible')`,
-        [TENANT_X, IMEI_SHARED, catX]
+        `INSERT INTO productos (tenant_id, tipo_carga, clase_id, nombre, imei, categoria_id, costo, costo_moneda, precio_venta, precio_moneda, estado)
+         VALUES ($1, 'unitario', $2, 'IMEI X Producto', $3, $4, 500, 'USD', 700, 'USD', 'disponible')`,
+        [TENANT_X, claseIdX, IMEI_SHARED, catX]
       );
       await client.query('COMMIT');
     } finally {
@@ -208,6 +221,7 @@ describe('GET /productos/check-imei — aislamiento cross-tenant', () => {
 
   afterAll(async () => {
     await pool.query(`DELETE FROM productos WHERE tenant_id IN ($1, $2)`, [TENANT_X, TENANT_Y]);
+    await pool.query(`DELETE FROM clases_producto WHERE tenant_id IN ($1, $2)`, [TENANT_X, TENANT_Y]);
     await pool.query(`DELETE FROM categorias WHERE tenant_id IN ($1, $2)`, [TENANT_X, TENANT_Y]);
     await pool.query(`DELETE FROM tenant_users WHERE tenant_id IN ($1, $2)`, [TENANT_X, TENANT_Y]);
     await pool.query(`DELETE FROM users WHERE username IN ($1, $2)`, [USER_X.username, USER_Y.username]);

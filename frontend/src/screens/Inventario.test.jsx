@@ -241,16 +241,17 @@ describe('Pantalla Inventario', () => {
       expect(text).not.toMatch(/[?&]q=/);
     });
 
-    it('re-mount con ?clase=<slug legacy> activa el tab correcto', async () => {
-      // Compat con URLs legacy (`?clase=celular_sellado`). El slug se
-      // preserva en `claseFilter` state; el tab con `value=UUID` de la
-      // fila base con ese `slug_legacy` NO matchea directamente porque
-      // el value es UUID, pero el filtro backend igual recibe `clase=slug`.
+    it('re-mount con ?clase=<slug legacy> preserva el slug en el fetch (compat)', async () => {
+      // F3.d-3 (2026-07-09): al re-mount, `loadProductos` se dispara ANTES
+      // de que `clases` termine de cargar (fetch paralelo, catálogo vive
+      // en state distinto). En ese primer render el filtro cae al fallback
+      // `params.clase = slug` — el backend acepta el slug legacy sin drama.
+      // Cuando el user tocá otro filtro, el re-fetch ya ve `clases`
+      // poblado y canonicaliza a `clase_id`. La expectativa acá refleja
+      // el comportamiento de la primera carga.
       inventarioApi.clases.mockResolvedValue(CLASES_MOCK);
       renderInventario(['/inventario?clase=celular_sellado']);
       await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-      // El backend recibió clase=celular_sellado en los params (path legacy
-      // preserved via CLASES_PRODUCTO.includes en Inventario.jsx).
       expect(inventarioApi.productos).toHaveBeenCalledWith(
         expect.objectContaining({ clase: 'celular_sellado' })
       );

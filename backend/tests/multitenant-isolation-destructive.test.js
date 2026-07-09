@@ -108,10 +108,13 @@ const TABLES = [
     updateField: 'notas',
   },
   {
+    // F3.d-3: `productos.clase` VARCHAR fue dropeada — la FK a clases_producto
+    // es opcional para RLS smoke test, no la seedeamos acá (evita tener que
+    // crear catálogo por tenant en un test de infra).
     name: 'productos',
     insertSql: (label, tenantId) => ({
-      sql: `INSERT INTO productos (tipo_carga, clase, nombre, costo, costo_moneda, precio_venta, precio_moneda, cantidad, tenant_id)
-            VALUES ('unitario', 'celular_sellado', $1, 100, 'USD', 200, 'USD', 1, $2) RETURNING id`,
+      sql: `INSERT INTO productos (tipo_carga, nombre, costo, costo_moneda, precio_venta, precio_moneda, cantidad, tenant_id)
+            VALUES ('unitario', $1, 100, 'USD', 200, 'USD', 1, $2) RETURNING id`,
       params: [label, tenantId],
     }),
     labelCol: 'nombre',

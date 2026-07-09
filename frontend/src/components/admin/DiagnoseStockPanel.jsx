@@ -163,7 +163,10 @@ function ProductoCard({ producto, trail, onRestore }) {
             <span className="tiny muted" style={{ marginLeft: 8 }}>#{producto.id}</span>
           </div>
           <div className="tiny muted" style={{ marginTop: 2 }}>
-            IMEI: <span className="mono">{producto.imei || '—'}</span> · {producto.clase}
+            {/* F3.d-3: `producto.clase` = slug legacy que viene del JOIN backend
+                (clases_producto.slug_legacy). Si el producto tiene categoría
+                custom sin slug (o clase_id NULL), aparece "—". */}
+            IMEI: <span className="mono">{producto.imei || '—'}</span> · {producto.clase || '—'}
           </div>
           <div className="tiny" style={{ marginTop: 6 }}>
             Estado:{' '}

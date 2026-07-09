@@ -1,8 +1,11 @@
 const { z } = require('zod');
 // Multi-país F2: enum compartido (acepta UYU). País-aware en el handler.
 const { MonedaEnum } = require('./_common');
-// Categorías reales F1 (2026-07-08): 9 categorías en vez de celular/accesorio.
-const { CLASES_PRODUCTO, CLASE_DEFAULT } = require('../lib/clasesProducto');
+// F3.d-3 (2026-07-09): el enum global `CLASES_PRODUCTO` se removió — las
+// categorías vienen del catálogo `clases_producto` por tenant (F3.a #528).
+// El schema ya no valida `clase` (columna dropeada); solo `clase_id`.
+// La validación de coherencia unitario (celular sellado/usado + ipads
+// requieren cantidad=1) se movió al handler post-derive (routes/inventario.js).
 
 // --- Catálogos simples ---
 // 2026-06-11 T-06: .strict() añadido — antes aceptaba campos extra silenciosamente.
@@ -25,13 +28,11 @@ const uuidLoose = z.string().regex(
 
 const baseProducto = z.object({
   tipo_carga:     z.enum(['unitario', 'lote']).default('unitario'),
-  // F1: enum legacy — sigue existiendo hasta F3.d cleanup. El handler
-  // sincroniza `clase` ↔ `clase_id` en cada POST/PUT (derive bidireccional).
-  clase:          z.enum(CLASES_PRODUCTO).default(CLASE_DEFAULT),
-  // F3.c (2026-07-08): FK a `clases_producto` (categoría editable por tenant).
-  // Opcional en el shape para no romper clientes viejos que solo mandan `clase`.
-  // El handler resuelve la falta con `slug_legacy` = clase; y si el frontend
-  // manda solo `clase_id`, deriva `clase` desde `slug_legacy`.
+  // F3.d-3: `clase` VARCHAR legacy se dropeó (migration 20260709000001).
+  // El campo queda ACEPTADO opcional en el schema (deprecated) solo para
+  // compat con clientes viejos que aún lo envíen — el handler lo ignora.
+  // Body nuevo solo debe incluir `clase_id` (FK a clases_producto).
+  clase:          z.string().optional(),  // DEPRECATED — ignorado por el handler
   clase_id:       uuidLoose.optional().nullable(),
   nombre:         z.string().trim().min(1, 'Nombre requerido').max(200),
   imei:           z.string().trim().max(50).optional().nullable(),
@@ -72,12 +73,12 @@ const baseProducto = z.object({
   oculto:         z.boolean().optional(),
 });
 
-// Regla de coherencia: unitario (celular sellado/usado + ipads) => cantidad = 1.
-// Los otros 6 slugs (watch, auriculares, consolas, computadoras, cargadores,
-// accesorios_varios) son "por lote" y aceptan cualquier cantidad.
-const CLASES_UNITARIAS = new Set(['celular_sellado', 'celular_usado', 'ipads']);
-const unitarioCoherente = (p) => !(CLASES_UNITARIAS.has(p.clase) && p.tipo_carga === 'unitario' && p.cantidad !== 1);
-const unitarioMsg = { message: 'Un producto unitario debe tener cantidad = 1', path: ['cantidad'] };
+// F3.d-3: la regla `unitarioCoherente` (celular sellado/usado + ipads
+// requieren cantidad=1) se movió del schema Zod al handler porque necesita
+// el `slug_legacy` derivado del `clase_id` — el schema solo valida shape,
+// no consulta la DB. Ver `routes/inventario.js` → `validarUnitarioCoherente`.
+// SLUGS_UNITARIOS exportado para que el handler no duplique la constante.
+const SLUGS_UNITARIOS = new Set(['celular_sellado', 'celular_usado', 'ipads']);
 
 // Categoría obligatoria al crear/cargar bulk (para que el inventario sea analizable).
 // En UPDATE queda opcional: los productos legacy sin categoría se pueden editar
@@ -88,15 +89,14 @@ const categoriaMsg = { message: 'La categoría es obligatoria', path: ['categori
 // .strict(): un campo extra (typo del cliente, JS field leak) da 400 explícito
 // en vez de pasar silencioso y persistirse sin querer / ser ignorado.
 const createProductoSchema = baseProducto.strict()
-  .refine(unitarioCoherente, unitarioMsg)
   .refine(categoriaRequerida, categoriaMsg);
 
 const updateProductoSchema = baseProducto.strict().partial(); // partial → coherencia se chequea al leer DB
 
 // Carga masiva: array de productos (sin foto para mantener el payload acotado).
-// Refines: coherencia unitario por item + sin IMEIs duplicados dentro del lote (no hay UNIQUE en DB todavía).
+// Refine: coherencia por lote (sin IMEIs duplicados) + categoría requerida.
+// La coherencia unitario ↔ cantidad se valida en el handler post-derive.
 const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).strict()
-  .refine(unitarioCoherente, unitarioMsg)
   .refine(categoriaRequerida, categoriaMsg);
 const bulkProductoSchema = z.object({
   productos: z.array(productoEnBulk)
@@ -129,12 +129,13 @@ const VISTAS_INVENTARIO = [
 
 const queryProductosSchema = z.object({
   buscar:       z.string().trim().max(200).optional(),
-  clase:        z.enum(CLASES_PRODUCTO).optional(),
-  // F3.c: filtro por FK a clases_producto (nueva categoría por tenant).
-  // Los tabs del frontend enviarán `clase_id` en vez de `clase` a partir
-  // de F3.c-2. Los dos pueden coexistir durante la transición (se aplican
-  // con AND si ambos vienen, aunque el frontend nuevo usa solo uno).
+  // F3.d-3: filtro principal `?clase_id=UUID` desde F3.c-2 PR-1 (#532) —
+  // el frontend ya usa el UUID en la URL.
+  // Compat legacy: `?clase=<slug>` sigue aceptado (bookmarks pre-F3,
+  // integraciones/scripts). El handler resuelve slug → clase_id vía JOIN
+  // con clases_producto.slug_legacy. Sunset planeado post-migración total.
   clase_id:     uuidLoose.optional(),
+  clase:        z.string().trim().max(60).optional(),
   estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),
@@ -171,7 +172,11 @@ const queryProductosSchema = z.object({
 const DIMENSIONES_DESGLOSE = ['categoria', 'proveedor', 'modelo', 'estado', 'deposito', 'gb', 'color'];
 const queryDesgloseSchema = z.object({
   por:          z.enum(DIMENSIONES_DESGLOSE),
-  clase:        z.enum(CLASES_PRODUCTO).optional(),
+  // F3.d-3: filtro principal por clase_id (FK a clases_producto).
+  // Compat legacy: `?clase=<slug>` sigue aceptado (mismo criterio que
+  // queryProductosSchema — sunset planeado post-migración total).
+  clase_id:     uuidLoose.optional(),
+  clase:        z.string().trim().max(60).optional(),
   estado:       z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   categoria_id: z.coerce.number().int().positive().optional(),
   deposito_id:  z.coerce.number().int().positive().optional(),
@@ -196,4 +201,7 @@ module.exports = {
   queryDesgloseSchema,
   DIMENSIONES_DESGLOSE,
   VISTAS_INVENTARIO,
+  // F3.d-3: exportado para que routes/inventario.js valide coherencia
+  // unitario ↔ cantidad después del derive del slug_legacy desde clase_id.
+  SLUGS_UNITARIOS,
 };

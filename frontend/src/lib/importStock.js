@@ -221,33 +221,33 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
       // Clase: 2 caminos.
       //   1) Si el XLSX trae columna CLASE con un valor reconocible, lo usamos.
       //      Acepta los 9 slugs nuevos, sus labels con emoji, y los legacy
-      //      'celular'/'accesorio' (mapean vía resolveClaseXlsx).
-      //   2) Si no trae CLASE, heurística vieja: hasStock → accesorios_varios,
-      //      else → celular_sellado. Mismo comportamiento que antes con
-      //      celular/accesorio pero apuntando al slug del enum nuevo (Fase 1
-      //      2026-07-08). El operador puede editar la clase desde Inventario
-      //      después del import si el heurístico se equivocó.
-      // F3.c-2: resolveClaseXlsx ahora devuelve { clase, clase_id }.
+      //      'celular'/'accesorio' (mapean vía CLASE_ALIASES en resolveClaseXlsx).
+      //   2) Si no trae CLASE o no matchea nada, resolveClaseXlsx devuelve
+      //      la fila `es_sin_categoria` del tenant. El operador la reclasifica
+      //      desde el modal "Categorías" post-import.
+      //
+      // F3.d-3 (2026-07-09): body ya no incluye `clase` VARCHAR (columna
+      // dropeada). Se manda solo `clase_id`. La regla de cantidad usa el
+      // `slug_legacy` que resolveClaseXlsx devuelve como `clase` (nombre
+      // interno del helper, no del body).
       const claseXlsx = resolveClaseXlsx(get('clase'), clases);
-      const clase = claseXlsx.clase || (hasStock ? 'accesorios_varios' : 'celular_sellado');
-      // clase_id: preferimos el resuelto por nombre/alias. Si el XLSX no
-      // trajo columna o no matcheó nada, intentamos derivarlo del slug
-      // fallback heurístico (accesorios_varios/celular_sellado) — vale
-      // solo si el tenant tiene esas base activas. Post-F3.a seed → sí.
       let clase_id = claseXlsx.clase_id;
+      // Fallback: si el XLSX no trajo columna clase (heurística), buscamos
+      // `accesorios_varios` (hasStock) o `celular_sellado` (sin stock) en las
+      // base del tenant.
       if (!clase_id) {
+        const fallbackSlug = hasStock ? 'accesorios_varios' : 'celular_sellado';
         const byFallback = clases.find(c =>
-          c.activa && c.es_base && c.slug_legacy === clase
+          c.activa && c.es_base && c.slug_legacy === fallbackSlug
         );
         if (byFallback) clase_id = byFallback.id;
       }
       const tipo_carga = (hasStock || tipoRaw === 'stock' || tipoRaw === 'lote') ? 'lote' : 'unitario';
-      // Regla de cantidad: si el operador pasó una clase que NO es de las
-      // "por-unidad" (celular sellado/usado o ipads), asumimos que trackea
-      // stock por lote → cantidad = STOCK del XLSX (0 si no viene). Idem
-      // legacy con hasStock. Los celulares e iPads suelen tener IMEI y
-      // cantidad=1; el resto va por stock.
-      const esUnitario = (clase === 'celular_sellado' || clase === 'celular_usado' || clase === 'ipads');
+      // Regla de cantidad: si el slug_legacy es de las "por-unidad" (celular
+      // sellado/usado o ipads), cantidad = 1. Sino usa el STOCK del XLSX.
+      // Usamos el `clase` que resolveClaseXlsx devolvió (o el fallback).
+      const claseSlug = claseXlsx.clase || (hasStock ? 'accesorios_varios' : 'celular_sellado');
+      const esUnitario = (claseSlug === 'celular_sellado' || claseSlug === 'celular_usado' || claseSlug === 'ipads');
       const cantidad = esUnitario ? 1 : Math.max(0, Math.round(parseNum(stockRaw)));
 
       // Depósito por ID numérico (lo que usa la planilla); si no, por nombre.
@@ -274,10 +274,7 @@ export function mapStockRows(rows, { categorias = [], depositos = [], proveedore
 
       const body = {
         nombre,
-        clase,
-        // F3.c-2: agregamos clase_id además de clase legacy. Backend acepta
-        // ambos y hace derive bidireccional (PR #530). Cuando F3.d haga
-        // el DROP COLUMN, este campo pasa a ser el único.
+        // F3.d-3: `clase` VARCHAR dropeada — solo `clase_id`.
         clase_id,
         tipo_carga,
         estado: 'disponible',

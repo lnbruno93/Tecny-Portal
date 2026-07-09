@@ -64,7 +64,6 @@ describe('mapStockRows', () => {
        '355224256215887', 'Unitario', 'iPhone Nuevo', 'Lantronica']]; // sin STOCK ni ID DEP
     const [{ body, error }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
-    expect(body.clase).toBe('celular_sellado');
     expect(body.tipo_carga).toBe('unitario');
     expect(body.cantidad).toBe(1);
     expect(body.imei).toBe('355224256215887');
@@ -94,7 +93,6 @@ describe('mapStockRows', () => {
       ['Funda Silicona', '', '', '', '5', 'USD', '12', 'USD', '', 'stock', 'Fundas', 'MayorAcc', '20', '2']];
     const [{ body, error }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
-    expect(body.clase).toBe('accesorios_varios');
     expect(body.tipo_carga).toBe('lote');
     expect(body.cantidad).toBe(20);
     expect(body.deposito_id).toBe(2);
@@ -127,7 +125,6 @@ describe('mapStockRows', () => {
     const [{ body, error, warning }] = mapStockRows(rows, ctx);
     expect(error).toBeNull();
     expect(warning).toMatch(/stock en 0/i);
-    expect(body.clase).toBe('accesorios_varios');
     expect(body.cantidad).toBe(0);
   });
 
@@ -523,20 +520,16 @@ describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
 
   it('slug F1 estándar ("watch") → clase_id de la fila base es_base', () => {
     const [row] = mapStockRows(rowsWith('watch'), { categorias: CATEGORIAS, clases: CLASES });
-    expect(row.body.clase).toBe('watch');
     expect(row.body.clase_id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
   });
 
   it('nombre exacto de categoría custom del tenant ("Repuestos") → clase_id (sin slug_legacy)', () => {
     const [row] = mapStockRows(rowsWith('Repuestos'), { categorias: CATEGORIAS, clases: CLASES });
     expect(row.body.clase_id).toBe('cccccccc-cccc-cccc-cccc-cccccccccccc');
-    // slug_legacy es null en custom → clase legacy cae al fallback heurístico.
-    expect(row.body.clase).toBeTruthy();
   });
 
   it('alias legacy ("sellado") → clase_id de la fila base "celular_sellado"', () => {
     const [row] = mapStockRows(rowsWith('sellado'), { categorias: CATEGORIAS, clases: CLASES });
-    expect(row.body.clase).toBe('celular_sellado');
     expect(row.body.clase_id).toBe('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
   });
 
@@ -549,8 +542,6 @@ describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
   it('sin match ("Fundas de neopreno") → fallback a "Sin categoría" del sistema', () => {
     const [row] = mapStockRows(rowsWith('Fundas de neopreno'), { categorias: CATEGORIAS, clases: CLASES });
     expect(row.body.clase_id).toBe('dddddddd-dddd-dddd-dddd-dddddddddddd');
-    // El clase legacy cae al fallback heurístico (backend deriva o queda como está).
-    expect(row.body.clase).toBeTruthy();
   });
 
   it('categoría inactiva NO matchea (aunque el nombre coincida)', () => {
@@ -563,7 +554,6 @@ describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
     const [row] = mapStockRows(rowsWith('watch'), { categorias: CATEGORIAS });
     // Sin `clases` catálogo, el alias resuelve a slug pero clase_id queda null.
     // Backend deriva clase_id via resolveClaseAndClaseId (F3.c-1 #530).
-    expect(row.body.clase).toBe('watch');
     expect(row.body.clase_id).toBeNull();
   });
 
@@ -571,7 +561,6 @@ describe('mapStockRows — F3.c-2 clase_id via clases del tenant', () => {
     // Sin columna clase, hasStock (5) → 'accesorios_varios' heurístico. Como
     // este CLASES de test no tiene accesorios_varios base, clase_id queda null.
     const [row] = mapStockRows([HEAD, ['iPhone 15', 'Celulares', 100, 200, '', 5]], { categorias: CATEGORIAS, clases: CLASES });
-    expect(row.body.clase).toBe('accesorios_varios');
     expect(row.body.clase_id).toBeNull();
   });
 });

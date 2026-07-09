@@ -53,21 +53,29 @@ const logger = require('./logger');
 //   · equipos    = celular_sellado + celular_usado (histórico "celular")
 //   · accesorios = todo lo demás (7 slugs restantes)
 // Fase 2 rediseñará los KPIs con desglose por categoría real.
+//
+// 2026-07-09 F3.d-3: la columna `productos.clase` VARCHAR se dropeó — la
+// clasificación vive en `clases_producto.slug_legacy` linkeada por FK
+// `productos.clase_id`. Migramos las agregaciones a un LEFT JOIN. Productos
+// sin clase_id (clase_id IS NULL) caen en el bucket "accesorios" por
+// backwards-compat con los que antes tenían clase = 'accesorios_varios'
+// implícito. RLS filtra clases_producto por tenant vía JOIN también.
 const EQUIPOS_CLASES = "('celular_sellado','celular_usado')";
 const METRICAS_SQL = `
   SELECT
-    COUNT(*)                          FILTER (WHERE estado = 'en_tecnico')                                          AS en_tecnico_count,
-    COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'USD'), 0)             AS en_tecnico_usd,
-    COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'ARS'), 0)             AS en_tecnico_ars,
-    COALESCE(SUM(cantidad)            FILTER (WHERE estado = 'disponible'), 0)                                      AS stock_disponible,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase IN ${EQUIPOS_CLASES}     AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_equipos_usd,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase IN ${EQUIPOS_CLASES}     AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_equipos_ars,
-    COALESCE(SUM(cantidad)            FILTER (WHERE clase IN ${EQUIPOS_CLASES}     AND estado = 'disponible'), 0)              AS equipos_count,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase NOT IN ${EQUIPOS_CLASES} AND estado = 'disponible' AND costo_moneda = 'USD'), 0) AS inv_accesorios_usd,
-    COALESCE(SUM(costo * cantidad)    FILTER (WHERE clase NOT IN ${EQUIPOS_CLASES} AND estado = 'disponible' AND costo_moneda = 'ARS'), 0) AS inv_accesorios_ars,
-    COALESCE(SUM(cantidad)            FILTER (WHERE clase NOT IN ${EQUIPOS_CLASES} AND estado = 'disponible'), 0)              AS accesorios_count
-  FROM productos
-  WHERE deleted_at IS NULL
+    COUNT(*)                          FILTER (WHERE p.estado = 'en_tecnico')                                          AS en_tecnico_count,
+    COALESCE(SUM(p.costo)             FILTER (WHERE p.estado = 'en_tecnico' AND p.costo_moneda = 'USD'), 0)           AS en_tecnico_usd,
+    COALESCE(SUM(p.costo)             FILTER (WHERE p.estado = 'en_tecnico' AND p.costo_moneda = 'ARS'), 0)           AS en_tecnico_ars,
+    COALESCE(SUM(p.cantidad)          FILTER (WHERE p.estado = 'disponible'), 0)                                      AS stock_disponible,
+    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE cp.slug_legacy IN ${EQUIPOS_CLASES}      AND p.estado = 'disponible' AND p.costo_moneda = 'USD'), 0) AS inv_equipos_usd,
+    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE cp.slug_legacy IN ${EQUIPOS_CLASES}      AND p.estado = 'disponible' AND p.costo_moneda = 'ARS'), 0) AS inv_equipos_ars,
+    COALESCE(SUM(p.cantidad)           FILTER (WHERE cp.slug_legacy IN ${EQUIPOS_CLASES}      AND p.estado = 'disponible'), 0)              AS equipos_count,
+    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE (cp.slug_legacy IS NULL OR cp.slug_legacy NOT IN ${EQUIPOS_CLASES}) AND p.estado = 'disponible' AND p.costo_moneda = 'USD'), 0) AS inv_accesorios_usd,
+    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE (cp.slug_legacy IS NULL OR cp.slug_legacy NOT IN ${EQUIPOS_CLASES}) AND p.estado = 'disponible' AND p.costo_moneda = 'ARS'), 0) AS inv_accesorios_ars,
+    COALESCE(SUM(p.cantidad)           FILTER (WHERE (cp.slug_legacy IS NULL OR cp.slug_legacy NOT IN ${EQUIPOS_CLASES}) AND p.estado = 'disponible'), 0)              AS accesorios_count
+  FROM productos p
+  LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
 `;
 
 const cache = createTenantScopedCache({
