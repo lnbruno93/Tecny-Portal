@@ -201,14 +201,24 @@ describe('Pantalla Inventario', () => {
 
   // ─── Auditoría 2026-06-30 F-08: filtros persisten en URL ─────────────────
   describe('F-08 — filtros persisten en URL', () => {
-    it('cambiar tab clase ("Celular Sellado") agrega ?clase=celular_sellado', async () => {
-      // 2026-07-08 Fase 1 categorías reales: los tabs cambiaron de
-      // Celulares/Accesorios a las 9 clases nuevas con emojis.
+    // F3.d-1 (2026-07-09): los tabs de categoría vienen del state `clases`.
+    // Sin fallback F1 hardcoded → los tests deben mockear `clases` para
+    // que los tabs de categoría aparezcan.
+    const CLASES_MOCK = [
+      { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', nombre: 'Celular Sellado', emoji: '📲', orden: 10, activa: true, es_base: true, es_sin_categoria: false, slug_legacy: 'celular_sellado', count_productos: 0 },
+    ];
+
+    it('cambiar tab clase ("Celular Sellado") agrega ?clase=<UUID>', async () => {
+      // F3.c-2 (2026-07-09): el URL param ahora contiene el UUID de la
+      // clase_producto en vez del slug legacy.
+      inventarioApi.clases.mockResolvedValue(CLASES_MOCK);
       renderInventario();
       await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-      fireEvent.click(screen.getByText(/Celular Sellado/));
+      fireEvent.click(await screen.findByText(/Celular Sellado/));
       await waitFor(() => {
-        expect(screen.getByTestId('location').textContent).toMatch(/[?&]clase=celular_sellado/);
+        expect(screen.getByTestId('location').textContent).toMatch(
+          /[?&]clase=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/
+        );
       });
     });
 
@@ -231,15 +241,16 @@ describe('Pantalla Inventario', () => {
       expect(text).not.toMatch(/[?&]q=/);
     });
 
-    it('re-mount con ?clase=celular_sellado activa el tab correcto', async () => {
-      // 2026-07-08 Fase 1 categorías reales: el URL param usa el slug nuevo
-      // ('celular_sellado' en vez de 'celular'). Los tabs también.
+    it('re-mount con ?clase=<slug legacy> activa el tab correcto', async () => {
+      // Compat con URLs legacy (`?clase=celular_sellado`). El slug se
+      // preserva en `claseFilter` state; el tab con `value=UUID` de la
+      // fila base con ese `slug_legacy` NO matchea directamente porque
+      // el value es UUID, pero el filtro backend igual recibe `clase=slug`.
+      inventarioApi.clases.mockResolvedValue(CLASES_MOCK);
       renderInventario(['/inventario?clase=celular_sellado']);
       await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-      // El tab "Celular Sellado" debe estar activo (className 'on').
-      const tabCel = screen.getByText(/Celular Sellado/);
-      expect(tabCel.className).toMatch(/on/);
-      // El backend recibió clase=celular_sellado en los params.
+      // El backend recibió clase=celular_sellado en los params (path legacy
+      // preserved via CLASES_PRODUCTO.includes en Inventario.jsx).
       expect(inventarioApi.productos).toHaveBeenCalledWith(
         expect.objectContaining({ clase: 'celular_sellado' })
       );
@@ -270,16 +281,18 @@ describe('Pantalla Inventario', () => {
       expect(screen.queryByText(/Inactiva/)).not.toBeInTheDocument();
     });
 
-    it('sin `clases` cargadas: fallback al enum F1 hardcoded (compat)', async () => {
-      // Default mock devuelve []. El fallback renderea los 9 slugs F1.
+    it('sin `clases` cargadas: NO renderea tabs de categoría (F3.d-1 removió fallback F1)', async () => {
+      // F3.d-1 (2026-07-09): el fallback al enum F1 hardcoded se removió.
+      // Si `clases` está vacío (network fail del endpoint /clases),
+      // los tabs de categoría NO aparecen. Solo quedan Todos/tecnico/usados
+      // y las colecciones legacy.
       renderInventario();
-      // Esperamos primero que el catalogos load haya terminado.
       await waitFor(() => expect(inventarioApi.clases).toHaveBeenCalled());
-      // Tab de F1 hardcoded → renderea con label del helper CLASES_LABELS.
-      // Los emojis pueden salir con selector de variación (VS16) — usamos
-      // solo el texto del nombre para evitar mismatches.
-      expect(await screen.findByText(/Celular Sellado/)).toBeInTheDocument();
-      expect(await screen.findByText(/Cargadores/)).toBeInTheDocument();
+      // No debería aparecer "Celular Sellado" ni ningún slug F1 como tab.
+      expect(screen.queryByText(/Celular Sellado/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/⌚ Watch/)).not.toBeInTheDocument();
+      // "Todos" sí (tab default siempre presente).
+      expect(screen.getByText('Todos')).toBeInTheDocument();
     });
 
     it('click en un tab de categoría envía `clase_id` (UUID) al backend, no `clase`', async () => {

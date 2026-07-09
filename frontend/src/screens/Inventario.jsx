@@ -9,7 +9,13 @@ import { downloadBlob as downloadBlobShared } from '../lib/downloadBlob';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
 import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovimientosPayload, findDuplicateImeis } from '../lib/importStock';
 // Categorías reales F1 (2026-07-08): 9 clases con emojis en vez de celular/accesorio.
-import { CLASES_PRODUCTO, CLASES_LABELS, CLASE_DEFAULT, claseLabel } from '../lib/clasesProducto';
+// F3.d-1 (2026-07-09): tras la migración completa a `clases_producto` (F3.c),
+// solo mantenemos `CLASES_PRODUCTO` para detectar slugs F1 en URLs legacy
+// (`?clase=watch`) y `CLASE_DEFAULT` para el EMPTY_PRODUCTO — mientras el
+// backend siga consumiendo `productos.clase` (F3.d-2/3 lo dropea).
+// CLASES_LABELS y claseLabel se removieron: los labels vienen del state
+// `clases` (backend con emoji + nombre editables por tenant).
+import { CLASES_PRODUCTO, CLASE_DEFAULT } from '../lib/clasesProducto';
 
 // F3.c-2 (2026-07-09): helper para detectar si un value de tab es un UUID
 // (categoría del tenant, tabla `clases_producto`) vs un slug F1 legacy o un
@@ -1131,16 +1137,19 @@ export default function Inventario() {
               // Orden: `orden` ASC + nombre como tiebreaker (mismo que el
               // dropdown de alta/edición en F3.c-1).
               //
-              // Fallback al enum F1 hardcoded si `clases` está vacío (network
-              // fail en loadCatalogos o tenant sin seed) — preserva UX pre-F3.
-              ...(clases.filter(c => c.activa && !c.es_sin_categoria).length > 0
-                ? clases
-                  .filter(c => c.activa && !c.es_sin_categoria)
-                  .map(c => ({
-                    value: c.id,
-                    label: c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre,
-                  }))
-                : CLASES_PRODUCTO.map(slug => ({ value: slug, label: CLASES_LABELS[slug] }))),
+              // F3.d-1 (2026-07-09): removimos el fallback al enum F1 hardcoded.
+              // Si `clases` está vacío (network fail del endpoint /clases),
+              // los tabs de categoría quedan vacíos — el usuario ve solo
+              // "Todos", "En técnico", "Usados" + Colecciones. Es preferible
+              // a mostrar categorías "fantasma" del enum viejo que ya no
+              // existen en la DB del tenant (post-F3.a todos los tenants tienen
+              // sus 9 base seedeadas via seedClasesProducto).
+              ...clases
+                .filter(c => c.activa && !c.es_sin_categoria)
+                .map(c => ({
+                  value: c.id,
+                  label: c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre,
+                })),
               { value: 'tecnico', label: 'En técnico' },
               { value: 'usados', label: 'Usados' },
               // Colecciones (tabla legacy `categorias`, renombrada en UI por
@@ -1406,40 +1415,35 @@ export default function Inventario() {
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Categoría</label>
-                      {/* F3.c (2026-07-08): dropdown ahora lista las categorías
-                          editables del tenant (clases_producto). Se envía
-                          `clase_id` al backend, que deriva `clase` legacy
-                          desde slug_legacy. Fallback al enum F1 hardcoded si
-                          la carga del endpoint /clases falló (clases vacío).
-                          "Sin categoría" del sistema queda oculta del dropdown
-                          — es solo fallback interno del import XLSX. */}
-                      {clases.length > 0 ? (
-                        <select
-                          className="input"
-                          value={form.clase_id || ''}
-                          onChange={e => {
-                            const clase_id = e.target.value;
-                            const c = clases.find(x => x.id === clase_id);
-                            // Actualizar ambos: clase_id (nuevo) y clase legacy
-                            // (por si el backend lo lee sin re-derivarlo).
-                            setF('clase_id', clase_id);
-                            if (c?.slug_legacy) setF('clase', c.slug_legacy);
-                          }}
-                        >
-                          <option value="">Seleccionar...</option>
-                          {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <select className="input" value={form.clase} onChange={e => setF('clase', e.target.value)}>
-                          {CLASES_PRODUCTO.map(slug => (
-                            <option key={slug} value={slug}>{CLASES_LABELS[slug]}</option>
-                          ))}
-                        </select>
-                      )}
+                      {/* F3.c (2026-07-08) — F3.d-1 (2026-07-09): dropdown lista
+                          las categorías editables del tenant (clases_producto).
+                          Se envía `clase_id` al backend, que deriva `clase`
+                          legacy desde slug_legacy (F3.c-1 #530). "Sin categoría"
+                          del sistema queda oculta del dropdown — es solo
+                          fallback interno del import XLSX (F3.c-2 PR-3 #534).
+                          F3.d-1 removió el fallback al enum F1 hardcoded — si
+                          `clases` no cargó (endpoint /clases 5xx), el dropdown
+                          queda vacío y el usuario ve error (comportamiento
+                          preferible a permitir asignar slugs "fantasma"). */}
+                      <select
+                        className="input"
+                        value={form.clase_id || ''}
+                        onChange={e => {
+                          const clase_id = e.target.value;
+                          const c = clases.find(x => x.id === clase_id);
+                          // Actualizar ambos: clase_id (nuevo) y clase legacy
+                          // (backend derive con resolveClaseAndClaseId F3.c-1).
+                          setF('clase_id', clase_id);
+                          if (c?.slug_legacy) setF('clase', c.slug_legacy);
+                        }}
+                      >
+                        <option value="">Seleccionar...</option>
+                        {clases.filter(c => c.activa && !c.es_sin_categoria).map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="field">
@@ -1898,6 +1902,7 @@ export default function Inventario() {
                   error={historialError}
                   categorias={categorias}
                   depositos={depositos}
+                  clases={clases}
                 />
               </div>
               <div className="modal-ft">
@@ -1918,12 +1923,20 @@ export default function Inventario() {
 // Diseñado para que el Detalle muestre los campos clave del producto sin
 // duplicar info que el usuario ya ve en la grilla; el Historial muestra la
 // trazabilidad cross-módulo (compra de origen + venta).
-function HistorialModalContent({ producto, data, loading, error, categorias, depositos }) {
+function HistorialModalContent({ producto, data, loading, error, categorias, depositos, clases = [] }) {
   const [tab, setTab] = useState('detalle');
   if (!producto) return <div className="muted">Producto no encontrado.</div>;
 
   const cat = categorias.find(c => c.id === producto.categoria_id);
   const dep = depositos.find(d => d.id === producto.deposito_id);
+  // F3.d-1: label de la Categoría (clases_producto) viene del catálogo del
+  // tenant. Preferimos match por clase_id (F3.c-1 #530); fallback al `clase`
+  // legacy si el producto todavía no tiene FK asociada.
+  const clase = clases.find(c => c.id === producto.clase_id)
+             || clases.find(c => c.slug_legacy === producto.clase);
+  const claseLabelDisplay = clase
+    ? (clase.emoji ? `${clase.emoji} ${clase.nombre}` : clase.nombre)
+    : (producto.clase || '—');
   const fmtUSD = n => n != null ? `USD ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : '—';
   const fmtFecha = f => f ? new Date(f).toLocaleDateString('es-AR') : '—';
 
@@ -1940,7 +1953,7 @@ function HistorialModalContent({ producto, data, loading, error, categorias, dep
 
       {tab === 'detalle' && (
         <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <DetalleField label="Clase" value={claseLabel(producto.clase)} />
+          <DetalleField label="Categoría" value={claseLabelDisplay} />
           <DetalleField label="Estado" value={producto.estado} />
           <DetalleField label="Condición" value={producto.condicion || 'nuevo'} />
           <DetalleField label="Colección" value={cat?.nombre || '—'} />
