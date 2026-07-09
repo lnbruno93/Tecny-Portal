@@ -277,6 +277,52 @@ describe('GET /api/inventario/productos/metricas', () => {
     expect(Number(res.body.accesorios_count)).toBe(22);
     expect(Number(res.body.inv_accesorios_usd)).toBe(3300);
   });
+
+  // Fase 2a (2026-07-09): además de los buckets legacy, el response ahora
+  // trae `inv_por_clase[]` con desglose granular por categoría del tenant.
+  // El test es auto-contenido: crea su propio producto y verifica shape +
+  // coherencia con el bucket legacy — no depende del state que dejan otros
+  // tests (aislamos para poder correr `-t "inv_por_clase"` en local).
+  it('inv_por_clase[]: shape correcto y coherente con los buckets legacy', async () => {
+    // 1) Crear un producto conocido para tener data determinística.
+    //    Cargadores (7 u × 20 USD = 140 USD) — clase base, slug_legacy conocido.
+    const create = await request(app).post('/api/inventario/productos').set(auth()).send({
+      clase: 'cargadores', tipo_carga: 'lote', categoria_id: catBase,
+      nombre: 'Cargador USB Prueba F2a', cantidad: 7, costo: 20,
+    });
+    expect(create.status).toBe(201);
+    // Sanity: el producto se persistió con `clase_id` derivado (no NULL).
+    expect(create.body.clase_id).toBeTruthy();
+
+    const res = await request(app).get('/api/inventario/productos/metricas').set(auth());
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.inv_por_clase)).toBe(true);
+    expect(res.body.inv_por_clase.length).toBeGreaterThan(0);
+
+    // Shape de cada fila: clase_id, nombre, emoji, es_base, es_sin_categoria,
+    // slug_legacy, count, usd, ars.
+    for (const row of res.body.inv_por_clase) {
+      expect(row).toHaveProperty('clase_id');
+      expect(row).toHaveProperty('nombre');
+      expect(row).toHaveProperty('count');
+      expect(row).toHaveProperty('usd');
+      expect(row).toHaveProperty('ars');
+      expect(typeof row.nombre).toBe('string');
+      expect(typeof row.count).toBe('number');
+    }
+
+    // La suma de USD por-categoría debe equivaler a la suma de los buckets
+    // legacy (equipos + accesorios) — misma data agregada distinto.
+    const sumaCatUsd = res.body.inv_por_clase.reduce((s, r) => s + Number(r.usd || 0), 0);
+    const legacyUsd  = Number(res.body.inv_equipos_usd || 0) + Number(res.body.inv_accesorios_usd || 0);
+    expect(sumaCatUsd).toBeCloseTo(legacyUsd, 2);
+
+    // Fila de cargadores existe con el count/usd exactos del producto recién creado.
+    const cargadores = res.body.inv_por_clase.find(r => r.slug_legacy === 'cargadores');
+    expect(cargadores).toBeDefined();
+    expect(cargadores.count).toBeGreaterThanOrEqual(7);
+    expect(Number(cargadores.usd)).toBeGreaterThanOrEqual(140);
+  });
 });
 
 // ─── Proveedores (combo de edición inline) ───────────────────

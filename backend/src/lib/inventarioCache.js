@@ -60,6 +60,13 @@ const logger = require('./logger');
 // sin clase_id (clase_id IS NULL) caen en el bucket "accesorios" por
 // backwards-compat con los que antes tenían clase = 'accesorios_varios'
 // implícito. RLS filtra clases_producto por tenant vía JOIN también.
+//
+// 2026-07-09 Fase 2a KPIs reales: adicionamos `inv_por_clase[]` con el
+// desglose granular por categoría (1 fila por clase_id + 1 fila "sin
+// categoría" agrupando los productos con clase_id NULL). Los campos legacy
+// (inv_equipos_*, inv_accesorios_*, equipos_count, accesorios_count) siguen
+// devolviéndose sin cambios — la migración es aditiva. Sunset planeado en
+// Fase 2c cuando Inventario.jsx y Capital.jsx consuman inv_por_clase[].
 const EQUIPOS_CLASES = "('celular_sellado','celular_usado')";
 const METRICAS_SQL = `
   SELECT
@@ -78,6 +85,75 @@ const METRICAS_SQL = `
   WHERE p.deleted_at IS NULL
 `;
 
+// 2026-07-09 Fase 2a: breakdown por categoría real. Una fila por `clase_id`
+// del catálogo `clases_producto` del tenant + una fila con `clase_id = NULL`
+// para productos sin categoría (fallback histórico).
+//
+// Notas de diseño:
+//   · Solo agrega productos EN estado disponible (mismos criterios que los
+//     buckets legacy inv_equipos/inv_accesorios). "En técnico" queda fuera
+//     porque no es stock a la venta.
+//   · Devuelve la categoría aunque su count sea 0 → la UI puede mostrar la
+//     card vacía si el user quiere ver que existe la cat. y no tiene stock.
+//     Filtrar 0s es decisión del frontend.
+//   · Ordena por USD desc (mayor valorizado primero) + nombre alfabético
+//     para desempatar. La UI Opción B mostrará el drawer con este orden.
+//   · La fila "sin categoría" (clase_id NULL) siempre va al final, incluso
+//     si tiene valorizado > 0. Es un placeholder de higiene, no una cat. real.
+//   · Coalesce en TODOS los SUM para que categorías vacías devuelvan 0 en
+//     vez de NULL — la UI espera números.
+//   · Filtro explícito `tenant_id = $1` en ambas partes (productos +
+//     clases_producto). RLS ya filtra en prod (pool NOSUPERUSER), pero en
+//     tests locales el pool es SUPERUSER y bypassea RLS — sin este filtro
+//     el LEFT JOIN traería clases_producto de TODOS los tenants (miles de
+//     filas duplicadas). Defense in depth: nunca confiar solo en RLS.
+const INV_POR_CLASE_SQL = `
+  WITH agg AS (
+    SELECT
+      p.clase_id,
+      COALESCE(SUM(p.cantidad)                                                            , 0)::int AS count,
+      COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE p.costo_moneda = 'USD')            , 0)      AS usd,
+      COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE p.costo_moneda = 'ARS')            , 0)      AS ars
+    FROM productos p
+    WHERE p.tenant_id = $1
+      AND p.deleted_at IS NULL
+      AND p.estado = 'disponible'
+    GROUP BY p.clase_id
+  )
+  SELECT
+    cp.id                                 AS clase_id,
+    COALESCE(cp.nombre, 'Sin categoría')  AS nombre,
+    cp.emoji                              AS emoji,
+    COALESCE(cp.orden, 999)               AS orden,
+    cp.es_base                            AS es_base,
+    cp.es_sin_categoria                   AS es_sin_categoria,
+    cp.slug_legacy                        AS slug_legacy,
+    COALESCE(a.count, 0)                  AS count,
+    COALESCE(a.usd, 0)                    AS usd,
+    COALESCE(a.ars, 0)                    AS ars
+  FROM clases_producto cp
+  LEFT JOIN agg a ON a.clase_id = cp.id
+  WHERE cp.tenant_id = $1
+    AND cp.deleted_at IS NULL
+    AND cp.activa = true
+  UNION ALL
+  SELECT
+    NULL                    AS clase_id,
+    'Sin categoría'         AS nombre,
+    NULL                    AS emoji,
+    999999                  AS orden,       -- siempre al final
+    false                   AS es_base,
+    true                    AS es_sin_categoria,
+    NULL                    AS slug_legacy,
+    a.count::int            AS count,
+    a.usd                   AS usd,
+    a.ars                   AS ars
+  FROM agg a
+  WHERE a.clase_id IS NULL
+    AND (a.count > 0 OR a.usd > 0 OR a.ars > 0)
+  ORDER BY orden ASC, usd DESC, nombre ASC
+`;
+
 const cache = createTenantScopedCache({
   ...INVENTARIO_METRICAS,
   fetcher: async (tenantId) => {
@@ -86,8 +162,29 @@ const cache = createTenantScopedCache({
       throw new Error(`fetchMetricas: tenantId inválido (${tenantId})`);
     }
     return db.withTenant(id, async (client) => {
-      const { rows } = await client.query(METRICAS_SQL);
-      return rows[0];
+      // 2 queries secuenciales dentro del mismo tenant context (RLS aplica).
+      // N de categorías por tenant es chico (10-30 típico) — no hay razón
+      // para complicar con CTE combinado. Ambas queries hitean el mismo
+      // subset de productos, PG cachea páginas en memoria → costo bajo.
+      const { rows: metricasRows }     = await client.query(METRICAS_SQL);
+      const { rows: invPorClaseRows }  = await client.query(INV_POR_CLASE_SQL, [id]);
+      return {
+        ...metricasRows[0],
+        // Fase 2a: array nuevo. Los campos legacy siguen presentes arriba.
+        // Cast numérico explícito para USD/ARS/count — PG los devuelve como
+        // string por el SUM sobre numeric. La UI espera Number.
+        inv_por_clase: invPorClaseRows.map(r => ({
+          clase_id:         r.clase_id,
+          nombre:           r.nombre,
+          emoji:            r.emoji,
+          es_base:          r.es_base === true,
+          es_sin_categoria: r.es_sin_categoria === true,
+          slug_legacy:      r.slug_legacy,
+          count:            Number(r.count) || 0,
+          usd:              Number(r.usd)   || 0,
+          ars:              Number(r.ars)   || 0,
+        })),
+      };
     });
   },
 });

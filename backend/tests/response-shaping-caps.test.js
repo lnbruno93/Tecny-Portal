@@ -175,6 +175,38 @@ describe('GET /api/inventario/productos/metricas — response shaping (TANDA 0)'
     expect(typeof r.body.stock_disponible).not.toBe('undefined');
     expect(typeof r.body.equipos_count).not.toBe('undefined');
   });
+
+  // Fase 2a (2026-07-09): el response ahora incluye `inv_por_clase[]` con
+  // desglose por categoría. El redact aplica también a cada fila: sin
+  // `inventario.ver_costos`, los montos usd/ars vienen null pero el count
+  // sí — un vendedor puede saber cuántos equipos hay por categoría.
+  it('inv_por_clase[]: admin ve montos, vendedor ve solo count', async () => {
+    // Admin: ve el shape completo (usd, ars, count).
+    const rAdmin = await request(app)
+      .get('/api/inventario/productos/metricas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(Array.isArray(rAdmin.body.inv_por_clase)).toBe(true);
+    for (const row of rAdmin.body.inv_por_clase) {
+      expect(row.usd).not.toBeNull();
+      expect(row.ars).not.toBeNull();
+      expect(typeof row.count).toBe('number');
+    }
+
+    // Vendedor: montos redactados, counts intactos.
+    const tokenVend = signCapToken({ 'inventario.ver': true });
+    const rVend = await request(app)
+      .get('/api/inventario/productos/metricas')
+      .set('Authorization', `Bearer ${tokenVend}`)
+      .expect(200);
+    expect(Array.isArray(rVend.body.inv_por_clase)).toBe(true);
+    for (const row of rVend.body.inv_por_clase) {
+      expect(row.usd).toBeNull();
+      expect(row.ars).toBeNull();
+      expect(typeof row.count).toBe('number'); // count NO se redacta
+      expect(typeof row.nombre).toBe('string'); // metadata visible
+    }
+  });
 });
 
 // ─── PROYECTOS ───────────────────────────────────────────────────────────────
