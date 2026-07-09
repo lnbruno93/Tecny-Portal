@@ -67,15 +67,36 @@ export default function Dashboard({ d }) {
         <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-unidades">
           <div className="kpi-label">Unidades vendidas</div>
           {/*
-            Fase 2 categorías reales (2026-07-08): antes mostrábamos el bucket
-            binario `📱 celulares · 🎧 accesorios`. Ahora renderizamos un chip
-            por cada una de las 9 clases con ventas del período, ordenadas por
-            unidades desc. Solo se muestran las clases con ventas > 0 — un
-            período sin ventas de watches no ensucia el KPI con "⌚ 0".
-            Fallback al render viejo si el backend no envía `unidades_por_clase`
-            (cache pre-fix o rollback).
+            F3.c-2 (2026-07-09): backend cambió el shape de `unidades_por_clase`.
+            - Nuevo (post PR de este cambio): array `[{clase_id, nombre, emoji, n}]`
+              ordenado desc por `n` server-side. Nombre + emoji vienen del JOIN
+              con `clases_producto` — labels editables por tenant.
+            - Legacy (F2 #524): object `{slug: n}` mapeando slug F1 → count.
+              Requería CLASES_LABELS[slug] client-side para armar el chip.
+            - Fallback viejo pre-F2: bucket binario `📱 celulares · 🎧 accesorios`
+              con d.unidades.{celulares,accesorios}.
+
+            Detectamos qué shape es y renderizamos acorde. La transición backend→
+            frontend rara vez es sincrónica (cache CDN, service worker), así que
+            los 3 paths de render conviven durante el rollout.
           */}
-          {d.unidades_por_clase && Object.keys(d.unidades_por_clase).length > 0 ? (
+          {Array.isArray(d.unidades_por_clase) && d.unidades_por_clase.length > 0 ? (
+            // Nuevo shape F3.c-2: array pre-ordenado, nombre+emoji del backend.
+            <div className="kpi-clases" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+              {d.unidades_por_clase.map(item => (
+                <span
+                  key={item.clase_id}
+                  className="chip mono"
+                  style={{ fontSize: 13 }}
+                  title={`${item.n} unidad${item.n === 1 ? '' : 'es'} de ${item.nombre}`}
+                >
+                  {item.emoji ? `${item.emoji} ` : ''}{item.nombre} <strong>{item.n}</strong>
+                </span>
+              ))}
+            </div>
+          ) : d.unidades_por_clase && typeof d.unidades_por_clase === 'object' && Object.keys(d.unidades_por_clase).length > 0 ? (
+            // Shape legacy F2 (object {slug: n}) — server viejo + client nuevo
+            // durante rollout. Usamos CLASES_LABELS hardcoded del enum F1.
             <div className="kpi-clases" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
               {Object.entries(d.unidades_por_clase)
                 .sort(([, a], [, b]) => Number(b) - Number(a))
@@ -91,6 +112,7 @@ export default function Dashboard({ d }) {
                 ))}
             </div>
           ) : (
+            // Fallback pre-F2: bucket binario.
             <div className="kpi-value" style={{ fontSize: 17 }}>
               📱 {d.unidades.celulares} · 🎧 {d.unidades.accesorios}
             </div>
