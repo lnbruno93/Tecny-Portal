@@ -183,21 +183,41 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
     // pero su contenido cambia. Esperamos al GET de dashboard explícitamente
     // para evitar leer el render viejo (de "hoy/hoy").
     //
-    // 2026-07-04 fix flaky CI: REGISTRAR el waitForResponse ANTES del fill.
-    // Antes lo hacíamos DESPUÉS y había race: el 1er fill(desde) disparaba un
-    // fetch con `?desde=X&hasta=<hoy>` que NO matcheaba el filtro, y el 2do
-    // fill(hasta) disparaba `?desde=X&hasta=X` que SÍ matcheaba — pero si el
-    // 2do request completaba antes de que empezara el `waitForResponse`,
-    // Playwright colgaba 10s esperando algo que ya había pasado. Con el
-    // promise registrado ANTES del fill, capturamos cualquier response futuro.
-    // Timeout subido de 10s → 20s como defensa en profundidad para CI lento.
-    // Mismo patrón usado en envio-entregado.spec.js:116 (documented CI fix).
+    // 2026-07-04 fix #1 flaky CI: REGISTRAR el waitForResponse ANTES del fill.
+    // Antes lo hacíamos DESPUÉS y había race: si el 2do request completaba
+    // antes de que empezara el `waitForResponse`, Playwright colgaba 10s
+    // esperando algo que ya había pasado. Con el promise registrado ANTES
+    // del fill, capturamos cualquier response futuro.
+    //
+    // 2026-07-10 fix #2 flaky CI (post-#544): dos `fill()` secuenciales
+    // disparan DOS fetches paralelos — el 1ro con `?desde=fecha&hasta=<hoy>`
+    // (rango que NO incluye nuestra venta futura → u$s0) y el 2do con
+    // `?desde=fecha&hasta=fecha` (rango correcto → u$s200). Si el fetch
+    // stale del rango #1 responde DESPUÉS del correcto, sobrescribe el
+    // estado de React → el card renderea "u$s0" y el assert `toHaveText`
+    // falla determinístamente (5s de polling no alcanzan porque el estado
+    // final es stale).
+    //
+    // Solución: setear ambos inputs en un solo tick de JS via evaluate.
+    // React batchea los 2 change events → un solo re-render → un solo
+    // fetch. Cero race. El `waitForResponse` sigue registrado antes para
+    // atrapar el response cuando llegue.
     const dashboardResp = page.waitForResponse(
       r => r.url().includes(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`) && r.status() === 200,
       { timeout: 20_000 },
     );
-    await dateInputs.nth(0).fill(fecha);
-    await dateInputs.nth(1).fill(fecha);
+    await page.evaluate((f) => {
+      const inputs = document.querySelectorAll('input[type="date"]');
+      // Setter nativo del prototype para que React detecte el cambio de value.
+      // Sin esto, React ignora el asignamiento directo `input.value = ...` en
+      // controlled components y no dispara onChange. Truco documented en
+      // https://github.com/facebook/react/issues/10135
+      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(inputs[0], f);
+      inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+      nativeSetter.call(inputs[1], f);
+      inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+    }, fecha);
     await dashboardResp;
 
     const ingresosCard = page.locator('.card', { has: page.getByText('Ingresos totales', { exact: true }) });
