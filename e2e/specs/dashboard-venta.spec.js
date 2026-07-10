@@ -214,9 +214,15 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
       // https://github.com/facebook/react/issues/10135
       const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       nativeSetter.call(inputs[0], f);
+      // React onChange en <input> mapea al 'change' event nativo del DOM
+      // (contrario a HTML puro donde onchange dispara solo con blur).
+      // Disparamos ambos (input + change) para cubrir todas las
+      // interpretaciones y evitar sensibilidad al tipo de handler.
       inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+      inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
       nativeSetter.call(inputs[1], f);
       inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+      inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
     }, fecha);
     await dashboardResp;
 
