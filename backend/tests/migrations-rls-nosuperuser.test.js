@@ -308,3 +308,155 @@ describe('UPDATE cross-tenant en tenant_user_roles bajo NOSUPERUSER — bug 2026
     // Si llegamos acá sin throw → el patrón pasa RLS bajo NOSUPERUSER ✓
   });
 });
+
+// Tests post-incidente 2026-07-09 (deploys F3 fallidos en Railway).
+//
+// Contexto: la migration F1 (20260708000001_productos_clase_categorias_reales)
+// hace UPDATE bulk sobre productos + ADD CONSTRAINT CHECK final. Falló 10
+// veces en producción porque:
+//   1. productos tiene FORCE ROW LEVEL SECURITY (aplica también al owner)
+//   2. La migration corre como user `ipro_app` (owner de productos pero
+//      no superuser) sin `app.current_tenant` seteado
+//   3. Los UPDATE afectan 0 filas por RLS → filas legacy quedan sin migrar
+//   4. ADD CONSTRAINT valida contra tabla física → error 23514
+//
+// Fix aplicado en el PR #543: envolver el bulk con:
+//   ALTER TABLE productos NO FORCE ROW LEVEL SECURITY;
+//   -- bulk UPDATE + ADD CONSTRAINT
+//   ALTER TABLE productos FORCE ROW LEVEL SECURITY;
+//
+// Este test valida el patrón EN ISOLATION (tabla temporal `productos_rls_test`)
+// para que cualquier migration futura con bulk UPDATE sobre tabla FORCE RLS
+// tenga cobertura. Si alguien intenta el UPDATE sin el bypass, este test
+// se cae y el CI del PR rebota antes del merge.
+//
+// Runbook: docs/runbooks/rls-bulk-migration.md
+describe('Migration bulk UPDATE sobre FORCE RLS — bug incidente F3 2026-07-09', () => {
+  const TEST_TABLE = 'productos_rls_test';
+
+  beforeAll(async () => {
+    // Tabla temporal que replica el scenario de productos: multi-tenant +
+    // FORCE RLS + policy tenant_isolation + CHECK constraint sobre `clase`.
+    // Isolate del resto del suite para no acoplar tests.
+    await pool.query(`DROP TABLE IF EXISTS ${TEST_TABLE} CASCADE`);
+    await pool.query(`
+      CREATE TABLE ${TEST_TABLE} (
+        id     SERIAL PRIMARY KEY,
+        tenant_id INT NOT NULL,
+        clase  TEXT NOT NULL CHECK (clase IN ('celular', 'accesorio'))
+      );
+      ALTER TABLE ${TEST_TABLE} ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE ${TEST_TABLE} FORCE ROW LEVEL SECURITY;
+      CREATE POLICY tenant_isolation ON ${TEST_TABLE}
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::int);
+    `);
+    // Owner debe ser el role NOSUPERUSER para que FORCE RLS le aplique.
+    await pool.query(`ALTER TABLE ${TEST_TABLE} OWNER TO ${ROLE_NAME}`);
+    await pool.query(`GRANT ALL ON ${TEST_TABLE}, ${TEST_TABLE}_id_seq TO ${ROLE_NAME}`);
+    // Seedeamos 3 filas de 2 tenants distintos con superuser (bypass RLS).
+    await pool.query(`INSERT INTO ${TEST_TABLE} (tenant_id, clase) VALUES
+      (1, 'celular'), (1, 'accesorio'), (2, 'celular')`);
+  });
+
+  afterAll(async () => {
+    try {
+      await pool.query(`ALTER TABLE ${TEST_TABLE} OWNER TO CURRENT_USER`);
+      await pool.query(`DROP TABLE ${TEST_TABLE} CASCADE`);
+    } catch (_) { /* swallow */ }
+  });
+
+  it('reproduce el bug: UPDATE bulk como NOSUPERUSER-owner SIN bypass afecta 0 filas', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+      await client.query('BEGIN');
+      // Sin SET app.current_tenant → RLS filtra TODAS las filas.
+      const { rowCount } = await client.query(
+        `UPDATE ${TEST_TABLE} SET clase = 'celular_sellado' WHERE clase = 'celular'`
+      );
+      // Bug reproducido: 0 filas actualizadas (deberían ser 2).
+      expect(rowCount).toBe(0);
+      await client.query('ROLLBACK');
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+  });
+
+  it('reproduce la consecuencia: ADD CONSTRAINT CHECK falla con filas no migradas', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+      await client.query('BEGIN');
+      // Intenta reemplazar el CHECK viejo por uno nuevo restringido. Como
+      // el UPDATE de arriba no actualizó nada (RLS), las filas siguen con
+      // clase='celular' y el nuevo CHECK las rechaza → error 23514.
+      await expect(
+        client.query(`
+          ALTER TABLE ${TEST_TABLE} DROP CONSTRAINT ${TEST_TABLE}_clase_check;
+          ALTER TABLE ${TEST_TABLE} ADD CONSTRAINT ${TEST_TABLE}_clase_check
+            CHECK (clase IN ('celular_sellado', 'celular_usado', 'accesorios_varios'));
+        `)
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: `${TEST_TABLE}_clase_check`,
+      });
+      await client.query('ROLLBACK');
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+  });
+
+  it('fix del PR #543: NO FORCE + UPDATE + FORCE permite migration bulk end-to-end', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query(`SET ROLE ${ROLE_NAME}`);
+      await client.query('BEGIN');
+      // Paso 0 (fix incidente): bypass FORCE (owner puede sin superuser).
+      await client.query(`ALTER TABLE ${TEST_TABLE} NO FORCE ROW LEVEL SECURITY`);
+      // Paso 1 (mismo orden que la migration real F1): ampliar el CHECK
+      // para aceptar valores viejos + nuevos durante el backfill.
+      await client.query(`ALTER TABLE ${TEST_TABLE} DROP CONSTRAINT ${TEST_TABLE}_clase_check`);
+      await client.query(`
+        ALTER TABLE ${TEST_TABLE} ADD CONSTRAINT ${TEST_TABLE}_clase_check
+          CHECK (clase IN ('celular', 'accesorio', 'celular_sellado', 'celular_usado', 'accesorios_varios'));
+      `);
+      // Paso 2: UPDATE bulk — ahora ve todas las filas (owner sin FORCE).
+      const upd1 = await client.query(
+        `UPDATE ${TEST_TABLE} SET clase = 'celular_sellado' WHERE clase = 'celular'`
+      );
+      expect(upd1.rowCount).toBe(2);  // ambas filas 'celular' de tenants 1 y 2
+      const upd2 = await client.query(
+        `UPDATE ${TEST_TABLE} SET clase = 'accesorios_varios' WHERE clase = 'accesorio'`
+      );
+      expect(upd2.rowCount).toBe(1);
+      // Paso 3: restringir el CHECK a solo los nuevos — ahora todas las
+      // filas cumplen porque el UPDATE efectivo migró todo.
+      await client.query(`ALTER TABLE ${TEST_TABLE} DROP CONSTRAINT ${TEST_TABLE}_clase_check`);
+      await client.query(`
+        ALTER TABLE ${TEST_TABLE} ADD CONSTRAINT ${TEST_TABLE}_clase_check
+          CHECK (clase IN ('celular_sellado', 'celular_usado', 'accesorios_varios'));
+      `);
+      // Paso 4 (fix incidente): restaurar FORCE (post-migration).
+      await client.query(`ALTER TABLE ${TEST_TABLE} FORCE ROW LEVEL SECURITY`);
+      await client.query('COMMIT');
+    } finally {
+      try { await client.query('RESET ROLE'); } catch (_) {}
+      client.release();
+    }
+    // Post-migration verificamos con superuser: filas migradas + FORCE restaurado.
+    const { rows: filas } = await pool.query(
+      `SELECT tenant_id, clase FROM ${TEST_TABLE} ORDER BY id`
+    );
+    expect(filas).toEqual([
+      { tenant_id: 1, clase: 'celular_sellado' },
+      { tenant_id: 1, clase: 'accesorios_varios' },
+      { tenant_id: 2, clase: 'celular_sellado' },
+    ]);
+    const { rows: rlsState } = await pool.query(
+      `SELECT relforcerowsecurity FROM pg_class WHERE relname = '${TEST_TABLE}'`
+    );
+    expect(rlsState[0].relforcerowsecurity).toBe(true);  // FORCE se restauró ✓
+  });
+});
