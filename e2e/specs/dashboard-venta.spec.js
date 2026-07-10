@@ -167,37 +167,32 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
 
     // ── UI ───────────────────────────────────────────────────────────────
     await login(page);
-    await page.goto('/ventas');
-    await expect(page).toHaveURL(/\/ventas/);
 
-    // El dashboard arranca con rango "hoy/hoy" (default en Ventas.jsx).
-    // Cambiamos `desde` y `hasta` a nuestra fecha futura para que el dashboard
-    // refleje SÓLO nuestra venta. Los inputs son `<input type="date">` con
-    // value bindeado a state — fill() dispara onChange y re-fetch del dashboard.
-    // Hay dos `<input type="date">` en la pantalla (desde + hasta). Tomamos
-    // por orden de aparición (DOM): nth(0) = desde, nth(1) = hasta.
-    const dateInputs = page.locator('input[type="date"]');
-
-    // Esperamos a que el dashboard re-fetchee con el nuevo rango. El bloque
-    // "Ingresos totales" siempre está visible (Dashboard render todo o nada),
-    // pero su contenido cambia. Esperamos al GET de dashboard explícitamente
-    // para evitar leer el render viejo (de "hoy/hoy").
+    // Ventas.jsx persiste el rango en la URL via `useSearchParams`
+    // (Ventas.jsx:117-127 — `?periodo=custom&desde=X&hasta=X`). Aprovechamos
+    // esto: navegamos DIRECTO con los query params ya seteados. El
+    // componente monta con el rango correcto y hace UN ÚNICO fetch
+    // `/api/ventas/dashboard?desde=fecha&hasta=fecha`.
     //
-    // 2026-07-04 fix flaky CI: REGISTRAR el waitForResponse ANTES del fill.
-    // Antes lo hacíamos DESPUÉS y había race: el 1er fill(desde) disparaba un
-    // fetch con `?desde=X&hasta=<hoy>` que NO matcheaba el filtro, y el 2do
-    // fill(hasta) disparaba `?desde=X&hasta=X` que SÍ matcheaba — pero si el
-    // 2do request completaba antes de que empezara el `waitForResponse`,
-    // Playwright colgaba 10s esperando algo que ya había pasado. Con el
-    // promise registrado ANTES del fill, capturamos cualquier response futuro.
-    // Timeout subido de 10s → 20s como defensa en profundidad para CI lento.
-    // Mismo patrón usado en envio-entregado.spec.js:116 (documented CI fix).
+    // Historial del approach anterior + racionalidad del cambio actual:
+    // - 2026-07-04 (fix #1 flaky): registrar `waitForResponse` antes de
+    //   los `fill()` para no perder el response.
+    // - 2026-07-10 (fix #2 flaky) [este PR]: los 2 `fill()` disparaban 2
+    //   fetches paralelos con race donde el fetch stale (`?desde=fecha&
+    //   hasta=<hoy>`) sobrescribía el estado del correcto post-response,
+    //   dejando el card en "u$s0". Probamos evaluate atómico + setter
+    //   nativo + change event → el fetch tampoco se disparaba
+    //   (controlled input de React ignoraba los eventos sintéticos).
+    // - Solución final [este PR]: eliminar el fill del todo. Navegación
+    //   directa con query params. Cero race, cero eventos sintéticos,
+    //   comportamiento determinista.
     const dashboardResp = page.waitForResponse(
       r => r.url().includes(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`) && r.status() === 200,
       { timeout: 20_000 },
     );
-    await dateInputs.nth(0).fill(fecha);
-    await dateInputs.nth(1).fill(fecha);
+    await page.goto(`/ventas?periodo=custom&desde=${fecha}&hasta=${fecha}`);
+    await expect(page).toHaveURL(/\/ventas/);
+
     await dashboardResp;
 
     const ingresosCard = page.locator('.card', { has: page.getByText('Ingresos totales', { exact: true }) });
