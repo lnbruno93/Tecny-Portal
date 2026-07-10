@@ -1,0 +1,188 @@
+# Monitor de deploys de Railway — post-incidente 2026-07-09.
+#
+# Contexto: la serie F3 disparó 10 deploys FAILED consecutivos en prod
+# sin que se detectara hasta que Lucas notó los deploys en rojo en Railway UI.
+# Prod nunca cayó (siguió sirviendo el commit anterior) pero los merges
+# de main no llegaban.
+#
+# Este workflow chequea cada 30 min dos síntomas independientes:
+#   1. ≥2 deployments consecutivos FAILED en Railway prod → probable
+#      migration rota o startup crash del backend.
+#   2. Drift: el commit desplegado en prod NO coincide con el HEAD de main.
+#      Cubre el caso donde los deploys fallan sin que sean explícitamente
+#      FAILED (ej: el auto-deploy no se dispara, o falla el healthcheck).
+#
+# Cuando detecta algo, abre un issue en el repo. Si el issue ya existe
+# abierto (mismo día), agrega un comment en lugar de duplicar.
+#
+# Runbook: docs/runbooks/rls-bulk-migration.md — playbook de recovery.
+
+name: Monitor Railway deploys
+
+on:
+  schedule:
+    # Cada 30 min a los :13 y :43. Evitamos :00 y :30 porque GitHub tiene
+    # más contención de runners en esos minutos con miles de workflows del
+    # mundo compitiendo por el mismo slot.
+    - cron: '13,43 * * * *'
+  workflow_dispatch:  # trigger manual (útil para probar el workflow)
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-prod:
+    name: Verificar backend prod en Railway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.com/install.sh | sh
+          # El instalador pone la CLI en ~/.railway/bin — agregamos al PATH
+          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
+
+      - name: Verificar estado de deploys
+        id: check
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          PROD_HEALTH_URL: https://tecny-backend-production.up.railway.app/health
+        run: |
+          set -euo pipefail
+
+          # ────────────────────────────────────────────────────────────
+          # Chequeo 1 — deployments recientes FAILED consecutivos
+          # ────────────────────────────────────────────────────────────
+          # `railway deployment list` requiere estar linkeado a un proyecto.
+          # Con RAILWAY_TOKEN + --service + --environment funciona sin link.
+          echo "→ Listando últimos deployments de prod..."
+          DEPLOYS_TXT=$(railway deployment list \
+            --service tecny-backend \
+            --environment production \
+            --limit 5 \
+            2>&1 || echo "CLI_ERROR")
+
+          # Salida típica del CLI:
+          #   Recent Deployments
+          #     <uuid> | SUCCESS | <fecha>
+          #     <uuid> | FAILED  | <fecha>
+          #     ...
+          # Extraemos las statuses (columna 2) de las primeras 2 líneas de data.
+          STATUSES=$(echo "$DEPLOYS_TXT" | grep -E '\| (SUCCESS|FAILED|CRASHED|BUILDING|DEPLOYING) \|' | head -2 | awk '{print $3}')
+          FAILED_COUNT=$(echo "$STATUSES" | grep -c 'FAILED' || true)
+          echo "Últimos 2 deploys: $(echo $STATUSES | tr '\n' ' ')"
+          echo "Failed count: $FAILED_COUNT"
+
+          # ────────────────────────────────────────────────────────────
+          # Chequeo 2 — drift entre commit desplegado y HEAD de main
+          # ────────────────────────────────────────────────────────────
+          echo "→ Verificando commit desplegado vs HEAD de main..."
+          DEPLOYED_COMMIT=$(curl -sS -m 15 "$PROD_HEALTH_URL" | jq -r '.commit // "unknown"')
+          MAIN_HEAD=$(git rev-parse HEAD | cut -c1-7)
+          echo "Commit desplegado en prod: $DEPLOYED_COMMIT"
+          echo "HEAD de main: $MAIN_HEAD"
+
+          # Comparamos con starts-with para tolerar SHA cortos vs largos.
+          if [[ "$MAIN_HEAD" == "$DEPLOYED_COMMIT"* || "$DEPLOYED_COMMIT" == "$MAIN_HEAD"* ]]; then
+            DRIFT="no"
+          else
+            DRIFT="yes"
+            # Cuántos commits atrás está prod. Necesitamos fetch de la historia.
+            git fetch --unshallow 2>/dev/null || git fetch --deepen=100 2>/dev/null || true
+            COMMITS_BEHIND=$(git log --oneline "${DEPLOYED_COMMIT}..HEAD" 2>/dev/null | wc -l | tr -d ' ' || echo "?")
+            echo "Prod está $COMMITS_BEHIND commits atrás de main."
+            echo "commits_behind=$COMMITS_BEHIND" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ────────────────────────────────────────────────────────────
+          # Decisión: alertar si algo mal
+          # ────────────────────────────────────────────────────────────
+          ALERT_TITLE=""
+          ALERT_BODY=""
+
+          if [[ "$FAILED_COUNT" -ge 2 ]]; then
+            ALERT_TITLE="🚨 Railway prod: 2+ deploys FAILED consecutivos"
+            ALERT_BODY=$(cat <<EOF
+El monitor detectó **$FAILED_COUNT deploys FAILED consecutivos** en el servicio \`tecny-backend\` de producción.
+
+**Últimos deploys:**
+\`\`\`
+$DEPLOYS_TXT
+\`\`\`
+
+**Estado actual del backend:**
+- Commit desplegado (funcionando): \`$DEPLOYED_COMMIT\`
+- HEAD de \`main\`: \`$MAIN_HEAD\`
+
+**Playbook de recovery:** [\`docs/runbooks/rls-bulk-migration.md\`](../blob/main/docs/runbooks/rls-bulk-migration.md)
+
+Detectado: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` UTC via workflow \`monitor-railway-deploys.yml\`.
+EOF
+)
+          elif [[ "$DRIFT" == "yes" ]]; then
+            ALERT_TITLE="⚠️ Railway prod: drift entre commit desplegado y main"
+            ALERT_BODY=$(cat <<EOF
+El commit corriendo en producción **NO coincide** con el HEAD de \`main\`.
+
+- Commit desplegado en prod: \`$DEPLOYED_COMMIT\`
+- HEAD de \`main\`: \`$MAIN_HEAD\` (${COMMITS_BEHIND:-?} commits adelante)
+
+Esto puede indicar:
+- Auto-deploy de Railway no se disparó (config bug o webhook roto)
+- Deploys fallidos silenciosamente sin quedar en estado FAILED explícito
+- Merge reciente que aún no completó el deploy (falso positivo si <10 min desde el merge)
+
+**Verificar:**
+1. \`railway deployment list --service tecny-backend --environment production --limit 5\`
+2. Si hay deploys FAILED recientes → seguir el playbook \`docs/runbooks/rls-bulk-migration.md\`
+3. Si no hay actividad reciente → verificar config de auto-deploy en Railway UI
+
+Detectado: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` UTC.
+EOF
+)
+          fi
+
+          if [[ -n "$ALERT_TITLE" ]]; then
+            echo "alert=yes" >> "$GITHUB_OUTPUT"
+            # Passwords y multiline body van vía files (no $GITHUB_OUTPUT que es
+            # single-line safe). Escribimos a un tempfile que el próximo step lee.
+            echo "$ALERT_TITLE" > /tmp/alert-title.txt
+            echo "$ALERT_BODY" > /tmp/alert-body.md
+          else
+            echo "alert=no" >> "$GITHUB_OUTPUT"
+            echo "✓ Sin anomalías detectadas."
+          fi
+
+      - name: Abrir/actualizar issue
+        if: steps.check.outputs.alert == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE=$(cat /tmp/alert-title.txt)
+          BODY=$(cat /tmp/alert-body.md)
+          LABEL="railway-monitor"
+
+          # Buscamos issue abierto con el mismo prefijo de título (evita
+          # duplicados dentro del mismo incidente). Los issues cerrados
+          # se ignoran — un nuevo failure post-resolución crea uno nuevo.
+          EXISTING=$(gh issue list --state open --label "$LABEL" \
+            --search "$TITLE in:title" \
+            --json number,title \
+            --limit 5 \
+            | jq -r '.[] | select(.title == "'"$TITLE"'") | .number' \
+            | head -1)
+
+          # Asegurar que el label existe (idempotente).
+          gh label create "$LABEL" --description "Alertas del monitor de Railway" --color "e11d21" 2>/dev/null || true
+
+          if [[ -n "$EXISTING" ]]; then
+            echo "→ Issue #$EXISTING ya abierto — agregando comment."
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "→ Abriendo nuevo issue."
+            gh issue create --title "$TITLE" --body "$BODY" --label "$LABEL"
+          fi
