@@ -167,63 +167,32 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
 
     // ── UI ───────────────────────────────────────────────────────────────
     await login(page);
-    await page.goto('/ventas');
-    await expect(page).toHaveURL(/\/ventas/);
 
-    // El dashboard arranca con rango "hoy/hoy" (default en Ventas.jsx).
-    // Cambiamos `desde` y `hasta` a nuestra fecha futura para que el dashboard
-    // refleje SÓLO nuestra venta. Los inputs son `<input type="date">` con
-    // value bindeado a state — fill() dispara onChange y re-fetch del dashboard.
-    // Hay dos `<input type="date">` en la pantalla (desde + hasta). Tomamos
-    // por orden de aparición (DOM): nth(0) = desde, nth(1) = hasta.
-    const dateInputs = page.locator('input[type="date"]');
-
-    // Esperamos a que el dashboard re-fetchee con el nuevo rango. El bloque
-    // "Ingresos totales" siempre está visible (Dashboard render todo o nada),
-    // pero su contenido cambia. Esperamos al GET de dashboard explícitamente
-    // para evitar leer el render viejo (de "hoy/hoy").
+    // Ventas.jsx persiste el rango en la URL via `useSearchParams`
+    // (Ventas.jsx:117-127 — `?periodo=custom&desde=X&hasta=X`). Aprovechamos
+    // esto: navegamos DIRECTO con los query params ya seteados. El
+    // componente monta con el rango correcto y hace UN ÚNICO fetch
+    // `/api/ventas/dashboard?desde=fecha&hasta=fecha`.
     //
-    // 2026-07-04 fix #1 flaky CI: REGISTRAR el waitForResponse ANTES del fill.
-    // Antes lo hacíamos DESPUÉS y había race: si el 2do request completaba
-    // antes de que empezara el `waitForResponse`, Playwright colgaba 10s
-    // esperando algo que ya había pasado. Con el promise registrado ANTES
-    // del fill, capturamos cualquier response futuro.
-    //
-    // 2026-07-10 fix #2 flaky CI (post-#544): dos `fill()` secuenciales
-    // disparan DOS fetches paralelos — el 1ro con `?desde=fecha&hasta=<hoy>`
-    // (rango que NO incluye nuestra venta futura → u$s0) y el 2do con
-    // `?desde=fecha&hasta=fecha` (rango correcto → u$s200). Si el fetch
-    // stale del rango #1 responde DESPUÉS del correcto, sobrescribe el
-    // estado de React → el card renderea "u$s0" y el assert `toHaveText`
-    // falla determinístamente (5s de polling no alcanzan porque el estado
-    // final es stale).
-    //
-    // Solución: setear ambos inputs en un solo tick de JS via evaluate.
-    // React batchea los 2 change events → un solo re-render → un solo
-    // fetch. Cero race. El `waitForResponse` sigue registrado antes para
-    // atrapar el response cuando llegue.
+    // Historial del approach anterior + racionalidad del cambio actual:
+    // - 2026-07-04 (fix #1 flaky): registrar `waitForResponse` antes de
+    //   los `fill()` para no perder el response.
+    // - 2026-07-10 (fix #2 flaky) [este PR]: los 2 `fill()` disparaban 2
+    //   fetches paralelos con race donde el fetch stale (`?desde=fecha&
+    //   hasta=<hoy>`) sobrescribía el estado del correcto post-response,
+    //   dejando el card en "u$s0". Probamos evaluate atómico + setter
+    //   nativo + change event → el fetch tampoco se disparaba
+    //   (controlled input de React ignoraba los eventos sintéticos).
+    // - Solución final [este PR]: eliminar el fill del todo. Navegación
+    //   directa con query params. Cero race, cero eventos sintéticos,
+    //   comportamiento determinista.
     const dashboardResp = page.waitForResponse(
       r => r.url().includes(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`) && r.status() === 200,
       { timeout: 20_000 },
     );
-    await page.evaluate((f) => {
-      const inputs = document.querySelectorAll('input[type="date"]');
-      // Setter nativo del prototype para que React detecte el cambio de value.
-      // Sin esto, React ignora el asignamiento directo `input.value = ...` en
-      // controlled components y no dispara onChange. Truco documented en
-      // https://github.com/facebook/react/issues/10135
-      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      nativeSetter.call(inputs[0], f);
-      // React onChange en <input> mapea al 'change' event nativo del DOM
-      // (contrario a HTML puro donde onchange dispara solo con blur).
-      // Disparamos ambos (input + change) para cubrir todas las
-      // interpretaciones y evitar sensibilidad al tipo de handler.
-      inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-      inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-      nativeSetter.call(inputs[1], f);
-      inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-      inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
-    }, fecha);
+    await page.goto(`/ventas?periodo=custom&desde=${fecha}&hasta=${fecha}`);
+    await expect(page).toHaveURL(/\/ventas/);
+
     await dashboardResp;
 
     const ingresosCard = page.locator('.card', { has: page.getByText('Ingresos totales', { exact: true }) });
