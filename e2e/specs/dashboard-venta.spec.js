@@ -167,37 +167,32 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
 
     // ── UI ───────────────────────────────────────────────────────────────
     await login(page);
-    await page.goto('/ventas');
-    await expect(page).toHaveURL(/\/ventas/);
 
-    // El dashboard arranca con rango "hoy/hoy" (default en Ventas.jsx).
-    // Cambiamos `desde` y `hasta` a nuestra fecha futura para que el dashboard
-    // refleje SÓLO nuestra venta. Los inputs son `<input type="date">` con
-    // value bindeado a state — fill() dispara onChange y re-fetch del dashboard.
-    // Hay dos `<input type="date">` en la pantalla (desde + hasta). Tomamos
-    // por orden de aparición (DOM): nth(0) = desde, nth(1) = hasta.
-    const dateInputs = page.locator('input[type="date"]');
-
-    // Esperamos a que el dashboard re-fetchee con el nuevo rango. El bloque
-    // "Ingresos totales" siempre está visible (Dashboard render todo o nada),
-    // pero su contenido cambia. Esperamos al GET de dashboard explícitamente
-    // para evitar leer el render viejo (de "hoy/hoy").
+    // Ventas.jsx persiste el rango en la URL via `useSearchParams`
+    // (Ventas.jsx:117-127 — `?periodo=custom&desde=X&hasta=X`). Aprovechamos
+    // esto: navegamos DIRECTO con los query params ya seteados. El
+    // componente monta con el rango correcto y hace UN ÚNICO fetch
+    // `/api/ventas/dashboard?desde=fecha&hasta=fecha`.
     //
-    // 2026-07-04 fix flaky CI: REGISTRAR el waitForResponse ANTES del fill.
-    // Antes lo hacíamos DESPUÉS y había race: el 1er fill(desde) disparaba un
-    // fetch con `?desde=X&hasta=<hoy>` que NO matcheaba el filtro, y el 2do
-    // fill(hasta) disparaba `?desde=X&hasta=X` que SÍ matcheaba — pero si el
-    // 2do request completaba antes de que empezara el `waitForResponse`,
-    // Playwright colgaba 10s esperando algo que ya había pasado. Con el
-    // promise registrado ANTES del fill, capturamos cualquier response futuro.
-    // Timeout subido de 10s → 20s como defensa en profundidad para CI lento.
-    // Mismo patrón usado en envio-entregado.spec.js:116 (documented CI fix).
+    // Historial del approach anterior + racionalidad del cambio actual:
+    // - 2026-07-04 (fix #1 flaky): registrar `waitForResponse` antes de
+    //   los `fill()` para no perder el response.
+    // - 2026-07-10 (fix #2 flaky) [este PR]: los 2 `fill()` disparaban 2
+    //   fetches paralelos con race donde el fetch stale (`?desde=fecha&
+    //   hasta=<hoy>`) sobrescribía el estado del correcto post-response,
+    //   dejando el card en "u$s0". Probamos evaluate atómico + setter
+    //   nativo + change event → el fetch tampoco se disparaba
+    //   (controlled input de React ignoraba los eventos sintéticos).
+    // - Solución final [este PR]: eliminar el fill del todo. Navegación
+    //   directa con query params. Cero race, cero eventos sintéticos,
+    //   comportamiento determinista.
     const dashboardResp = page.waitForResponse(
       r => r.url().includes(`/api/ventas/dashboard?desde=${fecha}&hasta=${fecha}`) && r.status() === 200,
       { timeout: 20_000 },
     );
-    await dateInputs.nth(0).fill(fecha);
-    await dateInputs.nth(1).fill(fecha);
+    await page.goto(`/ventas?periodo=custom&desde=${fecha}&hasta=${fecha}`);
+    await expect(page).toHaveURL(/\/ventas/);
+
     await dashboardResp;
 
     const ingresosCard = page.locator('.card', { has: page.getByText('Ingresos totales', { exact: true }) });
@@ -213,15 +208,28 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
     await expect(ingresosCard).toContainText(/1\s+venta(\s|$)/);
 
     // ── KPI: Unidades vendidas ───────────────────────────────────────────
-    // Render: "📱 {celulares} · 🎧 {accesorios}" en .kpi-value. Para nuestro
-    // item (sin producto_id) el backend NO lo cuenta — el FILTER de F1 usa
-    // `pr.clase IN ('celular_sellado','celular_usado')` para celulares y
-    // `pr.clase NOT IN (...) AND pr.id IS NOT NULL` para accesorios. Sin
-    // producto → pr.clase es NULL → NULL falla ambos IN. Items manuales
-    // (diferencias, ajustes) no contaminan el KPI. Esperamos "0 · 0".
+    // 2026-07-09 (post-#544): items sin producto_id ahora cuentan en
+    // `unidades_por_clase[]` como fila "Sin categoría" con emoji 📦 —
+    // resuelve el bug UX del rediseño Opción C (#541) donde el card
+    // mostraba "0 · 0" aunque hubiera ventas manuales legítimas.
+    //
+    // Este spec crea 1 item manual (200 USD, sin producto_id) → el card
+    // renderiza el rediseño: total "1" + "en 1 categoría" + "Top:
+    // 📦 Sin categoría 1" + botón "Ver detalle". Los buckets legacy
+    // `unidades.celulares/accesorios` siguen en 0 (fix iOStoreUY) —
+    // consistente con el patrón aditivo Fase 2.
+    //
+    // Nota: el fallback binario "📱 0 · 🎧 0" solo aparece cuando NO
+    // hay ningún item vendido en el rango. Con items manuales, el
+    // rediseño Opción C toma el control.
     const unidadesCard = page.locator('.card-tight', { has: page.getByText('Unidades vendidas', { exact: true }) });
     await expect(unidadesCard).toBeVisible();
-    await expect(unidadesCard.locator('.kpi-value')).toHaveText(/(?:^|\D)0\s+·.*?\s+0(?:\D|$)/);
+    // Total agregado en el .kpi-value: 1 unidad (nuestro item manual).
+    await expect(unidadesCard.locator('.kpi-value')).toHaveText('1');
+    // Label "en 1 categoría" (singular, 1 fila visible: "Sin categoría").
+    await expect(unidadesCard).toContainText(/en\s+1\s+categoría/i);
+    // Top badge muestra la única categoría con ventas.
+    await expect(unidadesCard).toContainText(/Top:\s*📦?\s*Sin categoría/i);
 
     // ── KPI: Ganancia neta ───────────────────────────────────────────────
     // Render: <.kpi-value>u$s150</.kpi-value> + <.muted><.margen> 75% · egresos…

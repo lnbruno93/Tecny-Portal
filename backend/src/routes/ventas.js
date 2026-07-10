@@ -599,23 +599,36 @@ async function computeDashboard(tenantId, desde, hasta) {
       // exigía al frontend un helper de labels/emojis. Ahora el label es
       // editable por tenant (F3.a #528).
       //
-      // Productos con clase_id NULL (edge case del backfill de F3.a — un
-      // producto viejo que no matcheó ningún slug base y quedó sin FK):
-      // FILTER WHERE clase_id IS NOT NULL — no aportan al KPI. El operador
-      // puede reasignarlos desde el modal de Categorías. Es un caso raro.
+      // LEFT JOINs a productos + clases_producto para incluir:
+      //   · Items sin producto_id (venta rápida, ajustes tipeados a mano) —
+      //     `vi.producto_id IS NULL` → `pr.clase_id NULL` post-JOIN.
+      //   · Items con producto pero sin categoría asignada (edge case del
+      //     backfill F3.a: producto viejo que no matcheó ningún slug base) —
+      //     `pr.clase_id NULL` post-JOIN.
+      //
+      // Ambos casos se agrupan como fila con `clase_id = NULL` que el
+      // acumulador etiqueta "Sin categoría". Discovery del bug 2026-07-09
+      // (Lucas): venta con item manual "iPhone 17" (producto_id NULL) no
+      // aparecía en `unidades_por_clase[]` — el card KPI del Dashboard caía
+      // al fallback binario mostrando "0". Ahora sí cuenta.
+      //
+      // Trade-off: canjes/diferencias siguen sin contar porque van en tablas
+      // separadas (`canjes`, no en `venta_items`). Los buckets legacy
+      // `unidades.celulares/accesorios` no se modifican — el fix
+      // 2026-07-08 iOStoreUY los mantiene excluyendo items sin producto.
       const unidadesPorClaseRetail = await client.query(`SELECT pr.clase_id, cp.nombre, cp.emoji, SUM(vi.cantidad)::int AS n
                 FROM venta_items vi
                 JOIN ventas v ON v.id = vi.venta_id
-                JOIN productos pr ON pr.id = vi.producto_id
-                JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
-                WHERE ${BASE} AND pr.clase_id IS NOT NULL
+                LEFT JOIN productos pr ON pr.id = vi.producto_id
+                LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
+                WHERE ${BASE}
                 GROUP BY pr.clase_id, cp.nombre, cp.emoji`, p);
       const unidadesPorClaseB2B = await client.query(`SELECT pr.clase_id, cp.nombre, cp.emoji, SUM(i.cantidad)::int AS n
                 FROM items_movimiento_cc i
                 JOIN movimientos_cc m ON m.id = i.movimiento_cc_id
-                JOIN productos pr ON pr.id = i.producto_id
-                JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
-                WHERE ${B2B_BASE} AND i.devuelto_at IS NULL AND pr.clase_id IS NOT NULL
+                LEFT JOIN productos pr ON pr.id = i.producto_id
+                LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
+                WHERE ${B2B_BASE} AND i.devuelto_at IS NULL
                 GROUP BY pr.clase_id, cp.nombre, cp.emoji`, p);
       return [totales, pagos, unidades, canjes, egresos, dif, horario, etiquetas, topProd, topVend, b2b, unidadesPorClaseRetail, unidadesPorClaseB2B];
     });
@@ -720,12 +733,20 @@ async function computeDashboard(tenantId, desde, hasta) {
         const combined = new Map();
         const acumular = (rows) => {
           for (const r of rows) {
-            const key = r.clase_id;
+            // Usamos la string '__null__' como key del Map cuando clase_id
+            // es NULL — el Map trata undefined/null como equivalentes y
+            // podrían pisarse por accidente. También separa items manuales
+            // (sin producto_id) de productos sin categoría en la etiqueta.
+            const key = r.clase_id ?? '__null__';
             if (!combined.has(key)) {
+              // Fila NULL (items manuales o productos sin clase): etiqueta
+              // "Sin categoría" con emoji 📦. El frontend Opción C la
+              // renderiza como una fila más del breakdown.
+              const esNull = r.clase_id == null;
               combined.set(key, {
-                clase_id: r.clase_id,
-                nombre:   r.nombre,
-                emoji:    r.emoji ?? null,
+                clase_id: r.clase_id ?? null,
+                nombre:   esNull ? 'Sin categoría' : r.nombre,
+                emoji:    esNull ? '📦' : (r.emoji ?? null),
                 n:        0,
               });
             }
