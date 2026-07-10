@@ -213,15 +213,28 @@ test.describe('Dashboard de ventas — refleja la venta creada', () => {
     await expect(ingresosCard).toContainText(/1\s+venta(\s|$)/);
 
     // ── KPI: Unidades vendidas ───────────────────────────────────────────
-    // Render: "📱 {celulares} · 🎧 {accesorios}" en .kpi-value. Para nuestro
-    // item (sin producto_id) el backend NO lo cuenta — el FILTER de F1 usa
-    // `pr.clase IN ('celular_sellado','celular_usado')` para celulares y
-    // `pr.clase NOT IN (...) AND pr.id IS NOT NULL` para accesorios. Sin
-    // producto → pr.clase es NULL → NULL falla ambos IN. Items manuales
-    // (diferencias, ajustes) no contaminan el KPI. Esperamos "0 · 0".
+    // 2026-07-09 (post-#544): items sin producto_id ahora cuentan en
+    // `unidades_por_clase[]` como fila "Sin categoría" con emoji 📦 —
+    // resuelve el bug UX del rediseño Opción C (#541) donde el card
+    // mostraba "0 · 0" aunque hubiera ventas manuales legítimas.
+    //
+    // Este spec crea 1 item manual (200 USD, sin producto_id) → el card
+    // renderiza el rediseño: total "1" + "en 1 categoría" + "Top:
+    // 📦 Sin categoría 1" + botón "Ver detalle". Los buckets legacy
+    // `unidades.celulares/accesorios` siguen en 0 (fix iOStoreUY) —
+    // consistente con el patrón aditivo Fase 2.
+    //
+    // Nota: el fallback binario "📱 0 · 🎧 0" solo aparece cuando NO
+    // hay ningún item vendido en el rango. Con items manuales, el
+    // rediseño Opción C toma el control.
     const unidadesCard = page.locator('.card-tight', { has: page.getByText('Unidades vendidas', { exact: true }) });
     await expect(unidadesCard).toBeVisible();
-    await expect(unidadesCard.locator('.kpi-value')).toHaveText(/(?:^|\D)0\s+·.*?\s+0(?:\D|$)/);
+    // Total agregado en el .kpi-value: 1 unidad (nuestro item manual).
+    await expect(unidadesCard.locator('.kpi-value')).toHaveText('1');
+    // Label "en 1 categoría" (singular, 1 fila visible: "Sin categoría").
+    await expect(unidadesCard).toContainText(/en\s+1\s+categoría/i);
+    // Top badge muestra la única categoría con ventas.
+    await expect(unidadesCard).toContainText(/Top:\s*📦?\s*Sin categoría/i);
 
     // ── KPI: Ganancia neta ───────────────────────────────────────────────
     // Render: <.kpi-value>u$s150</.kpi-value> + <.muted><.margen> 75% · egresos…
