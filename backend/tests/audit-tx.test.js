@@ -20,7 +20,9 @@ describe('audit() dentro de tx con SAVEPOINT', () => {
       await audit(client, 'ventas', 'INSERT', 1, { despues: { id: 1, total_usd: 100 } });
       await client.query('COMMIT');
     } finally { client.release(); }
-    const { rows } = await db.query("SELECT * FROM audit_logs WHERE tabla='ventas' AND registro_id=1");
+    // Post-migration 20260711000001, registro_id es TEXT. Comparamos como
+    // string en las queries de verificación.
+    const { rows } = await db.query("SELECT * FROM audit_logs WHERE tabla='ventas' AND registro_id='1'");
     expect(rows).toHaveLength(1);
     expect(rows[0].datos_despues.total_usd).toBe(100);
   });
@@ -32,13 +34,13 @@ describe('audit() dentro de tx con SAVEPOINT', () => {
       await audit(client, 'ventas', 'INSERT', 999, { despues: { id: 999 } });
       await client.query('ROLLBACK');
     } finally { client.release(); }
-    const { rows } = await db.query("SELECT * FROM audit_logs WHERE tabla='ventas' AND registro_id=999");
+    const { rows } = await db.query("SELECT * FROM audit_logs WHERE tabla='ventas' AND registro_id='999'");
     expect(rows).toHaveLength(0); // rollback'd
   });
 
   test('audit en pool global (sin client) sigue funcionando', async () => {
     await audit('ventas', 'INSERT', 7, { despues: { id: 7, foo: 'bar' } });
-    const { rows } = await db.query("SELECT * FROM audit_logs WHERE tabla='ventas' AND registro_id=7");
+    const { rows } = await db.query("SELECT * FROM audit_logs WHERE tabla='ventas' AND registro_id='7'");
     expect(rows).toHaveLength(1);
   });
 });

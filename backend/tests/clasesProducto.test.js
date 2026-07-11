@@ -100,6 +100,34 @@ describe('Categorías (clases_producto) — POST /clases', () => {
     expect(list.body.some(x => x.id === c.body.id)).toBe(true);
   });
 
+  // Regresión 2026-07-10: bug pre-existente descubierto en baseline de tests
+  // durante #545. `audit_logs.registro_id` era INTEGER pero recibe UUIDs de
+  // clases_producto (F3.a) → audit fail silencioso desde el 2026-07-08.
+  // Fix: migration 20260711000001 cambia registro_id a TEXT. Este test
+  // valida que post-migration, el audit log SÍ se persiste correctamente
+  // con el UUID como registro_id string.
+  it('audit_logs registra el INSERT con el UUID como registro_id (fix bug pre-F3.a)', async () => {
+    const c = await request(app).post('/api/inventario/clases').set(auth())
+      .send({ nombre: 'AuditUUIDTest', emoji: '📝' });
+    expect(c.status).toBe(201);
+
+    // Consultamos audit_logs directo — el helper `audit()` es fire-and-forget
+    // pero al ser sync path por default en tests, la fila ya está persistida.
+    const { rows } = await pool.query(
+      `SELECT registro_id, accion, datos_despues->>'nombre' AS nombre
+         FROM audit_logs
+        WHERE tabla = 'clases_producto'
+          AND registro_id = $1
+          AND accion = 'INSERT'
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [c.body.id]  // UUID como string
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].registro_id).toBe(c.body.id);
+    expect(rows[0].nombre).toBe('AuditUUIDTest');
+  });
+
   it('rechaza nombre duplicado (case-insensitive) con 409', async () => {
     await request(app).post('/api/inventario/clases').set(auth())
       .send({ nombre: 'Fundas' });

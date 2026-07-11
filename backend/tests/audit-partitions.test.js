@@ -157,7 +157,7 @@ describe('audit_logs particionada', () => {
     const { rows } = await db.query(
       `SELECT tabla, accion, registro_id, datos_despues
        FROM audit_logs
-       WHERE tabla = 'test_p19' AND registro_id = 9999`
+       WHERE tabla = 'test_p19' AND registro_id = '9999'`
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].datos_despues.foo).toBe('bar');
@@ -187,7 +187,7 @@ describe('audit_logs particionada', () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0].tabla).toBe('ventas');
 
-    await db.query(`DELETE FROM audit_logs WHERE tabla = 'ventas' AND registro_id = 1234`);
+    await db.query(`DELETE FROM audit_logs WHERE tabla = 'ventas' AND registro_id = '1234'`);
   });
 
   test('ensureNextMonthPartition pre-crea la partition del mes siguiente (idempotente)', async () => {
