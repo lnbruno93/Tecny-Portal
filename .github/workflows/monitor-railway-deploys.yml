@@ -69,12 +69,16 @@ jobs:
           # cambia, actualizar acá.
           echo "→ Listando últimos deployments de prod..."
           RAILWAY_PROJECT_ID="3f2cc8c1-bed4-43d0-ba71-742c761606ef"
+          # `$(cmd) || true` preserva el output stdout+stderr del CLI en
+          # DEPLOYS_TXT y tolera el fallo. El `|| echo "CLI_ERROR"` anterior
+          # sobrescribía el mensaje real del CLI cuando cmd fallaba, dejando
+          # el diagnóstico sin info útil.
           DEPLOYS_TXT=$(railway deployment list \
             --project "$RAILWAY_PROJECT_ID" \
             --service tecny-backend \
             --environment production \
             --limit 5 \
-            2>&1 || echo "CLI_ERROR")
+            2>&1) || true
           echo "Output del CLI:"
           echo "$DEPLOYS_TXT"
 
