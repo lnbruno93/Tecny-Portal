@@ -2087,6 +2087,137 @@ describe('COR-1 idempotency — Idempotency-Key en POST /pagos', () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// P1-3 idempotency — Idempotency-Key en POST /devolucion (audit 2026-07-11)
+//
+// Mismo patrón que COR-1 pero sobre `cross_tenant_operations.client_generated_id`
+// con UNIQUE index parcial (parent_op_id, client_generated_id) WHERE ambos NOT
+// NULL. Doble-click en el modal Devolución o retry por 502 no genera 2 devs.
+// ──────────────────────────────────────────────────────────────────────────
+describe('P1-3 idempotency — Idempotency-Key en POST /devolucion', () => {
+  const crypto = require('crypto');
+  let partnershipId;
+  let op;
+
+  beforeEach(async () => {
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 5, precio_usd: 100, tc: 1000,
+    });
+    // Pre-condición H3: la devolución exige pago previo. Registramos un pago
+    // completo para poder devolver hasta lo pagado.
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 500, moneda_pago: 'USD', monto_pago: 500,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+  });
+
+  it('POST sin header → legacy path (client_generated_id NULL, 201)', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`) // buyer
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(201);
+    // client_generated_id debe quedar NULL cuando no viene header.
+    const devOp = await pool.query(
+      `SELECT client_generated_id FROM cross_tenant_operations WHERE id = $1`,
+      [r.body.devolucion.id]
+    );
+    expect(devOp.rows[0].client_generated_id).toBeNull();
+  });
+
+  it('POST con MISMA Idempotency-Key (retry) → 200 idempotent_replay, SIN duplicar devOp', async () => {
+    const key = crypto.randomUUID();
+
+    // Primer request → crea la devolución (201).
+    const r1 = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .set('Idempotency-Key', key)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 2 }],
+        motivo: 'test P1-3',
+      });
+    expect(r1.status).toBe(201);
+    const originalDevId = r1.body.devolucion.id;
+
+    // Verificar que la key quedó persistida.
+    const p1 = await pool.query(
+      `SELECT client_generated_id FROM cross_tenant_operations WHERE id = $1`,
+      [originalDevId]
+    );
+    expect(p1.rows[0].client_generated_id).toBe(key);
+
+    // Retry: MISMO body, MISMA key. Simula doble-click UI o retry de red.
+    const r2 = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .set('Idempotency-Key', key)
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 2 }],
+        motivo: 'test P1-3',
+      });
+    expect(r2.status).toBe(200);
+    expect(r2.body.idempotent_replay).toBe(true);
+    expect(r2.body.devolucion.id).toBe(originalDevId);
+
+    // Sanity: 1 sola devOp con este parent_op_id (no se duplicó).
+    const devCount = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM cross_tenant_operations
+         WHERE parent_op_id = $1`,
+      [op.opId]
+    );
+    expect(devCount.rows[0].n).toBe(1);
+
+    // Sanity: 1 mov_cc devolución del seller (no se duplicó).
+    const movCcCount = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM movimientos_cc
+         WHERE tenant_id = $1 AND tipo = 'devolucion' AND cross_tenant_operation_id = $2`,
+      [tenantAId, op.opId]
+    );
+    // Con el fix del audit anterior, el mov_cc devolución no linkea directo
+    // a op.opId (es la devOp la que sí), pero al menos NO debe haber 2.
+    // El chequeo estricto es el count de devOps arriba.
+    expect(movCcCount.rows[0].n).toBeLessThanOrEqual(1);
+
+    // Sanity: 1 proveedor_mov devolución del buyer (no se duplicó).
+    const provMovCount = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND tipo = 'devolucion'`,
+      [tenantBId]
+    );
+    expect(provMovCount.rows[0].n).toBe(1);
+  });
+
+  it('POST con Idempotency-Key malformado → 400 idempotency_key_invalid', async () => {
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/devolucion`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .set('Idempotency-Key', 'not-a-uuid')
+      .send({
+        items: [{ cross_tenant_operation_item_id: op.itemId, cantidad: 1 }],
+      });
+    expect(r.status).toBe(400);
+    expect(r.body.reason).toBe('idempotency_key_invalid');
+  });
+
+  // Nota (Lucas + audit): un 4to test que verifica "misma key en 2 ops
+  // distintas → OK (partial index es (parent_op_id, key))" queda documentado
+  // en el schema del index parcial (migration 20260711180000). Testearlo
+  // acá requeriría crear una 2da createCrossOp en el mismo test, lo que
+  // colisiona con el UNIQUE del cliente_cc del seller (P0-1 fix). No vale
+  // arreglar la infra del helper por un caso que ya está garantizado por
+  // el schema. Los 3 tests de arriba cubren la lógica de la app (sin key,
+  // con key retry, key malformada) — que es lo que importa.
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // Helper puro: calcularDiferenciaCambiaria
 // ──────────────────────────────────────────────────────────────────────────
 describe('calcularDiferenciaCambiaria (helper puro)', () => {
