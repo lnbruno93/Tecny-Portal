@@ -4,6 +4,8 @@ import { Icons } from '../components/Icons';
 import { inventario, proveedores as proveedoresApi, cajas as cajasApi, redB2b } from '../lib/api';
 import { userHasCap } from '../lib/userHasCap';
 import { RedB2BPendingReviewContent } from './RedB2BPendingReview';
+// 2026-07-11: nuevo tab "Equipos usados" — content en archivo separado.
+import EquiposUsadosContent from './EquiposUsadosContent';
 import { exportCsv } from '../lib/exportCsv';
 import { downloadBlob as downloadBlobShared } from '../lib/downloadBlob';
 import { readXlsxRows, writeXlsx } from '../lib/xlsx';
@@ -238,19 +240,27 @@ export default function Inventario() {
   // COUNT(*)) en cada keystroke; espera 350ms tras la última tecla.
   const dSearch = useDebouncedValue(search, 350);
 
-  // ── PR-X3 #465: tab principal "Productos" vs "Pendientes Red B2B" ─────────
-  // El tab Pendientes vive ACÁ porque conceptualmente son productos auto-
-  // creados por partners que esperan revisión — el operador los maneja en
-  // el mismo módulo donde gestiona stock, sin saltar a una pantalla aparte.
+  // ── Tabs principales del módulo Inventario ────────────────────────────────
+  // Historia:
+  //   - PR-X3 #465: agregó "Pendientes Red B2B" al lado de "Productos". El tab
+  //     Pendientes vive ACÁ porque conceptualmente son productos auto-creados
+  //     por partners que esperan revisión — el operador los maneja en el mismo
+  //     módulo donde gestiona stock.
+  //   - 2026-07-11: se agregó "Equipos usados" (tab nuevo, condicion='usado'
+  //     con trazabilidad de origen). Ver GET /api/inventario/usados.
+  //
   // Sincronizamos con ?tab= para que back/forward y refresh preserven el
   // estado, y para que el redirect de la ruta legacy /red-b2b/pending-review
   // (→ /inventario?tab=red-b2b-pending) caiga directo en el tab correcto.
   const tabParam = searchParams.get('tab');
-  const initialMainTab = (tabParam === 'red-b2b-pending' && canSeeRedB2B) ? 'red-b2b-pending' : 'productos';
+  let initialMainTab = 'productos';
+  if (tabParam === 'red-b2b-pending' && canSeeRedB2B) initialMainTab = 'red-b2b-pending';
+  else if (tabParam === 'usados') initialMainTab = 'usados';
   const [mainTab, setMainTab] = useState(initialMainTab);
-  // Counter del badge del tab. Empezamos en null para no mostrar 0 antes
-  // de que sepamos (mejor mostrar el tab sin badge que parpadear "0" → "N").
+  // Counters de badges. Null = "no sabemos aún" — mejor no mostrar 0 antes
+  // de que se resuelva el fetch (evita parpadeo "0" → "N").
   const [pendingCount, setPendingCount] = useState(null);
+  const [usadosCount, setUsadosCount] = useState(null);
 
   function selectMainTab(id) {
     setMainTab(id);
@@ -287,6 +297,25 @@ export default function Inventario() {
     const interval = setInterval(fetchCount, 120000); // 120s
     return () => { cancelled = true; clearInterval(interval); };
   }, [canSeeRedB2B]);
+
+  // ── Counter del tab "Equipos usados" (2026-07-11) ─────────────────────────
+  // Solo count del total (pagination.total del endpoint), no polling agresivo.
+  // Se refetch al montar y cuando el content emite `onCountChange` (después
+  // de editar/eliminar un usado). No hay poll periódico: la data cambia
+  // solo por acción del user, no por eventos externos como Red B2B.
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchCount() {
+      try {
+        const r = await inventario.usados({ limit: 1, page: 1 });
+        if (!cancelled) setUsadosCount(r?.pagination?.total ?? 0);
+      } catch {
+        if (!cancelled) setUsadosCount(0); // best-effort
+      }
+    }
+    fetchCount();
+    return () => { cancelled = true; };
+  }, []);
 
   // Modal alta/edición
   const [showForm, setShowForm] = useState(false);
@@ -1009,22 +1038,37 @@ export default function Inventario() {
         </div>
       </div>
 
-      {/* ── Tabs principales (PR-X3 #465) ─────────────────────────────────
-          "Productos" es el contenido histórico (grilla + filtros + KPIs).
-          "Pendientes Red B2B" sólo aparece si el user tiene cap
-          cross_tenant.write — el contenido se delega a
-          RedB2BPendingReviewContent (named export del archivo del feature). */}
-      {canSeeRedB2B && (
-        <div className="tabs" role="tablist" aria-label="Secciones de Inventario" style={{ marginBottom: 16 }}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mainTab === 'productos'}
-            className={`tab ${mainTab === 'productos' ? 'active' : ''}`}
-            onClick={() => selectMainTab('productos')}
-          >
-            Productos
-          </button>
+      {/* ── Tabs principales del módulo Inventario ────────────────────────
+          Historial:
+            - PR-X3 #465: agregó "Pendientes Red B2B" (opcional, gated por cap).
+            - 2026-07-11: agregó "Equipos usados" (siempre visible).
+          Antes: los tabs solo se renderizaban si `canSeeRedB2B` — porque
+          "Productos" solo tenía sentido junto con otro tab. Ahora siempre hay
+          al menos 2 tabs (Productos + Equipos usados), así que los tabs
+          se muestran siempre. */}
+      <div className="tabs" role="tablist" aria-label="Secciones de Inventario" style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mainTab === 'productos'}
+          className={`tab ${mainTab === 'productos' ? 'active' : ''}`}
+          onClick={() => selectMainTab('productos')}
+        >
+          Productos
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mainTab === 'usados'}
+          className={`tab ${mainTab === 'usados' ? 'active' : ''}`}
+          onClick={() => selectMainTab('usados')}
+        >
+          Equipos usados
+          {usadosCount != null && usadosCount > 0 && (
+            <span className="badge" style={{ marginLeft: 8 }}>{usadosCount}</span>
+          )}
+        </button>
+        {canSeeRedB2B && (
           <button
             type="button"
             role="tab"
@@ -1037,14 +1081,20 @@ export default function Inventario() {
               <span className="badge" style={{ marginLeft: 8 }}>{pendingCount}</span>
             )}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Tab "Pendientes Red B2B" — Content embebido. setPendingCount como
           callback para que cualquier acción del Content (confirmar / mergear)
           mantenga el badge sincronizado sin un fetch adicional. */}
       {mainTab === 'red-b2b-pending' && canSeeRedB2B && (
         <RedB2BPendingReviewContent onCountChange={setPendingCount} />
+      )}
+
+      {/* Tab "Equipos usados" (2026-07-11) — content en componente separado
+          para no seguir inflando Inventario.jsx (ya está en ~2500 LOC). */}
+      {mainTab === 'usados' && (
+        <EquiposUsadosContent onCountChange={setUsadosCount} />
       )}
 
       {/* Tab "Productos" — todo el contenido histórico de Inventario. Lo

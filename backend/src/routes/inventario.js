@@ -39,6 +39,7 @@ const {
   updateProductoSchema,
   bulkProductoSchema,
   queryProductosSchema,
+  queryUsadosSchema,         // 2026-07-11: tab "Equipos usados" en Inventario
   queryDesgloseSchema,
   SLUGS_UNITARIOS,           // F3.d-3: para validarUnitarioCoherente post-derive
 } = require('../schemas/inventario');
@@ -627,6 +628,163 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
     const rows = canSeeCostos
       ? dataRes.rows
       : dataRes.rows.map(({ costo, costo_moneda, ...rest }) => rest);
+
+    res.json(paginatedResponse(rows, parseInt(countRes.rows[0].count), { page, limit }));
+  } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/inventario/usados — Tab "Equipos usados" en Inventario (2026-07-11).
+ *
+ * Lista productos con `condicion='usado'` (celulares canjeados, usados
+ * cargados manualmente en Inventario, etc.) con trazabilidad de origen:
+ * si el producto vino de un canje, se hace LEFT JOIN a `canjes` + `ventas`
+ * + `contactos` para exponer `origen: 'canje'` + `canje_origen: { venta_id,
+ * order_id, fecha, cliente_nombre, cliente_telefono }`. Si el producto no
+ * viene de ningún canje, `origen: 'manual'` y `canje_origen: null`.
+ *
+ * Motivación (Lucas 2026-07-11): tener un lugar dedicado para revisar el
+ * stock usado — quiénes son los clientes que dejaron equipos por canje, a
+ * qué precio se tomaron, cuál es el estado batería, etc. La vista principal
+ * de Inventario mezcla nuevo + usado y no diferencia origen.
+ *
+ * Filtros aceptados (queryUsadosSchema):
+ *   - buscar:      LIKE en nombre + IMEI + color + gb + cliente_nombre
+ *   - solo_canjes: bool, filtra a los que efectivamente vinieron por canje
+ *   - estado:      productos.estado (disponible / vendido / en_tecnico / reservado)
+ *   - desde/hasta: rango sobre productos.created_at (fecha de ingreso)
+ *   - page/limit:  paginación estándar
+ *
+ * Response shape (paginado):
+ *   {
+ *     data: [{
+ *       ...productos fields...,
+ *       clase_nombre, clase_emoji,
+ *       categoria_nombre, deposito_nombre,
+ *       origen: 'canje' | 'manual',
+ *       canje_origen: {
+ *         venta_id, order_id, fecha,
+ *         cliente_nombre, cliente_telefono
+ *       } | null
+ *     }],
+ *     pagination: { page, limit, total, pages }
+ *   }
+ *
+ * Nota RLS: `canjes` no tiene columna tenant_id explícita pero hereda por
+ * cascade desde `ventas` (venta_id FK); RLS de ventas ya filtra por tenant,
+ * y el LEFT JOIN de canjes no filtra rows del tenant → seguro.
+ * Un producto puede tener 0 o 1 canje asociado (relación 1:1 en la
+ * práctica: canje POST crea el producto y setea producto_id). Si por
+ * alguna razón hay >1, tomamos el más reciente vía LATERAL.
+ */
+router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, next) => {
+  try {
+    const { buscar, solo_canjes, estado, desde, hasta } = req.query;
+    const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
+
+    const conditions = [
+      `p.deleted_at IS NULL`,
+      `p.condicion = 'usado'`,       // scope del tab
+    ];
+    const params = [];
+    if (estado) { params.push(estado); conditions.push(`p.estado = $${params.length}`); }
+    if (desde)  { params.push(desde);  conditions.push(`p.created_at::date >= $${params.length}`); }
+    if (hasta)  { params.push(hasta);  conditions.push(`p.created_at::date <= $${params.length}`); }
+    if (solo_canjes) {
+      conditions.push(`cj.id IS NOT NULL`);
+    }
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      conditions.push(`(p.nombre ILIKE $${params.length}
+                        OR p.imei ILIKE $${params.length}
+                        OR p.color ILIKE $${params.length}
+                        OR p.gb ILIKE $${params.length}
+                        OR v.cliente_nombre ILIKE $${params.length})`);
+    }
+    const where = conditions.join(' AND ');
+
+    // JOIN LATERAL sobre `canjes` para tomar solo el canje más reciente si
+    // por algún motivo hay >1 con el mismo producto_id. Simplifica el
+    // paginado (una fila por producto siempre).
+    const baseFrom = `
+      FROM productos p
+      LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
+      LEFT JOIN categorias       c  ON c.id  = p.categoria_id AND c.deleted_at IS NULL
+      LEFT JOIN depositos        d  ON d.id  = p.deposito_id  AND d.deleted_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT cj.id, cj.venta_id, cj.valor_toma, cj.moneda AS canje_moneda
+          FROM canjes cj
+         WHERE cj.producto_id = p.id
+         ORDER BY cj.created_at DESC
+         LIMIT 1
+      ) cj ON true
+      LEFT JOIN ventas   v  ON v.id  = cj.venta_id AND v.deleted_at IS NULL
+      LEFT JOIN contactos co ON co.id = v.cliente_id AND co.deleted_at IS NULL
+    `;
+
+    const countQuery = `SELECT COUNT(*) ${baseFrom} WHERE ${where}`;
+    const dataQuery = `
+      SELECT p.id, p.tipo_carga, p.clase_id, cp.slug_legacy AS clase,
+             cp.nombre AS clase_nombre, cp.emoji AS clase_emoji,
+             p.nombre, p.imei, p.gb, p.color, p.bateria,
+             p.categoria_id, p.deposito_id, p.proveedor,
+             p.costo, p.costo_moneda,
+             p.precio_venta, p.precio_moneda,
+             p.trackear_stock, p.cantidad, p.estado, p.observaciones,
+             p.condicion, p.oculto, p.created_at,
+             (p.foto_data IS NOT NULL OR p.foto_key IS NOT NULL) AS tiene_foto,
+             p.foto_nombre, p.foto_tipo,
+             c.nombre AS categoria_nombre,
+             d.nombre AS deposito_nombre,
+             -- Trazabilidad del canje (NULL si el producto es "manual").
+             cj.id       AS canje_id,
+             cj.venta_id AS canje_venta_id,
+             v.order_id  AS canje_venta_order_id,
+             v.fecha     AS canje_venta_fecha,
+             v.cliente_nombre AS canje_cliente_nombre,
+             co.telefono AS canje_cliente_telefono
+        ${baseFrom}
+       WHERE ${where}
+       ORDER BY p.created_at DESC, p.id DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
+
+    const [countRes, dataRes] = await db.withTenant(req.tenantId, async (client) => {
+      const c = await client.query(countQuery, params);
+      const d = await client.query(dataQuery, [...params, limit, offset]);
+      return [c, d];
+    });
+
+    // Defensa de costos: mismo pattern que /productos. Sin cap ver_costos,
+    // sacamos costo + costo_moneda (y también el valor_toma del canje).
+    const canSeeCostos = await hasCapability(req.user, 'inventario.ver_costos');
+
+    const rows = dataRes.rows.map((r) => {
+      const {
+        canje_id, canje_venta_id, canje_venta_order_id, canje_venta_fecha,
+        canje_cliente_nombre, canje_cliente_telefono,
+        costo, costo_moneda,
+        ...rest
+      } = r;
+      const base = {
+        ...rest,
+        origen: canje_id ? 'canje' : 'manual',
+        canje_origen: canje_id ? {
+          canje_id,
+          venta_id:         canje_venta_id,
+          venta_order_id:   canje_venta_order_id,
+          venta_fecha:      canje_venta_fecha,
+          cliente_nombre:   canje_cliente_nombre,
+          cliente_telefono: canje_cliente_telefono,
+        } : null,
+      };
+      // Solo agrego costo/costo_moneda si el user puede verlos.
+      if (canSeeCostos) {
+        base.costo = costo;
+        base.costo_moneda = costo_moneda;
+      }
+      return base;
+    });
 
     res.json(paginatedResponse(rows, parseInt(countRes.rows[0].count), { page, limit }));
   } catch (err) { next(err); }
