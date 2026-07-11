@@ -662,6 +662,100 @@ describe('POST /api/red-b2b/operations — validation', () => {
     expect(r.status).toBe(400);
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-11 (auditoría Red B2B P1-2): total_usd/total_ars server-computed.
+  //
+  // Bug: el server aceptaba body.total_usd/body.total_ars como source of truth
+  // si estaban dentro de ±0.01 de sumUsd. Un cliente malicioso podía mandar
+  // body.total_usd = sumUsd - 0.005 → la deuda del buyer se reducía 1 centavo
+  // por op. 10K ops = 100 USD que el seller nunca cobra.
+  //
+  // Fix: el server computa totalUsdServer = round2(sumUsd) y
+  // totalArsServer = round2(sumUsd * tc). Esos son los valores que van a
+  // TODAS las tablas + notif + email + response. El sanity check body vs
+  // sumUsd se mantiene como defense-in-depth para catchar bugs de un cliente
+  // honesto (mismatch grande → 400), pero ya no gobierna la persistencia.
+  //
+  // Los tests siguientes verifican: aunque el body traiga un total_usd o
+  // total_ars ligeramente distintos del sumUsd real (dentro del margen de
+  // ±0.01 que pasa el sanity), lo persistido es sumUsd + sumUsd*tc, no lo
+  // declarado.
+  // ═══════════════════════════════════════════════════════════════════════
+  it('P1-2: body.total_usd manipulado (dentro margin) → server persiste sumUsd, no lo declarado', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    // sumUsd real = 2 * 500 = 1000.00. Cliente manda 999.995 (dentro de ±0.01
+    // del sanity → NO rebota como 400 total_usd_mismatch). Sin el fix, el server
+    // persistía round2(999.995) = 1000.00 igual (rounding lo salvaba en este
+    // caso puntual), pero con 999.99 (mismatch -0.01, borde) el server persistía
+    // 999.99 antes del fix, ahora persiste 1000 siempre.
+    //
+    // Uso 999.99 para maximizar el gap detectable — dentro del sanity (|1000-999.99|=0.01
+    // NO es > 0.01, entonces pasa), pero pre-fix se persistía 999.99.
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 2, precio_usd: 500 }],
+        tc: 1000, total_usd: 999.99, total_ars: 999990,
+      });
+    expect(r.status).toBe(201);
+    // Response devuelve server-computed (1000), no lo declarado (999.99).
+    expect(r.body.operation.total_usd).toBe(1000);
+    expect(r.body.operation.total_ars).toBe(1000000);
+
+    // Verifico persistencia en las 3 tablas:
+    const opRow = await pool.query(
+      `SELECT total_usd, total_ars FROM cross_tenant_operations WHERE id = $1`,
+      [r.body.operation.id]
+    );
+    expect(Number(opRow.rows[0].total_usd)).toBe(1000);
+    expect(Number(opRow.rows[0].total_ars)).toBe(1000000);
+
+    // movimientos_cc del seller (deuda del cliente CC).
+    const movCc = await pool.query(
+      `SELECT monto_total FROM movimientos_cc
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'compra'`,
+      [tenantAId, r.body.operation.id]
+    );
+    expect(Number(movCc.rows[0].monto_total)).toBe(1000);
+
+    // proveedor_movimientos del buyer (deuda con el proveedor).
+    const provMov = await pool.query(
+      `SELECT monto_usd FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'compra'`,
+      [tenantBId, r.body.operation.id]
+    );
+    expect(Number(provMov.rows[0].monto_usd)).toBe(1000);
+  });
+
+  it('P1-2: body.total_ars manipulado → server persiste sumUsd*tc, no lo declarado', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    // sumUsd = 100 → total_ars server = 100 * 1500 = 150000.
+    // Cliente manda total_ars = 149000 (undervalues by 1000 ARS — pasa sanity
+    // porque este chequea total_usd, no total_ars).
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1500, total_usd: 100, total_ars: 149000, // total_ars declarado ≠ sumUsd*tc
+      });
+    expect(r.status).toBe(201);
+    // Response devuelve server-computed (150000), no lo declarado (149000).
+    expect(r.body.operation.total_ars).toBe(150000);
+
+    // cross_tenant_operations.total_ars persistido = server-computed.
+    const opRow = await pool.query(
+      `SELECT total_ars FROM cross_tenant_operations WHERE id = $1`,
+      [r.body.operation.id]
+    );
+    expect(Number(opRow.rows[0].total_ars)).toBe(150000);
+  });
+
   it('seller suspended → bloqueado (4XX)', async () => {
     // Cuando el tenant está suspended, el middleware requireActiveTenant
     // global del portal rechaza CUALQUIER write con 402 (Payment Required)
