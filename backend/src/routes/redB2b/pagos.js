@@ -447,6 +447,14 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
         // ── PROPAGAR AL OTRO LADO ─────────────────────────────────────────
         // Las cajas ya están resueltas (B1). Solo necesitamos cambiar el SET
         // LOCAL al tenant del otro lado y registrar.
+        //
+        // 2026-07-11 (auditoría Red B2B P1-4): agregado `notas: body.notas` en
+        // los 2 calls de propagación. El bug era que el registro del lado que
+        // LLAMA (bloque de arriba) SÍ pasaba notas → registerSellerCobro /
+        // registerBuyerPago, pero acá abajo (propagación) los args no incluían
+        // notas y el receptor veía `notas = null` en su lado. Resultado: audit
+        // inconsistente cross-tenant y UX confusa ("¿por qué mi partner no ve
+        // lo que le anoté?"). Ahora ambos lados registran la misma nota.
         if (callerIsSeller) {
           // Propagar al BUYER.
           await client.query(`SET LOCAL app.current_tenant = ${Number(buyerTenantId)}`);
@@ -460,6 +468,7 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
             caja_id: buyerCajaPersistId,
             fecha,
             callerUserId: userId,
+            notas: body.notas,
           });
         } else {
           // Propagar al SELLER: necesita caja + diferencia cambiaria.
@@ -476,6 +485,7 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
             fecha,
             callerUserId: userId,
             diferencia_cambiaria_ars: diferencia_ars,
+            notas: body.notas,
           });
         }
 

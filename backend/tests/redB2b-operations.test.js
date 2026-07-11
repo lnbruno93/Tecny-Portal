@@ -635,6 +635,33 @@ describe('POST /api/red-b2b/operations — validation', () => {
     expect(r.body.reason).toBe('total_usd_mismatch');
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-11 (auditoría Red B2B P1-1): rechazar precio_usd = 0.
+  //
+  // Antes: schema usaba .nonnegative() → item con precio_usd=0 pasaba
+  // validación. Si el operador armaba una op con un item accidental precio=0
+  // + otros items compensando el total, la suma cero cuadraba a nivel op
+  // pero el line item quedaba desbalanceado (stock movido sin CC contrapartida
+  // por ese line). Ahora .positive() rechaza 0 explícito → si algún día hay
+  // ítems bonificación/muestra, se modelan con endpoint separado (no mezclando
+  // con la operación contable normal).
+  // ═══════════════════════════════════════════════════════════════════════
+  it('P1-1: item con precio_usd = 0 → 400 validation error', async () => {
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 3, precio_usd: 0 }],
+        // total_usd:0 y total_ars:0 igual son rechazados por el schema
+        // (ambos son .positive()), pero el test se centra en precio_usd=0.
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    expect(r.status).toBe(400);
+  });
+
   it('seller suspended → bloqueado (4XX)', async () => {
     // Cuando el tenant está suspended, el middleware requireActiveTenant
     // global del portal rechaza CUALQUIER write con 402 (Payment Required)

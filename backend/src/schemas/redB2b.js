@@ -44,12 +44,21 @@ const mergeIntoSchema = z.object({
 // total_usd / total_ars son redundantes (el server recalcula como sanity
 // check) — vienen del frontend que ya hizo la cuenta. El server tolera
 // diferencia ±0.01 por rounding entre JS y SQL (sum de N items con 2 decimales).
+//
+// 2026-07-11 (auditoría Red B2B P1-1): `precio_usd` era `.nonnegative()` y
+// aceptaba 0. Un item con precio 0 × cantidad N pasaba validación → el seller
+// perdía N unidades de stock sin CC contrapartida por ese line item (la suma
+// cero de total_usd seguía cuadrando si otros items compensaban, pero el
+// desbalance por line item quedaba invisible). Ahora `.positive()` rechaza 0
+// explícitamente. Si algún día hay ítems bonificación/muestra sin precio,
+// que se modelen con un endpoint separado (no mezclando con la operación
+// contable normal).
 const createOperationSchema = z.object({
   partnership_id: z.coerce.number().int().positive(),
   items: z.array(z.object({
     producto_id: z.coerce.number().int().positive(),
     cantidad:    z.coerce.number().int().positive(),
-    precio_usd:  z.coerce.number().nonnegative(),
+    precio_usd:  z.coerce.number().positive(),
   })).min(1).max(100),
   tc:        z.coerce.number().positive(),
   notes:     z.string().trim().max(1000).optional(),

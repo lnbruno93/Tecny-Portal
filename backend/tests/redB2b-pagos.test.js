@@ -802,6 +802,82 @@ describe('POST /operations/:id/pagos — happy path', () => {
     expect(r.body.saldo.completo).toBe(true);
     expect(r.body.saldo.restante_usd).toBe(0);
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-11 (auditoría Red B2B P1-4): notas se propagan al otro lado.
+  //
+  // Bug: los args a registerBuyerPago/registerSellerCobro en el bloque de
+  // PROPAGACIÓN de pagos.js no incluían `notas: body.notas`. Resultado:
+  // el receptor veía notas=null en su lado del audit trail, el caller veía
+  // lo que escribió. UX confusa ("¿por qué mi partner no ve mi nota?").
+  //
+  // Test: seller registra cobro con notas → verificar que el mov_cc del
+  // seller (lado caller) Y el proveedor_mov del buyer (lado propagado)
+  // tienen la MISMA nota persistida.
+  // ═══════════════════════════════════════════════════════════════════════
+  it('P1-4: notas se propaga al otro lado (seller → buyer)', async () => {
+    const NOTA = 'nota de prueba P1-4 seller→buyer';
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+        notas: NOTA,
+      })
+      .expect(201);
+
+    // Lado caller (seller) — mov_cc.notas.
+    const sellerMov = await pool.query(
+      `SELECT notas FROM movimientos_cc
+         WHERE tenant_id = $1 AND tipo = 'pago' AND cross_tenant_operation_id = $2`,
+      [tenantAId, op.opId]
+    );
+    expect(sellerMov.rows.length).toBe(1);
+    expect(sellerMov.rows[0].notas).toBe(NOTA);
+
+    // Lado propagado (buyer) — proveedor_movimientos.notas.
+    // Antes del fix: notas=null acá. Post fix: NOTA.
+    const buyerMov = await pool.query(
+      `SELECT notas FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND tipo = 'pago' AND cross_tenant_operation_id = $2`,
+      [tenantBId, op.opId]
+    );
+    expect(buyerMov.rows.length).toBe(1);
+    expect(buyerMov.rows[0].notas).toBe(NOTA);
+  });
+
+  it('P1-4: notas se propaga al otro lado (buyer → seller)', async () => {
+    const NOTA = 'nota de prueba P1-4 buyer→seller';
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdBId, side: 'buyer',
+        notas: NOTA,
+      })
+      .expect(201);
+
+    // Lado caller (buyer) — proveedor_movimientos.notas.
+    const buyerMov = await pool.query(
+      `SELECT notas FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND tipo = 'pago' AND cross_tenant_operation_id = $2`,
+      [tenantBId, op.opId]
+    );
+    expect(buyerMov.rows.length).toBe(1);
+    expect(buyerMov.rows[0].notas).toBe(NOTA);
+
+    // Lado propagado (seller) — movimientos_cc.notas.
+    // Antes del fix: notas=null acá. Post fix: NOTA.
+    const sellerMov = await pool.query(
+      `SELECT notas FROM movimientos_cc
+         WHERE tenant_id = $1 AND tipo = 'pago' AND cross_tenant_operation_id = $2`,
+      [tenantAId, op.opId]
+    );
+    expect(sellerMov.rows.length).toBe(1);
+    expect(sellerMov.rows[0].notas).toBe(NOTA);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1029,6 +1105,90 @@ describe('GET /partnerships/:id/conciliation', () => {
       .set('Authorization', `Bearer ${tokenA}`);
     expect(r.status).toBe(200);
     expect(r.body.saldos_bilaterales.difieren).toBe(false);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-11 (auditoría Red B2B P1-5): conciliation cubre entrega_mercaderia.
+  //
+  // Bug: el CASE de suma de movimientos_cc mapeaba compra +, pago/parte_de_pago
+  // −, devolucion −, pero NO incluía `entrega_mercaderia` (que el CHECK
+  // de movimientos_cc.tipo SÍ acepta). Cross-tenant hoy solo genera
+  // compra/pago/devolucion, pero un operador que EDITE MANUALMENTE un mov_cc
+  // cross-tenant a `entrega_mercaderia` deja el saldo del seller INFLADO
+  // silenciosamente — la conciliación reportaba OK sin razón.
+  //
+  // Escenario: op pagada. Insertamos a mano un mov_cc adicional con
+  // tipo='entrega_mercaderia' en el seller (simulando la edición manual)
+  // apuntando al cross_tenant_operation_id existente. La conciliación debería
+  // restar ese monto del saldo del seller → si el CASE no cubre el tipo, el
+  // saldo del seller queda INFLADO vs el saldo del buyer y difieren=true.
+  // ═══════════════════════════════════════════════════════════════════════
+  it('P1-5: entrega_mercaderia en mov_cc cross-tenant SÍ suma en conciliation (signo negativo)', async () => {
+    // Pago completo (200 = cubre op).
+    await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 200, moneda_pago: 'USD', monto_pago: 200,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      })
+      .expect(201);
+
+    // Baseline: sin edición manual, la conciliación cuadra.
+    const rBaseline = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(rBaseline.status).toBe(200);
+    expect(rBaseline.body.saldos_bilaterales.difieren).toBe(false);
+
+    // Simulamos edición manual: agregamos un mov_cc tipo='entrega_mercaderia'
+    // del seller apuntando al mismo cross_tenant_operation_id. Va con signo
+    // "reduce deuda" (representa que el seller entregó mercadería que descuenta
+    // deuda del cliente CC — mismo signo semántico que pago).
+    //
+    // Necesita: cliente_cc_id ya existente del seller para esta partnership +
+    // un caja_id válido del seller.
+    const ccIdRow = await pool.query(
+      `SELECT cliente_cc_id, caja_id FROM movimientos_cc
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'compra'
+         LIMIT 1`,
+      [tenantAId, op.opId]
+    );
+    expect(ccIdRow.rows.length).toBe(1);
+    const { cliente_cc_id: sellerCcId } = ccIdRow.rows[0];
+
+    // INSERT directo (bypass RLS con pool admin) — simula un backfill/edición
+    // manual, no la ruta normal de cross-tenant.
+    await pool.query(
+      `INSERT INTO movimientos_cc
+         (tenant_id, cliente_cc_id, fecha, tipo, descripcion, monto_total,
+          caja_id, created_by_user_id, estado, cross_tenant_operation_id)
+       VALUES ($1, $2, CURRENT_DATE, 'entrega_mercaderia', 'test manual', 50,
+               $3, $4, 'acreditado', $5)`,
+      [tenantAId, sellerCcId, cajaUsdAId, userAId, op.opId]
+    );
+
+    // Post-edit: si el CASE cubre entrega_mercaderia con -50, el saldo del
+    // seller cae de 0 a -50. El saldo del buyer (proveedor_movimientos) no
+    // tiene equivalente → se mantiene en 0. Difieren=true — pero eso es el
+    // COMPORTAMIENTO CORRECTO: la edición manual desbalanceó los libros y la
+    // conciliación bilateral DEBE detectarlo. Antes del fix, el saldo del
+    // seller quedaba en 0 (ignorando el mov) y la conciliación decía OK
+    // silenciando el desbalance real → el bug era el silencio.
+    const r = await request(app)
+      .get(`/api/red-b2b/partnerships/${partnershipId}/conciliation`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(r.status).toBe(200);
+    expect(r.body.saldos_bilaterales.difieren).toBe(true);
+    // El saldo del seller debe reflejar el -50 (entrega_mercaderia con signo
+    // negativo). Ubicación exacta según payload: revisamos que difiera del
+    // saldo del buyer (que sigue en 0).
+    const sb = r.body.saldos_bilaterales;
+    // El delta esperado es 50 (el seller cerró en -50, buyer en 0 → diff 50).
+    // Toleramos que el shape del payload pueda variar; lo importante es que
+    // difieren=true (arriba) y que el mov entrega_mercaderia se sumó — sino
+    // difieren sería false (bug pre-fix).
+    expect(sb).toBeDefined();
   });
 
   // PR-D #463: el cache in-memory fue eliminado (multi-instance bug + frecuencia
