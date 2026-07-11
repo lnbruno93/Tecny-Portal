@@ -209,9 +209,19 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           );
           if (dup.rows[0]) {
             await client.query('ROLLBACK');
+            // 2026-07-11 (auditoría Red B2B P2-3): incluimos `op_status_now`
+            // para que el frontend pueda detectar cambios de estado post-hoc.
+            // Escenario: 1ra request crea el pago OK. Cliente pierde el response
+            // por 502. Alguien cancela la op. Cliente retry con misma key →
+            // replay devuelve 200 con el pago original PERO también reporta que
+            // op.status ahora es 'cancelled'. El pago sigue siendo válido (fue
+            // registrado antes de la cancelación) pero el frontend puede mostrar
+            // un warning "el pago se registró pero la op fue cancelada después".
+            // NO cambiamos el status HTTP (200 sigue OK — el pago se persistió).
             return {
               idempotent_replay: true,
               existing_pago: dup.rows[0],
+              op_status_now: op.status,
               // Metadata que el response wrapper necesita para el email/notif
               // path — pero como es replay NO emitimos email de nuevo.
             };
@@ -665,6 +675,9 @@ router.post('/:id/pagos', validate(registrarPagoSchema), async (req, res, next) 
           tc_pago: Number(p.tc_pago),
         },
         idempotent_replay: true,
+        // P2-3: estado actual de la op para que el frontend detecte cambios
+        // post-registro (ej: op cancelada entre 1ra request y replay).
+        op_status_now: result.op_status_now,
       });
     }
 
@@ -939,9 +952,14 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
           );
           if (dup.rows[0]) {
             await client.query('ROLLBACK');
+            // P2-3: incluimos op_status_now del parent — mismo raciocinio que
+            // en POST /pagos. Si el parent op fue cancelado tras el hecho, el
+            // frontend recibe la devolución original (válida) + señal del
+            // estado actual para mostrar warning si corresponde.
             return {
               idempotent_replay: true,
               existing_devolucion: dup.rows[0],
+              op_status_now: op.status,
             };
           }
         }
@@ -965,9 +983,14 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         // Las devoluciones son ops con parent_op_id IS NOT NULL. Sus items
         // tienen cantidad POSITIVA (el CHECK > 0 lo enforza). La identidad
         // de devolución viene del parent_op_id + total_usd negativo de la op.
+        // 2026-07-11 (auditoría Red B2B P3-3): COALESCE defensive. Con GROUP BY
+        // si no hay filas del JOIN para un producto, ese producto no aparece
+        // en el resultado (no genera SUM NULL). Pero SUM(cantidad) sobre un
+        // solo row con cantidad NULL sí devuelve NULL (aunque el CHECK > 0
+        // lo previene). Wrapear con COALESCE deja el default explícito.
         const prevDevQ = await client.query(
           `SELECT items.seller_producto_id, items.buyer_producto_id,
-                  SUM(items.cantidad) AS cant_devuelta
+                  COALESCE(SUM(items.cantidad), 0) AS cant_devuelta
              FROM cross_tenant_operation_items items
              JOIN cross_tenant_operations devops
                ON devops.id = items.cross_tenant_operation_id
@@ -1331,6 +1354,8 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
           parent_op_id: result.existing_devolucion.parent_op_id,
           total_usd_devuelto: Math.abs(Number(result.existing_devolucion.total_usd)),
         },
+        // P2-3: estado actual del parent op para detectar cambios post-registro.
+        op_status_now: result.op_status_now,
       });
     }
 
