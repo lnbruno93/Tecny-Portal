@@ -177,11 +177,20 @@ async function resolveCajaParaTenant(client, tenantId, moneda, defaultCajaId) {
  */
 async function ensureSellerClienteCc(client, sellerTenantId, buyerTenant) {
   const buyerName = buyerTenant.nombre;
+  // 2026-07-11 (auditoría Red B2B P0-1): filtro `AND tenant_id = $2` inline.
+  // Antes, el SELECT sin filtro tenant devolvía el id del primer cliente_cc
+  // con ese nombre en CUALQUIER tenant (bajo adminQuery/BYPASSRLS el SET LOCAL
+  // no protege). Consecuencia: el INSERT en movimientos_cc quedaba linkeado
+  // al cliente_cc de OTRO tenant → contabilidad cross-tenant contaminada.
+  // La migration `20260711170000_...` agrega UNIQUE (tenant_id, LOWER(nombre))
+  // como blindaje adicional a nivel DB.
   const lookup = await client.query(
     `SELECT id FROM clientes_cc
-       WHERE LOWER(nombre) = LOWER($1) AND deleted_at IS NULL
+       WHERE tenant_id = $1
+         AND LOWER(nombre) = LOWER($2)
+         AND deleted_at IS NULL
        LIMIT 1`,
-    [buyerName]
+    [sellerTenantId, buyerName]
   );
   if (lookup.rows[0]) return lookup.rows[0].id;
   const ins = await client.query(
@@ -205,11 +214,16 @@ async function ensureSellerClienteCc(client, sellerTenantId, buyerTenant) {
  */
 async function ensureBuyerProveedor(client, buyerTenantId, sellerTenant) {
   const sellerName = sellerTenant.nombre;
+  // 2026-07-11 (auditoría Red B2B P0-1): filtro `AND tenant_id = $1` inline.
+  // Ver comentario detallado en ensureSellerClienteCc arriba — mismo bug,
+  // mismo fix, misma migration `20260711170000_...`.
   const lookup = await client.query(
     `SELECT id FROM proveedores
-       WHERE LOWER(nombre) = LOWER($1) AND deleted_at IS NULL
+       WHERE tenant_id = $1
+         AND LOWER(nombre) = LOWER($2)
+         AND deleted_at IS NULL
        LIMIT 1`,
-    [sellerName]
+    [buyerTenantId, sellerName]
   );
   if (lookup.rows[0]) return lookup.rows[0].id;
   const ins = await client.query(
