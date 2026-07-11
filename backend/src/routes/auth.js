@@ -389,6 +389,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
     // middleware en writes).
     let tenantInfo = null;
     if (req.tenantId) {
+      const { getMonedaLocalPais } = require('../lib/money');
       try {
         const { getTenantStatus } = require('../lib/tenantStatus');
         const status = await getTenantStatus(req.tenantId);
@@ -397,12 +398,11 @@ router.get('/me', requireAuth, async (req, res, next) => {
           // que el frontend pueda filtrar dropdowns + formatear locale sin
           // pegar a otro endpoint. `moneda_local` se deriva del país (AR→ARS,
           // UY→UYU) — convenience del backend, no es source-of-truth en DB.
-          const { getMonedaLocalPais } = require('../lib/money');
           tenantInfo = {
             id:           status.id,
             // 2026-07-04 (#506) — Nombre del negocio para brandear comprobantes
-            // en el frontend. Fallback a null (el frontend usa 'Tecny' como
-            // fallback duro cuando no lo tiene).
+            // en el frontend. Fallback a null (el frontend usa un placeholder
+            // neutro si no llega — ver 2026-07-11 más abajo).
             nombre:       status.nombre || null,
             plan:         status.plan,
             paid_until:   status.paid_until,
@@ -417,7 +417,43 @@ router.get('/me', requireAuth, async (req, res, next) => {
         // pudiendo usar el portal; el banner simplemente no se muestra hasta
         // el próximo /me que recupere el status.
         logger.warn({ err: e.message, tenantId: req.tenantId },
-          '/me: getTenantStatus falló, devuelve sin tenant info');
+          '/me: getTenantStatus falló, intentando fallback query directo a tenants');
+      }
+
+      // 2026-07-11: defensa en profundidad — si `tenantInfo` sigue null
+      // (getTenantStatus falló o devolvió stale/null), hacemos un fallback
+      // query directo a `tenants` para al menos garantizar el `nombre` en el
+      // response. Bug reportado por Tek Haus: algunos comprobantes salían con
+      // "Tecny" (nombre del SaaS) porque /me devolvía tenant: null → el
+      // frontend caía al fallback hardcoded. El campo `nombre` es crítico
+      // para brand del PDF — no puede quedar unset por un cache miss o hiccup
+      // del helper.
+      if (!tenantInfo) {
+        try {
+          const row = await db.adminQuery(async (client) => {
+            const { rows } = await client.query(
+              `SELECT id, nombre, pais FROM tenants
+                WHERE id = $1 AND deleted_at IS NULL`,
+              [req.tenantId]
+            );
+            return rows[0];
+          });
+          if (row) {
+            tenantInfo = {
+              id:           row.id,
+              nombre:       row.nombre || null,
+              plan:         null,        // desconocido en el fallback
+              paid_until:   null,        // idem — el banner de billing se recomputa al próximo /me
+              suspended_at: null,
+              is_active:    true,        // asumimos activo (si estaba suspended, requireAuth ya rebotó)
+              pais:         row.pais || 'AR',
+              moneda_local: getMonedaLocalPais(row.pais || 'AR'),
+            };
+          }
+        } catch (e) {
+          logger.warn({ err: e.message, tenantId: req.tenantId },
+            '/me: fallback query tenants falló — response va sin tenant info');
+        }
       }
     }
 

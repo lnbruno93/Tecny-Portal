@@ -109,9 +109,17 @@ export default function Ventas() {
   const { monedas, monedaLocal } = useMonedasTenant();
   // 2026-07-04 (#506): nombre del negocio (owner-set) para brandear el PDF del
   // comprobante + fallback de garantía. Guard igual a useMonedasTenant: user
-  // puede ser null en mount inicial o si /me falló. En prod siempre resuelve.
+  // puede ser null en mount inicial o si /me falló.
+  //
+  // 2026-07-11 (bug Tek Haus): fallback pasa de 'Tecny' → 'Tu comercio'.
+  // Contexto: si /me devuelve tenant:null (fail-open del helper backend, ver
+  // fix en auth.js /me 2026-07-11), este `||` activaba y el comprobante salía
+  // brandeado con "Tecny" (el nombre del SaaS) — confuso para el cliente
+  // final del tenant. Ahora usamos un placeholder neutro. La fuente correcta
+  // (nombre del tenant en DB) llega en el 99% de los casos post-fix del /me;
+  // este fallback solo activa si TODO falla.
   const { user } = useAuth() || {};
-  const tenantNombre = user?.tenant?.nombre || 'Tecny';
+  const tenantNombre = user?.tenant?.nombre || 'Tu comercio';
 
   const [lista, setLista] = useState([]);
   const [dash, setDash] = useState(null);
