@@ -25,12 +25,10 @@ vi.mock('../lib/api', () => ({
   inventario: {
     metricas: vi.fn().mockResolvedValue({
       en_tecnico_usd: '0', en_tecnico_ars: '0',
-      // F3-Fase2b: legacy buckets siguen presentes (Fase 2a aditivo).
-      // Capital.jsx los usa como fallback si `inv_por_clase` no existe.
-      inv_equipos_usd: '500', inv_equipos_ars: '0',
-      inv_accesorios_usd: '0', inv_accesorios_ars: '80000',
-      // Nuevo shape post-Fase 2a: 2 categorías del tenant + coherencia con
-      // los totales legacy (500 USD + 80000 ARS).
+      stock_disponible: '4',
+      // 2026-07-11 F3-Fase2c: campos legacy inv_equipos_* / inv_accesorios_*
+      // y *_count desaparecieron del response. `inv_por_clase[]` es la
+      // fuente única — Capital.jsx ya no tiene fallback.
       inv_por_clase: [
         { clase_id: 'aaaa', nombre: 'Celular Sellado', emoji: '📲', es_base: true, es_sin_categoria: false, slug_legacy: 'celular_sellado', count: 1, usd: 500, ars: 0 },
         { clase_id: 'bbbb', nombre: 'Accesorios/Varios', emoji: '🛍️', es_base: true, es_sin_categoria: false, slug_legacy: 'accesorios_varios', count: 3, usd: 0, ars: 80000 },

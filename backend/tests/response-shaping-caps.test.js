@@ -140,40 +140,39 @@ describe('GET /api/inventario/productos — response shaping (F5b)', () => {
 });
 
 describe('GET /api/inventario/productos/metricas — response shaping (TANDA 0)', () => {
-  it('admin ve los 6 campos monetarios (inv_equipos/accesorios + en_tecnico, USD+ARS)', async () => {
+  // 2026-07-11 F3-Fase2c: sunset de los buckets legacy inv_equipos_* /
+  // inv_accesorios_* / *_count. El desglose por-categoría vive solo en
+  // `inv_por_clase[]` (Fase 2a). Los tests de shaping del bucket legacy
+  // fueron reemplazados por su equivalente en el array (test siguiente).
+  it('admin ve los montos escalares del response (en_tecnico USD+ARS + stock_disponible)', async () => {
     const r = await request(app)
       .get('/api/inventario/productos/metricas')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect(r.body.inv_equipos_usd).not.toBeNull();
-    expect(r.body.inv_equipos_ars).not.toBeNull();
-    expect(r.body.inv_accesorios_usd).not.toBeNull();
-    expect(r.body.inv_accesorios_ars).not.toBeNull();
+    // Escalares que se mantienen post-Fase2c.
     expect(r.body.en_tecnico_usd).not.toBeNull();
     expect(r.body.en_tecnico_ars).not.toBeNull();
-    // Count fields siempre presentes:
     expect(r.body.stock_disponible).toBeDefined();
-    expect(r.body.equipos_count).toBeDefined();
-    expect(r.body.accesorios_count).toBeDefined();
     expect(r.body.en_tecnico_count).toBeDefined();
+    // Los legacy ya NO están.
+    expect(r.body).not.toHaveProperty('inv_equipos_usd');
+    expect(r.body).not.toHaveProperty('inv_accesorios_usd');
+    expect(r.body).not.toHaveProperty('equipos_count');
+    expect(r.body).not.toHaveProperty('accesorios_count');
   });
 
-  it('user SIN inventario.ver_costos recibe los 6 montos como null y los counts intactos', async () => {
+  it('user SIN inventario.ver_costos recibe en_tecnico_* como null y stock_disponible intacto', async () => {
     const token = signCapToken({ 'inventario.ver': true });
     const r = await request(app)
       .get('/api/inventario/productos/metricas')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     // Montos redactados a null (no undefined ni delete — el frontend muestra "—").
-    expect(r.body.inv_equipos_usd).toBeNull();
-    expect(r.body.inv_equipos_ars).toBeNull();
-    expect(r.body.inv_accesorios_usd).toBeNull();
-    expect(r.body.inv_accesorios_ars).toBeNull();
     expect(r.body.en_tecnico_usd).toBeNull();
     expect(r.body.en_tecnico_ars).toBeNull();
     // Counts no se tocan — un vendedor sí puede saber CUÁNTO stock hay.
     expect(typeof r.body.stock_disponible).not.toBe('undefined');
-    expect(typeof r.body.equipos_count).not.toBe('undefined');
+    expect(typeof r.body.en_tecnico_count).not.toBe('undefined');
   });
 
   // Fase 2a (2026-07-09): el response ahora incluye `inv_por_clase[]` con

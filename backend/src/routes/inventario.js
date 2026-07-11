@@ -228,12 +228,16 @@ router.get('/productos/metricas', async (req, res, next) => {
   //
   // 2026-06-24 hotfix post-F5b: la auditoría post-permisos detectó que
   // F5b shapeó GET /productos y /productos/:id/historial pero OLVIDÓ este
-  // endpoint, que devuelve SUM(costo*cantidad) para inv_equipos/accesorios
-  // + en_tecnico_usd/ars. Un vendedor sin `inventario.ver_costos` veía el
-  // valor total del inventario del tenant. Mismo patrón de redact que F5b:
-  // count fields quedan (stock_disponible, equipos_count, accesorios_count,
-  // en_tecnico_count) — un vendedor sí puede saber CUÁNTO stock hay sin
-  // saber CUÁNTA plata representa.
+  // endpoint, que devuelve SUM(costo*cantidad). Un vendedor sin
+  // `inventario.ver_costos` veía el valor total del inventario del tenant.
+  // Mismo patrón de redact que F5b: los `count` NO se redactan (un vendedor
+  // sí puede saber CUÁNTO stock hay sin saber CUÁNTA plata representa), los
+  // campos monetarios sí (`en_tecnico_usd/ars` + montos por categoría en
+  // `inv_por_clase[]`).
+  //
+  // 2026-07-11 F3-Fase2c: post-sunset de los campos legacy inv_equipos_* /
+  // inv_accesorios_*, el redact solo cubre `en_tecnico_*` (escalares) + los
+  // usd/ars del array `inv_por_clase[]`.
   try {
     const metricas = await fetchMetricas(req.tenantId);
     const canSeeCostos = await hasCapability(req.user, 'inventario.ver_costos');
@@ -241,13 +245,9 @@ router.get('/productos/metricas', async (req, res, next) => {
       res.json(metricas);
       return;
     }
-    // Redact los 6 campos monetarios legacy + los montos por-categoría en
-    // `inv_por_clase[]` (Fase 2a). Devolvemos null (no undefined ni delete)
-    // para que el frontend reconozca la ausencia y muestre "—" en vez de
-    // "$0" — bug U1 también detectado en la auditoría.
-    // Los `count` NO se redactan: un vendedor puede saber cuántos equipos
-    // hay por categoría, solo no cuánta plata representan (mismo criterio
-    // que los campos legacy count_*).
+    // Redact los campos monetarios (Fase 2c). Devolvemos null (no undefined
+    // ni delete) para que el frontend reconozca la ausencia y muestre "—"
+    // en vez de "$0" — bug U1 detectado en la auditoría original F5b.
     const invPorClaseRedacted = (metricas.inv_por_clase || []).map(c => ({
       ...c,
       usd: null,
@@ -257,10 +257,6 @@ router.get('/productos/metricas', async (req, res, next) => {
       ...metricas,
       en_tecnico_usd:    null,
       en_tecnico_ars:    null,
-      inv_equipos_usd:   null,
-      inv_equipos_ars:   null,
-      inv_accesorios_usd: null,
-      inv_accesorios_ars: null,
       inv_por_clase:     invPorClaseRedacted,
     });
   } catch (err) { next(err); }
