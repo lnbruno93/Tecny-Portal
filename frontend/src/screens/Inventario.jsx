@@ -1102,11 +1102,14 @@ export default function Inventario() {
             <Icons.Trash size={14} /> Vaciar stock + compras
           </button>
         )}
-        {/* Spacer empuja Agregar producto a la derecha de la toolbar */}
-        <span style={{ marginLeft: 'auto' }} />
-        {canCreateProducto && (
-          <button className="btn btn-primary" onClick={openCreate}><Icons.Plus size={14} /> Agregar producto</button>
-        )}
+        {/* 2026-07-11: el botón "Agregar producto" se removió de la toolbar.
+            Ya existe como acción primaria persistente en el header contextual
+            (vía `setPrimaryAction` línea ~570) — aparece arriba a la derecha,
+            al lado de "Desglose 360 →". Sacarlo de acá:
+              · Evita que quede descolgado en la siguiente fila cuando el
+                flex-wrap se activa (bug reportado por Lucas).
+              · Consolida la acción primaria en un solo lugar visual.
+              · Toolbar queda como acciones secundarias / destructivas. */}
       </div>
 
       {/* ── KPIs ── */}
@@ -1219,8 +1222,18 @@ export default function Inventario() {
                   value: c.id,
                   label: c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre,
                 })),
-              { value: 'tecnico', label: 'En técnico' },
-              { value: 'usados', label: 'Usados' },
+              // 2026-07-11: removidos los tabs "En técnico" (estado) y "Usados"
+              // (condición). Eran ejes distintos a categorías y confundían al
+              // mezclarse en la misma barra. Si el operador quiere ese filtro
+              // como shortcut visual, crea una categoría propia con ese nombre
+              // desde el modal "Categorías". Los estados/condiciones siguen
+              // siendo filtrables via el dropdown VISTA (para en_tecnico:
+              // vista=todos_visibles + filtro backend) y el form de edición.
+              //
+              // Compat legacy: URLs con `?clase=tecnico` o `?clase=usados`
+              // caen al fallback "Todos" (el value ya no matchea ningún
+              // option). No rompen — quedan como bookmarks obsoletos.
+              //
               // Colecciones (tabla legacy `categorias`, renombrada en UI por
               // F3.b) → 1 tab por cada una (orden alfabético). El usuario las
               // crea/edita desde "Colecciones & Depósitos".
