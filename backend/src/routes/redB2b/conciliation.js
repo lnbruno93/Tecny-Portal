@@ -158,11 +158,27 @@ router.get('/:id/conciliation', async (req, res, next) => {
 
       if (opIds.length > 0) {
         // Saldo según movimientos_cc por tenant.
+        //
+        // 2026-07-11 (auditoría Red B2B P1-5): agregado `entrega_mercaderia`
+        // con signo negativo. El CHECK de `movimientos_cc.tipo` acepta 5
+        // valores: compra, pago, devolucion, parte_de_pago, entrega_mercaderia
+        // (más saldo_inicial, que NO aplica a rows cross-tenant). Cross-tenant
+        // hoy solo GENERA compra/pago/devolucion, pero un operador que edite
+        // manualmente un mov_cc cross-tenant a `entrega_mercaderia` dejaba
+        // este CASE cayendo al ELSE 0 → el saldo del seller quedaba inflado
+        // silenciosamente y la conciliación reportaba OK. Ahora lo cubrimos
+        // explícito. Sigue una convención: cross-tenant NO debe usar la
+        // canónica SALDO_CASE_M (lib/saldoCC.js) porque esa maneja la
+        // casuística `compra AND caja_id IS NOT NULL` (contado no genera
+        // deuda) que no aplica al mundo cross-tenant (siempre deuda). Si
+        // mañana aparece otro tipo, el ELSE 0 lo silencia — auditar y
+        // agregarlo explícitamente si eso pasa (no ampliar la wildcard).
         const movCcQ = await client.query(
           `SELECT tenant_id,
                   SUM(CASE WHEN tipo = 'compra' THEN monto_total
                            WHEN tipo IN ('pago', 'parte_de_pago') THEN -monto_total
                            WHEN tipo = 'devolucion' THEN -monto_total
+                           WHEN tipo = 'entrega_mercaderia' THEN -monto_total
                            ELSE 0 END) AS saldo
              FROM movimientos_cc
              WHERE cross_tenant_operation_id = ANY($1::bigint[])
@@ -229,6 +245,17 @@ router.get('/:id/conciliation', async (req, res, next) => {
       let opsDiferencias = [];
       if (difieren && opIds.length > 0) {
         // Por op: total_usd vs sum pagos vs movimientos_cc/proveedor_movimientos.
+        //
+        // 2026-07-11 (bug pre-existente detectado al testear P1-5):
+        // `movimientos_cc` NO tiene columna `updated_at` — solo `created_at`
+        // (ver migration 20260522000008_cuentas-corrientes.js). El branch
+        // `difieren=true` fallaba con "column updated_at does not exist"
+        // en runtime pero estaba dormido: los tests de conciliation solo
+        // cubrían `difieren=false` y en prod nunca se detectó porque la
+        // conciliación cuadraba (F4 sano). Los movs cross-tenant son
+        // append-only (no se editan post-creación), así que `created_at`
+        // es equivalente semánticamente a "última actividad" acá. La CTE
+        // hermana `op_prov_mov` ya usaba `created_at` → dejamos consistente.
         const detalleQ = await client.query(
           `WITH op_pagos AS (
              SELECT cross_tenant_operation_id AS op_id, COALESCE(SUM(monto_usd), 0) AS pagos
@@ -237,7 +264,7 @@ router.get('/:id/conciliation', async (req, res, next) => {
                GROUP BY 1
            ),
            op_mov_cc AS (
-             SELECT cross_tenant_operation_id AS op_id, tenant_id, MAX(updated_at) AS ultima
+             SELECT cross_tenant_operation_id AS op_id, tenant_id, MAX(created_at) AS ultima
                FROM movimientos_cc
                WHERE cross_tenant_operation_id = ANY($1::bigint[])
                  AND deleted_at IS NULL
