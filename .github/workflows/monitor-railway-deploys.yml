@@ -103,46 +103,39 @@ jobs:
           ALERT_TITLE=""
           ALERT_BODY=""
 
+          # Heredoc de los cuerpos de las alertas. Usamos $'...' (bash ANSI-C
+          # quoting) con \n literales para evitar heredocs sin indent que YAML
+          # interpretaría como fin del bloque `run: |`. Trade-off: menos legible
+          # que heredoc, pero cumple el requisito de que TODAS las líneas del
+          # bloque tengan al menos 10 espacios de indent.
           if [[ "$FAILED_COUNT" -ge 2 ]]; then
             ALERT_TITLE="🚨 Railway prod: 2+ deploys FAILED consecutivos"
-            ALERT_BODY=$(cat <<EOF
-El monitor detectó **$FAILED_COUNT deploys FAILED consecutivos** en el servicio \`tecny-backend\` de producción.
-
-**Últimos deploys:**
-\`\`\`
-$DEPLOYS_TXT
-\`\`\`
-
-**Estado actual del backend:**
-- Commit desplegado (funcionando): \`$DEPLOYED_COMMIT\`
-- HEAD de \`main\`: \`$MAIN_HEAD\`
-
-**Playbook de recovery:** [\`docs/runbooks/rls-bulk-migration.md\`](../blob/main/docs/runbooks/rls-bulk-migration.md)
-
-Detectado: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` UTC via workflow \`monitor-railway-deploys.yml\`.
-EOF
-)
+            NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            ALERT_BODY="El monitor detectó **$FAILED_COUNT deploys FAILED consecutivos** en el servicio \`tecny-backend\` de producción."$'\n\n'
+            ALERT_BODY+="**Últimos deploys:**"$'\n'
+            ALERT_BODY+='```'$'\n'
+            ALERT_BODY+="$DEPLOYS_TXT"$'\n'
+            ALERT_BODY+='```'$'\n\n'
+            ALERT_BODY+="**Estado actual del backend:**"$'\n'
+            ALERT_BODY+="- Commit desplegado (funcionando): \`$DEPLOYED_COMMIT\`"$'\n'
+            ALERT_BODY+="- HEAD de \`main\`: \`$MAIN_HEAD\`"$'\n\n'
+            ALERT_BODY+="**Playbook de recovery:** [\`docs/runbooks/rls-bulk-migration.md\`](../blob/main/docs/runbooks/rls-bulk-migration.md)"$'\n\n'
+            ALERT_BODY+="Detectado: \`$NOW\` UTC via workflow \`monitor-railway-deploys.yml\`."
           elif [[ "$DRIFT" == "yes" ]]; then
             ALERT_TITLE="⚠️ Railway prod: drift entre commit desplegado y main"
-            ALERT_BODY=$(cat <<EOF
-El commit corriendo en producción **NO coincide** con el HEAD de \`main\`.
-
-- Commit desplegado en prod: \`$DEPLOYED_COMMIT\`
-- HEAD de \`main\`: \`$MAIN_HEAD\` (${COMMITS_BEHIND:-?} commits adelante)
-
-Esto puede indicar:
-- Auto-deploy de Railway no se disparó (config bug o webhook roto)
-- Deploys fallidos silenciosamente sin quedar en estado FAILED explícito
-- Merge reciente que aún no completó el deploy (falso positivo si <10 min desde el merge)
-
-**Verificar:**
-1. \`railway deployment list --service tecny-backend --environment production --limit 5\`
-2. Si hay deploys FAILED recientes → seguir el playbook \`docs/runbooks/rls-bulk-migration.md\`
-3. Si no hay actividad reciente → verificar config de auto-deploy en Railway UI
-
-Detectado: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` UTC.
-EOF
-)
+            NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            ALERT_BODY="El commit corriendo en producción **NO coincide** con el HEAD de \`main\`."$'\n\n'
+            ALERT_BODY+="- Commit desplegado en prod: \`$DEPLOYED_COMMIT\`"$'\n'
+            ALERT_BODY+="- HEAD de \`main\`: \`$MAIN_HEAD\` (${COMMITS_BEHIND:-?} commits adelante)"$'\n\n'
+            ALERT_BODY+="Esto puede indicar:"$'\n'
+            ALERT_BODY+="- Auto-deploy de Railway no se disparó (config bug o webhook roto)"$'\n'
+            ALERT_BODY+="- Deploys fallidos silenciosamente sin quedar en estado FAILED explícito"$'\n'
+            ALERT_BODY+="- Merge reciente que aún no completó el deploy (falso positivo si <10 min desde el merge)"$'\n\n'
+            ALERT_BODY+="**Verificar:**"$'\n'
+            ALERT_BODY+="1. \`railway deployment list --service tecny-backend --environment production --limit 5\`"$'\n'
+            ALERT_BODY+="2. Si hay deploys FAILED recientes → seguir el playbook \`docs/runbooks/rls-bulk-migration.md\`"$'\n'
+            ALERT_BODY+="3. Si no hay actividad reciente → verificar config de auto-deploy en Railway UI"$'\n\n'
+            ALERT_BODY+="Detectado: \`$NOW\` UTC."
           fi
 
           if [[ -n "$ALERT_TITLE" ]]; then
