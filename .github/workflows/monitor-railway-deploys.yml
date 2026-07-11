@@ -41,8 +41,11 @@ jobs:
 
       - name: Install Railway CLI
         run: |
-          curl -fsSL https://railway.com/install.sh | sh
-          # El instalador pone la CLI en ~/.railway/bin — agregamos al PATH
+          # `| bash` (no `| sh`) porque el instalador usa sintaxis bash
+          # (parameter expansion `${VAR%%pattern}`, etc.) que dash (default
+          # `sh` en Ubuntu runners) rechaza con "Bad substitution" → exit 2.
+          curl -fsSL https://railway.com/install.sh | bash
+          # El instalador pone la CLI en ~/.railway/bin — agregamos al PATH.
           echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
 
       - name: Verificar estado de deploys
