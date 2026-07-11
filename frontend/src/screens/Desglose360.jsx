@@ -42,12 +42,19 @@ const DIMENSIONES = [
 
 // Cómo construir la URL de drill-down según la dimensión.
 // Para FKs usamos el id; para texto libre, el valor; para estado, su clave.
+//
+// 2026-07-11 (bug Lucas): las dimensiones que usan `valor_id` (categoria,
+// deposito) hacían drilldown con `?categoria_id=null` cuando el row era
+// "Sin colección" / "Sin depósito" — el backend rechaza (schema espera INT
+// positivo) → toast "Datos inválidos" + chip feo "Colección #null". Fix:
+// mismo patrón que proveedor/gb/color: si el row es "sin valor" (valor_id
+// nulo), NO aplicamos filtro (drilldown va a Inventario sin restricción).
 const DRILLDOWN_PARAM = {
-  categoria: (row) => ({ categoria_id: row.valor_id }),
+  categoria: (row) => row.valor_id == null ? {} : ({ categoria_id: row.valor_id }),
   proveedor: (row) => row.valor === 'Sin proveedor' ? {} : ({ proveedor: row.valor }),
   modelo:    (row) => ({ nombre: row.valor }),
   estado:    (row) => ({ estado: row.valor }),
-  deposito:  (row) => ({ deposito_id: row.valor_id }),
+  deposito:  (row) => row.valor_id == null ? {} : ({ deposito_id: row.valor_id }),
   gb:        (row) => row.valor === '(sin GB)'    ? {} : ({ gb: row.valor }),
   color:     (row) => row.valor === '(sin color)' ? {} : ({ color: row.valor }),
 };
