@@ -173,13 +173,18 @@ router.get('/:id/conciliation', async (req, res, next) => {
         // deuda) que no aplica al mundo cross-tenant (siempre deuda). Si
         // mañana aparece otro tipo, el ELSE 0 lo silencia — auditar y
         // agregarlo explícitamente si eso pasa (no ampliar la wildcard).
+        // 2026-07-11 (auditoría Red B2B P3-3): COALESCE defensive. El CASE
+        // tiene ELSE 0 y el for loop abajo hace `Number(x) || 0` → sin bug
+        // real (todos los caminos dan 0). Pero el COALESCE deja el default
+        // explícito en SQL para consistencia con otras SUMs del mismo file
+        // (línea 261 del branch difieren=true ya usa el patrón).
         const movCcQ = await client.query(
           `SELECT tenant_id,
-                  SUM(CASE WHEN tipo = 'compra' THEN monto_total
-                           WHEN tipo IN ('pago', 'parte_de_pago') THEN -monto_total
-                           WHEN tipo = 'devolucion' THEN -monto_total
-                           WHEN tipo = 'entrega_mercaderia' THEN -monto_total
-                           ELSE 0 END) AS saldo
+                  COALESCE(SUM(CASE WHEN tipo = 'compra' THEN monto_total
+                                    WHEN tipo IN ('pago', 'parte_de_pago') THEN -monto_total
+                                    WHEN tipo = 'devolucion' THEN -monto_total
+                                    WHEN tipo = 'entrega_mercaderia' THEN -monto_total
+                                    ELSE 0 END), 0) AS saldo
              FROM movimientos_cc
              WHERE cross_tenant_operation_id = ANY($1::bigint[])
                AND deleted_at IS NULL
@@ -199,12 +204,13 @@ router.get('/:id/conciliation', async (req, res, next) => {
         // Si acá no lo contemplamos, el saldo del buyer queda inflado en la
         // conciliación bilateral — reporta discrepancia con el saldo del
         // seller (que en movimientos_cc arriba SÍ suma 'devolucion' con -monto).
+        // P3-3: COALESCE defensive (idem movCcQ arriba).
         const provMovQ = await client.query(
           `SELECT tenant_id,
-                  SUM(CASE WHEN tipo = 'compra' THEN monto_usd
-                           WHEN tipo = 'pago' THEN -monto_usd
-                           WHEN tipo = 'devolucion' THEN -monto_usd
-                           ELSE 0 END) AS saldo
+                  COALESCE(SUM(CASE WHEN tipo = 'compra' THEN monto_usd
+                                    WHEN tipo = 'pago' THEN -monto_usd
+                                    WHEN tipo = 'devolucion' THEN -monto_usd
+                                    ELSE 0 END), 0) AS saldo
              FROM proveedor_movimientos
              WHERE cross_tenant_operation_id = ANY($1::bigint[])
                AND deleted_at IS NULL

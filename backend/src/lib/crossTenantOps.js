@@ -9,7 +9,7 @@
  * Patrón de cross-tenant safety:
  *   1. `validateOperationPrecondition` se llama UNA vez al inicio de la tx
  *      (sin SET LOCAL — usa BYPASSRLS del adminQuery del caller).
- *   2. `findOrCreateBuyerProducto` corre bajo SET LOCAL del BUYER tenant.
+ *   2. `findOrCreateBuyerProductos` (bulk) corre bajo SET LOCAL del BUYER tenant.
  *   3. `createSellerVenta` corre bajo SET LOCAL del SELLER tenant.
  *   4. `createBuyerCompra` corre bajo SET LOCAL del BUYER tenant.
  *
@@ -116,46 +116,13 @@ async function validateOperationPrecondition(client, partnership, sellerTenantId
   return { ok: true, sellerTenant: seller, buyerTenant: buyer };
 }
 
-/**
- * Auto-create de un producto en el catálogo del BUYER con flag
- * pending_cross_tenant_review=true.
- *
- * @deprecated PR-D #463: usar findOrCreateBuyerProductos (plural) para bulk.
- * Esta versión singular hace N round-trips si se llama en loop (N+1 perf bug).
- * Se mantiene para compat por si reaparece un caller — el caller real
- * (operations.js POST /operations) ya migró a la bulk.
- *
- * F3 decisión #2 fuera del doc: SIEMPRE crea un producto nuevo, sin dedup
- * por nombre. Razones documentadas abajo en findOrCreateBuyerProductos.
- *
- * IMPORTANTE: el caller DEBE haber hecho SET LOCAL app.current_tenant =
- * buyerTenantId ANTES de invocar este helper — el INSERT respeta el FORCE
- * RLS de productos.
- *
- * @param {object} client — pg client bajo SET LOCAL del buyer tenant
- * @param {number} buyerTenantId — el receptor del producto
- * @param {object} sellerProducto — { nombre, descripcion?, costo_usd, cantidad }
- * @returns {Promise<number>} buyer_producto_id
- */
-async function findOrCreateBuyerProducto(client, buyerTenantId, sellerProducto) {
-  const { rows } = await client.query(
-    `INSERT INTO productos (
-        tenant_id, nombre, costo, costo_moneda, precio_venta, precio_moneda,
-        cantidad, observaciones, pending_cross_tenant_review
-     ) VALUES (
-        $1, $2, $3, 'USD', $3, 'USD',
-        $4, $5, true
-     ) RETURNING id`,
-    [
-      buyerTenantId,
-      sellerProducto.nombre,
-      round2(Number(sellerProducto.costo_usd) || 0),
-      Number(sellerProducto.cantidad) || 0,
-      sellerProducto.descripcion || null,
-    ]
-  );
-  return rows[0].id;
-}
+// 2026-07-11 (auditoría Red B2B P3-10): borrado `findOrCreateBuyerProducto`
+// (versión singular). Estuvo marcado @deprecated desde PR-D #463 (bulkificado)
+// — nunca fue reimportado por ningún caller y quedaba como código muerto que
+// confundía al lector ("¿cuál uso?"). Verificado con grep: 0 callers fuera de
+// este archivo. Si en el futuro necesitás la variante singular, usá el bulk
+// con un array de 1 elemento — el overhead es despreciable y evitás mantener
+// dos códigos en paralelo.
 
 /**
  * PR-D #463 — versión BULK del auto-create. Crea N productos en el catálogo
@@ -347,6 +314,14 @@ async function createSellerVenta(client, sellerTenantId, args) {
   const decPids = [...qtyByProd.keys()].sort((a, b) => a - b); // ordered to avoid deadlock
   const decQtys = decPids.map((p) => qtyByProd.get(p));
 
+  // 2026-07-11 (auditoría Red B2B P2-1): TOCTOU en deleted_at. El SELECT
+  // línea 322 filtra `deleted_at IS NULL`, pero este UPDATE originalmente NO
+  // lo hacía. Race window: entre el SELECT y el UPDATE, otro proceso podía
+  // soft-deletear el producto (ej: el operador borra un item en otra pestaña)
+  // y el UPDATE decrementaba stock en un producto ya "deleted" → stock ghost
+  // que no aparece en ningún filtro `deleted_at IS NULL`. Los UPDATEs
+  // análogos en pagos.js (devolución seller/buyer líneas 1091 y 1140) SÍ
+  // filtraban por deleted_at desde su origen. Ahora este también.
   const updRes = await client.query(
     `UPDATE productos p SET
         cantidad = p.cantidad - u.cant,
@@ -355,7 +330,9 @@ async function createSellerVenta(client, sellerTenantId, args) {
           ELSE p.estado
         END
       FROM UNNEST($1::int[], $2::int[]) AS u(pid, cant)
-      WHERE p.id = u.pid AND p.tenant_id = $3 AND p.cantidad >= u.cant`,
+      WHERE p.id = u.pid AND p.tenant_id = $3
+        AND p.deleted_at IS NULL
+        AND p.cantidad >= u.cant`,
     [decPids, decQtys, sellerTenantId]
   );
 
@@ -449,7 +426,7 @@ async function createSellerVenta(client, sellerTenantId, args) {
  *
  * IMPORTANTE: el caller DEBE haber hecho SET LOCAL app.current_tenant =
  * buyerTenantId ANTES. Incrementa stock atómico (UPDATE) en los productos
- * auto-creados con findOrCreateBuyerProducto.
+ * auto-creados con findOrCreateBuyerProductos.
  *
  * Estructura del módulo Proveedores (routes/proveedores.js):
  *   - proveedor_movimientos: row maestra con tipo='compra', monto en USD,
@@ -525,7 +502,7 @@ async function createBuyerCompra(client, buyerTenantId, args) {
   // proveedor_movimiento_items NO tiene producto_id (FK a productos) — solo
   // guarda el nombre del producto en texto + serial + valor. Los productos
   // del buyer (con pending_cross_tenant_review=true) se crean aparte por
-  // findOrCreateBuyerProducto y se trackean en cross_tenant_operation_items.
+  // findOrCreateBuyerProductos y se trackean en cross_tenant_operation_items.
   await client.query(
     `INSERT INTO proveedor_movimiento_items
        (tenant_id, proveedor_movimiento_id, producto, valor)
@@ -544,7 +521,7 @@ async function createBuyerCompra(client, buyerTenantId, args) {
   // con cantidad inicial = cantidad del item. Pero por consistencia con
   // los demás módulos, hacemos UPDATE explícito + reiniciar estado.
   //
-  // En realidad findOrCreateBuyerProducto YA inserta con la cantidad correcta,
+  // En realidad findOrCreateBuyerProductos YA inserta con la cantidad correcta,
   // así que NO hay que sumar más. Esta función deja el stock al valor inicial.
   // Si en F4+ se agrega dedup (buscar match en lugar de crear), entonces
   // SÍ habría que sumar — lo dejamos preparado pero no-op por ahora.
@@ -554,7 +531,6 @@ async function createBuyerCompra(client, buyerTenantId, args) {
 
 module.exports = {
   validateOperationPrecondition,
-  findOrCreateBuyerProducto,   // @deprecated PR-D #463 — usar plural bulk
   findOrCreateBuyerProductos,
   createSellerVenta,
   createBuyerCompra,

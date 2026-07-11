@@ -2084,6 +2084,54 @@ describe('COR-1 idempotency — Idempotency-Key en POST /pagos', () => {
     expect(r.status).toBe(400);
     expect(r.body.reason).toBe('idempotency_key_invalid');
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-11 (auditoría Red B2B P2-3): replay incluye op_status_now.
+  //
+  // Escenario: 1ra request crea el pago OK. Cliente pierde el response por
+  // 502. Alguien cancela la op. Cliente retry con MISMA key → replay devuelve
+  // 200 con el pago original (correcto — el pago fue registrado antes de la
+  // cancelación) PERO también reporta que op.status ahora es 'cancelled' para
+  // que el frontend muestre warning ("el pago se registró pero la op fue
+  // cancelada después").
+  // ═══════════════════════════════════════════════════════════════════════
+  it('P2-3: replay después de cancelar la op → 200 con op_status_now="cancelled"', async () => {
+    const key = crypto.randomUUID();
+
+    // 1er request: pago exitoso.
+    const r1 = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Idempotency-Key', key)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdAId, side: 'seller',
+      });
+    expect(r1.status).toBe(201);
+
+    // Cancelamos la op vía SQL directo (más simple que llamar al endpoint
+    // POST /cancel — solo queremos simular el gap para el test).
+    await pool.query(
+      `UPDATE cross_tenant_operations SET status = 'cancelled' WHERE id = $1`,
+      [op.opId]
+    );
+
+    // 2do request con la MISMA key → replay.
+    const r2 = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Idempotency-Key', key)
+      .send({
+        monto_usd: 50, moneda_pago: 'USD', monto_pago: 50,
+        tc_pago: 1000, caja_id: cajaUsdAId, side: 'seller',
+      });
+    // El status es 200 (replay) — el pago SÍ está registrado, no cambia eso.
+    expect(r2.status).toBe(200);
+    expect(r2.body.idempotent_replay).toBe(true);
+    expect(r2.body.pago.id).toBe(r1.body.pago.id);
+    // P2-3: el frontend recibe la señal para poder mostrar warning.
+    expect(r2.body.op_status_now).toBe('cancelled');
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
