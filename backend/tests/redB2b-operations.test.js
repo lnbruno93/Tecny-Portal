@@ -765,7 +765,7 @@ describe('RLS leak attempts', () => {
         items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
         tc: 1000, total_usd: 100, total_ars: 100000,
       });
-    // getActivePartnershipById no encuentra la partnership porque tenant C no
+    // getPartnershipByIdForTenant no encuentra la partnership porque tenant C no
     // participa → result.error = 'partnership_not_active' (status 404).
     expect([403, 404]).toContain(r.status);
     expect(['partnership_not_active', 'caller_not_in_partnership']).toContain(r.body.reason);

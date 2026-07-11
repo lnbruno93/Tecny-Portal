@@ -543,7 +543,7 @@ describe('RLS leak attempts (cross-tenant)', () => {
   });
 
   // PR-E #464: gap detectado en audit focal Red B2B — POST /:id/reject sin
-  // test cross-tenant. Mismo helper `getActivePartnershipById` que accept/
+  // test cross-tenant. Mismo helper `getPartnershipByIdForTenant` que accept/
   // revoke (filtro `tenant_a_id = $caller OR tenant_b_id = $caller`) →
   // tenant C no participa → null → 404. La partnership sigue pending intacta.
   it('Tenant C intenta reject partnership pending A→B → 404 + sigue pending', async () => {

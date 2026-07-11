@@ -50,7 +50,7 @@ const parseId = require('../../lib/parseId');
 const PostgresRateLimitStore = require('../../lib/postgresRateLimitStore');
 const {
   orderTenantIds,
-  getActivePartnershipById,
+  getPartnershipByIdForTenant,
 } = require('../../lib/partnership');
 const {
   inviteSchema,
@@ -390,7 +390,7 @@ router.post('/:id/accept', async (req, res, next) => {
       await client.query('BEGIN');
       try {
         // Lookup + autoridad: el caller participa en la partnership?
-        const partnership = await getActivePartnershipById(client, partnershipId, myTenantId);
+        const partnership = await getPartnershipByIdForTenant(client, partnershipId, myTenantId);
         if (!partnership) {
           await client.query('ROLLBACK');
           return { error: 'not_found', status: 404 };
@@ -565,7 +565,7 @@ router.post('/:id/reject', validate(rejectSchema), async (req, res, next) => {
     const result = await db.adminQuery(async (client) => {
       await client.query('BEGIN');
       try {
-        const partnership = await getActivePartnershipById(client, partnershipId, myTenantId);
+        const partnership = await getPartnershipByIdForTenant(client, partnershipId, myTenantId);
         if (!partnership) {
           await client.query('ROLLBACK');
           return { error: 'not_found', status: 404 };
@@ -665,7 +665,7 @@ router.post('/:id/revoke', validate(revokeSchema), async (req, res, next) => {
     const result = await db.adminQuery(async (client) => {
       await client.query('BEGIN');
       try {
-        const partnership = await getActivePartnershipById(client, partnershipId, myTenantId);
+        const partnership = await getPartnershipByIdForTenant(client, partnershipId, myTenantId);
         if (!partnership) {
           await client.query('ROLLBACK');
           return { error: 'not_found', status: 404 };

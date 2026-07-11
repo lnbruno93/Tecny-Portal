@@ -56,16 +56,23 @@ async function getActivePartnership(client, tenantX, tenantY) {
  * (es tenant_a_id o tenant_b_id). Sino, null. Pensado para validar que el
  * caller tiene autoridad sobre la partnership antes de mutarla.
  *
- * Sin restricción de status — devuelve pending/active/revoked indistinto.
- * Los handlers chequean el status que necesitan después (e.g. accept exige
- * pending, revoke exige active).
+ * IMPORTANTE — sin restricción de status: devuelve pending/active/revoked
+ * indistinto. Los handlers chequean el status que necesitan después (accept
+ * exige pending, revoke exige active, create-op exige active vía
+ * `validateOperationPrecondition`).
+ *
+ * 2026-07-11 (auditoría Red B2B P0-3): renombrado desde `getActivePartnershipById`.
+ * El nombre viejo era engañoso — sugería que filtraba `status='active'`, pero
+ * el helper devuelve cualquier status. Si un caller olvida chequear status
+ * (o si se agrega un status nuevo tipo 'paused' y falta actualizar los
+ * checks), el bug queda invisible. El rename hace explícita la semántica.
  *
  * @param {object} client — pg.Client
  * @param {number} partnershipId
  * @param {number} tenantId
  * @returns {Promise<object|null>}
  */
-async function getActivePartnershipById(client, partnershipId, tenantId) {
+async function getPartnershipByIdForTenant(client, partnershipId, tenantId) {
   const { rows } = await client.query(
     `SELECT * FROM tenant_partnerships
        WHERE id = $1
@@ -78,5 +85,5 @@ async function getActivePartnershipById(client, partnershipId, tenantId) {
 module.exports = {
   orderTenantIds,
   getActivePartnership,
-  getActivePartnershipById,
+  getPartnershipByIdForTenant,
 };

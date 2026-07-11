@@ -71,7 +71,7 @@ const logger = require('../../lib/logger');
 const validate = require('../../lib/validate');
 const parseId = require('../../lib/parseId');
 const {
-  getActivePartnershipById,
+  getPartnershipByIdForTenant,
 } = require('../../lib/partnership');
 const {
   validateOperationPrecondition,
@@ -204,7 +204,7 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
       try {
         // B. Partnership active + caller participa (sin SET LOCAL — usamos
         // BYPASSRLS para leer la fila aunque el RLS dual ya la filtraría).
-        const partnership = await getActivePartnershipById(client, body.partnership_id, myTenantId);
+        const partnership = await getPartnershipByIdForTenant(client, body.partnership_id, myTenantId);
 
         // D. Validaciones pre-condición (partnership active + tenants OK).
         const precheck = await validateOperationPrecondition(client, partnership, myTenantId);
