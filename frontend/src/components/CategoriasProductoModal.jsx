@@ -28,7 +28,22 @@ import { useModal } from '../lib/useModal';
 import { useConfirm } from './ConfirmModal';
 import { Icons } from './Icons';
 
-export default function CategoriasProductoModal({ open, onClose, toast }) {
+export default function CategoriasProductoModal({
+  open,
+  onClose,
+  toast,
+  // 2026-07-11: sección Colecciones (tabla legacy `categorias`) migrada
+  // desde el modal "Depósitos" (renombrado). Los handlers viven en
+  // Inventario.jsx porque comparten el state con otros usos (dropdown
+  // categoria_id en el form de producto, etc.) — este modal solo los
+  // consume. Props opcionales: si no se pasan, la sección Colecciones
+  // NO se muestra (backwards compat).
+  colecciones,
+  nuevaColeccion,
+  setNuevaColeccion,
+  onAddColeccion,
+  onDelColeccion,
+}) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -169,6 +184,54 @@ export default function CategoriasProductoModal({ open, onClose, toast }) {
             <p className="muted">No hay categorías todavía.</p>
           ) : (
             <CatList items={items} onEdit={setEditing} onDelete={handleDelete} onReorder={handleReorder} />
+          )}
+
+          {/* Sección Colecciones (categorias legacy) — 2026-07-11.
+              Solo se muestra si el parent (Inventario.jsx) pasa las props.
+              Cross-purpose "agrupación libre" — el operador puede tener
+              hasta N colecciones tipo "iPhones 2024", "Rebajados", etc.
+              Complementaria a Categorías (tipo de producto). */}
+          {colecciones !== undefined && (
+            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Colecciones</div>
+              <p className="muted tiny" style={{ marginBottom: 12 }}>
+                Agrupación libre auxiliar, independiente del tipo de producto. Útil para separar
+                "iPhones Nuevos", "Rebajados", "Promoción", etc. Un producto puede pertenecer a una
+                colección además de tener su categoría.
+              </p>
+              <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
+                <input
+                  className="input"
+                  placeholder="Nueva colección"
+                  value={nuevaColeccion || ''}
+                  onChange={e => setNuevaColeccion(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAddColeccion?.(); } }}
+                />
+                <button type="button" className="btn btn-sm" onClick={onAddColeccion}>
+                  <Icons.Plus size={13} /> Agregar
+                </button>
+              </div>
+              <div className="stack" style={{ gap: 4 }}>
+                {colecciones.length === 0 && <div className="muted tiny">Sin colecciones</div>}
+                {colecciones.map(c => {
+                  const count = Number(c.productos_count ?? 0);
+                  const stock = Number(c.stock_disponible ?? 0);
+                  return (
+                    <div key={c.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.nombre}>
+                        {c.nombre}
+                      </span>
+                      <span className="muted tiny" style={{ marginRight: 8, whiteSpace: 'nowrap' }} title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
+                        {count} prod · {stock} u
+                      </span>
+                      <button type="button" className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => onDelColeccion?.(c)}>
+                        <Icons.Trash size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
 
