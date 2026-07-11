@@ -1109,3 +1109,128 @@ describe('GET /api/inventario/productos/:id/historial', () => {
     expect(r.body.venta.estado).toBe('acreditado');
   });
 });
+
+// ─── Equipos usados (2026-07-11) ─────────────────────────────
+// Feature: tab "Equipos usados" en Inventario. Nuevo endpoint GET
+// /api/inventario/usados que lista productos con condicion='usado' con
+// trazabilidad de origen (canje o manual).
+describe('GET /api/inventario/usados', () => {
+  let usadoCanjeId;
+  let usadoManualId;
+  let ventaCanjeId;
+
+  beforeAll(async () => {
+    // 1) Producto usado ingresado MANUALMENTE (sin canje).
+    const manualRes = await request(app).post('/api/inventario/productos').set(auth()).send({
+      tipo_carga: 'unitario', clase: 'celular_usado',
+      nombre: 'iPhone 12 Manual', categoria_id: catBase,
+      imei: '990' + Date.now().toString().slice(-12),
+      condicion: 'usado', gb: '128', color: 'Negro', bateria: 82,
+      costo: 350, costo_moneda: 'USD', precio_venta: 550, precio_moneda: 'USD',
+      cantidad: 1, estado: 'disponible',
+    });
+    expect(manualRes.status).toBe(201);
+    usadoManualId = manualRes.body.id;
+
+    // 2) Producto usado ingresado por CANJE. Creamos venta con canje
+    // agregar_stock=true → el backend crea el producto Y el canje ligado.
+    const canjeIMEI = '991' + Date.now().toString().slice(-12);
+    const ventaRes = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: '2026-07-05',
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1500, costo: 1200, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone 13 Pro Canje Test',
+        imei: canjeIMEI, gb: '256', color: 'Sierra Blue', bateria: 88,
+        valor_toma: 620, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+      cliente_nombre: 'Cliente Canje Test',
+    });
+    expect(ventaRes.status).toBe(201);
+    ventaCanjeId = ventaRes.body.id;
+    // Buscar el producto creado por el canje via IMEI.
+    const invLookup = await request(app).get(`/api/inventario/productos?buscar=${canjeIMEI}`).set(auth());
+    expect(invLookup.body.data).toHaveLength(1);
+    usadoCanjeId = invLookup.body.data[0].id;
+  });
+
+  it('lista solo productos con condicion="usado" (excluye nuevos)', async () => {
+    const r = await request(app).get('/api/inventario/usados').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveProperty('data');
+    expect(r.body).toHaveProperty('pagination');
+    // Todos los items deben ser condicion=usado.
+    expect(r.body.data.every(p => p.condicion === 'usado')).toBe(true);
+    // Debe incluir los 2 productos que creamos.
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(usadoManualId);
+    expect(ids).toContain(usadoCanjeId);
+  });
+
+  it('producto que vino por canje trae origen="canje" + canje_origen poblado', async () => {
+    const r = await request(app).get('/api/inventario/usados').set(auth());
+    const p = r.body.data.find(x => x.id === usadoCanjeId);
+    expect(p).toBeDefined();
+    expect(p.origen).toBe('canje');
+    expect(p.canje_origen).not.toBeNull();
+    expect(p.canje_origen).toMatchObject({
+      venta_id:       ventaCanjeId,
+      venta_order_id: expect.any(String),
+      cliente_nombre: 'Cliente Canje Test',
+    });
+    expect(p.canje_origen.venta_fecha).toBeTruthy();
+  });
+
+  it('producto ingresado manualmente trae origen="manual" + canje_origen: null', async () => {
+    const r = await request(app).get('/api/inventario/usados').set(auth());
+    const p = r.body.data.find(x => x.id === usadoManualId);
+    expect(p).toBeDefined();
+    expect(p.origen).toBe('manual');
+    expect(p.canje_origen).toBeNull();
+  });
+
+  it('filtro solo_canjes=true excluye los manuales', async () => {
+    const r = await request(app).get('/api/inventario/usados?solo_canjes=true').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data.every(p => p.origen === 'canje')).toBe(true);
+    expect(r.body.data.every(p => p.canje_origen !== null)).toBe(true);
+    // El manual NO debe estar en el response.
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).not.toContain(usadoManualId);
+    expect(ids).toContain(usadoCanjeId);
+  });
+
+  it('filtro buscar matchea por nombre del cliente (JOIN a ventas)', async () => {
+    const r = await request(app).get('/api/inventario/usados?buscar=Canje%20Test').set(auth());
+    expect(r.status).toBe(200);
+    // El buscar matchea "Cliente Canje Test" → devuelve el producto del canje.
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(usadoCanjeId);
+  });
+
+  it('filtro estado=disponible respeta scope condicion=usado', async () => {
+    const r = await request(app).get('/api/inventario/usados?estado=disponible').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data.every(p => p.estado === 'disponible')).toBe(true);
+    expect(r.body.data.every(p => p.condicion === 'usado')).toBe(true);
+  });
+
+  it('respeta paginación (limit + page)', async () => {
+    const r = await request(app).get('/api/inventario/usados?limit=1&page=1').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data.length).toBeLessThanOrEqual(1);
+    expect(r.body.pagination.limit).toBe(1);
+    expect(r.body.pagination.page).toBe(1);
+    expect(r.body.pagination.total).toBeGreaterThanOrEqual(2);
+  });
+
+  it('valida shape del schema — estado inválido → 400', async () => {
+    const r = await request(app).get('/api/inventario/usados?estado=invalido').set(auth());
+    expect(r.status).toBe(400);
+  });
+
+  it('valida shape del schema — desde con formato malo → 400', async () => {
+    const r = await request(app).get('/api/inventario/usados?desde=05-07-2026').set(auth());
+    expect(r.status).toBe(400);
+  });
+});

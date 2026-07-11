@@ -195,6 +195,26 @@ const queryDesgloseSchema = z.object({
   buscar:       z.string().trim().max(200).optional(),
 });
 
+// ── Equipos Usados (2026-07-11) ─────────────────────────────────────────
+// Nuevo tab de Inventario que lista solo `condicion='usado'` con
+// trazabilidad de origen (JOIN a canjes + ventas para saber de qué venta
+// vino cada equipo y qué cliente lo entregó). Ver `GET /api/inventario/usados`.
+//
+// Filtros disponibles:
+//   - buscar: LIKE sobre nombre + IMEI + color + gb + nombre del cliente
+//   - solo_canjes: bool. true → solo los que tienen canje_id NOT NULL
+//   - estado: filtro directo por productos.estado
+//   - desde/hasta: rango sobre `productos.created_at` (fecha de ingreso).
+const queryUsadosSchema = z.object({
+  buscar:      z.string().trim().max(200).optional(),
+  solo_canjes: z.union([z.boolean(), z.enum(['true','false']).transform(v => v === 'true')]).optional(),
+  estado:      z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
+  desde:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
+  hasta:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
+  page:        z.coerce.number().int().positive().optional(),
+  limit:       z.coerce.number().int().positive().max(200).optional(),
+});
+
 module.exports = {
   nombreSchema,
   nombresBulkSchema,
@@ -203,6 +223,7 @@ module.exports = {
   updateProductoSchema,
   bulkProductoSchema,
   queryProductosSchema,
+  queryUsadosSchema,
   queryDesgloseSchema,
   DIMENSIONES_DESGLOSE,
   VISTAS_INVENTARIO,

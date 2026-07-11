@@ -520,6 +520,10 @@ export const usados = {
 
 export const inventario = {
   productos:       (params = {}) => api('/api/inventario/productos?' + new URLSearchParams(params)),
+  // 2026-07-11: nuevo tab "Equipos usados". Filtra condicion='usado' y
+  // hace LEFT JOIN a canjes+ventas+contactos para exponer origen (canje/manual)
+  // y trazabilidad (venta_order_id, cliente_nombre, cliente_telefono).
+  usados:          (params = {}) => api('/api/inventario/usados?' + new URLSearchParams(params)),
   metricas:        () => api('/api/inventario/productos/metricas'),
   proveedoresList: () => api('/api/inventario/productos/proveedores'),
   // 2026-06-30 #imei-dup: GET /productos/check-imei?imei=XXX devuelve
