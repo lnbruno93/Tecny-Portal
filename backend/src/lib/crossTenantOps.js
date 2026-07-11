@@ -257,14 +257,21 @@ async function createSellerVenta(client, sellerTenantId, args) {
 
   // ── 1. Resolver cliente_cc del seller para este partner ───────────────────
   // Buscar uno con el mismo nombre. Si no existe, crear.
-  // Idempotente: si hay varios partners con el mismo nombre, usamos el primero
-  // (caso edge muy improbable; igual sumaríamos al CC del primero).
+  // Idempotente: si hay varios partners con el mismo nombre en ESTE tenant,
+  // usamos el primero. La UNIQUE (tenant_id, LOWER(nombre)) de la migration
+  // 20260711170000_... previene el escenario en el futuro.
+  // 2026-07-11 (auditoría Red B2B P0-1): filtro `AND tenant_id = $1` inline.
+  // Antes, el SELECT sin filtro tenant podía devolver el id de un cliente_cc
+  // de OTRO tenant con el mismo nombre → contabilidad cross-tenant contaminada
+  // (adminQuery bypassea RLS y el SET LOCAL no filtra en el WHERE).
   const buyerName = buyerTenant.nombre;
   const lookupQ = await client.query(
     `SELECT id FROM clientes_cc
-       WHERE LOWER(nombre) = LOWER($1) AND deleted_at IS NULL
+       WHERE tenant_id = $1
+         AND LOWER(nombre) = LOWER($2)
+         AND deleted_at IS NULL
        LIMIT 1`,
-    [buyerName]
+    [sellerTenantId, buyerName]
   );
   let clienteCcId = lookupQ.rows[0]?.id;
   if (!clienteCcId) {
@@ -444,12 +451,16 @@ async function createBuyerCompra(client, buyerTenantId, args) {
   const { mappedItems, total_usd, notes, callerUserId, sellerTenant } = args;
 
   // ── 1. Resolver proveedor del buyer para este partner ────────────────────
+  // 2026-07-11 (auditoría Red B2B P0-1): filtro `AND tenant_id = $1` inline.
+  // Ver comentario en createSellerVenta arriba — mismo bug, mismo fix.
   const sellerName = sellerTenant.nombre;
   const lookupQ = await client.query(
     `SELECT id FROM proveedores
-       WHERE LOWER(nombre) = LOWER($1) AND deleted_at IS NULL
+       WHERE tenant_id = $1
+         AND LOWER(nombre) = LOWER($2)
+         AND deleted_at IS NULL
        LIMIT 1`,
-    [sellerName]
+    [buyerTenantId, sellerName]
   );
   let proveedorId = lookupQ.rows[0]?.id;
   if (!proveedorId) {

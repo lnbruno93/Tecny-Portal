@@ -512,6 +512,170 @@ describe('cross_tenant.write gate (F4)', () => {
 // ──────────────────────────────────────────────────────────────────────────
 // Happy path POST /pagos
 // ──────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// 2026-07-11 (auditoría Red B2B P0-1): contaminación cross-tenant en helpers
+// ensureSellerClienteCc / ensureBuyerProveedor.
+//
+// Escenario del bug: bajo `adminQuery` (BYPASSRLS), el `SET LOCAL
+// app.current_tenant` no filtra el WHERE del SELECT. Si otro tenant tiene un
+// cliente_cc/proveedor con el mismo nombre que el partner buyer, el helper
+// devolvía ese `id` cross-tenant → el INSERT en movimientos_cc del seller
+// quedaba con `cliente_cc_id` de otro tenant.
+//
+// Fix: agregar `AND tenant_id = $N` inline al SELECT (con la migration
+// UNIQUE (tenant_id, LOWER(nombre)) como blindaje adicional).
+// ═══════════════════════════════════════════════════════════════════════════
+describe('P0-1: contaminación cross-tenant en helpers ensure* (auditoría 2026-07-11)', () => {
+  let partnershipId;
+  let contaminantClientCcId;
+  let contaminantProveedorId;
+
+  // El beforeEach GLOBAL (arriba en el file) limpia clientes_cc, proveedores
+  // y partnerships de los 3 tenants entre CADA test. Por eso el sembrado del
+  // contaminante + el partnership tienen que estar en un beforeEach del
+  // describe (corre DESPUÉS del global → semilla válida cuando corre el `it`).
+  beforeEach(async () => {
+    // Sembrar un cliente_cc en tenant C con el MISMO nombre que tenant B.
+    // Si el bug persistiera, ensureSellerClienteCc de A→B usaría ESTE id
+    // (cross-tenant leak). Con el fix, debe ignorar tenant C y crear/reusar
+    // uno del tenant A.
+    const contamClient = await pool.connect();
+    try {
+      await contamClient.query('BEGIN');
+      await contamClient.query(`SET LOCAL app.current_tenant = ${tenantCId}`);
+      const r = await contamClient.query(
+        `INSERT INTO clientes_cc (tenant_id, nombre, categoria, notas)
+         VALUES ($1, $2, 'A-', 'Cliente retail SIN relación con Red B2B — semilla de test')
+         RETURNING id`,
+        [tenantCId, TENANT_B.nombre]
+      );
+      contaminantClientCcId = r.rows[0].id;
+      const p = await contamClient.query(
+        `INSERT INTO proveedores (tenant_id, nombre, notas)
+         VALUES ($1, $2, 'Proveedor retail SIN relación con Red B2B — semilla de test')
+         RETURNING id`,
+        [tenantCId, TENANT_A.nombre]
+      );
+      contaminantProveedorId = p.rows[0].id;
+      await contamClient.query('COMMIT');
+    } catch (e) {
+      await contamClient.query('ROLLBACK');
+      throw e;
+    } finally {
+      contamClient.release();
+    }
+
+    partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+  });
+
+  it('POST /operations crea cliente_cc/proveedor NUEVOS del propio tenant (no cross-tenant)', async () => {
+    const op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 1, precio_usd: 100, tc: 1000,
+    });
+
+    // El movimientos_cc del seller debe usar un cliente_cc del tenant A,
+    // NO el `contaminantClientCcId` del tenant C.
+    const sellerMov = await pool.query(
+      `SELECT cliente_cc_id FROM movimientos_cc
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'compra'`,
+      [tenantAId, op.opId]
+    );
+    expect(sellerMov.rows.length).toBe(1);
+    expect(sellerMov.rows[0].cliente_cc_id).not.toBe(contaminantClientCcId);
+
+    // Verificar que ese cliente_cc pertenece al tenant A (defense-in-depth).
+    const cliente = await pool.query(
+      `SELECT tenant_id FROM clientes_cc WHERE id = $1`,
+      [sellerMov.rows[0].cliente_cc_id]
+    );
+    expect(cliente.rows[0].tenant_id).toBe(tenantAId);
+
+    // Idem proveedor del buyer.
+    const buyerMov = await pool.query(
+      `SELECT proveedor_id FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'compra'`,
+      [tenantBId, op.opId]
+    );
+    expect(buyerMov.rows.length).toBe(1);
+    expect(buyerMov.rows[0].proveedor_id).not.toBe(contaminantProveedorId);
+    const prov = await pool.query(
+      `SELECT tenant_id FROM proveedores WHERE id = $1`,
+      [buyerMov.rows[0].proveedor_id]
+    );
+    expect(prov.rows[0].tenant_id).toBe(tenantBId);
+  });
+
+  it('POST /pagos usa cliente_cc/proveedor del propio tenant (no cross-tenant)', async () => {
+    const op = await createCrossOp({
+      sellerTenantId: tenantAId, buyerTenantId: tenantBId,
+      partnershipId, cantidad: 1, precio_usd: 100, tc: 1000,
+    });
+
+    const r = await request(app)
+      .post(`/api/red-b2b/operations/${op.opId}/pagos`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        monto_usd: 100, moneda_pago: 'USD', monto_pago: 100,
+        tc_pago: 1000, caja_id: cajaUsdId, side: 'seller',
+      });
+    expect(r.status).toBe(201);
+
+    // El mov_cc del pago del seller usa cliente_cc del tenant A.
+    const sellerPagoMov = await pool.query(
+      `SELECT cliente_cc_id FROM movimientos_cc
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'pago'`,
+      [tenantAId, op.opId]
+    );
+    expect(sellerPagoMov.rows.length).toBe(1);
+    expect(sellerPagoMov.rows[0].cliente_cc_id).not.toBe(contaminantClientCcId);
+    const cliente = await pool.query(
+      `SELECT tenant_id FROM clientes_cc WHERE id = $1`,
+      [sellerPagoMov.rows[0].cliente_cc_id]
+    );
+    expect(cliente.rows[0].tenant_id).toBe(tenantAId);
+
+    // El proveedor_mov del pago del buyer usa proveedor del tenant B.
+    const buyerPagoMov = await pool.query(
+      `SELECT proveedor_id FROM proveedor_movimientos
+         WHERE tenant_id = $1 AND cross_tenant_operation_id = $2 AND tipo = 'pago'`,
+      [tenantBId, op.opId]
+    );
+    expect(buyerPagoMov.rows.length).toBe(1);
+    expect(buyerPagoMov.rows[0].proveedor_id).not.toBe(contaminantProveedorId);
+    const prov = await pool.query(
+      `SELECT tenant_id FROM proveedores WHERE id = $1`,
+      [buyerPagoMov.rows[0].proveedor_id]
+    );
+    expect(prov.rows[0].tenant_id).toBe(tenantBId);
+  });
+
+  it('UNIQUE (tenant_id, LOWER(nombre)) previene duplicados case-insensitive', async () => {
+    // Intentar crear un cliente_cc "Duplicated" y después "duplicated" en
+    // el mismo tenant. La constraint UNIQUE parcial debe rechazar el segundo.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SET LOCAL app.current_tenant = ${tenantAId}`);
+      await client.query(
+        `INSERT INTO clientes_cc (tenant_id, nombre, categoria)
+         VALUES ($1, 'DuplicateTest', 'A-')`,
+        [tenantAId]
+      );
+      await expect(
+        client.query(
+          `INSERT INTO clientes_cc (tenant_id, nombre, categoria)
+           VALUES ($1, 'duplicatetest', 'A-')`,
+          [tenantAId]
+        )
+      ).rejects.toThrow(/uq_clientes_cc_tenant_nombre_ci|duplicate key/i);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+  });
+});
+
 describe('POST /operations/:id/pagos — happy path', () => {
   let partnershipId;
   let op;
