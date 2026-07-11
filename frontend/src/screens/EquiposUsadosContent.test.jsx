@@ -110,16 +110,47 @@ describe('EquiposUsadosContent — tab Equipos usados en Inventario', () => {
     expect(screen.queryByTitle(/Abrir venta/i)).not.toBeInTheDocument();
   });
 
-  it('toggle "Solo canjes" refetch con solo_canjes=true en params', async () => {
+  // 2026-07-11: filtro origen refactor de bool toggle a Seg de 3 estados.
+  it('Seg "Canjes" refetch con solo_canjes=true en params', async () => {
     renderContent();
     await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
     inventarioApi.usados.mockClear();
 
-    fireEvent.click(screen.getByRole('button', { name: /Solo canjes/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canjes' }));
     await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
-    // Verificamos que el nuevo call incluye solo_canjes=true.
     const lastCall = inventarioApi.usados.mock.calls[inventarioApi.usados.mock.calls.length - 1];
     expect(lastCall[0]).toMatchObject({ solo_canjes: 'true' });
+    expect(lastCall[0].solo_manual).toBeUndefined();
+  });
+
+  it('Seg "Carga manual" refetch con solo_manual=true en params', async () => {
+    renderContent();
+    await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+    inventarioApi.usados.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Carga manual' }));
+    await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+    const lastCall = inventarioApi.usados.mock.calls[inventarioApi.usados.mock.calls.length - 1];
+    expect(lastCall[0]).toMatchObject({ solo_manual: 'true' });
+    expect(lastCall[0].solo_canjes).toBeUndefined();
+  });
+
+  it('Seg "Todos" no envía filtros solo_canjes ni solo_manual', async () => {
+    renderContent();
+    await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+    // Click Canjes primero, luego volver a Todos → debe limpiar el filtro.
+    fireEvent.click(screen.getByRole('button', { name: 'Canjes' }));
+    await waitFor(() => {
+      const call = inventarioApi.usados.mock.calls[inventarioApi.usados.mock.calls.length - 1];
+      expect(call[0].solo_canjes).toBe('true');
+    });
+    inventarioApi.usados.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+    const lastCall = inventarioApi.usados.mock.calls[inventarioApi.usados.mock.calls.length - 1];
+    expect(lastCall[0].solo_canjes).toBeUndefined();
+    expect(lastCall[0].solo_manual).toBeUndefined();
   });
 
   it('dispara onCountChange con el total del pagination al cargar', async () => {
@@ -130,5 +161,104 @@ describe('EquiposUsadosContent — tab Equipos usados en Inventario', () => {
     const onCountChange = vi.fn();
     renderContent({ onCountChange });
     await waitFor(() => expect(onCountChange).toHaveBeenCalledWith(14));
+  });
+
+  // 2026-07-11 (Lucas): copy del listado formateado para WhatsApp de venta.
+  // Solo estado='disponible' con precio_venta > 0. Formato:
+  // "Nombre | Color | GBGB | Bat% — USD Precio"
+  describe('Copiar listado', () => {
+    let writeTextSpy;
+    beforeEach(() => {
+      writeTextSpy = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: writeTextSpy },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it('copia solo los disponibles con precio, con formato correcto', async () => {
+      inventarioApi.usados.mockResolvedValue({
+        data: [
+          {
+            id: 1, nombre: 'iPh 17 Pro Max', gb: '512', color: 'Blue',
+            bateria: 100, precio_venta: 1420, precio_moneda: 'USD',
+            condicion: 'usado', estado: 'disponible',
+            origen: 'manual', canje_origen: null,
+          },
+          {
+            id: 2, nombre: 'iPh 17', gb: '256', color: 'Black',
+            bateria: 100, precio_venta: 840, precio_moneda: 'USD',
+            condicion: 'usado', estado: 'disponible',
+            origen: 'canje', canje_origen: { venta_order_id: 'ORD-1', cliente_nombre: 'X' },
+          },
+          // Fila filtrada: vendido → no se copia aunque tenga precio.
+          {
+            id: 3, nombre: 'iPh Ya Vendido', gb: '128', color: 'Rojo',
+            bateria: 90, precio_venta: 500, precio_moneda: 'USD',
+            condicion: 'usado', estado: 'vendido',
+            origen: 'manual', canje_origen: null,
+          },
+          // Fila filtrada: disponible pero sin precio → no se copia.
+          {
+            id: 4, nombre: 'iPh Sin Precio', gb: '128', color: 'Azul',
+            bateria: 90, precio_venta: 0, precio_moneda: 'USD',
+            condicion: 'usado', estado: 'disponible',
+            origen: 'manual', canje_origen: null,
+          },
+        ],
+        pagination: { page: 1, limit: 50, total: 4, pages: 1 },
+      });
+
+      renderContent();
+      await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+      fireEvent.click(await screen.findByRole('button', { name: /Copiar listado/i }));
+
+      await waitFor(() => expect(writeTextSpy).toHaveBeenCalledTimes(1));
+      const texto = writeTextSpy.mock.calls[0][0];
+      // 2 líneas: los 2 disponibles con precio. Excluye vendido y sin precio.
+      const lineas = texto.split('\n');
+      expect(lineas).toHaveLength(2);
+      expect(lineas[0]).toBe('iPh 17 Pro Max | Blue | 512GB | 100% — USD 1.420');
+      expect(lineas[1]).toBe('iPh 17 | Black | 256GB | 100% — USD 840');
+    });
+
+    it('salta campos vacíos (color/gb/bateria) en lugar de dejar "| |"', async () => {
+      inventarioApi.usados.mockResolvedValue({
+        data: [{
+          id: 1, nombre: 'iPh sin datos completos',
+          gb: null, color: null, bateria: null,
+          precio_venta: 500, precio_moneda: 'USD',
+          condicion: 'usado', estado: 'disponible',
+          origen: 'manual', canje_origen: null,
+        }],
+        pagination: { page: 1, limit: 50, total: 1, pages: 1 },
+      });
+      renderContent();
+      await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+      fireEvent.click(await screen.findByRole('button', { name: /Copiar listado/i }));
+
+      await waitFor(() => expect(writeTextSpy).toHaveBeenCalled());
+      expect(writeTextSpy.mock.calls[0][0]).toBe('iPh sin datos completos — USD 500');
+    });
+
+    it('sin disponibles con precio → toast error, no llama writeText', async () => {
+      inventarioApi.usados.mockResolvedValue({
+        data: [{
+          id: 1, nombre: 'Vendido', gb: '128', color: 'X',
+          bateria: 90, precio_venta: 500, precio_moneda: 'USD',
+          condicion: 'usado', estado: 'vendido',
+          origen: 'manual', canje_origen: null,
+        }],
+        pagination: { page: 1, limit: 50, total: 1, pages: 1 },
+      });
+      renderContent();
+      await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+      fireEvent.click(await screen.findByRole('button', { name: /Copiar listado/i }));
+
+      // No llama writeText — no había nada que copiar.
+      await waitFor(() => expect(inventarioApi.usados).toHaveBeenCalled());
+      expect(writeTextSpy).not.toHaveBeenCalled();
+    });
   });
 });

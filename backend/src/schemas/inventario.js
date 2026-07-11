@@ -203,11 +203,18 @@ const queryDesgloseSchema = z.object({
 // Filtros disponibles:
 //   - buscar: LIKE sobre nombre + IMEI + color + gb + nombre del cliente
 //   - solo_canjes: bool. true → solo los que tienen canje_id NOT NULL
+//   - solo_manual: bool. true → solo los que NO tienen canje (compra externa,
+//                                carga manual, lote de usados a proveedor).
+//     Nota: mutuamente excluyente con solo_canjes en el frontend, pero el
+//     backend acepta ambos por defensa (si vienen los dos, sale vacío por
+//     lógica). El operador del frontend usa un Seg de 3 estados: Todos /
+//     Canjes / Carga manual.
 //   - estado: filtro directo por productos.estado
 //   - desde/hasta: rango sobre `productos.created_at` (fecha de ingreso).
 const queryUsadosSchema = z.object({
   buscar:      z.string().trim().max(200).optional(),
   solo_canjes: z.union([z.boolean(), z.enum(['true','false']).transform(v => v === 'true')]).optional(),
+  solo_manual: z.union([z.boolean(), z.enum(['true','false']).transform(v => v === 'true')]).optional(),
   estado:      z.enum(['disponible', 'vendido', 'en_tecnico', 'reservado']).optional(),
   desde:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
   hasta:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
