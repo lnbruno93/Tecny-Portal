@@ -65,9 +65,25 @@ async function validateOperationPrecondition(client, partnership, sellerTenantId
     ? partnership.tenant_b_id
     : partnership.tenant_a_id;
 
-  // Lookup de ambos tenants en una query.
+  // 2026-07-11 (auditoría Red B2B P0-2): fix timezone en paid_until.
+  //
+  // Antes: `const today = new Date(new Date().toISOString().slice(0, 10))`
+  // comparaba contra midnight UTC. Server PG está en UTC (verificado en
+  // Railway prod), y un tenant AR con paid_until=2026-07-10 quedaba
+  // "expirado" desde las 21:00 hora AR del 10 hasta las 21:00 hora AR del
+  // 11 — 3 horas de bloqueo diario por off-by-one de timezone.
+  //
+  // Fix: la comparación se hace en SQL con `AT TIME ZONE tz` derivado del
+  // país de CADA tenant. Cada uno (seller y buyer) puede estar en distinto
+  // país (AR + UY, casos reales del portal). Traemos también `pais` en la
+  // SELECT y calculamos `is_expired` in-SQL con el tz correcto per row.
+  //
+  // Semántica: `is_expired = paid_until IS NOT NULL AND paid_until <
+  //   (NOW() AT TIME ZONE tz)::date`. NULL = grandfathered = activo
+  //   (mismo criterio que lib/tenantStatus.js).
+  const { getTenantTimezone } = require('./tenantTimezone');
   const { rows } = await client.query(
-    `SELECT id, nombre, slug, plan, suspended_at, paid_until
+    `SELECT id, nombre, slug, plan, suspended_at, paid_until, pais
        FROM tenants
       WHERE id = ANY($1::int[])`,
     [[sellerTenantId, buyerTenantId]]
@@ -79,14 +95,22 @@ async function validateOperationPrecondition(client, partnership, sellerTenantId
   if (!seller || seller.suspended_at) return { ok: false, error: 'seller_suspended' };
   if (!buyer  || buyer.suspended_at)  return { ok: false, error: 'buyer_suspended' };
 
-  // paid_until vs hoy (date-only). NULL = grandfathered = activo (mismo
-  // criterio que lib/tenantStatus.js).
-  const today = new Date(new Date().toISOString().slice(0, 10));
-  if (seller.paid_until != null && new Date(seller.paid_until) < today) {
-    return { ok: false, error: 'seller_expired' };
+  // Chequeo per-tenant con su timezone.
+  if (seller.paid_until != null) {
+    const tzSeller = getTenantTimezone(seller.pais);
+    const { rows: expiredRes } = await client.query(
+      `SELECT $1::date < (NOW() AT TIME ZONE $2)::date AS expired`,
+      [seller.paid_until, tzSeller]
+    );
+    if (expiredRes[0].expired) return { ok: false, error: 'seller_expired' };
   }
-  if (buyer.paid_until != null && new Date(buyer.paid_until) < today) {
-    return { ok: false, error: 'buyer_expired' };
+  if (buyer.paid_until != null) {
+    const tzBuyer = getTenantTimezone(buyer.pais);
+    const { rows: expiredRes } = await client.query(
+      `SELECT $1::date < (NOW() AT TIME ZONE $2)::date AS expired`,
+      [buyer.paid_until, tzBuyer]
+    );
+    if (expiredRes[0].expired) return { ok: false, error: 'buyer_expired' };
   }
 
   return { ok: true, sellerTenant: seller, buyerTenant: buyer };

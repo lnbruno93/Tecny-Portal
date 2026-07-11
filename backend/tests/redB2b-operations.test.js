@@ -509,6 +509,78 @@ describe('POST /api/red-b2b/operations — validation', () => {
     expect(r.body.reason).toBe('partnership_not_active');
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-11 (auditoría Red B2B P0-2): paid_until timezone tenant-aware.
+  //
+  // Bug: la comparación anterior usaba `new Date(...ISOString().slice(0,10))`
+  // → midnight UTC. Server PG en UTC → tenant AR con paid_until=2026-07-11
+  // era rebotado como expired desde las 21:00 AR del 11 hasta las 21:00 AR
+  // del 12 (3h de bloqueo diario). Fix: comparar contra
+  // `(NOW() AT TIME ZONE tenant_tz)::date` derivando tz de tenant.pais.
+  // ═══════════════════════════════════════════════════════════════════════
+  it('P0-2 timezone: paid_until = HOY en zona del tenant NO se marca como expired', async () => {
+    // Setear paid_until = "hoy" en zona AR (donde vive el tenant por default).
+    const { rows: hoyRes } = await pool.query(
+      `SELECT (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date AS hoy_ar`
+    );
+    const hoyAR = hoyRes[0].hoy_ar;
+    await pool.query(
+      `UPDATE tenants SET paid_until = $1 WHERE id = ANY($2::int[])`,
+      [hoyAR, [tenantAId, tenantBId]]
+    );
+
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    // Debería crear la op OK (paid_until = hoy AR → activo).
+    expect(r.status).toBe(201);
+  });
+
+  it('P0-2 timezone: paid_until = AYER en zona del tenant → rebota (expired)', async () => {
+    // Setear paid_until = "ayer" en zona AR — tenant DEBE quedar expired.
+    const { rows: ayerRes } = await pool.query(
+      `SELECT ((NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date - INTERVAL '1 day')::date AS ayer_ar`
+    );
+    const ayerAR = ayerRes[0].ayer_ar;
+    await pool.query(
+      `UPDATE tenants SET paid_until = $1 WHERE id = $2`,
+      [ayerAR, tenantAId]
+    );
+    // Invalidar cache de tenantStatus para que el middleware releea (sin
+    // esto, si otro test previo cacheó el tenant como active, seguirá dando OK).
+    const { invalidateTenantStatus } = require('../src/lib/tenantStatus');
+    await invalidateTenantStatus(tenantAId);
+
+    const partnershipId = await createActivePartnership(tenantAId, tenantBId, tenantAId);
+    const prodId = await insertSellerProducto(tenantAId, { cantidad: 10 });
+
+    const r = await request(app)
+      .post('/api/red-b2b/operations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        partnership_id: partnershipId,
+        items: [{ producto_id: prodId, cantidad: 1, precio_usd: 100 }],
+        tc: 1000, total_usd: 100, total_ars: 100000,
+      });
+    // El middleware `requireActiveTenant` rebota primero con 402
+    // (tenant expirado a nivel billing). Si por alguna razón el middleware
+    // no está activo en el test env, el handler devuelve 409 seller_expired.
+    // Ambos son válidos: lo importante es que NO devuelve 201 (op creada).
+    expect(r.status).not.toBe(201);
+    expect([402, 409]).toContain(r.status);
+    if (r.status === 409) {
+      expect(r.body.reason).toBe('seller_expired');
+    }
+  });
+
   it('partnership revocada → 409 partnership_not_active', async () => {
     const [a, b] = tenantAId < tenantBId ? [tenantAId, tenantBId] : [tenantBId, tenantAId];
     const ins = await pool.query(
