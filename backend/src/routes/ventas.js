@@ -280,7 +280,79 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
   }
   for (const c of (b.canjes || [])) {
     let prodId = null;
-    if (c.agregar_stock) {
+
+    // 2026-07-11: bug reportado por Lucas — al editar una venta vieja con
+    // canje ya en Inventario, no se podía cambiar la categoría del producto
+    // asociado. El PUT /ventas/:id hace DELETE + INSERT de canjes, así que
+    // el canje se re-inserta. El problema era que el flow intentaba
+    // TAMBIÉN re-crear el producto (que fallaba con IMEI dup, quedando
+    // "todo o nada"), o quedaba disabled en el frontend.
+    //
+    // Fix: si el body trae `producto_id` (canje _existing), NO se crea
+    // producto nuevo — se hace UPDATE del producto existente con los
+    // campos editables (clase_id, condicion, precio_venta, observaciones)
+    // y se preserva el `producto_id` en el nuevo canje. Sin `producto_id`,
+    // sigue el flow original (crear producto nuevo).
+    if (c.producto_id && c.agregar_stock) {
+      // ── PATH _existing: actualizar producto asociado (no crear nuevo) ──
+      // Validar que el producto pertenezca al tenant + esté activo.
+      const { rows: existProd } = await client.query(
+        `SELECT id, observaciones FROM productos
+          WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+          LIMIT 1`,
+        [c.producto_id, ctx.tenantId]
+      );
+      if (existProd[0]) {
+        // Resolver clase_id (mismo path que create — respetamos el explícito
+        // si vino, sino derivamos por condición para no perder consistencia).
+        const condicionCanje = c.condicion ?? 'usado';
+        let claseIdCanje = null;
+        if (c.clase_id) {
+          const { rows: explicit } = await client.query(
+            `SELECT id FROM clases_producto
+              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+              LIMIT 1`,
+            [c.clase_id, ctx.tenantId]
+          );
+          if (explicit[0]) claseIdCanje = explicit[0].id;
+        }
+        // Construimos SET dinámico: solo se actualizan los campos que vinieron
+        // explícitos en el body. Los demás quedan intactos.
+        const sets = [];
+        const params = [];
+        if (claseIdCanje !== null) { params.push(claseIdCanje); sets.push(`clase_id = $${params.length}`); }
+        if (c.condicion) { params.push(c.condicion); sets.push(`condicion = $${params.length}`); }
+        if (c.precio_venta_sugerido != null && Number(c.precio_venta_sugerido) > 0) {
+          params.push(Number(c.precio_venta_sugerido));
+          sets.push(`precio_venta = $${params.length}`);
+          // También actualizamos precio_moneda para mantener coherencia con
+          // el valor_toma que ya está en esa misma moneda.
+          params.push(c.moneda || 'USD');
+          sets.push(`precio_moneda = $${params.length}`);
+        }
+        // Observaciones: si vinieron, las prependemos preservando la nota
+        // automática "Ingresado por canje" del producto original.
+        if (c.observaciones?.trim()) {
+          const auto = `Ingresado por canje (venta ${venta.order_id})`;
+          params.push(`${c.observaciones.trim()}\n— ${auto}`);
+          sets.push(`observaciones = $${params.length}`);
+        }
+        if (sets.length > 0) {
+          params.push(c.producto_id);
+          await client.query(
+            `UPDATE productos SET ${sets.join(', ')}
+              WHERE id = $${params.length}`,
+            params
+          );
+        }
+        prodId = c.producto_id;
+      } else {
+        // producto_id apuntaba a algo que ya no existe / no es del tenant.
+        // Fallback silencioso: preservamos el canje sin producto_id.
+        prodId = null;
+      }
+    } else if (c.agregar_stock) {
+      // ── PATH original: crear producto nuevo ──
       // Ampliación junio 2026: el producto se crea con TODOS los campos que el
       // user cargó en el form de canje, no solo los básicos. Antes:
       //   categoria_id=NULL, condicion=NULL (DB default 'nuevo'), precio_venta=0

@@ -182,6 +182,89 @@ describe('POST /api/ventas', () => {
     expect(inv.body.data[0].clase_id).toBe(celUsado.id);
   });
 
+  // 2026-07-11 (bug Lucas): al EDITAR una venta con canje ya en Inventario,
+  // el frontend envía `producto_id` en el body del canje. El backend detecta
+  // ese flag y hace UPDATE del producto asociado en vez de INSERT nuevo
+  // (que fallaría con IMEI dup, o simplemente no permitía cambiar categoría).
+  it('PUT venta con canje _existing (producto_id) → UPDATE del producto asociado, no crea nuevo', async () => {
+    const clasesList = await request(app).get('/api/inventario/clases').set(auth());
+    const celUsado = clasesList.body.find(c => c.slug_legacy === 'celular_usado');
+    const watch = clasesList.body.find(c => c.slug_legacy === 'watch');
+
+    // 1. Crear venta con canje "usado" → producto queda como Celular Usado.
+    const imei = '904' + Date.now().toString().slice(-12);
+    const ventaRes = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1000, costo: 850, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje a editar', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    expect(ventaRes.status).toBe(201);
+    const ventaId = ventaRes.body.id;
+
+    // Producto quedó con clase=celular_usado + costo=300.
+    let inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    const productoId = inv.body.data[0].id;
+    expect(inv.body.data[0].clase_id).toBe(celUsado.id);
+    expect(Number(inv.body.data[0].costo)).toBe(300);
+
+    // 2. PUT venta con el canje _existing + clase_id NUEVA (Watch).
+    const putRes = await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1000, costo: 850, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje a editar', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        producto_id: productoId,        // ← clave: canje _existing
+        clase_id: watch.id,              // ← el operador cambia a Watch
+        condicion: 'usado',
+        precio_venta_sugerido: 550,     // ← también cambia precio
+      }],
+    });
+    expect(putRes.status).toBe(200);
+
+    // 3. Verificar que el producto se ACTUALIZÓ (no se creó uno nuevo).
+    inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(1);       // sigue siendo 1 producto (no se duplicó)
+    expect(inv.body.data[0].id).toBe(productoId); // mismo ID
+    expect(inv.body.data[0].clase_id).toBe(watch.id); // NUEVA clase
+    expect(Number(inv.body.data[0].precio_venta)).toBe(550); // NUEVO precio
+    expect(Number(inv.body.data[0].costo)).toBe(300); // costo preservado (viene del valor_toma original)
+  });
+
+  // Fallback: si producto_id no matchea con ningún producto del tenant
+  // (edge case: producto eliminado entre load y save), NO explota — se
+  // preserva el canje sin producto_id (silent fallback).
+  it('PUT venta con producto_id inexistente → canje se preserva sin producto_id', async () => {
+    const imei = '905' + Date.now().toString().slice(-12);
+    const ventaRes = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'Canje fantasma', imei,
+        valor_toma: 200, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    const ventaId = ventaRes.body.id;
+
+    // PUT con producto_id inexistente (999999).
+    const putRes = await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'Canje fantasma', imei,
+        valor_toma: 200, moneda: 'USD', agregar_stock: true,
+        producto_id: 999999,     // ← no existe
+      }],
+    });
+    expect(putRes.status).toBe(200); // no explota
+  });
+
   it('canje con agregar_stock=false NO crea producto en Inventario', async () => {
     const imei = '901' + Date.now().toString().slice(-12);
     await request(app).post('/api/ventas').set(auth()).send({
