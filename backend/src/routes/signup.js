@@ -107,12 +107,16 @@ function defaultsAlertasParaPais(pais) {
   ];
 }
 
-// 2026-06-24 ONB-3 (audit pre-live): 4 categorías default. Sin esto, el primer
-// producto que el owner intenta cargar desde el OnboardingCard rebota con
-// "La categoría es obligatoria" (productos.categoria_id requerido por
-// inventario.js:65). El user debía cerrar el modal, ir a "Categorías &
-// Depósitos", crear una, volver al modal — fricción en el step #1 del flow.
-// Estas 4 cubren el ~90% de los negocios de revendedores tech.
+// 2026-06-24 ONB-3 (audit pre-live): 4 categorías default. Originalmente
+// obligatorias porque productos.categoria_id era required — sin ellas, el
+// primer producto rebotaba con "La categoría es obligatoria".
+//
+// 2026-07-11: categoria_id pasó a opcional (sunset gradual de la dimensión
+// Colección — ver schemas/inventario.js). Ya no son estrictamente
+// necesarias para desbloquear el onboarding. Se preservan como starting
+// point útil para tenants que sí quieran usar la dimensión — cubren el
+// ~90% de los negocios de revendedores tech y se pueden borrar sin
+// consecuencias desde el modal "Categorías" (sección Colecciones).
 const DEFAULT_CATEGORIAS = ['Celulares', 'Accesorios', 'Servicios', 'Otros'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

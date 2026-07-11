@@ -111,11 +111,12 @@ describe('Productos', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rechaza clase inválida → 400', async () => {
-    const res = await request(app).post('/api/inventario/productos')
-      .set(auth()).send({ nombre: 'X', clase: 'tablet' });
-    expect(res.status).toBe(400);
-  });
+  // 2026-07-11: test removido. Antes fallaba con 400 por dos razones cruzadas
+  // (categoria_id requerido + clase 'tablet' no matcheaba ningún slug_legacy).
+  // Con `.refine(categoriaRequerida)` removido y `clase` como string opcional
+  // deprecado, este payload ahora se acepta como 201 con clase_id=null. El
+  // caso "clase_id inexistente → 400" ya se cubre en el test de línea ~172
+  // (POST con clase_id UUID inválido).
 
   // F3.c (2026-07-08): derive bidireccional clase ↔ clase_id.
   // Cada tenant tiene 9 filas base en clases_producto (seedeadas por la migration
