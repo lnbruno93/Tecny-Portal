@@ -19,6 +19,10 @@ import { userHasCap, userHasAnyCap } from './lib/userHasCap';
 
 // Rutas públicas TANDA 2.2 — accesibles SIN sesión (no pasan por AuthGuard).
 const Signup = lazy(() => import('./screens/Signup'));
+// 2026-07-11: pantalla pública del share link de Equipos Usados. Vive
+// fuera del Shell (sin sesión, sin AuthContext) — el cliente final abre
+// el link desde WhatsApp sin necesidad de login.
+const PublicoUsados = lazy(() => import('./screens/PublicoUsados'));
 const VerifyEmail = lazy(() => import('./screens/VerifyEmail'));
 // TANDA 0 #321 — forgot-password auto-servicio.
 const ForgotPassword = lazy(() => import('./screens/ForgotPassword'));
@@ -218,6 +222,13 @@ export default function App() {
                 <RedirectIfAuthed>
                   <ErrorBoundary><Login /></ErrorBoundary>
                 </RedirectIfAuthed>
+              } />
+
+              {/* ── Share link público de Equipos Usados (2026-07-11) ── */}
+              {/* Sin auth, sin Shell. El cliente final del tenant abre este link
+                  desde WhatsApp para ver el listado de usados disponibles. */}
+              <Route path="/publico/usados/:token" element={
+                <ErrorBoundary><PublicoUsados /></ErrorBoundary>
               } />
 
               {/* ── Rutas públicas (TANDA 2.2) ── */}
