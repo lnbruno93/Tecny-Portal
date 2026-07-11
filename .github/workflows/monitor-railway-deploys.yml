@@ -54,19 +54,29 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           PROD_HEALTH_URL: https://tecny-backend-production.up.railway.app/health
         run: |
-          set -euo pipefail
+          # Nota: NO usamos `set -e` acá. El monitor debe tolerar errores del
+          # CLI (ej: proyecto no linkeado, comando inexistente) y seguir con
+          # el chequeo 2 (drift). Si aborta con exit 1, no se ve el output
+          # que ayuda a diagnosticar y el step falla sin diagnóstico útil.
+          set -uo pipefail
 
           # ────────────────────────────────────────────────────────────
           # Chequeo 1 — deployments recientes FAILED consecutivos
           # ────────────────────────────────────────────────────────────
-          # `railway deployment list` requiere estar linkeado a un proyecto.
-          # Con RAILWAY_TOKEN + --service + --environment funciona sin link.
+          # railway deployment list requiere `--project` explícito cuando
+          # no hay linkeo local (que es el caso del runner de GitHub
+          # Actions). El project ID de `vibrant-freedom` es estable — si
+          # cambia, actualizar acá.
           echo "→ Listando últimos deployments de prod..."
+          RAILWAY_PROJECT_ID="3f2cc8c1-bed4-43d0-ba71-742c761606ef"
           DEPLOYS_TXT=$(railway deployment list \
+            --project "$RAILWAY_PROJECT_ID" \
             --service tecny-backend \
             --environment production \
             --limit 5 \
             2>&1 || echo "CLI_ERROR")
+          echo "Output del CLI:"
+          echo "$DEPLOYS_TXT"
 
           # Salida típica del CLI:
           #   Recent Deployments
