@@ -122,14 +122,15 @@ describe('P-07 async audit', () => {
       await client.query('BEGIN');
       await audit(client, 'ventas', 'INSERT', 999, { despues: { id: 999 } });
       // SANITY: la fila esta visible DENTRO de la tx.
-      const { rows: inTx } = await client.query('SELECT * FROM audit_queue WHERE registro_id = 999');
+      // Post-migration 20260711000001, registro_id es TEXT → comparación string.
+      const { rows: inTx } = await client.query(`SELECT * FROM audit_queue WHERE registro_id = '999'`);
       expect(inTx).toHaveLength(1);
       await client.query('ROLLBACK');
     } finally { client.release(); }
 
     // Post-rollback: NO debe haber fila ni en queue ni en audit_logs.
-    const { rows: queue } = await pool.query('SELECT * FROM audit_queue WHERE registro_id = 999');
-    const { rows: logs }  = await pool.query('SELECT * FROM audit_logs WHERE registro_id = 999');
+    const { rows: queue } = await pool.query(`SELECT * FROM audit_queue WHERE registro_id = '999'`);
+    const { rows: logs }  = await pool.query(`SELECT * FROM audit_logs WHERE registro_id = '999'`);
     expect(queue).toHaveLength(0);
     expect(logs).toHaveLength(0);
   });

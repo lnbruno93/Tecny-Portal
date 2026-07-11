@@ -108,7 +108,7 @@ afterAll(async () => {
   // Cleanup audits sembrados para el fix #336 (incluye la fila NULL).
   await pool.query(`
     DELETE FROM audit_logs
-    WHERE registro_id IN (9001, 9002, 9003)
+    WHERE registro_id IN ('9001', '9002', '9003')
        OR (datos_despues->>'cliente' IN ('ISO_A_AUDIT_TEST', 'ISO_B_AUDIT_TEST', 'ISO_NULL_AUDIT_TEST'))
   `);
   await pool.query(`DELETE FROM tenant_users WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
