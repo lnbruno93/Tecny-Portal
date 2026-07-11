@@ -1200,6 +1200,20 @@ describe('GET /api/inventario/usados', () => {
     expect(ids).toContain(usadoCanjeId);
   });
 
+  // 2026-07-11: complemento del filtro anterior. Feedback de Lucas — los
+  // tenants compran lotes de usados a proveedores además de recibir canjes,
+  // y necesitan ver ese sub-set separado. Seg de 3 estados en el frontend.
+  it('filtro solo_manual=true excluye los que vinieron por canje', async () => {
+    const r = await request(app).get('/api/inventario/usados?solo_manual=true').set(auth());
+    expect(r.status).toBe(200);
+    expect(r.body.data.every(p => p.origen === 'manual')).toBe(true);
+    expect(r.body.data.every(p => p.canje_origen === null)).toBe(true);
+    // El canje NO debe estar en el response, el manual sí.
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(usadoManualId);
+    expect(ids).not.toContain(usadoCanjeId);
+  });
+
   it('filtro buscar matchea por nombre del cliente (JOIN a ventas)', async () => {
     const r = await request(app).get('/api/inventario/usados?buscar=Canje%20Test').set(auth());
     expect(r.status).toBe(200);

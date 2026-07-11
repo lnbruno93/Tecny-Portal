@@ -679,7 +679,7 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
  */
 router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, next) => {
   try {
-    const { buscar, solo_canjes, estado, desde, hasta } = req.query;
+    const { buscar, solo_canjes, solo_manual, estado, desde, hasta } = req.query;
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
     const conditions = [
@@ -692,6 +692,13 @@ router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, nex
     if (hasta)  { params.push(hasta);  conditions.push(`p.created_at::date <= $${params.length}`); }
     if (solo_canjes) {
       conditions.push(`cj.id IS NOT NULL`);
+    }
+    // 2026-07-11: `solo_manual` filtra a los que NO vinieron por canje
+    // (compra externa, lote de usados a proveedor, carga manual desde el
+    // form). Complemento de `solo_canjes` para el Seg de 3 estados del
+    // frontend (Todos / Canjes / Carga manual).
+    if (solo_manual) {
+      conditions.push(`cj.id IS NULL`);
     }
     if (buscar) {
       params.push(`%${buscar}%`);
