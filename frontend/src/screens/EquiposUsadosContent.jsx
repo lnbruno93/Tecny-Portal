@@ -62,7 +62,8 @@ function BateriaBadge({ valor }) {
 }
 
 export default function EquiposUsadosContent({ onCountChange }) {
-  const toast = useToast();
+  // useToast() devuelve `{ toast }` (ver ToastContext) — hay que destructurar.
+  const { toast } = useToast();
 
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
@@ -109,6 +110,50 @@ export default function EquiposUsadosContent({ onCountChange }) {
   // Al cambiar filtros, volver a página 1 (sin este reset, si estás en la
   // página 5 y buscás algo que tiene 2 resultados, ves lista vacía).
   useEffect(() => { setPage(1); }, [dBuscar, origen, estado]);
+
+  // 2026-07-11 (Lucas): botón "Copiar listado". Los tenants arman diariamente
+  // un listado de usados para enviar por WhatsApp a clientes. El copy genera
+  // solo las filas de equipos en formato "Nombre | Color | GBGB | Bat% — USD X"
+  // y el operador después le agrega emojis / encabezado / cierre marketing en
+  // su template.
+  //
+  // Reglas:
+  //   - Solo estado='disponible' (los otros no van al público — vendidos,
+  //     en_tecnico, reservados NO se comparten).
+  //   - Si falta color / GB / batería → se salta ese campo (no dejamos
+  //     separadores vacíos "iPh 17 |  | 256GB").
+  //   - Sin precio de venta → se salta el equipo entero (no publicás sin
+  //     precio).
+  //   - Moneda: usa `precio_moneda` (default USD). Formato de miles con
+  //     separador es-AR (1.420).
+  const copiarListado = useCallback(async () => {
+    const disponibles = items
+      .filter(p => p.estado === 'disponible')
+      .filter(p => Number(p.precio_venta) > 0);
+    if (disponibles.length === 0) {
+      toast.error('No hay equipos disponibles con precio para copiar.');
+      return;
+    }
+    const lineas = disponibles.map(p => {
+      const partes = [p.nombre];
+      if (p.color) partes.push(String(p.color).trim());
+      if (p.gb)    partes.push(`${String(p.gb).trim()}GB`);
+      if (p.bateria != null && p.bateria !== '') partes.push(`${p.bateria}%`);
+      const cabeza = partes.join(' | ');
+      const moneda = p.precio_moneda || 'USD';
+      const precio = Number(p.precio_venta).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+      return `${cabeza} — ${moneda} ${precio}`;
+    });
+    const texto = lineas.join('\n');
+    try {
+      await navigator.clipboard.writeText(texto);
+      const skipped = items.length - disponibles.length;
+      const extra = skipped > 0 ? ` (${skipped} filtrados: no disponibles o sin precio)` : '';
+      toast.success(`Copiados ${disponibles.length} equipos al portapapeles${extra}`);
+    } catch (_e) {
+      toast.error('No se pudo copiar. Copiá manualmente desde la tabla.');
+    }
+  }, [items, toast]);
 
   // KPIs calculados desde el response actual. Nota: `origenCanjeCount` es
   // sobre el response de la página actual — no el total global. Para el
@@ -192,6 +237,16 @@ export default function EquiposUsadosContent({ onCountChange }) {
           <option value="reservado">Reservado</option>
         </select>
         <div style={{ flex: 1 }} />
+        {/* 2026-07-11 (Lucas): copy del listado para WhatsApp de venta a clientes.
+            Ver `copiarListado` para las reglas de filtro (solo disponibles con precio). */}
+        <button
+          className="btn btn-sm"
+          onClick={copiarListado}
+          disabled={loading || items.length === 0}
+          title="Copia los equipos disponibles con formato 'Nombre | Color | GBGB | Bat% — USD Precio' para pegar en WhatsApp"
+        >
+          <Icons.Copy size={13} /> Copiar listado
+        </button>
         <button className="btn btn-sm" onClick={load} disabled={loading}>
           <Icons.Refresh size={13} /> Actualizar
         </button>
