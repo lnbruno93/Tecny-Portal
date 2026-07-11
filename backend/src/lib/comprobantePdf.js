@@ -41,6 +41,14 @@ const PDFDocument = require('pdfkit');
 
 const FOOTER_DEFAULT = 'Gracias por tu compra. Generado con Tecny.';
 
+// 2026-07-11: placeholder neutro para cuando `tenant.nombre` viene vacío. Bug
+// reportado por Tek Haus: si /me devuelve tenant:null (fail-open del helper),
+// el frontend pasa `tenant.nombre` undefined al backend y el PDF salía con
+// "Tecny" (nombre del SaaS) — confuso para el cliente final del tenant. Ahora
+// usa este placeholder genérico. El fix definitivo vive en /me (2026-07-11):
+// query fallback directa a tenants — este string solo activa si TODO falla.
+const NOMBRE_PLACEHOLDER = 'Tu comercio';
+
 /**
  * Helper para formatear moneda. Usa Intl.NumberFormat para AR/UY locale.
  * Acepta numeros con coma o punto; output: "USD 950.00" / "$ 1.234.567,89".
@@ -99,9 +107,12 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
       compress: _compress,
       info: {
         Title:    `Comprobante ${venta.order_id || `#${venta.id}`}`,
-        Author:   tenant.nombre || 'Tecny',
+        // 2026-07-11: fallback pasa de 'Tecny' → NOMBRE_PLACEHOLDER porque el
+        // metadata Author se lee en Adobe/Preview/etc. y no queremos que el
+        // brand del SaaS aparezca donde debería estar el nombre del negocio.
+        Author:   tenant.nombre || NOMBRE_PLACEHOLDER,
         Subject:  'Comprobante de venta retail',
-        Creator:  'Tecny Portal',
+        Creator:  'Tecny Portal',      // OK — el software que lo generó SÍ es Tecny.
         Producer: 'Tecny Portal · pdfkit',
       },
     });
@@ -113,7 +124,10 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
 
     // ── Header: nombre del tenant + n° de orden ────────────────────────
     doc.font('Helvetica-Bold').fontSize(16).fillColor('#0d1220');
-    doc.text(tenant.nombre || 'Tecny', { continued: false });
+    // 2026-07-11: fallback 'Tecny' → NOMBRE_PLACEHOLDER. Ver comentario arriba
+    // sobre el bug reportado por Tek Haus (algunos comprobantes salían
+    // brandeados con "Tecny" cuando /me devolvía tenant:null).
+    doc.text(tenant.nombre || NOMBRE_PLACEHOLDER, { continued: false });
     doc.moveDown(0.2);
 
     doc.font('Helvetica').fontSize(10).fillColor('#76705c');
@@ -250,7 +264,13 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
     doc.moveDown(0.4);
 
     const footerCustom = (tenant.comprobante_email_footer || '').trim();
-    const footerText = footerCustom || `Gracias por tu compra en ${tenant.nombre || 'Tecny'}.`;
+    // 2026-07-11: si no hay footer custom Y no hay nombre del tenant, evitamos
+    // frasear "Gracias por tu compra en Tecny" (parece marketing del SaaS).
+    // Fallback: mensaje genérico sin nombre.
+    const footerText = footerCustom
+      || (tenant.nombre
+          ? `Gracias por tu compra en ${tenant.nombre}.`
+          : `Gracias por tu compra.`);
     doc.font('Helvetica').fontSize(8).fillColor('#76705c');
     doc.text(footerText, xStart, doc.y, { width: colWidth, align: 'center' });
     doc.moveDown(0.2);

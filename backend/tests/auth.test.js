@@ -100,6 +100,45 @@ describe('GET /api/auth/me', () => {
     expect('paid_until' in res.body.tenant).toBe(true);
     expect('suspended_at' in res.body.tenant).toBe(true);
   });
+
+  // 2026-07-11 (bug Tek Haus): cuando `getTenantStatus` falla (cache miss +
+  // DB hiccup en el helper), el catch fail-open dejaba `tenant: null` en el
+  // response de /me. El frontend cacheaba eso en user.tenant=null → todas
+  // las descargas de comprobantes salían brandeadas con "Tecny" (fallback
+  // hardcoded). El fix agrega un fallback query directo a `tenants` que
+  // garantiza al menos `nombre` + `pais`. Este test forza el fail del
+  // helper y verifica que el response sigue trayendo `tenant.nombre`.
+  it('fallback query directo a tenants si getTenantStatus falla → nombre presente', async () => {
+    const tenantStatus = require('../src/lib/tenantStatus');
+    // Forza reject en TODOS los llamados durante el scope del try (mockRejectedValue,
+    // no Once — así también cubre eventual retry interno del helper).
+    const spy = jest.spyOn(tenantStatus, 'getTenantStatus')
+      .mockRejectedValue(new Error('simulated cache/DB hiccup'));
+    try {
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('tenant');
+      // El fix garantiza que tenant NO es null aún con el helper roto — el
+      // response cae al fallback query directo a `tenants`.
+      expect(res.body.tenant).not.toBeNull();
+      // Nombre es lo crítico para brand de comprobantes — no debe venir null.
+      expect(res.body.tenant.nombre).toBeTruthy();
+      expect(typeof res.body.tenant.nombre).toBe('string');
+      // Pais siempre presente (default 'AR' si el row viene sin).
+      expect(res.body.tenant.pais).toMatch(/^(AR|UY)$/);
+      // En el fallback path, plan/paid_until quedan null (no los conocemos —
+      // ver auth.js /me para racional del degraded response).
+      expect(res.body.tenant.plan).toBeNull();
+      expect(res.body.tenant.paid_until).toBeNull();
+      // Verificamos que el spy efectivamente se disparó al menos 1 vez.
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 // ─── Rutas protegidas ─────────────────────────────────────────

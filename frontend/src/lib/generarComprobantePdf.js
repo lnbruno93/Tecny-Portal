@@ -54,12 +54,14 @@ function dc(doc, [r, g, b]) { doc.setDrawColor(r, g, b); }
  * @param {object} venta — datos de la venta a imprimir (items, cliente, pagos, garantía…)
  * @param {object} [opts]
  * @param {string} [opts.tenantNombre] — nombre del negocio del tenant (owner-set).
- *   Se usa en el brand del header y en el pie del PDF. Fallback: 'Tecny' (el
- *   nombre del SaaS). 2026-07-04 (#506): el backend YA usa tenant.nombre; el
- *   frontend estaba hardcodeado a 'Tecny' — este PR lo corrige.
+ *   Se usa en el brand del header y en el pie del PDF. Fallback (2026-07-11):
+ *   'Tu comercio' — placeholder neutro. Antes era 'Tecny' (brand del SaaS),
+ *   pero eso confundía al cliente final cuando /me devolvía tenant:null por
+ *   un cache miss o hiccup (bug reportado por Tek Haus). El fix real vive en
+ *   /me (fallback query directo a tenants); este string solo activa si todo falla.
  */
 export async function generarComprobantePdf(venta, opts = {}) {
-  const tenantNombre = (opts.tenantNombre || '').trim() || 'Tecny';
+  const tenantNombre = (opts.tenantNombre || '').trim() || 'Tu comercio';
   const { jsPDF } = await import('jspdf');
   const autoTableImport = await import('jspdf-autotable');
   const autoTable =

@@ -18,13 +18,17 @@ describe('renderPlantilla — sustitución de {{negocio}} por tenant.nombre', ()
       .toBe('Este comprobante es tu nota de compra.\n\nNos responsabilizamos por 12 meses.\n\nTek Haus | Tech Reseller');
   });
 
-  it('fallback a "Tecny" cuando el tenant no tiene nombre', () => {
+  // 2026-07-11 (bug Tek Haus): fallback pasó de 'Tecny' → 'Tu comercio'.
+  // Meter el brand del SaaS ('Tecny') en el output del cliente final del
+  // tenant era confuso — el pie del comprobante decía "Vendido por Tecny"
+  // cuando /me devolvía tenant:null. Ahora placeholder neutro.
+  it('fallback a "Tu comercio" cuando el tenant no tiene nombre', () => {
     expect(renderPlantilla('Vendido por {{negocio}}.', ''))
-      .toBe('Vendido por Tecny.');
+      .toBe('Vendido por Tu comercio.');
     expect(renderPlantilla('Vendido por {{negocio}}.', null))
-      .toBe('Vendido por Tecny.');
+      .toBe('Vendido por Tu comercio.');
     expect(renderPlantilla('Vendido por {{negocio}}.', undefined))
-      .toBe('Vendido por Tecny.');
+      .toBe('Vendido por Tu comercio.');
   });
 
   it('trimea whitespace del nombre del tenant antes de usarlo', () => {
