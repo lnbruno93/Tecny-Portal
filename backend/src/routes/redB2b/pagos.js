@@ -847,6 +847,32 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
   if (!opId) return res.status(400).json({ error: 'id inválido' });
   const { items: devItems, motivo } = req.body;
 
+  // P1-3 audit 2026-07-11: Idempotency-Key opcional en POST /devolucion.
+  //
+  // Mismo patrón que COR-1 en POST /pagos: el frontend genera un UUID al
+  // abrir el modal Devolución y lo manda como header `Idempotency-Key`
+  // en cada intento. Doble-click / retry por 502 / dos pestañas del mismo
+  // user con la misma devolución mandan el MISMO UUID → el 1er intento
+  // crea la devOp con client_generated_id=UUID en cross_tenant_operations;
+  // los siguientes encuentran el registro y devuelven el mismo response
+  // (sin ejecutar side effects otra vez).
+  //
+  // Sin header → comportamiento igual al anterior (permite devoluciones
+  // duplicadas intencionales — raro en devolución vs pago pero posible).
+  //
+  // UUID v1-8 validado por regex — un typo del cliente no bypasa la
+  // idempotency. La lowercase normaliza para el chequeo case-insensitive
+  // del index UNIQUE.
+  const idempotencyKeyRaw = req.get('Idempotency-Key') || null;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (idempotencyKeyRaw && !UUID_RE.test(idempotencyKeyRaw)) {
+    return res.status(400).json({
+      error: 'Idempotency-Key debe ser UUID v1-8 (RFC 9562)',
+      reason: 'idempotency_key_invalid',
+    });
+  }
+  const idempotencyKey = idempotencyKeyRaw ? idempotencyKeyRaw.toLowerCase() : null;
+
   try {
     // DECISIÓN durable (Lucas, 2026-06-28 — PR-C P1-5, issue #462): NO
     // validamos partnership_active acá, consistente con POST /pagos
@@ -885,6 +911,39 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         if (op.buyer_tenant_id !== myTenantId) {
           await client.query('ROLLBACK');
           return { error: 'only_buyer_can_devolucion', status: 403 };
+        }
+
+        // A.1 IDEMPOTENCY (audit 2026-07-11 P1-3): si el caller mandó
+        // Idempotency-Key y ya existe una devolución con esa key para esta
+        // op (parent_op_id = opId), es un retry — devolvemos la devolución
+        // original SIN reejecutar el flow.
+        //
+        // El FOR UPDATE de arriba serializa las txs concurrentes: si la 1ra
+        // aún no committeó, la 2da espera. Cuando la 1ra committea, la 2da
+        // toma el lock, hace este SELECT y encuentra la devolución → early-return.
+        //
+        // Race window residual: 2 requests entran a la 1ra tx en paralelo,
+        // ambos hacen el SELECT y ambos no encuentran nada → ambos intentan
+        // INSERT. El UNIQUE index parcial `idx_ct_ops_devolucion_idempotency`
+        // atrapa al 2do en el commit (SQLSTATE 23505) → catch abajo devuelve
+        // 409 idempotency_conflict (cliente puede retryar y esta vez encontrará
+        // el registro).
+        if (idempotencyKey) {
+          const dup = await client.query(
+            `SELECT id, created_at, total_usd, total_ars, parent_op_id
+               FROM cross_tenant_operations
+               WHERE parent_op_id = $1
+                 AND client_generated_id = $2
+               LIMIT 1`,
+            [opId, idempotencyKey]
+          );
+          if (dup.rows[0]) {
+            await client.query('ROLLBACK');
+            return {
+              idempotent_replay: true,
+              existing_devolucion: dup.rows[0],
+            };
+          }
         }
 
         const sellerTenantId = op.seller_tenant_id;
@@ -1109,29 +1168,52 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
         // E. INSERT cross_tenant_operations NEW (devolución).
         // Total y precios negativos para diferenciar. parent_op_id apunta a la
         // op original.
-        const newOpQ = await client.query(
-          `INSERT INTO cross_tenant_operations
-             (partnership_id, seller_tenant_id, buyer_tenant_id,
-              seller_venta_id, buyer_compra_id, status,
-              total_usd, total_ars, tc_used, created_by_user_id,
-              parent_op_id)
-           VALUES ($1, $2, $3, $4, $5, 'active',
-                   $6, $7, $8, $9,
-                   $10)
-           RETURNING id, created_at`,
-          [
-            op.partnership_id,
-            sellerTenantId,
-            buyerTenantId,
-            sellerDevMovId,
-            buyerDevMovId,
-            -totalUsdDev,                        // total negativo
-            -totalArsDev,
-            Number(op.tc_used),
-            userId,
-            opId,                                 // parent
-          ]
-        );
+        //
+        // P1-3 audit 2026-07-11: agregado `client_generated_id` al INSERT.
+        // NULL cuando el cliente no manda `Idempotency-Key` (backwards compat).
+        // Si viene, el UNIQUE index parcial `idx_ct_ops_devolucion_idempotency`
+        // atrapa duplicados dentro del mismo parent_op_id (2do INSERT con misma
+        // key en la misma op original → 23505 → 409 idempotency_conflict).
+        let newOpQ;
+        try {
+          newOpQ = await client.query(
+            `INSERT INTO cross_tenant_operations
+               (partnership_id, seller_tenant_id, buyer_tenant_id,
+                seller_venta_id, buyer_compra_id, status,
+                total_usd, total_ars, tc_used, created_by_user_id,
+                parent_op_id, client_generated_id)
+             VALUES ($1, $2, $3, $4, $5, 'active',
+                     $6, $7, $8, $9,
+                     $10, $11)
+             RETURNING id, created_at`,
+            [
+              op.partnership_id,
+              sellerTenantId,
+              buyerTenantId,
+              sellerDevMovId,
+              buyerDevMovId,
+              -totalUsdDev,                        // total negativo
+              -totalArsDev,
+              Number(op.tc_used),
+              userId,
+              opId,                                 // parent
+              idempotencyKey,                       // NULL si el caller no mandó header
+            ]
+          );
+        } catch (err) {
+          // P1-3: race del index parcial `idx_ct_ops_devolucion_idempotency`.
+          // El SELECT del early-check no encontró duplicado, pero entre ese
+          // SELECT y este INSERT otro request con la misma key ganó. El UNIQUE
+          // viola con SQLSTATE 23505. Devolvemos 409 estable para que el
+          // cliente retryee — el próximo intento encontrará la devolución
+          // via el early-check.
+          if (idempotencyKey && err.code === '23505' &&
+              err.constraint === 'idx_ct_ops_devolucion_idempotency') {
+            await client.query('ROLLBACK');
+            return { error: 'idempotency_conflict', status: 409 };
+          }
+          throw err;
+        }
         const devOpId = newOpQ.rows[0].id;
 
         // Items: cantidad POSITIVA (CHECK cantidad > 0 en la tabla). El
@@ -1227,6 +1309,31 @@ router.post('/:id/devolucion', validate(devolucionSchema), async (req, res, next
       });
     }
 
+    // P1-3 audit 2026-07-11: Idempotency-Key replay.
+    // El caller mandó una key ya vista → devolvemos 200 con la devolución
+    // original. NO emitimos notif/audit/cache-invalidation ni corremos
+    // logger.info de nueva creación — todo eso ya se ejecutó en la 1ra
+    // request y volver a hacerlo confundiría el trail.
+    //
+    // El status es 200 (idempotent replay) vs 201 (created) para que el
+    // frontend pueda diferenciar (si le importa mostrar toast distinto).
+    if (result.idempotent_replay) {
+      logger.info({
+        parent_operation_id: opId,
+        devolucion_op_id: result.existing_devolucion.id,
+        tenant_id: myTenantId,
+        user_id: userId,
+      }, '[red-b2b/F4] Idempotency-Key replay — devolución existente');
+      return res.status(200).json({
+        idempotent_replay: true,
+        devolucion: {
+          id: result.existing_devolucion.id,
+          parent_op_id: result.existing_devolucion.parent_op_id,
+          total_usd_devuelto: Math.abs(Number(result.existing_devolucion.total_usd)),
+        },
+      });
+    }
+
     // Invalidar caches de inventario en ambos tenants (cantidad cambió).
     // PR-D #463: conciliation ya no tiene cache (decisión Lucas).
     invalidateMetricas(result.sellerTenantId).catch(() => {});
@@ -1271,8 +1378,12 @@ function errorMessage(reason) {
     // PR-B Bug H3: devolución solo hasta lo pagado (incluyendo crédito de
     // devoluciones previas).
     devolucion_excede_pagado:    'La devolución supera lo efectivamente pagado por esta operación. Sin pagos previos no hay deuda que descontar — pedile al seller que cancele la op o registrá el pago primero.',
-    // COR-1 audit 2026-07-06 — race del index parcial de idempotency.
-    idempotency_conflict:        'Ya hay un pago en proceso con esta clave. Reintentá en 1 segundo.',
+    // COR-1 audit 2026-07-06 + P1-3 audit 2026-07-11 — race del index parcial
+    // de idempotency. El mismo `idempotency_conflict` cubre POST /pagos (COR-1,
+    // index `idx_ct_pagos_idempotency`) y POST /devolucion (P1-3, index
+    // `idx_ct_ops_devolucion_idempotency`). Mensaje genérico "operación" así
+    // el mismo string sirve para ambos casos sin confundir al operador.
+    idempotency_conflict:        'Ya hay una operación en proceso con esta clave. Reintentá en 1 segundo.',
   };
   return map[reason] || 'Acción inválida.';
 }

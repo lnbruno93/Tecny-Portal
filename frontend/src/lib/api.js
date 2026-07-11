@@ -59,8 +59,13 @@ export function clearToken() {
   localStorage.removeItem('fin_token');
 }
 
-// Core fetch wrapper — throws on error, returns parsed JSON
-export async function api(path, method = 'GET', body = null, timeoutMs = 15000) {
+// Core fetch wrapper — throws on error, returns parsed JSON.
+//
+// 2026-07-11 (auditoría Red B2B P1-3): agregado `extraHeaders` opcional para
+// casos donde el caller necesita mandar headers custom (ej. `Idempotency-Key`
+// en POST /pagos y POST /devolucion de Red B2B). Backwards compatible — todos
+// los callers actuales pasan undefined y no se ve afectado.
+export async function api(path, method = 'GET', body = null, timeoutMs = 15000, extraHeaders = null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -73,6 +78,11 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
   const token = getToken();
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body = JSON.stringify(body);
+  if (extraHeaders && typeof extraHeaders === 'object') {
+    for (const [k, v] of Object.entries(extraHeaders)) {
+      if (v != null) opts.headers[k] = String(v);
+    }
+  }
 
   let res;
   try {
@@ -861,12 +871,24 @@ export const redB2b = {
   // con parent_op_id (solo buyer).
   pagos: {
     listByOperation: (opId) => api(`/api/red-b2b/operations/${opId}/pagos`),
-    register: (opId, body) =>
-      api(`/api/red-b2b/operations/${opId}/pagos`, 'POST', body),
+    // COR-1 audit 2026-07-06: `opts.idempotencyKey` opcional (UUID v4). El
+    // caller genera un UUID al abrir el modal Pago y lo pasa en cada intento
+    // — doble-click / retry por 502 con la MISMA key resulta en un 200
+    // idempotent_replay sin duplicar pagos. Sin key, comportamiento legacy.
+    // Ejemplo: `redB2b.pagos.register(op.id, body, { idempotencyKey: uuid })`.
+    register: (opId, body, opts = {}) =>
+      api(`/api/red-b2b/operations/${opId}/pagos`, 'POST', body, 15000,
+        opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : null),
   },
   devoluciones: {
-    create: (opId, body) =>
-      api(`/api/red-b2b/operations/${opId}/devolucion`, 'POST', body),
+    // P1-3 audit 2026-07-11: mismo patrón que COR-1 en pagos. Cuando la UI
+    // de devolución cross-tenant se implemente, generar UUID al abrir el
+    // modal Devolución (crypto.randomUUID()) y pasarlo en cada intento como
+    // `opts.idempotencyKey`. Sin key, comportamiento legacy (permite dev
+    // duplicadas intencionales — raro pero posible).
+    create: (opId, body, opts = {}) =>
+      api(`/api/red-b2b/operations/${opId}/devolucion`, 'POST', body, 15000,
+        opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : null),
   },
   conciliacion: {
     // PR-D #463: el cache server-side fue eliminado, ya no soportamos

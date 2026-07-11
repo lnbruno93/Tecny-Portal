@@ -40,6 +40,15 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
   const [saving, setSaving] = useState(false);
   const [cajasList, setCajasList] = useState([]);
 
+  // COR-1 audit 2026-07-06 (frontend integration 2026-07-11 P1-3 PR):
+  // Idempotency-Key generado UNA VEZ al abrir el modal — cada intento de
+  // submit (incluso retry por error transient o doble-click) usa el MISMO
+  // UUID. El backend con la misma key devuelve el pago original (200 en vez
+  // de crear duplicado). El key se genera con useState + inicializador
+  // perezoso para que crypto.randomUUID() solo se ejecute en el 1er render
+  // (React garantiza que el initializer no re-corre en re-renders).
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+
   // Filtrar cajas compatibles con moneda_pago.
   const cajasCompat = useMemo(() => {
     if (monedaPago === 'ARS') return cajasList.filter((c) => c.moneda === 'ARS');
@@ -97,7 +106,7 @@ export default function RedB2BRegistrarPagoModal({ operation, restanteUsd, onClo
         side: operation.my_side,
         fecha,
         notas: notas.trim() || undefined,
-      });
+      }, { idempotencyKey });
       toast.success('Pago registrado');
       onSuccess && onSuccess();
       onClose();
