@@ -297,7 +297,7 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
       // ── PATH _existing: actualizar producto asociado (no crear nuevo) ──
       // Validar que el producto pertenezca al tenant + esté activo.
       const { rows: existProd } = await client.query(
-        `SELECT id, observaciones FROM productos
+        `SELECT id, observaciones, proveedor FROM productos
           WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
           LIMIT 1`,
         [c.producto_id, ctx.tenantId]
@@ -336,6 +336,15 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
           const auto = `Ingresado por canje (venta ${venta.order_id})`;
           params.push(`${c.observaciones.trim()}\n— ${auto}`);
           sets.push(`observaciones = $${params.length}`);
+        }
+        // 2026-07-11 (Lucas): si el producto NO tiene proveedor y la venta
+        // tiene cliente_nombre, seteamos proveedor = cliente_nombre.
+        // Respetamos el proveedor manual si ya existe (no pisamos ediciones).
+        const proveedorActual = existProd[0].proveedor;
+        const clienteVenta = venta.cliente_nombre && String(venta.cliente_nombre).trim();
+        if (clienteVenta && (!proveedorActual || !String(proveedorActual).trim())) {
+          params.push(String(clienteVenta).trim());
+          sets.push(`proveedor = $${params.length}`);
         }
         if (sets.length > 0) {
           params.push(c.producto_id);
@@ -444,15 +453,23 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
         );
         claseIdCanje = claseRows[0]?.id ?? null;
       }
+      // 2026-07-11 (Lucas): "proveedor" del producto que ingresa por canje
+      // = nombre del cliente que lo entregó. Convención: si vino a través
+      // de un canje, el "de quién vino" es el cliente. Solo aplica si la
+      // venta tiene cliente_nombre — sino queda NULL (comportamiento
+      // original preservado).
+      const proveedorCanje = (venta.cliente_nombre && String(venta.cliente_nombre).trim())
+        ? String(venta.cliente_nombre).trim()
+        : null;
       const { rows: pr } = await client.query(
         `INSERT INTO productos (
             tipo_carga, clase_id, nombre, imei, gb, color, bateria,
-            categoria_id, condicion,
+            categoria_id, condicion, proveedor,
             costo, costo_moneda, precio_venta, precio_moneda,
             estado, observaciones
          ) VALUES (
             'unitario',$1,$2,$3,$4,$5,$6,
-            $7,$8,
+            $7,$8,$13,
             $9,$10,$11,$10,
             'disponible',$12
          ) RETURNING id`,
@@ -462,6 +479,7 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
           c.categoria_id ?? null, condicionCanje,
           c.valor_toma, c.moneda, c.precio_venta_sugerido ?? 0,
           obsFinal,
+          proveedorCanje,
         ]
       );
       prodId = pr[0].id;

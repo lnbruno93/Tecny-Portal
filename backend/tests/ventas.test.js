@@ -265,6 +265,91 @@ describe('POST /api/ventas', () => {
     expect(putRes.status).toBe(200); // no explota
   });
 
+  // 2026-07-11 (Lucas): el proveedor del producto que ingresa por canje
+  // debe ser el cliente que lo entregó (o queda null si no hay cliente).
+  it('canje crea producto con proveedor = cliente_nombre de la venta', async () => {
+    const imei = '906' + Date.now().toString().slice(-12);
+    const r = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 1200, costo: 900, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje con cliente', imei,
+        valor_toma: 400, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+      cliente_nombre: 'Cliente Canje Autotest',
+    });
+    expect(r.status).toBe(201);
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    expect(inv.body.data[0].proveedor).toBe('Cliente Canje Autotest');
+  });
+
+  it('PUT venta canje _existing con producto sin proveedor → setea cliente_nombre', async () => {
+    const imei = '907' + Date.now().toString().slice(-12);
+    // Crear venta SIN cliente_nombre → producto queda sin proveedor.
+    const v1 = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone sin cliente', imei,
+        valor_toma: 250, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    const ventaId = v1.body.id;
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    const productoId = inv1.body.data[0].id;
+    expect(inv1.body.data[0].proveedor == null || inv1.body.data[0].proveedor === '').toBe(true);
+
+    // PUT venta agregando cliente_nombre. El backend debería popular proveedor.
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone sin cliente', imei,
+        valor_toma: 250, moneda: 'USD', agregar_stock: true,
+        producto_id: productoId,
+      }],
+      cliente_nombre: 'Cliente Tardío',
+    });
+    const inv2 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv2.body.data[0].proveedor).toBe('Cliente Tardío');
+  });
+
+  it('PUT venta canje _existing con producto QUE YA tiene proveedor → NO lo pisa', async () => {
+    const imei = '908' + Date.now().toString().slice(-12);
+    const v1 = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone c/prov', imei,
+        valor_toma: 250, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+      cliente_nombre: 'Cliente Original',
+    });
+    const ventaId = v1.body.id;
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    const productoId = inv1.body.data[0].id;
+    expect(inv1.body.data[0].proveedor).toBe('Cliente Original');
+
+    // PUT con cliente_nombre distinto — el proveedor NO debería cambiar.
+    await request(app).put(`/api/ventas/${ventaId}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone c/prov', imei,
+        valor_toma: 250, moneda: 'USD', agregar_stock: true,
+        producto_id: productoId,
+      }],
+      cliente_nombre: 'Cliente Nuevo',
+    });
+    const inv2 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    // Preserva el proveedor original (respeta ediciones manuales del operador).
+    expect(inv2.body.data[0].proveedor).toBe('Cliente Original');
+  });
+
   it('canje con agregar_stock=false NO crea producto en Inventario', async () => {
     const imei = '901' + Date.now().toString().slice(-12);
     await request(app).post('/api/ventas').set(auth()).send({
