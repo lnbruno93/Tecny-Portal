@@ -36,12 +36,22 @@
 
 exports.up = async (pgm) => {
   pgm.sql(`
-    -- clientes_cc: prevenir duplicados case-insensitive por tenant.
+    -- clientes_cc: previene duplicados case-insensitive por tenant.
+    -- IMPORTANTE: el UNIQUE incluye apellido porque el schema separa nombre
+    -- + apellido (dos "Juan" con distintos apellidos son personas distintas).
+    -- Sin apellido incluido, cualquier "Juan Pérez" y "Juan Gómez" chocarían
+    -- (E2E cobranza-masiva reveló el issue con "Cliente A" + "Cliente B").
+    -- Para el auto-create de Red B2B (que solo usa nombre sin apellido),
+    -- el COALESCE(apellido, '') deja la constraint efectivamente en
+    -- (tenant_id, LOWER(nombre)) porque el apellido siempre es NULL → '' —
+    -- se preserva el aislamiento por tenant tal como se diseñó.
     CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_cc_tenant_nombre_ci
-      ON clientes_cc (tenant_id, LOWER(nombre))
+      ON clientes_cc (tenant_id, LOWER(nombre), LOWER(COALESCE(apellido, '')))
       WHERE deleted_at IS NULL;
 
-    -- proveedores: idem.
+    -- proveedores: no tiene apellido en el schema (contacto_apellido es de
+    -- la PERSONA de contacto, no del proveedor). UNIQUE por (tenant_id, nombre)
+    -- es correcto: no debería haber 2 proveedores idénticos en el mismo tenant.
     CREATE UNIQUE INDEX IF NOT EXISTS uq_proveedores_tenant_nombre_ci
       ON proveedores (tenant_id, LOWER(nombre))
       WHERE deleted_at IS NULL;
