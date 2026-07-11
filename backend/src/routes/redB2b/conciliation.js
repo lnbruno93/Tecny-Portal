@@ -32,13 +32,13 @@
  * Multi-tenant:
  *   Usa adminQuery (BYPASSRLS) porque debe leer movimientos_cc del seller
  *   Y proveedor_movimientos del buyer (dos tenants distintos). El caller
- *   participa en la partnership — filtramos inline + via getActivePartnershipById.
+ *   participa en la partnership — filtramos inline + via getPartnershipByIdForTenant.
  */
 
 const router = require('express').Router();
 const db = require('../../config/database');
 const parseId = require('../../lib/parseId');
-const { getActivePartnershipById } = require('../../lib/partnership');
+const { getPartnershipByIdForTenant } = require('../../lib/partnership');
 const { round2 } = require('../../lib/money');
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ router.get('/:id/conciliation', async (req, res, next) => {
   try {
     const data = await db.adminQuery(async (client) => {
       // A. Lookup partnership + verificar caller participa.
-      const partnership = await getActivePartnershipById(client, partnershipId, myTenantId);
+      const partnership = await getPartnershipByIdForTenant(client, partnershipId, myTenantId);
       if (!partnership) return { notFound: true };
 
       // Determinar quién es seller/buyer para esta conciliación. Como las

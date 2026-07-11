@@ -19,7 +19,7 @@
  * que insertamos no coincide con app.current_tenant). Defense in depth.
  *
  * Estos helpers son intencionalmente "tontos" — no validan partnership
- * (eso lo hace el endpoint con getActivePartnershipById ANTES). La razón:
+ * (eso lo hace el endpoint con getPartnershipByIdForTenant ANTES). La razón:
  * mantener el endpoint dueño del flow + audit trail, y los helpers como
  * unidades atómicas de SQL fáciles de testear sueltas si hace falta.
  */
@@ -56,7 +56,7 @@ async function validateOperationPrecondition(client, partnership, sellerTenantId
     return { ok: false, error: 'partnership_not_active' };
   }
   if (sellerTenantId !== partnership.tenant_a_id && sellerTenantId !== partnership.tenant_b_id) {
-    // Defensa en depth — getActivePartnershipById ya filtra por tenant del
+    // Defensa en depth — getPartnershipByIdForTenant ya filtra por tenant del
     // caller. Si llegamos acá con un tenant ajeno, es un bug grave.
     return { ok: false, error: 'caller_not_in_partnership' };
   }
