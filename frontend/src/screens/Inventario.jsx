@@ -1082,7 +1082,13 @@ export default function Inventario() {
             <Link/> y listo. */}
         <button className="btn mobile-hide" onClick={exportProductos}><Icons.Download size={14} /> Exportar</button>
         <button className="btn mobile-hide" onClick={() => setShowClasesModal(true)}><Icons.Tag size={14} /> Categorías</button>
-        <button className="btn mobile-hide" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Colecciones &amp; Depósitos</button>
+        {/* 2026-07-11: renombrado "Colecciones & Depósitos" → "Depósitos".
+            Post-F3.b "Categorías" es el eje semántico principal de agrupación.
+            Las Colecciones (tabla legacy `categorias`) siguen soportadas pero
+            se movieron al modal "Categorías" como segunda sección — así el
+            operador tiene toda la agrupación en un solo lugar y este botón
+            queda dedicado a Depósitos (físico). */}
+        <button className="btn mobile-hide" onClick={() => { setCatError(''); setShowCatalogos(true); }}><Icons.Sliders size={14} /> Depósitos</button>
         {/* Acción destructiva — separada visualmente con color rojo del ícono y
             texto en variante ghost. El ConfirmModal con danger:true protege
             contra clicks accidentales. */}
@@ -1882,11 +1888,20 @@ export default function Inventario() {
 
       {/* ── Modal catálogos ── */}
       {/* F3.b — Modal nuevo de Categorías (clases_producto). Ver design doc
-          `docs/design/categorias-crud-tenant-f3.md`. */}
+          `docs/design/categorias-crud-tenant-f3.md`.
+          2026-07-11: le pasamos también las Colecciones (categorias legacy)
+          para que el modal las muestre como segunda sección — antes vivían
+          en el modal "Depósitos" (renombrado) y quedaba semánticamente
+          confuso post-F3. Ahora toda la agrupación en un solo lugar. */}
       <CategoriasProductoModal
         open={showClasesModal}
         onClose={() => setShowClasesModal(false)}
         toast={toast}
+        colecciones={categorias}
+        nuevaColeccion={nuevaCat}
+        setNuevaColeccion={setNuevaCat}
+        onAddColeccion={addCategoria}
+        onDelColeccion={delCategoria}
       />
 
       {/* F3-Fase2b — Detalle "Inversión por categoría" (drawer del KPI Total
@@ -1900,52 +1915,32 @@ export default function Inventario() {
 
       {showCatalogos && (
         <div ref={catalogosModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCatalogos(false)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
-              <h3>Colecciones &amp; Depósitos</h3>
+              <h3>Depósitos</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCatalogos(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
             <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-              <div className="row">
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Colecciones</div>
-                  <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
-                    <input className="input" placeholder="Nueva colección" value={nuevaCat} onChange={e => setNuevaCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategoria(); } }} />
-                    <button className="btn btn-sm" onClick={addCategoria}><Icons.Plus size={13} /></button>
+              {/* 2026-07-11: la sección "Colecciones" (tabla legacy `categorias`)
+                  se movió al modal "Categorías" (CategoriasProductoModal). Este
+                  modal ahora es dedicado a Depósitos (físico) — más scope claro
+                  y toolbar más corta. */}
+              <p className="muted tiny" style={{ marginBottom: 12 }}>
+                Depósitos físicos donde guardás el stock. Útil si tenés más de un local o una separación
+                por almacén.
+              </p>
+              <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
+                <input className="input" placeholder="Nuevo depósito" value={nuevoDep} onChange={e => setNuevoDep(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDeposito(); } }} />
+                <button className="btn btn-sm" onClick={addDeposito}><Icons.Plus size={13} /></button>
+              </div>
+              <div className="stack" style={{ gap: 4 }}>
+                {depositos.length === 0 && <div className="muted tiny">Sin depósitos</div>}
+                {depositos.map(d => (
+                  <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
+                    <span>{d.nombre}</span>
+                    <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
                   </div>
-                  <div className="stack" style={{ gap: 4 }}>
-                    {categorias.length === 0 && <div className="muted tiny">Sin categorías</div>}
-                    {categorias.map(c => {
-                      const count = Number(c.productos_count ?? 0);
-                      const stock = Number(c.stock_disponible ?? 0);
-                      return (
-                        <div key={c.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
-                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.nombre}>{c.nombre}</span>
-                          <span className="muted tiny" style={{ marginRight: 8, whiteSpace: 'nowrap' }} title={`${count} producto${count === 1 ? '' : 's'} cargado${count === 1 ? '' : 's'} · ${stock} unidad${stock === 1 ? '' : 'es'} en stock`}>
-                            {count} prod · {stock} u
-                          </span>
-                          <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delCategoria(c)}><Icons.Trash size={13} /></button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Depósitos</div>
-                  <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
-                    <input className="input" placeholder="Nuevo depósito" value={nuevoDep} onChange={e => setNuevoDep(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDeposito(); } }} />
-                    <button className="btn btn-sm" onClick={addDeposito}><Icons.Plus size={13} /></button>
-                  </div>
-                  <div className="stack" style={{ gap: 4 }}>
-                    {depositos.length === 0 && <div className="muted tiny">Sin depósitos</div>}
-                    {depositos.map(d => (
-                      <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
-                        <span>{d.nombre}</span>
-                        <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                ))}
               </div>
               {catError && <div style={{ color: 'var(--neg)', fontSize: 13, marginTop: 10 }}>{catError}</div>}
             </div>
