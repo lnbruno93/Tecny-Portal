@@ -285,6 +285,20 @@ publicRouter.get('/usados/:token', publicLimiter, validate(tokenParamSchema, 'pa
     // Traer equipos usados disponibles del tenant. Query directo con
     // filtro por tenant_id (admin pool, sin RLS) — el token ya autorizó.
     const equipos = await db.adminQuery(async (client) => {
+      // 2026-07-11 (bug Lucas): el filtro `precio_venta > 0` solo aplica
+      // si el tenant tiene `mostrar_precio=true`. Racional: si el operador
+      // apagó "Mostrar precio de venta" (para que consulten por WhatsApp),
+      // los equipos SIN precio también son publicables — el precio ni
+      // siquiera se va a mostrar. Antes, un producto sin precio quedaba
+      // fuera aunque el operador NO quisiera publicar precios.
+      const filtroPrecio = linkRow.mostrar_precio
+        ? 'AND p.precio_venta > 0'
+        : '';
+      // Ordenación: por precio si se muestra, sino por fecha ingreso desc
+      // (más nuevos primero — mejor UX cuando no hay precios visibles).
+      const orderBy = linkRow.mostrar_precio
+        ? 'ORDER BY p.precio_venta DESC, p.nombre ASC'
+        : 'ORDER BY p.created_at DESC, p.nombre ASC';
       const { rows } = await client.query(
         `SELECT p.id, p.nombre, p.gb, p.color, p.bateria,
                 p.precio_venta, p.precio_moneda,
@@ -298,8 +312,8 @@ publicRouter.get('/usados/:token', publicLimiter, validate(tokenParamSchema, 'pa
             AND p.deleted_at IS NULL
             AND p.condicion = 'usado'
             AND p.estado = 'disponible'
-            AND p.precio_venta > 0
-          ORDER BY p.precio_venta DESC, p.nombre ASC
+            ${filtroPrecio}
+          ${orderBy}
           LIMIT 500`,
         [linkRow.tenant_id]
       );

@@ -225,13 +225,39 @@ describe('GET /publico/usados/:token', () => {
     expect(r.body.tenant.pais).toMatch(/^(AR|UY)$/);
   });
 
-  it('solo lista productos condicion=usado + estado=disponible + precio>0', async () => {
+  it('con mostrar_precio=true (default): solo usados disponibles con precio>0', async () => {
+    // Asegurar mostrar_precio=true (default).
+    await request(app).patch('/api/inventario/share-link').set(auth()).send({ mostrar_precio: true });
     const r = await request(app).get(`/publico/usados/${currentToken}`);
     const nombres = r.body.equipos.map(e => e.nombre);
     expect(nombres).toContain('iPhone Share Test Disponible');
     expect(nombres).not.toContain('iPhone Share Test Vendido');
     expect(nombres).not.toContain('iPhone Share Test Sin Precio');
     expect(nombres).not.toContain('iPhone Share Test Nuevo');
+  });
+
+  // 2026-07-11 (bug Lucas): si el tenant apagó "Mostrar precio de venta",
+  // los equipos SIN precio deberían aparecer igual (con "Consultar por
+  // WhatsApp" en el frontend). Antes se filtraban por precio_venta > 0
+  // → productos legacy sin precio no salían aunque el operador quisiera
+  // publicarlos sin monto.
+  it('con mostrar_precio=false: incluye equipos sin precio (aparecen igual)', async () => {
+    await request(app).patch('/api/inventario/share-link').set(auth()).send({ mostrar_precio: false });
+    const link = await request(app).get('/api/inventario/share-link').set(auth());
+    const tok = link.body.token;
+
+    const r = await request(app).get(`/publico/usados/${tok}`);
+    const nombres = r.body.equipos.map(e => e.nombre);
+    // El disponible con precio SÍ aparece.
+    expect(nombres).toContain('iPhone Share Test Disponible');
+    // Y el sin precio TAMBIÉN aparece ahora.
+    expect(nombres).toContain('iPhone Share Test Sin Precio');
+    // Los otros sí se siguen filtrando.
+    expect(nombres).not.toContain('iPhone Share Test Vendido');
+    expect(nombres).not.toContain('iPhone Share Test Nuevo');
+
+    // Restaurar default para no romper tests siguientes.
+    await request(app).patch('/api/inventario/share-link').set(auth()).send({ mostrar_precio: true });
   });
 
   it('respeta cache HTTP (max-age=60)', async () => {
