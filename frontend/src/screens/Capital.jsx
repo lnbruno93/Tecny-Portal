@@ -93,39 +93,36 @@ export default function Capital() {
   //
   // Auditoría 2026-06-30 F-02→05: el filtro de cajas usa monedaLocal (ARS para
   // tenants AR, UYU para UY) en vez de la cadena 'ARS' hardcodeada. Los
-  // campos del backend (inv_equipos_ars, saldo_ars, etc.) siguen llamándose
-  // `_ars` por compat con la API actual — para tenants UY el backend
-  // todavía devuelve estos campos en moneda local (UYU). El refactor del
-  // shape del API es scope separado (F-06 backend).
+  // campos del backend (`_ars`, saldo_ars, etc.) siguen llamándose `_ars`
+  // por compat con la API actual — para tenants UY el backend todavía devuelve
+  // estos campos en moneda local (UYU). El refactor del shape del API es
+  // scope separado (F-06 backend).
   const patrimonio = useMemo(() => {
     const n = (x) => Number(x || 0);
     const inv = metricas || {};
     const cajasLocal = cajasList.filter(c => c.moneda === monedaLocal).reduce((s, c) => s + n(c.saldo_actual), 0);
     const cajasUsd   = cajasList.filter(c => c.moneda === 'USD').reduce((s, c) => s + n(c.saldo_actual), 0);
     const cajasUsdt  = cajasList.filter(c => c.moneda === 'USDT').reduce((s, c) => s + n(c.saldo_actual), 0);
-    // Campos `_ars` del backend = moneda local del tenant (en AR son ARS,
-    // en UY el backend los rellena con UYU). Renombrar requiere migration de
-    // shape de la API; queda para F-06.
-    //
-    // F3-Fase2b (2026-07-09): "Stock valorizado" ahora se calcula desde
-    // `inv_por_clase[]` (post-Fase 2a) — reduce SUM sobre todas las
-    // categorías reales del tenant. El `+ en_tecnico_*` sigue igual
+    // F3-Fase2b (2026-07-09) → Fase2c (2026-07-11): "Stock valorizado" se
+    // calcula desde `inv_por_clase[]` (Fase 2a) — reduce SUM sobre todas
+    // las categorías reales del tenant. El `+ en_tecnico_*` sigue igual
     // (equipos en servicio técnico son parte del capital pero no del
     // desglose por-categoría del array).
     //
-    // Fallback: si el backend no devolvió `inv_por_clase` (versión previa
-    // desplegada) o devolvió redact (todas las filas con usd=null), caemos
-    // a los buckets legacy `inv_equipos_* + inv_accesorios_*`. Este fallback
-    // se retira en Fase 2c cuando los buckets legacy dejen de existir.
+    // 2026-07-11 Fase 2c: removido el fallback a `inv_equipos_*/inv_accesorios_*`.
+    // Backend ya no devuelve esos campos (sunset). Si por algún motivo el
+    // array llega vacío o todo redacted (usuario sin `inventario.ver_costos`),
+    // el reduce da 0 → Capital muestra 0 en vez de NaN. Es el comportamiento
+    // esperado post-Fase 2c.
     const filas = Array.isArray(inv.inv_por_clase) ? inv.inv_por_clase : [];
     const allRedactedUsd = filas.length > 0 && filas.every(r => r.usd === null);
     const allRedactedArs = filas.length > 0 && filas.every(r => r.ars === null);
-    const invLocal = (filas.length > 0 && !allRedactedArs)
-      ? filas.reduce((s, r) => s + n(r.ars), 0) + n(inv.en_tecnico_ars)
-      : n(inv.inv_equipos_ars) + n(inv.inv_accesorios_ars) + n(inv.en_tecnico_ars);
-    const invUsd = (filas.length > 0 && !allRedactedUsd)
-      ? filas.reduce((s, r) => s + n(r.usd), 0) + n(inv.en_tecnico_usd)
-      : n(inv.inv_equipos_usd) + n(inv.inv_accesorios_usd) + n(inv.en_tecnico_usd);
+    const invLocal = allRedactedArs
+      ? n(inv.en_tecnico_ars)
+      : filas.reduce((s, r) => s + n(r.ars), 0) + n(inv.en_tecnico_ars);
+    const invUsd = allRedactedUsd
+      ? n(inv.en_tecnico_usd)
+      : filas.reduce((s, r) => s + n(r.usd), 0) + n(inv.en_tecnico_usd);
     const deudasLocal = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_ars), 0);
     const deudasUsd   = (resumen.deudas || []).reduce((s, d) => s + n(d.saldo_usd), 0);
     const b2bUsd = n(ccGeneral.neto);

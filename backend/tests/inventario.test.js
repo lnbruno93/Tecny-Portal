@@ -271,20 +271,14 @@ describe('Foto del producto (lazy load)', () => {
 
 // ─── Métricas ────────────────────────────────────────────────
 describe('GET /api/inventario/productos/metricas', () => {
-  it('agrega inversión de accesorios disponibles en USD', async () => {
-    // Tras los tests previos queda 1 accesorio (AirPods Pro 3, 22 u × 150 USD = 3300)
-    const res = await request(app).get('/api/inventario/productos/metricas').set(auth());
-    expect(res.status).toBe(200);
-    expect(Number(res.body.accesorios_count)).toBe(22);
-    expect(Number(res.body.inv_accesorios_usd)).toBe(3300);
-  });
+  // 2026-07-11 F3-Fase2c: sunset de los campos legacy inv_equipos_* /
+  // inv_accesorios_* / equipos_count / accesorios_count. El desglose granular
+  // vive únicamente en `inv_por_clase[]` (Fase 2a). El response escalar
+  // ahora solo tiene: en_tecnico_{count,usd,ars} + stock_disponible +
+  // inv_por_clase[]. Test previo "agrega inversión de accesorios disponibles
+  // en USD" reemplazado por la verificación directa contra inv_por_clase[].
 
-  // Fase 2a (2026-07-09): además de los buckets legacy, el response ahora
-  // trae `inv_por_clase[]` con desglose granular por categoría del tenant.
-  // El test es auto-contenido: crea su propio producto y verifica shape +
-  // coherencia con el bucket legacy — no depende del state que dejan otros
-  // tests (aislamos para poder correr `-t "inv_por_clase"` en local).
-  it('inv_por_clase[]: shape correcto y coherente con los buckets legacy', async () => {
+  it('inv_por_clase[]: shape correcto y desglose por categoría del tenant', async () => {
     // 1) Crear un producto conocido para tener data determinística.
     //    Cargadores (7 u × 20 USD = 140 USD) — clase base, slug_legacy conocido.
     const create = await request(app).post('/api/inventario/productos').set(auth()).send({
@@ -312,17 +306,29 @@ describe('GET /api/inventario/productos/metricas', () => {
       expect(typeof row.count).toBe('number');
     }
 
-    // La suma de USD por-categoría debe equivaler a la suma de los buckets
-    // legacy (equipos + accesorios) — misma data agregada distinto.
-    const sumaCatUsd = res.body.inv_por_clase.reduce((s, r) => s + Number(r.usd || 0), 0);
-    const legacyUsd  = Number(res.body.inv_equipos_usd || 0) + Number(res.body.inv_accesorios_usd || 0);
-    expect(sumaCatUsd).toBeCloseTo(legacyUsd, 2);
-
     // Fila de cargadores existe con el count/usd exactos del producto recién creado.
     const cargadores = res.body.inv_por_clase.find(r => r.slug_legacy === 'cargadores');
     expect(cargadores).toBeDefined();
     expect(cargadores.count).toBeGreaterThanOrEqual(7);
     expect(Number(cargadores.usd)).toBeGreaterThanOrEqual(140);
+  });
+
+  it('Fase 2c: response NO incluye campos legacy inv_equipos_* / inv_accesorios_* / *_count', async () => {
+    const res = await request(app).get('/api/inventario/productos/metricas').set(auth());
+    expect(res.status).toBe(200);
+    // Los 6 campos legacy fueron removidos del SQL en Fase 2c.
+    expect(res.body).not.toHaveProperty('inv_equipos_usd');
+    expect(res.body).not.toHaveProperty('inv_equipos_ars');
+    expect(res.body).not.toHaveProperty('equipos_count');
+    expect(res.body).not.toHaveProperty('inv_accesorios_usd');
+    expect(res.body).not.toHaveProperty('inv_accesorios_ars');
+    expect(res.body).not.toHaveProperty('accesorios_count');
+    // Los campos que se mantienen.
+    expect(res.body).toHaveProperty('en_tecnico_count');
+    expect(res.body).toHaveProperty('en_tecnico_usd');
+    expect(res.body).toHaveProperty('en_tecnico_ars');
+    expect(res.body).toHaveProperty('stock_disponible');
+    expect(res.body).toHaveProperty('inv_por_clase');
   });
 });
 

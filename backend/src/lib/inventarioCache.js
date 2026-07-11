@@ -64,25 +64,32 @@ const logger = require('./logger');
 // 2026-07-09 Fase 2a KPIs reales: adicionamos `inv_por_clase[]` con el
 // desglose granular por categoría (1 fila por clase_id + 1 fila "sin
 // categoría" agrupando los productos con clase_id NULL). Los campos legacy
-// (inv_equipos_*, inv_accesorios_*, equipos_count, accesorios_count) siguen
-// devolviéndose sin cambios — la migración es aditiva. Sunset planeado en
-// Fase 2c cuando Inventario.jsx y Capital.jsx consuman inv_por_clase[].
-const EQUIPOS_CLASES = "('celular_sellado','celular_usado')";
+// (inv_equipos_*, inv_accesorios_*, equipos_count, accesorios_count) fueron
+// aditivos hasta Fase 2c.
+//
+// 2026-07-11 Fase 2c SUNSET: los 6 campos legacy se removieron. Frontend
+// Inventario.jsx + Capital.jsx llevan 2 días consumiendo inv_por_clase[]
+// como fuente primaria (F3-Fase2b merged 2026-07-09). El fallback path en
+// Capital.jsx que leía los legacy también se removió en este mismo PR.
+//
+// Campos que se MANTIENEN en el response:
+//   · en_tecnico_count / en_tecnico_usd / en_tecnico_ars — vertical "en
+//     técnico" es una categoría transversal (equipos en servicio), NO se
+//     desglosa por clase_id (van y vienen). Sigue como campo escalar.
+//   · stock_disponible — count total (SUM(cantidad) sobre disponibles),
+//     usado por la UI para el "Total unidades disponibles" del header.
+//   · inv_por_clase[] — desglose por categoría real (Fase 2a).
+//
+// Ya no necesitamos el LEFT JOIN a clases_producto en METRICAS_SQL — los
+// buckets equipos/accesorios que usaban slug_legacy IN (...) desaparecieron.
 const METRICAS_SQL = `
   SELECT
-    COUNT(*)                          FILTER (WHERE p.estado = 'en_tecnico')                                          AS en_tecnico_count,
-    COALESCE(SUM(p.costo)             FILTER (WHERE p.estado = 'en_tecnico' AND p.costo_moneda = 'USD'), 0)           AS en_tecnico_usd,
-    COALESCE(SUM(p.costo)             FILTER (WHERE p.estado = 'en_tecnico' AND p.costo_moneda = 'ARS'), 0)           AS en_tecnico_ars,
-    COALESCE(SUM(p.cantidad)          FILTER (WHERE p.estado = 'disponible'), 0)                                      AS stock_disponible,
-    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE cp.slug_legacy IN ${EQUIPOS_CLASES}      AND p.estado = 'disponible' AND p.costo_moneda = 'USD'), 0) AS inv_equipos_usd,
-    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE cp.slug_legacy IN ${EQUIPOS_CLASES}      AND p.estado = 'disponible' AND p.costo_moneda = 'ARS'), 0) AS inv_equipos_ars,
-    COALESCE(SUM(p.cantidad)           FILTER (WHERE cp.slug_legacy IN ${EQUIPOS_CLASES}      AND p.estado = 'disponible'), 0)              AS equipos_count,
-    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE (cp.slug_legacy IS NULL OR cp.slug_legacy NOT IN ${EQUIPOS_CLASES}) AND p.estado = 'disponible' AND p.costo_moneda = 'USD'), 0) AS inv_accesorios_usd,
-    COALESCE(SUM(p.costo * p.cantidad) FILTER (WHERE (cp.slug_legacy IS NULL OR cp.slug_legacy NOT IN ${EQUIPOS_CLASES}) AND p.estado = 'disponible' AND p.costo_moneda = 'ARS'), 0) AS inv_accesorios_ars,
-    COALESCE(SUM(p.cantidad)           FILTER (WHERE (cp.slug_legacy IS NULL OR cp.slug_legacy NOT IN ${EQUIPOS_CLASES}) AND p.estado = 'disponible'), 0)              AS accesorios_count
-  FROM productos p
-  LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
-  WHERE p.deleted_at IS NULL
+    COUNT(*)                          FILTER (WHERE estado = 'en_tecnico')                                          AS en_tecnico_count,
+    COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'USD'), 0)             AS en_tecnico_usd,
+    COALESCE(SUM(costo)               FILTER (WHERE estado = 'en_tecnico' AND costo_moneda = 'ARS'), 0)             AS en_tecnico_ars,
+    COALESCE(SUM(cantidad)            FILTER (WHERE estado = 'disponible'), 0)                                      AS stock_disponible
+  FROM productos
+  WHERE deleted_at IS NULL
 `;
 
 // 2026-07-09 Fase 2a: breakdown por categoría real. Una fila por `clase_id`
