@@ -64,6 +64,14 @@ const canjeSchema = z.object({
   condicion:             z.enum(['nuevo', 'usado']).optional().nullable(),
   precio_venta_sugerido: z.coerce.number().min(0).optional().nullable(),
   observaciones:         z.string().trim().max(1000).optional().nullable(),
+  // 2026-07-11: `producto_id` opcional — cuando la venta se está editando
+  // (PUT /ventas/:id) y el canje ya generó un producto en Inventario, el
+  // frontend lo envía para que el backend NO cree un producto nuevo (que
+  // fallaría con IMEI dup) sino que UPDATE el producto existente con los
+  // campos editables (clase_id, condicion, precio_venta, observaciones).
+  // Sin este flag el operador no podía cambiar la categoría del producto
+  // desde el modal de la venta post-canje (bug reportado por Lucas).
+  producto_id:           z.coerce.number().int().positive().optional().nullable(),
 });
 
 /* ── Venta ── */

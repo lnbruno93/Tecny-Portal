@@ -346,6 +346,11 @@ export default function Ventas() {
         clase_id: '', condicion: 'usado',
         precio_venta_sugerido: '', observaciones: '',
         _existing: true, // flag: este canje ya existe en DB, no se re-crea producto
+        // 2026-07-11: `producto_id` viene del backend (canjes.producto_id) — lo
+        // preservamos para el PUT y el backend actualiza el producto en vez
+        // de crear uno nuevo. Bug Lucas: no se podía editar la categoría del
+        // producto asociado a un canje.
+        producto_id: c.producto_id || null,
       })),
     });
     setCart((v.items || []).map(it => ({ _id: newItemId(), producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
@@ -787,11 +792,18 @@ export default function Ventas() {
         // 2026-07-11: `categoria_id` (Colección legacy) → `clase_id` (categoría
         // real F3, UUID). El backend valida que exista + pertenezca al tenant;
         // si no viene, deriva por condición como fallback (celular_sellado/usado).
+        //
+        // 2026-07-11 bug Lucas: si el canje ya está en Inventario (`_existing`),
+        // enviamos `producto_id` para que el backend UPDATE el producto asociado
+        // en vez de intentar crear uno nuevo (que fallaría con IMEI dup). Los
+        // campos clase_id/condicion/precio_venta_sugerido/observaciones que
+        // vengan editados se aplicarán al producto.
         if (c.agregar_stock) {
           if (c.clase_id)              base.clase_id              = String(c.clase_id);
           if (c.condicion)             base.condicion             = c.condicion;
           if (c.precio_venta_sugerido) base.precio_venta_sugerido = Number(c.precio_venta_sugerido);
           if (c.observaciones?.trim()) base.observaciones         = c.observaciones.trim();
+          if (c.producto_id)           base.producto_id           = Number(c.producto_id);
         }
         return base;
       });
@@ -1690,13 +1702,20 @@ export default function Ventas() {
                           {/* 2026-07-11: fuente cambiada de `categorias` (Colecciones
                               legacy) a `clases_producto` (categoría real F3). El
                               placeholder "— auto por condición —" comunica el fallback
-                              del backend cuando no se elige nada explícito. */}
+                              del backend cuando no se elige nada explícito.
+
+                              2026-07-11 (bug Lucas): categoria + precio_venta_sugerido
+                              + observaciones son EDITABLES aún si el canje ya está en
+                              Inventario (`_existing`). El backend detecta `producto_id`
+                              en el body y hace UPDATE del producto existente en vez de
+                              crear uno nuevo. Antes estaban `disabled={c._existing}`
+                              → el operador no podía cambiar la categoría del producto
+                              asociado desde el modal de edición de venta. */}
                           <div className="row" style={{ marginBottom: 8 }}>
                             <div className="field" style={{ flex: 1.5 }}>
                               <label className="field-label">Categoría</label>
                               <select className="input" value={c.clase_id}
-                                      onChange={e => setCanje(c._id, 'clase_id', e.target.value)}
-                                      disabled={c._existing}>
+                                      onChange={e => setCanje(c._id, 'clase_id', e.target.value)}>
                                 <option value="">— auto por condición —</option>
                                 {clasesInv.map(cat => (
                                   <option key={cat.id} value={cat.id}>
@@ -1710,10 +1729,13 @@ export default function Ventas() {
                               <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      placeholder="0 (editar en Inventario después)"
                                      value={c.precio_venta_sugerido}
-                                     onChange={e => setCanje(c._id, 'precio_venta_sugerido', e.target.value)}
-                                     disabled={c._existing} />
+                                     onChange={e => setCanje(c._id, 'precio_venta_sugerido', e.target.value)} />
                             </div>
                             <div className="field" style={{ flex: 0.8, alignSelf: 'end' }}>
+                              {/* El checkbox "A inventario" SÍ queda disabled en canjes
+                                  _existing — cambiar de true a false requeriría borrar
+                                  el producto asociado, y eso lo hacemos desde Inventario
+                                  (flow más seguro con confirmación). */}
                               <label className="flex-row" style={{ gap: 6, fontSize: 12, cursor: c._existing ? 'not-allowed' : 'pointer' }}>
                                 <input type="checkbox" checked={c.agregar_stock}
                                        disabled={c._existing}
@@ -1723,8 +1745,9 @@ export default function Ventas() {
                             </div>
                           </div>
 
-                          {/* Fila 4: observaciones (solo si va a inventario, sino no aporta) */}
-                          {c.agregar_stock && !c._existing && (
+                          {/* Fila 4: observaciones editables también en _existing.
+                              2026-07-11 (bug Lucas): quitamos el gate `!c._existing`. */}
+                          {c.agregar_stock && (
                             <div className="field">
                               <label className="field-label">Observaciones (opcional)</label>
                               <input className="input" placeholder="Pantalla sin raspones, caja original, batería al 87%"
