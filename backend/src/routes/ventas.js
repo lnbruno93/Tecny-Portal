@@ -327,23 +327,51 @@ async function insertarDetalle(client, venta, b, ctx = {}) {
       // usado (así lo asumía la lógica original con `condicion ?? 'usado'`). Si
       // el cliente envía `condicion: 'nuevo'` el canje se registra como celular
       // sellado; sino cae a `celular_usado`. Los canjes de otros tipos de producto
-      // (watch, ipad, etc.) son raros — si aparece el caso, el operador puede
-      // re-clasificar desde Inventario.
+      // (watch, ipad, etc.) son raros — el operador podía re-clasificar desde
+      // Inventario, pero era un extra step molesto.
       //
       // 2026-07-09 F3.d-3: `productos.clase` VARCHAR dropeada — resolvemos
       // `clase_id` UUID desde `clases_producto.slug_legacy` para el tenant
       // actual. La fila base viene del seed (F3.a) — siempre existe para
       // tenants creados via signup/superAdmin.
+      //
+      // 2026-07-11: el frontend ahora permite elegir `clase_id` explícito
+      // desde el select "Categoría" del canje (F3-post fix — antes cargaba
+      // Colecciones y quedaba vacío para tenants sin colecciones). Si el
+      // body trae `clase_id`, lo usamos tal cual (validando que exista +
+      // pertenezca al tenant). Si no viene, caemos al auto-derive por
+      // condición como hasta ahora (compat con clientes viejos + default
+      // razonable).
       const condicionCanje = c.condicion ?? 'usado';
-      const slugCanje = condicionCanje === 'nuevo' ? 'celular_sellado' : 'celular_usado';
-      const { rows: claseRows } = await client.query(
-        `SELECT id FROM clases_producto
-          WHERE tenant_id = $1 AND slug_legacy = $2 AND es_base = true
-            AND deleted_at IS NULL
-          LIMIT 1`,
-        [ctx.tenantId, slugCanje]
-      );
-      const claseIdCanje = claseRows[0]?.id ?? null;
+      let claseIdCanje = null;
+      if (c.clase_id) {
+        // Path nuevo: operador eligió categoría explícita en el select.
+        const { rows: explicit } = await client.query(
+          `SELECT id FROM clases_producto
+            WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+            LIMIT 1`,
+          [c.clase_id, ctx.tenantId]
+        );
+        if (explicit[0]) {
+          claseIdCanje = explicit[0].id;
+        } else {
+          // clase_id no matcheó del tenant — no rompemos la venta, caemos
+          // al derive por condición (defensa contra clase eliminada race
+          // condition entre load del catálogo y save).
+        }
+      }
+      if (!claseIdCanje) {
+        // Path legacy / fallback: derive por condición.
+        const slugCanje = condicionCanje === 'nuevo' ? 'celular_sellado' : 'celular_usado';
+        const { rows: claseRows } = await client.query(
+          `SELECT id FROM clases_producto
+            WHERE tenant_id = $1 AND slug_legacy = $2 AND es_base = true
+              AND deleted_at IS NULL
+            LIMIT 1`,
+          [ctx.tenantId, slugCanje]
+        );
+        claseIdCanje = claseRows[0]?.id ?? null;
+      }
       const { rows: pr } = await client.query(
         `INSERT INTO productos (
             tipo_carga, clase_id, nombre, imei, gb, color, bateria,
