@@ -185,16 +185,31 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
   const userId = req.user.id;
   const body = req.body;
 
-  // A. Sanity check del total. ±0.01 por floating point rounding.
+  // A. Sanity check del total + cómputo server-side del total definitivo.
+  //
+  // 2026-07-11 (auditoría Red B2B P1-2): el server aceptaba `body.total_usd`
+  // como source of truth si estaba dentro de ±0.01 de `sumUsd`. Un cliente
+  // malicioso podía mandar `body.total_usd = round2(sumUsd) - 0.005` → la
+  // deuda del buyer se reducía 1 centavo por op. 1 op = indetectable a mano.
+  // 10K ops = 100 USD que el seller nunca cobra.
+  //
+  // Fix: computar los totales server-side desde items + tc y PERSISTIR
+  // esos valores en todas las tablas (cross_tenant_operations, movimientos_cc,
+  // proveedor_movimientos). El sanity check body vs sumUsd se MANTIENE como
+  // defense-in-depth para catchar bugs de un cliente honesto (mismatch grande
+  // → 400 con detalle para debugging), pero ya no gobierna la persistencia.
   const sumUsd = body.items.reduce(
     (acc, it) => acc + Number(it.precio_usd) * Number(it.cantidad),
     0
   );
-  if (Math.abs(round2(sumUsd) - round2(body.total_usd)) > 0.01) {
+  const totalUsdServer = round2(sumUsd);
+  const totalArsServer = round2(sumUsd * Number(body.tc));
+
+  if (Math.abs(totalUsdServer - round2(body.total_usd)) > 0.01) {
     return res.status(400).json({
       error: 'El total USD no coincide con la suma de los items.',
       reason: 'total_usd_mismatch',
-      details: { sum_items: round2(sumUsd), declared: round2(body.total_usd) },
+      details: { sum_items: totalUsdServer, declared: round2(body.total_usd) },
     });
   }
 
@@ -235,8 +250,9 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
           sellerResult = await createSellerVenta(client, myTenantId, {
             items: body.items,
             tc: body.tc,
-            total_usd: body.total_usd,
-            total_ars: body.total_ars,
+            // P1-2: server-computed. No confiamos en body.total_*.
+            total_usd: totalUsdServer,
+            total_ars: totalArsServer,
             notes: body.notes,
             callerUserId: userId,
             buyerTenant,
@@ -298,7 +314,8 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         // los ve). El helper deja una nota explicando.
         const buyerResult = await createBuyerCompra(client, buyerTenantId, {
           mappedItems,
-          total_usd: body.total_usd,
+          // P1-2: server-computed. No confiamos en body.total_usd.
+          total_usd: totalUsdServer,
           notes: body.notes,
           callerUserId: userId,
           sellerTenant,
@@ -320,8 +337,9 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
             buyerTenantId,
             sellerResult.movimientoCcId,
             buyerResult.proveedorMovimientoId,
-            round2(body.total_usd),
-            round2(body.total_ars),
+            // P1-2: server-computed. No confiamos en body.total_*.
+            totalUsdServer,
+            totalArsServer,
             Number(body.tc),
             userId,
           ]
@@ -373,6 +391,10 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         );
 
         // J. Notif al buyer (mantiene SET LOCAL buyer del bloque anterior).
+        // 2026-07-11 (P1-2): usar totales server-computed en la notif — si un
+        // caller malicioso mandó body.total_* manipulado, el buyer vería en la
+        // notif "$X - 0.01" y podría responder pagando ese valor (perpetuando
+        // el hueco por el circuito notif → pago). Total server = fuente única.
         await notify(
           client,
           buyerTenantId,
@@ -380,8 +402,8 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
           {
             partner: tenantSnapshot(sellerTenant),
             operation_id: crossOp.id,
-            total_usd: round2(body.total_usd),
-            total_ars: round2(body.total_ars),
+            total_usd: totalUsdServer,
+            total_ars: totalArsServer,
             items_count: body.items.length,
             from_user_id: userId,
             from_username: req.user.username,
@@ -399,7 +421,9 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
             operation_id: crossOp.id,
             partnership_id: partnership.id,
             buyer_tenant_id: buyerTenantId,
-            total_usd: round2(body.total_usd),
+            // P1-2: total server-computed. El audit debe reflejar el número
+            // real persistido, no el declarado por el cliente.
+            total_usd: totalUsdServer,
             items_count: body.items.length,
           },
         });
@@ -435,14 +459,16 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
     invalidateMetricas(result.buyerTenant.id).catch(() => { /* best-effort */ });
 
     // F5 #458: email al buyer (gated por operation_received).
+    // P1-2: los totales del email son los server-computed (idem notif — evita
+    // que un caller malicioso muestre al buyer un total menor via canal email).
     setImmediate(() => {
       redB2bEmail.dispatch({
         tenantId: result.buyerTenant.id,
         type:     'operation_received',
         args: {
           partnerNombre: result.sellerTenant?.nombre || `Tenant #${myTenantId}`,
-          totalUsd:      round2(body.total_usd),
-          totalArs:      round2(body.total_ars),
+          totalUsd:      totalUsdServer,
+          totalArs:      totalArsServer,
           itemsCount:    body.items.length,
           operationId:   result.operation.id,
         },
@@ -456,7 +482,8 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         buyer_tenant_id: result.buyerTenant.id,
         partnership_id: result.partnership.id,
         user_id: userId,
-        total_usd: round2(body.total_usd),
+        // P1-2: el log estructurado debe reflejar el total real persistido.
+        total_usd: totalUsdServer,
         items_count: body.items.length,
       },
       '[red-b2b] cross-tenant operation creada'
@@ -472,8 +499,12 @@ router.post('/', validate(createOperationSchema), async (req, res, next) => {
         my_side: 'seller',
         seller_venta_id: result.sellerResult.movimientoCcId,
         buyer_compra_id: result.buyerResult.proveedorMovimientoId,
-        total_usd: round2(body.total_usd),
-        total_ars: round2(body.total_ars),
+        // P1-2: response 201 devuelve el total server-computed (fuente única).
+        // Si el frontend mandó body.total_* distinto, el response se lo
+        // corrige — un cliente honesto puede detectar el mismatch y avisar
+        // (aunque el sanity check de 400 ya cortaría bugs grandes).
+        total_usd: totalUsdServer,
+        total_ars: totalArsServer,
         tc_used: Number(body.tc),
         items_count: body.items.length,
       },
