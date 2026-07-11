@@ -1547,8 +1547,15 @@ export default function Inventario() {
               <h3 id="prod-modal-title">{editId ? 'Editar producto' : 'Agregar producto'}</h3>
               <button type="button" className="icon-btn" onClick={() => setShowForm(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
-            <form onSubmit={handleSave}>
-              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {/* 2026-07-11: form como flex-column con flex:1 + minHeight:0 para
+                que la cadena flex del .modal (display:flex column + max-height:
+                calc(100svh - 48px) + overflow:hidden) se propague al .modal-body.
+                Antes usábamos `maxHeight: '70vh'` inline como workaround, pero
+                clava el body al 70% del viewport. Con el form flex, el
+                .modal-body.flex:1 + overflow-y:auto del base CSS scrollea
+                automáticamente. Ver Envios.jsx modal para el fix inicial. */}
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
@@ -1712,7 +1719,11 @@ export default function Inventario() {
               <h3>Importar stock desde planilla</h3>
               <button type="button" className="icon-btn" onClick={() => setShowImport(false)} disabled={importing} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
-            <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+            {/* 2026-07-11: removido maxHeight:75vh + overflowY:auto — el .modal
+                ya es flex column con max-height calc(100svh - 48px), y el
+                .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
+                directo del .modal (sin form wrapper), scroll interno automático. */}
+            <div className="modal-body">
               <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
                 Subí un <strong>.xlsx</strong> o <strong>.csv</strong>. La columna <strong>proveedor</strong> define el agrupamiento:
                 cada proveedor distinto se vuelve <strong>una compra</strong> en su CC, con sus productos como ítems trazables.
@@ -1974,7 +1985,11 @@ export default function Inventario() {
               <h3>Depósitos</h3>
               <button type="button" className="icon-btn" onClick={() => setShowCatalogos(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button>
             </div>
-            <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            {/* 2026-07-11: removido maxHeight:70vh + overflowY:auto — el .modal
+                ya es flex column con max-height calc(100svh - 48px), y el
+                .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
+                directo del .modal (sin form wrapper), scroll interno automático. */}
+            <div className="modal-body">
               {/* 2026-07-11: la sección "Colecciones" (tabla legacy `categorias`)
                   se movió al modal "Categorías" (CategoriasProductoModal). Este
                   modal ahora es dedicado a Depósitos (físico) — más scope claro
@@ -2033,7 +2048,11 @@ export default function Inventario() {
                   <Icons.X size={16} />
                 </button>
               </div>
-              <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* 2026-07-11: removido maxHeight:70vh + overflowY:auto — el .modal
+                  ya es flex column con max-height calc(100svh - 48px), y el
+                  .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
+                  directo del .modal (sin form wrapper), scroll interno automático. */}
+              <div className="modal-body">
                 {/* Tabs simples (Detalle | Historial) usando el componente Seg. */}
                 <HistorialModalContent
                   producto={producto}

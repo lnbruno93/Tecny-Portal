@@ -458,8 +458,14 @@ export default function Usuarios() {
                 <Icons.X size={16} />
               </button>
             </div>
-            <form onSubmit={handleCreate}>
-              <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto' }}>
+            {/* 2026-07-11: form como flex-column con flex:1 + minHeight:0 para
+                que la cadena flex del .modal (display:flex column + max-height:
+                calc(100svh - 48px) + overflow:hidden) se propague al .modal-body.
+                Antes usábamos `maxHeight: '72vh'` inline como workaround. Con el
+                form flex, el .modal-body.flex:1 + overflow-y:auto del base CSS
+                scrollea automáticamente. Ver Envios.jsx modal para el fix inicial. */}
+            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div className="modal-body">
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
