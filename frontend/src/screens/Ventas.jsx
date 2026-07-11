@@ -72,10 +72,14 @@ const EMPTY_VENTA = {
 };
 
 // Forma de un canje vacío para usar como template al "+ Agregar equipo".
+// 2026-07-11: `categoria_id` (Colección legacy) → `clase_id` (categoría real
+// F3: Celular Sellado/Usado, Watch, iPads, Auriculares, etc.). Antes del fix
+// el select cargaba `categorias` legacy que estaba vacío para tenants sin
+// colecciones creadas — fricción reportada por Lucas.
 const EMPTY_CANJE = {
   descripcion: '', imei: '', gb: '', color: '', bateria: '',
   valor_toma: '', moneda: 'USD', agregar_stock: true,
-  categoria_id: '', condicion: 'usado',
+  clase_id: '', condicion: 'usado',
   precio_venta_sugerido: '', observaciones: '',
 };
 
@@ -155,9 +159,14 @@ export default function Ventas() {
   // Catálogos
   const [vendedores, setVendedores] = useState([]);
   const [etiquetas, setEtiquetas] = useState([]);
-  // Categorías de Inventario — usadas en el picker del canje (junio 2026)
-  // para que un equipo tomado entre directo en su categoría correcta.
-  const [categoriasInv, setCategoriasInv] = useState([]);
+  // Clases de producto (F3.a) — categorías reales por tenant, editables,
+  // con emoji. Se usan en el picker del canje para que un equipo tomado
+  // entre directo en su categoría correcta.
+  // 2026-07-11: reemplaza el uso previo de `categoriasInv` (Colecciones
+  // legacy, tabla `categorias`) — quedaba vacío para tenants sin
+  // colecciones creadas y no era la dimensión semánticamente correcta
+  // post-F3.
+  const [clasesInv, setClasesInv] = useState([]);
   const [metodos, setMetodos] = useState([]);
   // Tema C en-vivo (2026-06-13): porcentaje global de Financiera (`config.pct_financiera`).
   // Lo usamos en el preview de ganancia real para descontar comisión de pagos por
@@ -235,10 +244,10 @@ export default function Ventas() {
     // con pct_financiera, lo tratamos como 0 y el preview de ganancia real
     // simplemente no descuenta Financiera (igual que pre-Tema C).
     const safeCfg = (p) => p.then(r => r).catch(() => ({}));
-    const [v, e, m, g, cc, ct, cats, cfg] = await Promise.all([
+    const [v, e, m, g, cc, ct, cls, cfg] = await Promise.all([
       safe(vendedoresApi.list()), safe(ventas.etiquetas()), safe(ventas.metodosPago()), safe(ventas.garantias()), safe(cuentasApi.clientes()), safe(contactosApi.list()),
-      safe(inventario.categorias()), // categorías para el picker del canje (junio 2026)
-      safeCfg(configApi.get()),      // pct_financiera para el preview Tema C
+      safe(inventario.clases()), // clases_producto para el picker del canje (F3 real)
+      safeCfg(configApi.get()),  // pct_financiera para el preview Tema C
     ]);
     // Los endpoints paginados devuelven { data, pagination }. Usamos un
     // unwrap defensivo: si vino array (endpoint no-paginado o vacío), tomar
@@ -247,7 +256,9 @@ export default function Ventas() {
     const ccArr = unwrap(cc);
     const ctArr = unwrap(ct); // post-audit: contactos ahora paginado
     setVendedores(v); setEtiquetas(e); setMetodos(m); setGarantias(g); setClientesCC(ccArr); setContactos(ctArr);
-    setCategoriasInv(unwrap(cats));
+    // Filtramos: solo activas y no "Sin categoría" (esa es fallback interno del
+    // import XLSX, no una opción real para el operador).
+    setClasesInv(unwrap(cls).filter(c => c.activa && !c.es_sin_categoria));
     setPctFinanciera(Number(cfg?.pct_financiera) || 0);
   }, []);
 
@@ -324,7 +335,7 @@ export default function Ventas() {
         imei: c.imei || '', gb: c.gb || '', color: c.color || '', bateria: c.bateria ?? '',
         valor_toma: c.valor_toma || '', moneda: c.moneda || 'USD',
         agregar_stock: !!c.producto_id, // si ya tiene producto_id, está en Inventario
-        categoria_id: '', condicion: 'usado',
+        clase_id: '', condicion: 'usado',
         precio_venta_sugerido: '', observaciones: '',
         _existing: true, // flag: este canje ya existe en DB, no se re-crea producto
       })),
@@ -765,8 +776,11 @@ export default function Ventas() {
           agregar_stock: !!c.agregar_stock,
         };
         // Solo enviamos los campos extra si va a Inventario (sino no aportan nada).
+        // 2026-07-11: `categoria_id` (Colección legacy) → `clase_id` (categoría
+        // real F3, UUID). El backend valida que exista + pertenezca al tenant;
+        // si no viene, deriva por condición como fallback (celular_sellado/usado).
         if (c.agregar_stock) {
-          if (c.categoria_id)          base.categoria_id          = Number(c.categoria_id);
+          if (c.clase_id)              base.clase_id              = String(c.clase_id);
           if (c.condicion)             base.condicion             = c.condicion;
           if (c.precio_venta_sugerido) base.precio_venta_sugerido = Number(c.precio_venta_sugerido);
           if (c.observaciones?.trim()) base.observaciones         = c.observaciones.trim();
@@ -1665,15 +1679,21 @@ export default function Ventas() {
                           </div>
 
                           {/* Fila 3: categoría + precio sugerido + a inventario */}
+                          {/* 2026-07-11: fuente cambiada de `categorias` (Colecciones
+                              legacy) a `clases_producto` (categoría real F3). El
+                              placeholder "— auto por condición —" comunica el fallback
+                              del backend cuando no se elige nada explícito. */}
                           <div className="row" style={{ marginBottom: 8 }}>
                             <div className="field" style={{ flex: 1.5 }}>
-                              <label className="field-label">Categoría Inventario</label>
-                              <select className="input" value={c.categoria_id}
-                                      onChange={e => setCanje(c._id, 'categoria_id', e.target.value)}
+                              <label className="field-label">Categoría</label>
+                              <select className="input" value={c.clase_id}
+                                      onChange={e => setCanje(c._id, 'clase_id', e.target.value)}
                                       disabled={c._existing}>
-                                <option value="">— sin asignar —</option>
-                                {categoriasInv.map(cat => (
-                                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                                <option value="">— auto por condición —</option>
+                                {clasesInv.map(cat => (
+                                  <option key={cat.id} value={cat.id}>
+                                    {cat.emoji ? `${cat.emoji} ${cat.nombre}` : cat.nombre}
+                                  </option>
                                 ))}
                               </select>
                             </div>

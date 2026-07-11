@@ -26,11 +26,17 @@ vi.mock('../lib/api', () => {
     },
     inventario: {
       productos: vi.fn().mockResolvedValue(paginated),
-      // Categorías usadas en el picker del canje (junio 2026).
-      categorias: vi.fn().mockResolvedValue([
-        { id: 1, nombre: 'iPhone usado' },
-        { id: 2, nombre: 'iPhone nuevo' },
+      // 2026-07-11: el picker del canje ahora consume `clases_producto`
+      // (categoría real F3, con emoji + editable por tenant) en vez de
+      // `categorias` (Colecciones legacy). El mock ahora refleja el shape
+      // real de /api/inventario/clases: incluye emoji, activa, es_sin_categoria.
+      clases: vi.fn().mockResolvedValue([
+        { id: '11111111-1111-1111-1111-111111111111', nombre: 'Celular Sellado', emoji: '📱', activa: true, es_sin_categoria: false, slug_legacy: 'celular_sellado' },
+        { id: '22222222-2222-2222-2222-222222222222', nombre: 'Celular Usado', emoji: '♻️', activa: true, es_sin_categoria: false, slug_legacy: 'celular_usado' },
       ]),
+      // categorias sigue mockeado por si otras vistas lo usan (Colecciones
+      // legacy en Inventario, etc.). Post-#554 Ventas ya no lo consume.
+      categorias: vi.fn().mockResolvedValue([]),
     },
     vendedores: { list: vi.fn().mockResolvedValue([]) },
     cuentas: { clientes: vi.fn().mockResolvedValue(paginated) },
@@ -110,7 +116,9 @@ describe('Pantalla Ventas', () => {
     expect(screen.getByPlaceholderText('35...')).toBeInTheDocument();
     expect(screen.getByText('Valor toma (USD)')).toBeInTheDocument();
     expect(screen.getByText('% Batería')).toBeInTheDocument();
-    expect(screen.getByText('Categoría Inventario')).toBeInTheDocument();
+    // 2026-07-11: label renombrado de "Categoría Inventario" (Colecciones legacy)
+    // a "Categoría" (clases_producto real F3).
+    expect(screen.getByText('Categoría')).toBeInTheDocument();
     // "A inventario" arranca tildado (default = true para canjes nuevos).
     const aInvCheckbox = screen.getByLabelText('A inventario');
     expect(aInvCheckbox.checked).toBe(true);

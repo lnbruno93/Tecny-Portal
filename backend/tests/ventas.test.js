@@ -126,6 +126,62 @@ describe('POST /api/ventas', () => {
     expect(p.observaciones).toContain('Ingresado por canje');
   });
 
+  // 2026-07-11: nuevo path — canje con `clase_id` explícito (F3). El
+  // frontend ahora envía la categoría real que el operador seleccionó en
+  // el select "Categoría" del canje. El backend acepta el UUID + valida que
+  // exista y pertenezca al tenant. Antes solo se derivaba por condición.
+  it('canje con clase_id explícito → producto queda con esa clase (no la derivada)', async () => {
+    // Tomamos el UUID de "Watch" (base seed) — arbitrario, cualquier clase
+    // que NO sea celular_sellado/usado sirve para verificar que ganó el
+    // clase_id explícito por sobre el auto-derive por condición.
+    const clasesList = await request(app).get('/api/inventario/clases').set(auth());
+    const watch = clasesList.body.find(c => c.slug_legacy === 'watch');
+    expect(watch).toBeDefined();
+
+    const imei = '902' + Date.now().toString().slice(-12);
+    const res = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 800, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'Apple Watch S9', imei,
+        valor_toma: 200, moneda: 'USD', agregar_stock: true,
+        clase_id: watch.id,     // ← path nuevo: el operador eligió "Watch"
+        condicion: 'usado',      // ← si el backend derivase, sería celular_usado
+      }],
+    });
+    expect(res.status).toBe(201);
+
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    const p = inv.body.data[0];
+    // Verificar que ganó el clase_id explícito, NO el derive de condicion=usado.
+    expect(p.clase_id).toBe(watch.id);
+    expect(p.clase).toBe('watch');
+  });
+
+  // Fallback path: sin clase_id explícito, backend deriva por condición.
+  it('canje sin clase_id + condicion=usado → producto queda como celular_usado (derive)', async () => {
+    const clasesList = await request(app).get('/api/inventario/clases').set(auth());
+    const celUsado = clasesList.body.find(c => c.slug_legacy === 'celular_usado');
+    expect(celUsado).toBeDefined();
+
+    const imei = '903' + Date.now().toString().slice(-12);
+    await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone 16', cantidad: 1, precio_vendido: 900, costo: 750, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone 12 usado', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+        // clase_id: undefined → backend deriva
+      }],
+    });
+
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data).toHaveLength(1);
+    expect(inv.body.data[0].clase_id).toBe(celUsado.id);
+  });
+
   it('canje con agregar_stock=false NO crea producto en Inventario', async () => {
     const imei = '901' + Date.now().toString().slice(-12);
     await request(app).post('/api/ventas').set(auth()).send({

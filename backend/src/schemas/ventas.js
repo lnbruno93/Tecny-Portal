@@ -34,6 +34,18 @@ const ventaPagoSchema = z.object({
 // Junio 2026: ampliado para capturar TODOS los campos que necesita el producto
 // al ingresar a Inventario (antes solo capturábamos descripcion + valor_toma →
 // el producto quedaba con campos clave en NULL, no era usable hasta editarlo).
+//
+// 2026-07-11: se agregó `clase_id` (UUID, F3.a — categoría real por tenant).
+// El operador puede elegir la categoría desde el select del canje (default:
+// null → backend deriva 'celular_sellado'/'celular_usado' por condicion como
+// hasta ahora, preservando compat). `categoria_id` (Colección legacy) sigue
+// aceptado como opcional para no romper clientes viejos, pero el frontend ya
+// no lo envía (Colección se sunseteó de la UI en PR #554).
+const uuidLoose = z.string().regex(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  'clase_id inválido'
+);
+
 const canjeSchema = z.object({
   descripcion:    z.string().trim().min(1, 'Descripción del canje requerida').max(300),
   imei:           z.string().trim().max(50).optional().nullable(),
@@ -47,6 +59,7 @@ const canjeSchema = z.object({
   // Estos NO se persisten en la tabla `canjes` — solo viajan al INSERT
   // `productos` cuando se crea el item en Inventario. El backend los ignora
   // si agregar_stock=false (no rompe, solo se pierden).
+  clase_id:              uuidLoose.optional().nullable(),
   categoria_id:          z.coerce.number().int().positive().optional().nullable(),
   condicion:             z.enum(['nuevo', 'usado']).optional().nullable(),
   precio_venta_sugerido: z.coerce.number().min(0).optional().nullable(),
