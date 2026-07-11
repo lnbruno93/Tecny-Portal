@@ -20,7 +20,8 @@ import { mapStockRows, extractNewCatalogos, groupRowsByProveedor, buildBulkMovim
 const isUuid = (s) => typeof s === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 import { useDebouncedValue } from '../lib/useDebouncedValue';
-import { usePageActions } from '../contexts/PageActionsContext';
+// 2026-07-11: usePageActions removido — la acción "Agregar producto" volvió
+// al toolbar de la página como botón con texto (revert parcial de #553).
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner gating
@@ -164,7 +165,9 @@ export default function Inventario() {
   // 2026-06-29 Multi-país F3: monedas operativas del tenant. Si pais=UY,
   // los dropdowns de costo_moneda/precio_moneda muestran UYU en vez de ARS.
   const { monedas, monedaLocal } = useMonedasTenant();
-  const { setPrimaryAction } = usePageActions();
+  // 2026-07-11 (revert parcial de #553): setPrimaryAction ya no se usa acá.
+  // Volvimos "Agregar producto" al toolbar de la página (single entry point,
+  // preferencia del PO). El `+` global del topbar ya no aparece en /inventario.
 
   const [productos, setProductos] = useState([]);
   const [metricas, setMetricas] = useState(null);
@@ -561,14 +564,10 @@ export default function Inventario() {
     }
   }
 
-  useEffect(() => {
-    // #500: sin cap crear, no exponer la acción en el header (mobile).
-    if (canCreateProducto) {
-      setPrimaryAction({ label: 'Agregar producto', onClick: openCreate });
-    }
-    return () => setPrimaryAction(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setPrimaryAction, canCreateProducto]);
+  // 2026-07-11: el useEffect que registraba setPrimaryAction({ Agregar producto })
+  // se removió. La acción vive de nuevo en el toolbar de la página como botón
+  // con texto (#500-post: se preserva el check de canCreateProducto en el
+  // render del botón). El `+` del topbar (Shell) queda oculto en /inventario.
 
   async function handleSave(e) {
     e.preventDefault();
@@ -1059,13 +1058,23 @@ export default function Inventario() {
 
 
       {/* Toolbar de acciones — fila dedicada, sin pelearse con el header.
-          Los botones se distribuyen: refresh/data ops a la izquierda,
-          destructivos al medio, primary action a la derecha.
+          Los botones se distribuyen: primary + refresh/data ops a la izquierda,
+          destructivos al final.
           2026-06-24 mobile: en <=640px se ocultan los 7 botones secundarios
           (plantillas, importar, exportar, categorías, vaciar stock) vía
           .mobile-hide; quedan solo Actualizar + Agregar producto. El resto
-          se accede desde desktop hasta que decidamos un menú overflow. */}
+          se accede desde desktop hasta que decidamos un menú overflow.
+          2026-07-11: "Agregar producto" volvió acá como primary action.
+          Anteriormente (post-#553) vivía en `setPrimaryAction` (`+` en topbar).
+          El PO prefiere el botón con texto en el toolbar de la pantalla —
+          ahora no hay problema de wrap porque redujimos la cantidad de
+          botones secundarios en #553/#554. */}
       <div className="page-actions" style={{ marginBottom: 18, justifyContent: 'flex-start' }}>
+        {canCreateProducto && (
+          <button className="btn btn-primary" onClick={openCreate}>
+            <Icons.Plus size={14} /> Agregar producto
+          </button>
+        )}
         <button className="btn" onClick={() => { loadProductos(); loadMetricas(); }}>
           <Icons.Refresh size={14} /> Actualizar
         </button>
@@ -1106,14 +1115,6 @@ export default function Inventario() {
             <Icons.Trash size={14} /> Vaciar stock + compras
           </button>
         )}
-        {/* 2026-07-11: el botón "Agregar producto" se removió de la toolbar.
-            Ya existe como acción primaria persistente en el header contextual
-            (vía `setPrimaryAction` línea ~570) — aparece arriba a la derecha,
-            al lado de "Desglose 360 →". Sacarlo de acá:
-              · Evita que quede descolgado en la siguiente fila cuando el
-                flex-wrap se activa (bug reportado por Lucas).
-              · Consolida la acción primaria en un solo lugar visual.
-              · Toolbar queda como acciones secundarias / destructivas. */}
       </div>
 
       {/* ── KPIs ── */}

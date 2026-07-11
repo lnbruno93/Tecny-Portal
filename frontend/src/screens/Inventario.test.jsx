@@ -117,12 +117,15 @@ describe('Pantalla Inventario', () => {
 
   it('abre modal "Agregar producto" sin crashear', async () => {
     // #500: el botón "Agregar producto" requiere inventario.crear.
-    // Sin esa cap, setPrimaryAction no se llama y el ActionTrigger
-    // no renderiza el botón — el findByText('__abrir__') falla.
+    // Sin esa cap, no se renderiza el botón del toolbar ni el del empty state.
+    // 2026-07-11: el botón vive de nuevo en el toolbar (revert parcial de #553);
+    // buscamos por rol "button" con match textual. Empty state también renderiza
+    // uno cuando productos.length===0 y hay cap → tomamos el primero.
     mockUser.value = { id: 1, caps: ['inventario.crear'] };
     renderInventario();
     await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-    fireEvent.click(await screen.findByText('__abrir__'));
+    const addBtns = await screen.findAllByRole('button', { name: /Agregar producto/i });
+    fireEvent.click(addBtns[0]);
     // El header del modal es "Agregar producto" cuando editId=null.
     expect(await screen.findByRole('heading', { name: 'Agregar producto' })).toBeInTheDocument();
     // El campo Nombre es obligatorio → siempre renderizado.
@@ -176,7 +179,8 @@ describe('Pantalla Inventario', () => {
     mockUser.value = { id: 1, caps: ['inventario.crear'], tenant: { pais: 'UY', moneda_local: 'UYU' } };
     renderInventario();
     await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-    fireEvent.click(await screen.findByText('__abrir__'));
+    const addBtnsUY = await screen.findAllByRole('button', { name: /Agregar producto/i });
+    fireEvent.click(addBtnsUY[0]);
     await screen.findByRole('heading', { name: 'Agregar producto' });
     // El form tiene 2 selects con valor inicial 'USD' (defaults del form).
     // Buscamos todos los <option> que pertenezcan a un select con value USD/UYU.
@@ -191,7 +195,8 @@ describe('Pantalla Inventario', () => {
     mockUser.value = { id: 1, caps: ['inventario.crear'], tenant: { pais: 'AR', moneda_local: 'ARS' } };
     renderInventario();
     await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
-    fireEvent.click(await screen.findByText('__abrir__'));
+    const addBtnsAR = await screen.findAllByRole('button', { name: /Agregar producto/i });
+    fireEvent.click(addBtnsAR[0]);
     await screen.findByRole('heading', { name: 'Agregar producto' });
     const opts = Array.from(document.querySelectorAll('select option'));
     const monedas = opts.map(o => o.value).filter(v => v === 'UYU' || v === 'ARS');
