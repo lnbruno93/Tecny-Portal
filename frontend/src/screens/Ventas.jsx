@@ -1350,8 +1350,16 @@ export default function Ventas() {
             aria-labelledby="venta-modal-title"
           >
             <div className="modal-hd"><h3 id="venta-modal-title">{editId ? 'Editar venta' : procRapidaId ? 'Procesar venta rápida' : 'Nueva venta'}</h3><button type="button" className="icon-btn" onClick={() => setShowVenta(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
-            <form onSubmit={handleSaveVenta}>
-              <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
+            {/* 2026-07-11: form como flex-column con flex:1 + minHeight:0 para
+                que la cadena flex del .modal (display:flex column + max-height:
+                calc(100svh - 48px) + overflow:hidden) se propague al .modal-body.
+                Antes usábamos `maxHeight: '74vh'` inline como workaround, pero
+                clava el body al 74% del viewport (queda chico en desktop grande,
+                apretado en mobile con la barra Safari). Con el form flex, el
+                .modal-body.flex:1 + overflow-y:auto del base CSS scrollea
+                automáticamente. Ver Envios.jsx modal para el fix inicial. */}
+            <form onSubmit={handleSaveVenta} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
@@ -2089,7 +2097,12 @@ Pago: Efectivo + Transferencia`}
         <div ref={garantiasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowGarantias(false)}>
           <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
             <div className="modal-hd"><h3>Plantillas de garantía</h3><button type="button" className="icon-btn" onClick={() => setShowGarantias(false)} aria-label="Cerrar" title="Cerrar"><Icons.X size={16} /></button></div>
-            <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto' }}>
+            {/* 2026-07-11: removido maxHeight:74vh + overflowY:auto — el .modal
+                ya es flex column con max-height calc(100svh - 48px), y el
+                .modal-body base tiene flex:1 + overflow-y:auto. El body es hijo
+                directo del .modal (sin form wrapper que rompa el chain), así que
+                el scroll interno funciona sin overrides. */}
+            <div className="modal-body">
               <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
                 {garantias.length === 0 && <div className="empty">Sin plantillas</div>}
                 {garantias.map(g => (

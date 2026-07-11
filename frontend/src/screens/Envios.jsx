@@ -1273,12 +1273,25 @@ export default function Envios() {
                 <Icons.X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSubmit}>
+            {/* 2026-07-11 (Lucas Chrome 100% zoom bug): el <form> necesita ser
+                flex-column con flex:1 + minHeight:0 para que la cadena flex del
+                .modal se propague al .modal-body. Sin esto, el body toma su alto
+                natural (todo el contenido), supera max-height: calc(100svh - 48px)
+                del .modal, y el `overflow: hidden` del .modal CLIPEA el contenido
+                en vez de scrollearlo. Con flex column el .modal-body.flex:1 activa,
+                el overflow-y:auto del body kickea, y header/footer quedan pegados.
+                minHeight:0 es crítico — sin él, el flex child no puede shrinkear
+                por debajo de su content size (default en flex es min-content).
+                Ver también nota abajo de 2026-06-24 que removió el workaround
+                maxHeight:70vh inline sin arreglar la cadena flex. */}
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               {/* 2026-06-24 mobile fix: removido inline maxHeight 70vh y overflowY.
                   El base .modal-body ya tiene flex:1 + overflow-y:auto y el .modal
                   tiene max-height: calc(100svh - 48px). El override capeaba el
                   body al 70vh innecesariamente, haciendo el form sentirse más
-                  apretado en mobile (especialmente con la barra de Safari). */}
+                  apretado en mobile (especialmente con la barra de Safari).
+                  2026-07-11: para que flex:1 realmente aplique al body, el <form>
+                  padre tiene que ser flex column — ver comment arriba. */}
               <div className="modal-body">
                 <div className="stack" style={{ gap: 16 }}>
 
