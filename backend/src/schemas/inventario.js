@@ -80,24 +80,29 @@ const baseProducto = z.object({
 // SLUGS_UNITARIOS exportado para que el handler no duplique la constante.
 const SLUGS_UNITARIOS = new Set(['celular_sellado', 'celular_usado', 'ipads']);
 
-// Categoría obligatoria al crear/cargar bulk (para que el inventario sea analizable).
-// En UPDATE queda opcional: los productos legacy sin categoría se pueden editar
-// (asignándoles una en ese momento) sin que el backend bloquee otros cambios.
-const categoriaRequerida = (p) => p.categoria_id != null && Number(p.categoria_id) > 0;
-const categoriaMsg = { message: 'La categoría es obligatoria', path: ['categoria_id'] };
+// 2026-07-11: categoria_id pasó a opcional en TODOS los flujos de create.
+// Contexto: el field "Colección" se removió del form + tabla en Inventario
+// (followup Opción A / PR #553). Los tenants activos siguen gestionando
+// colecciones desde el modal "Categorías" y el import XLSX — no hay UI
+// individual para setear categoria_id en producto ya que se sunsettea la
+// dimensión de forma gradual. La columna DB sigue existiendo (nullable) y
+// los registros preexistentes preservan su valor.
+//
+// Historial: antes se requería vía `.refine(categoriaRequerida)` para forzar
+// analizabilidad del inventario. Con F3 (clases_producto = categoría real
+// del tenant) esa función la cumple `clase_id`, y `categoria_id` queda
+// como agrupación libre auxiliar opcional.
 
 // .strict(): un campo extra (typo del cliente, JS field leak) da 400 explícito
 // en vez de pasar silencioso y persistirse sin querer / ser ignorado.
-const createProductoSchema = baseProducto.strict()
-  .refine(categoriaRequerida, categoriaMsg);
+const createProductoSchema = baseProducto.strict();
 
 const updateProductoSchema = baseProducto.strict().partial(); // partial → coherencia se chequea al leer DB
 
 // Carga masiva: array de productos (sin foto para mantener el payload acotado).
-// Refine: coherencia por lote (sin IMEIs duplicados) + categoría requerida.
+// Refine: coherencia por lote (sin IMEIs duplicados).
 // La coherencia unitario ↔ cantidad se valida en el handler post-derive.
-const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).strict()
-  .refine(categoriaRequerida, categoriaMsg);
+const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).strict();
 const bulkProductoSchema = z.object({
   productos: z.array(productoEnBulk)
     .min(1, 'Al menos un producto')

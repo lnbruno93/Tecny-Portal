@@ -386,7 +386,12 @@ describe('Proveedores — compra crea producto en Inventario', () => {
     expect(res.body.error).toMatch(/duplicado/i);
   });
 
-  it('producto_stock sin categoria_id → 400 (refine)', async () => {
+  // 2026-07-11: categoria_id pasó a opcional en TODOS los flujos de create
+  // (schemas/inventario.js — sunset gradual de la dimensión "Colección" post
+  // Opción A). El test antes esperaba 400 por el `.refine(categoriaRequerida)`;
+  // ahora verifica el path positivo: producto_stock sin categoria_id se acepta
+  // y el producto queda en Inventario con categoria_id NULL.
+  it('producto_stock sin categoria_id → 201, se crea con categoria_id NULL', async () => {
     const prov = await crearProveedor({ nombre: 'MayoCompra D' });
     const res = await request(app).post('/api/proveedores/movimientos').set(auth())
       .send({
@@ -399,7 +404,12 @@ describe('Proveedores — compra crea producto en Inventario', () => {
           },
         }],
       });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    // Verificar que el producto quedó en Inventario sin colección asignada.
+    const lista = await request(app).get('/api/inventario/productos?buscar=Sin categoría').set(auth());
+    const p = lista.body.data.find(x => x.nombre === 'Sin categoría');
+    expect(p).toBeDefined();
+    expect(p.categoria_id).toBeNull();
   });
 
   it('items SIN producto_stock siguen funcionando (caso legacy / gastos)', async () => {

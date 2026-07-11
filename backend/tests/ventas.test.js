@@ -194,7 +194,10 @@ describe('POST /api/ventas', () => {
   // del producto existente y sugerencia de cómo salir).
   it('canje con IMEI dup → 409 con contexto claro (regresión Sentry 7587634920)', async () => {
     // 1) Pre-existe un producto con IMEI X (venta previa que dejó stock).
-    // categoria_id es obligatorio (categoriaRequerida en schema).
+    // categoria_id era obligatorio pre-2026-07-11; ahora es opcional. Lo
+    // seguimos seteando en este test para cubrir el path histórico y
+    // asegurar que la validación de IMEI dup se dispara aún con producto
+    // categorizado.
     const catDup = await request(app).post('/api/inventario/categorias').set(auth())
       .send({ nombre: 'iPhone IMEI Dup' });
     const imeiExistente = '905' + Date.now().toString().slice(-12);

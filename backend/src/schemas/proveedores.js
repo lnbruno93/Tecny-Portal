@@ -28,12 +28,12 @@ const updateProveedorSchema = createProveedorSchema.partial().refine(
 // (necesitaba `p.clase` del body, dropeado en la serie F3). El handler de
 // routes/proveedores.js valida coherencia unitario ↔ cantidad tras el
 // derive del slug_legacy desde clase_id, mismo patrón que routes/inventario.js.
+//
+// 2026-07-11: categoria_id pasó a opcional (coherente con schemas/inventario.js).
+// Ver comentario allí sobre el sunset gradual de la dimensión "Colección".
 const productoEnCompraSchema = baseProducto
   .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
-  .strict()
-  .refine(p => p.categoria_id != null && Number(p.categoria_id) > 0,
-    { message: 'La categoría es obligatoria para crear el producto en stock',
-      path: ['categoria_id'] });
+  .strict();
 
 // Ítem de una compra (productos comprados) — espejo de items_movimiento_cc (B2B)
 // Si viene `producto_stock`, la ruta crea además el producto en Inventario.

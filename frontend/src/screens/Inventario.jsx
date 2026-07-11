@@ -464,14 +464,11 @@ export default function Inventario() {
   useEffect(() => { loadCatalogos(); loadMetricas(); }, [loadCatalogos, loadMetricas]);
   useEffect(() => { loadProductos(); }, [loadProductos]);
 
-  // Auditoría 2026-06-30 F-26: catOptions/provOptions usados en cada fila
-  // del map de la grilla — antes se construían dentro del .map (N veces por
-  // render). Con useMemo se construyen 1 sola vez por cambio real de
-  // categorias/proveedoresList.
-  const catOptions = useMemo(
-    () => categorias.map(c => ({ value: c.id, label: c.nombre })),
-    [categorias]
-  );
+  // Auditoría 2026-06-30 F-26: provOptions usado en cada fila del map de la
+  // grilla — antes se construía dentro del .map (N veces por render). Con
+  // useMemo se construye 1 sola vez por cambio real de proveedoresList.
+  // 2026-07-11: catOptions removido — la celda inline edit de "Colección"
+  // (categoria_id) se removió como parte del sunset gradual de esa dimensión.
   const provOptions = useMemo(
     () => proveedoresList.map(s => ({ value: s, label: s })),
     [proveedoresList]
@@ -576,8 +573,9 @@ export default function Inventario() {
   async function handleSave(e) {
     e.preventDefault();
     if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
-    // Categoría requerida al crear (en edits de productos legacy queda opcional para no bloquear).
-    if (!editId && !form.categoria_id) { setFormError('La categoría es obligatoria.'); return; }
+    // 2026-07-11: el field "Colección" (categoria_id) se removió del form y
+    // de la tabla. La validación frontend + refine del backend también se
+    // relajaron — categoria_id es opcional en todos los flujos de create.
 
     // 2026-06-30 #imei-dup: bloqueo autoritativo de IMEI duplicado al crear.
     // El onBlur muestra warning, pero el submit es la única defensa real
@@ -1356,7 +1354,8 @@ export default function Inventario() {
                 <th style={{ width: 72 }}>Mon. Venta</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
                 <th style={{ width: 84 }}>Tipo</th>
-                <th style={{ minWidth: 130 }}>Colección</th>
+                {/* 2026-07-11: columna "Colección" removida — ver comentario en el
+                    modal de edición sobre el sunset gradual. */}
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
                 <th style={{ width: 110 }}>Estado</th>
@@ -1365,7 +1364,7 @@ export default function Inventario() {
             </thead>
             <tbody>
               {Array.from({ length: 5 }).map((_, i) => (
-                <SkeletonRow key={i} columns={16} />
+                <SkeletonRow key={i} columns={15} />
               ))}
             </tbody>
           </table>
@@ -1438,7 +1437,8 @@ export default function Inventario() {
                 <th style={{ width: 72 }}>Mon. Venta</th>
                 <th style={{ width: 142, whiteSpace: 'nowrap' }}>IMEI/Serial</th>
                 <th style={{ width: 84 }}>Tipo</th>
-                <th style={{ minWidth: 130 }}>Colección</th>
+                {/* 2026-07-11: columna "Colección" removida — ver comentario en el
+                    modal de edición sobre el sunset gradual. */}
                 <th style={{ minWidth: 150, whiteSpace: 'nowrap' }}>Proveedor</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Stock</th>
                 <th style={{ width: 110 }}>Estado</th>
@@ -1451,7 +1451,6 @@ export default function Inventario() {
                   key={p.id}
                   p={p}
                   monedaLocal={monedaLocal}
-                  catOptions={catOptions}
                   provOptions={provOptions}
                   canEditProducto={canEditProducto}
                   canDeleteProducto={canDeleteProducto}
@@ -1568,21 +1567,18 @@ export default function Inventario() {
                       </div>
                     )}
                   </div>
-                  <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Colección <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <select className="input" value={form.categoria_id} onChange={e => setF('categoria_id', e.target.value)} required>
-                        <option value="">— Elegir —</option>
-                        {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                      </select>
-                    </div>
-                    <div className="field" style={{ flex: 1 }}>
-                      <label className="field-label">Depósito</label>
-                      <select className="input" value={form.deposito_id} onChange={e => setF('deposito_id', e.target.value)}>
-                        <option value="">Sin depósito</option>
-                        {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-                      </select>
-                    </div>
+                  {/* 2026-07-11: field "Colección" removido del form (era categoria_id,
+                      legacy F1). La dimensión Colección sigue existiendo para tenants que
+                      la usaban activamente (visible/gestionable desde modal "Categorías"
+                      via CategoriasProductoModal — sección secundaria); la asignación
+                      producto→colección se hace solo por import XLSX. Los productos
+                      existentes preservan su categoria_id (nullable en DB). */}
+                  <div className="field">
+                    <label className="field-label">Depósito</label>
+                    <select className="input" value={form.deposito_id} onChange={e => setF('deposito_id', e.target.value)}>
+                      <option value="">Sin depósito</option>
+                      {depositos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                    </select>
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
@@ -2164,12 +2160,11 @@ function DetalleField({ label, value, mono = false }) {
 //
 // Props estables asumidas (memoizadas por el caller):
 //   · inlineUpdate, openEdit, handleDelete, onOpenHistorial → useCallback
-//   · catOptions, provOptions → useMemo
+//   · provOptions → useMemo
 //   · monedaLocal, canEditProducto, canDeleteProducto → primitivos/booleans
 const InventarioRow = memo(function InventarioRow({
   p,
   monedaLocal,
-  catOptions,
   provOptions,
   canEditProducto,
   canDeleteProducto,
@@ -2303,14 +2298,10 @@ const InventarioRow = memo(function InventarioRow({
         onSave={save('tipo_carga')}
         emptyToNull={false}
       />
-      <EditableCell
-        value={p.categoria_id}
-        display={<span className="muted">{p.categoria_nombre || '—'}</span>}
-        type="combo"
-        options={catOptions}
-        onSave={save('categoria_id')}
-        parse={v => v === '' ? null : Number(v)}
-      />
+      {/* 2026-07-11: celda inline edit de "Colección" (categoria_id) removida
+          en coherencia con la columna de la tabla y el field del form.
+          Los tenants que la usaban activamente siguen viendo los datos por
+          import XLSX + gestión desde el modal "Categorías". */}
       <EditableCell
         value={p.proveedor || ''}
         display={<span className="muted">{p.proveedor || '—'}</span>}
