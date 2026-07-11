@@ -14,19 +14,35 @@ import { MemoryRouter } from 'react-router-dom';
 vi.mock('../lib/api', () => ({
   inventario: {
     usados: vi.fn(),
+    // 2026-07-11: ShareLinkPanel (renderea dentro de EquiposUsadosContent)
+    // llama a shareLink.get() al montar. Mockeamos con defaults para que
+    // el componente monte sin errores y el panel arranque colapsado.
+    shareLink: {
+      get: vi.fn().mockResolvedValue({
+        id: 1, token: 'testtoken123456', activo: true,
+        whatsapp: null, mensaje_extra: null,
+        mostrar_bateria: true, mostrar_precio: true,
+        stats: { vistas_ult_mes: 0, unicos_hoy: 0, ultimo_acceso: null },
+      }),
+      update: vi.fn(),
+      rotate: vi.fn(),
+    },
   },
 }));
 
 import { inventario as inventarioApi } from '../lib/api';
 import EquiposUsadosContent from './EquiposUsadosContent';
 import { ToastProvider } from '../contexts/ToastContext';
+import { ConfirmProvider } from '../components/ConfirmModal';
 
 function renderContent(props = {}) {
   return render(
     <MemoryRouter>
+      <ConfirmProvider>
       <ToastProvider>
         <EquiposUsadosContent {...props} />
       </ToastProvider>
+      </ConfirmProvider>
     </MemoryRouter>
   );
 }

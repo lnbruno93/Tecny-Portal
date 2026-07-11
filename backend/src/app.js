@@ -87,6 +87,9 @@ const capabilitiesRoutes = require('./routes/capabilities');
 const cuentasRoutes      = require('./routes/cuentas');
 const usadosRoutes       = require('./routes/usados');
 const inventarioRoutes   = require('./routes/inventario');
+// 2026-07-11: share link público de Equipos Usados. Admin bajo /api/inventario;
+// público bajo /publico (sin auth). Ver routes/shareLinks.js.
+const shareLinksRoutes   = require('./routes/shareLinks');
 const ventasRoutes       = require('./routes/ventas');
 const ventasExtraRoutes  = require('./routes/ventas-extra');
 const proveedoresRoutes  = require('./routes/proveedores');
@@ -706,7 +709,19 @@ app.use('/api/usados',        requireAuth, requireCapability('usados.ver'), usad
 // Inventario — capability `inventario.ver` (gate operacional principal).
 // Sub-capabilities (ver_costos, vaciar_stock, importar/exportar) se aplican
 // inline en los handlers correspondientes — pendiente para una tanda futura.
+// 2026-07-11: share link admin (config + stats + rotate). REGISTRADO
+// ANTES de `/api/inventario` porque Express matchea por orden: si el
+// prefix más general (/api/inventario) va primero, todo request
+// /api/inventario/share-link se lo come el router de inventario y devuelve
+// 404. Este router es más específico y se maneja aparte.
+// Auth + caps se aplican dentro del router (get requiere `ver`, mutate `editar`).
+app.use('/api/inventario/share-link', shareLinksRoutes.adminRouter);
+
 app.use('/api/inventario',    requireAuth, requireCapability('inventario.ver'), inventarioRoutes);
+
+// Endpoint público (sin auth, sin RLS del user) — rate-limited y con
+// cache HTTP. Ver routes/shareLinks.js.
+app.use('/publico', shareLinksRoutes.publicRouter);
 
 // Ventas — capability `ventas.trabajar` (sub-recursos + core, mismo prefijo).
 // `ventas.eliminar` se chequea inline en el handler DELETE /api/ventas/:id

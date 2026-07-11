@@ -571,6 +571,47 @@ export const inventario = {
   updateClase:    (id, data) => api(`/api/inventario/clases/${id}`, 'PUT', data),
   deleteClase:    (id)       => api(`/api/inventario/clases/${id}`, 'DELETE'),
   reorderClases:  (items)    => api('/api/inventario/clases/reorder', 'POST', { items }),
+  // 2026-07-11: share link público de Equipos Usados.
+  // - get():    devuelve config + stats (crea el link con defaults en la 1ra
+  //             llamada). Auth: `inventario.ver`.
+  // - update(): actualiza config (whatsapp, mensaje, toggles, activo).
+  // - rotate(): regenera el token (el link viejo queda inválido).
+  shareLink: {
+    get:    ()     => api('/api/inventario/share-link'),
+    update: (data) => api('/api/inventario/share-link', 'PATCH', data),
+    rotate: ()     => api('/api/inventario/share-link/rotate', 'POST', {}),
+  },
+};
+
+// ── Endpoints públicos (sin auth) ──────────────────────────────────
+// El helper `publicApi` es una versión de `api()` sin el token del user en el
+// header — necesario para la pantalla pública del share link donde no hay
+// sesión iniciada. Reusa `BASE` + timeout + error handling pero omite auth.
+export async function publicApi(path, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(BASE + path, { signal: controller.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('La solicitud tardó demasiado.');
+    throw new Error('Sin conexión con el servidor.');
+  } finally {
+    clearTimeout(timer);
+  }
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const err = new Error(data?.mensaje || data?.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.code = data?.error;
+    throw err;
+  }
+  return data;
+}
+
+export const publico = {
+  usados: (token) => publicApi(`/publico/usados/${encodeURIComponent(token)}`),
 };
 
 export const ventas = {

@@ -31,6 +31,9 @@ import { inventario } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import Seg from '../components/Seg';
+// 2026-07-11: panel del operador para gestionar el share link público
+// de Equipos Usados. Vive arriba de los KPIs, colapsable.
+import ShareLinkPanel from './ShareLinkPanel';
 
 function fmtN(n) {
   if (n == null) return '—';
@@ -181,6 +184,9 @@ export default function EquiposUsadosContent({ onCountChange }) {
 
   return (
     <div>
+      {/* ── Panel del share link público (2026-07-11) ────────── */}
+      <ShareLinkPanel />
+
       {/* ── KPIs mini ─────────────────────────────────────────── */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <div className="card card-tight">
