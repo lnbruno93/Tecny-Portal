@@ -9,10 +9,10 @@
 //     ve el cambio en <100ms (DEL key vía Redis pub/sub semantics).
 //   - TTL 5min como backup en caso de invalidate fallido en alguna réplica.
 //
-// Semántica de paid_until:
-//   - NULL                       → grandfathered / sin enforcement (activo)
-//   - paid_until >= CURRENT_DATE → activo (pagado al día)
-//   - paid_until <  CURRENT_DATE → expirado (read-only en middleware)
+// Semántica de paid_until (fecha calendar-local del negocio, no UTC):
+//   - NULL                                                       → grandfathered / activo
+//   - paid_until >= (NOW() AT TIME ZONE tenant_tz)::date          → activo
+//   - paid_until <  (NOW() AT TIME ZONE tenant_tz)::date          → expirado
 //
 // La query usa pool admin (BYPASSRLS) — necesitamos leer tenants directo
 // por id sin pasar por el contexto RLS del request (el request puede ser
@@ -21,6 +21,7 @@
 const { createTenantScopedCache } = require('./cacheTtl');
 const { TENANT_STATUS } = require('./cacheConfig');
 const db = require('../config/database');
+const { getTenantTimezone } = require('./tenantTimezone');
 
 const cache = createTenantScopedCache({
   ...TENANT_STATUS,
@@ -32,25 +33,45 @@ const cache = createTenantScopedCache({
     // Pool admin: tenants.suspended_at + paid_until son metadata del operador,
     // no del cliente. Bypaseamos RLS para leer por id explícito.
     //
-    // BUG FIX (issue #466): la comparación paid_until vs hoy se hace EN PG con
-    // CURRENT_DATE, no en JS. Antes computábamos `new Date(row.paid_until) >=
-    // new Date(new Date().toISOString().slice(0,10))` y eso mezclaba parsing
-    // local-TZ (paid_until) con UTC midnight (today), generando off-by-one
-    // cerca del UTC boundary: a las ~22:00 AR (=01:00 UTC) un tenant con
-    // paid_until=CURRENT_DATE (válido!) se evaluaba como expired y el
-    // middleware requireActiveTenant devolvía 402 a writes legítimos. Al hacer
-    // la comparación dentro de PG no hay ambigüedad de TZ — el driver y
-    // CURRENT_DATE comparten zona horaria del servidor PG.
+    // BUG HISTÓRICO (issue #466): la comparación en JS mezclaba parsing
+    // local-TZ (paid_until) con UTC midnight (today) → off-by-one.
+    //
+    // FIX 2026-06 (parcial): mover a `CURRENT_DATE` de PG. Cerraba el
+    // mismatch JS vs PG pero seguía asumiendo que el server PG estaba en
+    // la timezone del negocio. Railway prod está en `Etc/UTC` → un tenant
+    // AR con paid_until=2026-07-10 queda "expirado" desde las 21:00 AR
+    // del 10 hasta las 21:00 AR del 11 (3h de bloqueo diario).
+    //
+    // FIX 2026-07-11 (auditoría Red B2B P0-2): comparar contra
+    // `(NOW() AT TIME ZONE tenant_tz)::date` con tenant_tz derivado del
+    // país. Ver `lib/tenantTimezone.js` para la convención.
     const row = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT id, nombre, plan, paid_until, suspended_at, pais,
-                (paid_until IS NULL OR paid_until >= CURRENT_DATE) AS is_active_by_date
+        `SELECT id, nombre, plan, paid_until, suspended_at, pais
            FROM tenants WHERE id = $1`,
         [id]
       );
       return rows[0];
     });
     if (!row) return null;
+
+    // 2026-07-11 (auditoría Red B2B P0-2): computamos is_active con timezone
+    // tenant-aware. Requiere una 2da query chica (compara paid_until contra
+    // "hoy" en el tz del tenant). El costo extra vale contra el bug de
+    // 3h/día de bloqueo por mismatch UTC.
+    let is_active_by_date = true;
+    if (row.paid_until != null) {
+      const tz = getTenantTimezone(row.pais);
+      const activeRes = await db.adminQuery(async (c) => {
+        const { rows: r } = await c.query(
+          `SELECT $1::date >= (NOW() AT TIME ZONE $2)::date AS active`,
+          [row.paid_until, tz]
+        );
+        return r[0];
+      });
+      is_active_by_date = !!(activeRes && activeRes.active);
+    }
+
     return {
       id: row.id,
       // 2026-07-04 (#506) — Nombre del negocio que el owner setteó. Se expone
@@ -62,7 +83,7 @@ const cache = createTenantScopedCache({
       plan: row.plan,
       paid_until: row.paid_until,
       suspended_at: row.suspended_at,
-      is_active: row.is_active_by_date && row.suspended_at == null,
+      is_active: is_active_by_date && row.suspended_at == null,
       // 2026-06-29 Multi-país F2: incluimos `pais` para que el middleware
       // requireAuth pueda exponer `req.tenantPais` sin pegar a DB en cada
       // request. El campo es CHAR(2) inmutable post-signup, encaja perfecto
