@@ -246,6 +246,27 @@ describe('Pantalla Inventario', () => {
       expect(text).not.toMatch(/[?&]q=/);
     });
 
+    // 2026-07-11 (bug Lucas): URL con `?categoria_id=null` (venía de un
+    // drill-down desde Desglose 360 sobre "Sin colección") explotaba con
+    // 400 "Datos inválidos". Fix defensivo en drillFilters: strings "null"
+    // / "undefined" se descartan. El fix real vive en Desglose360.jsx que
+    // no drilldownea si `valor_id` es null.
+    it('URL con ?categoria_id=null se ignora silenciosamente (no rompe fetch)', async () => {
+      renderInventario(['/inventario?categoria_id=null']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      // El fetch al backend NO debe incluir `categoria_id: 'null'` como
+      // filtro — el schema Zod rechazaría con 400.
+      const lastCall = inventarioApi.productos.mock.calls[inventarioApi.productos.mock.calls.length - 1];
+      expect(lastCall[0].categoria_id).toBeUndefined();
+    });
+
+    it('URL con ?deposito_id=null se ignora también', async () => {
+      renderInventario(['/inventario?deposito_id=null']);
+      await waitFor(() => expect(inventarioApi.productos).toHaveBeenCalled());
+      const lastCall = inventarioApi.productos.mock.calls[inventarioApi.productos.mock.calls.length - 1];
+      expect(lastCall[0].deposito_id).toBeUndefined();
+    });
+
     it('re-mount con ?clase=<slug legacy> preserva el slug en el fetch (compat)', async () => {
       // F3.d-3 (2026-07-09): al re-mount, `loadProductos` se dispara ANTES
       // de que `clases` termine de cargar (fetch paralelo, catálogo vive

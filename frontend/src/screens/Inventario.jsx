@@ -198,7 +198,14 @@ export default function Inventario() {
     const out = {};
     for (const k of ALLOWED) {
       const v = searchParams.get(k);
-      if (v) out[k] = v;
+      // 2026-07-11 (bug Lucas): defensa contra strings "null" / "undefined"
+      // que pudieran quedar en bookmarks viejos de Desglose 360 drill-down
+      // sobre "Sin colección" / "Sin depósito". Sin este skip, el backend
+      // rechaza con 400 "Datos inválidos" (Number('null') es NaN → schema
+      // Zod falla en .int().positive()). El fix real está en Desglose360.jsx
+      // que ahora NO drilldownea si valor_id es null; este chequeo es
+      // defense-in-depth para links compartidos antes del fix.
+      if (v && v !== 'null' && v !== 'undefined') out[k] = v;
     }
     return out;
   }, [searchParams]);
