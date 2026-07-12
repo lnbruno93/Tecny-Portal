@@ -1167,3 +1167,65 @@ describe('Ventas — item "Diferencia de cambio"', () => {
     expect(Number(res.body.ganancia_usd)).toBe(197); // 1000-800 + 0-3
   });
 });
+
+// 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key.
+// Verifica que doble-click con el mismo UUID devuelve la MISMA venta sin
+// duplicar side effects (stock, cajas, tarjetas).
+describe('Ventas — Idempotency-Key (Pattern G)', () => {
+  const VALID_UUID = '4d3a1b8f-9a5e-4c7b-a2d1-8f6e0b3c9a12';
+
+  it('rechaza Idempotency-Key con formato inválido → 400', async () => {
+    const res = await request(app)
+      .post('/api/ventas')
+      .set(auth())
+      .set('Idempotency-Key', 'no-es-uuid')
+      .send({
+        fecha: '2026-07-12',
+        estado: 'acreditado',
+        tc_venta: 1400,
+        items: [{ descripcion: 'x', cantidad: 1, precio_vendido: 100, costo: 50, moneda: 'USD' }],
+        pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.reason).toBe('idempotency_key_invalid');
+  });
+
+  it('sin Idempotency-Key → comportamiento igual al anterior (permite duplicados)', async () => {
+    const payload = {
+      fecha: '2026-07-12',
+      estado: 'acreditado',
+      tc_venta: 1400,
+      items: [{ descripcion: 'x', cantidad: 1, precio_vendido: 100, costo: 50, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+    };
+    const r1 = await request(app).post('/api/ventas').set(auth()).send(payload);
+    const r2 = await request(app).post('/api/ventas').set(auth()).send(payload);
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+    expect(r1.body.id).not.toBe(r2.body.id); // ¡2 ventas distintas!
+  });
+
+  it('con Idempotency-Key → 2do intento devuelve la MISMA venta sin duplicar side effects', async () => {
+    const payload = {
+      fecha: '2026-07-12',
+      estado: 'acreditado',
+      tc_venta: 1400,
+      items: [{ descripcion: 'x', cantidad: 1, precio_vendido: 100, costo: 50, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+    };
+    const r1 = await request(app)
+      .post('/api/ventas')
+      .set(auth())
+      .set('Idempotency-Key', VALID_UUID)
+      .send(payload);
+    const r2 = await request(app)
+      .post('/api/ventas')
+      .set(auth())
+      .set('Idempotency-Key', VALID_UUID)
+      .send(payload);
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(200); // replay = 200 (no 201)
+    expect(r2.body.id).toBe(r1.body.id); // MISMA venta
+    expect(r2.body.idempotent_replay).toBe(true);
+  });
+});

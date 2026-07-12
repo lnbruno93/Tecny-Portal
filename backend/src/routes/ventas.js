@@ -95,6 +95,11 @@ function genOrderId() {
 }
 
 const { err400, retieneStock, descontarStock, reponerStock } = require('../lib/ventaCore');
+const {
+  parseIdempotencyKey,
+  findExistingByIdempotencyKey,
+  isIdempotencyConflict,
+} = require('../lib/idempotency');
 const { invalidateMetricas } = require('../lib/inventarioCache');
 
 // (syncVentaCaja y sincronizarCuentaCorriente movidos a lib/ventaSync.js — reusados desde envíos)
@@ -1222,6 +1227,17 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
 
 router.post('/', validate(createVentaSchema), async (req, res, next) => {
   const b = req.body;
+
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
+  // Idempotency-Key opcional. Sin header → mismo behavior anterior (duplicados
+  // intencionales OK — ej. "quiero registrar 2 ventas idénticas seguidas").
+  // Con header → double-click/retry devuelve la MISMA venta sin ejecutar side
+  // effects otra vez (stock, cajas, tarjetas, email).
+  const idem = parseIdempotencyKey(req);
+  if (idem.error) {
+    return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+  }
+
   const client = await db.connect();
   try {
     // Multi-país F2: rechazar items/pagos/canjes con moneda no habilitada
@@ -1244,6 +1260,21 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
+    // Idempotency replay: si el caller ya intentó con esta key y triunfó,
+    // devolvemos la venta original SIN reejecutar side effects (stock, cajas,
+    // tarjetas, email). El WHERE del SELECT queda scopeado a tenant vía RLS
+    // + SET LOCAL de arriba.
+    if (idem.key) {
+      const existing = await findExistingByIdempotencyKey(client, 'ventas', idem.key);
+      if (existing) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({
+          ...(await redactVentaGananciaIfNeeded(req.user, existing)),
+          idempotent_replay: true,
+        });
+      }
+    }
+
     const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta);
 
     // #509 — vendedor_nombre es opcional al alta: normalizamos '' → null para
@@ -1252,10 +1283,10 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     const vendedorNombreCreate = b.vendedor_nombre && b.vendedor_nombre.trim()
       ? b.vendedor_nombre.trim() : null;
     const { rows: vrows } = await client.query(
-      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id, client_generated_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [genOrderId(), b.fecha, b.hora ?? null, b.cliente_id ?? null, b.cliente_cc_id ?? null, b.cliente_nombre ?? null,
-       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, vendedorNombreCreate, req.user.id]
+       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, vendedorNombreCreate, req.user.id, idem.key]
     );
     const venta = vrows[0];
 
@@ -1316,6 +1347,16 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     res.status(201).json(await redactVentaGananciaIfNeeded(req.user, venta));
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race window residual (Pattern G): 2 requests con la misma key entran a
+    // la tx concurrentes, ambos hacen findExisting() y no encuentran, ambos
+    // intentan INSERT. El UNIQUE index parcial atrapa al 2do con 23505. El
+    // cliente puede retryar y esta vez encontrará la fila via el path replay.
+    if (isIdempotencyConflict(err)) {
+      return res.status(409).json({
+        error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+        reason: 'idempotency_conflict',
+      });
+    }
     next(err);
   } finally {
     client.release();

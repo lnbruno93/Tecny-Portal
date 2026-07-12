@@ -60,6 +60,11 @@ const {
 } = require('../schemas/cuentas');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { invalidateMetricas } = require('../lib/inventarioCache');
+const {
+  parseIdempotencyKey,
+  findExistingByIdempotencyKey,
+  isIdempotencyConflict,
+} = require('../lib/idempotency');
 const { cancelMovimientoCC } = require('../lib/cancelMovimientoCC');
 const { syncContactoSafe } = require('../lib/contactosSync');
 
@@ -499,6 +504,14 @@ router.get('/clientes/:id/movimientos', async (req, res, next) => {
 });
 
 router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res, next) => {
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key.
+  // Sin header → duplicados intencionales OK. Con header → double-click devuelve
+  // el mismo movimiento sin re-descontar stock ni re-postear caja.
+  const idem = parseIdempotencyKey(req);
+  if (idem.error) {
+    return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+  }
+
   const client = await db.connect();
   try {
     const {
@@ -550,6 +563,16 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
+    // Idempotency replay: si el caller ya intentó con esta key y triunfó,
+    // devolvemos el movimiento original SIN reejecutar caja + stock.
+    if (idem.key) {
+      const existing = await findExistingByIdempotencyKey(client, 'movimientos_cc', idem.key);
+      if (existing) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ ...existing, idempotent_replay: true });
+      }
+    }
+
     // Verificar que el cliente existe (dentro de la tx, con FOR UPDATE para evitar race condition)
     const { rows: c } = await client.query(
       'SELECT id FROM clientes_cc WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [cliente_cc_id]
@@ -569,10 +592,10 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // `toUsd` — ver arriba del handler.
     const { rows: movRows } = await client.query(
       `INSERT INTO movimientos_cc
-         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id, estado)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id, estado, client_generated_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [cliente_cc_id, fecha, tipo, descripcion ?? null, montoUsd, notas ?? null, caja_id ?? null, req.user.id, estado]
+      [cliente_cc_id, fecha, tipo, descripcion ?? null, montoUsd, notas ?? null, caja_id ?? null, req.user.id, estado, idem.key]
     );
     const mov = movRows[0];
 
@@ -804,6 +827,14 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     res.status(201).json({ ...mov, items: insertedItems });
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race window residual Pattern G: 2 requests con la misma key llegan al
+    // INSERT concurrentes; el UNIQUE index parcial atrapa al 2do.
+    if (isIdempotencyConflict(err)) {
+      return res.status(409).json({
+        error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+        reason: 'idempotency_conflict',
+      });
+    }
     next(err);
   } finally {
     client.release();

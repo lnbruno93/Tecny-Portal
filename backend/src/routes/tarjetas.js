@@ -22,6 +22,11 @@ const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedge
 const { postCajaMovimientoTarjeta } = require('../lib/tarjetas');
 const { saldoNetoCase } = require('../lib/tarjetasSaldo');
 const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
+const {
+  parseIdempotencyKey,
+  findExistingByIdempotencyKey,
+  isIdempotencyConflict,
+} = require('../lib/idempotency');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
 const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
@@ -431,12 +436,28 @@ router.post('/cobros-iniciales', requireCapability('tarjetas.cobro_previo'), val
 
 // Liquidación: nos depositan el neto → ingreso a una caja real (origen 'tarjeta').
 router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res, next) => {
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key.
+  const idem = parseIdempotencyKey(req);
+  if (idem.error) {
+    return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+  }
+
   const client = await db.connect();
   try {
     const { metodo_pago_id, fecha, monto, caja_id, comentarios } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // Idempotency replay antes de tocar cajas/tarjeta.
+    if (idem.key) {
+      const existing = await findExistingByIdempotencyKey(client, 'tarjeta_movimientos', idem.key);
+      if (existing) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ ...existing, idempotent_replay: true });
+      }
+    }
+
     const mp = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND es_tarjeta = true AND deleted_at IS NULL', [metodo_pago_id]);
     if (!mp.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Tarjeta no encontrada' }); }
     const caja = await client.query('SELECT moneda FROM metodos_pago WHERE id = $1 AND deleted_at IS NULL', [caja_id]);
@@ -450,9 +471,9 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     }
     const m = round2(Number(monto));
     const { rows } = await client.query(
-      `INSERT INTO tarjeta_movimientos (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, caja_id, comentarios, user_id)
-       VALUES ($1,$2,'liquidacion',$3,$4,0,0,$4,$5,$6,$7) RETURNING *`,
-      [metodo_pago_id, fecha, moneda, m, caja_id, comentarios ?? null, req.user.id]
+      `INSERT INTO tarjeta_movimientos (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, caja_id, comentarios, user_id, client_generated_id)
+       VALUES ($1,$2,'liquidacion',$3,$4,0,0,$4,$5,$6,$7,$8) RETURNING *`,
+      [metodo_pago_id, fecha, moneda, m, caja_id, comentarios ?? null, req.user.id, idem.key]
     );
     // Ingreso a la caja destino (lo que ya existía).
     await postCajaMovimiento(client, {
@@ -471,6 +492,13 @@ router.post('/liquidaciones', validate(createLiquidacionSchema), async (req, res
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race window Pattern G — UNIQUE atrapa al 2do concurrente.
+    if (isIdempotencyConflict(err)) {
+      return res.status(409).json({
+        error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+        reason: 'idempotency_conflict',
+      });
+    }
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally { client.release(); }
