@@ -225,12 +225,26 @@ router.post('/enable', validate(enableSchema), async (req, res, next) => {
       return res.status(400).json({ error: 'Código incorrecto. Verificá que el reloj del cel esté sincronizado.' });
     }
 
-    await db.query('UPDATE user_2fa SET enabled_at = NOW(), last_used_at = NOW() WHERE user_id = $1', [req.user.id]);
-    await audit('user_2fa', 'UPDATE', req.user.id,
-                { despues: { action: 'enabled' }, user_id: req.user.id });
+    // 2026-07-12 (auditoría TOTAL Auth P1-6): envolver UPDATE + audit en tx
+    // única con `client` explícito. Antes el audit corría con pool global
+    // fuera de la tx — si el UPDATE fallaba después del audit (imposible acá
+    // porque es 1 query, pero la firma es incorrecta) el audit quedaba huérfano.
+    // Más importante: unifica el patrón con el resto del backend (auth.js,
+    // usuarios.js) para que un dev futuro no lo copie mal.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE user_2fa SET enabled_at = NOW(), last_used_at = NOW() WHERE user_id = $1', [req.user.id]);
+      await audit(client, 'user_2fa', 'UPDATE', req.user.id,
+                  { despues: { action: 'enabled' }, user_id: req.user.id });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally { client.release(); }
     // Auditoría 2026-06-30 S-25: invalidar cache para que requireSuperAdmin
     // vea twofa_enabled=true en la siguiente request del super-admin.
-    userAuthCache.invalidateUserAuth(req.user.id).catch(() => {});
+    userAuthCache.invalidateUserAuth(req.user.id).catch((err) => require('../lib/logger').warn({ err: err.message, userId: req.user.id }, '[twoFa] invalidateUserAuth post-write falló — TTL 60s se hará cargo'));
     res.json({ ok: true, enabled_at: new Date().toISOString() });
   } catch (err) { next(err); }
 });
@@ -245,12 +259,21 @@ router.post('/disable', validate(codeSchema), async (req, res, next) => {
     const { ok } = await verifyAndConsume(req.user.id, req.body.code);
     if (!ok) return res.status(400).json({ error: 'Código incorrecto.' });
 
-    await db.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
-    await audit('user_2fa', 'DELETE', req.user.id,
-                { antes: { enabled_at: row.enabled_at }, despues: { action: 'disabled' }, user_id: req.user.id });
+    // 2026-07-12 (Auth P1-6): DELETE + audit en tx única.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
+      await audit(client, 'user_2fa', 'DELETE', req.user.id,
+                  { antes: { enabled_at: row.enabled_at }, despues: { action: 'disabled' }, user_id: req.user.id });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally { client.release(); }
     // Auditoría 2026-06-30 S-25: invalidar cache para que requireSuperAdmin
     // vea twofa_enabled=false en la siguiente request (gate fail-closed).
-    userAuthCache.invalidateUserAuth(req.user.id).catch(() => {});
+    userAuthCache.invalidateUserAuth(req.user.id).catch((err) => require('../lib/logger').warn({ err: err.message, userId: req.user.id }, '[twoFa] invalidateUserAuth post-write falló — TTL 60s se hará cargo'));
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -274,9 +297,18 @@ router.post('/cancel-setup', async (req, res, next) => {
     if (row.enabled_at) {
       return res.status(409).json({ error: '2FA está activado. Usá /disable en su lugar.' });
     }
-    await db.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
-    await audit('user_2fa', 'DELETE', req.user.id,
-                { despues: { action: 'setup_canceled' }, user_id: req.user.id });
+    // 2026-07-12 (Auth P1-6): DELETE + audit en tx única.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM user_2fa WHERE user_id = $1', [req.user.id]);
+      await audit(client, 'user_2fa', 'DELETE', req.user.id,
+                  { despues: { action: 'setup_canceled' }, user_id: req.user.id });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally { client.release(); }
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -293,9 +325,18 @@ router.post('/regenerate-recovery', validate(codeSchema), async (req, res, next)
 
     const recovery = generateRecoveryCodes();
     const hashed = await hashRecoveryCodes(recovery);
-    await db.query('UPDATE user_2fa SET recovery_codes = $1 WHERE user_id = $2', [hashed, req.user.id]);
-    await audit('user_2fa', 'UPDATE', req.user.id,
-                { despues: { action: 'recovery_regenerated' }, user_id: req.user.id });
+    // 2026-07-12 (Auth P1-6): UPDATE + audit en tx única.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE user_2fa SET recovery_codes = $1 WHERE user_id = $2', [hashed, req.user.id]);
+      await audit(client, 'user_2fa', 'UPDATE', req.user.id,
+                  { despues: { action: 'recovery_regenerated' }, user_id: req.user.id });
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally { client.release(); }
     res.json({ recovery_codes: recovery });
   } catch (err) { next(err); }
 });

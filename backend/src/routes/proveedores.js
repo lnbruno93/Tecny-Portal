@@ -647,7 +647,7 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     // Este endpoint puede crear productos (línea 584-589 aprox), y con o sin
     // productos nuevos afecta el saldo del proveedor que aparece en KPIs.
     // Fire-and-forget cross-instance vía Redis DEL.
-    invalidateMetricas(req.tenantId).catch(() => {});
+    invalidateMetricas(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[proveedores] invalidateMetricas post-COMMIT falló'));
     res.status(201).json({ ...mov, items: insertedItems, productos_creados: productosCreados });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -852,7 +852,7 @@ router.post('/movimientos/bulk', compraMovimientoLimiter, validate(bulkCreateMov
     // 2026-07-12 (auditoría TOTAL P0-3 Stock): invalidar cache. Este es EL
     // endpoint del import XLSX de Inventario (`Inventario.jsx` → `bulk`).
     // Cada import de 100+ productos dejaba el dashboard stale hasta 20s.
-    invalidateMetricas(req.tenantId).catch(() => {});
+    invalidateMetricas(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[proveedores] invalidateMetricas post-COMMIT falló'));
     res.status(201).json({ movimientos: resultados, count: resultados.length });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -939,7 +939,7 @@ router.delete('/movimientos/:id', requireCapability('proveedores.eliminar_compra
     // 2026-07-12 (auditoría TOTAL P0-3 Stock): invalidar cache. El DELETE
     // soft-deletea productos (línea 897-901) — los KPIs de inventario los
     // seguían mostrando "vivos" hasta que expiraba el TTL.
-    invalidateMetricas(req.tenantId).catch(() => {});
+    invalidateMetricas(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[proveedores] invalidateMetricas post-COMMIT falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

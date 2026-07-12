@@ -53,20 +53,8 @@ describe('redactPII', () => {
   });
 });
 
-// B1: el job interno de purga de audit_logs.
-describe('startPurgaJob (B1)', () => {
-  test('no programa nada cuando NODE_ENV=test', () => {
-    // Estamos en test → la guarda interna debe devolver null sin tirar timers.
-    expect(process.env.NODE_ENV).toBe('test');
-    const handle = audit.startPurgaJob({ diasRetencion: 365, intervalHours: 24 });
-    expect(handle).toBeNull();
-  });
-
-  test('purgarAuditLogsViejos clamp inferior a 30 días', async () => {
-    // Aún si se pide menos, internamente respeta el piso de 30 días.
-    // No verificamos rowCount (depende del estado de la DB de tests); solo
-    // que la función exista y devuelva un número sin tirar.
-    const r = await audit.purgarAuditLogsViejos(1);
-    expect(typeof r).toBe('number');
-  });
-});
+// 2026-07-12 (auditoría TOTAL Plataforma P1-1): borrado `describe('startPurgaJob')`
+// junto con las funciones `startPurgaJob` + `purgarAuditLogsViejos` (audit.js).
+// La retención de audit_logs vive en auditPartitionsJob (drop de partitions
+// enteras) — path canónico. Tests del partition drop en:
+//   tests/audit-partitions.test.js (drop_old_audit_partitions)

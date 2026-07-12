@@ -244,55 +244,32 @@ async function audit(...args) {
   }
 }
 
-// Purga audit_logs viejos: por defecto conserva 365 días. Idempotente.
-// Útil para cumplir el "derecho al olvido" y mantener la tabla acotada.
-async function purgarAuditLogsViejos(diasRetencion = 365) {
-  const dias = Math.max(30, Number(diasRetencion) || 365); // mínimo 30 días por seguridad
-  const { rowCount } = await db.query(
-    `DELETE FROM audit_logs WHERE created_at < NOW() - ($1 || ' days')::interval`,
-    [dias]
-  );
-  logger.info({ dias, rowCount }, 'audit_logs purga ejecutada');
-  return rowCount;
-}
-
-// Job interno de purga periódica. Se invoca desde `server.js` al arrancar
-// y dispara purgarAuditLogsViejos() cada `intervalHours` horas (default 24).
+// 2026-07-12 (auditoría TOTAL Plataforma P1-1): borradas
+// `purgarAuditLogsViejos` + `startPurgaJob` (~40 líneas).
 //
-// Multi-instancia safety:
-//   El job está envuelto en `withAdvisoryLock('audit_purga', ...)` — cuando
-//   hay 2+ réplicas activas (Railway), solo UNA corre el DELETE cada noche.
-//   Las otras reciben false del lock y skip silently. Esto evita lock
-//   contention en `audit_logs` (tabla grande) y logging duplicado.
+// Motivación: audit_logs está particionado por mes desde la migration
+// 20260611000004_audit_logs_partitioned. El job `auditPartitionsJob` en
+// server.js:64 corre `drop_old_audit_partitions(retention_months)` —
+// path eficiente: dropea la partition entera en milisegundos, sin locks
+// row-by-row y sin escaneo.
 //
-// Devuelve el handle del intervalo (para test/shutdown).
-function startPurgaJob({ diasRetencion = 365, intervalHours = 24, runOnStartup = false } = {}) {
-  // No se programa en tests para no contaminar la DB de test ni dejar timers vivos
-  // entre suites (Jest --runInBand detecta open handles).
-  if (process.env.NODE_ENV === 'test') return null;
-
-  const intervalMs = intervalHours * 60 * 60 * 1000;
-  const runOnce = async () => {
-    try {
-      await withAdvisoryLock('audit_purga', () => purgarAuditLogsViejos(diasRetencion));
-    } catch (err) {
-      logger.error({ err }, 'audit_logs purga falló — reintenta mañana');
-    }
-  };
-
-  if (runOnStartup) runOnce(); // útil en dev / al deployar después de mucho tiempo
-
-  const handle = setInterval(runOnce, intervalMs);
-  // .unref() evita que el timer mantenga vivo el proceso durante shutdown.
-  if (typeof handle.unref === 'function') handle.unref();
-  logger.info({ diasRetencion, intervalHours }, 'audit_logs purga job programado (con advisory lock)');
-  return handle;
-}
+// El DELETE row-by-row de purgarAuditLogsViejos era:
+//   · Redundante con drop_old_audit_partitions (ambos borran lo mismo)
+//   · Peligroso: bajo statement_timeout=15s + tabla con 1M+ rows por
+//     partition timeout-eaba silenciosamente y el withAdvisoryLock ya
+//     había registrado el "run" del día → inconsistencia
+//   · Inútil: la retención efectiva la mantenía SOLO el partition drop,
+//     el DELETE era no-op (ya no había filas viejas en las partitions
+//     activas después del drop)
+//
+// Si el futuro requiere purga row-by-row para `audit_queue` (tabla plana
+// sin partitioning), crear un helper nuevo `purgarAuditQueueViejos` con
+// nombre distinto — NO reactivar este código muerto.
 
 module.exports = audit;
 module.exports.redactPII = redactPII;
-module.exports.purgarAuditLogsViejos = purgarAuditLogsViejos;
-module.exports.startPurgaJob = startPurgaJob;
+// 2026-07-12 (auditoría TOTAL Plataforma P1-1): removido export de
+// startPurgaJob (borrado junto con purgarAuditLogsViejos).
 // P-07: exposed for the worker (auditQueueWorker.js) and tests.
 module.exports.isAsyncEnabled = isAsyncEnabled;
 module.exports._clearAsyncCache = _clearAsyncCache;

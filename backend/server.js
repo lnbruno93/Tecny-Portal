@@ -59,7 +59,8 @@ if (process.env.SENTRY_DSN) {
 const app    = require('./src/app');
 const logger = require('./src/lib/logger');
 const db     = require('./src/config/database');
-const { startPurgaJob } = require('./src/lib/audit');
+// 2026-07-12 (auditoría TOTAL Plataforma P1-1): removido `startPurgaJob` —
+// la retención vive en auditPartitionsJob (drop_old_audit_partitions).
 const { startInvariantsJob } = require('./src/jobs/invariantsJob');
 const { startAuditPartitionsJob } = require('./src/jobs/auditPartitionsJob');
 const { startAuditQueueWorker } = require('./src/jobs/auditQueueWorker');
@@ -144,11 +145,10 @@ function onListenReady() {
     logger.warn({ err: err.message }, 'plan_prices primeCache falló en startup — usando defaults')
   );
 
-  // Job interno: cada 24h purga audit_logs > AUDIT_RETENCION_DIAS días (default 365).
-  // Sin esto la tabla crecía infinita y rompía /historial. Single-instance only
-  // — cuando escalemos a múltiples workers hay que migrar a pg_cron o Railway Scheduler.
-  const diasRetencion = Number(process.env.AUDIT_RETENCION_DIAS) || 365;
-  startPurgaJob({ diasRetencion, intervalHours: 24 });
+  // 2026-07-12 (auditoría TOTAL Plataforma P1-1): startPurgaJob eliminado.
+  // La retención efectiva de audit_logs vive en `startAuditPartitionsJob`
+  // (más abajo) que dropea partitions viejas — path 1000× más eficiente
+  // que el DELETE row-by-row anterior sobre tabla particionada.
 
   // Job interno: cada 24h valida invariantes de integridad financiera.
   // Si encuentra drift (saldos negativos, FKs lógicas rotas, conciliación

@@ -132,7 +132,9 @@ router.put('/config/:tipo', validate(updateAlertaConfigSchema), async (req, res,
     // o cambio de parámetros (ej. umbral_unidades) impacta inmediatamente la
     // próxima evaluación. Cross-instance via Redis DEL + tombstone.
     // Fire-and-forget: si falla, el cache vence solo a los 5 min.
-    alertasCache.invalidate(req.tenantId).catch(() => {});
+    // 2026-07-12 (auditoría TOTAL Plataforma P1-4): logging explícito en el
+    // .catch — antes silence total, ahora warn con contexto.
+    alertasCache.invalidate(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[alertas] cache.invalidate post-write falló — otras réplicas verán stale hasta TTL 5min'));
 
     res.json(rows[0]);
   } catch (err) {
