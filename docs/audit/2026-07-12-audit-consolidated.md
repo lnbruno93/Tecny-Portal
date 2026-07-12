@@ -231,25 +231,46 @@ Los P0s que requieren migration, coordinación frontend, o consenso.
 - **PR C**: fix Auth P0-1 — TABLAS_CON_RLS canónica + startup assertion + ADR (~1 día)
 - **PR D**: fix Financiero P0-1 — multi-país en POST /cuentas/movimientos (~3h)
 
-### Sprint 2 — Cerrar multi-país UYU (Pattern B) + trazabilidad crítica (3-4 días, 3 PRs)
+### Sprint 2 (ejecutado 2026-07-12) — Batch quick wins P1 (~2-3h, 1 PR #579)
+
+En vez del plan original (multi-país + traza), Lucas eligió **batch quick wins** (Sprint I+J condensados). Cerró 11 P1s de máximo ratio impacto/costo en un solo PR:
+
+- ✅ Auth P1-2 — POST /revoke/:userId bumpea password_changed_at
+- ✅ Auth P1-4 — ratelimit dedicado en /logout
+- ✅ Auth P1-7 — regex early-return recovery code (mitiga DoS bcrypt)
+- ✅ Financiero P1-4 — borrada `recalcComprobantesFinancieraByTenant` deprecated
+- ✅ Stock P1-2 — `invalidateMetricas` en 3 endpoints envios.js
+- ✅ Stock P1-3 — tenant_id explícito en 5 queries de bulks inventario
+- ✅ Externa P1-1 — CAPTCHA en /public/super-admin-invite/accept + widget hCaptcha admin-frontend
+- ✅ Externa P1-4 — capability gates en 6 chat-bot tools
+- ✅ Externa P1-6 — TTL exposure removida de /forgot-password
+- ✅ Externa P1-7 — audit trail structurado en share link 404/410
+- ✅ Externa P1-8 — compression filter para /api/auth/*
+
+**Total: ~2-3h, 11 P1s cerrados.** PR #579 mergeado.
+
+### Sprint 3 — Cerrar multi-país UYU (Pattern B) + trazabilidad crítica (3-4 días, 3 PRs) — SIGUIENTE
 
 - **PR E**: fix Pattern B — cerrar los 5 gaps multi-país en un batch. Stock P1-6 (canjes UYU) + Financiero P1-2 (recurrentes TC) + Plataforma P2-6 (chat_rate_limits) + Financiero P2-1/P2-6 (Cambios UYU + Financiera UYU deuda) (~4h)
-- **PR F**: fix Pattern E — audit trail login events. Auth P1-1 + Auth P1-6 + Externa P1-7 (~4h)
+- **PR F**: fix Pattern E — audit trail login events. Auth P1-1 + Auth P1-6 (~4h) — nota: Externa P1-7 ya cerrado en Sprint 2 batch
 - **PR G**: fix Auth P1-3 — cambio de email exige verificación al email VIEJO. Migration `email_change_tokens` (~2h)
 
-### Sprint 3 — Idempotency-Key en Financiero + seguridad restante (3-4 días, 3 PRs)
+### Sprint 4 — Idempotency-Key en Financiero (2 días, 1 PR)
 
 - **PR H**: fix Pattern G — Idempotency-Key en 5 endpoints (`/ventas`, `/cuentas/movimientos`, `/proveedores/movimientos`, `/tarjetas/liquidaciones`, `/cambios/movimientos`). Migration compartida + backend + frontend + tests (~6h)
-- **PR I**: fix seguridad batch — Auth P1-2 (revoke bumpea), Auth P1-4 (logout DoS ratelimit), Externa P1-1 (captcha super-admin invite), Externa P1-4 (chat-bot caps) (~3h)
-- **PR J**: fix Externa P1-5 (sanitize PDF) + P1-8 (compression filter auth) + P1-6 (no exponer TTL) (~2h)
 
-### Sprint 4 — Infra hardening (3-4 días, 3 PRs)
+### Sprint 5 — P1 restantes de seguridad + solidez (2-3 días, 2 PRs)
+
+- **PR I**: seguridad + solidez restantes — Auth P1-3 (2FA re-auth), Auth P1-5 (race signup + super-admin), Externa P1-5 (PDF sanitize), Stock P1-4 (share link expone tenant suspendido) (~4h)
+- **PR J**: Financiero P1-3 (PATCH tarjeta liquidación 409 caja destino) + P1-5 (syncTarjetaCobros JOIN frágil) (~4h)
+
+### Sprint 6 — Infra hardening (3-4 días, 3 PRs)
 
 - **PR K**: fix Plataforma P1-2 — CI test contra NOSUPERUSER + FORCE RLS (~4h). **Previene otro incidente tipo F1.**
-- **PR L**: fix Plataforma P1-1 + P1-3 + P1-4 — dropear purga redundante, flag DB_INT_CAST_DEBUG, await invalidations críticas (~2h)
+- **PR L**: fix Plataforma P1-1 + P1-4 — dropear purga redundante, await invalidations críticas (~2h). Nota: Plataforma P1-3 (flag DB_INT_CAST_DEBUG) sigue pendiente.
 - **PR M**: fix Stock P1-1 — canjes con soft-delete + revertirEfectosVenta toca canjes. **Requiere decisión de Lucas antes.** (~4-6h)
 
-### Sprint 5 — Batch P2/P3 (2-3 días, 2 PRs)
+### Sprint 7 — Batch P2/P3 (2-3 días, 2 PRs)
 
 Los P2/P3 seleccionados por Lucas — cierran deuda técnica sin urgencia. Similar al PR #572 de Red B2B.
 
@@ -258,17 +279,25 @@ Los P2/P3 seleccionados por Lucas — cierran deuda técnica sin urgencia. Simil
 
 ---
 
-## Total estimado
+## Estado actual (post-Sprint 2, 2026-07-12)
 
-| Sprint | Duración | PRs | Findings cerrados |
+| Sprint | Duración | PRs | Findings cerrados | Estado |
+|---|---|---|---|---|
+| Sprint 0 (quick wins P0) | 1 día | 1 (#574) | 8 × P0 | ✅ mergeado |
+| Sprint 1 (P0 scope + Pattern A) | 2-3 días | 4 (#575-578) | 4 × P0 + Pattern A (3 findings) | ✅ mergeado |
+| Sprint 2 (quick wins P1) | 2-3h | 1 (#579) | 11 × P1 | ✅ mergeado |
+| **Total cerrado** | | **6 PRs** | **12 × P0 + 14 × P1** | ~30% del audit |
+
+## Total estimado restante
+
+| Sprint | Duración | PRs | Findings a cerrar |
 |---|---|---|---|
-| Sprint 0 (quick wins) | 1 día | 1 | 8 × P0 |
-| Sprint 1 (P0 con scope) | 2-3 días | 4 | 4 × P0 + Pattern A (3 findings) |
-| Sprint 2 (multi-país + traza) | 3-4 días | 3 | Pattern B (5) + Pattern E (3) + 1 × P1 |
-| Sprint 3 (Idempotency + security) | 3-4 días | 3 | Pattern G (5) + 6 × P1 |
-| Sprint 4 (infra) | 3-4 días | 3 | 4 × P1 |
-| Sprint 5 (batch P2/P3) | 2-3 días | 2 | 40-50 × P2/P3 |
-| **TOTAL** | **15-20 días** | **16 PRs** | **~90 findings cerrados (69%)** |
+| Sprint 3 (multi-país + traza) | 3-4 días | 3 | Pattern B (5) + Pattern E (2) + Auth P1-3 |
+| Sprint 4 (Idempotency Financiero) | 2 días | 1 | Pattern G (5) |
+| Sprint 5 (P1 seguridad + solidez) | 2-3 días | 2 | 6 × P1 |
+| Sprint 6 (infra hardening) | 3-4 días | 3 | 4 × P1 |
+| Sprint 7 (batch P2/P3) | 2-3 días | 2 | 40-50 × P2/P3 |
+| **TOTAL RESTANTE** | **12-16 días** | **11 PRs** | **~65 findings adicionales** |
 
 Los ~41 findings restantes son **deuda cosmética documentada** — batch en un futuro sprint o abandonar según decisión.
 
