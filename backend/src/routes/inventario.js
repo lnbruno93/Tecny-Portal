@@ -719,9 +719,11 @@ router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, nex
       LEFT JOIN categorias       c  ON c.id  = p.categoria_id AND c.deleted_at IS NULL
       LEFT JOIN depositos        d  ON d.id  = p.deposito_id  AND d.deleted_at IS NULL
       LEFT JOIN LATERAL (
+        -- 2026-07-12 (audit Stock P1-1): cj.deleted_at IS NULL — filter
+        -- del partial index idx_canjes_venta_id_activos.
         SELECT cj.id, cj.venta_id, cj.valor_toma, cj.moneda AS canje_moneda
           FROM canjes cj
-         WHERE cj.producto_id = p.id
+         WHERE cj.producto_id = p.id AND cj.deleted_at IS NULL
          ORDER BY cj.created_at DESC
          LIMIT 1
       ) cj ON true
