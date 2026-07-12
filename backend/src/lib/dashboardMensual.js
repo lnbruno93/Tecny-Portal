@@ -60,13 +60,31 @@ async function ventasAgregadas(...allArgs) {
   };
 }
 
+// 2026-07-12 (auditoría TOTAL P0-3 Financiero): el CASE anterior dividía
+// SIEMPRE por `tc_venta`, asumiendo que `precio_vendido` está en moneda local.
+// Pero `venta_items.moneda` puede ser 'USD'/'USDT' — en ese caso el precio
+// YA está en USD y NO se debe dividir. Un item USD de 100 con tc_venta=1400
+// quedaba computado como 100/1400 = 0.07 USD → total_usd subestimado 1400×.
+//
+// Fix: replicar el CASE del dashboard general (`routes/ventas.js:675`), que
+// chequea `vi.moneda IN ('ARS','UYU')` antes de dividir. Consistencia
+// cross-módulo. El bug afectaba los rankings del Resumen Mensual (mostraban
+// valores absolutos totalmente incorrectos para tenants con ventas USD, que
+// es el 100% de los tenants AR de electrónica).
+//
+// El `tc_venta` es el TC del momento de la venta (inmutable) y sigue siendo
+// la fuente de conversión — solo se aplica cuando corresponde según la
+// moneda del item.
 async function topProductos(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
   const [desde, hasta, limit = 5] = restArgs;
   const { rows } = await exec.query(
     `SELECT vi.descripcion AS producto, SUM(vi.cantidad)::int AS cantidad,
-            COALESCE(SUM(vi.precio_vendido * vi.cantidad
-              / NULLIF(CASE WHEN v.tc_venta > 0 THEN v.tc_venta ELSE 1 END, 0)), 0) AS total_usd
+            COALESCE(SUM(CASE
+              WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0
+                THEN vi.precio_vendido * vi.cantidad / v.tc_venta
+              ELSE vi.precio_vendido * vi.cantidad
+            END), 0) AS total_usd
        FROM venta_items vi
        JOIN ventas v ON v.id = vi.venta_id
       WHERE v.fecha BETWEEN $1 AND $2
@@ -86,8 +104,11 @@ async function topVendedores(...allArgs) {
   const { rows } = await exec.query(
     `SELECT vd.nombre AS vendedor,
             COUNT(DISTINCT v.id)::int AS ventas,
-            COALESCE(SUM(vi.precio_vendido * vi.cantidad
-              / NULLIF(CASE WHEN v.tc_venta > 0 THEN v.tc_venta ELSE 1 END, 0)), 0) AS total_usd
+            COALESCE(SUM(CASE
+              WHEN vi.moneda IN ('ARS','UYU') AND v.tc_venta > 0
+                THEN vi.precio_vendido * vi.cantidad / v.tc_venta
+              ELSE vi.precio_vendido * vi.cantidad
+            END), 0) AS total_usd
        FROM venta_items vi
        JOIN ventas v       ON v.id = vi.venta_id
        JOIN vendedores vd  ON vd.id = vi.vendedor_id

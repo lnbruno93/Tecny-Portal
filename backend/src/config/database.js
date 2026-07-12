@@ -213,14 +213,29 @@ pool.withTenant = async function withTenant(tenantId, callback) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // SET LOCAL: válido SOLO dentro de la tx en curso. Al COMMIT, la setting
-    // se descarta — el client vuelve al pool limpio. Crítico para evitar leak
-    // de contexto entre requests.
+    // 2026-07-12 (auditoría TOTAL P0-1 Plataforma): usar `set_config()` con
+    // bind param en vez de interpolar `tenantId` en el SQL.
     //
-    // Nota: Postgres NO acepta bind parameters en SET. Interpolamos `tenantId`
-    // directo en el SQL. Seguro porque arriba validamos que es Number.isInteger
-    // > 0 (Number to string es trivial, sin SQL injection posible).
-    await client.query(`SET LOCAL app.current_tenant = ${tenantId}`);
+    // Antes: `SET LOCAL app.current_tenant = ${tenantId}` con nota "Postgres
+    // no acepta bind en SET". La nota es correcta para el comando `SET`,
+    // pero `set_config()` SÍ acepta bind — es una función SQL normal. Ya
+    // usábamos ese patrón en migrations (ej.
+    // `20260624000001_capability_roles_owner_admin_backfill.js:65`).
+    //
+    // Ventajas:
+    //   1. Parametrización real — inmune a regressions futuras si algún
+    //      caller pasa un valor sin validar.
+    //   2. Consistente con el pattern de las migrations.
+    //   3. El guard `Number.isInteger` arriba se mantiene como defense-in-
+    //      depth. El bind param es defensa adicional.
+    //
+    // `SET LOCAL` = `set_config(..., is_local=true)` (3er arg=true).
+    // Documentación:
+    //   https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADMIN-SET
+    await client.query(
+      `SELECT set_config('app.current_tenant', $1::text, true)`,
+      [String(tenantId)]
+    );
     const result = await callback(client);
     await client.query('COMMIT');
     return result;

@@ -36,9 +36,27 @@ function genRandomToken() {
 }
 
 // Salt del env para el hash de IPs (no queremos IPs plaintext en la DB).
-// Si no viene, uso un default no vacío para que el hash siga funcionando
-// en dev sin bloquear. En prod DEBE venir de env.
-const IP_HASH_SALT = process.env.SHARE_LINK_IP_SALT || 'tecny-share-link-salt-dev';
+//
+// 2026-07-12 (auditoría TOTAL P0-3 Externa): fail-closed en prod. El fallback
+// `'tecny-share-link-salt-dev'` es público (está en el código) → sin el env
+// seteado en prod, el hash de IP se puede rainbow-tablear en segundos (SHA-256
+// con salt conocido sobre 4B IPs IPv4). Rompe la promesa de "anonimización"
+// que hace la migration 20260711100000_share_links_usados.js.
+//
+// Fix: throw al cargar el módulo si `NODE_ENV === 'production'` y la env no
+// está seteada. Deploy Railway falla ruidoso — mucho mejor que persistir
+// hashes falsamente anonimizados por semanas hasta que alguien lo detecte.
+// Mismo patrón que `HCAPTCHA_ENABLED=true` con `HCAPTCHA_SECRET` (fail-closed
+// SEG-4).
+const IP_HASH_SALT_ENV = process.env.SHARE_LINK_IP_SALT;
+if (!IP_HASH_SALT_ENV && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'SHARE_LINK_IP_SALT no está seteada en producción. ' +
+    'Sin salt propio del entorno, hash de IPs en share_link_views es reversible. ' +
+    'Definir la env var con un secreto de al menos 32 chars (`openssl rand -hex 32`).'
+  );
+}
+const IP_HASH_SALT = IP_HASH_SALT_ENV || 'tecny-share-link-salt-dev';
 
 function hashIP(ip) {
   if (!ip) return crypto.createHash('sha256').update(IP_HASH_SALT).digest('hex').slice(0, 32);
@@ -348,9 +366,20 @@ publicRouter.get('/usados/:token', publicLimiter, validate(tokenParamSchema, 'pa
         '[share-link] fallo al registrar view (no bloquea response)');
     });
 
-    // Cache HTTP: 60s CDN + browser. Si el tenant edita inventario, se
-    // refresca en máximo 60s.
-    res.set('Cache-Control', 'public, max-age=60');
+    // Cache HTTP: 60s browser-only (NO CDN).
+    //
+    // 2026-07-12 (auditoría TOTAL P0-2 Externa): antes era `public, max-age=60`
+    // → los edge nodes de Railway (u otro CDN) cacheaban el response. Cuando
+    // el operador rota el token (`POST /rotate`) o desactiva el link
+    // (`activo=false`), el link viejo seguía sirviendo por hasta 60s más
+    // desde cache CDN — contradice la promesa "rotar = invalida YA".
+    //
+    // Fix: `private` fuerza a que solo el browser del cliente cachee, no
+    // proxies compartidos. `must-revalidate` obliga a re-preguntar al server
+    // al vencer el TTL en vez de servir stale. Hit rate global cae, pero
+    // el share link no es un asset viral típico — trade-off aceptable por
+    // la garantía de invalidación inmediata.
+    res.set('Cache-Control', 'private, max-age=60, must-revalidate');
     res.json({
       tenant: {
         nombre: linkRow.tenant_nombre || 'Tu comercio',

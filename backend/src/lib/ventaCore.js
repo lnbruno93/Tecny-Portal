@@ -72,13 +72,20 @@ async function descontarStock(client, items) {
 
   // 1 UPDATE bulk con UNNEST — aplica el descuento a todos los productos a la vez.
   // El array de cantidades va en el mismo orden que `ids`.
+  //
+  // 2026-07-12 (auditoría TOTAL P0-2 Stock): agregado `AND p.deleted_at IS NULL`
+  // — mismo pattern que TODOS los otros UPDATE productos del portal
+  // (`reponerStock` acá abajo, `cuentas.js:975` B2B, `pagos.js:1091, 1140`
+  // devolución cross-tenant, `crossTenantOps.js:358` post-fix Red B2B P2-1).
+  // El SELECT previo filtra `deleted_at IS NULL`, pero el UPDATE no
+  // filtraba — TOCTOU si un producto se soft-deletea entre SELECT y UPDATE.
   const cantidades = ids.map(id => need.get(id));
   await client.query(
     `UPDATE productos AS p
         SET cantidad = GREATEST(p.cantidad - u.cant, 0),
             estado   = CASE WHEN p.tipo_carga = 'unitario' THEN 'vendido' ELSE p.estado END
        FROM UNNEST($1::int[], $2::int[]) AS u(id, cant)
-      WHERE p.id = u.id`,
+      WHERE p.id = u.id AND p.deleted_at IS NULL`,
     [ids, cantidades]
   );
 }

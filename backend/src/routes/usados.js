@@ -76,7 +76,13 @@ router.post('/', requireCapability('usados.agregar_equipo'), validate(createUsad
 
 // ── PUT /api/usados/bulk ─────────────────────────────────────────────────────
 // Actualiza precio_usd y comentarios de múltiples productos en una sola transacción.
-router.put('/bulk', validate(bulkUpdateUsadosSchema), async (req, res, next) => {
+//
+// 2026-07-12 (auditoría TOTAL P0-1 Stock): agregado `requireCapability`. Antes,
+// el módulo estaba gateado a nivel router solo por `usados.ver` (que TODO
+// vendedor + lectura tienen por default). Sin gate inline, un rol lectura
+// podía reescribir el listado en masa vía DevTools. Mismo criterio semántico
+// que POST /: "modificar el catálogo" = capability `usados.agregar_equipo`.
+router.put('/bulk', requireCapability('usados.agregar_equipo'), validate(bulkUpdateUsadosSchema), async (req, res, next) => {
   try {
     const { updates } = req.body;
     const client = await db.connect();
@@ -113,7 +119,8 @@ router.put('/bulk', validate(bulkUpdateUsadosSchema), async (req, res, next) => 
 });
 
 // ── PUT /api/usados/:id ──────────────────────────────────────────────────────
-router.put('/:id', validate(updateUsadoSchema), async (req, res, next) => {
+// 2026-07-12 (auditoría TOTAL P0-1 Stock): cap gate (ver PUT /bulk arriba).
+router.put('/:id', requireCapability('usados.agregar_equipo'), validate(updateUsadoSchema), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -152,7 +159,11 @@ router.put('/:id', validate(updateUsadoSchema), async (req, res, next) => {
 });
 
 // ── DELETE /api/usados/:id ───────────────────────────────────────────────────
-router.delete('/:id', async (req, res, next) => {
+// 2026-07-12 (auditoría TOTAL P0-1 Stock): cap gate. Usamos la misma
+// `usados.agregar_equipo` que PUT — el DELETE también es "modificar el
+// catálogo". Si en el futuro querés granularidad extra ("no puedo agregar,
+// pero sí archivar"), separá con `usados.eliminar_equipo` nueva.
+router.delete('/:id', requireCapability('usados.agregar_equipo'), async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'ID inválido' });

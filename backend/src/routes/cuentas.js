@@ -25,6 +25,12 @@ const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
 const requireCapability = require('../middleware/requireCapability');
 const { toUsd, round2 } = require('../lib/money');
+// 2026-07-12 (auditoría TOTAL P0-2 Financiero): import el helper canónico de
+// cajaLedger (3 grupos: ARS/UYU/USD) en vez de definir una versión local con
+// solo 2 grupos (ARS/todo-lo-demás). El local hacía que UYU cayera al grupo
+// "USD" y una cobranza UYU contra caja USDT pasara validación con montos
+// corruptos × 40.
+const { grupoMoneda } = require('../lib/cajaLedger');
 
 // Rate-limit específico para cobranza masiva: 10 req / 15 min por user.
 // Cada lote puede ser de hasta 100 cobranzas → write-heavy y mantiene
@@ -1089,9 +1095,12 @@ router.post('/cobranzas-masivas', requireCapability('b2b.cobranza_masiva'), cobr
     const cajaMoneda = new Map(cajaRows.map(r => [r.id, r.moneda]));
 
     // Validar que la moneda del pago coincida con el grupo de la caja
-    // (USD/USDT son intercambiables, ARS aparte) — mismo check que hace
-    // postCajaMovimiento pero hecho upfront para todas las filas.
-    const grupoMoneda = (m) => m === 'ARS' ? 'ARS' : 'USD';
+    // (USD/USDT son intercambiables, ARS aparte, UYU aparte) — mismo check
+    // que hace postCajaMovimiento pero hecho upfront para todas las filas.
+    // 2026-07-12 (auditoría TOTAL P0-2): usar el `grupoMoneda` canónico de
+    // cajaLedger.js (import arriba). El local definía solo 2 grupos y hacía
+    // que cobranzas UYU contra caja USDT pasaran validación con corrupción
+    // silenciosa del saldo.
     for (let i = 0; i < cobranzasOrdenadas.length; i++) {
       const c = cobranzasOrdenadas[i];
       const monedaCaja = cajaMoneda.get(c.caja_id);
