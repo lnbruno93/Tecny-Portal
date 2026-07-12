@@ -72,7 +72,47 @@ const PostgresRateLimitStore = require('./src/lib/postgresRateLimitStore');
 
 const PORT = process.env.PORT || 3001;
 
-const server = app.listen(PORT, () => {
+// ─── Startup fail-fast: RLS coverage assertion ─────────────────────────
+//
+// 2026-07-12 (auditoría TOTAL Auth P0-1): antes de aceptar tráfico,
+// verificar que TODAS las tablas con `tenant_id` tienen su policy
+// `tenant_isolation` canónica (o están en la whitelist de excepciones
+// documentadas). Si detecta drift → fatal + exit → el deploy Railway
+// queda como FAILED y no llega tráfico a un backend con RLS mal
+// configurado.
+//
+// Costo: 2 queries a system catalogs (~10ms). Trivial vs el impacto
+// de un leak cross-tenant no detectado.
+//
+// Ver `backend/src/lib/rlsCanonical.js` para la lista canónica + helper
+// `enableTenantRlsFor` para migrations nuevas.
+const { assertRlsCoverage } = require('./src/lib/rlsCanonical');
+
+async function startServer() {
+  try {
+    const rlsCheck = await assertRlsCoverage(db);
+    logger.info(
+      { tablesChecked: rlsCheck.checked },
+      '[rlsCanonical] cobertura de RLS verificada — todas las tablas con tenant_id tienen policy canónica'
+    );
+  } catch (err) {
+    // Fatal: no arranca el server. En Railway, el pod muere y el deploy
+    // queda FAILED con este error en logs. Debug: leer el mensaje del
+    // error (enumera qué tabla falta) y aplicar migration con
+    // enableTenantRlsFor.
+    logger.fatal(
+      { err: err.message, code: err.code },
+      '[rlsCanonical] DRIFT detectado — server NO arranca. Ver mensaje del error para tablas afectadas.'
+    );
+    // Flush Sentry para que el fatal llegue antes del exit.
+    try { await Sentry.flush(2000); } catch (_) { /* ignore */ }
+    process.exit(1);
+  }
+
+  return app.listen(PORT, onListenReady);
+}
+
+function onListenReady() {
   logger.info({ port: PORT, env: process.env.NODE_ENV || 'production' }, 'iPro API iniciada');
 
   // C.1 (#353): primear el cache de plan_prices desde la tabla DB.
@@ -149,11 +189,32 @@ const server = app.listen(PORT, () => {
     .catch(err => logger.error({ err }, 'rate_limit cleanup falló'));
   setInterval(runCleanup, 60 * 60 * 1000).unref(); // cada 1h
   logger.info('rate_limit cleanup job programado (con advisory lock, intervalHours: 1)');
-});
+}
+
+// Arrancar el server con RLS check previo. Retorna la instancia http.Server
+// que shutdown() necesita para cerrar conexiones.
+let server;
+startServer()
+  .then((httpServer) => { server = httpServer; })
+  .catch((err) => {
+    // startServer() ya loguea y hace exit en el path de RLS drift. Este
+    // catch cubre otras excepciones inesperadas (ej. app.listen falla por
+    // port ocupado, EADDRINUSE).
+    logger.fatal({ err: err.message }, 'startServer falló');
+    process.exit(1);
+  });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 async function shutdown(signal) {
   logger.info({ signal }, 'Señal recibida — cerrando servidor...');
+
+  // Guard: si startServer aún no completó (RLS check falló, listen falló),
+  // no hay server para cerrar. Salimos rápido.
+  if (!server) {
+    logger.warn('shutdown() sin server activo — exit inmediato');
+    process.exit(1);
+    return;
+  }
 
   // 1. Dejar de aceptar conexiones nuevas
   server.close(async () => {
