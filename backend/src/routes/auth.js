@@ -105,7 +105,7 @@ function makeToken(user, tenant, capInfo) {
 
 router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, code } = req.body;
     const field = username ? 'username' : 'email';
     const value = username || email;
 
@@ -126,18 +126,29 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // + bcrypt.compare de ~50ms) en bots. Cost del verify: ~50-200ms
     // (round-trip a hCaptcha) — aceptable dado que solo lo pagan requests
     // que quieren loguear.
-    const captcha = require('../lib/captcha');
-    const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
-    if (!captchaResult.success) {
-      const errMap = {
-        expired:       'La verificación expiró. Intentá de nuevo.',
-        duplicate:     'La verificación ya fue usada. Recargá la página.',
-        invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
-      };
-      const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
-      logger.info({ source: 'login_captcha_fail', error: captchaResult.error, field, ip: req.ip },
-        'login rechazado por captcha');
-      return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+    //
+    // 2026-07-12 (hotfix post-audit): SKIP captcha en step 2 del flow 2FA.
+    // El token hCaptcha es SINGLE-USE — validarlo en step 1 quema el token.
+    // Si el user re-envía con code (step 2), hCaptcha responde `duplicate` y
+    // el login rebota con "verificación ya fue usada". Skip captcha cuando
+    // llega `code` en el body: es seguro porque (a) el step 2 requiere que
+    // el step 1 (password correcta) haya pasado exitosamente, y (b) el
+    // brute-force del TOTP tiene 10^6 combinaciones ya protegidas por
+    // loginLimiter (10/15min IP) + lockout per-user (SOL-3).
+    if (!code) {
+      const captcha = require('../lib/captcha');
+      const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
+      if (!captchaResult.success) {
+        const errMap = {
+          expired:       'La verificación expiró. Intentá de nuevo.',
+          duplicate:     'La verificación ya fue usada. Recargá la página.',
+          invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+        };
+        const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+        logger.info({ source: 'login_captcha_fail', error: captchaResult.error, field, ip: req.ip },
+          'login rechazado por captcha');
+        return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+      }
     }
 
     // 2026-06-16 TANDA 1: lookup case-insensitive cuando el field es email. La

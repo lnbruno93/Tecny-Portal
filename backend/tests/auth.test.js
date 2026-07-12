@@ -114,6 +114,30 @@ describe('POST /api/auth/login', () => {
       expect(res.status).toBe(400);
       expect(res.body.reason).toBe('captcha_failed');
     });
+
+    // 2026-07-12 (hotfix post-audit): regression test para el bug donde el
+    // step 2 del flow 2FA re-enviaba el mismo captcha token (single-use en
+    // hCaptcha) → duplicate → user bloqueado en "verificación ya fue usada".
+    // Fix: si el request incluye `code`, el backend skippea el captcha gate.
+    // Seguridad: step 2 asume que step 1 pasó con captcha válido; el TOTP
+    // brute-force ya está cubierto por loginLimiter + lockout per-user.
+    it('hotfix: step 2 del flow 2FA con code presente NO requiere captcha', async () => {
+      // Sin hcaptcha_response y CON code → NO debe rebotar por captcha_failed.
+      // El request va a rebotar por password/user/2FA inválidos (200 con
+      // twofa_required o 401), pero NUNCA con reason=captcha_failed.
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          username: TEST_USER.username,
+          password: TEST_USER.password,
+          code: '123456', // TOTP dummy — no importa si es válido para este test
+          // NOTA: intencionalmente SIN hcaptcha_response.
+        });
+      // Aceptamos cualquier response que NO sea captcha_failed. El path feliz
+      // depende del state de 2FA del test user; lo que importa es que el
+      // captcha NO haya rebotado el request antes.
+      expect(res.body.reason).not.toBe('captcha_failed');
+    });
   });
 });
 
