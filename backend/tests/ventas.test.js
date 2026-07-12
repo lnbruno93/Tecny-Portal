@@ -1229,3 +1229,39 @@ describe('Ventas — Idempotency-Key (Pattern G)', () => {
     expect(r2.body.idempotent_replay).toBe(true);
   });
 });
+
+// 2026-07-12 (auditoría TOTAL Financiero P1-5): verificar que 2 pagos con
+// mismo método + mismo monto no duplican la comisión_total_metodos.
+describe('Ventas — comision_total_metodos con 2 pagos idénticos (P1-5)', () => {
+  it('2 pagos tarjeta idénticos NO duplican comision (JOIN por venta_pago_id)', async () => {
+    // Setup: tarjeta con 10% de comisión.
+    const tar = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: 'TC P1-5 dup', moneda: 'ARS', es_tarjeta: true, comision_pct: 10 });
+    expect(tar.status).toBe(201);
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: 'Cat P1-5 ' + Date.now() });
+    const prod = await request(app).post('/api/inventario/productos').set(auth())
+      .send({
+        nombre: 'Prod P1-5', clase: 'celular_sellado', tipo_carga: 'unitario',
+        categoria_id: cat.body.id, costo: 60, costo_moneda: 'USD',
+        precio_venta: 100, precio_moneda: 'USD', cantidad: 1,
+      });
+
+    // Venta con 2 pagos IDÉNTICOS a la misma tarjeta (simula fail del POS
+    // al cobrar 100000 en 1 → operador partió en 2× 50000).
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: '2026-11-16', cliente_nombre: 'P1-5', estado: 'acreditado', tc_venta: 1000,
+      items: [{ producto_id: prod.body.id, descripcion: 'Prod P1-5',
+                cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }],
+      pagos: [
+        { metodo_pago_id: tar.body.id, metodo_nombre: 'TC P1-5 dup', monto: 50000, moneda: 'ARS', tc: 1000 },
+        { metodo_pago_id: tar.body.id, metodo_nombre: 'TC P1-5 dup', monto: 50000, moneda: 'ARS', tc: 1000 },
+      ],
+    });
+    expect(venta.status).toBe(201);
+    // Comisión esperada: 10% de 100 USD total = 10 USD (5 USD × 2 pagos).
+    // Con el bug viejo (triple JOIN), el cartesian daría 20 USD (comisión × 2).
+    // Con el fix (JOIN por venta_pago_id FK), da 10 USD correcto.
+    expect(Number(venta.body.comision_total_metodos)).toBeCloseTo(10, 2);
+  });
+});

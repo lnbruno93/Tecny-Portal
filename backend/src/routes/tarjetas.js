@@ -699,6 +699,18 @@ router.post('/liquidaciones-multiples', validate(createLiquidacionMultipleSchema
 //     nuevo, todo dentro de la misma tx. Si la nueva caja difiere en moneda de
 //     la tarjeta, 400. La validación de "no dejar caja en negativo" la aplica
 //     reverseCajaMovimientos (mismo helper que DELETE).
+//
+// ⚠️ IMPORTANTE: NO optimizar el flow "reverse + repost" a un UPDATE in-place
+// sobre caja_movimientos. Los caja_movimientos son ledger inmutable con
+// trazabilidad — el reverseCajaMovimientos hace soft-delete de los rows viejos
+// y postCajaMovimiento inserta rows nuevos. Esto preserva el histórico y
+// permite auditoría contable. Un UPDATE in-place "más eficiente" rompería la
+// invariante.
+//
+// 2026-07-12 (auditoría TOTAL Financiero P1-3): el catch abajo distingue el
+// 409 según origen — antes decía "la caja X quedaría negativa" sin explicar
+// por qué. Ahora dice "no se puede cambiar la caja destino porque..." cuando
+// aplica.
 router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, res, next) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID inválido' });
@@ -827,6 +839,15 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
       //    + egreso caja-tarjeta). reverseCajaMovimientos revierte por
       //    ref_tabla='tarjeta_movimientos' AND ref_id=id, así que pesca AMBOS.
       //    Si el egreso reverse dejara la caja-tarjeta en negativo, throwea 409.
+      //
+      // 2026-07-12 (Financiero P1-3): capturamos el flag "cambio caja destino"
+      // para poder mejorar el mensaje del 409 en el catch. Si el usuario cambió
+      // caja_id, un 409 aquí NO es "ROLLBACK/no puedo deshacer una cancelación"
+      // — es "la caja original ya gastó el dinero, no puedo cambiar destino".
+      const cambioCaja = Number(mov.caja_id) !== caja_id;
+      // Guardar en el req para que el catch abajo lo consulte.
+      req._patchCambioCaja = cambioCaja;
+      req._patchCajaOrigId = mov.caja_id;
       await reverseCajaMovimientos(client, 'tarjeta_movimientos', id);
 
       // 2) Update del movimiento de tarjeta con los nuevos valores. moneda en
@@ -878,6 +899,22 @@ router.patch('/movimientos/:id', validate(updateMovimientoSchema), async (req, r
     res.json(updated);
   } catch (err) {
     await client.query('ROLLBACK');
+    // 2026-07-12 (Financiero P1-3): mejorar el mensaje del 409 cuando el
+    // reverseCajaMovimientos falla porque la caja original ya gastó el dinero.
+    // Antes decía "la caja X quedaría negativa" sin decir por qué le importa
+    // al operador (que solo quería cambiar destino). Ahora explica y sugiere
+    // fix.
+    if (err.status === 409 && req._patchCambioCaja) {
+      return res.status(409).json({
+        error:
+          'No se puede cambiar la caja destino: la caja original ya gastó ' +
+          'ese dinero y no se puede revertir el ingreso. Sugerencia: creá ' +
+          'una liquidación nueva con la caja correcta y ajustá la caja ' +
+          'original manualmente para reflejar la corrección.',
+        reason: 'edit_caja_destino_locked',
+        caja_original_id: req._patchCajaOrigId,
+      });
+    }
     // postCajaMovimiento(Tarjeta) y reverseCajaMovimientos throwean con
     // err.status (400 moneda mal/saldo insuficiente, 409 quedar negativo).
     if (err.status) return res.status(err.status).json({ error: err.message });
