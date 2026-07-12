@@ -1,6 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { useAuth } from '../contexts/AuthContext';
+
+// hCaptcha site key — misma config que Signup.jsx y ForgotPassword.jsx.
+// Default: test sitekey oficial de hCaptcha (siempre pasa, para dev/local).
+// En prod se pasa VITE_HCAPTCHA_SITE_KEY con la key real (build-time inline).
+const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY
+  || '10000000-ffff-ffff-ffff-000000000001';
 
 // Login screen — rediseño split-screen (2026-06-06).
 //
@@ -92,6 +99,14 @@ export default function Login() {
   // Cuando agreguemos sesión efímera (sessionStorage si !remember), wireamos.
   const [remember, setRemember] = useState(true);
 
+  // 2026-07-12 (auditoría TOTAL Externa P0-1): hCaptcha invisible.
+  // Widget corre en modo "99.9% passive" (config en el hCaptcha dashboard) —
+  // rara vez muestra desafío para humanos legítimos, pero bloquea bots
+  // automatizados. En dev/local (backend HCAPTCHA_ENABLED!='true'), el
+  // widget carga con la test sitekey y su token es aceptado en bypass.
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const captchaRef = useRef(null);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -108,6 +123,7 @@ export default function Login() {
         identifier,
         password,
         twofaRequired ? code.trim() : undefined,
+        captchaToken || undefined,
       );
       if (result.twofa_required) {
         setTwofaRequired(true);
@@ -121,6 +137,13 @@ export default function Login() {
         setCode('');
       } else {
         setError(err.message || 'Usuario o contraseña incorrectos');
+      }
+      // Token hCaptcha es single-use. Reset después de cualquier error para
+      // que el próximo submit intente uno nuevo — el widget en modo passive
+      // re-emite automáticamente.
+      setCaptchaToken(null);
+      if (captchaRef.current) {
+        try { captchaRef.current.resetCaptcha(); } catch (_) { /* no-op */ }
       }
     } finally {
       setLoading(false);
@@ -281,6 +304,23 @@ export default function Login() {
                   Ingresá el código de 6 dígitos de tu app autenticadora (Google
                   Authenticator, Authy, etc.) o uno de tus recovery codes.
                 </div>
+              </div>
+            )}
+
+            {/* hCaptcha invisible — misma config que Signup / ForgotPassword.
+                Solo lo mostramos en el step 1 (username/password). En step 2
+                (código 2FA) el user ya validó captcha en el step 1, no vale
+                pedirlo dos veces. */}
+            {!twofaRequired && (
+              <div style={{ margin: '12px 0', display: 'flex', justifyContent: 'center' }}>
+                <HCaptcha
+                  ref={captchaRef}
+                  sitekey={HCAPTCHA_SITE_KEY}
+                  onVerify={(token) => setCaptchaToken(token)}
+                  onExpire={() => setCaptchaToken(null)}
+                  onError={() => setCaptchaToken(null)}
+                  theme="light"
+                />
               </div>
             )}
 

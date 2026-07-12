@@ -30,8 +30,12 @@ export function AuthProvider({ children }) {
   //
   // Devuelve { user } si OK, { twofa_required: true } si falta el código.
   // Lanza error en otros casos (password mala, lockout, etc.).
-  const login = useCallback(async (username, password, code = undefined) => {
-    const data = await authApi.login(username, password, code);
+  //
+  // 2026-07-12 (auditoría TOTAL Externa P0-1): 4to arg opcional
+  // `hcaptchaResponse`. En dev/local (backend HCAPTCHA_ENABLED!='true')
+  // el widget bypassa silencioso. En prod, sin token válido → 400.
+  const login = useCallback(async (username, password, code = undefined, hcaptchaResponse = undefined) => {
+    const data = await authApi.login(username, password, code, hcaptchaResponse);
     if (data.twofa_required) return { twofa_required: true };
     saveToken(data.token);
     setUser(data.user);

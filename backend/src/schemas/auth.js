@@ -14,6 +14,23 @@ const loginSchema = z.object({
   // El frontend hace 2 requests: el primero sin code (recibe twofa_required=true),
   // el segundo con code. Aceptamos TOTP (6 dígitos) o recovery code (formato libre).
   code:     z.string().trim().min(6).max(20).optional(),
+  // 2026-07-12 (auditoría TOTAL Externa P0-1): hCaptcha invisible.
+  //
+  // Antes: el único freno anti-brute-force era el loginLimiter (10 fallos/
+  // 15min por IP normalizada). Un atacante distribuido con 200 IPs
+  // rotativas podía probar 2000 credenciales/15min sobre un mismo email.
+  // El lockout per-user (SOL-3) sí disparaba, pero solo bloqueaba al
+  // legítimo — el atacante seguía martillando cada 15min (~192.000
+  // intentos/día por cuenta objetivo).
+  //
+  // Fix: mismo pattern que /signup, /forgot-password, /super-admin-invite —
+  // hcaptcha_response opcional en schema; el toggle vive en HCAPTCHA_ENABLED
+  // env. Cuando enabled, verifyCaptcha rechaza sin el token. El widget
+  // hCaptcha "invisible" del frontend rara vez muestra desafío para
+  // humanos legítimos (0 fricción) pero bloquea bots automatizados.
+  //
+  // Bound a 10kB — tokens reales son ~500-2000 chars.
+  hcaptcha_response: z.string().trim().max(10_000).optional(),
 }).strict().refine(d => d.username || d.email, {
   message: 'username o email es requerido',
   path: ['username'],

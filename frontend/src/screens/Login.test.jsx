@@ -58,7 +58,10 @@ describe('Login — toggle ojito + flow 2FA', () => {
     await user.click(getSubmitBtn());
     await waitFor(() => expect(mockLogin).toHaveBeenCalled());
     // Trim aplica, lowercase NO (no es email).
-    expect(mockLogin).toHaveBeenCalledWith('Lucas', 'pass123', undefined);
+    // 2026-07-12 (P0-1 Externa): 4to arg hcaptchaResponse — undefined en
+    // tests porque el widget hCaptcha en el screen no emite token en el
+    // mock (setup del test no simula onVerify).
+    expect(mockLogin).toHaveBeenCalledWith('Lucas', 'pass123', undefined, undefined);
   });
 
   it('TANDA 2.3: login con email también funciona (trim + lowercase)', async () => {
@@ -74,7 +77,8 @@ describe('Login — toggle ojito + flow 2FA', () => {
     await user.click(getSubmitBtn());
     await waitFor(() => expect(mockLogin).toHaveBeenCalled());
     // El identifier viene normalizado a lowercase + trim (handleSubmit).
-    expect(mockLogin).toHaveBeenCalledWith('lucas@empresa.com', 'pass123', undefined);
+    // 2026-07-12 (P0-1 Externa): 4to arg undefined — idem test previo.
+    expect(mockLogin).toHaveBeenCalledWith('lucas@empresa.com', 'pass123', undefined, undefined);
   });
 
   it('cuando el backend pide 2FA, oculta inputs iniciales y muestra input de código', async () => {

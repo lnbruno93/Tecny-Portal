@@ -61,6 +61,60 @@ describe('POST /api/auth/login', () => {
 
     expect(res.status).toBe(400);
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-07-12 (auditoría TOTAL Externa P0-1): CAPTCHA gate en /login.
+  //
+  // Antes /login era el único endpoint público de auth SIN captcha (signup,
+  // forgot-password, super-admin-invite sí tenían). Vulnerable a brute
+  // force distribuido con IPs rotativas — el loginLimiter (10 fallos/15min
+  // por IP) se sortea con 200 IPs. Fix: gate con hCaptcha invisible.
+  //
+  // Los tests fuerzan HCAPTCHA_ENABLED=true + HCAPTCHA_FORCE_IN_TESTS=1
+  // para verificar el gate. Sin esas envs (comportamiento normal en test),
+  // el captcha bypassa silenciosamente — los otros tests de este describe
+  // siguen funcionando sin token.
+  // ═══════════════════════════════════════════════════════════════════════
+  describe('P0-1 captcha gate', () => {
+    let originalEnabled, originalForce;
+    beforeAll(() => {
+      originalEnabled = process.env.HCAPTCHA_ENABLED;
+      originalForce = process.env.HCAPTCHA_FORCE_IN_TESTS;
+      process.env.HCAPTCHA_ENABLED = 'true';
+      process.env.HCAPTCHA_FORCE_IN_TESTS = '1';
+    });
+    afterAll(() => {
+      // Restaurar env vars — otros tests dependen del bypass default.
+      if (originalEnabled === undefined) delete process.env.HCAPTCHA_ENABLED;
+      else process.env.HCAPTCHA_ENABLED = originalEnabled;
+      if (originalForce === undefined) delete process.env.HCAPTCHA_FORCE_IN_TESTS;
+      else process.env.HCAPTCHA_FORCE_IN_TESTS = originalForce;
+    });
+
+    it('P0-1: rechaza login sin hcaptcha_response cuando captcha está enabled → 400', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ username: TEST_USER.username, password: TEST_USER.password });
+      expect(res.status).toBe(400);
+      expect(res.body.reason).toBe('captcha_failed');
+      // Mensaje debe orientar al usuario.
+      expect(res.body.error).toMatch(/verifica|captcha/i);
+    });
+
+    it('P0-1: rechaza login con hcaptcha_response inválido → 400', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({
+          username: TEST_USER.username,
+          password: TEST_USER.password,
+          hcaptcha_response: 'obviamente-un-token-invalido-que-hcaptcha-rechaza',
+        });
+      // Sin HCAPTCHA_SECRET (test), verifyCaptcha devuelve config_error
+      // → response 400 con reason=captcha_failed.
+      expect(res.status).toBe(400);
+      expect(res.body.reason).toBe('captcha_failed');
+    });
+  });
 });
 
 // ─── /me ─────────────────────────────────────────────────────
