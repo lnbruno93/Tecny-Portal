@@ -264,9 +264,6 @@ describe('Protección de rutas', () => {
 describe('Auth audit trail — Auth P1-1', () => {
   // Helper: contar rows en audit_logs con una acción específica del user 1.
   async function countAuditRows(accion) {
-    // El audit es fire-and-forget con setImmediate — esperamos un tick para que
-    // la fila persista antes de contar.
-    await new Promise((r) => setImmediate(r));
     const { rows } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM audit_logs
         WHERE tabla = 'users' AND accion = $1 AND registro_id = '1'`,
@@ -275,15 +272,28 @@ describe('Auth audit trail — Auth P1-1', () => {
     return rows[0].n;
   }
 
+  // Polling con retry hasta que el count alcance el target o timeout.
+  // El audit es fire-and-forget con setImmediate + no bloquea el response —
+  // en CI Docker overloaded, 100ms fijos pueden no alcanzar. Poll hasta 2s
+  // (20 iteraciones × 100ms) — suficiente para el peor Docker CI.
+  async function waitForAuditCount(accion, target, timeoutMs = 2000) {
+    const start = Date.now();
+    let last = 0;
+    while (Date.now() - start < timeoutMs) {
+      last = await countAuditRows(accion);
+      if (last >= target) return last;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return last;
+  }
+
   it('login exitoso persiste audit LOGIN', async () => {
     const before = await countAuditRows('LOGIN');
     const res = await request(app)
       .post('/api/auth/login')
       .send({ username: TEST_USER.username, password: TEST_USER.password });
     expect(res.status).toBe(200);
-    // Dejamos algunos ms para que el audit async persista.
-    await new Promise((r) => setTimeout(r, 100));
-    const after = await countAuditRows('LOGIN');
+    const after = await waitForAuditCount('LOGIN', before + 1);
     expect(after).toBe(before + 1);
   });
 
@@ -293,8 +303,7 @@ describe('Auth audit trail — Auth P1-1', () => {
       .post('/api/auth/login')
       .send({ username: TEST_USER.username, password: 'wrong_password' });
     expect(res.status).toBe(401);
-    await new Promise((r) => setTimeout(r, 100));
-    const after = await countAuditRows('LOGIN_FAILED');
+    const after = await waitForAuditCount('LOGIN_FAILED', before + 1);
     expect(after).toBe(before + 1);
   });
 
@@ -310,8 +319,7 @@ describe('Auth audit trail — Auth P1-1', () => {
       .post('/api/auth/logout')
       .set('Authorization', `Bearer ${tok}`);
     expect(res.status).toBe(200);
-    await new Promise((r) => setTimeout(r, 100));
-    const after = await countAuditRows('LOGOUT');
+    const after = await waitForAuditCount('LOGOUT', before + 1);
     expect(after).toBe(before + 1);
   });
 });
