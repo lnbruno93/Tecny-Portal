@@ -62,6 +62,12 @@ const changePasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({
 //     TTL 1h). El limit acá es contra brute-force masivo del token space.
 const forgotPasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'forgot-password', logger });
 const resetPasswordStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'reset-password', logger });
+// 2026-07-12 (auditoría TOTAL Auth P1-4): /logout no tenía rate limit dedicado.
+// El endpoint hace UPDATE users SET password_changed_at = NOW() + invalidateUserAuth
+// del cache — un JWT robado puede hacer logout-loop forzando cross-instance DELETE
+// del cache en cada intento. Con IP como key (aunque el endpoint requiera JWT),
+// mitigamos amplificación desde una sola IP. Store dedicado para no colisionar.
+const logoutStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'logout', logger });
 
 const authRoutes         = require('./routes/auth');
 const signupRoutes       = require('./routes/signup');
@@ -161,7 +167,26 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Compresión gzip/brotli — reduce tamaño de respuestas JSON hasta ~70%
-app.use(compression());
+// 2026-07-12 (auditoría TOTAL Externa P1-8): compression selectivo.
+//
+// Antes: `app.use(compression())` comprimía TODO. Bajo TLS 1.2/1.3 con
+// compresión activa, un atacante con MitM sobre la sesión puede exfiltrar
+// bytes del payload observando el size de respuestas repetidas con injecciones
+// en el request (ataques tipo BREACH/CRIME).
+//
+// Respuestas de `/api/auth/*` incluyen JWT + user info + caps — secrets que
+// no queremos exponer al vector BREACH. La probabilidad de explotación real
+// es baja (MitM activo + control sobre parte del request/response) pero es
+// hardening estándar en 2026: NO comprimir respuestas con secrets.
+//
+// Filter: `/api/auth/*` escapa la compresión. Todo lo demás sigue igual
+// (ganancia de bytes ~70% en JSON de listados, etc.).
+app.use(compression({
+  filter: (req, res) => {
+    if (req.path.startsWith('/api/auth/')) return false;
+    return compression.filter(req, res);
+  },
+}));
 
 // Security headers — CSP explícito para servidor API puro (sin HTML propio)
 // defaultSrc 'none' bloquea cualquier intento de cargar recursos desde este origen.
@@ -642,6 +667,25 @@ const resetPasswordLimiter = rateLimit({
   ...(resetPasswordStore && { store: resetPasswordStore }),
 });
 app.use('/api/auth/reset-password', resetPasswordLimiter);
+
+// 2026-07-12 (auditoría TOTAL Auth P1-4): rate limit dedicado para /logout.
+// Sin este limit, el único freno era globalLimiter (300/15min) y
+// authenticatedLimiter (per-user, ~500/15min) — un JWT válido podía martillear
+// /logout haciendo UPDATE + invalidateUserAuth cross-instance en cada request
+// (write amp de Redis DEL cross-region). 20 intentos/15min por user.id cierra
+// el vector sin romper el flow legítimo (worst case: user con 5 tabs abiertas
+// haciendo logout desde cada una = 5 llamadas, muy debajo del cap).
+const logoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de logout, esperá 15 minutos.' },
+  keyGenerator: (req) => req.user?.id ? String(req.user.id) : ipKeyGenerator(req),
+  skip: () => process.env.NODE_ENV === 'test',
+  ...(logoutStore && { store: logoutStore }),
+});
+app.use('/api/auth/logout', requireAuth, logoutLimiter);
 
 // Auth (sin restricción de permisos)
 // 2026-06-16 TANDA 2.1: signupRoutes va ANTES de authRoutes — ambos montados

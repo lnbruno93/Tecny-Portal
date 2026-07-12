@@ -144,12 +144,28 @@ async function hashRecoveryCodes(codes) {
   return Promise.all(codes.map(c => bcrypt.hash(c, 10)));
 }
 
+// Formato canónico de recovery codes: `XXXX-XXXX-XX` con hex uppercase
+// (ver `generateRecoveryCodes`). Regex sirve para rechazar early y evitar el
+// loop bcrypt (~50ms × 8 codes = 400ms por intento) cuando el input claramente
+// NO es un recovery code (ej. atacante martillando POST /2fa/disable con
+// strings random).
+//
+// 2026-07-12 (auditoría TOTAL Auth P1-7): antes cualquier string de 6-20
+// chars (bound del schema) entraba al loop bcrypt — vector DoS con costo
+// alto por request. Rechazar en 1 microsegundo con el regex antes del bcrypt.
+const RECOVERY_CODE_FORMAT = /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{2}$/;
+
 // Verifica un recovery code contra el array de hashes. Devuelve el INDEX
 // del code matcheado (para que el caller lo "queme" reemplazando por null),
 // o -1 si no matchea ninguno.
 async function findRecoveryCodeIndex(plainCode, hashes) {
   if (!plainCode) return -1;
   const normalized = String(plainCode).trim().toUpperCase();
+  // P1-7 fix: skip bcrypt loop si el input NO tiene formato de recovery code.
+  // El caller (verifyAndConsume) intentó primero TOTP; si el input NO es
+  // un TOTP válido Y NO matchea el formato de recovery code, es basura →
+  // -1 sin gastar CPU.
+  if (!RECOVERY_CODE_FORMAT.test(normalized)) return -1;
   for (let i = 0; i < hashes.length; i++) {
     if (!hashes[i]) continue; // ya usado (null)
     if (await bcrypt.compare(normalized, hashes[i])) return i;

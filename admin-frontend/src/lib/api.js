@@ -430,11 +430,18 @@ export const adminApi = {
 export const publicInvite = {
   verify: (token) =>
     api(`/api/public/super-admin-invite/${encodeURIComponent(token)}`),
-  accept: (token, password) =>
+  // hcaptchaResponse (2026-07-12): token del widget hCaptcha del cliente.
+  // Opcional a nivel wire — el backend bypassa cuando HCAPTCHA_ENABLED!='true'
+  // (dev/test), verifica en prod. Solo mandamos el field si el widget produjo
+  // un token, sino omitimos (Zod .optional() lo acepta).
+  accept: (token, password, hcaptchaResponse) =>
     api(
       `/api/public/super-admin-invite/${encodeURIComponent(token)}/accept`,
       'POST',
-      { password }
+      {
+        password,
+        ...(hcaptchaResponse ? { hcaptcha_response: hcaptchaResponse } : {}),
+      }
     ),
 };
 

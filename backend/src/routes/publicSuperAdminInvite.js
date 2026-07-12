@@ -40,6 +40,7 @@ const bcrypt = require('bcrypt');
 const db = require('../config/database');
 const validate = require('../lib/validate');
 const logger = require('../lib/logger');
+const captcha = require('../lib/captcha');
 const { acceptSchema } = require('./superAdminTeam');
 const { makeToken } = require('./auth');
 
@@ -178,6 +179,33 @@ router.post('/:token/accept', validate(acceptSchema), async (req, res, next) => 
       return respondInvalid(res);
     }
     const { password } = req.body;
+
+    // 2026-07-12 (auditoría TOTAL Externa P1-1 follow-up): captcha gate antes
+    // de cualquier lookup a DB — mismo pattern que /login, /signup,
+    // /forgot-password. Si HCAPTCHA_ENABLED!='true' o NODE_ENV=test,
+    // verifyCaptcha bypassa silenciosamente (dev/test friendly).
+    //
+    // Con captcha activo (prod), el widget hCaptcha "invisible" del admin-
+    // frontend rara vez muestra desafío a humanos legítimos pero bloquea
+    // enumeración de tokens con IPs rotativas — antes el freno era el
+    // globalLimiter + validez ambigua (404 idéntico para expirado/inexistente).
+    // El captcha cierra el vector de brute-force distribuido sobre el
+    // espacio de tokens (43 chars base64url; pequeño solo asumiendo poder de
+    // cómputo suficiente + N invites vivas paralelas).
+    const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
+    if (!captchaResult.success) {
+      const errMap = {
+        expired:       'La verificación expiró. Intentá de nuevo.',
+        duplicate:     'La verificación ya fue usada. Recargá la página.',
+        invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+      };
+      const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+      logger.info(
+        { source: 'super_admin_invite_accept_captcha_fail', error: captchaResult.error, ip: req.ip },
+        'accept invite rechazado por captcha'
+      );
+      return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+    }
 
     // Re-check dentro de la tx con FOR UPDATE (evitamos race con revoke o
     // con un doble-accept del mismo link abierto en 2 tabs).
