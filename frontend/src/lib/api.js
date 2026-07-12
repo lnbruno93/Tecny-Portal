@@ -162,12 +162,16 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000, 
 // `username`. El backend acepta ambos (loginSchema con refine) — ver
 // backend/src/routes/auth.js. Esto cierra el loop con signup público: los
 // users signupeados por TANDA 2.2 conocen su email (no el username derivado).
-async function loginDirect({ username, password, code }) {
+async function loginDirect({ username, password, code, hcaptchaResponse }) {
   const isEmail = typeof username === 'string' && username.includes('@');
   const body = isEmail
     ? { email: username, password }
     : { username, password };
   if (code) body.code = code;
+  // 2026-07-12 (auditoría TOTAL Externa P0-1): pasar hcaptcha_response
+  // cuando el widget emite un token. En dev/local (HCAPTCHA_ENABLED!='true'
+  // en backend) el token se ignora silencioso — sin fricción.
+  if (hcaptchaResponse) body.hcaptcha_response = hcaptchaResponse;
   const res = await fetch(BASE + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -187,7 +191,10 @@ async function loginDirect({ username, password, code }) {
 }
 
 export const auth = {
-  login: (username, password, code) => loginDirect({ username, password, code }),
+  // 2026-07-12 (P0-1 Externa): 4to arg opcional hcaptchaResponse. Undefined
+  // en dev/local (widget bypasa) o cuando el widget aún no verificó.
+  login: (username, password, code, hcaptchaResponse) =>
+    loginDirect({ username, password, code, hcaptchaResponse }),
   me: () => api('/api/auth/me'),
   logout: () => api('/api/auth/logout', 'POST'),
   // 2026-06-11 SE-07: 3er arg opcional twofa_code para users con 2FA activo.

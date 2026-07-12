@@ -100,7 +100,9 @@ describe('AuthContext', () => {
         ret = await result.current.login('bob', 'pwd');
       });
 
-      expect(authApi.login).toHaveBeenCalledWith('bob', 'pwd', undefined);
+      // 2026-07-12 (P0-1 Externa): 4to arg hcaptchaResponse (undefined en
+      // este caso — el useAuth().login se invoca sin captcha token).
+      expect(authApi.login).toHaveBeenCalledWith('bob', 'pwd', undefined, undefined);
       expect(saveToken).toHaveBeenCalledWith('tok-xyz');
       expect(result.current.user).toEqual(
         expect.objectContaining({ id: 2, username: 'bob' })

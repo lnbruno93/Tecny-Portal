@@ -109,6 +109,37 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const field = username ? 'username' : 'email';
     const value = username || email;
 
+    // 2026-07-12 (auditoría TOTAL Externa P0-1): captcha gate antes de
+    // cualquier lookup a DB — mismo pattern que /signup, /forgot-password,
+    // /super-admin-invite. Si HCAPTCHA_ENABLED!='true' o NODE_ENV=test,
+    // verifyCaptcha bypassa silenciosamente (dev/test friendly).
+    //
+    // Con captcha activo (prod), el widget hCaptcha "invisible" del frontend
+    // rara vez muestra desafío a humanos legítimos (0 fricción) pero
+    // bloquea brute-force distribuido con IPs rotativas — antes el único
+    // freno era loginLimiter (10 fallos/15min/IP) que un atacante con 200
+    // IPs sortea trivialmente. Combinado con lockout per-user (SOL-3), el
+    // captcha cierra el vector remaining: brute-force sobre email conocido
+    // (típico ataque a super-admins).
+    //
+    // El captcha corre ANTES del lookup para no gastar recursos (DB query
+    // + bcrypt.compare de ~50ms) en bots. Cost del verify: ~50-200ms
+    // (round-trip a hCaptcha) — aceptable dado que solo lo pagan requests
+    // que quieren loguear.
+    const captcha = require('../lib/captcha');
+    const captchaResult = await captcha.verifyCaptcha(req.body.hcaptcha_response, req.ip);
+    if (!captchaResult.success) {
+      const errMap = {
+        expired:       'La verificación expiró. Intentá de nuevo.',
+        duplicate:     'La verificación ya fue usada. Recargá la página.',
+        invalid_token: 'Verificación inválida. Completá el captcha y reintentá.',
+      };
+      const msg = errMap[captchaResult.error] || 'No pudimos verificar el captcha. Reintentá en un minuto.';
+      logger.info({ source: 'login_captcha_fail', error: captchaResult.error, field, ip: req.ip },
+        'login rechazado por captcha');
+      return res.status(400).json({ error: msg, reason: 'captcha_failed' });
+    }
+
     // 2026-06-16 TANDA 1: lookup case-insensitive cuando el field es email. La
     // DB tiene un índice único sobre LOWER(email) (migration 20260616000003),
     // así que `Lucas@x.com` y `lucas@x.com` resuelven al mismo user. El schema
