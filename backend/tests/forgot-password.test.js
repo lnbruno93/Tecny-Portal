@@ -70,10 +70,14 @@ describe('POST /api/auth/forgot-password', () => {
       .send({ email: user.email });
 
     expect(res.status).toBe(200);
+    // 2026-07-12 (auditoría TOTAL Externa P1-6): el response ya NO expone
+    // `reset_token_ttl_hours` — era leak de config del backend. Ahora es solo
+    // `{ reset_required: true }`. El TTL sigue viviendo en el email enviado
+    // (que sí lo necesita para el copy "válido por 1 hora") vía emailLib.
     expect(res.body).toMatchObject({
       reset_required: true,
-      reset_token_ttl_hours: 1,
     });
+    expect(res.body.reset_token_ttl_hours).toBeUndefined();
 
     // Token persistido en DB.
     const token = await fetchToken(user.id);
@@ -100,10 +104,14 @@ describe('POST /api/auth/forgot-password', () => {
 
     // Shape idéntica al path "existe" (anti-enum).
     expect(res.status).toBe(200);
+    // 2026-07-12 (auditoría TOTAL Externa P1-6): el response ya NO expone
+    // `reset_token_ttl_hours` — era leak de config del backend. Ahora es solo
+    // `{ reset_required: true }`. El TTL sigue viviendo en el email enviado
+    // (que sí lo necesita para el copy "válido por 1 hora") vía emailLib.
     expect(res.body).toMatchObject({
       reset_required: true,
-      reset_token_ttl_hours: 1,
     });
+    expect(res.body.reset_token_ttl_hours).toBeUndefined();
 
     // Pero NO se creó token (no hay user al cual asociarlo).
     const { rows } = await pool.query(
