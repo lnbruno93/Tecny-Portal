@@ -154,7 +154,17 @@ describe('TwoFaSection — flow de regenerate recovery codes', () => {
     // click del submit) sin depender del timing del re-render.
     fireEvent.submit(input.closest('form'));
     // Los nuevos codes aparecen en pantalla.
-    await waitFor(() => expect(container.textContent).toContain('NEW1-AAAA-AA'));
+    //
+    // 2026-07-12 (fix flakiness CI): timeout 3000ms explícito. Default
+    // (1000ms) fallaba intermitente en el runner de GitHub Actions —
+    // Docker sobrecargado, mock async del regenerateRecovery + re-render
+    // del componente + waitFor sumaban > 1s. Local siempre pasa (< 300ms).
+    // El submit del form SÍ dispara (visible en la mutation de mocks),
+    // pero waitFor expiraba antes del re-render.
+    await waitFor(
+      () => expect(container.textContent).toContain('NEW1-AAAA-AA'),
+      { timeout: 3000 }
+    );
     expect(container.textContent).toContain('NEW8-HHHH-HH');
     expect(twoFa.regenerateRecovery).toHaveBeenCalledWith('123456');
   });
