@@ -385,7 +385,10 @@ export const cambios = {
   updateEntidad:   (id, data) => api(`/api/cambios/entidades/${id}`, 'PUT', data),
   deleteEntidad:   (id) => api(`/api/cambios/entidades/${id}`, 'DELETE'),
   movimientos:     (id) => api(`/api/cambios/entidades/${id}/movimientos`),
-  createMovimiento: (data) => api('/api/cambios/movimientos', 'POST', data),
+  // Pattern G Idempotency-Key opcional (ver comment en `ventas.create`).
+  createMovimiento: (data, idempotencyKey = null) =>
+    api('/api/cambios/movimientos', 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   deleteMovimiento: (id) => api(`/api/cambios/movimientos/${id}`, 'DELETE'),
 };
 
@@ -414,7 +417,10 @@ export const tarjetas = {
   movimientos:       (id, params = {}) => api(`/api/tarjetas/${id}/movimientos?` + new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
   )),
-  createLiquidacion: (data) => api('/api/tarjetas/liquidaciones', 'POST', data),
+  // Pattern G Idempotency-Key opcional (ver comment en `ventas.create`).
+  createLiquidacion: (data, idempotencyKey = null) =>
+    api('/api/tarjetas/liquidaciones', 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   // Liquidación múltiple: un depósito de la financiera repartido entre N tarjetas.
   // Body: { fecha, caja_id, repartos: [{ metodo_pago_id, monto }], comentarios? }.
   // Backend crea N movs + N ingresos a la caja en UNA tx atómica.
@@ -461,7 +467,10 @@ export const cuentas = {
   resumen: (clienteId) => api(`/api/cuentas/clientes/${clienteId}/resumen`),
   resumenGeneral: () => api('/api/cuentas/resumen-general'),
   calendario: (mes) => api(`/api/cuentas/calendario?mes=${mes}`),
-  createMovimiento: (data) => api('/api/cuentas/movimientos', 'POST', data),
+  // Pattern G Idempotency-Key opcional (ver comment en `ventas.create`).
+  createMovimiento: (data, idempotencyKey = null) =>
+    api('/api/cuentas/movimientos', 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   deleteMovimiento: (id) => api(`/api/cuentas/movimientos/${id}`, 'DELETE'),
   // Devolución inline de un item de una venta B2B: marca el item con
   // devuelto_at, crea mov_cc tipo 'devolucion' asociado, restaura stock y
@@ -486,7 +495,10 @@ export const proveedores = {
   update: (id, data) => api(`/api/proveedores/${id}`, 'PUT', data),
   delete: (id) => api(`/api/proveedores/${id}`, 'DELETE'),
   movimientos: (id, params = {}) => api(`/api/proveedores/${id}/movimientos?` + new URLSearchParams(params)),
-  createMovimiento: (data) => api('/api/proveedores/movimientos', 'POST', data),
+  // Pattern G Idempotency-Key opcional (ver comment en `ventas.create`).
+  createMovimiento: (data, idempotencyKey = null) =>
+    api('/api/proveedores/movimientos', 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   // Bulk multi-proveedor — usado por el import XLSX cuando una planilla trae
   // productos de varios proveedores. Transacción atómica server-side: o se
   // crean TODOS los movimientos o ninguno. Ver backend/src/routes/proveedores.js
@@ -633,7 +645,13 @@ export const publico = {
 
 export const ventas = {
   list:            (params = {}) => api('/api/ventas?' + new URLSearchParams(params)),
-  create:          (data) => api('/api/ventas', 'POST', data),
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): idempotencyKey
+  // opcional. El modal genera un UUID con crypto.randomUUID() al abrirse y
+  // lo pasa acá. Doble-click / retry → backend devuelve la MISMA venta sin
+  // duplicar side effects (stock, cajas, tarjetas, email).
+  create:          (data, idempotencyKey = null) =>
+    api('/api/ventas', 'POST', data, 15000,
+      idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : null),
   update:          (id, data) => api(`/api/ventas/${id}`, 'PUT', data),
   delete:          (id) => api(`/api/ventas/${id}`, 'DELETE'),
   dashboard:       (params = {}) => api('/api/ventas/dashboard?' + new URLSearchParams(params)),

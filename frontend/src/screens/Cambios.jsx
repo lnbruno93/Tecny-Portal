@@ -82,6 +82,11 @@ export default function Cambios() {
   useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
 
   const [mov, setMov] = useState(EMPTY_MOV);
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
+  // Idempotency-Key para POST /cambios/movimientos. Se regenera después de
+  // cada submit exitoso para permitir múltiples movimientos consecutivos
+  // desde el mismo form (cada uno con su propio key).
+  const [movIdempotencyKey, setMovIdempotencyKey] = useState(() => crypto.randomUUID());
   // Post-audit: migración a useLoadingAction (DRY + anti-click-spam free).
   const { loading: savingMov, run: withSavingMov } = useLoadingAction();
 
@@ -149,8 +154,10 @@ export default function Cambios() {
           tc:        mov.tipo === TIPOS.entregaLocal ? Number(mov.tc) || null : null,
           monto_usd: mov.tipo === TIPOS.reciboUsd    ? Number(mov.monto_usd) || 0 : 0,
           caja_id: Number(mov.caja_id), comentarios: mov.comentarios.trim() || null,
-        });
+        }, movIdempotencyKey);
         setMov({ ...EMPTY_MOV, tipo: mov.tipo, fecha: mov.fecha });
+        // Pattern G: regenerar UUID después del éxito para el próximo submit.
+        setMovIdempotencyKey(crypto.randomUUID());
         loadList(); loadDetalle();
         toast.success('Movimiento registrado.');
       } catch (err) { toast.error(err.message); }

@@ -245,6 +245,10 @@ export default function Proveedores() {
   const [showCompra, setShowCompra] = useState(false);
   // ── Modal de pago simple (caja + monto + tc opcional + notas) ──────────
   const [showPago, setShowPago] = useState(false);
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key
+  // regenerado cada vez que se abre el modal de pago. Previene duplicados
+  // por doble-click del botón "Guardar pago" o retry por error transient.
+  const [pagoIdempotencyKey, setPagoIdempotencyKey] = useState(null);
   // Refs para useModal — auditoría 2026-06-06 UX B2: Esc cierra modales,
   // focus trap, body scroll lock. Antes los 2 modales (Nuevo proveedor y
   // Pago) eran inconsistentes con Tarjetas/Cajas que sí lo soportaban.
@@ -257,6 +261,9 @@ export default function Proveedores() {
 
   function openPago() {
     setPagoForm({ fecha: todayISO(), caja_id: '', monto: '', tc: '', notas: '' });
+    // Pattern G: regenerar UUID al abrir. Se mantiene mientras el modal está
+    // vivo (doble-click/retry usan el MISMO key → replay backend).
+    setPagoIdempotencyKey(crypto.randomUUID());
     setShowPago(true);
   }
   async function savePago() {
@@ -278,7 +285,7 @@ export default function Proveedores() {
         tc: moneda === 'USD' ? null : Number(pagoForm.tc),
         caja_id: Number(pagoForm.caja_id),
         notas: pagoForm.notas.trim() || null,
-      });
+      }, pagoIdempotencyKey);
       toast.success('Pago registrado');
       setShowPago(false);
       reloadMovs();
