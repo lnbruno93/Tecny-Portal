@@ -200,6 +200,14 @@ export default function Ventas() {
 
   // Modales
   const [showVenta, setShowVenta] = useState(false);
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
+  // Idempotency-Key generado UNA VEZ por sesión del modal. Doble-click,
+  // retry por error transient, o dos submits accidentales del mismo modal
+  // usan el MISMO UUID → backend devuelve la venta original sin duplicar
+  // stock/cajas/tarjetas/email. El useEffect abajo regenera el UUID cada
+  // vez que se abre el modal para NUEVA venta (no en edit — el UPDATE
+  // /ventas/:id no usa Idempotency-Key). Solo aplica al flow POST.
+  const [idempotencyKey, setIdempotencyKey] = useState(null);
   const [showRapida, setShowRapida] = useState(false);
   const [showGarantias, setShowGarantias] = useState(false);
   const [showEtiquetas, setShowEtiquetas] = useState(false);
@@ -387,6 +395,16 @@ export default function Ventas() {
     return () => setPrimaryAction(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPrimaryAction, vendedores]);
+
+  // Pattern G — regenerar Idempotency-Key cada vez que se abre el modal para
+  // una NUEVA venta. En modo edit no aplica (PUT /ventas/:id no usa el key).
+  // El key se persiste durante la vida del modal para que doble-click/retry
+  // usen el MISMO UUID.
+  useEffect(() => {
+    if (showVenta && !editId) {
+      setIdempotencyKey(crypto.randomUUID());
+    }
+  }, [showVenta, editId]);
 
   function searchProducto(q) {
     setProdSearch(q);
@@ -858,7 +876,11 @@ export default function Ventas() {
     }
     setSavingVenta(true);
     try {
-      const venta = editId ? await ventas.update(editId, payload) : await ventas.create(payload);
+      // Pattern G: pasamos idempotencyKey solo en el flow POST (create).
+      // En edit (PUT /ventas/:id) el key se ignora — no aplica.
+      const venta = editId
+        ? await ventas.update(editId, payload)
+        : await ventas.create(payload, idempotencyKey);
       let uploadFalló = false;
       for (const c of comprobantes) {
         try { await ventas.uploadComprobante(venta.id, { archivo_data: c.data, archivo_nombre: c.nombre, archivo_tipo: c.tipo }); }

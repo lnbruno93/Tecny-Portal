@@ -74,6 +74,11 @@ export default function Tarjetas() {
 
   // Liquidación (cuando nos pagan)
   const [liq, setLiq] = useState({ fecha: todayISO(), monto: '', caja_id: '' });
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
+  // Idempotency-Key para la liquidación individual. Se genera al montar el
+  // form y se regenera después de cada submit exitoso — así el próximo
+  // submit desde el mismo modal usa un key fresco.
+  const [liqIdempotencyKey, setLiqIdempotencyKey] = useState(() => crypto.randomUUID());
   const [savingLiq, setSavingLiq] = useState(false);
 
   // Liquidación múltiple (junio 2026): para la vista "Todas las tarjetas".
@@ -325,8 +330,14 @@ export default function Tarjetas() {
     if (!(parseFloat(liq.monto) > 0)) { toast.error('Ingresá el monto recibido.'); return; }
     setSavingLiq(true);
     try {
-      await tarjetasApi.createLiquidacion({ metodo_pago_id: selectedId, fecha: liq.fecha, monto: Number(liq.monto), caja_id: Number(liq.caja_id) });
+      await tarjetasApi.createLiquidacion(
+        { metodo_pago_id: selectedId, fecha: liq.fecha, monto: Number(liq.monto), caja_id: Number(liq.caja_id) },
+        liqIdempotencyKey,
+      );
       setLiq({ fecha: liq.fecha, monto: '', caja_id: '' });
+      // Pattern G: regenerar UUID después del éxito para que el próximo
+      // submit desde el mismo form use un key fresco.
+      setLiqIdempotencyKey(crypto.randomUUID());
       loadList(); loadDetalle();
       toast.success('Liquidación registrada.');
     } catch (err) { toast.error(err.message); } finally { setSavingLiq(false); }

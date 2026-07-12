@@ -188,6 +188,16 @@ const mkRow = (prev = null) => ({
   ars: '', tc: '',
   // Caja donde ingresa el dinero
   caja_id: prev?.caja_id || '',
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
+  // Idempotency-Key por row. Cada fila de esta planilla es un movimiento
+  // independiente — si el user hace Tab dos veces por accidente sobre la
+  // misma fila (doble submit), el backend devuelve la misma fila sin
+  // duplicar el pago. crypto.randomUUID() es SecureContext-only; en jsdom
+  // viejo o no-secure caemos al fallback random (menos seguro pero funcional
+  // para dev). En prod HTTPS siempre está disponible.
+  idempotency_key: (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
 });
 
 function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError }) {
@@ -248,12 +258,14 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     });
 
     // 3. API en segundo plano — no bloquea la UI
+    // Pattern G: pasamos idempotency_key único por row para prevenir doble
+    // submit de la misma fila (ej. usuario presiona Tab dos veces por reflex).
     cuentas.createMovimiento({
       cliente_cc_id: clienteId,
       fecha: row.fecha, tipo: row.tipo, monto_total: Number(row.monto),
       caja_id: row.caja_id ? Number(row.caja_id) : null,
       items: [], // pagos no tienen items
-    })
+    }, row.idempotency_key)
     .then(real => onSaveDone(tempId, real))
     .catch(err  => onSaveError(tempId, err.message || 'Error al guardar'));
   }
