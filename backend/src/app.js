@@ -28,6 +28,10 @@ const twoFaStore  = isTestEnv ? undefined : new PostgresRateLimitStore({ db, pre
 // share efectivo del límite (600/15min en lugar de 300). Mismo patrón que
 // loginStore/twoFaStore: en tests usa MemoryStore para no requerir DB.
 const globalStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'global', logger });
+// 2026-07-12 (auditoría TOTAL Pattern A cross-track — Plat P0-2 + Auth P1-8 + Ext P1-2):
+// nuevo store para el "authenticated rate limiter" (per user.id). Ver comment
+// del limiter más abajo para detalle. Cross-instance safe con Postgres store.
+const authenticatedStore = isTestEnv ? undefined : new PostgresRateLimitStore({ db, prefix: 'authenticated', logger });
 // TANDA 2.4 fix BLOCKER auditoría 2026-06-17:
 //   - signupStore: antes signupLimiter compartía loginStore con prefix 'login'
 //     → un IP que falló 10 logins quedaba bloqueado para signup, y los counters
@@ -208,35 +212,33 @@ app.use(cors({
 // expongan datos sensibles ni que tengan costo computacional alto.
 const GLOBAL_RATE_LIMIT_MAX = Number(process.env.GLOBAL_RATE_LIMIT_MAX) || 300;
 
-// 2026-06-15: skip del global limiter para requests con JWT firmado válido.
-// Motivo: el global limiter protege contra abuso anónimo (scrapers, brute force
-// pre-login, bots). Una vez que el cliente trae un JWT firmado con nuestro
-// secret, sabemos que pasó por el flujo de login (que tiene su propio limiter
-// por IP) y los rate-limiters específicos por endpoint (OCR, export, compras,
-// backfill, etc.) siguen activos para operaciones costosas. Aplicar el global
-// a usuarios autenticados producía lock-outs cuando un admin hacía operaciones
-// CRUD legítimas en tandas grandes (ej. borrar 50 categorías de a una) — el
-// bucket de 300 se agotaba y bloqueaba hasta el propio /login, dejándolo
-// afuera de su portal.
+// 2026-06-15 + 2026-07-12 (auditoría TOTAL Pattern A cross-track):
 //
-// Solo verificamos signature (CPU-bound, ~1ms, sin DB). La verificación
-// completa (revocación post-cambio-password, user activo) la hace el middleware
-// requireAuth de cada route. Si el token es inválido acá, el request cae al
-// global limit (como antes) — esto preserva la defensa contra abuso anónimo
-// que mande basura como Bearer header esperando bypass.
-function hasValidSignedJwt(req) {
-  const header = req.headers.authorization || '';
-  if (!header.startsWith('Bearer ')) return false;
-  const token = header.slice(7);
-  if (!token || !process.env.JWT_SECRET) return false;
-  try {
-    jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Diseño de 2 capas para rate limiting authenticated vs anónimo:
+//
+//   Capa 1 — Global limiter (req anónimos):
+//     Protege contra abuso pre-login (scrapers, brute force, bots).
+//     300 req/15min por IP. Se skippea para JWT válido (los authenticated
+//     users pasan a la capa 2).
+//
+//   Capa 2 — Authenticated limiter (per user.id):
+//     Nuevo (2026-07-12). Cierra el gap que la auditoría TOTAL detectó en
+//     3 tracks distintos:
+//       · Plataforma P0-2: JWT robado desactivaba TODO limit por 8h
+//       · Auth P1-8: mismo, identificado como P1 del track auth
+//       · Externa P1-2: mismo, identificado como P1 de superficie externa
+//     Antes: JWT válido = bypass total → un token robado podía burn budget
+//     de OCR/Anthropic del tenant víctima o saturar el pool DB. 1000 req/
+//     15min por user.id es MUY generoso para uso legítimo (un admin
+//     operando CRUD en tandas raramente supera 400/15min) pero mata el
+//     abuso automatizado.
+//
+// El helper `validateAndGetJwtUserId` vive en `lib/jwtVerify.js` — módulo
+// puro sin side-effects, testeable como unidad. Ver ese archivo para
+// documentación completa del cache per-request y comportamiento.
+const { validateAndGetJwtUserId, hasValidSignedJwt } = require('./lib/jwtVerify');
 
+// ─── Capa 1 — Global limiter (req anónimos) ─────────────────────────────
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: GLOBAL_RATE_LIMIT_MAX,
@@ -249,7 +251,7 @@ app.use(rateLimit({
   //     requests, lo que con el PG store (T3) deja el contador pinchado entre
   //     runs (la tabla rate_limit_entries persiste) generando 429s cascada
   //     en suites posteriores. Mismo patrón que login/2FA.
-  //  3) Requests con JWT firmado válido — ver comentario arriba.
+  //  3) Requests con JWT firmado válido — pasan a la capa 2 (authenticated).
   skip: (req) =>
     req.path === '/health' ||
     req.path === '/ready' ||
@@ -258,6 +260,33 @@ app.use(rateLimit({
   ...(globalStore && { store: globalStore }),
 }));
 logger.info({ globalRateLimit: GLOBAL_RATE_LIMIT_MAX }, 'rate-limit global configurado');
+
+// ─── Capa 2 — Authenticated limiter (per user.id) ────────────────────────
+// 2026-07-12 (auditoría TOTAL Pattern A). Ver comment del validateAndGetJwtUserId
+// arriba para el porqué. Rate max configurable via env.
+const AUTHENTICATED_RATE_LIMIT_MAX = Number(process.env.AUTHENTICATED_RATE_LIMIT_MAX) || 1000;
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: AUTHENTICATED_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes con tu sesión, esperá 15 minutos' },
+  // Solo aplica a requests con JWT válido (los anónimos ya cayeron en la
+  // capa 1). Si validate devuelve null (sin JWT o firma inválida), el
+  // skip=true → request pasa sin contar acá.
+  skip: (req) =>
+    req.path === '/health' ||
+    req.path === '/ready' ||
+    isTestEnv ||
+    validateAndGetJwtUserId(req) == null,
+  // Clave por user.id — un JWT robado desde N IPs sigue chocando contra
+  // el mismo bucket. Prefijo "u:" para evitar colisión hipotética con otras
+  // fuentes de key en el mismo store (aunque el store tiene su propio prefix
+  // 'authenticated', defense in depth).
+  keyGenerator: (req) => `u:${validateAndGetJwtUserId(req)}`,
+  ...(authenticatedStore && { store: authenticatedStore }),
+}));
+logger.info({ authenticatedRateLimit: AUTHENTICATED_RATE_LIMIT_MAX }, 'rate-limit authenticated configurado');
 
 app.use(express.json({ limit: '10mb' }));
 
