@@ -15,23 +15,35 @@ const updateEntidadSchema = createEntidadSchema.partial().refine(
 );
 
 // Movimiento. Según el tipo se exige un set distinto de campos:
-//  - entrega_ars: monto_ars > 0 y tc > 0 (USD equiv = monto_ars / tc) → egreso de una caja ARS.
-//  - recibo_usd:  monto_usd > 0 → ingreso a una caja USD.
-// En ambos la caja es obligatoria (integrado al ledger).
+//  - entrega_ars:   monto_ars > 0 y tc > 0 (USD equiv = monto_ars / tc)   → egreso caja ARS.
+//  - entrega_uyu:   monto_ars > 0 y tc > 0 (USD equiv = monto_ars / tc)   → egreso caja UYU.
+//                   (`monto_ars` es alias legacy — en filas UYU contiene monto UYU;
+//                    ver migration 20260706000003_cambio_mov_uyu_types.js para el rationale)
+//  - recibo_usd:    monto_usd > 0                                          → ingreso caja USD (par ARS/USD).
+//  - recibo_usd_uy: monto_usd > 0                                          → ingreso caja USD (par UYU/USD).
+// En todos la caja es obligatoria (integrado al ledger).
+//
+// 2026-07-12 (auditoría TOTAL Financiero P2-6, Pattern B multi-país UYU):
+// Antes el enum era ['entrega_ars', 'recibo_usd'] — un tenant UY no podía
+// crear movimientos en Cambios desde la UI single-tenant (los tipos UYU
+// SOLO se usaban desde Red B2B via crossTenantPagos.js). Fix: agregar los
+// 2 tipos UYU al enum + logic del route. Frontend UY-aware queda como
+// follow-up (Cambios.jsx hoy hardcodea "ARS" en labels).
 const createMovimientoSchema = z.object({
   entidad_id:  z.coerce.number().int().positive('entidad_id requerido'),
   fecha,
-  tipo:        z.enum(['entrega_ars', 'recibo_usd']),
+  tipo:        z.enum(['entrega_ars', 'recibo_usd', 'entrega_uyu', 'recibo_usd_uy']),
   monto_ars:   z.coerce.number().min(0).optional().default(0),
   tc:          z.coerce.number().positive().optional().nullable(),
   monto_usd:   z.coerce.number().min(0).optional().default(0),
   caja_id:     z.coerce.number().int().positive('Elegí la caja'),
   comentarios: z.string().trim().max(1000).optional().nullable(),
 }).strict().superRefine((d, ctx) => {
-  if (d.tipo === 'entrega_ars') {
-    if (!(d.monto_ars > 0)) ctx.addIssue({ code: 'custom', path: ['monto_ars'], message: 'El monto en $ debe ser mayor a 0' });
+  // entrega_ars y entrega_uyu comparten schema: requieren monto local + tc.
+  if (d.tipo === 'entrega_ars' || d.tipo === 'entrega_uyu') {
+    if (!(d.monto_ars > 0)) ctx.addIssue({ code: 'custom', path: ['monto_ars'], message: 'El monto local debe ser mayor a 0' });
     if (!(d.tc > 0))        ctx.addIssue({ code: 'custom', path: ['tc'], message: 'El tipo de cambio es requerido' });
-  } else { // recibo_usd
+  } else { // recibo_usd o recibo_usd_uy
     if (!(d.monto_usd > 0)) ctx.addIssue({ code: 'custom', path: ['monto_usd'], message: 'El monto en USD debe ser mayor a 0' });
   }
 });

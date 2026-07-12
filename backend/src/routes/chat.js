@@ -149,10 +149,16 @@ async function enforceDailyChatLimits(req, res, next) {
   try {
     const exceeded = await db.withTenant(tenantId, async (client) => {
       // 1. UPSERT del counter del user. ON CONFLICT incrementa atómicamente.
+      //
+      // 2026-07-12 (auditoría TOTAL Plataforma P2-6, Pattern B multi-país):
+      // ON CONFLICT ahora incluye tenant_id junto con la UNIQUE actualizada
+      // por la migration 20260712020000_chat_rate_limits_tenant_unique.js.
+      // Sin este cambio, el ON CONFLICT rebota post-migration porque la
+      // constraint vieja (user_id, window_start) ya no existe.
       const { rows: userRows } = await client.query(
         `INSERT INTO chat_rate_limits (tenant_id, user_id, window_start, messages)
          VALUES ($1, $2, $3, 1)
-         ON CONFLICT (user_id, window_start) DO UPDATE
+         ON CONFLICT (tenant_id, user_id, window_start) DO UPDATE
            SET messages = chat_rate_limits.messages + 1
          RETURNING messages`,
         [tenantId, userId, windowStart]

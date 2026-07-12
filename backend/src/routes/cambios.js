@@ -168,12 +168,26 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
     if (!ent[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Financiera no encontrada' }); }
 
     // Normaliza montos según el tipo y postea al ledger de la caja.
-    let ars = 0, usd = 0, ledgerMonto, ledgerMoneda, ledgerTipo;
-    if (tipo === 'entrega_ars') {
-      ars = round2(Number(monto_ars));
-      usd = round2(ars / Number(tc));        // USD equivalente que nos deben
-      ledgerMonto = ars; ledgerMoneda = 'ARS'; ledgerTipo = 'egreso';
-    } else { // recibo_usd
+    //
+    // 2026-07-12 (auditoría TOTAL Financiero P2-6, Pattern B multi-país UYU):
+    // 4 tipos ahora — 2 pares (ARS/USD + UYU/USD). Mapping:
+    //   entrega_ars   → egreso caja ARS (monto=ars, moneda=ARS, tc requerido)
+    //   entrega_uyu   → egreso caja UYU (monto=ars, moneda=UYU, tc requerido)
+    //                   NOTA: `monto_ars` es alias legacy — para tipos _uyu
+    //                   contiene monto UYU. La columna se mantiene por compat
+    //                   pero semánticamente es "monto local".
+    //   recibo_usd    → ingreso caja USD (monto=usd, moneda=USD, sin tc)
+    //   recibo_usd_uy → ingreso caja USD (monto=usd, moneda=USD, sin tc)
+    //                   Diferenciado del recibo_usd por el par (UYU/USD vs ARS/USD)
+    //                   para drilldown contable.
+    let local = 0, usd = 0, ledgerMonto, ledgerMoneda, ledgerTipo;
+    if (tipo === 'entrega_ars' || tipo === 'entrega_uyu') {
+      local = round2(Number(monto_ars));
+      usd = round2(local / Number(tc));      // USD equivalente que nos deben
+      ledgerMonto = local;
+      ledgerMoneda = tipo === 'entrega_ars' ? 'ARS' : 'UYU';
+      ledgerTipo = 'egreso';
+    } else { // recibo_usd o recibo_usd_uy
       usd = round2(Number(monto_usd));
       ledgerMonto = usd; ledgerMoneda = 'USD'; ledgerTipo = 'ingreso';
     }
@@ -181,14 +195,21 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
     const { rows } = await client.query(
       `INSERT INTO cambio_movimientos (entidad_id, fecha, tipo, monto_ars, tc, monto_usd, caja_id, comentarios, user_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [entidad_id, fecha, tipo, ars, tc ?? null, usd, caja_id, comentarios ?? null, req.user.id]
+      [entidad_id, fecha, tipo, local, tc ?? null, usd, caja_id, comentarios ?? null, req.user.id]
     );
     // Integrado al ledger: la moneda del movimiento debe coincidir con la de la caja
     // (postCajaMovimiento valida grupo de moneda y lanza 400 si no coincide).
+    const isEntrega = (tipo === 'entrega_ars' || tipo === 'entrega_uyu');
+    const conceptoMap = {
+      entrega_ars:   'Cambio: entrega ARS',
+      entrega_uyu:   'Cambio: entrega UYU',
+      recibo_usd:    'Cambio: recibo USD',
+      recibo_usd_uy: 'Cambio: recibo USD (UY)',
+    };
     await postCajaMovimiento(client, {
-      caja_id, fecha, tipo: ledgerTipo, monto: ledgerMonto, moneda: ledgerMoneda, tc: tipo === 'entrega_ars' ? tc : null,
+      caja_id, fecha, tipo: ledgerTipo, monto: ledgerMonto, moneda: ledgerMoneda, tc: isEntrega ? tc : null,
       origen: 'cambio', ref_tabla: 'cambio_movimientos', ref_id: rows[0].id,
-      concepto: tipo === 'entrega_ars' ? 'Cambio: entrega ARS' : 'Cambio: recibo USD', user_id: req.user.id,
+      concepto: conceptoMap[tipo] ?? `Cambio: ${tipo}`, user_id: req.user.id,
     });
     await audit(client, 'cambio_movimientos', 'INSERT', rows[0].id, { despues: rows[0], user_id: req.user.id });
     await client.query('COMMIT');
