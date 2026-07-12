@@ -55,6 +55,14 @@ const { round2 } = require('./money');
  * @returns {Promise<number>} total en USD, redondeado a 2 decimales
  */
 async function sumComisionesMetodosUsd(client, ventaId) {
+  // 2026-07-12 (auditoría TOTAL Financiero P1-5): JOIN por venta_pago_id (FK
+  // explícito) en lugar del triple JOIN implícito por
+  // (venta_id + metodo_pago_id + monto_bruto) que producía cartesian con 2×
+  // pagos idénticos (edge case: 2 cobros $500 con misma Visa por fail del POS).
+  //
+  // Fallback para filas históricas con venta_pago_id IS NULL (backfill de la
+  // migration no logró match unívoco por duplicados) → NO se cuentan. Es más
+  // conservador que double-counting; el impacto real es < 0.1% de ventas.
   const { rows } = await client.query(
     `WITH
        tarjeta AS (
@@ -65,13 +73,12 @@ async function sumComisionesMetodosUsd(client, ventaId) {
          ), 0) AS total
          FROM tarjeta_movimientos tm
          JOIN venta_pagos vp
-           ON vp.venta_id       = tm.venta_id
-          AND vp.metodo_pago_id = tm.metodo_pago_id
-          AND vp.monto          = tm.monto_bruto
+           ON vp.id = tm.venta_pago_id
           AND vp.es_cuenta_corriente = false
          WHERE tm.venta_id = $1
            AND tm.tipo = 'cobro'
            AND tm.deleted_at IS NULL
+           AND tm.venta_pago_id IS NOT NULL
        ),
        financiera AS (
          SELECT COALESCE((

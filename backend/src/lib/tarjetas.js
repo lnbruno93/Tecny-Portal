@@ -175,11 +175,16 @@ async function syncTarjetaCobros(client, ventaId, estado) {
       );
     }
 
+    // 2026-07-12 (auditoría TOTAL Financiero P1-5): persistir venta_pago_id
+    // como FK explícito. Antes el link entre tarjeta_movimientos y venta_pagos
+    // era implícito via triple JOIN (venta_id + metodo_pago_id + monto_bruto),
+    // que fallaba en el edge case de 2 pagos con mismo método + mismo monto.
+    // Ahora el JOIN por FK es 1-a-1 sin ambiguedad.
     const { rows } = await client.query(
       `INSERT INTO tarjeta_movimientos
-         (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, venta_id)
-       VALUES ($1,$2,'cobro',$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [p.metodo_pago_id, fecha, p.moneda, bruto, pct, comision, neto, ventaId]
+         (metodo_pago_id, fecha, tipo, moneda, monto_bruto, pct, monto_comision, monto_neto, venta_id, venta_pago_id)
+       VALUES ($1,$2,'cobro',$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [p.metodo_pago_id, fecha, p.moneda, bruto, pct, comision, neto, ventaId, p.vp_id]
     );
     // +ingreso por monto_neto en la caja-tarjeta. Si la moneda del cobro no
     // matchea el grupo de la tarjeta, postCajaMovimiento throwea 400.

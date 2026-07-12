@@ -468,7 +468,11 @@ describe('Tarjetas — PATCH /movimientos/:id casos límite', () => {
     const r = await request(app).patch(`/api/tarjetas/movimientos/${liq.body.id}`).set(auth())
       .send({ caja_id: cajaB });
     expect(r.status).toBe(409);
-    expect(r.body.error).toMatch(/negativo/i);
+    // 2026-07-12 (auditoría TOTAL Financiero P1-3): mensaje distinguible
+    // según origen del 409. Antes decía "quedaría negativo", ahora explica
+    // que es un cambio de caja destino imposible + sugiere fix.
+    expect(r.body.reason).toBe('edit_caja_destino_locked');
+    expect(r.body.error).toMatch(/caja destino|caja original/i);
     // cajaA NO se modificó (rollback completo). cajaB tampoco.
     expect(await saldoCaja(cajaA)).toBe(0);
     expect(await saldoCaja(cajaB)).toBe(0);
