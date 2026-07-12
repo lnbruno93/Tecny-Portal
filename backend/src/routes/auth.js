@@ -179,6 +179,15 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // El admin sigue distinguiendo el caso en logs / audit / Sentry.
     if (user && user.lockout_until && new Date(user.lockout_until) > new Date()) {
       logger.warn({ user_id: user.id, ip: req.ip, lockout_until: user.lockout_until }, 'login bloqueado por lockout');
+      // 2026-07-12 (auditoría TOTAL Auth P1-1): persistir en audit_logs con
+      // acción LOGIN_FAILED (motivo=locked). El helper `audit()` extrae IP +
+      // User-Agent + request_id desde `req`. Sin await del audit para no
+      // bloquear el response — SAVEPOINT interno maneja fallos de CHECK
+      // constraint pre-migration.
+      audit('users', 'LOGIN_FAILED', user.id, {
+        req,
+        despues: { motivo: 'locked', lockout_until: user.lockout_until, field },
+      }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] LOGIN_FAILED locked no persistido'));
       // Igual ejecutamos bcrypt para que el tiempo de respuesta sea constante.
       await bcrypt.compare(password, DUMMY_HASH);
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos', code: CODES.INVALID_CREDENTIALS });
@@ -188,6 +197,16 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     const valid = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
     if (!user || !valid) {
       logger.warn({ field, ip: req.ip }, 'login fallido');
+      // 2026-07-12 (auditoría TOTAL Auth P1-1): audit LOGIN_FAILED. Solo
+      // persistimos si el user existe (sino registro_id sería null y no
+      // podríamos correlacionar en /historial). Motivo=invalid_password
+      // distingue del path 'locked' de arriba.
+      if (user) {
+        audit('users', 'LOGIN_FAILED', user.id, {
+          req,
+          despues: { motivo: 'invalid_password', field },
+        }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] LOGIN_FAILED invalid_password no persistido'));
+      }
       // Si el usuario existe, incrementamos el contador. Si llega al threshold,
       // seteamos lockout_until. Esto es best-effort: una falla acá NO debe romper
       // el response 401 al cliente.
@@ -220,6 +239,13 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
           const nuevo = rows[0]?.failed_login_count;
           if (nuevo >= LOCKOUT_THRESHOLD) {
             logger.warn({ user_id: user.id, intentos: nuevo }, 'usuario bloqueado por lockout');
+            // 2026-07-12 (Auth P1-1): audit LOCKOUT disparado. Evento distinto
+            // del LOGIN_FAILED — un incidente con múltiples LOCKOUTs correlacionados
+            // por IP es señal de brute-force en curso.
+            audit('users', 'LOCKOUT', user.id, {
+              req,
+              despues: { intentos: nuevo, threshold: LOCKOUT_THRESHOLD, duracion_min: LOCKOUT_DURATION_MIN },
+            }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] LOCKOUT no persistido'));
           }
         } catch (e) {
           logger.error({ err: e }, 'no se pudo actualizar failed_login_count');
@@ -267,6 +293,11 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       const { ok } = await verifyAndConsume(user.id, String(code));
       if (!ok) {
         logger.warn({ user_id: user.id, ip: req.ip }, 'login 2FA fallido');
+        // 2026-07-12 (Auth P1-1): audit LOGIN_FAILED motivo=invalid_2fa.
+        audit('users', 'LOGIN_FAILED', user.id, {
+          req,
+          despues: { motivo: 'invalid_2fa', field },
+        }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] LOGIN_FAILED invalid_2fa no persistido'));
         // 2026-06-25 SOL-3: mismo UPDATE atómico que el fallo de password
         // arriba. Race condition idéntica si la única dim de attack es 2FA.
         try {
@@ -285,6 +316,11 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
           const nuevo = rows[0]?.failed_login_count;
           if (nuevo >= LOCKOUT_THRESHOLD) {
             logger.warn({ user_id: user.id, intentos: nuevo }, 'usuario bloqueado por lockout (2FA)');
+            // 2026-07-12 (Auth P1-1): audit LOCKOUT desde el path 2FA.
+            audit('users', 'LOCKOUT', user.id, {
+              req,
+              despues: { intentos: nuevo, threshold: LOCKOUT_THRESHOLD, duracion_min: LOCKOUT_DURATION_MIN, disparado_por: '2fa' },
+            }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] LOCKOUT (2fa) no persistido'));
           }
         } catch (e) {
           logger.error({ err: e }, 'no se pudo actualizar failed_login_count (2FA)');
@@ -304,6 +340,18 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         );
       } catch (e) { logger.error({ err: e }, 'no se pudo resetear failed_login_count'); }
     }
+
+    // 2026-07-12 (auditoría TOTAL Auth P1-1): audit LOGIN exitoso. Fire-and-
+    // forget con logger.warn en el catch — no queremos bloquear la respuesta
+    // al user por un audit fallido (ej. CHECK constraint pre-migration).
+    audit('users', 'LOGIN', user.id, {
+      req,
+      despues: {
+        with_2fa: !!(twoFa && twoFa.enabled_at),
+        is_super_admin: !!user.is_super_admin,
+        field,
+      },
+    }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] LOGIN exitoso no persistido'));
 
     // 2026-06-23 Permisos F4: resolución capability-based. Antes había acá
     // un SELECT a user_permissions (14 booleans) — esa tabla murió en F4.
@@ -543,6 +591,12 @@ router.post('/logout', requireAuth, async (req, res, next) => {
       `UPDATE users SET password_changed_at = to_timestamp(($1::bigint + 1) / 1000.0) WHERE id = $2`,
       [Date.now(), req.user.id]
     );
+    // 2026-07-12 (auditoría TOTAL Auth P1-1): audit LOGOUT explícito.
+    // Antes solo quedaba el bump de password_changed_at silencioso.
+    audit('users', 'LOGOUT', req.user.id, {
+      req,
+      despues: {},
+    }).catch((err) => logger.warn({ err: err.message, userId: req.user.id }, '[auth-audit] LOGOUT no persistido'));
     // P-04 Fase 3.6: invalidar cache de auth meta (cross-instance Redis).
     // Sin esto, otra réplica con el row cacheado seguiría aceptando el token
     // hasta TTL de 60s. Fire-and-forget — userAuthCache loggea fallos
@@ -698,6 +752,14 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res,
       );
       logger.info({ user_id: user.id, source: 'forgot_password_token_issued' },
         'token de reset emitido');
+
+      // 2026-07-12 (auditoría TOTAL Auth P1-1): audit PASSWORD_RESET_REQUESTED.
+      // NO logueamos el token — solo el evento. El PASSWORD_RESET (consumo del
+      // link) ya se persiste como UPDATE en el path de reset-password (auth.js).
+      audit('users', 'PASSWORD_RESET_REQUESTED', user.id, {
+        req,
+        despues: { email_masked: user.email.replace(/(.{2}).*(@.*)/, '$1***$2') },
+      }).catch((err) => logger.warn({ err: err.message, userId: user.id }, '[auth-audit] PASSWORD_RESET_REQUESTED no persistido'));
 
       // fire-and-forget — si email provider falla, el log lo captura. El user
       // puede reintentar via /forgot-password (rate limit aplica).
