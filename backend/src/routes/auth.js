@@ -390,10 +390,20 @@ router.get('/me', requireAuth, async (req, res, next) => {
     // 2026-06-23 F4: resolución capability-based (igual que login). Admin
     // global no necesita caps en el response — el frontend lo trata como
     // bypass por role.
+    //
+    // 2026-07-12 (auditoría TOTAL Auth P1-5): super-admin también bypassea
+    // este bloque. Racional: super-admin opera cross-tenant y NO necesita
+    // caps del anchor tenant. Antes: el flujo publicSuperAdminInvite auto-
+    // loguea al invitado tras aceptar (JWT con tenant_id=1 embebido); si el
+    // frontend hace /me inmediato mientras el INSERT tenant_users todavía
+    // no propagó (write lag replica en Railway PG), resolveUserTenant tira
+    // NO_TENANT → el super-admin recién invitado queda locked-out
+    // artificialmente. Con este bypass, el super-admin ve /me OK aunque
+    // el tenant_users temporalmente no sea visible.
     const userRow = rows[0];
     let rolResponse = null;
     let capsResponse = null;
-    if (userRow.role !== 'admin') {
+    if (userRow.role !== 'admin' && !userRow.is_super_admin) {
       try {
         const { tenant_id } = await resolveUserTenant(req.user.id);
         const { rol, caps } = await loadUserCapsForTenant(req.user.id, tenant_id);
