@@ -363,6 +363,101 @@ describe('POST /api/cuentas/movimientos — saldo (secuencial)', () => {
 
     expect(res.status).toBe(400);
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 2026-07-12 (auditoría TOTAL Financiero P0-1): moneda + tc.
+  //
+  // Antes el POST hardcodeaba `moneda: 'USD', tc: null` al postear a caja.
+  // Tenant AR con caja ARS: rebotaba con 400 opaco. Tenant AR con caja
+  // USDT: pasaba validación pero saldo se corrompía × 1400 si el operador
+  // cargó ARS creyendo USD. Ahora se acepta moneda + tc y se convierte a
+  // USD para persistir en movimientos_cc (mantiene SALDO_CASE invariant).
+  // ═══════════════════════════════════════════════════════════════
+  describe('P0-1 multi-país: moneda + tc', () => {
+    let cajaArsId;
+    beforeAll(async () => {
+      const cajasRes = await request(app)
+        .get('/api/cajas/cajas')
+        .set('Authorization', `Bearer ${adminToken}`);
+      cajaArsId = (cajasRes.body || []).find(c => c.moneda === 'ARS')?.id;
+    });
+
+    it('P0-1: pago ARS con TC → persiste monto_total en USD y saldo nativo ARS en caja', async () => {
+      const cliente = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+        .send({ nombre: 'Cliente P0-1 ARS', categoria: 'A-' });
+      const cliId = cliente.body.id;
+
+      // Deuda inicial: 100 USD.
+      await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+        .send({ cliente_cc_id: cliId, fecha: '2026-03-01', tipo: 'compra', monto_total: 100 })
+        .expect(201);
+
+      // Pago 140000 ARS con tc=1400 → 100 USD → cancela la deuda.
+      const r = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          cliente_cc_id: cliId, fecha: '2026-03-10', tipo: 'pago',
+          monto_total: 140000, moneda: 'ARS', tc: 1400,
+          caja_id: cajaArsId,
+        });
+      expect(r.status).toBe(201);
+      // El movimiento CC se persiste en USD (100 USD).
+      expect(parseFloat(r.body.monto_total)).toBe(100);
+
+      // Verificar saldo del cliente: cancelado (100 - 100 = 0).
+      const saldoRes = await request(app)
+        .get(`/api/cuentas/clientes/${cliId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(parseFloat(saldoRes.body.saldo)).toBe(0);
+    });
+
+    it('P0-1: pago USD sin tc → funciona igual que antes (backwards compat)', async () => {
+      const cliente = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+        .send({ nombre: 'Cliente P0-1 USD compat', categoria: 'A-' });
+      const cliId = cliente.body.id;
+
+      await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+        .send({ cliente_cc_id: cliId, fecha: '2026-03-01', tipo: 'compra', monto_total: 50 })
+        .expect(201);
+
+      // Sin campos moneda ni tc — schema defaultea a 'USD'.
+      const r = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          cliente_cc_id: cliId, fecha: '2026-03-10', tipo: 'pago',
+          monto_total: 50, caja_id: cajaUsdId,
+        });
+      expect(r.status).toBe(201);
+      expect(parseFloat(r.body.monto_total)).toBe(50);
+    });
+
+    it('P0-1: pago moneda no-USD sin tc → 400 con mensaje claro', async () => {
+      const cliente = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+        .send({ nombre: 'Cliente P0-1 ARS sin TC', categoria: 'A-' });
+      const cliId = cliente.body.id;
+
+      const r = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          cliente_cc_id: cliId, fecha: '2026-03-10', tipo: 'pago',
+          monto_total: 140000, moneda: 'ARS',
+          // tc: FALTANTE
+          caja_id: cajaArsId,
+        });
+      expect(r.status).toBe(400);
+    });
+
+    it('P0-1: pago ARS contra caja USD → 400 (grupoMoneda mismatch)', async () => {
+      const cliente = await request(app).post('/api/cuentas/clientes').set('Authorization', `Bearer ${adminToken}`)
+        .send({ nombre: 'Cliente P0-1 ARS→USD', categoria: 'A-' });
+      const cliId = cliente.body.id;
+
+      const r = await request(app).post('/api/cuentas/movimientos').set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          cliente_cc_id: cliId, fecha: '2026-03-10', tipo: 'pago',
+          monto_total: 140000, moneda: 'ARS', tc: 1400,
+          caja_id: cajaUsdId, // ← caja USD, moneda ARS → no coinciden
+        });
+      expect(r.status).toBe(400);
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
