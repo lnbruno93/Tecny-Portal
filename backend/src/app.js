@@ -313,7 +313,19 @@ app.use(rateLimit({
 }));
 logger.info({ authenticatedRateLimit: AUTHENTICATED_RATE_LIMIT_MAX }, 'rate-limit authenticated configurado');
 
-app.use(express.json({ limit: '10mb' }));
+// 2026-07-12 (auditoría TOTAL Plataforma P2-9): 10mb → 2mb. El límite
+// original era generoso "por si acaso" — nunca subimos payloads de 10 MB
+// (los ~40 endpoints POST del portal tienen bodies < 100 kB en el 99%
+// de los casos; el más pesado es el importer XLSX que va con multipart
+// aparte, no JSON). 10 MB era superficie de DoS: un atacante que
+// mandaba 100 requests concurrentes de 10 MB = 1 GB de RAM en el
+// event loop bloqueado en parse.
+//
+// 2 MB es techo defensivo generoso — cubre imports masivos vía JSON
+// (~1000 productos con todos los campos = ~800 kB) sin romper flujos
+// legítimos. Endpoints con needs distintos (uploads, CSV import) tienen
+// su propio middleware con limit específico.
+app.use(express.json({ limit: '2mb' }));
 
 // Endpoint para violaciones de CSP del frontend (browsers postean reports acá).
 // Lo logueamos para enterarnos de intentos de carga externa / scripts inyectados

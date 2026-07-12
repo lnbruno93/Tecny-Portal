@@ -14,6 +14,14 @@ const { CODES } = require('../lib/authErrorCodes');
 const { sendPasswordResetEmail } = require('../lib/email');
 // Importar el módulo (no destructurar) para soportar jest.spyOn desde tests.
 const userAuthCache = require('../lib/userAuthCache');
+// 2026-07-12 (auditoría TOTAL Auth P2-4): require eager en vez de lazy.
+// Antes: `const { load2fa } = require('./twoFa')` inline dentro del handler
+// de POST /login y POST /change-password. Node.js cachea el module después
+// del primer require, pero el lookup en require.cache + el destructure
+// cuestan ~5-15µs por request en el hot path del login (el endpoint
+// más caliente después del dashboard). Cargando eager, el costo se paga
+// 1 vez al boot y el handler queda plano.
+const { load2fa, verifyAndConsume } = require('./twoFa');
 
 // TANDA 0 #321: TTL del token de reset. 1h corto a propósito — ventana
 // pequeña de exposición si el email del user es comprometido.
@@ -279,7 +287,8 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // forcear el TOTP de 6 dígitos rotando IPs (el espacio ~10^6 con window ±1
     // es factible en horas). Ahora el lockout per-user defiende independiente
     // del rate-limit por IP.
-    const { load2fa, verifyAndConsume } = require('./twoFa');
+    // 2026-07-12 P2-4: load2fa/verifyAndConsume ahora vienen del require
+    // eager al top del archivo (evita lookup en require.cache por request).
     const twoFa = await load2fa(user.id);
     if (twoFa && twoFa.enabled_at) {
       const code = req.body.code; // opcional en el body del login
@@ -626,7 +635,7 @@ router.post('/change-password', requireAuth, validate(changePasswordSchema), asy
     // robado podía cambiar la password sin que el atacante supiera el TOTP →
     // account takeover persistente. Ahora, aunque tenga la password actual del
     // user, sin el código TOTP no puede cerrar la cuenta.
-    const { load2fa, verifyAndConsume } = require('./twoFa');
+    // 2026-07-12 P2-4: eager require al top del archivo.
     const twoFa = await load2fa(user.id);
     if (twoFa && twoFa.enabled_at) {
       if (!twofa_code) {
