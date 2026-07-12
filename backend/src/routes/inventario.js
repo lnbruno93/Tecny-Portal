@@ -1357,6 +1357,12 @@ router.post('/productos/bulk-delete-disponibles', requireCapability('inventario.
     // deleted_at), así que un envío "fantasma" disparaba el 409 aunque ya no
     // exista para el operador. Reportado por Lucas: borró todos los envíos y
     // el botón de vaciar inventario seguía dando "hay 2 envíos en curso".
+    // 2026-07-12 (auditoría TOTAL Stock P1-3): tenant_id explícito ADEMÁS del
+    // SET LOCAL + RLS. Este endpoint SOFT-DELETEA masivamente productos —
+    // defense-in-depth: si por algún motivo el session var no se propagara
+    // (bug futuro en pooling, SET LOCAL fuera de tx), el filtro literal
+    // impide un wipe cross-tenant. No cambia behavior actual — solo
+    // cinturón + tiradores.
     const enUso = await client.query(
       `SELECT ei.envio_id, e.cliente, e.estado, ei.producto_id, p.nombre AS producto_nombre
          FROM envio_items ei
@@ -1364,10 +1370,13 @@ router.post('/productos/bulk-delete-disponibles', requireCapability('inventario.
          JOIN productos p ON p.id = ei.producto_id
         WHERE e.estado IN ('Pendiente', 'En camino')
           AND e.deleted_at IS NULL
+          AND e.tenant_id = $1
           AND p.estado = 'disponible'
           AND p.deleted_at IS NULL
+          AND p.tenant_id = $1
           AND ei.producto_id IS NOT NULL
-        LIMIT 10`
+        LIMIT 10`,
+      [req.tenantId]
     );
     if (enUso.rows.length > 0) {
       await client.query('ROLLBACK');
@@ -1382,7 +1391,9 @@ router.post('/productos/bulk-delete-disponibles', requireCapability('inventario.
           SET deleted_at = NOW()
         WHERE deleted_at IS NULL
           AND estado = 'disponible'
-        RETURNING id`
+          AND tenant_id = $1
+        RETURNING id`,
+      [req.tenantId]
     );
     const borrados = rows.length;
     if (borrados > 0) {
@@ -1429,6 +1440,8 @@ router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, admin
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
     // 1. Guard contra envíos en curso (mismo check que el hermano).
+    // 2026-07-12 (auditoría TOTAL Stock P1-3): tenant_id explícito además del
+    // SET LOCAL + RLS. Ver comentario extenso en bulk-delete-disponibles.
     const enUso = await client.query(
       `SELECT ei.envio_id, e.cliente, e.estado, ei.producto_id, p.nombre AS producto_nombre
          FROM envio_items ei
@@ -1436,10 +1449,13 @@ router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, admin
          JOIN productos p ON p.id = ei.producto_id
         WHERE e.estado IN ('Pendiente', 'En camino')
           AND e.deleted_at IS NULL
+          AND e.tenant_id = $1
           AND p.estado = 'disponible'
           AND p.deleted_at IS NULL
+          AND p.tenant_id = $1
           AND ei.producto_id IS NOT NULL
-        LIMIT 10`
+        LIMIT 10`,
+      [req.tenantId]
     );
     if (enUso.rows.length > 0) {
       await client.query('ROLLBACK');
@@ -1453,23 +1469,29 @@ router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, admin
     //    Capturamos los proveedor_movimiento_id de TODOS los productos
     //    disponibles antes de borrar (puede haber compras con productos
     //    parciales que no debemos tocar).
+    // 2026-07-12 (auditoría TOTAL Stock P1-3): tenant_id explícito.
     const { rows: dispProds } = await client.query(
       `SELECT id, proveedor_movimiento_id
          FROM productos
         WHERE deleted_at IS NULL AND estado = 'disponible'
-        ORDER BY id FOR UPDATE`
+          AND tenant_id = $1
+        ORDER BY id FOR UPDATE`,
+      [req.tenantId]
     );
     const movIdsImpactados = [
       ...new Set(dispProds.map(p => p.proveedor_movimiento_id).filter(Boolean)),
     ];
 
     // 3. Soft-delete los productos disponibles (paso original del endpoint hermano).
+    // 2026-07-12 (auditoría TOTAL Stock P1-3): tenant_id explícito.
     const { rows: borradosRows } = await client.query(
       `UPDATE productos
           SET deleted_at = NOW()
         WHERE deleted_at IS NULL
           AND estado = 'disponible'
-        RETURNING id`
+          AND tenant_id = $1
+        RETURNING id`,
+      [req.tenantId]
     );
     const borrados = borradosRows.length;
 
@@ -1480,23 +1502,26 @@ router.post('/productos/bulk-delete-disponibles-con-compras', bulkLimiter, admin
     //      historial vendido bloquea el borrado de la compra.
     let comprasBorradas = 0;
     if (movIdsImpactados.length > 0) {
+      // 2026-07-12 (auditoría TOTAL Stock P1-3): tenant_id explícito.
       const { rows: movsSinViventes } = await client.query(
         `SELECT m.id
            FROM proveedor_movimientos m
           WHERE m.id = ANY($1::int[]) AND m.deleted_at IS NULL
+            AND m.tenant_id = $2
             AND NOT EXISTS (
               SELECT 1 FROM productos p
                WHERE p.proveedor_movimiento_id = m.id AND p.deleted_at IS NULL
             )
           ORDER BY m.id FOR UPDATE`,
-        [movIdsImpactados]
+        [movIdsImpactados, req.tenantId]
       );
       if (movsSinViventes.length > 0) {
         const movsBorrablesIds = movsSinViventes.map(m => m.id);
         await client.query(
           `UPDATE proveedor_movimientos SET deleted_at = NOW()
-             WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
-          [movsBorrablesIds]
+             WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+               AND tenant_id = $2`,
+          [movsBorrablesIds, req.tenantId]
         );
         for (const id of movsBorrablesIds) {
           await reverseCajaMovimientos(client, 'proveedor_movimientos', id);

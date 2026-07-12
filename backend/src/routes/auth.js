@@ -706,9 +706,17 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res,
 
     // Response idéntica para ambos paths (anti-enum). El user ve siempre el
     // mismo "Si el email es válido, te mandamos un link" en el frontend.
+    //
+    // 2026-07-12 (auditoría TOTAL Externa P1-6): NO exponemos
+    // `reset_token_ttl_hours` en el response. Exponer el TTL exacto ayuda al
+    // atacante a temporizar sus intentos si consigue el token (por MitM al
+    // email, filtro de logs, o compromiso del proveedor de email). Otros
+    // SaaS como Auth0 y Clerk NO lo exponen. El copy del frontend hardcodea
+    // "Tu link expira en 1 hora" — si en el futuro cambia el TTL, cambia el
+    // copy (evento raro). El TTL también viaja en el email (donde ya está),
+    // no en el API response.
     res.status(200).json({
       reset_required: true,
-      reset_token_ttl_hours: RESET_TOKEN_TTL_HOURS,
     });
   } catch (err) {
     next(err);

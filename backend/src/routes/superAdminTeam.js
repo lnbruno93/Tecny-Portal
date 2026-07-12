@@ -84,9 +84,16 @@ const inviteSchema = z.object({
 // acá para reusarlo desde publicSuperAdminInvite.js — mantiene la
 // validación de password co-localizada con el resto de la lógica de invite.
 // passwordField del portal usa min 8 + letter + number.
+//
+// hcaptcha_response (2026-07-12 auditoría TOTAL Externa P1-1 follow-up):
+// token del widget del cliente. Opcional a nivel schema — el gate real vive
+// en el handler, que corre verifyCaptcha (fail-closed en prod si el token
+// falta o es inválido; bypass en dev/test). max 10_000 defensivo por si el
+// widget alguna vez emite tokens largos, para no dejar entrar payloads de MB.
 const { passwordField } = require('../lib/password');
 const acceptSchema = z.object({
-  password: passwordField(),
+  password:          passwordField(),
+  hcaptcha_response: z.string().trim().max(10_000).optional(),
 }).strict();
 
 /**
@@ -588,9 +595,24 @@ router.post('/revoke/:userId', async (req, res, next) => {
           return { lastAdmin: true };
         }
 
+        // 2026-07-12 (auditoría TOTAL Auth P1-2): bumpear password_changed_at
+        // junto con is_super_admin=false. Sin esto, el JWT actual del user
+        // revocado sigue teniendo `is_super_admin: true` en el payload hasta
+        // que expire (default 8h). El middleware requireSuperAdmin re-valida
+        // contra userAuthCache/DB, entonces el is_super_admin=false ya toma
+        // efecto — PERO tenemos una ventana de 60s (TTL del cache) donde
+        // decisions cliente (redirects a /admin) y logs de auditoría podrían
+        // reflejar el estado stale. Bumpear password_changed_at es la señal
+        // canónica para invalidar TODOS los JWT del user afectado en
+        // TODAS las instancias (el chequeo password_changed_at vs iat_ms es
+        // cross-instance). El user afectado hace re-login en el próximo
+        // request. Costo: nada — es una columna que ya existe con este
+        // propósito exacto (invalidar sesiones al cambiar password / caps /
+        // is_super_admin).
         const { rows: updated } = await client.query(
           `UPDATE users
-              SET is_super_admin = false
+              SET is_super_admin = false,
+                  password_changed_at = NOW()
             WHERE id = $1
             RETURNING id, username, email`,
           [userId]

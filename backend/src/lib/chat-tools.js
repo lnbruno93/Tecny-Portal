@@ -496,6 +496,12 @@ const handlers = {
   // get_ventas_periodo — retail + B2B unificadas
   // ──────────────────────────────────────────────────────────────────────
   async get_ventas_periodo(input, ctx) {
+    // 2026-07-12 (auditoría TOTAL Externa P1-4): gate por ventas.trabajar.
+    // Tool devuelve ingresos, ganancia bruta, ganancia neta, ticket promedio —
+    // datos financieros del negocio. Sin gate, un vendedor sin permiso de
+    // ventas podía preguntarle al bot "cuánto vendimos este mes" y sortear
+    // el gate del módulo Ventas UI.
+    if (!hasCap(ctx, 'ventas.trabajar')) return noPermission('ventas.trabajar');
     const { periodo, desde: desdeIn, hasta: hastaIn } = input || {};
     const { desde, hasta, label } = periodoRange(periodo, {
       desde: desdeIn,
@@ -577,6 +583,11 @@ const handlers = {
   // de get_ventas_periodo para garantizar consistencia (mismo SQL → mismos
   // números que si el bot llamara la otra tool).
   async get_dashboard_mensual(_input, ctx) {
+    // 2026-07-12 (auditoría TOTAL Externa P1-4): gate explícito por
+    // ventas.trabajar. Aunque internamente llamamos get_ventas_periodo
+    // (que también gate-a), fallar temprano evita construir un shape con
+    // `.consolidado` undefined si la inner tool retorna no_permission.
+    if (!hasCap(ctx, 'ventas.trabajar')) return noPermission('ventas.trabajar');
     // Llamamos a la implementación interna, NO al dispatcher, para evitar el
     // overhead de logging y double-error-handling.
     const actual = await handlers.get_ventas_periodo({ periodo: 'mes' }, ctx);
@@ -625,6 +636,10 @@ const handlers = {
   // get_envios_activos — pendientes + en camino
   // ──────────────────────────────────────────────────────────────────────
   async get_envios_activos(input, ctx) {
+    // 2026-07-12 (auditoría TOTAL Externa P1-4): gate por envios.trabajar.
+    // Devuelve detalles de envíos (cliente, dirección, monto) — mismo gate
+    // que /api/envios en app.js:772.
+    if (!hasCap(ctx, 'envios.trabajar')) return noPermission('envios.trabajar');
     const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
@@ -1027,6 +1042,10 @@ const handlers = {
   },
 
   async get_ventas_pendientes(input, ctx) {
+    // 2026-07-12 (auditoría TOTAL Externa P1-4): gate por ventas.trabajar.
+    // Lista ventas con order_id + cliente + total — datos que el módulo
+    // Ventas UI gate-a. Mismo pattern.
+    if (!hasCap(ctx, 'ventas.trabajar')) return noPermission('ventas.trabajar');
     const limit = Math.min(Math.max(1, Number(input?.limit) || 10), 50);
 
     return db.withTenant(ctx.tenantId, async (client) => {
@@ -1103,6 +1122,11 @@ const handlers = {
   },
 
   async get_stock_bajo(input, ctx) {
+    // 2026-07-12 (auditoría TOTAL Externa P1-4): gate por inventario.ver.
+    // Lista productos + cantidades + proveedor — mismo gate que el módulo
+    // Inventario UI (app.js:793). Sin gate, un vendedor B2B sin acceso al
+    // Inventario puede enumerar stock via bot.
+    if (!hasCap(ctx, 'inventario.ver')) return noPermission('inventario.ver');
     const umbral = Math.min(Math.max(1, Number(input?.umbral) || 5), 100);
     const limit = Math.min(Math.max(1, Number(input?.limit) || 20), 50);
 
@@ -1142,6 +1166,12 @@ const handlers = {
   },
 
   async get_actividad_reciente(input, ctx) {
+    // 2026-07-12 (auditoría TOTAL Externa P1-4): gate por historial.ver.
+    // Feed de INSERT/UPDATE/DELETE cross-módulo desde audit_logs — el módulo
+    // Historial UI está gated en app.js:736 (requireCapability('historial.ver')).
+    // Sin gate acá el bot leakeaba a usuarios sin acceso al Historial cambios
+    // recientes de ventas, cajas, etc.
+    if (!hasCap(ctx, 'historial.ver')) return noPermission('historial.ver');
     const limit = Math.min(Math.max(1, Number(input?.limit) || 15), 50);
     const dias = Math.min(Math.max(1, Number(input?.dias) || 7), 90);
 

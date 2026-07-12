@@ -12,8 +12,9 @@
 //
 // Design: reusa el look del Login (card centrado sobre bg neutro).
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { publicInvite, saveToken } from '../lib/api.js';
 import { Btn } from '../components/primitives/index.jsx';
 import { Icons } from '../components/Icons.jsx';
@@ -21,6 +22,14 @@ import {
   PASSWORD_POLICY_HINT,
   validatePasswordPolicy,
 } from '../lib/passwordPolicy.js';
+
+// hCaptcha site key — mismo pattern que /login, /signup, /forgot-password del
+// portal. Default: test sitekey oficial de hCaptcha (siempre pasa, para dev/
+// local). En prod se pasa VITE_HCAPTCHA_SITE_KEY con la key real (build-time
+// inline). Sin la key real en prod la verificación server-side rechazaría
+// todos los tokens (fail-closed en el backend).
+const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY
+  || '10000000-ffff-ffff-ffff-000000000001';
 
 // Estados internos del flow. Explícitos porque UI cambia bastante:
 //   'verifying' → skeleton mientras chequeamos el token
@@ -47,6 +56,14 @@ export default function AcceptSuperAdminInvite() {
   const [pw, setPw] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
   const [error, setError] = useState('');
+
+  // 2026-07-12 (auditoría TOTAL Externa P1-1 follow-up): hCaptcha invisible.
+  // Mismo pattern que /login del portal — widget en modo "99.9% passive"
+  // (config en hCaptcha dashboard) que casi nunca muestra desafío a humanos
+  // legítimos pero bloquea bots. En dev/local (backend HCAPTCHA_ENABLED!='true'),
+  // el widget carga con la test sitekey y su token es aceptado en bypass.
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const captchaRef = useRef(null);
 
   const pwId = useId();
   const pwConfirmId = useId();
@@ -89,7 +106,7 @@ export default function AcceptSuperAdminInvite() {
     setStep(STEPS.ACCEPTING);
     setError('');
     try {
-      const res = await publicInvite.accept(token, pw);
+      const res = await publicInvite.accept(token, pw, captchaToken || undefined);
       if (!res?.token) {
         setError('Respuesta inválida del servidor. Intentá de nuevo.');
         setStep(STEPS.READY);
@@ -105,6 +122,13 @@ export default function AcceptSuperAdminInvite() {
     } catch (err) {
       setError(err?.message || 'No pudimos aceptar la invitación.');
       setStep(STEPS.READY);
+      // Token hCaptcha es single-use — reset después de cualquier error para
+      // que el próximo submit intente uno nuevo (mismo pattern que Login del
+      // portal). En modo passive el widget re-emite automáticamente.
+      setCaptchaToken(null);
+      if (captchaRef.current) {
+        try { captchaRef.current.resetCaptcha(); } catch (_) { /* no-op */ }
+      }
     }
   };
 
@@ -263,6 +287,20 @@ export default function AcceptSuperAdminInvite() {
                       aria-label="Confirmar contraseña"
                     />
                   </div>
+                </div>
+
+                {/* hCaptcha invisible — misma config que /login del portal.
+                    En dev/local o NODE_ENV=test el backend bypassa; en prod
+                    verifica antes de crear el user. */}
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
+                  <HCaptcha
+                    ref={captchaRef}
+                    sitekey={HCAPTCHA_SITE_KEY}
+                    onVerify={(t) => setCaptchaToken(t)}
+                    onExpire={() => setCaptchaToken(null)}
+                    onError={() => setCaptchaToken(null)}
+                    theme="light"
+                  />
                 </div>
 
                 <Btn

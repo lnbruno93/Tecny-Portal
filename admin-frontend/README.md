@@ -21,9 +21,10 @@ el portal en 5173).
 
 ## Variables de entorno
 
-| Variable        | Default                                              | Notas                                                                  |
-| --------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
-| `VITE_API_URL`  | `https://tecny-backend-production.up.railway.app`    | Base URL del backend. Debe arrancar con `http://` o `https://`.        |
+| Variable                  | Default                                              | Notas                                                                  |
+| ------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| `VITE_API_URL`            | `https://tecny-backend-production.up.railway.app`    | Base URL del backend. Debe arrancar con `http://` o `https://`.        |
+| `VITE_HCAPTCHA_SITE_KEY`  | `10000000-ffff-ffff-ffff-000000000001` (test sitekey)| hCaptcha del flow `/aceptar-invitacion`. En prod, la sitekey real.     |
 
 Si la URL está seteada sin protocolo, el módulo `lib/api.js` lanza error al
 cargar (replica del hardening del portal — bug 2026-06-19, ver comentario en

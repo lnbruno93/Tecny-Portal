@@ -294,9 +294,32 @@ publicRouter.get('/usados/:token', publicLimiter, validate(tokenParamSchema, 'pa
     });
 
     if (!linkRow) {
+      // 2026-07-12 (auditoría TOTAL Externa P1-7): audit trail structurado
+      // para detección de enumeración. Un atacante que scan-ea tokens al
+      // azar deja miles de 404s en poco tiempo — con estos logs pipeados a
+      // Grafana/BetterStack + una alerta sobre "N 404 en share_link_lookup
+      // desde una misma IP en X min" salta al radar. El ip_hash es el mismo
+      // salt que usamos para share_link_views (anonimizado + estable
+      // cross-request para clustering, no reversible sin la salt).
+      logger.info({
+        source: 'share_link_lookup_404',
+        ip_hash: hashIP(req.ip),
+        user_agent_short: String(req.headers['user-agent'] || '').slice(0, 120),
+        token_prefix: String(token || '').slice(0, 8),
+      }, '[share-link] token no encontrado');
       return res.status(404).json({ error: 'not_found', mensaje: 'Listado no encontrado.' });
     }
     if (!linkRow.activo) {
+      // 410 audit trail — link existe pero fue desactivado. Diferencia con 404
+      // porque acá SÍ conocemos el tenant y podemos correlacionar. Útil para
+      // detectar spam de un link viejo compartido en WhatsApp que sigue
+      // recibiendo tráfico post-desactivación.
+      logger.info({
+        source: 'share_link_lookup_410',
+        tenant_id: linkRow.tenant_id,
+        share_link_id: linkRow.id,
+        ip_hash: hashIP(req.ip),
+      }, '[share-link] link inactivo consultado');
       return res.status(410).json({ error: 'link_inactivo', mensaje: 'Este listado ya no está disponible.' });
     }
 

@@ -8,6 +8,11 @@ const parseId = require('../lib/parseId');
 const { postCajaMovimientosBulk, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { crearVentaDesdeEnvio, actualizarVentaDesdeEnvio } = require('../lib/ventaDesdeEnvio');
 const { revertirEfectosVenta } = require('../lib/cancelarVenta');
+// 2026-07-12 (auditoría TOTAL Stock P1-2): antes envios.js NO importaba
+// invalidateMetricas — 3 de sus 4 endpoints tocan stock (POST crea venta
+// que descuenta, PUT sincroniza, DELETE revierte) pero ninguno invalidaba
+// el cache de inventario. Los KPIs quedaban stale hasta ~20s post-write.
+const { invalidateMetricas } = require('../lib/inventarioCache');
 
 // Sincroniza el impacto de un envío en el ledger de cajas: revierte los ingresos
 // previos y, si el envío no está cancelado, re-postea un ingreso por cada item
@@ -191,6 +196,10 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       await audit(client, 'envios', 'INSERT', envio.id, { despues: envio, user_id: req.user.id });
       if (ventaCreada) await audit(client, 'ventas', 'INSERT', ventaCreada.id, { despues: ventaCreada, _origen: 'envio', user_id: req.user.id });
       await client.query('COMMIT');
+      // Stock P1-2: invalidar cache de métricas de inventario post-COMMIT.
+      // Si se creó venta desde envío, hubo descuento de stock en el mismo tx.
+      // Fire-and-forget (.catch swallow) — si Redis está caído no rompemos el response.
+      invalidateMetricas(req.tenantId).catch(() => {});
       res.status(201).json(envio);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -307,6 +316,9 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       if (ventaEstadoSincronizado) await audit(client, 'ventas', 'UPDATE', ventaEstadoSincronizado.id, { despues: ventaEstadoSincronizado, _origen: 'envio', user_id: req.user.id });
       if (ventaCancelada)    await audit(client, 'ventas', 'UPDATE', ventaCancelada.id,    { antes: ventaCancelada, despues: { ...ventaCancelada, estado: 'cancelado' }, _origen: 'envio', user_id: req.user.id });
       await client.query('COMMIT');
+      // Stock P1-2: PUT puede haber tocado items (agregados, quitados, cancelación
+      // que revierte stock via revertirEfectosVenta). Invalidar cache post-COMMIT.
+      invalidateMetricas(req.tenantId).catch(() => {});
       res.json(envio);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -410,6 +422,9 @@ router.delete('/:id', async (req, res, next) => {
     await audit(client, 'envios', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     if (ventaBorrada) await audit(client, 'ventas', 'DELETE', ventaBorrada.id, { antes: ventaBorrada, _origen: 'envio', user_id: req.user.id });
     await client.query('COMMIT');
+    // Stock P1-2: DELETE revirtió efectos de la venta asociada (repuso stock).
+    // Invalidar métricas para que dashboard KPIs reflejen la reposición.
+    invalidateMetricas(req.tenantId).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

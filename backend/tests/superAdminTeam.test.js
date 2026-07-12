@@ -255,10 +255,24 @@ describe('POST /api/super-admin/team/revoke/:userId', () => {
     `, [otherId]);
     await userAuthCache.invalidateUserAuth(otherId);
 
+    // 2026-07-12 (auditoría TOTAL Auth P1-2): el revoke previo bumpeó
+    // password_changed_at → otherToken quedó inválido (iat_ms < changedAt).
+    // Ahora que reactivamos manualmente, hay que re-mintear el token para
+    // que otherId pueda seguir operando. Refresh password_changed_at para
+    // que el nuevo iat_ms sea mayor.
+    await pool.query(
+      `UPDATE users SET password_changed_at = to_timestamp((EXTRACT(EPOCH FROM NOW()) - 1)) WHERE id = $1`,
+      [otherId]
+    );
+    const otherTokenFresh = makeToken({
+      id: otherId, username: 'lastsa', email: 'lastsa@test.local',
+      role: 'op', tenant_id: 1, tenant_rol: 'member',
+    });
+
     // otherId revoca a testadmin(1) — quedaría solo otherId. OK.
     const rLast = await request(app)
       .post('/api/super-admin/team/revoke/1')
-      .set('Authorization', `Bearer ${otherToken}`);
+      .set('Authorization', `Bearer ${otherTokenFresh}`);
     expect(rLast.status).toBe(200);
 
     // Ahora otherId es EL ÚLTIMO. Intentar revocar a alguien que no existe
@@ -266,12 +280,29 @@ describe('POST /api/super-admin/team/revoke/:userId', () => {
     // Volvemos a hacer testadmin super-admin para hacer un segundo intento
     // controlado del path 'last_super_admin'.
     await pool.query(`UPDATE users SET is_super_admin = true WHERE id = 1`);
+    // 2026-07-12 (auditoría TOTAL Auth P1-2): el revoke previo (rLast)
+    // bumpeó password_changed_at de user 1 — superAdminToken quedó inválido.
+    // Backdate password_changed_at para que el token pre-existente vuelva a
+    // ser válido (iat_ms > changedAt). Solo para el resto del test suite;
+    // los tests siguientes ya asumen superAdminToken vivo.
+    await pool.query(
+      `UPDATE users SET password_changed_at = to_timestamp((EXTRACT(EPOCH FROM NOW()) - 3600)) WHERE id = 1`
+    );
     await userAuthCache.invalidateUserAuth(1);
     // Revocar otherId — deja solo a testadmin. OK.
     const rClean = await request(app)
       .post(`/api/super-admin/team/revoke/${otherId}`)
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(rClean.status).toBe(200);
+
+    // Rest post-rClean: el revoke bumpeó password_changed_at de otherId
+    // pero no de user 1 (self-revoke bloqueado). Pero necesitamos volver a
+    // dejar el token del user 1 vivo para tests siguientes que lo usan.
+    // Backdate su password_changed_at otra vez a antes del token.
+    await pool.query(
+      `UPDATE users SET password_changed_at = to_timestamp((EXTRACT(EPOCH FROM NOW()) - 3600)) WHERE id = 1`
+    );
+    await userAuthCache.invalidateUserAuth(1);
 
     // Cleanup manual del test.
     // NOTA: tenant_admin_actions.super_admin_user_id tiene FK a users(id)
