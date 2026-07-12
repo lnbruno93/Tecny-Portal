@@ -119,11 +119,16 @@ export default function Login() {
       // "Admin") porque la columna users.username es case-sensitive.
       const id = username.trim();
       const identifier = id.includes('@') ? id.toLowerCase() : id;
+      // 2026-07-12 (hotfix post-audit P0-1): NO mandar captchaToken en step 2
+      // del flow 2FA. El token hCaptcha es single-use — si se re-envía en el
+      // segundo request, hCaptcha rebota con `duplicate` y el backend responde
+      // "verificación ya fue usada". El backend además skippea el gate cuando
+      // recibe `code`, pero acá lo omitimos por defense-in-depth.
       const result = await login(
         identifier,
         password,
         twofaRequired ? code.trim() : undefined,
-        captchaToken || undefined,
+        twofaRequired ? undefined : (captchaToken || undefined),
       );
       if (result.twofa_required) {
         setTwofaRequired(true);
