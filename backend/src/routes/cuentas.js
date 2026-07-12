@@ -24,7 +24,7 @@ const validate  = require('../lib/validate');
 const audit     = require('../lib/audit');
 const parseId   = require('../lib/parseId');
 const requireCapability = require('../middleware/requireCapability');
-const { toUsd, round2 } = require('../lib/money');
+const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
 // 2026-07-12 (auditoría TOTAL P0-2 Financiero): import el helper canónico de
 // cajaLedger (3 grupos: ARS/UYU/USD) en vez de definir una versión local con
 // solo 2 grupos (ARS/todo-lo-demás). El local hacía que UYU cayera al grupo
@@ -507,7 +507,28 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       // 2026-06-10: estado por defecto 'acreditado' para venta B2B.
       // El schema ya lo defaulta — destructuring igual por consistencia.
       estado = 'acreditado',
+      // 2026-07-12 (auditoría TOTAL Financiero P0-1): moneda + tc para
+      // multi-país. Ver comment del schema para el bug histórico.
+      moneda = 'USD',
+      tc = null,
     } = req.body;
+
+    // 2026-07-12: validar que la moneda sea compatible con el país del tenant.
+    // Idem `assertMonedaValidaParaPais` que usan ventas, cajas, egresos y
+    // cambios (5/9 rutas del track financiero cubiertas por este helper — este
+    // PR cierra la sexta). Un tenant AR NO puede recibir cobros UYU, y un
+    // tenant UY NO puede recibir cobros ARS. USDT es válido para ambos.
+    try {
+      assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
+    } catch (err) {
+      return next(err);
+    }
+
+    // Convertir el monto a USD para persistir en movimientos_cc.monto_total.
+    // `SALDO_CASE` asume que monto_total está en USD. La moneda + tc originales
+    // los pasamos a `postCajaMovimiento` para que la caja quede con el saldo
+    // nativo correcto en su propia moneda.
+    const montoUsd = round2(toUsd(monto_total, moneda, tc));
 
     // #H-05 cross-module: si la venta/devolución toca stock de inventario
     // (producto_id en algún item), exigir también permiso `inventario`.
@@ -541,12 +562,17 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // Insertar movimiento (con auditoría de creador para #B-07).
     // estado: solo aplica visualmente a tipo='compra' (venta B2B). El default
     // 'acreditado' del schema cubre todos los demás (pago, devolución, etc.).
+    //
+    // 2026-07-12 P0-1: `monto_total` se persiste en USD (`montoUsd`) para que
+    // SALDO_CASE compute el saldo del cliente correctamente. El `monto_total`
+    // que envía el frontend (en su moneda original) se convierte usando
+    // `toUsd` — ver arriba del handler.
     const { rows: movRows } = await client.query(
       `INSERT INTO movimientos_cc
          (cliente_cc_id, fecha, tipo, descripcion, monto_total, notas, caja_id, created_by_user_id, estado)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
-      [cliente_cc_id, fecha, tipo, descripcion ?? null, monto_total, notas ?? null, caja_id ?? null, req.user.id, estado]
+      [cliente_cc_id, fecha, tipo, descripcion ?? null, montoUsd, notas ?? null, caja_id ?? null, req.user.id, estado]
     );
     const mov = movRows[0];
 
@@ -558,8 +584,24 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     //   - tipo 'devolucion' → reverso de venta, NO mueve caja en esta versión
     //     (la devolución cae en CC del cliente como menos deuda)
     if (caja_id && ['pago', 'parte_de_pago', 'compra'].includes(tipo)) {
+      // 2026-07-12 P0-1: pasar la moneda + tc REALES en vez de hardcodear
+      // 'USD'/null. Impacto histórico del hardcode:
+      //   · Tenant UY cobrando UYU contra caja UYU: rebotaba 400 ("moneda
+      //     del pago (USD) no coincide con la de la caja (UYU)")
+      //   · Tenant AR cobrando ARS contra caja ARS: idéntico rebote
+      //   · Tenant AR con caja USDT: pasaba validación (mismo grupo) pero
+      //     saldo nativo se corrompía × 1400 si el operador cargó ARS por
+      //     error creyendo USD
+      //
+      // postCajaMovimiento se encarga internamente de:
+      //   · Validar `grupoMoneda(moneda) === grupoMoneda(cajaMoneda)` (SOL-1)
+      //   · Persistir `caja_movimientos.monto` en la moneda nativa
+      //   · Persistir `caja_movimientos.monto_usd` = toUsd(monto, moneda, tc)
+      //   · Persistir `caja_movimientos.tc` = tc del pago
+      // Todo esto conserva el saldo nativo de la caja correcto y también
+      // permite reporting cross-moneda.
       await postCajaMovimiento(client, {
-        caja_id, fecha, tipo: 'ingreso', monto: monto_total, moneda: 'USD', tc: null,
+        caja_id, fecha, tipo: 'ingreso', monto: monto_total, moneda, tc,
         origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
         concepto: tipo === 'compra' ? `Venta B2B (contado) cliente #${cliente_cc_id}` : `Pago B2B #${cliente_cc_id}`,
         user_id: req.user.id,

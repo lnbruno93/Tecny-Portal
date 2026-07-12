@@ -55,12 +55,34 @@ const createMovimientoCCSchema = z.object({
   fecha:         fechaNoFutura,
   tipo:          z.enum(TIPOS_MOVIMIENTO_CC, { error: `Tipo debe ser: ${TIPOS_MOVIMIENTO_CC.join(', ')}` }),
   descripcion:   z.string().trim().max(500).optional().nullable(),
-  // Hard cap: 10M USD por movimiento. Previene overflow JS Number en sumas
-  // de saldos cuando alguien envía 1e18 por error o malicia (auditoría #B-04).
-  monto_total:   z.number().positive('El monto debe ser mayor a 0').max(10_000_000, 'El monto excede el máximo permitido (10M USD)'),
+  // Hard cap: 10M por movimiento (moneda del pago). Previene overflow JS
+  // Number en sumas de saldos cuando alguien envía 1e18 por error o malicia
+  // (auditoría #B-04).
+  monto_total:   z.number().positive('El monto debe ser mayor a 0').max(10_000_000, 'El monto excede el máximo permitido (10M)'),
   // Caja donde ingresa el pago. Schema permite null/undefined acá; el refine
   // de abajo lo exige cuando tipo=pago/parte_de_pago/compra (ver SOL-2).
   caja_id:       z.coerce.number().int().positive().optional().nullable(),
+  // 2026-07-12 (auditoría TOTAL Financiero P0-1): agregado `moneda` + `tc`.
+  //
+  // Antes el schema no los tenía → el POST hardcodeaba `moneda: 'USD',
+  // tc: null` al postear a caja. Impacto:
+  //   · Tenant UY con caja UYU: rebotaba con 400 ("moneda del pago (USD) no
+  //     coincide con la de la caja (UYU)"). NO se podía registrar el cobro.
+  //   · Tenant AR con caja USDT: pasaba validación (USD/USDT mismo grupo)
+  //     pero el `monto_total` (nominalmente USD) se persistía en la caja
+  //     como USDT crudo — si el operador cargó ARS creyendo USD, quedaba
+  //     inflado ×1400 silenciosamente.
+  //   · Contract violation con SALDO_CASE (que asume monto_total en USD).
+  //
+  // Fix: aceptar la moneda del pago + tc de conversión. El backend convierte
+  // el monto a USD para `movimientos_cc.monto_total` (mantiene el invariant
+  // del SALDO_CASE) y postea a caja con la moneda real (mantiene saldo
+  // nativo de la caja correcto).
+  //
+  // Backwards compat: `.default('USD')` — clientes viejos que no mandan
+  // moneda siguen tratados como USD (comportamiento pre-fix para AR).
+  moneda:        MonedaEnum.default('USD'),
+  tc:            z.coerce.number().positive().optional().nullable(),
   notas:         z.string().trim().max(1000).optional().nullable(),
   // 2026-06-10: estado visual de la venta. Default 'acreditado' (la venta
   // se considera registrada/confirmada). El operador puede pasar 'pendiente'
@@ -88,6 +110,13 @@ const createMovimientoCCSchema = z.object({
   .refine(
     d => !['pago', 'parte_de_pago'].includes(d.tipo) || (d.caja_id != null && d.caja_id > 0),
     { message: 'caja_id requerido para tipo pago/parte_de_pago', path: ['caja_id'] }
+  )
+  // 2026-07-12 P0-1: si el pago NO es USD, exigir `tc` positivo (para convertir
+  // a USD y persistir en `movimientos_cc.monto_total` correcto). Consistente con
+  // el `refine` del `cobranzaItemSchema` (línea 112).
+  .refine(
+    d => d.moneda === 'USD' || (d.tc != null && d.tc > 0),
+    { message: 'Para montos en ARS/UYU/USDT se requiere TC positivo', path: ['tc'] }
   );
 
 // PATCH /movimientos/:id/estado — alternar entre acreditado/pendiente desde la grilla.
