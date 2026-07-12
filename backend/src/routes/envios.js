@@ -199,7 +199,7 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       // Stock P1-2: invalidar cache de métricas de inventario post-COMMIT.
       // Si se creó venta desde envío, hubo descuento de stock en el mismo tx.
       // Fire-and-forget (.catch swallow) — si Redis está caído no rompemos el response.
-      invalidateMetricas(req.tenantId).catch(() => {});
+      invalidateMetricas(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[envios] invalidateMetricas post-COMMIT falló'));
       res.status(201).json(envio);
     } catch (err) {
       await client.query('ROLLBACK');
@@ -318,7 +318,7 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       await client.query('COMMIT');
       // Stock P1-2: PUT puede haber tocado items (agregados, quitados, cancelación
       // que revierte stock via revertirEfectosVenta). Invalidar cache post-COMMIT.
-      invalidateMetricas(req.tenantId).catch(() => {});
+      invalidateMetricas(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[envios] invalidateMetricas post-COMMIT falló'));
       res.json(envio);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -424,7 +424,7 @@ router.delete('/:id', async (req, res, next) => {
     await client.query('COMMIT');
     // Stock P1-2: DELETE revirtió efectos de la venta asociada (repuso stock).
     // Invalidar métricas para que dashboard KPIs reflejen la reposición.
-    invalidateMetricas(req.tenantId).catch(() => {});
+    invalidateMetricas(req.tenantId).catch((err) => require('../lib/logger').warn({ err: err.message, tenantId: req.tenantId }, '[envios] invalidateMetricas post-COMMIT falló'));
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');

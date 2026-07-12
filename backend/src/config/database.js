@@ -103,16 +103,33 @@ function _captureCallerStack() {
     .join('\n');
 }
 
-const _originalQuery = pool.query.bind(pool);
-pool.query = async function instrumentedQuery(...args) {
-  const callerStack = _captureCallerStack();
-  try {
-    return await _originalQuery(...args);
-  } catch (err) {
-    _logIntCastErrorIfMatch(err, args, callerStack);
-    throw err;
-  }
-};
+// 2026-07-12 (auditoría TOTAL Plataforma P1-3): instrumentación detrás de flag.
+// El bug pg_strtoint fue reportado UNA vez el 2026-06-17 y no reincidió en +25
+// días de prod. Mantener el wrapper always-on cuesta ~µs/query × 50k queries/día
+// = ~0.5s CPU/día — tech debt no crítico pero permanente.
+//
+// Fix: activar solo con `DB_INT_CAST_DEBUG=1`. En prod queda OFF por default
+// (elimina el overhead baseline); se activa via env var + redeploy cuando/si
+// el bug reincida. El wrapper de client.query (más abajo) sigue el mismo gate.
+//
+// Alternativa considerada + descartada: eliminar la instrumentación entera.
+// Preferimos mantener el código para reactivar en 5 minutos si el bug vuelve,
+// vs re-implementar el diagnostic bajo presión de incident.
+const DB_INT_CAST_DEBUG = process.env.DB_INT_CAST_DEBUG === '1';
+
+if (DB_INT_CAST_DEBUG) {
+  const _originalQuery = pool.query.bind(pool);
+  pool.query = async function instrumentedQuery(...args) {
+    const callerStack = _captureCallerStack();
+    try {
+      return await _originalQuery(...args);
+    } catch (err) {
+      _logIntCastErrorIfMatch(err, args, callerStack);
+      throw err;
+    }
+  };
+  logger.info('[db] DB_INT_CAST_DEBUG=1 — instrumentación pg_strtoint activa');
+}
 
 // Extensión: instrumentamos también `client.query` para los call sites que
 // usan `pool.connect()` + `client.query()` directamente (ej. transacciones
@@ -162,24 +179,30 @@ function _instrumentClient(client) {
   return client;
 }
 
-const _originalConnect = pool.connect.bind(pool);
-pool.connect = function instrumentedConnect(...args) {
-  const last = args[args.length - 1];
-  if (typeof last === 'function') {
-    // Callback-style: interceptamos el cb para instrumentar el client antes
-    // de pasárselo al caller original (probablemente el pool.query interno
-    // de pg-pool). El client queda con .query patched para todo su lifetime.
-    const userCb = last;
-    const newArgs = args.slice(0, -1);
-    return _originalConnect(...newArgs, (err, client, done) => {
-      if (!err) _instrumentClient(client);
-      userCb(err, client, done);
-    });
-  }
-  // Promise-style: wrappeamos la promesa para instrumentar al client antes
-  // de devolverlo al caller.
-  return _originalConnect(...args).then(_instrumentClient);
-};
+// 2026-07-12 (auditoría TOTAL Plataforma P1-3): mismo gate que el wrapper
+// de pool.query. Sin DB_INT_CAST_DEBUG, no parchamos pool.connect — el
+// overhead de instrumentClient() por cada client sacado del pool se ahorra
+// completamente.
+if (DB_INT_CAST_DEBUG) {
+  const _originalConnect = pool.connect.bind(pool);
+  pool.connect = function instrumentedConnect(...args) {
+    const last = args[args.length - 1];
+    if (typeof last === 'function') {
+      // Callback-style: interceptamos el cb para instrumentar el client antes
+      // de pasárselo al caller original (probablemente el pool.query interno
+      // de pg-pool). El client queda con .query patched para todo su lifetime.
+      const userCb = last;
+      const newArgs = args.slice(0, -1);
+      return _originalConnect(...newArgs, (err, client, done) => {
+        if (!err) _instrumentClient(client);
+        userCb(err, client, done);
+      });
+    }
+    // Promise-style: wrappeamos la promesa para instrumentar al client antes
+    // de devolverlo al caller.
+    return _originalConnect(...args).then(_instrumentClient);
+  };
+}
 
 /**
  * 2026-06-15 multi-tenant PR 3 — helper para queries con contexto de tenant.

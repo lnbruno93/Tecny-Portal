@@ -67,6 +67,12 @@ jobs:
           # Test-only key: 64 chars hex (32 bytes). NO usar en prod — la real
           # va por env var en Railway. Si falta, los tests de 2FA fallan en startup.
           TWOFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          # 2026-07-12 (auditoría TOTAL Plataforma P1-3): forzar la
+          # instrumentación pg_strtoint en tests. En prod queda OFF por
+          # default (elimina overhead baseline); en tests queda ON para
+          # verificar el wrapper en `database-instrumentation.test.js`.
+          # Idem setEnv.js para tests locales.
+          DB_INT_CAST_DEBUG: '1'
           NODE_ENV: test
         # T4 auditoría 2026-06: corremos con --coverage para que jest gatee
         # los thresholds configurados en jest.config.js. Un PR que baje la
