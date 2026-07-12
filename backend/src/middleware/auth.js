@@ -118,6 +118,23 @@ module.exports = async function requireAuth(req, res, next) {
       code: 'NO_TENANT',
     });
   }
+  // 2026-07-12 (auditoría TOTAL Plataforma P3-1): validar shape del tenant_id
+  // antes de exponerlo. Defense-in-depth para los ~100 sitios que interpolan
+  // `SET LOCAL app.current_tenant = ${req.tenantId}` inline (no aceptan bind
+  // porque `SET` no soporta `$1`). El JWT es HMAC-SHA256 verificado por
+  // jsonwebtoken.verify(), así que un payload forjado NO llega acá. Pero:
+  //   · si a futuro alguien cambia el algoritmo o rompe la verificación,
+  //     este guard previene SQL injection real (interpolar string arbitrario
+  //     en el comando SET).
+  //   · si un token válido tiene tenant_id malformado por bug en el emisor
+  //     (login handler), rechazamos claramente en vez de emitir SQL raro.
+  //   · alinea el shape con `pool.withTenant` que ya tiene el mismo guard.
+  if (!Number.isInteger(decoded.tenant_id) || decoded.tenant_id <= 0) {
+    return res.status(401).json({
+      error: 'Sesión inválida. Ingresá de nuevo.',
+      code: 'INVALID_TENANT',
+    });
+  }
   req.tenantId  = decoded.tenant_id;
   req.tenantRol = decoded.tenant_rol ?? 'member';
 
