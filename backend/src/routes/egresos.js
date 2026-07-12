@@ -15,7 +15,7 @@ const requireCapability = require('../middleware/requireCapability');
 // vista de read-only del módulo.
 const egresosCargar = requireCapability('egresos.cargar');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
-const { toUsd, round2, assertMonedaValidaParaPais } = require('../lib/money');
+const { toUsd, round2, assertMonedaValidaParaPais, getTcDefaultPais } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const {
   createCategoriaSchema, updateCategoriaSchema,
@@ -201,25 +201,61 @@ router.post('/generar', egresosCargar, validate(generarPeriodoSchema), async (re
     // 2026-06-15 multi-tenant (PR 4.8): el SELECT de recurrentes + los N
     // INSERTs en egresos van bajo el mismo SET LOCAL para que RLS filtre y
     // los INSERTs hereden tenant_id consistente.
+    //
+    // 2026-07-12 (auditoría TOTAL Financiero P1-2, Pattern B multi-país UYU):
+    // Fallback de TC cuando el recurrente lo tiene NULL o stale. Casos:
+    //   1. Recurrente legacy pre-multi-país creado con moneda='UYU' cuando
+    //      el schema aceptaba UYU sin TC (P1 en _recurrenteBase ya lo exige
+    //      ahora, pero filas viejas siguen NULL en DB).
+    //   2. Recurrente creado hace meses con TC=1400 cuando hoy es 2100 —
+    //      el monto_usd generado sub-valora el gasto real.
+    //
+    // Fix: si el recurrente requiere TC y NO tiene uno propio, usar el TC
+    // default del país del tenant como fallback. Si tampoco existe, saltamos
+    // ese recurrente (no generamos con monto_usd=0 que rompería el dashboard)
+    // y lo reportamos en la respuesta para que el frontend muestre el warning
+    // al operador.
     const generados = await db.withTenant(req.tenantId, async (client) => {
       const { rows: recs } = await client.query('SELECT * FROM egresos_recurrentes WHERE activo = true AND deleted_at IS NULL');
+      // Cachear el TC default del país — evita N queries si hay 10 recurrentes UYU.
+      let tcDefaultCache = null;
+      const getTcDefault = async () => {
+        if (tcDefaultCache !== null) return tcDefaultCache;
+        tcDefaultCache = await getTcDefaultPais(client, req.tenantPais) ?? 0;
+        return tcDefaultCache;
+      };
       let n = 0;
+      const skipped = []; // { id, concepto, motivo } para reportar al frontend
       for (const r of recs) {
         const dia = Math.min(r.dia_del_mes, lastDay);
         const fecha = `${periodo}-${String(dia).padStart(2, '0')}`;
-        const monto_usd = round2(toUsd(Number(r.monto), r.moneda, r.tc));
+        // Resolver TC a usar: propio del recurrente si tiene, sino default del país.
+        // Sólo aplicable si la moneda REQUIERE TC (fiat local: ARS/UYU).
+        let tcUsado = r.tc;
+        if (requiereTc(r.moneda) && (tcUsado == null || Number(tcUsado) <= 0)) {
+          tcUsado = await getTcDefault();
+          if (!tcUsado || tcUsado <= 0) {
+            skipped.push({
+              id: r.id,
+              concepto: r.concepto,
+              motivo: `TC default no configurado para país ${req.tenantPais}. Configurá TC en Config → TC default del país o editá el TC del recurrente.`,
+            });
+            continue; // No generamos con monto_usd=0.
+          }
+        }
+        const monto_usd = round2(toUsd(Number(r.monto), r.moneda, tcUsado));
         const { rows } = await client.query(
           `INSERT INTO egresos (fecha, concepto, monto, moneda, tc, monto_usd, metodo_pago_id, categoria_id, estado, recurrente_id, periodo, user_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pendiente',$9,$10,$11)
            ON CONFLICT (recurrente_id, periodo) WHERE recurrente_id IS NOT NULL AND deleted_at IS NULL
            DO NOTHING RETURNING id`,
-          [fecha, r.concepto, r.monto, r.moneda, r.tc ?? null, monto_usd, r.metodo_pago_id, r.categoria_id, r.id, periodo, req.user.id]
+          [fecha, r.concepto, r.monto, r.moneda, tcUsado ?? null, monto_usd, r.metodo_pago_id, r.categoria_id, r.id, periodo, req.user.id]
         );
         if (rows[0]) n++;
       }
-      return n;
+      return { n, skipped };
     });
-    res.json({ ok: true, generados, periodo });
+    res.json({ ok: true, generados: generados.n, periodo, skipped: generados.skipped });
   } catch (err) { next(err); }
 });
 

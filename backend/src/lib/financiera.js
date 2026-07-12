@@ -236,7 +236,25 @@ async function postCajaMovimientoFinanciera(client, {
     tipo,
     monto,
     moneda: fv.moneda, // la moneda del movimiento es la de la caja (grupoMoneda check delegado)
-    tc: null,          // hoy la caja FV es ARS — si en el futuro hay FV en USD/USDT, ajustar
+    // 2026-07-12 (auditoría TOTAL Financiero P2-1, Pattern B multi-país UYU):
+    // tc: null — hoy en prod solo hay cajas Financieras ARS con TC snapshot en
+    // los pagos que originan estos movimientos (venta_pagos.tc). El monto_usd
+    // se calcula en postCajaMovimiento con toUsd(monto, moneda, tc); para ARS/UYU
+    // con tc=null retorna 0 → asiento incorrecto en el ledger cross-moneda.
+    //
+    // DEBT: cuando el primer tenant configure Financiera en caja UYU (o USDT
+    // con TC≠1), este helper necesita recibir el TC del contexto (venta_pagos
+    // origen del comprobante) o del TC default del país. Requiere refactor
+    // del caller para pasar ese context — fuera de scope del Sprint 3 multi-país.
+    // Ver: routes/comprobantes.js POST /manuales (caller principal) — hay que
+    // resolver el TC ahí y pasarlo explícito acá.
+    //
+    // Attempt de fix en Sprint 3 (2026-07-12): probé leer TC del último
+    // movimiento de la caja + fallback a getTcDefaultPais con tenantPais.
+    // Bloqueado por: (a) `caja_movimientos` NO persiste tc (solo monto/monto_usd),
+    // y (b) el helper no tiene acceso a req.tenantPais. Rollback + follow-up
+    // en Sprint 5 con el refactor de caller signature.
+    tc: null,
     origen: 'financiera',
     ref_tabla,
     ref_id,
