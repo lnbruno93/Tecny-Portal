@@ -73,6 +73,85 @@ jobs:
         # cobertura por debajo del baseline rompe CI.
         run: npm test -- --coverage
 
+  # 2026-07-12 (auditoría TOTAL Plataforma P1-2):
+  # Job dedicado que corre un test suite mínimo con pool conectado DIRECTAMENTE
+  # como NOSUPERUSER (rol `ipro_app`), replicando la condición prod donde
+  # DATABASE_URL apunta al role sin BYPASSRLS.
+  #
+  # Motivación: el job `test` de arriba corre con el rol `ipro` superuser
+  # default de Postgres Docker → bypassea RLS incluso con FORCE. Cualquier
+  # migration futura con backfill sin `SET LOCAL app.current_tenant` sobre
+  # tabla FORCE RLS puede pasar CI y romper prod (exactamente el incident
+  # F1 del 2026-07-09). Este job cierra ese gap.
+  #
+  # NO reemplaza al `test` — corre en paralelo, mismo Postgres, pero con
+  # `ipro_app` como user. Es rápido (< 30s) porque solo corre 6 tests smoke
+  # (fail-closed sin tenant + FORCE RLS coverage + INSERT rechazado).
+  nosuperuser-rls:
+    name: NOSUPERUSER RLS Tests
+    runs-on: ubuntu-latest
+    needs: test  # solo corre si el job normal pasó (evita duplicar tiempo si test rompió)
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ipro
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: ipro_nosuperuser
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run migrations (as superuser)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://ipro:testpass@localhost:5432/ipro_nosuperuser
+        run: npm run migrate
+
+      - name: Setup ipro_app NOSUPERUSER role + grants
+        working-directory: backend
+        env:
+          PGPASSWORD: testpass
+        # Aplica el mismo setup que prod (scripts/setup-app-role.sql) para
+        # crear el role NOSUPERUSER con grants sobre las tablas existentes.
+        run: psql -h localhost -U ipro -d ipro_nosuperuser -v ON_ERROR_STOP=1 -f scripts/ci-setup-app-role.sql
+
+      - name: Run NOSUPERUSER pool tests
+        working-directory: backend
+        env:
+          # Este es el gate: connection string con ipro_app en vez del user
+          # superuser. El test suite lee DATABASE_URL_NOSUPERUSER; sin la
+          # var, se skipea (así el job local corre igual sin romperse).
+          DATABASE_URL_NOSUPERUSER: postgresql://ipro_app:ci_test_password_not_for_prod@localhost:5432/ipro_nosuperuser
+          # DATABASE_URL sigue apuntando al superuser porque setupTestDb
+          # necesita permisos DDL para las tablas temporales. Solo el pool
+          # del test file nuevo usa DATABASE_URL_NOSUPERUSER directamente.
+          DATABASE_URL: postgresql://ipro:testpass@localhost:5432/ipro_nosuperuser
+          JWT_SECRET: ci-test-jwt-secret-not-for-production
+          TWOFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          NODE_ENV: test
+        run: npx jest tests/nosuperuser-pool-real.test.js --runInBand
+
   frontend-test:
     name: Frontend Tests
     runs-on: ubuntu-latest
