@@ -7,11 +7,23 @@
  *   2. invalidateTenantStatus() — DEL cache cross-instance.
  *   3. Integración requireAuth — write methods con tenant expirado → 402,
  *      read methods siempre OK, /api/auth/* sin gating.
+ *
+ * 2026-07-12: fix flakiness por timezone. Después del fix P0-2 (auditoría
+ * Red B2B 2026-07-11), `tenantStatus.js` compara `paid_until` contra
+ * `(NOW() AT TIME ZONE tenant_tz)::date` en vez de `CURRENT_DATE` (UTC).
+ * Los tests que usaban `CURRENT_DATE - INTERVAL '1 day'` para setear "ayer"
+ * fallaban en la ventana 21:00-24:00 AR (donde UTC ya cambió de día pero AR
+ * no) — el "ayer UTC" era "hoy AR" → is_active seguía siendo true. Ahora
+ * usamos AYER_AR_SQL (zona explícita) para setear "ayer real del tenant".
  */
 const request = require('supertest');
 const app = require('../src/app');
 const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 const { getTenantStatus, invalidateTenantStatus } = require('../src/lib/tenantStatus');
+
+// Fragmento SQL que devuelve "ayer" en la timezone del tenant 1 (AR default).
+// Ver comment del header del file para el porqué.
+const AYER_AR_SQL = `(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires' - INTERVAL '1 day')::date`;
 
 let pool;
 let adminToken;
@@ -51,7 +63,7 @@ describe('getTenantStatus — semántica', () => {
   });
 
   it('paid_until en pasado → is_active=false', async () => {
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
     const s = await getTenantStatus(1);
     expect(s.is_active).toBe(false);
@@ -85,7 +97,7 @@ describe('getTenantStatus — semántica', () => {
 
 describe('requireAuth — gating de tenant expirado', () => {
   it('GET pasa aunque tenant esté expirado (read-only allowed)', async () => {
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
 
     const r = await request(app)
@@ -95,7 +107,7 @@ describe('requireAuth — gating de tenant expirado', () => {
   });
 
   it('POST en tenant expirado → 402 TENANT_EXPIRED', async () => {
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
 
     const r = await request(app)
@@ -136,7 +148,7 @@ describe('requireAuth — gating de tenant expirado', () => {
   });
 
   it('PUT en tenant expirado → 402', async () => {
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
 
     const r = await request(app)
@@ -147,7 +159,7 @@ describe('requireAuth — gating de tenant expirado', () => {
   });
 
   it('DELETE en tenant expirado → 402', async () => {
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
 
     const r = await request(app)
@@ -157,7 +169,7 @@ describe('requireAuth — gating de tenant expirado', () => {
   });
 
   it('change-password (auth route) NO se gatea aunque tenant esté expirado', async () => {
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
 
     // POST a auth route con body inválido — debe rebotar por validación,
@@ -175,7 +187,7 @@ describe('invalidateTenantStatus — invalidación', () => {
     let s = await getTenantStatus(1);
     expect(s.is_active).toBe(true);
 
-    await pool.query(`UPDATE tenants SET paid_until = CURRENT_DATE - INTERVAL '1 day' WHERE id = 1`);
+    await pool.query(`UPDATE tenants SET paid_until = ${AYER_AR_SQL} WHERE id = 1`);
     await invalidateTenantStatus(1);
 
     s = await getTenantStatus(1);
