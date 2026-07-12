@@ -36,18 +36,26 @@
 # (clickjacking), CSP estricto.
 #
 # CSP rationale:
-#   - script-src 'self' únicamente. NO usamos hCaptcha (admin es solo super-
-#     admins autenticados, no signup público), NO usamos Google Tag Manager,
-#     NO usamos analytics externo. Sin third-party scripts.
+#   - script-src 'self' + https://*.hcaptcha.com. El endpoint público
+#     /aceptar-invitacion (auditoría TOTAL Externa P1-1, 2026-07-12) tiene
+#     un widget hCaptcha invisible para prevenir brute-force sobre el
+#     espacio de tokens de invite (43 chars base64url). Antes acá decía
+#     "NO usamos hCaptcha" — se cambió con el follow-up del audit. NO
+#     usamos Google Tag Manager, NO usamos analytics externo.
 #   - style-src 'self' + Google Fonts (Inter + JetBrains Mono via @import
-#     en styles.css). 'unsafe-inline' necesario porque algunas primitivas
-#     usan style={{...}} inline (a futuro se pueden mover a classes para
-#     sacar el unsafe-inline).
-#   - connect-src: solo Tecny backend (prod + staging — el bundle puede ir a
-#     cualquiera según VITE_API_URL en build time, mantenemos ambos para que
-#     no falle por config).
+#     en styles.css) + https://*.hcaptcha.com (widget inyecta estilos).
+#     'unsafe-inline' necesario porque algunas primitivas usan
+#     style={{...}} inline (a futuro se pueden mover a classes para sacar
+#     el unsafe-inline).
+#   - connect-src: Tecny backend (prod + staging — el bundle puede ir a
+#     cualquiera según VITE_API_URL en build time, mantenemos ambos para
+#     que no falle por config) + https://*.hcaptcha.com (siteverify
+#     telemetry + sentry.hcaptcha.com).
+#   - frame-src: https://*.hcaptcha.com (challenge iframe + checkbox
+#     iframe del widget).
 #   - frame-ancestors 'none' — admin NUNCA puede ser embed-eado en otro site.
 #   - report-uri al backend prod por default; branch-deploy override abajo.
+# Ver https://docs.hcaptcha.com/#content-security-policy-settings.
 [[headers]]
   for = "/*"
   [headers.values]
@@ -57,7 +65,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-production.up.railway.app/api/csp-report"
 
 # ── Branch deploys (staging) ──────────────────────────────────────────
 #
@@ -78,7 +86,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
 
 # ── Deploy previews (PRs) ─────────────────────────────────────────────
 #
@@ -97,7 +105,7 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://*.hcaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.hcaptcha.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tecny-backend-production.up.railway.app https://tecny-backend-staging.up.railway.app https://*.hcaptcha.com; frame-src 'self' https://*.hcaptcha.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri https://tecny-backend-staging.up.railway.app/api/csp-report"
 
 # ── Cache headers ─────────────────────────────────────────────────────
 #
