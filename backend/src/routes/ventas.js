@@ -21,7 +21,7 @@ const { DASHBOARD_VENTAS } = require('../lib/cacheConfig');
 // (Eliminado: imports innecesarios detectados por ESLint.)
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const { syncTarjetaCobros } = require('../lib/tarjetas');
-const { revertirEfectosVenta } = require('../lib/cancelarVenta');
+const { revertirEfectosVenta, revertirCanjesDeVenta } = require('../lib/cancelarVenta');
 const { syncVentaCaja, sincronizarCuentaCorriente } = require('../lib/ventaSync');
 // Tema C (2026-06-13): denormalizamos `ventas.comision_total_metodos` para
 // descontar el costo financiero (tarjeta + financiera) de la ganancia bruta.
@@ -623,8 +623,10 @@ async function computeDashboard(tenantId, desde, hasta) {
                 LEFT JOIN clases_producto cp ON cp.id = pr.clase_id AND cp.deleted_at IS NULL
                 WHERE ${BASE}`, p);
       // Inversión en canjes (USD). Mismo fix multi-país que arriba.
+      // 2026-07-12 (audit Stock P1-1): c.deleted_at IS NULL para excluir
+      // canjes soft-deleted (revert de venta cancelada / edit que removió el canje).
       const canjes = await client.query(`SELECT COALESCE(SUM(CASE WHEN c.moneda IN ('ARS','UYU') AND v.tc_venta > 0 THEN c.valor_toma/v.tc_venta ELSE c.valor_toma END),0) AS canjes_usd
-                FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE}`, p);
+                FROM canjes c JOIN ventas v ON v.id = c.venta_id WHERE ${BASE} AND c.deleted_at IS NULL`, p);
       // Egresos del período (USD)
       const egresos = await client.query(`SELECT COALESCE(SUM(monto_usd),0) AS egresos_usd FROM egresos WHERE deleted_at IS NULL AND estado = 'pagado' AND fecha >= $1 AND fecha <= $2`, p);
       // Diferencias de pago (sobrepagos / faltantes) — CTEs pre-agregadas (sin subqueries correlacionadas)
@@ -638,9 +640,12 @@ async function computeDashboard(tenantId, desde, hasta) {
                 ca AS (
                   -- BLOCKER 2026-07-05: incluir UYU además de ARS en la
                   -- conversión fiat/USD (antes solo ARS).
+                  -- 2026-07-12 (audit Stock P1-1): cc.deleted_at IS NULL.
                   SELECT cc.venta_id,
                          SUM(CASE WHEN cc.moneda IN ('ARS','UYU') AND bv.tc_venta > 0 THEN cc.valor_toma/bv.tc_venta ELSE cc.valor_toma END) AS canje_usd
-                  FROM canjes cc JOIN bv ON bv.id = cc.venta_id GROUP BY cc.venta_id
+                  FROM canjes cc JOIN bv ON bv.id = cc.venta_id
+                  WHERE cc.deleted_at IS NULL
+                  GROUP BY cc.venta_id
                 ),
                 dif AS (
                   SELECT bv.total_usd, COALESCE(pa.pagos_usd,0) + COALESCE(ca.canje_usd,0) AS cubierto
@@ -1102,7 +1107,7 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
         SELECT v.*, e.nombre AS etiqueta_nombre, e.color AS etiqueta_color,
           COALESCE((SELECT json_agg(i ORDER BY i.id) FROM venta_items i WHERE i.venta_id = v.id), '[]') AS items,
           COALESCE((SELECT json_agg(p ORDER BY p.id) FROM venta_pagos p WHERE p.venta_id = v.id), '[]') AS pagos,
-          COALESCE((SELECT json_agg(c ORDER BY c.id) FROM canjes c WHERE c.venta_id = v.id), '[]') AS canjes,
+          COALESCE((SELECT json_agg(c ORDER BY c.id) FROM canjes c WHERE c.venta_id = v.id AND c.deleted_at IS NULL), '[]') AS canjes,
           COALESCE((SELECT COUNT(*) FROM venta_comprobantes vc WHERE vc.venta_id = v.id AND vc.deleted_at IS NULL), 0) AS comprobantes_count,
           (SELECT json_build_object('id', env.id, 'estado', env.estado)
              FROM envios env WHERE env.venta_id = v.id AND env.deleted_at IS NULL LIMIT 1) AS envio
@@ -1408,7 +1413,17 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
 
       await client.query('DELETE FROM venta_items WHERE venta_id = $1', [id]);
       await client.query('DELETE FROM venta_pagos WHERE venta_id = $1', [id]);
-      await client.query('DELETE FROM canjes WHERE venta_id = $1', [id]);
+      // 2026-07-12 (audit Stock P1-1): reemplaza el hard-delete de canjes por
+      // soft-delete con política del helper. Preservamos productos linkeados
+      // que el body nuevo re-envía (canjes _existing con producto_id) — sin
+      // preserve, un edit que "reemplaza" el mismo canje soft-deletearía el
+      // producto y después insertarDetalle intentaría duplicar el IMEI.
+      // Canjes cuyo producto ya se vendió en OTRA venta bloquean el edit
+      // con 409 (política acordada — el operador debe anular esa venta antes).
+      const preserveProductoIds = (b.canjes || [])
+        .map(c => c.producto_id)
+        .filter(x => x != null);
+      await revertirCanjesDeVenta(client, id, { preserveProductoIds });
 
       const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc);
       const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, vendedor_nombre } = b;
@@ -1475,6 +1490,10 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     res.json(await redactVentaGananciaIfNeeded(req.user, rows[0]));
   } catch (err) {
     await client.query('ROLLBACK');
+    // 2026-07-12 (audit Stock P1-1): revertirCanjesDeVenta puede tirar 409
+    // (CANJE_PRODUCTO_VENDIDO / CANJE_PRODUCTO_NO_LIBRE) cuando el edit
+    // remueve un canje cuyo producto ya se vendió o quedó en otro estado.
+    if (err.status) return res.status(err.status).json({ error: err.message, code: err.code });
     next(err);
   } finally {
     client.release();
@@ -1571,6 +1590,10 @@ router.delete('/:id', requireCapability('ventas.eliminar'), async (req, res, nex
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK');
+    // 2026-07-12 (audit Stock P1-1): revertirEfectosVenta ahora incluye
+    // revertirCanjesDeVenta → puede tirar 409 si algún canje tiene un
+    // producto ya vendido en otra venta (o en estado no-libre).
+    if (err.status) return res.status(err.status).json({ error: err.message, code: err.code });
     next(err);
   } finally {
     client.release();

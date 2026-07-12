@@ -1265,3 +1265,188 @@ describe('Ventas — comision_total_metodos con 2 pagos idénticos (P1-5)', () =
     expect(Number(venta.body.comision_total_metodos)).toBeCloseTo(10, 2);
   });
 });
+
+// 2026-07-12 (auditoría TOTAL Stock P1-1): soft-delete de canjes con
+// política de revert del producto linkeado.
+//
+// Antes: DELETE /ventas NO tocaba canjes (equipos huérfanos en stock).
+// PUT /ventas hacía hard-delete de canjes (perdía histórico).
+// Ahora: revertirCanjesDeVenta soft-deletea canje + soft-deletea producto
+// si está disponible; rechaza con 409 si producto ya se vendió.
+describe('Ventas — canjes soft-delete + revert de producto (P1-1)', () => {
+  it('DELETE venta con canje agregar_stock=true → producto DISPONIBLE se soft-deletea junto', async () => {
+    const imei = '910' + Date.now().toString().slice(-12);
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone principal', cantidad: 1, precio_vendido: 1200, costo: 900, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje disponible', imei,
+        valor_toma: 400, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    expect(venta.status).toBe(201);
+
+    // Producto quedó en Inventario (estado=disponible por default del canje).
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv1.body.data).toHaveLength(1);
+    expect(inv1.body.data[0].estado).toBe('disponible');
+
+    // DELETE la venta → producto debe desaparecer del listado de disponibles.
+    const del = await request(app).delete(`/api/ventas/${venta.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+
+    const inv2 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    // El producto DEBE desaparecer del listado (soft-deleted).
+    expect(inv2.body.data.filter(p => p.imei === imei)).toHaveLength(0);
+  });
+
+  it('DELETE venta con canje cuyo producto YA se vendió en otra venta → 409, todo intacto', async () => {
+    const imei = '911' + Date.now().toString().slice(-12);
+    // 1. Venta A: crea el canje que ingresa el producto al stock.
+    const ventaA = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone A', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje vendido después', imei,
+        valor_toma: 350, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    expect(ventaA.status).toBe(201);
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    const productoId = inv1.body.data[0].id;
+
+    // 2. Venta B: usa ese producto como item vendido.
+    const ventaB = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      estado: 'acreditado',
+      items: [{ producto_id: productoId, descripcion: 'iPhone canje vendido después',
+                cantidad: 1, precio_vendido: 550, costo: 350, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 550, moneda: 'USD' }],
+    });
+    expect(ventaB.status).toBe(201);
+
+    // 3. Intentar borrar la Venta A → debe fallar con 409.
+    const del = await request(app).delete(`/api/ventas/${ventaA.body.id}`).set(auth());
+    expect(del.status).toBe(409);
+    expect(del.body.code).toBe('CANJE_PRODUCTO_VENDIDO');
+    expect(del.body.error).toMatch(/ya fue vendido/i);
+
+    // 4. Venta A sigue viva (rollback), Venta B intacta.
+    const listV = await request(app).get(`/api/ventas?buscar=${ventaA.body.order_id}`).set(auth());
+    expect(listV.body.data.some(v => v.id === ventaA.body.id)).toBe(true);
+  });
+
+  it('PUT venta removiendo canje con producto DISPONIBLE → canje viejo soft-deleted + producto soft-deleted', async () => {
+    const imei = '912' + Date.now().toString().slice(-12);
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone principal', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje removible', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    expect(venta.status).toBe(201);
+
+    // PUT SIN canje → el canje viejo se soft-deletea y el producto también.
+    const put = await request(app).put(`/api/ventas/${venta.body.id}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone principal', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' }],
+      canjes: [],
+    });
+    expect(put.status).toBe(200);
+
+    // Producto no aparece más en el listado (soft-deleted).
+    const inv = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv.body.data.filter(p => p.imei === imei)).toHaveLength(0);
+
+    // GET venta: canjes debe venir vacío (no ver soft-deleted).
+    const get = await request(app).get(`/api/ventas?buscar=${venta.body.order_id}`).set(auth());
+    const v = get.body.data.find(x => x.id === venta.body.id);
+    expect(v).toBeDefined();
+    expect(v.canjes).toEqual([]);
+  });
+
+  it('PUT venta preservando canje (mismo producto_id) → canje viejo soft-deleted PERO producto sobrevive', async () => {
+    const imei = '913' + Date.now().toString().slice(-12);
+    const venta = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone principal', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje persist', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    expect(venta.status).toBe(201);
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    const productoId = inv1.body.data[0].id;
+
+    // PUT reenviando el canje _existing (producto_id) → preserveProductoIds
+    // debe incluir productoId → producto NO se soft-deletea.
+    const put = await request(app).put(`/api/ventas/${venta.body.id}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone principal', cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone canje persist', imei,
+        valor_toma: 300, moneda: 'USD', agregar_stock: true,
+        producto_id: productoId,
+        condicion: 'usado',
+      }],
+    });
+    expect(put.status).toBe(200);
+
+    // Producto sigue vivo con el mismo ID.
+    const inv2 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    expect(inv2.body.data).toHaveLength(1);
+    expect(inv2.body.data[0].id).toBe(productoId);
+
+    // La venta tiene 1 canje activo (el nuevo re-insertado apuntando al mismo producto).
+    const get = await request(app).get(`/api/ventas?buscar=${venta.body.order_id}`).set(auth());
+    const v = get.body.data.find(x => x.id === venta.body.id);
+    expect(v.canjes).toHaveLength(1);
+    expect(Number(v.canjes[0].producto_id)).toBe(productoId);
+  });
+
+  it('PUT venta removiendo canje cuyo producto YA se vendió → 409, edit rollback', async () => {
+    const imei = '914' + Date.now().toString().slice(-12);
+    const ventaA = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone A', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [{
+        descripcion: 'iPhone bloqueado', imei,
+        valor_toma: 250, moneda: 'USD', agregar_stock: true,
+        condicion: 'usado',
+      }],
+    });
+    const inv1 = await request(app).get(`/api/inventario/productos?buscar=${imei}`).set(auth());
+    const productoId = inv1.body.data[0].id;
+
+    // Venta B vende el producto del canje.
+    const ventaB = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      estado: 'acreditado',
+      items: [{ producto_id: productoId, descripcion: 'iPhone bloqueado',
+                cantidad: 1, precio_vendido: 400, costo: 250, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 400, moneda: 'USD' }],
+    });
+    expect(ventaB.status).toBe(201);
+
+    // PUT Venta A intentando remover el canje → 409 (producto ya vendido).
+    const put = await request(app).put(`/api/ventas/${ventaA.body.id}`).set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone A', cantidad: 1, precio_vendido: 900, costo: 700, moneda: 'USD' }],
+      canjes: [],
+    });
+    expect(put.status).toBe(409);
+    expect(put.body.code).toBe('CANJE_PRODUCTO_VENDIDO');
+
+    // El canje de Venta A sigue vivo (rollback).
+    const get = await request(app).get(`/api/ventas?buscar=${ventaA.body.order_id}`).set(auth());
+    const v = get.body.data.find(x => x.id === ventaA.body.id);
+    expect(v.canjes).toHaveLength(1);
+  });
+});
