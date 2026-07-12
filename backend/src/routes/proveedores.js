@@ -16,6 +16,11 @@ const requireCapability = require('../middleware/requireCapability');
 const { invalidateMetricas } = require('../lib/inventarioCache');
 const { invalidateCajas } = require('../lib/cajasCache');
 const {
+  parseIdempotencyKey,
+  findExistingByIdempotencyKey,
+  isIdempotencyConflict,
+} = require('../lib/idempotency');
+const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
 } = require('../schemas/proveedores');
@@ -449,6 +454,12 @@ router.get('/:id/movimientos', async (req, res, next) => {
 // Registro de compra/pago — igual al flujo B2B: una COMPRA carga ítems (productos
 // comprados); un PAGO no. Transaccional (movimiento + ítems atómicos).
 router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoProveedorSchema), async (req, res, next) => {
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key.
+  const idem = parseIdempotencyKey(req);
+  if (idem.error) {
+    return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+  }
+
   const client = await db.connect();
   try {
     const { proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, caja_id, notas, items = [] } = req.body;
@@ -475,6 +486,17 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // Idempotency replay: si el caller ya intentó con esta key, devolvemos el
+    // movimiento original SIN reejecutar caja + productos.
+    if (idem.key) {
+      const existing = await findExistingByIdempotencyKey(client, 'proveedor_movimientos', idem.key);
+      if (existing) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ ...existing, idempotent_replay: true });
+      }
+    }
+
     const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [proveedor_id]);
     if (!prov.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Proveedor no encontrado' }); }
 
@@ -522,9 +544,9 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
 
     const monto_usd = round2(toUsd(monto, moneda, tc));
     const { rows } = await client.query(
-      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd, caja_id, notas, created_by_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [proveedor_id, fecha, tipo, descripcion ?? null, monto, moneda, tc ?? null, monto_usd, caja_id ?? null, notas ?? null, req.user.id]
+      `INSERT INTO proveedor_movimientos (proveedor_id, fecha, tipo, descripcion, monto, moneda, tc, monto_usd, caja_id, notas, created_by_user_id, client_generated_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [proveedor_id, fecha, tipo, descripcion ?? null, monto, moneda, tc ?? null, monto_usd, caja_id ?? null, notas ?? null, req.user.id, idem.key]
     );
     const mov = rows[0];
 
@@ -629,6 +651,13 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     res.status(201).json({ ...mov, items: insertedItems, productos_creados: productosCreados });
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race window Pattern G — UNIQUE index atrapa al 2do request concurrente.
+    if (isIdempotencyConflict(err)) {
+      return res.status(409).json({
+        error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+        reason: 'idempotency_conflict',
+      });
+    }
     next(err);
   } finally { client.release(); }
 });

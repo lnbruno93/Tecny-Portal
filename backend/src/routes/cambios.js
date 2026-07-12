@@ -12,6 +12,11 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2 } = require('../lib/money');
 const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
 const { createEntidadSchema, updateEntidadSchema, createMovimientoSchema } = require('../schemas/cambios');
+const {
+  parseIdempotencyKey,
+  findExistingByIdempotencyKey,
+  isIdempotencyConflict,
+} = require('../lib/idempotency');
 
 // saldo_usd por entidad: lo entregado (USD equiv) menos lo recibido = lo que nos deben.
 const SALDO_SQL = `
@@ -158,12 +163,28 @@ router.get('/entidades/:id/movimientos', async (req, res, next) => {
 });
 
 router.post('/movimientos', validate(createMovimientoSchema), async (req, res, next) => {
+  // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key.
+  const idem = parseIdempotencyKey(req);
+  if (idem.error) {
+    return res.status(400).json({ error: idem.error, reason: 'idempotency_key_invalid' });
+  }
+
   const client = await db.connect();
   try {
     const { entidad_id, fecha, tipo, monto_ars, tc, monto_usd, caja_id, comentarios } = req.body;
     await client.query('BEGIN');
     // 2026-06-15 multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
+
+    // Idempotency replay antes de tocar entidad + caja.
+    if (idem.key) {
+      const existing = await findExistingByIdempotencyKey(client, 'cambio_movimientos', idem.key);
+      if (existing) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ ...existing, idempotent_replay: true });
+      }
+    }
+
     const { rows: ent } = await client.query('SELECT id FROM cambio_entidades WHERE id = $1 AND deleted_at IS NULL', [entidad_id]);
     if (!ent[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Financiera no encontrada' }); }
 
@@ -193,9 +214,9 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
     }
 
     const { rows } = await client.query(
-      `INSERT INTO cambio_movimientos (entidad_id, fecha, tipo, monto_ars, tc, monto_usd, caja_id, comentarios, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [entidad_id, fecha, tipo, local, tc ?? null, usd, caja_id, comentarios ?? null, req.user.id]
+      `INSERT INTO cambio_movimientos (entidad_id, fecha, tipo, monto_ars, tc, monto_usd, caja_id, comentarios, user_id, client_generated_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [entidad_id, fecha, tipo, local, tc ?? null, usd, caja_id, comentarios ?? null, req.user.id, idem.key]
     );
     // Integrado al ledger: la moneda del movimiento debe coincidir con la de la caja
     // (postCajaMovimiento valida grupo de moneda y lanza 400 si no coincide).
@@ -216,6 +237,13 @@ router.post('/movimientos', validate(createMovimientoSchema), async (req, res, n
     res.status(201).json(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race window Pattern G — UNIQUE atrapa al 2do concurrente.
+    if (isIdempotencyConflict(err)) {
+      return res.status(409).json({
+        error: 'Otro request con la misma Idempotency-Key está en curso. Reintentá en un instante.',
+        reason: 'idempotency_conflict',
+      });
+    }
     next(err);
   } finally { client.release(); }
 });
