@@ -418,7 +418,10 @@ router.delete('/:id', async (req, res, next) => {
         ventaBorrada = vrows[0];
       }
     }
-    await client.query('UPDATE envios SET deleted_at = NOW() WHERE id = $1', [id]);
+    // 2026-07-12 (auditoría TOTAL Stock P2-3): + `deleted_at IS NULL`. El
+    // SELECT + FOR UPDATE de arriba ya filtra, pero el guard defensive cierra
+    // cualquier race hipotética.
+    await client.query('UPDATE envios SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL', [id]);
     await audit(client, 'envios', 'DELETE', id, { antes: before[0], user_id: req.user.id });
     if (ventaBorrada) await audit(client, 'ventas', 'DELETE', ventaBorrada.id, { antes: ventaBorrada, _origen: 'envio', user_id: req.user.id });
     await client.query('COMMIT');

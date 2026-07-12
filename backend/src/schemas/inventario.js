@@ -102,7 +102,20 @@ const updateProductoSchema = baseProducto.strict().partial(); // partial → coh
 // Carga masiva: array de productos (sin foto para mantener el payload acotado).
 // Refine: coherencia por lote (sin IMEIs duplicados).
 // La coherencia unitario ↔ cantidad se valida en el handler post-derive.
-const productoEnBulk = baseProducto.omit({ foto_data: true, foto_nombre: true, foto_tipo: true }).strict();
+//
+// 2026-07-12 (auditoría TOTAL Stock P2-6): sobrescribir `estado` para
+// FORZAR 'disponible' en el bulk. Antes hereda el enum del baseProducto
+// que aceptaba 4 valores — un cliente/import XLSX malicioso podía cargar
+// productos DIRECTAMENTE con estado='vendido' bypaseando el flow normal
+// (compra → venta → stock decrementado), rompiendo contabilidad.
+const productoEnBulk = baseProducto
+  .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
+  .extend({
+    // Solo 'disponible' o 'reservado' — 'vendido'/'en_tecnico' requieren flow
+    // dedicado (venta / servicio técnico) que NO puede saltarse via bulk.
+    estado: z.enum(['disponible', 'reservado']).default('disponible'),
+  })
+  .strict();
 const bulkProductoSchema = z.object({
   productos: z.array(productoEnBulk)
     .min(1, 'Al menos un producto')
@@ -220,7 +233,14 @@ const queryUsadosSchema = z.object({
   hasta:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
   page:        z.coerce.number().int().positive().optional(),
   limit:       z.coerce.number().int().positive().max(200).optional(),
-});
+}).refine(
+  // 2026-07-12 (auditoría TOTAL Stock P3-4): rechazar solo_canjes=true Y
+  // solo_manual=true simultáneamente. El WHERE resultante era una
+  // contradicción SQL (cj.id IS NOT NULL AND cj.id IS NULL) → siempre
+  // retornaba vacío. Rechazar temprano evita confusión del operador.
+  d => !(d.solo_canjes === true && d.solo_manual === true),
+  { message: 'solo_canjes y solo_manual son mutuamente excluyentes', path: ['solo_canjes'] }
+);
 
 module.exports = {
   nombreSchema,

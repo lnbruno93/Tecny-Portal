@@ -312,6 +312,9 @@ router.get('/productos/check-imei', async (req, res, next) => {
 router.get('/productos/proveedores', async (req, res, next) => {
   try {
     const rows = await db.withTenant(req.tenantId, async (client) => {
+      // 2026-07-12 (auditoría TOTAL Stock P3-3): LIMIT 500 defensivo. La
+      // grilla de autocomplete no muestra más — este es el techo prudente
+      // para prevenir que un tenant B2B grande devuelva miles de strings.
       const { rows } = await client.query(`
         SELECT DISTINCT TRIM(proveedor) AS proveedor
           FROM productos
@@ -319,6 +322,7 @@ router.get('/productos/proveedores', async (req, res, next) => {
            AND proveedor IS NOT NULL
            AND TRIM(proveedor) <> ''
          ORDER BY proveedor
+         LIMIT 500
       `);
       return rows;
     });
@@ -1270,8 +1274,12 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
         }
         return c in req.body ? req.body[c] : null;
       });
+      // 2026-07-12 (auditoría TOTAL Stock P2-1): + `deleted_at IS NULL` en
+      // el UPDATE. Cierra ventana TOCTOU entre el SELECT + FOR UPDATE (línea
+      // 1189, que sí filtra deleted_at) y este UPDATE — si otro proceso
+      // soft-deletea entre medio, el UPDATE lo re-vive.
       const { rows } = await client.query(
-        `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} RETURNING *`,
+        `UPDATE productos SET ${sets} WHERE id = $${PRODUCTO_COLS.length + 1} AND deleted_at IS NULL RETURNING *`,
         [...values, id]
       );
       // F3.d-3: hidrata `clase` sintético en el response (compat).

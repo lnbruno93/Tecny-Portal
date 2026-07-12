@@ -5,12 +5,12 @@ const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { createPagoSchema, queryPagosSchema } = require('../schemas/pagos');
 const parseId = require('../lib/parseId');
 const audit  = require('../lib/audit');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { postCajaMovimientoFinanciera } = require('../lib/financiera');
 
-// Grupo de moneda (mismo criterio que tarjetas.js): USD y USDT son
-// intercambiables; ARS es su propio grupo.
-const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
+// 2026-07-12 (auditoría TOTAL Financiero P3-6): removida versión local
+// (drift) — ahora importamos el canónico de cajaLedger que soporta UYU
+// (3 grupos: ARS, UYU, USD).
 
 // ─── Totales globales ─────────────────────────────────────────────────────────
 router.get('/totales', async (req, res, next) => {

@@ -18,7 +18,7 @@ const parseId  = require('../lib/parseId');
 const requireCapability = require('../middleware/requireCapability');
 const { parsePagination, paginatedResponse } = require('../lib/paginate');
 const { round2, computeNeto } = require('../lib/money');
-const { postCajaMovimiento, reverseCajaMovimientos } = require('../lib/cajaLedger');
+const { postCajaMovimiento, reverseCajaMovimientos, grupoMoneda } = require('../lib/cajaLedger');
 const { postCajaMovimientoTarjeta } = require('../lib/tarjetas');
 const { saldoNetoCase } = require('../lib/tarjetasSaldo');
 const { createLiquidacionSchema, createLiquidacionMultipleSchema, createCobroInicialSchema, updateMovimientoSchema } = require('../schemas/tarjetas');
@@ -29,7 +29,10 @@ const {
 } = require('../lib/idempotency');
 
 // Grupo de moneda (USD y USDT son intercambiables; ARS es su propio grupo).
-const grupoMoneda = (m) => (m === 'ARS' ? 'ARS' : 'USD');
+// 2026-07-12 (auditoría TOTAL Financiero P3-6): removida versión local
+// (drift) — ahora importamos el canónico de cajaLedger que soporta UYU
+// (3 grupos: ARS, UYU, USD). La versión local tenía solo 2 grupos y
+// tratal UYU como USD, corrompiendo cajas de tenants UY.
 
 // Resumen por tarjeta. Acepta desde/hasta opcionales.
 //

@@ -9,7 +9,13 @@ const loginSchema = z.object({
   // equivalentes para login. Normalizar acá garantiza consistency cuando se
   // crean / leen users desde otros endpoints.
   email:    z.string().trim().toLowerCase().email('Email inválido').optional(),
-  password: z.string().min(1, 'Password requerido'),
+  // 2026-07-12 (auditoría TOTAL Auth P3-2): .max(200). El bcrypt.compare
+  // en el path lockeado corre contra el password del user aún cuando está
+  // bloqueado (para tiempo constante anti-enum). Sin .max(), un atacante
+  // puede mandar strings de 10 kB para saturar CPU (bcrypt escala con la
+  // longitud del input). 200 es techo generoso — passwords reales son
+  // 8-30 chars, 200 permite passphrases sin bloquear casos legítimos.
+  password: z.string().min(1, 'Password requerido').max(200),
   // 2FA: si el user tiene 2FA enabled, después del password OK pedimos el código.
   // El frontend hace 2 requests: el primero sin code (recibe twofa_required=true),
   // el segundo con code. Aceptamos TOTP (6 dígitos) o recovery code (formato libre).

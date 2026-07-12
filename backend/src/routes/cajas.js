@@ -228,7 +228,12 @@ router.get('/cajas', async (req, res, next) => {
 // Reporte de cajas con saldo negativo — útil para regularizar datos viejos
 // antes de que el lock de "no negativo" empezara a aplicarse en POST.
 // Devuelve lista plana: { id, nombre, moneda, saldo_actual }.
-router.get('/cajas/negativas', async (req, res, next) => {
+//
+// 2026-07-12 (auditoría TOTAL Financiero P3-4): requireCapability('cajas.crear').
+// Antes solo gate por `cajas.ver` del app.js (que tienen vendedores). Este
+// reporte es info sensible (data hygiene interna) — un vendedor no debería
+// ver el estado de saldos negativos internos.
+router.get('/cajas/negativas', requireCapability('cajas.crear'), async (req, res, next) => {
   try {
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(

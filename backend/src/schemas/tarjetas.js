@@ -47,7 +47,10 @@ const updateMovimientoSchema = z.object({
   // los lee solo cuando mov.tc IS NOT NULL — sino son no-op (ignorados).
   // tc requiere ser >0; monto_usd también >0. Ambos opcionales: si no vienen,
   // se mantiene el valor actual (lo lee el handler de mov.tc).
-  tc:           z.coerce.number().positive('TC debe ser mayor a 0').optional(),
+  // 2026-07-12 (auditoría TOTAL Financiero P2-3): .max(1e6). Un TC de
+  // 0.0000001 acumulado en N liquidaciones podía inflar la caja USD a
+  // millones. El techo defensivo previene abuse operacional.
+  tc:           z.coerce.number().positive('TC debe ser mayor a 0').max(1e6, 'TC absurdamente alto').optional(),
   monto_usd:    z.coerce.number().positive('Monto USD debe ser mayor a 0').optional(),
   comentarios:  z.string().trim().max(1000).optional().nullable(),
 }).strict().refine(
