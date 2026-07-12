@@ -233,39 +233,10 @@ const GLOBAL_RATE_LIMIT_MAX = Number(process.env.GLOBAL_RATE_LIMIT_MAX) || 300;
 //     operando CRUD en tandas raramente supera 400/15min) pero mata el
 //     abuso automatizado.
 //
-// La verificación de firma sigue siendo CPU-bound (~1ms) sin DB. La verifi-
-// cación completa (revocación post-cambio-password, user activo) la hace
-// `requireAuth` de cada route. Cachear el resultado del verify en el req
-// (via req._validatedJwtUserId) evita doble jwt.verify() por request en el
-// path donde ambos limiters lo consultan.
-function validateAndGetJwtUserId(req) {
-  // Cache per-request: los 2 limiters (skip del global + keyGenerator del
-  // authenticated) llaman a este helper. Sin cache serían 2× jwt.verify.
-  if (req._validatedJwtUserId !== undefined) return req._validatedJwtUserId;
-  const header = req.headers.authorization || '';
-  if (!header.startsWith('Bearer ')) {
-    req._validatedJwtUserId = null;
-    return null;
-  }
-  const token = header.slice(7);
-  if (!token || !process.env.JWT_SECRET) {
-    req._validatedJwtUserId = null;
-    return null;
-  }
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    // decoded.id viene del payload (setado en makeToken). Si falta, cae a null.
-    req._validatedJwtUserId = decoded.id != null ? Number(decoded.id) : null;
-    return req._validatedJwtUserId;
-  } catch {
-    req._validatedJwtUserId = null;
-    return null;
-  }
-}
-
-function hasValidSignedJwt(req) {
-  return validateAndGetJwtUserId(req) != null;
-}
+// El helper `validateAndGetJwtUserId` vive en `lib/jwtVerify.js` — módulo
+// puro sin side-effects, testeable como unidad. Ver ese archivo para
+// documentación completa del cache per-request y comportamiento.
+const { validateAndGetJwtUserId, hasValidSignedJwt } = require('./lib/jwtVerify');
 
 // ─── Capa 1 — Global limiter (req anónimos) ─────────────────────────────
 app.use(rateLimit({
@@ -984,8 +955,4 @@ app.use((err, req, res, _next) => {
   res.status(status).json(body);
 });
 
-// Exports auxiliares para tests unitarios del rate limiter authenticated
-// (Pattern A cross-track, auditoría TOTAL 2026-07-12).
 module.exports = app;
-module.exports.validateAndGetJwtUserId = validateAndGetJwtUserId;
-module.exports.hasValidSignedJwt = hasValidSignedJwt;

@@ -20,7 +20,10 @@
  * staging/prod (documentado en el PR).
  */
 const jwt = require('jsonwebtoken');
-const { validateAndGetJwtUserId, hasValidSignedJwt } = require('../src/app');
+// 2026-07-12: importamos del módulo puro `lib/jwtVerify.js` en vez de app.js.
+// Cargar app.js abre pool DB, Redis, jobs — handles que pueden dejar el proceso
+// jest colgado con exit code 1 en CI. El módulo lib es sin side-effects.
+const { validateAndGetJwtUserId, hasValidSignedJwt } = require('../src/lib/jwtVerify');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
