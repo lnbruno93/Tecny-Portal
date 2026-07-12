@@ -131,15 +131,29 @@ router.put('/:id', validate(updateUsuarioSchema), async (req, res, next) => {
     // el path de privilege escalation con token robado: aunque el atacante
     // tenga el JWT del admin, sin su TOTP no puede cambiar credenciales
     // de otros. (Caps van por su propio endpoint que también bumpea pw_changed.)
-    const isSensitiveChange = (hash !== null || role !== undefined);
+    //
+    // 2026-07-12 (auditoría TOTAL Auth P1-3): el `email` también es sensible
+    // en el CONTEXTO SELF-EDIT — un atacante con JWT robado del admin no
+    // podía cambiar credenciales de OTROS (ese gate ya existía) pero SÍ
+    // podía cambiar su propio email → luego forgot-password contra el email
+    // nuevo (que el atacante controla) → toma control total. Cerrar con
+    // 2FA re-auth también en self-edit cuando cambia email. change-password
+    // ya hace lo mismo (routes/auth.js:522).
     const isOtherUser = id !== req.user.id;
-    if (isSensitiveChange && isOtherUser) {
+    const emailChangingSelf = email !== undefined && !isOtherUser;
+    const isSensitiveChange = (hash !== null || role !== undefined || emailChangingSelf);
+    // Requiere 2FA cuando: cambio credencial de otro user (path histórico) O
+    // cambio email de self (path nuevo P1-3).
+    const requires2fa = (isSensitiveChange && isOtherUser) || emailChangingSelf;
+    if (requires2fa) {
       const { load2fa, verifyAndConsume } = require('./twoFa');
       const twoFa = await load2fa(req.user.id);
       if (twoFa && twoFa.enabled_at) {
         if (!twofa_code) {
           return res.status(401).json({
-            error: 'Se requiere código 2FA para cambiar credenciales de otro usuario.',
+            error: emailChangingSelf
+              ? 'Se requiere código 2FA para cambiar tu email.'
+              : 'Se requiere código 2FA para cambiar credenciales de otro usuario.',
             twofa_required: true,
           });
         }

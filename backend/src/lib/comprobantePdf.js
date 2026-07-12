@@ -49,6 +49,45 @@ const FOOTER_DEFAULT = 'Gracias por tu compra. Generado con Tecny.';
 // query fallback directa a tenants — este string solo activa si TODO falla.
 const NOMBRE_PLACEHOLDER = 'Tu comercio';
 
+// 2026-07-12 (auditoría TOTAL Externa P1-5): sanitizar strings user-controlled
+// antes de escribirlos al PDF. pdfkit no interpreta HTML → no hay XSS
+// "clásico", pero:
+//   · Control chars (\x00-\x1F menos \n, \t) rompen viewers (algunos truncan
+//     al primer NUL, otros renderizan estilos raros).
+//   · RTL override chars (U+202E, U+2066-U+2069) permiten spoofing visual
+//     (ej. "iPhone12.pdf" que en realidad es "iPhonefdp.21").
+//   · Runs largos de \n (100+) rompen el layout → el Total cae fuera de página.
+//   · Textos absurdamente largos (nombre tenant "iPro | Tech Reseller Pro Plus …
+//     de 500 chars") desbordan header y meta metadata Author en el PDF.
+//
+// Este helper NO altera semántica del contenido humano — solo strip lo que
+// nunca debería estar en un PDF de comprobante y trunca a limits razonables.
+//
+// @param {string} s - string user-controlled
+// @param {object} opts
+// @param {number} [opts.maxLen=200] - cap de longitud
+// @returns {string} - versión saneada
+function sanitizeForPdf(s, opts = {}) {
+  if (s == null) return '';
+  const { maxLen = 200 } = opts;
+  let out = String(s);
+  // Strip control chars (\x00-\x1F) excepto \n (\x0A) y \t (\x09).
+  // eslint-disable-next-line no-control-regex
+  out = out.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+  // Strip Unicode RTL override + directional isolate chars — vector de
+  // spoofing en filenames y layout.
+  //   U+202A LRE, U+202B RLE, U+202C PDF, U+202D LRO, U+202E RLO
+  //   U+2066 LRI, U+2067 RLI, U+2068 FSI, U+2069 PDI
+  out = out.replace(/[‪-‮⁦-⁩]/g, '');
+  // Colapsar runs de 3+ \n a solo \n\n (evita layout roto por spam).
+  out = out.replace(/\n{3,}/g, '\n\n');
+  // Truncar a maxLen sin cortar en medio de un char.
+  if (out.length > maxLen) {
+    out = out.slice(0, maxLen - 1) + '…';
+  }
+  return out;
+}
+
 /**
  * Helper para formatear moneda. Usa Intl.NumberFormat para AR/UY locale.
  * Acepta numeros con coma o punto; output: "USD 950.00" / "$ 1.234.567,89".
@@ -110,7 +149,10 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
         // 2026-07-11: fallback pasa de 'Tecny' → NOMBRE_PLACEHOLDER porque el
         // metadata Author se lee en Adobe/Preview/etc. y no queremos que el
         // brand del SaaS aparezca donde debería estar el nombre del negocio.
-        Author:   tenant.nombre || NOMBRE_PLACEHOLDER,
+        // 2026-07-12 (auditoría TOTAL Externa P1-5): sanitizado — un tenant
+        // llamado "iPro | Reseller <script>" no debe aparecer literal en el
+        // metadata Author (visible en Adobe/Preview).
+        Author:   sanitizeForPdf(tenant.nombre || NOMBRE_PLACEHOLDER, { maxLen: 100 }),
         Subject:  'Comprobante de venta retail',
         Creator:  'Tecny Portal',      // OK — el software que lo generó SÍ es Tecny.
         Producer: 'Tecny Portal · pdfkit',
@@ -127,7 +169,8 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
     // 2026-07-11: fallback 'Tecny' → NOMBRE_PLACEHOLDER. Ver comentario arriba
     // sobre el bug reportado por Tek Haus (algunos comprobantes salían
     // brandeados con "Tecny" cuando /me devolvía tenant:null).
-    doc.text(tenant.nombre || NOMBRE_PLACEHOLDER, { continued: false });
+    // 2026-07-12 (auditoría TOTAL Externa P1-5): sanitizado.
+    doc.text(sanitizeForPdf(tenant.nombre || NOMBRE_PLACEHOLDER, { maxLen: 100 }), { continued: false });
     doc.moveDown(0.2);
 
     doc.font('Helvetica').fontSize(10).fillColor('#76705c');
@@ -145,7 +188,8 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
     // ── Cliente ─────────────────────────────────────────────────────────
     if (venta.cliente_nombre) {
       doc.font('Helvetica').fontSize(10).fillColor('#3f3a2c');
-      doc.text(`Cliente: ${venta.cliente_nombre}`);
+      // 2026-07-12 (Externa P1-5): sanitizado — cliente_nombre viene del user.
+      doc.text(`Cliente: ${sanitizeForPdf(venta.cliente_nombre, { maxLen: 120 })}`);
       doc.moveDown(0.5);
     }
 
@@ -177,7 +221,8 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
     // Rows
     doc.font('Helvetica').fontSize(10).fillColor('#1c1a14');
     for (const it of items) {
-      const desc = String(it.descripcion || '(sin descripción)');
+      // 2026-07-12 (Externa P1-5): sanitizado — descripcion viene del user.
+      const desc = sanitizeForPdf(it.descripcion || '(sin descripción)', { maxLen: 200 });
       const cant = Number(it.cantidad) || 1;
       const moneda = it.moneda || 'USD';
       const precioUnit = Number(it.precio_vendido) || 0;
@@ -202,7 +247,8 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
       // IMEI debajo si aplica (línea fina).
       if (it.imei) {
         doc.font('Helvetica').fontSize(8).fillColor('#76705c');
-        doc.text(`  IMEI: ${it.imei}`, colDescX, doc.y, { width: descWidth });
+        // 2026-07-12 (Externa P1-5): sanitizado — IMEI viene del user.
+        doc.text(`  IMEI: ${sanitizeForPdf(it.imei, { maxLen: 40 })}`, colDescX, doc.y, { width: descWidth });
         doc.font('Helvetica').fontSize(10).fillColor('#1c1a14');
         doc.moveDown(0.1);
       }
@@ -250,7 +296,8 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
     // ── Notas (opcional) ────────────────────────────────────────────────
     if (venta.notas) {
       doc.font('Helvetica-Oblique').fontSize(9).fillColor('#76705c');
-      doc.text(`Notas: ${venta.notas}`, xStart, doc.y, { width: colWidth });
+      // 2026-07-12 (Externa P1-5): sanitizado + truncado a 500 chars.
+      doc.text(`Notas: ${sanitizeForPdf(venta.notas, { maxLen: 500 })}`, xStart, doc.y, { width: colWidth });
       doc.moveDown(0.4);
     }
 
@@ -287,4 +334,5 @@ module.exports = {
   _fmtMoney: fmtMoney,
   _fmtFecha: fmtFecha,
   _FOOTER_DEFAULT: FOOTER_DEFAULT,
+  _sanitizeForPdf: sanitizeForPdf,
 };

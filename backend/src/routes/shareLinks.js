@@ -283,7 +283,8 @@ publicRouter.get('/usados/:token', publicLimiter, validate(tokenParamSchema, 'pa
                 sl.whatsapp, sl.mensaje_extra,
                 sl.mostrar_bateria, sl.mostrar_precio,
                 sl.updated_at,
-                t.nombre AS tenant_nombre, t.pais AS tenant_pais
+                t.nombre AS tenant_nombre, t.pais AS tenant_pais,
+                t.suspended_at, t.paid_until
            FROM share_links sl
            JOIN tenants t ON t.id = sl.tenant_id AND t.deleted_at IS NULL
           WHERE sl.token = $1
@@ -292,6 +293,44 @@ publicRouter.get('/usados/:token', publicLimiter, validate(tokenParamSchema, 'pa
       );
       return rows[0];
     });
+
+    // 2026-07-12 (auditoría TOTAL Stock P1-4): filtrar tenant suspendido o
+    // con plan vencido. Antes: si el operador dejaba de pagar y el admin lo
+    // suspendía, el share link seguía sirviendo el catálogo público — el
+    // negocio no podía "cortar" el link vía suspend/no-pay. Fix: bloquear
+    // el lookup si el tenant está suspended o si paid_until < hoy en el
+    // TZ del país.
+    //
+    // Respondemos 410 (Gone) con mensaje neutro — el link físicamente existe
+    // pero el servicio detrás cerró. Log lo mismo que el 410 de link_inactivo
+    // pero con reason distinto para diferenciar en dashboards.
+    if (linkRow) {
+      const { getTenantTimezone } = require('../lib/tenantTimezone');
+      const tz = getTenantTimezone(linkRow.tenant_pais);
+      const tenantInactivo =
+        linkRow.suspended_at != null ||
+        (linkRow.paid_until != null && await db.adminQuery(async (c) => {
+          const { rows } = await c.query(
+            `SELECT $1::date < (NOW() AT TIME ZONE $2)::date AS expired`,
+            [linkRow.paid_until, tz]
+          );
+          return rows[0]?.expired;
+        }));
+      if (tenantInactivo) {
+        logger.info({
+          source: 'share_link_lookup_tenant_inactivo',
+          tenant_id: linkRow.tenant_id,
+          share_link_id: linkRow.id,
+          suspended: linkRow.suspended_at != null,
+          paid_until: linkRow.paid_until,
+          ip_hash: hashIP(req.ip),
+        }, '[share-link] tenant inactivo — link bloqueado');
+        return res.status(410).json({
+          error: 'tenant_inactivo',
+          mensaje: 'Este listado ya no está disponible.',
+        });
+      }
+    }
 
     if (!linkRow) {
       // 2026-07-12 (auditoría TOTAL Externa P1-7): audit trail structurado
