@@ -24,6 +24,15 @@ const NAV = [
       { id: 'planes',      label: 'Planes',      icon: 'Tag',      path: '/planes' },
     ],
   },
+  {
+    // 2026-07-13 CMS Landing Fase 1: editor de contenido del sitio público.
+    // Sección separada porque no es "gestión de clientes" — es config de
+    // NUESTRA marca (Tecny) que aparece en tecnyapp.com.
+    sec: 'Marca',
+    items: [
+      { id: 'sitio',       label: 'Sitio público', icon: 'Building', path: '/sitio-publico' },
+    ],
+  },
   // #450 (2026-06-26): se removió la sección "Operación" del sidebar.
   // Tenía 4 items (Facturación / Onboarding / Uso / Soporte) que linkeaban
   // a páginas ComingSoon, ofuscando que las 3 secciones REALES (Gestión)

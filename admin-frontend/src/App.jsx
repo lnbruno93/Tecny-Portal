@@ -33,6 +33,9 @@ const Planes     = lazy(() => import('./pages/Planes.jsx'));
 const MiCuenta   = lazy(() => import('./pages/MiCuenta.jsx'));
 // #499 (2026-07-01): Equipo — lista de super-admins + gestión de invitaciones.
 const Equipo     = lazy(() => import('./pages/Equipo.jsx'));
+// 2026-07-13 CMS Landing Fase 1: editar el contenido de tecnyapp.com
+// (contacto: mail, WA, dirección, IG) sin redeploy.
+const SitioPublico = lazy(() => import('./pages/SitioPublico.jsx'));
 // #499 pantalla PÚBLICA (sin auth): landing del invitado que clickea el link
 // del email. Se carga fuera del ProtectedRoute — el user recién va a crearse.
 const AcceptSuperAdminInvite = lazy(() => import('./pages/AcceptSuperAdminInvite.jsx'));
@@ -195,6 +198,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Equipo />
+          </ProtectedRoute>
+        }
+      />
+      {/* 2026-07-13 CMS Landing: editor de contenido del sitio público. */}
+      <Route
+        path="/sitio-publico"
+        element={
+          <ProtectedRoute>
+            <SitioPublico />
           </ProtectedRoute>
         }
       />

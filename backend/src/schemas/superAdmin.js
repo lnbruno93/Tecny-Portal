@@ -204,6 +204,62 @@ const updateComprobanteFooterSchema = z.object({
   ]),
 }).strict();
 
+// 2026-07-13 (CMS Landing Fase 1): edición de la sección Contacto del sitio
+// público tecnyapp.com desde el admin. Todos los campos son opcionales — el
+// operador puede editarlos parcialmente. El schema acepta strings vacíos y
+// los normaliza a null en el handler (misma semántica que footer arriba).
+//
+// Validaciones:
+//   · email: regex pragmático (mismo que ventas cliente_email). Trim + lower.
+//   · whatsapp: solo dígitos, 8-15 chars (E.164 crudo, ej. "5491126165007").
+//     Sin `+` ni espacios — el frontend lo formatea para display.
+//   · whatsapp_display: string libre para mostrar (ej. "+54 9 11 2616-5007").
+//   · address: string libre max 200.
+//   · instagram_handle: sin @, alfanumérico + `.` + `_`, max 30 (patrón real IG).
+//   · instagram_url: URL válida http/https.
+const CONTACT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const IG_HANDLE_RE = /^[a-zA-Z0-9._]{1,30}$/;
+const WHATSAPP_DIGITS_RE = /^\d{8,15}$/;
+
+const updateSiteLandingContactSchema = z.object({
+  contact_email: z.union([
+    z.string().trim().toLowerCase().regex(CONTACT_EMAIL_RE, 'Email inválido').max(254),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+  contact_whatsapp: z.union([
+    z.string().trim().regex(WHATSAPP_DIGITS_RE, 'WhatsApp: solo dígitos, entre 8 y 15 (ej. 5491126165007)'),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+  contact_whatsapp_display: z.union([
+    z.string().trim().max(50),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+  contact_address: z.union([
+    z.string().trim().max(200),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+  contact_instagram_handle: z.union([
+    z.string().trim().regex(IG_HANDLE_RE, 'Handle IG: solo letras/números/./_ (sin @)').max(30),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+  contact_instagram_url: z.union([
+    z.string().trim().url('URL inválida').max(500),
+    z.literal(''),
+    z.null(),
+  ]).optional(),
+}).strict().refine(
+  // Al menos un campo debe venir. Sin esto, PATCH con body {} pasaría el
+  // Zod y haría un UPDATE no-op — patrón consistente con schemas del resto
+  // del portal (schemas/cajas, schemas/contactos, etc.).
+  (d) => Object.keys(d).length > 0,
+  { message: 'Al menos un campo es requerido para actualizar' }
+);
+
 module.exports = {
   PLANES,
   patchTenantSchema,
@@ -217,4 +273,6 @@ module.exports = {
   changePaisSchema,
   // #475
   updateComprobanteFooterSchema,
+  // CMS Landing Fase 1
+  updateSiteLandingContactSchema,
 };
