@@ -13,6 +13,9 @@ import { TcReferenciaProvider } from './contexts/TcReferenciaContext';
 import { FeatureFlagsProvider } from './contexts/FeatureFlagsContext';
 import Shell from './components/Shell';
 import ErrorBoundary from './components/ErrorBoundary';
+// 2026-07-13 UX: fix global para bloquear scroll-changes-value en
+// input[type=number]. Ver lib/useBlockNumberInputScroll.js.
+import { useBlockNumberInputScroll } from './lib/useBlockNumberInputScroll';
 import Login from './screens/Login';
 import Forbidden from './screens/Forbidden';
 import { userHasCap, userHasAnyCap } from './lib/userHasCap';
@@ -198,6 +201,11 @@ function RequirePermission({ cap, anyCap, adminOnly, children }) {
 
 // ── App ────────────────────────────────────────────────────────────────────────
 export default function App() {
+  // 2026-07-13 UX: bloqueo global del scroll-changes-value en input[type=number].
+  // Bug reportado por cliente en modal Nueva Venta (screenshot 2026-07-13).
+  // Se monta a nivel App para cubrir TODO el portal (114 inputs number).
+  useBlockNumberInputScroll();
+
   return (
     <ThemeProvider>
     <AuthProvider>
