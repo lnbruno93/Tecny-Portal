@@ -27,6 +27,7 @@
 
 const router = require('express').Router();
 const { getPlanPrices } = require('../lib/planPricing');
+const googleReviews = require('../lib/googleReviews');
 const db = require('../config/database');
 const logger = require('../lib/logger');
 
@@ -129,6 +130,57 @@ router.get('/site-config', async (_req, res) => {
       testimonials: [], // fail-open: landing usa fallback hardcodeado
       footer: null,
       updated_at: null,
+    });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/public/google-reviews — reseñas reales del Google Business Profile
+//
+// 2026-07-13 (feature): la landing tecnyapp.com muestra reseñas reales del
+// listing de Google ("Tecny App", place_id ChIJt32vtDn5sCoRmCjEY6g98SU)
+// además de las reseñas manuales de la CMS Fase 2. Objetivo: social proof
+// orgánico + validación externa.
+//
+// Cache:
+//   · Server-side: 6hs (in-memory, en src/lib/googleReviews.js). Refrescamos
+//     4x/día → 120 llamadas/mes → ~USD 3/mes, dentro del free tier de $200
+//     de Maps Platform. Zero cargo real.
+//   · HTTP Cache-Control: 3600s (1h). React-query en la landing lo cachea
+//     client-side; el server cache (6h) es más largo que el HTTP porque el
+//     CDN puede tener múltiples usuarios pero un solo backend.
+//
+// Fallback:
+//   · Si Google API falla, la lib devuelve `{ reviews: [] }` con `error`.
+//     Este endpoint responde 200 igual (fail-open). La landing tiene
+//     fallback a las manuales de la CMS Fase 2 → hardcoded en App.tsx.
+//
+// Config:
+//   · GOOGLE_PLACES_API_KEY y GOOGLE_PLACES_PLACE_ID en Railway. Si faltan,
+//     el endpoint devuelve `{ reviews: [], configured: false }` — la
+//     landing sigue funcionando con solo las manuales.
+//
+// Threshold "mostrar/no mostrar" NO vive acá — es decisión del frontend.
+// Este endpoint es un data source puro: expone lo que Google devuelve +
+// metadata (rating agregado, count). La landing decide con su threshold.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/google-reviews', async (_req, res) => {
+  try {
+    const data = await googleReviews.getReviews();
+    // HTTP Cache 1h. El server cache interno es 6h, pero limitamos el HTTP
+    // a 1h por conservadurismo: si la próxima reseña llegara y el server
+    // cache la trae en <6h, el HTTP cache de intermediarios no la retiene
+    // más de 1h. Un poco de latencia de propagación (1h) es aceptable en
+    // exchange por reducir carga contra este proceso.
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json(data);
+  } catch (err) {
+    // getReviews() no debería throw (fail-open interno), pero por si acaso
+    // — nunca dejamos que un error de Google rompa la landing.
+    logger.error({ err: err.message }, '[public/google-reviews] fallo inesperado, devolviendo vacío');
+    res.status(200).json({
+      reviews: [], rating: null, count: 0, source: 'google',
+      configured: false, error: 'unexpected_error',
     });
   }
 });
