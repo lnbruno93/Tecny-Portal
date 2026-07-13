@@ -69,7 +69,8 @@ const { computeHealthScore } = require('../lib/tenantHealth');
 // F3.a: seed de las 9 clases base + "Sin categoría" en clases_producto.
 const { seedClasesProducto } = require('../lib/seedClasesProducto');
 const { sendPasswordResetEmail } = require('../lib/email');
-const { randomBytes } = require('crypto');
+const { randomBytes, randomUUID } = require('crypto');
+const crypto = { randomUUID };
 const logger = require('../lib/logger');
 
 // #452: TTL del token de set-initial-password (mismo que password reset
@@ -2319,7 +2320,7 @@ router.get('/site-config', async (_req, res, next) => {
       const { rows } = await client.query(
         `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
                 contact_address, contact_instagram_handle, contact_instagram_url,
-                updated_at, updated_by
+                testimonials, updated_at, updated_by
            FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
@@ -2336,15 +2337,32 @@ router.patch('/site-config',
     try {
       // Normalizar: '' → null. La UI envía '' cuando el operador limpia
       // el input; consolidamos a null para tener una sola representación.
+      // Excepción: `testimonials` es JSONB array, se serializa aparte.
       const norm = (v) => (v === '' || v === undefined) ? null : v;
       const patch = {};
       for (const key of Object.keys(req.body)) {
-        patch[key] = norm(req.body[key]);
+        if (key === 'testimonials') {
+          // 2026-07-13 Fase 2: server genera UUID para items sin id (nuevos
+          // agregados desde el admin). Items con id existente lo preservan
+          // (edits). Esto permite react key stable + drag&drop sin flicker.
+          const withIds = (req.body.testimonials || []).map(t => ({
+            ...t,
+            id: t.id || crypto.randomUUID(),
+          }));
+          patch[key] = JSON.stringify(withIds);
+        } else {
+          patch[key] = norm(req.body[key]);
+        }
       }
 
       // Build dynamic UPDATE — solo los campos que vinieron en el body.
       const keys = Object.keys(patch);
-      const setPieces = keys.map((k, i) => `${k} = $${i + 1}`);
+      const setPieces = keys.map((k, i) => {
+        // testimonials es jsonb; los demás son text/int genéricos.
+        return k === 'testimonials'
+          ? `${k} = $${i + 1}::jsonb`
+          : `${k} = $${i + 1}`;
+      });
       const values = keys.map(k => patch[k]);
       values.push(req.user.id); // updated_by = último param
 
@@ -2357,7 +2375,7 @@ router.patch('/site-config',
             WHERE id = 1
             RETURNING contact_email, contact_whatsapp, contact_whatsapp_display,
                       contact_address, contact_instagram_handle, contact_instagram_url,
-                      updated_at, updated_by`,
+                      testimonials, updated_at, updated_by`,
           values
         );
         return rows[0];

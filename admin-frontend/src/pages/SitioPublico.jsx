@@ -1,79 +1,66 @@
 // Pantalla Sitio Público — editar contenido dinámico de la landing
-// tecnyapp.com desde el admin. Fase 1 (2026-07-13): sección Contacto.
+// tecnyapp.com desde el admin.
 //
 // Backend: GET/PATCH /api/super-admin/site-config (persisten en
 // site_landing_config singleton). La landing pública consume
-// GET /api/public/site-config con cache 5min HTTP + react-query.
+// GET /api/public/site-config con cache 5min HTTP + client-side.
 //
-// Flow:
-//   1. GET /site-config al mount → popula el form.
-//   2. Cada input actualiza el state local (dirty tracking implícito por diff).
-//   3. Botón "Guardar cambios" hace PATCH con SOLO los campos que cambiaron
-//      (evita UPDATEs no-op y hace el audit más limpio).
-//   4. Toast/banner con "Guardado" y hint de que la landing tarda 5min máx.
+// Secciones:
+//   · Fase 1 (2026-07-13): Contacto (mail, WhatsApp, dirección, Instagram).
+//   · Fase 2 (2026-07-13): Reseñas / testimonios editables.
+//   · Fase 3 (futuro): Footer (Empresa, Legal, Redes).
 //
-// Fases futuras:
-//   · Fase 2 (reseñas): sección con array editable + reorder.
-//   · Fase 3 (footer): sección con 3 columnas (Empresa, Legal, Redes).
+// Diff-tracking: solo se envían los campos que cambiaron respecto al
+// original. Testimonials es un array — se envía completo si cambió cualquier
+// item (semántica "PUT sobre el field").
 
 import { useEffect, useState } from 'react';
 import { adminApi } from '../lib/api.js';
 import { Btn, Card, PageHead } from '../components/primitives/index.jsx';
+import { Icons } from '../components/Icons.jsx';
 import { fmtDateTime } from '../lib/format.js';
 
 // Campos de contacto en el orden que el operador espera verlos en el form.
-// Cada uno tiene label + placeholder + hint (opcional) + input type.
-const FIELDS = [
-  {
-    key: 'contact_email',
-    label: 'Email de contacto',
-    placeholder: 'hola@tecnyapp.com',
-    type: 'email',
-    hint: 'Aparece en la sección Contacto de la landing y en el botón "Escribinos".',
-  },
-  {
-    key: 'contact_whatsapp',
-    label: 'WhatsApp (solo dígitos, formato internacional)',
-    placeholder: '5491126165007',
-    type: 'text',
-    hint: 'Sin +, sin espacios ni guiones. Ej: 5491126165007 para +54 9 11 2616-5007. Se usa para el link wa.me/*.',
-    pattern: '\\d{8,15}',
-  },
-  {
-    key: 'contact_whatsapp_display',
-    label: 'WhatsApp (formato visible)',
-    placeholder: '+54 9 11 2616-5007',
-    type: 'text',
-    hint: 'Cómo se muestra al usuario en la landing. Podés poner el formato que prefieras.',
-  },
-  {
-    key: 'contact_address',
-    label: 'Dirección / ubicación',
-    placeholder: 'Av. del Libertador 6299, Buenos Aires',
-    type: 'text',
-    hint: 'Texto libre. Aparece en la card de Contacto y en el footer.',
-  },
-  {
-    key: 'contact_instagram_handle',
-    label: 'Instagram (handle sin @)',
-    placeholder: 'tecny.app',
-    type: 'text',
-    hint: 'Solo el nombre, sin @. Ej: tecny.app',
-  },
-  {
-    key: 'contact_instagram_url',
-    label: 'Instagram (URL completa)',
-    placeholder: 'https://instagram.com/tecny.app',
-    type: 'url',
-    hint: 'Link al perfil. Se usa en los botones de "Seguinos".',
-  },
+const CONTACT_FIELDS = [
+  { key: 'contact_email',            label: 'Email de contacto', placeholder: 'hola@tecnyapp.com', type: 'email',
+    hint: 'Aparece en la sección Contacto de la landing.' },
+  { key: 'contact_whatsapp',         label: 'WhatsApp (solo dígitos)', placeholder: '5491126165007', type: 'text', pattern: '\\d{8,15}',
+    hint: 'Sin +, sin espacios ni guiones. Se usa para el link wa.me/*.' },
+  { key: 'contact_whatsapp_display', label: 'WhatsApp (formato visible)', placeholder: '+54 9 11 2616-5007', type: 'text',
+    hint: 'Cómo se muestra al usuario en la landing.' },
+  { key: 'contact_address',          label: 'Dirección / ubicación', placeholder: 'Av. del Libertador 6299, Buenos Aires', type: 'text',
+    hint: 'Texto libre. Aparece en la card de Contacto y en el footer.' },
+  { key: 'contact_instagram_handle', label: 'Instagram (handle sin @)', placeholder: 'tecny.app', type: 'text',
+    hint: 'Solo el nombre, sin @. Ej: tecny.app' },
+  { key: 'contact_instagram_url',    label: 'Instagram (URL completa)', placeholder: 'https://instagram.com/tecny.app', type: 'url',
+    hint: 'Link al perfil. Se usa en los botones de "Seguinos".' },
 ];
 
-const EMPTY = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), {});
+// Paleta de colores para el avatar de un testimonial. Google-style — combina
+// bien con el diseño oscuro de la landing.
+const AVATAR_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853', '#9C27B0', '#00ACC1', '#FF7043', '#8E24AA'];
+
+const EMPTY_CONTACT = CONTACT_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), {});
+
+// Deep-equal chico para arrays de testimonials (comparación por serialización).
+// Suficiente para el diff-tracking: 50 items × ~500 chars = ~25kB, JSON.stringify
+// es sub-ms en esa escala.
+function sameTestimonials(a, b) {
+  return JSON.stringify(a || []) === JSON.stringify(b || []);
+}
+
+// Un testimonial vacío para el botón "Agregar reseña".
+function emptyTestimonial() {
+  const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+  return { _tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+           name: '', initial: '', color, time: '', text: '' };
+}
 
 export default function SitioPublico() {
-  const [form, setForm]         = useState(EMPTY);
-  const [original, setOriginal] = useState(EMPTY); // para calcular el diff al guardar
+  const [contact, setContact]                 = useState(EMPTY_CONTACT);
+  const [contactOriginal, setContactOriginal] = useState(EMPTY_CONTACT);
+  const [testimonials, setTestimonials]                 = useState([]);
+  const [testimonialsOriginal, setTestimonialsOriginal] = useState([]);
   const [meta, setMeta]         = useState({ updated_at: null });
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
@@ -84,13 +71,15 @@ export default function SitioPublico() {
     try {
       setLoading(true);
       const row = await adminApi.getSiteConfig();
-      // Normalizar null → '' para inputs controlados.
-      const normalized = FIELDS.reduce((acc, f) => {
+      const nContact = CONTACT_FIELDS.reduce((acc, f) => {
         acc[f.key] = row?.[f.key] ?? '';
         return acc;
       }, {});
-      setForm(normalized);
-      setOriginal(normalized);
+      setContact(nContact);
+      setContactOriginal(nContact);
+      const nTest = Array.isArray(row?.testimonials) ? row.testimonials : [];
+      setTestimonials(nTest);
+      setTestimonialsOriginal(nTest);
       setMeta({ updated_at: row?.updated_at || null });
     } catch (e) {
       setError(e.message || 'No se pudo cargar la config');
@@ -100,11 +89,13 @@ export default function SitioPublico() {
   }
   useEffect(() => { cargar(); }, []);
 
-  // Diff: solo enviamos los campos que cambiaron respecto al original.
-  const dirtyKeys = FIELDS
+  // Dirty state combinado (contacto + reseñas).
+  const dirtyContactKeys = CONTACT_FIELDS
     .map(f => f.key)
-    .filter(k => (form[k] || '') !== (original[k] || ''));
-  const isDirty = dirtyKeys.length > 0;
+    .filter(k => (contact[k] || '') !== (contactOriginal[k] || ''));
+  const testimonialsDirty = !sameTestimonials(testimonials, testimonialsOriginal);
+  const isDirty = dirtyContactKeys.length > 0 || testimonialsDirty;
+  const totalChanges = dirtyContactKeys.length + (testimonialsDirty ? 1 : 0);
 
   async function guardar() {
     if (!isDirty) return;
@@ -113,25 +104,38 @@ export default function SitioPublico() {
     setSavedMsg(null);
     try {
       const patch = {};
-      for (const k of dirtyKeys) patch[k] = form[k];
+      for (const k of dirtyContactKeys) patch[k] = contact[k];
+      if (testimonialsDirty) {
+        // Sanitizar: strip claves internas de UI (_tempId) antes de enviar.
+        patch.testimonials = testimonials.map(t => {
+          const { _tempId, ...clean } = t;
+          return clean;
+        });
+      }
       const updated = await adminApi.updateSiteConfig(patch);
-      // Re-normalizar respuesta (backend puede haber convertido '' a null).
-      const normalized = FIELDS.reduce((acc, f) => {
+      const nContact = CONTACT_FIELDS.reduce((acc, f) => {
         acc[f.key] = updated?.[f.key] ?? '';
         return acc;
       }, {});
-      setForm(normalized);
-      setOriginal(normalized);
+      setContact(nContact);
+      setContactOriginal(nContact);
+      const nTest = Array.isArray(updated?.testimonials) ? updated.testimonials : [];
+      setTestimonials(nTest);
+      setTestimonialsOriginal(nTest);
       setMeta({ updated_at: updated?.updated_at || null });
       setSavedMsg('Guardado. Los cambios aparecen en tecnyapp.com en máx. 5 minutos.');
       setTimeout(() => setSavedMsg(null), 6000);
     } catch (e) {
-      // El backend devuelve { error: '...', fields: {...} } — extraemos el
-      // primer mensaje humano si viene de Zod.
       let msg = e.message || 'Error al guardar';
-      if (e.response?.fields) {
-        const firstField = Object.keys(e.response.fields)[0];
-        msg = e.response.fields[firstField] || msg;
+      if (e.responseBody?.fields) {
+        // El backend Zod devuelve fields como array de {field, error} o objeto.
+        const f = e.responseBody.fields;
+        if (Array.isArray(f) && f.length > 0) {
+          msg = `${f[0].field}: ${f[0].error}`;
+        } else if (typeof f === 'object') {
+          const first = Object.keys(f)[0];
+          msg = `${first}: ${f[first]}`;
+        }
       }
       setError(msg);
     } finally {
@@ -140,8 +144,29 @@ export default function SitioPublico() {
   }
 
   function descartar() {
-    setForm(original);
+    setContact(contactOriginal);
+    setTestimonials(testimonialsOriginal);
     setError(null);
+  }
+
+  // Testimonial ops — mutan el array local, el diff-tracking se encarga.
+  function addTestimonial() {
+    setTestimonials(t => [...t, emptyTestimonial()]);
+  }
+  function updateTestimonial(idx, key, value) {
+    setTestimonials(t => t.map((item, i) => i === idx ? { ...item, [key]: value } : item));
+  }
+  function removeTestimonial(idx) {
+    setTestimonials(t => t.filter((_, i) => i !== idx));
+  }
+  function moveTestimonial(idx, dir) {
+    setTestimonials(t => {
+      const next = [...t];
+      const swapWith = idx + dir;
+      if (swapWith < 0 || swapWith >= next.length) return t;
+      [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+      return next;
+    });
   }
 
   return (
@@ -149,7 +174,7 @@ export default function SitioPublico() {
       <PageHead
         label="Sitio público"
         title="Landing tecnyapp.com"
-        subtitle="Editá el contenido de la sección Contacto. Los cambios aparecen en la landing en máx. 5 minutos (cache HTTP)."
+        subtitle="Editá Contacto y Reseñas. Los cambios aparecen en la landing en máx. 5 minutos (cache HTTP)."
         actions={
           isDirty && (
             <div style={{ display: 'flex', gap: 8 }}>
@@ -157,7 +182,7 @@ export default function SitioPublico() {
                 Descartar
               </Btn>
               <Btn onClick={guardar} disabled={saving}>
-                {saving ? 'Guardando…' : `Guardar ${dirtyKeys.length} cambio${dirtyKeys.length > 1 ? 's' : ''}`}
+                {saving ? 'Guardando…' : `Guardar (${totalChanges})`}
               </Btn>
             </div>
           )
@@ -167,92 +192,181 @@ export default function SitioPublico() {
       {loading ? (
         <div className="muted" style={{ padding: 32, textAlign: 'center' }}>Cargando…</div>
       ) : (
-        <>
+        <div style={{ display: 'grid', gap: 16 }}>
+          {/* ── SECCIÓN CONTACTO ── */}
           <Card>
             <div style={{ padding: 20, display: 'grid', gap: 16 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Sección Contacto</h3>
                 <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
-                  Datos que aparecen en la landing pública. La primera vez que edites, los datos
-                  viejos (@ipro.arg, gmail.com) se reemplazan por los tuyos.
+                  Datos que aparecen en la landing pública.
                 </p>
               </div>
 
-              {FIELDS.map(f => {
-                const changed = (form[f.key] || '') !== (original[f.key] || '');
+              {CONTACT_FIELDS.map(f => {
+                const changed = (contact[f.key] || '') !== (contactOriginal[f.key] || '');
                 return (
                   <div key={f.key} className="field">
-                    <label
-                      className="field-label"
-                      htmlFor={`sc-${f.key}`}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                    >
+                    <label className="field-label" htmlFor={`sc-${f.key}`}
+                           style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {f.label}
                       {changed && (
-                        <span
-                          style={{
-                            fontSize: 10, fontWeight: 700,
-                            padding: '2px 6px', borderRadius: 4,
-                            background: 'var(--accent-soft)', color: 'var(--accent)',
-                          }}
-                        >MODIFICADO</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                       borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                          MODIFICADO
+                        </span>
                       )}
                     </label>
-                    <input
-                      id={`sc-${f.key}`}
-                      type={f.type}
-                      className="input"
-                      placeholder={f.placeholder}
-                      pattern={f.pattern}
-                      value={form[f.key]}
-                      onChange={e => setForm(x => ({ ...x, [f.key]: e.target.value }))}
-                      disabled={saving}
-                      style={{ width: '100%' }}
-                    />
-                    {f.hint && (
-                      <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                        {f.hint}
-                      </div>
-                    )}
+                    <input id={`sc-${f.key}`} type={f.type} className="input"
+                           placeholder={f.placeholder} pattern={f.pattern}
+                           value={contact[f.key]}
+                           onChange={e => setContact(x => ({ ...x, [f.key]: e.target.value }))}
+                           disabled={saving} style={{ width: '100%' }} />
+                    {f.hint && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{f.hint}</div>}
                   </div>
                 );
               })}
+            </div>
+          </Card>
 
-              {error && (
-                <div
-                  role="alert"
-                  style={{
-                    padding: 10, borderRadius: 6, fontSize: 13,
-                    background: 'rgba(220, 38, 38, 0.08)',
-                    border: '1px solid rgba(220, 38, 38, 0.3)',
-                    color: 'var(--neg)',
-                  }}
-                >
-                  {error}
+          {/* ── SECCIÓN RESEÑAS (Fase 2) ── */}
+          <Card>
+            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+                    Reseñas de clientes
+                    {testimonialsDirty && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', marginLeft: 8,
+                                     borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        MODIFICADO
+                      </span>
+                    )}
+                  </h3>
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                    Aparecen en la sección &quot;Opiniones&quot; de la landing.
+                    {testimonials.length === 0 && ' Si dejás la lista vacía, la landing muestra su set default.'}
+                  </p>
                 </div>
-              )}
-              {savedMsg && (
-                <div
-                  role="status"
-                  style={{
-                    padding: 10, borderRadius: 6, fontSize: 13,
-                    background: 'rgba(16, 185, 129, 0.08)',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    color: 'var(--pos)',
-                  }}
-                >
-                  {savedMsg}
+                <Btn variant="ghost" onClick={addTestimonial} disabled={saving || testimonials.length >= 50}>
+                  <Icons.Plus size={14} /> Agregar reseña
+                </Btn>
+              </div>
+
+              {testimonials.length === 0 ? (
+                <div className="muted" style={{ padding: 16, textAlign: 'center',
+                     border: '1px dashed var(--hairline)', borderRadius: 8, fontSize: 13 }}>
+                  Todavía no cargaste ninguna reseña. La landing muestra su set default hardcodeado.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {testimonials.map((t, idx) => (
+                    <div key={t.id || t._tempId} style={{
+                      padding: 14, borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'rgba(255,255,255,0.02)',
+                      display: 'grid', gap: 10,
+                    }}>
+                      {/* Header: avatar preview + acciones */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: '50%',
+                            background: t.color || '#4285F4', color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontWeight: 700, fontSize: 14,
+                          }}>
+                            {(t.initial || '?').toUpperCase()}
+                          </div>
+                          <div className="muted" style={{ fontSize: 12 }}>
+                            #{idx + 1} — {t.name || 'Sin nombre'}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button type="button" className="icon-btn" onClick={() => moveTestimonial(idx, -1)}
+                                  disabled={saving || idx === 0} title="Subir">▲</button>
+                          <button type="button" className="icon-btn" onClick={() => moveTestimonial(idx, 1)}
+                                  disabled={saving || idx === testimonials.length - 1} title="Bajar">▼</button>
+                          <button type="button" className="icon-btn" onClick={() => removeTestimonial(idx)}
+                                  disabled={saving} title="Eliminar">
+                            <Icons.Trash size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.5fr', gap: 8 }}>
+                        <div className="field">
+                          <div className="muted tiny" style={{ marginBottom: 2 }}>Nombre</div>
+                          <input className="input" placeholder="Ej. Tomás R."
+                                 value={t.name} disabled={saving}
+                                 onChange={e => updateTestimonial(idx, 'name', e.target.value)} />
+                        </div>
+                        <div className="field">
+                          <div className="muted tiny" style={{ marginBottom: 2 }}>Inicial (1-2 chars)</div>
+                          <input className="input mono" maxLength={2} placeholder="T"
+                                 value={t.initial} disabled={saving}
+                                 onChange={e => updateTestimonial(idx, 'initial', e.target.value.toUpperCase())} />
+                        </div>
+                        <div className="field">
+                          <div className="muted tiny" style={{ marginBottom: 2 }}>Color</div>
+                          <input type="color" className="input" style={{ padding: 2, height: 32 }}
+                                 value={t.color || '#4285F4'} disabled={saving}
+                                 onChange={e => updateTestimonial(idx, 'color', e.target.value)} />
+                        </div>
+                        <div className="field">
+                          <div className="muted tiny" style={{ marginBottom: 2 }}>Tiempo</div>
+                          <input className="input" placeholder="hace 3 días"
+                                 value={t.time} disabled={saving}
+                                 onChange={e => updateTestimonial(idx, 'time', e.target.value)} />
+                        </div>
+                      </div>
+
+                      <div className="field">
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Texto del testimonio</div>
+                        <textarea className="input" rows={3} maxLength={1000}
+                                  placeholder="Ej. Excelente atención, me atendieron por WhatsApp rápidamente y coordiné la visita el mismo día."
+                                  value={t.text} disabled={saving}
+                                  onChange={e => updateTestimonial(idx, 'text', e.target.value)}
+                                  style={{ width: '100%', resize: 'vertical' }} />
+                        <div className="muted tiny" style={{ marginTop: 2, textAlign: 'right' }}>
+                          {t.text.length} / 1000
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </Card>
 
+          {/* Mensajes de estado (compartidos entre Contacto + Reseñas) */}
+          {error && (
+            <div role="alert" style={{
+              padding: 10, borderRadius: 6, fontSize: 13,
+              background: 'rgba(220, 38, 38, 0.08)',
+              border: '1px solid rgba(220, 38, 38, 0.3)',
+              color: 'var(--neg)',
+            }}>
+              {error}
+            </div>
+          )}
+          {savedMsg && (
+            <div role="status" style={{
+              padding: 10, borderRadius: 6, fontSize: 13,
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              color: 'var(--pos)',
+            }}>
+              {savedMsg}
+            </div>
+          )}
+
           {meta.updated_at && (
-            <div className="muted" style={{ marginTop: 12, fontSize: 12 }}>
+            <div className="muted" style={{ fontSize: 12, textAlign: 'right' }}>
               Última edición: {fmtDateTime(meta.updated_at)}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

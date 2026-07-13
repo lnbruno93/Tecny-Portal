@@ -92,7 +92,7 @@ router.get('/site-config', async (_req, res) => {
       const { rows } = await client.query(
         `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
                 contact_address, contact_instagram_handle, contact_instagram_url,
-                updated_at
+                testimonials, updated_at
            FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
@@ -109,9 +109,11 @@ router.get('/site-config', async (_req, res) => {
         instagram_handle:   row?.contact_instagram_handle  || null,
         instagram_url:      row?.contact_instagram_url     || null,
       },
-      // Placeholder para fases futuras — la landing puede acceder de forma
-      // segura con optional chaining.
-      testimonials: [],
+      // 2026-07-13 Fase 2: reseñas editables desde el admin. Array vacío
+      // significa "usá los hardcodeados de la landing" — el hook use-site-config
+      // ya tiene ese fallback.
+      testimonials: Array.isArray(row?.testimonials) ? row.testimonials : [],
+      // Placeholder Fase 3 (footer).
       footer: null,
       updated_at: row?.updated_at || null,
     });
@@ -124,7 +126,7 @@ router.get('/site-config', async (_req, res) => {
         email: null, whatsapp: null, whatsapp_display: null,
         address: null, instagram_handle: null, instagram_url: null,
       },
-      testimonials: [],
+      testimonials: [], // fail-open: landing usa fallback hardcodeado
       footer: null,
       updated_at: null,
     });

@@ -40,17 +40,20 @@ beforeAll(async () => {
   await pool.query(`
     INSERT INTO site_landing_config (
       id, contact_email, contact_whatsapp, contact_whatsapp_display,
-      contact_address, contact_instagram_handle, contact_instagram_url
+      contact_address, contact_instagram_handle, contact_instagram_url,
+      testimonials
     ) VALUES (
       1, 'hola@tecnyapp.com', '5491126165007', '+54 9 11 2616-5007',
-      'Buenos Aires, Argentina', 'tecny.app', 'https://instagram.com/tecny.app'
+      'Buenos Aires, Argentina', 'tecny.app', 'https://instagram.com/tecny.app',
+      '[]'::jsonb
     ) ON CONFLICT (id) DO UPDATE SET
       contact_email = EXCLUDED.contact_email,
       contact_whatsapp = EXCLUDED.contact_whatsapp,
       contact_whatsapp_display = EXCLUDED.contact_whatsapp_display,
       contact_address = EXCLUDED.contact_address,
       contact_instagram_handle = EXCLUDED.contact_instagram_handle,
-      contact_instagram_url = EXCLUDED.contact_instagram_url
+      contact_instagram_url = EXCLUDED.contact_instagram_url,
+      testimonials = EXCLUDED.testimonials
   `);
 
   superAdminToken = jwt.sign(
@@ -170,6 +173,109 @@ describe('PATCH /api/super-admin/site-config', () => {
   it('rechaza body {} — al menos un campo requerido → 400', async () => {
     const r = await request(app).patch('/api/super-admin/site-config').set(auth())
       .send({});
+    expect(r.status).toBe(400);
+  });
+});
+
+// 2026-07-13 (CMS Landing Fase 2): reseñas editables.
+describe('PATCH /api/super-admin/site-config — testimonials (Fase 2)', () => {
+  it('crea un testimonial nuevo → server genera id UUID', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({
+        testimonials: [
+          { name: 'Tomás R.', initial: 'T', color: '#4285F4', time: 'hace 3 días', text: 'Excelente atención, todo perfecto.' },
+        ],
+      });
+    expect(r.status).toBe(200);
+    expect(r.body.testimonials).toHaveLength(1);
+    expect(r.body.testimonials[0]).toEqual(expect.objectContaining({
+      id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}/i),
+      name: 'Tomás R.',
+      initial: 'T',
+      color: '#4285F4',
+      time: 'hace 3 días',
+    }));
+
+    // GET público refleja el cambio.
+    const pub = await request(app).get('/api/public/site-config');
+    expect(pub.body.testimonials).toHaveLength(1);
+    expect(pub.body.testimonials[0].name).toBe('Tomás R.');
+  });
+
+  it('preserva id de testimonial existente al editar', async () => {
+    // Primer PATCH: crear
+    const create = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({
+        testimonials: [
+          { name: 'Original', initial: 'O', color: '#EA4335', time: 'hace 1 mes', text: 'Muy buena experiencia con Tecny.' },
+        ],
+      });
+    const originalId = create.body.testimonials[0].id;
+
+    // Segundo PATCH: editar el mismo (con id preservado)
+    const edit = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({
+        testimonials: [
+          { id: originalId, name: 'Editado', initial: 'E', color: '#EA4335', time: 'hace 1 mes', text: 'Texto actualizado del testimonio.' },
+        ],
+      });
+    expect(edit.status).toBe(200);
+    expect(edit.body.testimonials[0].id).toBe(originalId);
+    expect(edit.body.testimonials[0].name).toBe('Editado');
+  });
+
+  it('reemplaza todo el array (semántica PUT sobre el campo)', async () => {
+    // Setup: 2 items (nombres min 2 chars por schema)
+    await request(app).patch('/api/super-admin/site-config').set(auth()).send({
+      testimonials: [
+        { name: 'AA', initial: 'A', color: '#000000', time: 'hoy', text: 'Testimonio A del cliente.' },
+        { name: 'BB', initial: 'B', color: '#FFFFFF', time: 'ayer', text: 'Testimonio B del cliente.' },
+      ],
+    });
+    // Reemplazar con solo 1
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth()).send({
+      testimonials: [
+        { name: 'CC', initial: 'C', color: '#123456', time: 'antes', text: 'Testimonio C — reemplazó a los previos.' },
+      ],
+    });
+    expect(r.body.testimonials).toHaveLength(1);
+    expect(r.body.testimonials[0].name).toBe('CC');
+  });
+
+  it('permite array vacío (borra todos)', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ testimonials: [] });
+    expect(r.status).toBe(200);
+    expect(r.body.testimonials).toEqual([]);
+  });
+
+  it('rechaza testimonial con color inválido → 400', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({
+        testimonials: [
+          { name: 'X', initial: 'X', color: 'rojo', time: 'hoy', text: 'Texto suficiente para pasar.' },
+        ],
+      });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza testimonial con text muy corto → 400', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({
+        testimonials: [
+          { name: 'X', initial: 'X', color: '#000000', time: 'hoy', text: 'corto' },
+        ],
+      });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza más de 50 testimonials → 400', async () => {
+    const arr = Array.from({ length: 51 }, (_, i) => ({
+      name: `Test ${i}`, initial: 'T', color: '#000000',
+      time: 'hoy', text: 'Testimonio de prueba con texto suficiente.',
+    }));
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ testimonials: arr });
     expect(r.status).toBe(400);
   });
 });
