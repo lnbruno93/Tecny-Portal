@@ -7,7 +7,7 @@
 //   · (los comprobantes de Financiera y los cobros de Tarjeta viven en sus
 //      propios módulos: lib/financiera.js y lib/tarjetas.js)
 
-const { postCajaMovimientosBulk, reverseCajaMovimientos } = require('./cajaLedger');
+const { postCajaMovimientosBulk, postCajaMovimiento, reverseCajaMovimientos } = require('./cajaLedger');
 const { round2, convertirMonto } = require('./money');
 const { retieneStock } = require('./ventaCore');
 const logger = require('./logger');
@@ -103,6 +103,44 @@ async function syncVentaCaja(client, venta, userId) {
   await postCajaMovimientosBulk(client, movimientos);
 }
 
+// 2026-07-13 (feature vuelto): sincroniza el egreso de caja generado por el
+// vuelto/cambio de una venta. Idempotente: revierte previos y re-postea si
+// corresponde. Solo postea si:
+//   · venta retiene stock (una venta cancelada NO tiene vuelto que persistir).
+//   · vuelto_monto/moneda/caja_id están todos presentes (CHECK DB lo enforcea
+//     también — si llega inconsistente, es bug del handler que no debería pasar).
+//
+// Nota: NO usamos `reverseCajaMovimientos` para "el vuelto" por separado
+// porque comparte `ref_tabla='ventas'` + `ref_id=venta.id` con los ingresos
+// de `syncVentaCaja`. La reversa se hace en `revertirEfectosVenta` que barre
+// TODO lo apuntado al `ventas.id` en una sola pasada. Este helper se llama
+// SIEMPRE después de `syncVentaCaja` (que ya revirtió TODOS los movs por ref)
+// — así que arranca desde estado limpio.
+//
+// El helper `postCajaMovimiento` valida:
+//   · caja existe + no eliminada
+//   · moneda del vuelto matchea grupo moneda de la caja (ARS/UYU/USD·USDT)
+//   · caja no queda con saldo negativo (defensa contra vuelto > saldo caja)
+// Si algo falla, throwea con `err.status=400` — el handler POST /ventas
+// ya propaga eso al frontend con mensaje claro.
+async function syncVentaVuelto(client, venta, userId) {
+  if (!retieneStock(venta.estado)) return;
+  if (!venta.vuelto_monto || !venta.vuelto_moneda || !venta.vuelto_caja_id) return;
+  await postCajaMovimiento(client, {
+    caja_id:   venta.vuelto_caja_id,
+    fecha:     venta.fecha,
+    tipo:      'egreso',
+    monto:     Number(venta.vuelto_monto),
+    moneda:    venta.vuelto_moneda,
+    tc:        null,
+    origen:    'venta',
+    ref_tabla: 'ventas',
+    ref_id:    venta.id,
+    concepto:  `Vuelto — Venta ${venta.order_id}`,
+    user_id:   userId,
+  });
+}
+
 // Sincroniza la deuda CC generada por la venta. Idempotente. Sólo crea
 // movimiento si hay cliente_cc_id, la venta retiene stock y hay pagos CC > 0.
 async function sincronizarCuentaCorriente(client, venta) {
@@ -120,4 +158,4 @@ async function sincronizarCuentaCorriente(client, venta) {
   );
 }
 
-module.exports = { syncVentaCaja, sincronizarCuentaCorriente };
+module.exports = { syncVentaCaja, sincronizarCuentaCorriente, syncVentaVuelto };
