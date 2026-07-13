@@ -3,12 +3,22 @@
 // el token. Eso es lo que evita que un user normal del portal acceda
 // al back-office aún teniendo creds válidas.
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
+import HCaptcha from '@hcaptcha/react-hcaptcha';
 import { adminApi } from '../lib/api.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { Btn } from '../components/primitives/index.jsx';
 import { Icons } from '../components/Icons.jsx';
+
+// 2026-07-13 hotfix: hCaptcha invisible en el admin login. Mismo pattern
+// que frontend/src/screens/Login.jsx del portal. Sin esto, con
+// HCAPTCHA_ENABLED=true en el backend, TODOS los logins de super-admin
+// rebotan con "Verificación inválida" (bug reportado por Lucas 2026-07-13).
+// Default: test sitekey oficial de hCaptcha (siempre pasa, dev/local).
+// En prod pasar VITE_HCAPTCHA_SITE_KEY con la real (build-time inline).
+const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY
+  || '10000000-ffff-ffff-ffff-000000000001';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -29,6 +39,11 @@ export default function Login() {
   // no el status code.
   const [twofaRequired, setTwofaRequired] = useState(false);
   const [code, setCode] = useState('');
+  // 2026-07-13 hotfix hCaptcha invisible. Token del widget — se pasa al
+  // backend en step 1 del login. En step 2 (2FA) NO se re-envía (token
+  // single-use).
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const captchaRef = useRef(null);
 
   // Para volver a la URL que el user intentó visitar antes del redirect
   // a /login (ProtectedRoute setea location.state.from).
@@ -46,6 +61,10 @@ export default function Login() {
         username.trim(),
         password,
         twofaRequired ? code.trim() : undefined,
+        // hCaptcha token — solo en step 1. En step 2 (2FA) el backend skippea
+        // el gate captcha, y además el token es single-use (re-enviarlo tira
+        // "duplicate" en hCaptcha).
+        twofaRequired ? undefined : (captchaToken || undefined),
       );
       // Gate cliente: el endpoint /api/auth/login es público (portal), y
       // devuelve token+user para CUALQUIER user válido. Acá filtramos por
@@ -99,6 +118,13 @@ export default function Login() {
         setError(err.message);
       } else {
         setError('No pudimos iniciar sesión. Intentá de nuevo.');
+      }
+      // 2026-07-13: token hCaptcha es single-use. Reset después de cualquier
+      // error para que el próximo submit intente uno nuevo. El widget en modo
+      // passive re-emite automáticamente.
+      setCaptchaToken(null);
+      if (captchaRef.current) {
+        try { captchaRef.current.resetCaptcha(); } catch (_) { /* no-op */ }
       }
     } finally {
       setBusy(false);
@@ -247,6 +273,24 @@ export default function Login() {
                   />
                 </div>
               </>
+            )}
+
+            {/* 2026-07-13 hotfix hCaptcha invisible. Solo en step 1 (antes de
+                pedir 2FA) — en step 2 el token ya fue usado y el backend
+                skippea el gate captcha si viene `code`. Widget "invisible":
+                rara vez muestra desafío para humanos legítimos, pero bloquea
+                bots automatizados. */}
+            {!twofaRequired && (
+              <div style={{ margin: '4px 0', display: 'flex', justifyContent: 'center' }}>
+                <HCaptcha
+                  ref={captchaRef}
+                  sitekey={HCAPTCHA_SITE_KEY}
+                  onVerify={(token) => setCaptchaToken(token)}
+                  onExpire={() => setCaptchaToken(null)}
+                  onError={() => setCaptchaToken(null)}
+                  theme="dark"
+                />
+              </div>
             )}
 
             <Btn
