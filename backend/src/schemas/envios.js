@@ -44,15 +44,42 @@ const baseEnvio = z.object({
   cliente_cc_id: z.coerce.number().int().positive().optional().nullable(),
   items:         z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').default([]),
   registrar_venta: z.boolean().optional().default(false), // crear venta asociada con los productos del envío
+  // 2026-07-13 (feature vuelto Fase 2): cambio dado al cliente. Solo aplica
+  // cuando `registrar_venta=true` — el egreso a caja se persiste a través
+  // de la venta que crea el envío (usa las columnas `ventas.vuelto_*`).
+  // Si registrar_venta=false, un vuelto sería "suelto" (sin venta madre),
+  // no lo soportamos por ahora. El handler valida esta coherencia y devuelve
+  // 400 explícito si el operador manda vuelto sin registrar_venta.
+  vuelto_monto:   z.number().positive('El vuelto debe ser mayor a 0').optional().nullable(),
+  vuelto_moneda:  MonedaEnum.optional().nullable(),
+  vuelto_caja_id: z.coerce.number().int().positive().optional().nullable(),
 });
 
+// Helper: valida "todo o nada" para los 3 campos de vuelto. Idéntico al
+// refine de `schemas/ventas.js` — mantenemos duplicado a propósito porque
+// las condiciones downstream difieren (acá también se valida contra
+// `registrar_venta`).
+function refineVueltoTodoONada(d) {
+  const set = [d.vuelto_monto, d.vuelto_moneda, d.vuelto_caja_id].filter(x => x != null).length;
+  return set === 0 || set === 3;
+}
+const vueltoTodoONadaMsg = 'Vuelto: si cargás uno de los 3 campos (monto/moneda/caja), los 3 son obligatorios';
+
 // .strict(): un campo extra en POST/PUT da 400 (defensa contra typos del cliente)
-const createEnvioSchema = baseEnvio.strict();
+const createEnvioSchema = baseEnvio.strict()
+  .refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] })
+  .refine(
+    // Solo permitimos vuelto cuando `registrar_venta=true`. El egreso a caja
+    // se hace vía la venta que crea el envío — sin venta no hay row donde
+    // persistir el vuelto ni ancla para revertir al cancelar.
+    (d) => !d.vuelto_monto || d.registrar_venta === true,
+    { message: 'Para cargar vuelto activá "Registrar venta"', path: ['vuelto_monto'] }
+  );
 
 // PUT — todo opcional. items sin default para que undefined signifique "no tocar"
 const updateEnvioSchema = baseEnvio.omit({ items: true }).strict().partial().extend({
   items: z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').optional(),
-});
+}).refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] });
 
 const queryEnviosSchema = z.object({
   estado: z.enum(['Pendiente','En camino','Entregado','Cancelado']).optional(),

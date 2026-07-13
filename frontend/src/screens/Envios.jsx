@@ -30,6 +30,13 @@ const EMPTY_FORM = {
   // Antes era un checkbox opcional y era footgun (Lucas creó un envío
   // sin tickearlo y la venta nunca apareció en el dashboard).
   tc: '', // TC del envío (opcional, solo necesario si hay items en ARS)
+  // 2026-07-13 (feature vuelto Fase 2): cambio dado al cliente al recibir
+  // el envío. Se propaga a la venta que crea el envío (usa columnas
+  // `ventas.vuelto_*`). Solo aplica cuando el envío crea venta (siempre
+  // hoy — `registrar_venta` está hardcodeado a true en el submit).
+  vuelto_monto:   '',
+  vuelto_moneda:  'ARS',
+  vuelto_caja_id: '',
 };
 // Default USD: los productos del inventario son típicamente USD y los precios
 // del envío "tipo Ventas" se manejan en USD. El usuario puede cambiar a ARS/USDT.
@@ -535,6 +542,12 @@ export default function Envios() {
       prioridad:    envio.prioridad || '',
       estado:       envio.estado || 'Pendiente',
       tc:           envio.tc != null ? String(envio.tc) : '',
+      // 2026-07-13 (feature vuelto Fase 2): populate desde la venta linkeada.
+      // GET /envios trae los 3 campos con prefijo `venta_vuelto_*` (LEFT JOIN
+      // a ventas). Si el envío no tiene venta_id, los 3 son NULL.
+      vuelto_monto:   envio.venta_vuelto_monto != null ? String(envio.venta_vuelto_monto) : '',
+      vuelto_moneda:  envio.venta_vuelto_moneda || 'ARS',
+      vuelto_caja_id: envio.venta_vuelto_caja_id || '',
     });
     const mappedItems = (envio.items || []).map(i => ({
       _id: newItemId(),
@@ -606,6 +619,19 @@ export default function Envios() {
             es_cuenta_corriente: i.tipo === 'pago' ? !!i.es_cuenta_corriente : false,
           })),
       };
+      // 2026-07-13 (feature vuelto Fase 2): incluir los 3 campos si el operador
+      // cargó vuelto. En edit, mandar los 3 en null si están vacíos para
+      // "quitar" el vuelto que la venta ya tenía (mismo patrón que Ventas.jsx).
+      const vueltoMontoNum = Number(form.vuelto_monto);
+      if (form.vuelto_monto && vueltoMontoNum > 0 && form.vuelto_caja_id) {
+        payload.vuelto_monto   = vueltoMontoNum;
+        payload.vuelto_moneda  = form.vuelto_moneda;
+        payload.vuelto_caja_id = Number(form.vuelto_caja_id);
+      } else if (modalMode === 'edit') {
+        payload.vuelto_monto = null;
+        payload.vuelto_moneda = null;
+        payload.vuelto_caja_id = null;
+      }
       let envioGuardado;
       if (modalMode === 'edit' && editingId) {
         // PUT: el backend resincroniza venta_items + venta_pagos + caja
@@ -1652,6 +1678,73 @@ export default function Envios() {
                       {items.filter(i => i.tipo === 'pago').length === 0 && (
                         <div className="muted tiny" style={{ padding: '4px 0' }}>Sin pagos cargados. Sumá un método con "Agregar método".</div>
                       )}
+                    </div>
+                  </div>
+
+                  {/* 2026-07-13 (feature vuelto Fase 2): sección Vuelto/Cambio
+                      idéntica a Ventas.jsx. Como en Envíos `registrar_venta` está
+                      hardcodeado a true en el submit, siempre se propaga a la
+                      venta que crea el envío. Al cancelar el envío, la venta
+                      se cancela y el egreso del vuelto se revierte auto. */}
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.vuelto_monto ? 8 : 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        Vuelto/Cambio
+                        <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                          (opcional — dinero que entregás al cliente)
+                        </span>
+                      </div>
+                      {form.vuelto_monto && (
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => {
+                          setForm(f => ({ ...f, vuelto_monto: '', vuelto_caja_id: '' }));
+                        }}>Quitar</button>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8 }}>
+                      <div>
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Monto</div>
+                        <input
+                          type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                          className="input mono"
+                          value={form.vuelto_monto}
+                          onChange={e => setForm(f => ({ ...f, vuelto_monto: e.target.value }))}
+                          placeholder="0"
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                      <div>
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Moneda</div>
+                        <select
+                          className="input"
+                          value={form.vuelto_moneda}
+                          onChange={e => setForm(f => ({ ...f, vuelto_moneda: e.target.value }))}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="ARS">ARS</option>
+                          <option value="UYU">UYU</option>
+                          <option value="USD">USD</option>
+                          <option value="USDT">USDT</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>
+                          Sale de{' '}
+                          {form.vuelto_monto && !form.vuelto_caja_id && (
+                            <span className="warn" style={{ fontWeight: 600 }}>· elegí caja</span>
+                          )}
+                        </div>
+                        <select
+                          className="input"
+                          value={form.vuelto_caja_id}
+                          onChange={e => setForm(f => ({ ...f, vuelto_caja_id: e.target.value }))}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">— Elegí caja —</option>
+                          {cajasPago.filter(c => !c.deleted_at).map(c => (
+                            <option key={c.id} value={c.id}>{c.nombre} ({c.moneda})</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
 
