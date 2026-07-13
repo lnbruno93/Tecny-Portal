@@ -61,6 +61,14 @@ export default function SitioPublico() {
   const [contactOriginal, setContactOriginal] = useState(EMPTY_CONTACT);
   const [testimonials, setTestimonials]                 = useState([]);
   const [testimonialsOriginal, setTestimonialsOriginal] = useState([]);
+  // 2026-07-13 Toggle Google Business Profile: enabled/disabled. Trackeamos
+  // original separado para dirty-detection y descartar changes.
+  const [googleEnabled, setGoogleEnabled]                 = useState(true);
+  const [googleEnabledOriginal, setGoogleEnabledOriginal] = useState(true);
+  // Status live del cache backend (count, rating, cached_at). Se carga en
+  // paralelo con el config — si falla no rompe la página (card muestra fallback).
+  const [googleStatus, setGoogleStatus]     = useState(null);
+  const [copyMsg, setCopyMsg]               = useState(null);
   const [meta, setMeta]         = useState({ updated_at: null });
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
@@ -80,7 +88,18 @@ export default function SitioPublico() {
       const nTest = Array.isArray(row?.testimonials) ? row.testimonials : [];
       setTestimonials(nTest);
       setTestimonialsOriginal(nTest);
+      // 2026-07-13: default true — si la row está pre-migration, tratamos
+      // como enabled para no ocultar reseñas de Google por accidente.
+      const nEnabled = row?.google_reviews_enabled !== false;
+      setGoogleEnabled(nEnabled);
+      setGoogleEnabledOriginal(nEnabled);
       setMeta({ updated_at: row?.updated_at || null });
+
+      // Cargar status en paralelo — no bloquea si falla (feature no crítica).
+      try {
+        const status = await adminApi.getGoogleReviewsStatus();
+        setGoogleStatus(status);
+      } catch { /* silent — la card muestra fallback "sin datos" */ }
     } catch (e) {
       setError(e.message || 'No se pudo cargar la config');
     } finally {
@@ -89,13 +108,14 @@ export default function SitioPublico() {
   }
   useEffect(() => { cargar(); }, []);
 
-  // Dirty state combinado (contacto + reseñas).
+  // Dirty state combinado (contacto + reseñas + toggle Google).
   const dirtyContactKeys = CONTACT_FIELDS
     .map(f => f.key)
     .filter(k => (contact[k] || '') !== (contactOriginal[k] || ''));
   const testimonialsDirty = !sameTestimonials(testimonials, testimonialsOriginal);
-  const isDirty = dirtyContactKeys.length > 0 || testimonialsDirty;
-  const totalChanges = dirtyContactKeys.length + (testimonialsDirty ? 1 : 0);
+  const googleEnabledDirty = googleEnabled !== googleEnabledOriginal;
+  const isDirty = dirtyContactKeys.length > 0 || testimonialsDirty || googleEnabledDirty;
+  const totalChanges = dirtyContactKeys.length + (testimonialsDirty ? 1 : 0) + (googleEnabledDirty ? 1 : 0);
 
   async function guardar() {
     if (!isDirty) return;
@@ -112,6 +132,7 @@ export default function SitioPublico() {
           return clean;
         });
       }
+      if (googleEnabledDirty) patch.google_reviews_enabled = googleEnabled;
       const updated = await adminApi.updateSiteConfig(patch);
       const nContact = CONTACT_FIELDS.reduce((acc, f) => {
         acc[f.key] = updated?.[f.key] ?? '';
@@ -122,6 +143,9 @@ export default function SitioPublico() {
       const nTest = Array.isArray(updated?.testimonials) ? updated.testimonials : [];
       setTestimonials(nTest);
       setTestimonialsOriginal(nTest);
+      const nEnabled = updated?.google_reviews_enabled !== false;
+      setGoogleEnabled(nEnabled);
+      setGoogleEnabledOriginal(nEnabled);
       setMeta({ updated_at: updated?.updated_at || null });
       setSavedMsg('Guardado. Los cambios aparecen en tecnyapp.com en máx. 5 minutos.');
       setTimeout(() => setSavedMsg(null), 6000);
@@ -146,7 +170,25 @@ export default function SitioPublico() {
   function descartar() {
     setContact(contactOriginal);
     setTestimonials(testimonialsOriginal);
+    setGoogleEnabled(googleEnabledOriginal);
     setError(null);
+  }
+
+  // Copiar link "escribir reseña" al clipboard — el mismo que Google usa para
+  // que un cliente deje una review sin fricción. `placeid=` es query param
+  // documentado de search.google.com/local/writereview.
+  async function copyReviewLink() {
+    const placeId = googleStatus?.place_id;
+    if (!placeId) return;
+    const url = `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyMsg('¡Link copiado! Compartilo con tus clientes por WhatsApp.');
+      setTimeout(() => setCopyMsg(null), 4000);
+    } catch {
+      setCopyMsg('No se pudo copiar. Copiá manual: ' + url);
+      setTimeout(() => setCopyMsg(null), 8000);
+    }
   }
 
   // Testimonial ops — mutan el array local, el diff-tracking se encarga.
@@ -226,6 +268,124 @@ export default function SitioPublico() {
                   </div>
                 );
               })}
+            </div>
+          </Card>
+
+          {/* ── SECCIÓN GOOGLE REVIEWS ── */}
+          <Card>
+            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Reseñas de Google
+                    {googleEnabledDirty && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                     borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        MODIFICADO
+                      </span>
+                    )}
+                  </h3>
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                    Integración con Google Business Profile. Las reseñas reales aparecen arriba
+                    de las manuales cuando hay 3 o más en Google.
+                  </p>
+                </div>
+                {/* Status chip */}
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  background: googleEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(148, 163, 184, 0.1)',
+                  border: `1px solid ${googleEnabled ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.3)'}`,
+                  color: googleEnabled ? 'var(--pos)' : 'var(--muted)',
+                }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: googleEnabled ? 'var(--pos)' : 'var(--muted)',
+                  }} />
+                  {googleEnabled ? 'Conectado' : 'Pausado'}
+                </div>
+              </div>
+
+              {/* Info de la integración (place_id, count, cached_at) */}
+              {googleStatus?.configured ? (
+                <div style={{ display: 'grid', gap: 8, padding: 12,
+                              borderRadius: 6, background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid var(--hairline)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+                    <div>
+                      <div className="muted tiny" style={{ marginBottom: 2 }}>Reseñas en Google</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>
+                        {googleStatus.count > 0 ? googleStatus.count : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="muted tiny" style={{ marginBottom: 2 }}>Rating agregado</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>
+                        {typeof googleStatus.rating === 'number' ? googleStatus.rating.toFixed(1) + ' ★' : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="muted tiny" style={{ marginBottom: 2 }}>Última carga</div>
+                      <div style={{ fontSize: 13 }}>
+                        {googleStatus.cached_at ? fmtDateTime(googleStatus.cached_at) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                  {googleStatus.place_id && (
+                    <div style={{ paddingTop: 8, borderTop: '1px solid var(--hairline)',
+                                  display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <a href={`https://www.google.com/maps/place/?q=place_id:${googleStatus.place_id}`}
+                         target="_blank" rel="noopener noreferrer"
+                         style={{ fontSize: 12, color: 'var(--accent)' }}>
+                        Ver listing en Google Maps →
+                      </a>
+                      <button type="button" onClick={copyReviewLink}
+                              style={{ background: 'none', border: 'none', padding: 0,
+                                       fontSize: 12, color: 'var(--accent)', cursor: 'pointer' }}>
+                        📋 Copiar link para pedir reseñas
+                      </button>
+                    </div>
+                  )}
+                  {googleStatus.error && (
+                    <div className="muted tiny" style={{ color: 'var(--warn, #d97706)' }}>
+                      ⚠ Último fetch falló: {googleStatus.error} (fallback usa reseñas manuales)
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="muted" style={{ padding: 12, textAlign: 'center', fontSize: 12,
+                     border: '1px dashed var(--hairline)', borderRadius: 6 }}>
+                  {googleStatus === null
+                    ? 'Cargando estado…'
+                    : 'Integración no configurada (faltan env vars GOOGLE_PLACES_API_KEY / PLACE_ID en Railway).'}
+                </div>
+              )}
+
+              {/* Toggle */}
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                              padding: 12, borderRadius: 6,
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid var(--hairline)' }}>
+                <input type="checkbox" checked={googleEnabled} disabled={saving}
+                       onChange={e => setGoogleEnabled(e.target.checked)}
+                       style={{ marginTop: 2 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    Mostrar reseñas de Google en la landing
+                  </div>
+                  <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                    Si lo desactivás, el backend deja de consultar a Google (ahorra API quota)
+                    y la landing muestra solo las reseñas manuales de abajo. Reversible en cualquier
+                    momento.
+                  </div>
+                </div>
+              </label>
+
+              {copyMsg && (
+                <div className="muted" style={{ fontSize: 11, color: 'var(--pos)', textAlign: 'center' }}>
+                  {copyMsg}
+                </div>
+              )}
             </div>
           </Card>
 

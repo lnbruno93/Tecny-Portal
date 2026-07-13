@@ -69,6 +69,7 @@ const { computeHealthScore } = require('../lib/tenantHealth');
 // F3.a: seed de las 9 clases base + "Sin categoría" en clases_producto.
 const { seedClasesProducto } = require('../lib/seedClasesProducto');
 const { sendPasswordResetEmail } = require('../lib/email');
+const googleReviews = require('../lib/googleReviews');
 const { randomBytes, randomUUID } = require('crypto');
 const crypto = { randomUUID };
 const logger = require('../lib/logger');
@@ -2320,7 +2321,7 @@ router.get('/site-config', async (_req, res, next) => {
       const { rows } = await client.query(
         `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
                 contact_address, contact_instagram_handle, contact_instagram_url,
-                testimonials, updated_at, updated_by
+                testimonials, google_reviews_enabled, updated_at, updated_by
            FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
@@ -2375,7 +2376,7 @@ router.patch('/site-config',
             WHERE id = 1
             RETURNING contact_email, contact_whatsapp, contact_whatsapp_display,
                       contact_address, contact_instagram_handle, contact_instagram_url,
-                      testimonials, updated_at, updated_by`,
+                      testimonials, google_reviews_enabled, updated_at, updated_by`,
           values
         );
         return rows[0];
@@ -2391,5 +2392,61 @@ router.patch('/site-config',
     }
   }
 );
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/super-admin/google-reviews-status
+//
+// 2026-07-13 (feature): status de la integración con Google Business Profile.
+// Usado por la card "Reseñas de Google" del admin — muestra estado + count
+// para que Lucas vea si la integración está sana antes de decidir si
+// pausarla / activarla.
+//
+// Devuelve:
+//   {
+//     enabled: boolean         — flag del toggle admin (columna DB)
+//     configured: boolean      — env vars API key + place_id presentes
+//     count: number            — total de reseñas en Google (userRatingCount)
+//     rating: number|null      — rating agregado del listing
+//     reviews_visible: number  — cuántas reseñas devolvió Google (max 5)
+//     cached_at: string|null   — ISO timestamp del cache backend
+//     place_id: string|null    — el place_id configurado (info, no secret)
+//     error: string|undefined  — si el último fetch falló
+//   }
+//
+// Notas de seguridad:
+//   · NO expone GOOGLE_PLACES_API_KEY. El place_id es info pública (aparece
+//     en URLs de Google Maps), no es un secret.
+//   · Consume el mismo cache in-memory que /api/public/google-reviews →
+//     no genera llamadas extra a Google.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/google-reviews-status', async (_req, res, next) => {
+  try {
+    // Lee el flag del DB.
+    const dbRow = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+      );
+      return rows[0] || null;
+    });
+    const enabled = dbRow?.google_reviews_enabled !== false; // default true si row missing
+
+    // Consume el cache del lib (mismo TTL que el endpoint público — no doble hit).
+    const data = await googleReviews.getReviews();
+
+    res.json({
+      enabled,
+      configured: !!data.configured,
+      count: data.count || 0,
+      rating: data.rating,
+      reviews_visible: Array.isArray(data.reviews) ? data.reviews.length : 0,
+      cached_at: data.cachedAt || null,
+      // Info pública — aparece en URLs de Google Maps del negocio.
+      place_id: process.env.GOOGLE_PLACES_PLACE_ID || null,
+      error: data.error,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
