@@ -121,13 +121,21 @@ router.get('/', validate(queryEnviosSchema, 'query'), async (req, res, next) => 
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
     const countQuery = `SELECT COUNT(DISTINCT e.id) FROM envios e WHERE ${where}`;
+    // 2026-07-13 (feature vuelto Fase 2): LEFT JOIN a `ventas` para traer los
+    // 3 campos del vuelto asociados al envío. Solo hay match si el envío tiene
+    // `venta_id` (o sea, se creó con `registrar_venta=true`). Sin match, los
+    // 3 campos vienen NULL — el frontend sabe que no hay vuelto.
     const dataQuery  = `
       SELECT e.*,
+        v.vuelto_monto   AS venta_vuelto_monto,
+        v.vuelto_moneda  AS venta_vuelto_moneda,
+        v.vuelto_caja_id AS venta_vuelto_caja_id,
         JSON_AGG(i ORDER BY i.tipo, i.id) FILTER (WHERE i.id IS NOT NULL) AS items
       FROM envios e
       LEFT JOIN envio_items i ON i.envio_id = e.id
+      LEFT JOIN ventas v ON v.id = e.venta_id AND v.deleted_at IS NULL
       WHERE ${where}
-      GROUP BY e.id
+      GROUP BY e.id, v.vuelto_monto, v.vuelto_moneda, v.vuelto_caja_id
       ORDER BY e.fecha DESC, e.id DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
@@ -150,6 +158,10 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
     const {
       fecha, cliente, telefono, direccion, barrio,
       costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, cliente_cc_id, items, registrar_venta,
+      // 2026-07-13 (Fase 2): 3 campos del vuelto opcionales — se propagan a la
+      // venta que crea el envío. El schema valida "todo-o-nada" + "requiere
+      // registrar_venta". Acá los pasamos como opts a crearVentaDesdeEnvio.
+      vuelto_monto, vuelto_moneda, vuelto_caja_id,
     } = req.body;
 
     const client = await db.connect();
@@ -182,7 +194,9 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       // suelto" cuando el frontend pasó a forzar siempre registrar_venta=true.
       let ventaCreada = null;
       if (registrar_venta) {
-        ventaCreada = await crearVentaDesdeEnvio(client, envio, items, req.user.id);
+        ventaCreada = await crearVentaDesdeEnvio(client, envio, items, req.user.id, {
+          vuelto_monto, vuelto_moneda, vuelto_caja_id,
+        });
         if (ventaCreada) {
           await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [ventaCreada.id, envio.id]);
           envio.venta_id = ventaCreada.id;
@@ -208,6 +222,10 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       client.release();
     }
   } catch (err) {
+    // 2026-07-13 (Fase 2 vuelto): syncVentaVuelto puede throwear 400 desde
+    // crearVentaDesdeEnvio (caja no existe, moneda mismatch, saldo insuficiente).
+    // Propagar al frontend con reason claro.
+    if (err.status) return res.status(err.status).json({ error: err.message, reason: err.code || 'caja_error' });
     next(err);
   }
 });
@@ -219,6 +237,7 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
   const {
     fecha, cliente, telefono, direccion, barrio,
     costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, cliente_cc_id, items,
+    vuelto_monto, vuelto_moneda, vuelto_caja_id,
   } = req.body;
 
   const client = await db.connect();
@@ -268,7 +287,13 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
         await insertarItems(client, id, items);
         // Si hay venta asociada y no se canceló, sincronizar venta_items, venta_pagos y stock.
         if (envio.venta_id && envio.estado !== 'Cancelado') {
-          ventaSincronizada = await actualizarVentaDesdeEnvio(client, envio, items, req.user.id);
+          // 2026-07-13 (Fase 2): construimos opts.vuelto solo si el body trajo
+          // algún campo (así el helper distingue "no tocar" de "actualizar/quitar").
+          const vueltoOpts = {};
+          if ('vuelto_monto' in req.body)   vueltoOpts.vuelto_monto   = vuelto_monto;
+          if ('vuelto_moneda' in req.body)  vueltoOpts.vuelto_moneda  = vuelto_moneda;
+          if ('vuelto_caja_id' in req.body) vueltoOpts.vuelto_caja_id = vuelto_caja_id;
+          ventaSincronizada = await actualizarVentaDesdeEnvio(client, envio, items, req.user.id, vueltoOpts);
         }
       }
       // Si NO hay venta_id (envío standalone), el envío sigue posteando directo a caja.
@@ -322,6 +347,8 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
       res.json(envio);
   } catch (err) {
     await client.query('ROLLBACK');
+    // 2026-07-13 (Fase 2 vuelto): propagar 400 de postCajaMovimiento.
+    if (err.status) return res.status(err.status).json({ error: err.message, reason: err.code || 'caja_error' });
     next(err);
   } finally {
     client.release();

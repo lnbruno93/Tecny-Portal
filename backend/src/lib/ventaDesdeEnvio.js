@@ -14,7 +14,7 @@
 const crypto = require('crypto');
 const { round2, toUsd } = require('./money');
 const { descontarStock } = require('./ventaCore');
-const { syncVentaCaja, sincronizarCuentaCorriente } = require('./ventaSync');
+const { syncVentaCaja, sincronizarCuentaCorriente, syncVentaVuelto } = require('./ventaSync');
 const { syncFinancieraComprobante } = require('./financiera');
 const { syncTarjetaCobros } = require('./tarjetas');
 
@@ -23,7 +23,12 @@ function genOrderId() {
   return `ORD-${yy}-${crypto.randomBytes(6).toString('hex')}`;
 }
 
-async function crearVentaDesdeEnvio(client, envio, items, userId) {
+// 2026-07-13 (feature vuelto Fase 2): `opts.vuelto` es el 4to param opcional.
+// Cuando el envío incluye vuelto (validado en el handler con registrar_venta=true),
+// el 3 campos se persisten en `ventas` y se postea el egreso via syncVentaVuelto.
+// Sin opts.vuelto → comportamiento pre-Fase-2 (venta sin vuelto).
+async function crearVentaDesdeEnvio(client, envio, items, userId, opts = {}) {
+  const vueltoCompleto = opts.vuelto_monto && opts.vuelto_moneda && opts.vuelto_caja_id;
   const productos = (items || []).filter(i => i.tipo === 'producto');
   if (productos.length === 0) return null;
 
@@ -81,9 +86,13 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
   // extra de confirmación.
   const estadoVenta = envio.estado === 'Entregado' ? 'acreditado' : 'pendiente';
   const { rows } = await client.query(
-    `INSERT INTO ventas (order_id, fecha, cliente_nombre, cliente_cc_id, estado, total_usd, ganancia_usd, tc_venta, notas, user_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [genOrderId(), envio.fecha, envio.cliente, envio.cliente_cc_id ?? null, estadoVenta, totalUsd, gananciaUsd, envio.tc ?? null, 'Generada automáticamente desde un envío', userId]
+    `INSERT INTO ventas (order_id, fecha, cliente_nombre, cliente_cc_id, estado, total_usd, ganancia_usd, tc_venta, notas, user_id, vuelto_monto, vuelto_moneda, vuelto_caja_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    [genOrderId(), envio.fecha, envio.cliente, envio.cliente_cc_id ?? null, estadoVenta, totalUsd, gananciaUsd, envio.tc ?? null, 'Generada automáticamente desde un envío', userId,
+     // 2026-07-13 (Fase 2): 3 campos del vuelto pasan al INSERT.
+     vueltoCompleto ? opts.vuelto_monto : null,
+     vueltoCompleto ? opts.vuelto_moneda : null,
+     vueltoCompleto ? opts.vuelto_caja_id : null]
   );
   const venta = rows[0];
 
@@ -103,6 +112,14 @@ async function crearVentaDesdeEnvio(client, envio, items, userId) {
 
   // Crear venta_pagos desde los items 'pago' del envío y disparar los syncs.
   await sincronizarPagosDesdeEnvio(client, venta, items, envio, userId);
+
+  // 2026-07-13 (Fase 2): postear egreso a la caja del vuelto DESPUÉS de
+  // syncVentaCaja (que corre dentro de sincronizarPagosDesdeEnvio). Si el
+  // vuelto excede saldo caja o moneda no matchea, throwea 400 → handler PUT
+  // /envios propaga y hace ROLLBACK.
+  if (vueltoCompleto) {
+    await syncVentaVuelto(client, venta, userId);
+  }
 
   // Descontar stock para los items linkeados a productos.
   if (linkedItems.length > 0) {
@@ -162,8 +179,13 @@ async function sincronizarPagosDesdeEnvio(client, venta, items, envio, userId) {
 
 // Sincroniza los venta_items con los items del envío cuando éste se edita.
 // Devuelve la venta actualizada o null si la venta ya no existe.
-async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
+// 2026-07-13 (Fase 2): igual que crear, `opts.vuelto_*` opcionales — cuando
+// el edit del envío modifica el vuelto (agregar, cambiar monto/caja, o quitar
+// enviando los 3 null), lo persistimos en la venta linkeada + re-syncamos.
+async function actualizarVentaDesdeEnvio(client, envio, items, userId, opts = {}) {
   if (!envio.venta_id) return null;
+  const hasVueltoInOpts = 'vuelto_monto' in opts || 'vuelto_moneda' in opts || 'vuelto_caja_id' in opts;
+  const vueltoCompleto = opts.vuelto_monto && opts.vuelto_moneda && opts.vuelto_caja_id;
   // Reponer stock de los items linkeados anteriores antes de borrar.
   const { rows: prev } = await client.query(
     'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
@@ -227,10 +249,24 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId) {
     `UPDATE ventas SET total_usd = $1, ganancia_usd = $2, cliente_cc_id = COALESCE($3, cliente_cc_id), tc_venta = COALESCE($4, tc_venta) WHERE id = $5 RETURNING *`,
     [totalUsd, gananciaUsd, envio.cliente_cc_id ?? null, envio.tc ?? null, envio.venta_id]
   );
-  const venta = vrows[0];
+  let venta = vrows[0];
+
+  // 2026-07-13 (Fase 2): mismo patrón que routes/ventas.js — UPDATE dedicado
+  // de los 3 campos SI el body del envío los envía (aunque sean null para
+  // "quitar" el vuelto de un envío que lo tenía).
+  if (venta && hasVueltoInOpts) {
+    const { rows: upd } = await client.query(
+      `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3 WHERE id = $4 RETURNING *`,
+      [vueltoCompleto ? opts.vuelto_monto : null, vueltoCompleto ? opts.vuelto_moneda : null, vueltoCompleto ? opts.vuelto_caja_id : null, venta.id]
+    );
+    venta = upd[0];
+  }
 
   // Re-sincronizar venta_pagos desde los items 'pago' actuales del envío.
   if (venta) await sincronizarPagosDesdeEnvio(client, venta, items, envio, userId);
+  // Postear egreso del vuelto post-sync de caja (mismo orden que en el POST
+  // /ventas y en crearVentaDesdeEnvio).
+  if (venta) await syncVentaVuelto(client, venta, userId);
 
   // Descontar stock de los nuevos linkeados (reusa linkedNew calculado arriba).
   if (linkedNew.length) {

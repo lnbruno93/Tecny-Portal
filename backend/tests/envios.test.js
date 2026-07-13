@@ -378,10 +378,102 @@ describe('Envío → Venta (registrar_venta)', () => {
     const upd = await request(app).put(`/api/envios/${env.body.id}`).set(auth()).send({ estado: 'Cancelado' });
     expect(upd.status).toBe(200);
     // El producto vuelve a disponible (stock repuesto)
-    const pAfter = (await request(app).get(`/api/inventario/productos?buscar=iPhone Cancel`).set(auth())).body.data.find(x => x.id === prod.body.id);
-    expect(pAfter.estado).toBe('disponible');
+    const pAfter = (await request(app).get(`/api/inventario/productos?buscar=iPhone Cancel`).set(auth())).body.data.find(x => x.id === prod.body.id).estado;
+    expect(pAfter).toBe('disponible');
     // La venta sigue existiendo pero en estado 'cancelado'
     const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
     expect(v.estado).toBe('cancelado');
+  });
+});
+
+// 2026-07-13 (feature vuelto Fase 2): el vuelto en envíos se propaga a la
+// venta que crea el envío. Solo aplica si `registrar_venta: true` — el
+// egreso a caja se persiste vía la venta madre. Al cancelar el envío,
+// la reversa de la venta también revierte el egreso del vuelto.
+describe('POST /api/envios — vuelto/cambio Fase 2', () => {
+  const auth = () => ({ Authorization: `Bearer ${token}` });
+
+  async function crearCaja(nombre, saldo = 0) {
+    const r = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre, moneda: 'ARS', saldo_inicial: saldo });
+    return r.body.id;
+  }
+
+  it('envío con vuelto + registrar_venta → venta creada con vuelto + egreso posteado', async () => {
+    const cajaVuelto = await crearCaja('Caja Vuelto Envío 1', 10000);
+    const cajaCobro  = await crearCaja('Caja Cobro Envío 1');
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'iPhone Envío Vuelto', clase: 'celular_sellado', tipo_carga: 'unitario', categoria_id: catBase,
+      costo: 5, costo_moneda: 'USD', precio_venta: 9, precio_moneda: 'USD', cantidad: 1,
+    });
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Vuelto Envío', direccion: 'Calle 999',
+      registrar_venta: true, tc: 1000,
+      items: [
+        { tipo: 'producto', descripcion: 'iPhone Envío Vuelto', monto: 9, moneda: 'USD', producto_id: prod.body.id },
+        { tipo: 'pago', monto: 10000, moneda: 'ARS', tc: 1000, metodo_pago_id: cajaCobro },
+      ],
+      vuelto_monto: 1000, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto,
+    });
+    expect(env.status).toBe(201);
+    expect(env.body.venta_id).toBeTruthy();
+
+    // La venta creada debe tener los 3 campos.
+    const v = (await request(app).get('/api/ventas').set(auth())).body.data.find(x => x.id === env.body.venta_id);
+    expect(Number(v.vuelto_monto)).toBe(1000);
+    expect(v.vuelto_moneda).toBe('ARS');
+    expect(Number(v.vuelto_caja_id)).toBe(cajaVuelto);
+
+    // Y la caja del vuelto refleja el egreso.
+    const movs = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaVuelto}`).set(auth());
+    const egreso = movs.body.data.find(m =>
+      m.ref_tabla === 'ventas' && Number(m.ref_id) === env.body.venta_id && m.tipo === 'egreso'
+    );
+    expect(egreso).toBeDefined();
+    expect(Number(egreso.monto)).toBe(1000);
+  });
+
+  it('rechaza vuelto sin registrar_venta → 400 con mensaje claro', async () => {
+    const cajaVuelto = await crearCaja('Caja Vuelto sin Venta', 5000);
+    const r = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'X', direccion: 'X', registrar_venta: false,
+      items: [{ tipo: 'pago', monto: 5000, moneda: 'ARS', metodo_pago_id: cajaVuelto }],
+      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto,
+    });
+    expect(r.status).toBe(400);
+    // El schema tira el refine → response del middleware validate contiene
+    // `fields` con el mensaje específico del refine.
+    const msgs = JSON.stringify(r.body.fields || r.body);
+    expect(msgs).toMatch(/registrar venta/i);
+  });
+
+  it('cancelar envío con vuelto → egreso del vuelto se revierte con la venta', async () => {
+    const cajaVuelto = await crearCaja('Caja Vuelto Cancel', 10000);
+    const cajaCobro  = await crearCaja('Caja Cobro Cancel');
+    const prod = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'iPhone Envío Cancel Vuelto', clase: 'celular_sellado', tipo_carga: 'unitario', categoria_id: catBase,
+      costo: 5, costo_moneda: 'USD', precio_venta: 9, precio_moneda: 'USD', cantidad: 1,
+    });
+    const env = await request(app).post('/api/envios').set(auth()).send({
+      fecha: hoy, cliente: 'Cliente Cancel Vuelto', direccion: 'Calle X',
+      registrar_venta: true, tc: 1000,
+      items: [
+        { tipo: 'producto', descripcion: 'iPhone Envío Cancel Vuelto', monto: 9, moneda: 'USD', producto_id: prod.body.id },
+        { tipo: 'pago', monto: 10000, moneda: 'ARS', tc: 1000, metodo_pago_id: cajaCobro },
+      ],
+      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto,
+    });
+    expect(env.status).toBe(201);
+
+    // Cancelar el envío.
+    const upd = await request(app).put(`/api/envios/${env.body.id}`).set(auth()).send({ estado: 'Cancelado' });
+    expect(upd.status).toBe(200);
+
+    // El egreso del vuelto debe estar soft-deleted (revertido).
+    const movs = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaVuelto}`).set(auth());
+    const egresosActivos = movs.body.data.filter(m =>
+      m.ref_tabla === 'ventas' && Number(m.ref_id) === env.body.venta_id && m.tipo === 'egreso'
+    );
+    expect(egresosActivos).toHaveLength(0);
   });
 });
