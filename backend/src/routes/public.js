@@ -166,13 +166,52 @@ router.get('/site-config', async (_req, res) => {
 // ──────────────────────────────────────────────────────────────────────────
 router.get('/google-reviews', async (_req, res) => {
   try {
-    const data = await googleReviews.getReviews();
+    // 2026-07-13 toggle admin: lee `google_reviews_enabled` de la row singleton.
+    // Si false, no llamamos a Google — devolvemos empty. Ahorra API quota y da
+    // control al admin sin redeploy. Ver migration 20260713400000 + admin card.
+    //
+    // Query es barata (single-row lookup + DB tiene todo caliente), y con el
+    // HTTP cache de 1h abajo, en la práctica el endpoint recibe max 1 hit por
+    // usuario por hora — lag DB no importa.
+    let enabled = true; // fail-open default (feature ON si DB inaccesible)
+    try {
+      const row = await db.adminQuery(async (client) => {
+        const { rows } = await client.query(
+          `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+        );
+        return rows[0];
+      });
+      enabled = row?.google_reviews_enabled !== false;
+    } catch (e) {
+      // Query falló (DB down / migration pendiente) — asumimos enabled=true
+      // por default. Es fail-open: mejor mostrar reseñas que ocultarlas por
+      // un blip transitorio de infra.
+      logger.warn({ err: e.message }, '[public/google-reviews] flag lookup falló — asumiendo enabled=true');
+    }
+
     // HTTP Cache 1h. El server cache interno es 6h, pero limitamos el HTTP
     // a 1h por conservadurismo: si la próxima reseña llegara y el server
     // cache la trae en <6h, el HTTP cache de intermediarios no la retiene
     // más de 1h. Un poco de latencia de propagación (1h) es aceptable en
     // exchange por reducir carga contra este proceso.
+    //
+    // Ojo: si el toggle está OFF, seguimos usando el mismo TTL — un cambio
+    // del flag tarda hasta 1h en verse en la landing. Aceptable para un
+    // toggle que se usa poco. Si Lucas necesita ver YA, hard-refresh.
     res.set('Cache-Control', 'public, max-age=3600');
+
+    if (!enabled) {
+      // Toggle OFF → no llamamos a Google, devolvemos estructura vacía con
+      // `disabled: true` para diagnóstico. La landing lo trata como "sin
+      // reseñas" y usa el fallback manual.
+      return res.json({
+        reviews: [], rating: null, count: 0, source: 'google',
+        configured: true, disabled: true,
+        cachedAt: new Date().toISOString(),
+      });
+    }
+
+    const data = await googleReviews.getReviews();
     res.json(data);
   } catch (err) {
     // getReviews() no debería throw (fail-open interno), pero por si acaso

@@ -279,3 +279,157 @@ describe('PATCH /api/super-admin/site-config — testimonials (Fase 2)', () => {
     expect(r.status).toBe(400);
   });
 });
+
+// 2026-07-13: Toggle google_reviews_enabled — admin control para pausar la
+// integración con Google Business Profile sin redeploy.
+describe('google_reviews_enabled toggle', () => {
+  // Backup del cache in-memory de googleReviews entre tests (evita cross-talk
+  // con otros tests que setean el mock del fetch).
+  const googleReviews = require('../src/lib/googleReviews');
+  afterEach(() => { googleReviews._internal._clearCache(); jest.restoreAllMocks(); });
+
+  it('default true en la row seed (migration aplicada)', async () => {
+    const { rows } = await pool.query(
+      `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+    );
+    expect(rows[0].google_reviews_enabled).toBe(true);
+  });
+
+  it('PATCH google_reviews_enabled=false actualiza la row', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ google_reviews_enabled: false });
+    expect(r.status).toBe(200);
+    expect(r.body.google_reviews_enabled).toBe(false);
+
+    // Verificar en DB directamente.
+    const { rows } = await pool.query(
+      `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+    );
+    expect(rows[0].google_reviews_enabled).toBe(false);
+
+    // Cleanup: dejar en true para no cross-contaminar.
+    await pool.query(
+      `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+    );
+  });
+
+  it('PATCH google_reviews_enabled con string → 400 (Zod rechaza)', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ google_reviews_enabled: 'true' });
+    expect(r.status).toBe(400);
+  });
+
+  describe('GET /api/public/google-reviews respeta el flag', () => {
+    beforeAll(() => {
+      // Setup env vars para que googleReviews intente el fetch. El mock del
+      // fetch controla la respuesta.
+      process.env.GOOGLE_PLACES_API_KEY = 'AIzaSy_test_toggle';
+      process.env.GOOGLE_PLACES_PLACE_ID = 'ChIJx';
+    });
+    afterAll(() => {
+      delete process.env.GOOGLE_PLACES_API_KEY;
+      delete process.env.GOOGLE_PLACES_PLACE_ID;
+    });
+
+    it('flag=false → devuelve empty con disabled:true (NO llama a Google)', async () => {
+      // Setear flag a false.
+      await pool.query(
+        `UPDATE site_landing_config SET google_reviews_enabled = false WHERE id = 1`
+      );
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      const r = await request(app).get('/api/public/google-reviews');
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({
+        reviews: [], count: 0, disabled: true, configured: true, source: 'google',
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // Cleanup.
+      await pool.query(
+        `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+      );
+    });
+
+    it('flag=true → llama a Google normalmente', async () => {
+      // Confirmar que default está en true (viene del test anterior o seed).
+      await pool.query(
+        `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+      );
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          rating: 4.9, userRatingCount: 3,
+          reviews: [{ name: 'places/x/reviews/1', text: { text: 'genial' },
+                      authorAttribution: { displayName: 'X' } }],
+        }),
+      });
+
+      const r = await request(app).get('/api/public/google-reviews');
+      expect(r.status).toBe(200);
+      expect(r.body.disabled).toBeUndefined();
+      expect(r.body.reviews).toHaveLength(1);
+      expect(r.body.count).toBe(3);
+    });
+  });
+
+  describe('GET /api/super-admin/google-reviews-status', () => {
+    beforeAll(() => {
+      process.env.GOOGLE_PLACES_API_KEY = 'AIzaSy_test_status';
+      process.env.GOOGLE_PLACES_PLACE_ID = 'ChIJt32vtDn5sCoRmCjEY6g98SU';
+    });
+    afterAll(() => {
+      delete process.env.GOOGLE_PLACES_API_KEY;
+      delete process.env.GOOGLE_PLACES_PLACE_ID;
+    });
+
+    it('requiere super-admin auth → 401 sin token', async () => {
+      const r = await request(app).get('/api/super-admin/google-reviews-status');
+      expect(r.status).toBe(401);
+    });
+
+    it('devuelve shape { enabled, configured, count, rating, cached_at, place_id }', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          rating: 4.7, userRatingCount: 12,
+          reviews: [
+            { name: 'places/x/reviews/1', text: { text: 'a' }, authorAttribution: { displayName: 'A' } },
+            { name: 'places/x/reviews/2', text: { text: 'b' }, authorAttribution: { displayName: 'B' } },
+          ],
+        }),
+      });
+
+      const r = await request(app).get('/api/super-admin/google-reviews-status').set(auth());
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({
+        enabled: true,
+        configured: true,
+        count: 12,
+        rating: 4.7,
+        reviews_visible: 2,
+        place_id: 'ChIJt32vtDn5sCoRmCjEY6g98SU',
+      });
+      expect(r.body.cached_at).toBeTruthy();
+    });
+
+    it('refleja enabled=false cuando el flag está apagado', async () => {
+      await pool.query(
+        `UPDATE site_landing_config SET google_reviews_enabled = false WHERE id = 1`
+      );
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ reviews: [] }),
+      });
+
+      const r = await request(app).get('/api/super-admin/google-reviews-status').set(auth());
+      expect(r.status).toBe(200);
+      expect(r.body.enabled).toBe(false);
+
+      // Cleanup.
+      await pool.query(
+        `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+      );
+    });
+  });
+});

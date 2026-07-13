@@ -419,6 +419,10 @@ export const adminApi = {
   getSiteConfig:    () => api('/api/super-admin/site-config'),
   updateSiteConfig: (body) => api('/api/super-admin/site-config', 'PATCH', body),
 
+  // GET /google-reviews-status → estado + count del Google Business Profile
+  // usado por la card "Reseñas de Google" (toggle enabled + status display).
+  getGoogleReviewsStatus: () => api('/api/super-admin/google-reviews-status'),
+
   // ── Team (#499) — gestión de co-super-admins ────────────────────────────
   // GET  /team           → { super_admins, pending_invites }
   // POST /team/invite    → { invite, email_sent }

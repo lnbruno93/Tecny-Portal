@@ -275,6 +275,10 @@ const updateSiteLandingContactSchema = z.object({
   // Si viene, reemplaza el array completo (semántica "PUT sobre el field" —
   // add/edit/delete/reorder se resuelven en el frontend antes del PATCH).
   testimonials: z.array(testimonialItemSchema).max(50, 'Máximo 50 reseñas').optional(),
+  // 2026-07-13 Toggle para pausar la integración con Google Business Profile.
+  // false → backend deja de llamar a Places API, landing muestra solo manuales.
+  // true (default en DB) → reseñas de Google visibles si hay ≥ threshold.
+  google_reviews_enabled: z.boolean().optional(),
 }).strict().refine(
   // Al menos un campo debe venir. Sin esto, PATCH con body {} pasaría el
   // Zod y haría un UPDATE no-op — patrón consistente con schemas del resto
