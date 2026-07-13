@@ -221,6 +221,24 @@ const CONTACT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const IG_HANDLE_RE = /^[a-zA-Z0-9._]{1,30}$/;
 const WHATSAPP_DIGITS_RE = /^\d{8,15}$/;
 
+// 2026-07-13 (CMS Landing Fase 2): schema de un testimonio individual.
+// Shape acordado con la landing (matchea el reviews[] hardcoded en App.tsx).
+// - id: UUID que server genera si no viene (permite drag&drop stable + delete
+//   por id sin ambigüedad).
+// - initial: 1-2 chars max (típicamente 1 letra, la inicial del nombre).
+// - color: HEX en formato #RRGGBB (validado con regex).
+// - time: texto libre ("hace 3 días", "hace 1 mes", etc.). No parseamos
+//   fechas: es display cosmético; el operador decide qué escribir.
+const uuidLoose = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const testimonialItemSchema = z.object({
+  id:       z.string().regex(uuidLoose, 'id inválido (debe ser UUID)').optional(),
+  name:     z.string().trim().min(2, 'Nombre muy corto').max(100, 'Nombre muy largo'),
+  initial:  z.string().trim().min(1, 'Falta la inicial').max(2, 'Máximo 2 caracteres'),
+  color:    z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color debe ser hex #RRGGBB'),
+  time:     z.string().trim().min(1, 'Falta el tiempo').max(30, 'Tiempo muy largo (ej. "hace 3 días")'),
+  text:     z.string().trim().min(10, 'Texto muy corto').max(1000, 'Texto muy largo (máx 1000 chars)'),
+}).strict();
+
 const updateSiteLandingContactSchema = z.object({
   contact_email: z.union([
     z.string().trim().toLowerCase().regex(CONTACT_EMAIL_RE, 'Email inválido').max(254),
@@ -252,6 +270,11 @@ const updateSiteLandingContactSchema = z.object({
     z.literal(''),
     z.null(),
   ]).optional(),
+  // 2026-07-13 CMS Landing Fase 2: reseñas editables (max 50 para no explotar
+  // el bundle de la landing; ~30 KB serializado a 50 reseñas de 500 chars).
+  // Si viene, reemplaza el array completo (semántica "PUT sobre el field" —
+  // add/edit/delete/reorder se resuelven en el frontend antes del PATCH).
+  testimonials: z.array(testimonialItemSchema).max(50, 'Máximo 50 reseñas').optional(),
 }).strict().refine(
   // Al menos un campo debe venir. Sin esto, PATCH con body {} pasaría el
   // Zod y haría un UPDATE no-op — patrón consistente con schemas del resto
