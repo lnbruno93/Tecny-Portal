@@ -69,6 +69,12 @@ const EMPTY_VENTA = {
   // el contacto ya tiene email (asumimos que es el flow esperado).
   cliente_email: '',
   enviar_comprobante_email: false,
+  // 2026-07-13 (feature vuelto): cambio dado al cliente. Los 3 campos van
+  // juntos (todo-o-nada). Si `vuelto_monto` es '', no se registra vuelto.
+  // Al submit: si monto > 0, se envían los 3 al backend; sino, los 3 en null.
+  vuelto_monto:   '',
+  vuelto_moneda:  'ARS',   // default ARS (el 99% de los casos)
+  vuelto_caja_id: '',
 };
 
 // Forma de un canje vacío para usar como template al "+ Agregar equipo".
@@ -360,6 +366,10 @@ export default function Ventas() {
         // producto asociado a un canje.
         producto_id: c.producto_id || null,
       })),
+      // 2026-07-13 (feature vuelto): populate desde la venta persistida.
+      vuelto_monto:   v.vuelto_monto != null ? String(v.vuelto_monto) : '',
+      vuelto_moneda:  v.vuelto_moneda || 'ARS',
+      vuelto_caja_id: v.vuelto_caja_id || '',
     });
     setCart((v.items || []).map(it => ({ _id: newItemId(), producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
     setPagos((v.pagos || []).map(p => ({
@@ -866,6 +876,22 @@ export default function Ventas() {
       estado: vForm.estado, tc_venta: vForm.tc_venta ? Number(vForm.tc_venta) : null,
       notas: vForm.notas.trim() || null, items, pagos: pagosPayload, canjes,
     };
+    // 2026-07-13 (feature vuelto): incluir los 3 campos SIEMPRE (todo o nada).
+    // Si monto > 0 → mandar los 3 con valor. Si vacío → los 3 en null (backend
+    // los borra en el UPDATE del PUT — necesario para "quitar" el vuelto de
+    // una venta que lo tenía y se edita para removerlo).
+    const vueltoMontoNum = Number(vForm.vuelto_monto);
+    if (vForm.vuelto_monto && vueltoMontoNum > 0 && vForm.vuelto_caja_id) {
+      payload.vuelto_monto   = vueltoMontoNum;
+      payload.vuelto_moneda  = vForm.vuelto_moneda;
+      payload.vuelto_caja_id = Number(vForm.vuelto_caja_id);
+    } else if (editId) {
+      // En edición, si el operador vació el vuelto, hay que persistir NULL
+      // (sino el backend hace COALESCE y el vuelto viejo persiste).
+      payload.vuelto_monto = null;
+      payload.vuelto_moneda = null;
+      payload.vuelto_caja_id = null;
+    }
     // #475 — pasar opt-in del comprobante por email solo en alta (no en edición).
     // El backend acepta ambos campos como opcionales en createVentaSchema; el
     // schema de update no los acepta (es propio del alta — para reenviar desde
@@ -1967,6 +1993,74 @@ export default function Ventas() {
                       })}
                     </div>
                     <button type="button" className="btn btn-sm" style={{ marginTop: 6 }} onClick={addPago}><Icons.Plus size={13} /> Agregar método</button>
+                  </div>
+
+                  {/* 2026-07-13 (feature vuelto): sección para registrar el
+                      cambio dado al cliente. Los 3 campos van juntos (monto +
+                      moneda + caja de dónde sale). El backend postea un egreso
+                      a la caja elegida — al cancelar la venta, se revierte
+                      automáticamente. Colapsable: por defecto compacto con
+                      link "Agregar vuelto"; se expande al hacer click. */}
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: vForm.vuelto_monto ? 8 : 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        Vuelto/Cambio
+                        <span className="muted tiny" style={{ marginLeft: 8, fontWeight: 400 }}>
+                          (opcional — dinero que entregás al cliente)
+                        </span>
+                      </div>
+                      {vForm.vuelto_monto && (
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => {
+                          setVF('vuelto_monto', ''); setVF('vuelto_caja_id', '');
+                        }}>Quitar</button>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 8 }}>
+                      <div>
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Monto</div>
+                        <input
+                          type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                          className="input mono"
+                          value={vForm.vuelto_monto}
+                          onChange={e => setVF('vuelto_monto', e.target.value)}
+                          placeholder="0"
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                      <div>
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Moneda</div>
+                        <select
+                          className="input"
+                          value={vForm.vuelto_moneda}
+                          onChange={e => setVF('vuelto_moneda', e.target.value)}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="ARS">ARS</option>
+                          <option value="UYU">UYU</option>
+                          <option value="USD">USD</option>
+                          <option value="USDT">USDT</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>
+                          Sale de{' '}
+                          {vForm.vuelto_monto && !vForm.vuelto_caja_id && (
+                            <span className="warn" style={{ fontWeight: 600 }}>· elegí caja</span>
+                          )}
+                        </div>
+                        <select
+                          className="input"
+                          value={vForm.vuelto_caja_id}
+                          onChange={e => setVF('vuelto_caja_id', e.target.value)}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">— Elegí caja —</option>
+                          {metodos.filter(m => !m.deleted_at).map(m => (
+                            <option key={m.id} value={m.id}>{m.nombre} ({m.moneda})</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Totales */}

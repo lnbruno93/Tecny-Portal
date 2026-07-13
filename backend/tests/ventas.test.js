@@ -1450,3 +1450,133 @@ describe('Ventas — canjes soft-delete + revert de producto (P1-1)', () => {
     expect(v.canjes).toHaveLength(1);
   });
 });
+
+// 2026-07-13 (feature vuelto): registrar el cambio dado al cliente.
+// El backend persiste 3 campos en `ventas` (monto/moneda/caja_id) y postea
+// un `caja_movimientos` tipo='egreso' apuntando a la caja elegida.
+// Al cancelar la venta, reverseCajaMovimientos revierte automáticamente
+// (mismo ref_tabla + ref_id que los ingresos, en una sola pasada).
+describe('Ventas — vuelto/cambio (feature)', () => {
+  async function crearCajaEfectivo(nombre, saldo = 0) {
+    // saldo_inicial permite seedear la caja sin necesidad de postear un
+    // movimiento aparte — necesario para que los tests de vuelto puedan
+    // hacer egresos sin que la caja quede negativa (postCajaMovimiento valida).
+    const r = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre, moneda: 'ARS', saldo_inicial: saldo });
+    return r.body.id;
+  }
+
+  it('crea venta con vuelto → 3 campos persistidos + egreso posteado a la caja', async () => {
+    const cajaId = await crearCajaEfectivo('Caja Chica Vuelto 1', 10000);
+    const cajaCobro = await crearCajaEfectivo('Caja Cobro Vuelto 1');
+
+    const r = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      estado: 'acreditado',
+      tc_venta: 1000,
+      items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 9, costo: 5, moneda: 'USD' }],
+      pagos:  [{ metodo_pago_id: cajaCobro, metodo_nombre: 'Caja Cobro Vuelto 1', monto: 10000, moneda: 'ARS', tc: 1000 }],
+      vuelto_monto:   1000,     // cliente pagó 10000 ARS por venta de $9 USD (=9000 ARS), vuelto 1000
+      vuelto_moneda:  'ARS',
+      vuelto_caja_id: cajaId,
+    });
+    expect(r.status).toBe(201);
+    expect(Number(r.body.vuelto_monto)).toBe(1000);
+    expect(r.body.vuelto_moneda).toBe('ARS');
+    expect(Number(r.body.vuelto_caja_id)).toBe(cajaId);
+
+    // La caja del vuelto debe reflejar el egreso.
+    const movs = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaId}`).set(auth());
+    const egreso = movs.body.data.find(m =>
+      m.ref_tabla === 'ventas' && Number(m.ref_id) === r.body.id && m.tipo === 'egreso'
+    );
+    expect(egreso).toBeDefined();
+    expect(Number(egreso.monto)).toBe(1000);
+    expect(egreso.concepto).toContain('Vuelto');
+  });
+
+  it('rechaza venta con vuelto incompleto (monto sin caja) → 400', async () => {
+    const r = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 100, costo: 80, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+      vuelto_monto: 500,
+      // Falta vuelto_moneda + vuelto_caja_id.
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza venta con vuelto que excede saldo de la caja → 400 con mensaje claro', async () => {
+    const cajaId = await crearCajaEfectivo('Caja Sin Saldo');
+    // NO le cargamos saldo → cualquier egreso la deja negativa.
+
+    const r = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 10, costo: 5, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 10, moneda: 'USD' }],
+      vuelto_monto:   500,
+      vuelto_moneda:  'ARS',
+      vuelto_caja_id: cajaId,
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/negativo|saldo|excede|insuficiente/i);
+  });
+
+  it('cancelar venta con vuelto → egreso del vuelto se revierte automáticamente', async () => {
+    const cajaId = await crearCajaEfectivo('Caja Vuelto Revert', 5000);
+    const cajaCobro = await crearCajaEfectivo('Caja Cobro Revert');
+
+    // Crear venta con vuelto.
+    const r = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      estado: 'acreditado',
+      tc_venta: 1000,
+      items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 5, costo: 3, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaCobro, metodo_nombre: 'Caja Cobro Revert', monto: 5500, moneda: 'ARS', tc: 1000 }],
+      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaId,
+    });
+    expect(r.status).toBe(201);
+
+    // DELETE la venta → cancela + revierte todos los movimientos de caja.
+    const del = await request(app).delete(`/api/ventas/${r.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+
+    // El egreso original debe estar soft-deleted.
+    const movs = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaId}`).set(auth());
+    const egresosActivos = movs.body.data.filter(m =>
+      m.ref_tabla === 'ventas' && Number(m.ref_id) === r.body.id && m.tipo === 'egreso'
+    );
+    expect(egresosActivos).toHaveLength(0);
+  });
+
+  it('PUT venta agregando vuelto post-alta → egreso se postea al editar', async () => {
+    const cajaId = await crearCajaEfectivo('Caja Vuelto Edit', 5000);
+    const cajaCobro = await crearCajaEfectivo('Caja Cobro Edit');
+
+    // Venta original sin vuelto.
+    const r = await request(app).post('/api/ventas').set(auth()).send({
+      fecha: hoy,
+      estado: 'acreditado',
+      tc_venta: 1000,
+      items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 5, costo: 3, moneda: 'USD' }],
+      pagos: [{ metodo_pago_id: cajaCobro, metodo_nombre: 'Caja Cobro Edit', monto: 5500, moneda: 'ARS', tc: 1000 }],
+    });
+    expect(r.body.vuelto_monto).toBeNull();
+
+    // Editar la venta agregando vuelto de 500 ARS.
+    const put = await request(app).put(`/api/ventas/${r.body.id}`).set(auth()).send({
+      vuelto_monto: 500,
+      vuelto_moneda: 'ARS',
+      vuelto_caja_id: cajaId,
+    });
+    expect(put.status).toBe(200);
+    expect(Number(put.body.vuelto_monto)).toBe(500);
+
+    // El egreso debe existir ahora.
+    const movs = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaId}`).set(auth());
+    const egreso = movs.body.data.find(m =>
+      m.ref_tabla === 'ventas' && Number(m.ref_id) === r.body.id && m.tipo === 'egreso' && !m.deleted_at
+    );
+    expect(egreso).toBeDefined();
+  });
+});

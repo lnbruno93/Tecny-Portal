@@ -83,6 +83,22 @@ const canjeSchema = z.object({
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const clienteEmailSchema = z.string().trim().toLowerCase().regex(EMAIL_RE, 'Email inválido').max(254);
 
+// 2026-07-13 (feature vuelto): 3 campos opcionales que van JUNTOS (todo o
+// nada). El CHECK en DB también lo enforcea; validamos en schema para dar
+// error 400 amigable en vez de 500 de constraint violation. La caja del
+// vuelto es libre (cualquier moneda) — la validación de coherencia moneda
+// vs caja se hace en el handler al postear el egreso a caja_movimientos.
+const vueltoFields = {
+  vuelto_monto:   z.coerce.number().positive('El vuelto debe ser mayor a 0').optional().nullable(),
+  vuelto_moneda:  MonedaEnum.optional().nullable(),
+  vuelto_caja_id: z.coerce.number().int().positive().optional().nullable(),
+};
+function refineVueltoTodoONada(d) {
+  const set = [d.vuelto_monto, d.vuelto_moneda, d.vuelto_caja_id].filter(x => x != null).length;
+  return set === 0 || set === 3;
+}
+const vueltoTodoONadaMsg = 'Vuelto: si cargás uno de los 3 campos (monto/moneda/caja), los 3 son obligatorios';
+
 const createVentaSchema = z.object({
   fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD'),
   hora:           z.string().regex(HORA_RE, 'Hora inválida').optional().nullable(),
@@ -107,7 +123,8 @@ const createVentaSchema = z.object({
   // el handler skipea el envío silenciosamente (no rompe la venta).
   enviar_comprobante_email: z.boolean().optional(),
   cliente_email:            clienteEmailSchema.optional().nullable(),
-}).strict();
+  ...vueltoFields,
+}).strict().refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] });
 
 // Edición de metadatos (no se editan items/pagos para no descuadrar el stock).
 const updateVentaSchema = z.object({
@@ -134,7 +151,11 @@ const updateVentaSchema = z.object({
   items:          z.array(ventaItemSchema).min(1, 'Agregá al menos un producto').optional(),
   pagos:          z.array(ventaPagoSchema).optional(),
   canjes:         z.array(canjeSchema).optional(),
-}).strict();
+  // 2026-07-13 (feature vuelto): editables en el PUT. Para "quitar" el
+  // vuelto de una venta que ya lo tenía, el frontend envía los 3 en null
+  // (todo-o-nada aplica igual — 3 null o 3 con valor).
+  ...vueltoFields,
+}).strict().refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] });
 
 /* ── Plantillas de garantía ── */
 const garantiaSchema = z.object({

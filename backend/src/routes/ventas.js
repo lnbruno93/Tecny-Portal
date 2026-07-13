@@ -22,7 +22,7 @@ const { DASHBOARD_VENTAS } = require('../lib/cacheConfig');
 const { syncFinancieraComprobante } = require('../lib/financiera');
 const { syncTarjetaCobros } = require('../lib/tarjetas');
 const { revertirEfectosVenta, revertirCanjesDeVenta } = require('../lib/cancelarVenta');
-const { syncVentaCaja, sincronizarCuentaCorriente } = require('../lib/ventaSync');
+const { syncVentaCaja, sincronizarCuentaCorriente, syncVentaVuelto } = require('../lib/ventaSync');
 // Tema C (2026-06-13): denormalizamos `ventas.comision_total_metodos` para
 // descontar el costo financiero (tarjeta + financiera) de la ganancia bruta.
 // El sync DEBE correr después de syncTarjetaCobros + syncFinancieraComprobante.
@@ -1288,10 +1288,13 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     const vendedorNombreCreate = b.vendedor_nombre && b.vendedor_nombre.trim()
       ? b.vendedor_nombre.trim() : null;
     const { rows: vrows } = await client.query(
-      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id, client_generated_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id, client_generated_id, vuelto_monto, vuelto_moneda, vuelto_caja_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
       [genOrderId(), b.fecha, b.hora ?? null, b.cliente_id ?? null, b.cliente_cc_id ?? null, b.cliente_nombre ?? null,
-       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, vendedorNombreCreate, req.user.id, idem.key]
+       b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, vendedorNombreCreate, req.user.id, idem.key,
+       // 2026-07-13 (feature vuelto): persistir los 3 campos si vinieron. El
+       // CHECK "todo-o-nada" del schema + DB garantiza que los 3 o los 3 son NULL.
+       b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null]
     );
     const venta = vrows[0];
 
@@ -1303,6 +1306,11 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     await sincronizarCuentaCorriente(client, venta);
     // Ingresos de caja por los pagos (Fase 2b)
     await syncVentaCaja(client, venta, req.user.id);
+    // 2026-07-13 (feature vuelto): egreso a la caja del vuelto. Va DESPUÉS
+    // de syncVentaCaja porque este helper NO revierte por ref (asume que
+    // el estado de caja está limpio post-syncVentaCaja). Si el vuelto excede
+    // el saldo de la caja, throwea 400 y hacemos ROLLBACK — la venta no queda.
+    await syncVentaVuelto(client, venta, req.user.id);
     // Cobros de tarjeta por los pagos con método tarjeta
     await syncTarjetaCobros(client, venta.id, venta.estado);
     // Tema C: denormalizar el costo financiero total (tarjeta + transf) en
@@ -1362,6 +1370,10 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
         reason: 'idempotency_conflict',
       });
     }
+    // 2026-07-13 (feature vuelto): postCajaMovimiento del vuelto puede
+    // throwear 400 si la caja no existe, moneda no matchea, o el saldo
+    // quedaría negativo. Propagar el mensaje al frontend con reason claro.
+    if (err.status) return res.status(err.status).json({ error: err.message, reason: err.code || 'caja_error' });
     next(err);
   } finally {
     client.release();
@@ -1443,6 +1455,21 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       await insertarDetalle(client, vrows[0], { ...b, tc_venta: tc }, { tenantId: req.tenantId });
       await sincronizarCuentaCorriente(client, vrows[0]);
       await syncVentaCaja(client, vrows[0], req.user.id);
+      // 2026-07-13 (feature vuelto): actualizar los 3 campos SI el body los
+      // envía (aunque sea con null para borrar el vuelto). El schema garantiza
+      // consistencia todo-o-nada. Si no vienen, no tocamos los valores actuales.
+      const hasVueltoInBody = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
+      if (hasVueltoInBody) {
+        const { rows: upd } = await client.query(
+          `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3 WHERE id = $4 RETURNING *`,
+          [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, id]
+        );
+        vrows[0] = upd[0];
+      }
+      // Postear egreso del vuelto. syncVentaCaja ya revirtió TODOS los movs
+      // por ref_tabla='ventas' + ref_id=id (incluyendo el vuelto viejo).
+      // Este helper re-postea solo si el estado post-edit lo justifica.
+      await syncVentaVuelto(client, vrows[0], req.user.id);
       // Re-derivar el comprobante de Financiera (cancelación, o quitar/agregar el pago financiera)
       await syncFinancieraComprobante(client, id, vrows[0].estado);
       await syncTarjetaCobros(client, id, vrows[0].estado);
@@ -1476,6 +1503,17 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     );
     await sincronizarCuentaCorriente(client, rows[0]);
     await syncVentaCaja(client, rows[0], req.user.id);
+    // 2026-07-13 (feature vuelto): mismo patrón que fullEdit — solo tocamos
+    // si el body trajo alguno de los 3 campos.
+    const hasVueltoInBody = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
+    if (hasVueltoInBody) {
+      const { rows: upd } = await client.query(
+        `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3 WHERE id = $4 RETURNING *`,
+        [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, id]
+      );
+      rows[0] = upd[0];
+    }
+    await syncVentaVuelto(client, rows[0], req.user.id);
     // Re-derivar el comprobante de Financiera (cancelar / reactivar)
     await syncFinancieraComprobante(client, id, rows[0].estado);
     await syncTarjetaCobros(client, id, rows[0].estado);
