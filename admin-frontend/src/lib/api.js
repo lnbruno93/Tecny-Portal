@@ -155,10 +155,18 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
 // 2026-07-04: acepta `code` (TOTP 6 dígitos) opcional. El backend responde
 // 401 con `twofa_required: true` si la password OK pero el user tiene 2FA
 // activo — el caller re-invoca con code en la segunda pasada.
-async function loginDirect(username, password, code) {
+//
+// 2026-07-13 hotfix: acepta `hcaptchaResponse` opcional. Sprint 1 PR B
+// (portal Externa P0-1) agregó hCaptcha invisible en /api/auth/login. El
+// admin nunca implementó el widget, entonces con HCAPTCHA_ENABLED=true en
+// prod el backend rechazaba TODOS los logins de super-admin con "Verificación
+// inválida". El widget ahora vive en pages/Login.jsx del admin y su token
+// viaja acá. Mismo semántica que el portal: no se re-envía en step 2 del 2FA.
+async function loginDirect(username, password, code, hcaptchaResponse) {
   const isEmail = typeof username === 'string' && username.includes('@');
   const bodyObj = isEmail ? { email: username, password } : { username, password };
   if (code) bodyObj.code = code;
+  if (hcaptchaResponse) bodyObj.hcaptcha_response = hcaptchaResponse;
   const res = await fetch(BASE + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -187,7 +195,8 @@ export const adminApi = {
   // ── Auth ──────────────────────────────────────────────────────────────
   // `code` es opcional: el flujo estándar es intentar sin code, y si el backend
   // responde 401 { twofa_required: true }, reintentar con el TOTP de 6 dígitos.
-  login: (username, password, code) => loginDirect(username, password, code),
+  login: (username, password, code, hcaptchaResponse) =>
+    loginDirect(username, password, code, hcaptchaResponse),
   // GET /me — devuelve { is_super_admin, user_id, username }. Usado por
   // AuthContext al mount para revalidar que el flag is_super_admin sigue
   // activo (podría haberse revocado vía script desde el último login).
