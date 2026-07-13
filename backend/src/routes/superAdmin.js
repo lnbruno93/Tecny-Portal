@@ -57,6 +57,7 @@ const {
   patchPlanPriceSchema,
   changePaisSchema,
   updateComprobanteFooterSchema,
+  updateSiteLandingContactSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
@@ -2289,6 +2290,84 @@ router.patch('/tenants/:id/comprobante-footer',
         tenant_id: id,
         comprobante_email_footer: result.comprobante_email_footer,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// CMS Landing Fase 1 — configuración del sitio público tecnyapp.com
+//
+// 2026-07-13 (feature): Lucas edita mail/WhatsApp/dirección/Instagram desde
+// el admin. Los cambios aparecen en la landing en <5min (cache TTL del
+// endpoint público GET /api/public/site-config).
+//
+// Diseño:
+//   · Tabla singleton `site_landing_config` (id=1 fijo).
+//   · Schema Zod normaliza strings vacíos → null en el UPDATE.
+//   · Solo super-admin puede editar. Log via logger.info (feature de baja
+//     frecuencia y baja criticidad — el audit_logs general basta).
+//   · updated_by trackea al super-admin que hizo el cambio.
+//
+// Fase 2 (reseñas) y Fase 3 (footer) van a extender este endpoint con más
+// campos en el mismo body — el schema es aditivo.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/site-config', async (_req, res, next) => {
+  try {
+    const row = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
+                contact_address, contact_instagram_handle, contact_instagram_url,
+                updated_at, updated_by
+           FROM site_landing_config WHERE id = 1`
+      );
+      return rows[0] || null;
+    });
+    res.json(row || {});
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/site-config',
+  validate(updateSiteLandingContactSchema),
+  async (req, res, next) => {
+    try {
+      // Normalizar: '' → null. La UI envía '' cuando el operador limpia
+      // el input; consolidamos a null para tener una sola representación.
+      const norm = (v) => (v === '' || v === undefined) ? null : v;
+      const patch = {};
+      for (const key of Object.keys(req.body)) {
+        patch[key] = norm(req.body[key]);
+      }
+
+      // Build dynamic UPDATE — solo los campos que vinieron en el body.
+      const keys = Object.keys(patch);
+      const setPieces = keys.map((k, i) => `${k} = $${i + 1}`);
+      const values = keys.map(k => patch[k]);
+      values.push(req.user.id); // updated_by = último param
+
+      const result = await db.adminQuery(async (client) => {
+        const { rows } = await client.query(
+          `UPDATE site_landing_config
+              SET ${setPieces.join(', ')},
+                  updated_at = NOW(),
+                  updated_by = $${values.length}
+            WHERE id = 1
+            RETURNING contact_email, contact_whatsapp, contact_whatsapp_display,
+                      contact_address, contact_instagram_handle, contact_instagram_url,
+                      updated_at, updated_by`,
+          values
+        );
+        return rows[0];
+      });
+
+      logger.info(
+        { super_admin: req.user.id, fields: keys },
+        '[super-admin] PATCH /site-config'
+      );
+      res.json(result);
     } catch (err) {
       next(err);
     }

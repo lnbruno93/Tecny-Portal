@@ -403,6 +403,13 @@ export const adminApi = {
   updatePlanPrice: (plan, body) =>
     api(`/api/super-admin/plan-prices/${encodeURIComponent(plan)}`, 'PATCH', body),
 
+  // ── CMS Landing (2026-07-13, Fase 1: Contacto) ────────────────────────
+  // GET /site-config → row de site_landing_config (para popular el form).
+  // PATCH /site-config → actualiza campos parciales del contacto.
+  // La landing pública consume GET /api/public/site-config (endpoint separado).
+  getSiteConfig:    () => api('/api/super-admin/site-config'),
+  updateSiteConfig: (body) => api('/api/super-admin/site-config', 'PATCH', body),
+
   // ── Team (#499) — gestión de co-super-admins ────────────────────────────
   // GET  /team           → { super_admins, pending_invites }
   // POST /team/invite    → { invite, email_sent }
