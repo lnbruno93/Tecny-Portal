@@ -73,15 +73,22 @@ router.get('/', async (req, res, next) => {
 router.post('/', validate(createTransferenciaSchema), async (req, res, next) => {
   const client = await db.connect();
   try {
-    const { fecha, caja_origen_id, caja_destino_id, moneda, monto, costo, descripcion } = req.body;
+    const {
+      fecha, caja_origen_id, caja_destino_id, moneda, monto, costo, descripcion,
+      // 2026-07-13 (cross-currency): 3 campos opcionales. Si vienen los 3,
+      // la transferencia es entre monedas distintas y el operador tipeó
+      // manualmente el TC + monto destino.
+      moneda_destino, monto_destino, tc,
+    } = req.body;
+    // Cross-currency: los 3 campos presentes indican que el operador está
+    // moviendo entre cajas de moneda distinta. Same-currency: todos NULL.
+    // El schema garantiza "todo o nada"; acá solo derivamos.
+    const isCross = !!(moneda_destino && monto_destino && tc);
     await client.query('BEGIN');
     // multi-tenant: SET LOCAL para que la tx respete RLS.
     await client.query(`SET LOCAL app.current_tenant = ${req.tenantId}`);
 
-    // Validar que ambas cajas existen, no están eliminadas y comparten moneda
-    // con la que el operador declaró. El helper postCajaMovimiento vuelve a
-    // validar por su cuenta (grupo de moneda), pero acá damos errores más
-    // amigables antes de tocar el ledger.
+    // Validar que ambas cajas existen, no están eliminadas.
     const { rows: cajas } = await client.query(
       `SELECT id, nombre, moneda FROM metodos_pago
         WHERE id IN ($1, $2) AND deleted_at IS NULL`,
@@ -98,36 +105,72 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
       return res.status(404).json({ error: 'La caja de destino no existe o fue eliminada.' });
     }
     // grupoMoneda: USD y USDT son 1:1 (mismo grupo); ARS y UYU son grupos
-    // separados. El helper cajaLedger lo hace igual, pero acá lo validamos para
-    // dar un mensaje más claro que "no coincide con grupo".
+    // separados.
     const grupo = (m) => (m === 'ARS' ? 'ARS' : m === 'UYU' ? 'UYU' : 'USD');
-    if (grupo(origen.moneda) !== grupo(moneda) || grupo(destino.moneda) !== grupo(moneda)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({
-        error: `La moneda del movimiento (${moneda}) debe coincidir con las cajas ` +
-               `(origen: ${origen.moneda}, destino: ${destino.moneda}). ` +
-               `Para cambios de moneda usá "Cambios de Divisa".`,
-      });
+    if (isCross) {
+      // Cross-currency: origen debe matchear con `moneda`, destino con
+      // `moneda_destino`. Deben ser grupos DISTINTOS (sino no tiene sentido
+      // el TC — el operador está haciendo lo mismo que same-currency).
+      if (grupo(origen.moneda) !== grupo(moneda)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `La caja de origen es ${origen.moneda}, no coincide con la moneda de origen declarada (${moneda}).`,
+        });
+      }
+      if (grupo(destino.moneda) !== grupo(moneda_destino)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `La caja de destino es ${destino.moneda}, no coincide con la moneda de destino declarada (${moneda_destino}).`,
+        });
+      }
+      if (grupo(origen.moneda) === grupo(destino.moneda)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Ambas cajas son ${grupo(origen.moneda)}. Para transferencia sin TC no cargues los campos de moneda destino.`,
+        });
+      }
+    } else {
+      // Same-currency (comportamiento pre-feature): moneda declarada coincide
+      // con las 2 cajas.
+      if (grupo(origen.moneda) !== grupo(moneda) || grupo(destino.moneda) !== grupo(moneda)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `La moneda del movimiento (${moneda}) debe coincidir con las cajas ` +
+                 `(origen: ${origen.moneda}, destino: ${destino.moneda}). ` +
+                 `Si querés mover entre monedas distintas, activá "Cambio de moneda con TC".`,
+        });
+      }
     }
 
     // Insertar la transferencia. tenant_id sale del setting local (RLS).
+    // Los 3 campos cross-currency son NULL en same-currency (backward compat).
     const costoN = Number(costo) || 0;
     const { rows } = await client.query(
       `INSERT INTO caja_transferencias
-         (tenant_id, fecha, caja_origen_id, caja_destino_id, moneda, monto, costo, descripcion, user_id)
+         (tenant_id, fecha, caja_origen_id, caja_destino_id, moneda, monto, costo, descripcion, user_id,
+          moneda_destino, monto_destino, tc)
        VALUES
-         (current_setting('app.current_tenant')::integer, $1, $2, $3, $4, $5, $6, $7, $8)
+         (current_setting('app.current_tenant')::integer, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [fecha, caja_origen_id, caja_destino_id, moneda, monto, costoN, descripcion ?? null, req.user.id]
+      [fecha, caja_origen_id, caja_destino_id, moneda, monto, costoN, descripcion ?? null, req.user.id,
+       isCross ? moneda_destino : null,
+       isCross ? Number(monto_destino) : null,
+       isCross ? Number(tc) : null]
     );
     const nuevo = rows[0];
 
     // Ledger: 2 asientos, ambos con ref_tabla='caja_transferencias' + ref_id
     // para que el DELETE los reversa en bloque.
     //
-    // Egreso origen = monto + costo (la comisión bancaria sale ADEMÁS del monto
-    // que llega al destino). Si costo=0, solo sale el monto.
-    // Ingreso destino = monto (sin costo — el costo se quedó en la comisión).
+    // Same-currency:
+    //   · Egreso origen = monto + costo (comisión bancaria sale ADEMÁS del monto).
+    //   · Ingreso destino = monto (sin costo).
+    // Cross-currency (2026-07-13):
+    //   · Egreso origen = monto + costo, en moneda origen, con TC (para calcular
+    //     monto_usd del asiento origen).
+    //   · Ingreso destino = monto_destino, en moneda destino, sin TC (si destino
+    //     es USD/USDT el monto ya es USD; si fuera ARS/UYU el ingreso quedaría
+    //     sin monto_usd calculado — pero el TC ya se aplicó en el origen).
     const conceptoBase = descripcion ? descripcion : `Transferencia ${origen.nombre} → ${destino.nombre}`;
     await postCajaMovimiento(client, {
       caja_id:    caja_origen_id,
@@ -135,7 +178,7 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
       tipo:       'egreso',
       monto:      Number(monto) + costoN,
       moneda,
-      tc:         null,
+      tc:         isCross ? Number(tc) : null,
       origen:     'transferencia',
       ref_tabla:  'caja_transferencias',
       ref_id:     nuevo.id,
@@ -146,13 +189,15 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
       caja_id:    caja_destino_id,
       fecha,
       tipo:       'ingreso',
-      monto:      Number(monto),
-      moneda,
-      tc:         null,
+      monto:      isCross ? Number(monto_destino) : Number(monto),
+      moneda:     isCross ? moneda_destino : moneda,
+      tc:         isCross ? Number(tc) : null,
       origen:     'transferencia',
       ref_tabla:  'caja_transferencias',
       ref_id:     nuevo.id,
-      concepto:   conceptoBase,
+      concepto:   isCross
+        ? `${conceptoBase} · TC ${tc} (${moneda}→${moneda_destino})`
+        : conceptoBase,
       user_id:    req.user.id,
     });
 
@@ -161,6 +206,10 @@ router.post('/', validate(createTransferenciaSchema), async (req, res, next) => 
     res.status(201).json(nuevo);
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
+    // 2026-07-13 (cross-currency): postCajaMovimiento puede throwear 400 si
+    // el egreso deja la caja origen en negativo (saldo insuficiente).
+    // Propagar con mensaje claro en vez de 500 genérico.
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   } finally {
     client.release();
