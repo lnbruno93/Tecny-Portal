@@ -308,6 +308,57 @@
 .tecny-landing .foot-bottom .soc a { width: 34px; height: 34px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; color: var(--muted); transition: .14s; }
 .tecny-landing .foot-bottom .soc a:hover { color: var(--text); border-color: var(--border-strong); }
 
+/* ── SECCIÓN CONTACTO (2026-07-13) ─────────────────────────────
+   Grid 4×1 (desktop) / 2×2 (tablet) / 1×4 (mobile). Cards con hover
+   que sugiere clickeabilidad. .contact-card-info es info-only (address),
+   sin hover-lift. */
+.tecny-landing .contact-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.tecny-landing .contact-card {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 22px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color .18s ease, transform .18s ease, background .18s ease;
+}
+.tecny-landing .contact-card:hover:not(.contact-card-info) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+.tecny-landing .contact-card-info {
+  /* Card de address: info-only, no clickeable — cursor default y sin hover-lift. */
+  cursor: default;
+}
+.tecny-landing .contact-icon {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.tecny-landing .contact-body { display: flex; flex-direction: column; gap: 4px; }
+.tecny-landing .contact-label {
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.tecny-landing .contact-value {
+  font-size: 15px; font-weight: 600; line-height: 1.35;
+  color: var(--text);
+  /* wrap long strings graciosamente en mobile (emails largos, teléfonos con formato) */
+  word-break: break-word;
+}
+.tecny-landing .contact-hint { font-size: 12px; color: var(--muted); }
+
 @media (max-width: 940px) {
   .tecny-landing { --pad: 24px; }
   .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
@@ -316,6 +367,7 @@
   .tecny-landing .bigstat { grid-template-columns: 1fr 1fr; }
   .tecny-landing .bigstat > div:nth-child(2) { border-right: 0; }
   .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+  .tecny-landing .contact-grid { grid-template-columns: 1fr 1fr; }
   .tecny-landing .nav-links { display: none; }
   .tecny-landing .shot-body { grid-template-columns: 1fr; }
   .tecny-landing .shot-side { display: none; }
@@ -348,4 +400,5 @@
   .tecny-landing .steps, .tecny-landing .bigstat { grid-template-columns: 1fr; }
   .tecny-landing .shot-kpis { grid-template-columns: 1fr 1fr; }
   .tecny-landing .plan .price .num { font-size: 38px; }
+  .tecny-landing .contact-grid { grid-template-columns: 1fr; }
 }
