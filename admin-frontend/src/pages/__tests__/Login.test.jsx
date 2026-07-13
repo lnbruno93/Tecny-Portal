@@ -176,8 +176,10 @@ describe('Login', () => {
       await waitFor(() => {
         expect(adminApi.login).toHaveBeenCalledTimes(2);
       });
-      // La 2da llamada debe incluir el code como 3er argumento
-      expect(adminApi.login).toHaveBeenLastCalledWith('lucas', 'ok', '123456');
+      // La 2da llamada debe incluir el code como 3er argumento.
+      // 2026-07-13: 4to arg `hcaptchaResponse` = undefined en step 2 del
+      // 2FA (el token single-use ya se consumió en step 1). Ver Login.jsx.
+      expect(adminApi.login).toHaveBeenLastCalledWith('lucas', 'ok', '123456', undefined);
 
       const { saveToken } = await import('../../lib/api.js');
       await waitFor(() => expect(saveToken).toHaveBeenCalledWith('jwt-abc'));
