@@ -92,13 +92,15 @@ describe('Movimientos de Caja (caja_transferencias)', () => {
     expect(r.status).toBe(400);
   });
 
-  it('rechaza monedas distintas (USD → ARS) con mensaje amigable → 400', async () => {
+  it('rechaza monedas distintas SIN campos cross-currency → 400 con hint del feature', async () => {
+    // 2026-07-13: el mensaje cambió tras habilitar cross-currency. Antes
+    // decía "usá Cambios de Divisa"; ahora hinta al toggle nuevo.
     const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
       fecha: hoy, caja_origen_id: cajaUsd1, caja_destino_id: cajaArs,
       moneda: 'USD', monto: 100,
     });
     expect(r.status).toBe(400);
-    expect(r.body.error).toMatch(/Cambios de Divisa/i);
+    expect(r.body.error).toMatch(/TC|cambio de moneda/i);
   });
 
   it('rechaza costo negativo (Zod) → 400', async () => {
@@ -181,5 +183,106 @@ describe('Movimientos de Caja (caja_transferencias)', () => {
     const found = list.body.data.find(t => t.id === t1.body.id);
     expect(found).toBeDefined();
     expect(found.deleted_at).toBeFalsy();
+  });
+});
+
+// 2026-07-13 (feature): transferencias entre cajas de distinta moneda con TC
+// tipeado por el operador. Cliente reportó necesidad de mover ARS→USD
+// (o similares) sin pasar por "Cambios de Divisa" (que exige más metadata).
+describe('POST /api/caja-transferencias — CROSS-CURRENCY con TC manual', () => {
+  async function crearCaja(nombre, moneda, saldo = 0) {
+    const r = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre, moneda, saldo_inicial: saldo });
+    return r.body.id;
+  }
+
+  it('ARS→USD con TC manual → egreso ARS + ingreso USD posteados correctamente', async () => {
+    const origen  = await crearCaja('Cross Origen ARS ' + Date.now(), 'ARS', 2_000_000);
+    const destino = await crearCaja('Cross Destino USD ' + Date.now(), 'USD');
+    const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
+      fecha: hoy,
+      caja_origen_id: origen, caja_destino_id: destino,
+      moneda: 'ARS', monto: 1_500_000,
+      moneda_destino: 'USD', monto_destino: 1500, tc: 1000,
+      descripcion: 'Compra USD Banco Tute',
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.moneda_destino).toBe('USD');
+    expect(Number(r.body.monto_destino)).toBe(1500);
+    expect(Number(r.body.tc)).toBe(1000);
+
+    // Egreso en origen: 1.500.000 ARS
+    // Saldo actual = 2M - 1.5M = 500k
+    expect(await saldoDe(origen)).toBe(500_000);
+    // Ingreso en destino: 1500 USD
+    expect(await saldoDe(destino)).toBe(1500);
+  });
+
+  it('same-currency (backward compat) → moneda_destino/monto_destino/tc quedan NULL', async () => {
+    const origen  = await crearCaja('SameCurr O ' + Date.now(), 'USD', 1000);
+    const destino = await crearCaja('SameCurr D ' + Date.now(), 'USD');
+    const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
+      fecha: hoy, caja_origen_id: origen, caja_destino_id: destino,
+      moneda: 'USD', monto: 500,
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.moneda_destino).toBeNull();
+    expect(r.body.monto_destino).toBeNull();
+    expect(r.body.tc).toBeNull();
+  });
+
+  it('rechaza cross con solo 2 de 3 campos (todo-o-nada) → 400', async () => {
+    const origen  = await crearCaja('Cross Incompleto O ' + Date.now(), 'ARS', 10000);
+    const destino = await crearCaja('Cross Incompleto D ' + Date.now(), 'USD');
+    const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
+      fecha: hoy, caja_origen_id: origen, caja_destino_id: destino,
+      moneda: 'ARS', monto: 5000,
+      moneda_destino: 'USD', tc: 1000,
+      // falta monto_destino
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza cross con misma moneda_destino que origen', async () => {
+    const origen  = await crearCaja('Cross Mismo O ' + Date.now(), 'ARS', 10000);
+    const destino = await crearCaja('Cross Mismo D ' + Date.now(), 'ARS');
+    const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
+      fecha: hoy, caja_origen_id: origen, caja_destino_id: destino,
+      moneda: 'ARS', monto: 5000,
+      moneda_destino: 'ARS', monto_destino: 5000, tc: 1,
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('same-currency con cajas de moneda distinta ya no rechaza con mensaje viejo — sugiere activar TC', async () => {
+    const ars = await crearCaja('SameFail ARS ' + Date.now(), 'ARS', 10000);
+    const usd = await crearCaja('SameFail USD ' + Date.now(), 'USD');
+    const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
+      fecha: hoy, caja_origen_id: ars, caja_destino_id: usd,
+      moneda: 'ARS', monto: 5000, // sin campos cross
+    });
+    expect(r.status).toBe(400);
+    // Mensaje debe hintar la nueva feature.
+    expect(r.body.error).toMatch(/TC|cambio de moneda/i);
+  });
+
+  it('DELETE de cross-currency → los 2 movimientos se reversan', async () => {
+    const origen  = await crearCaja('Cross Revert O ' + Date.now(), 'ARS', 3_000_000);
+    const destino = await crearCaja('Cross Revert D ' + Date.now(), 'USD');
+    const r = await request(app).post('/api/caja-transferencias').set(auth()).send({
+      fecha: hoy, caja_origen_id: origen, caja_destino_id: destino,
+      moneda: 'ARS', monto: 2_000_000,
+      moneda_destino: 'USD', monto_destino: 2000, tc: 1000,
+    });
+    expect(r.status).toBe(201);
+    // Post-alta: origen 3M-2M=1M, destino 0+2000=2000.
+    expect(await saldoDe(origen)).toBe(1_000_000);
+    expect(await saldoDe(destino)).toBe(2000);
+
+    const del = await request(app).delete(`/api/caja-transferencias/${r.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+    // Post-delete: saldos vuelven al estado inicial.
+    expect(await saldoDe(origen)).toBe(3_000_000);
+    expect(await saldoDe(destino)).toBe(0);
   });
 });

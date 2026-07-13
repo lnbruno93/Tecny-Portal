@@ -3,10 +3,17 @@
 // Egresos (ver Egresos.jsx). Backend: /api/caja-transferencias.
 //
 // Reglas de negocio:
-//   - Solo transfiere entre cajas de la MISMA moneda. Cambio de moneda va por
-//     "Cambios de Divisa" (financiera externa).
+//   - Same-currency: transferencia entre 2 cajas del mismo grupo (ARS↔ARS,
+//     UYU↔UYU, USD↔USD/USDT). Un solo monto, sin TC.
+//   - Cross-currency (2026-07-13): transferencia entre 2 cajas de grupos
+//     distintos con TC tipeado por el operador. Ejemplo canónico:
+//       Banco Pesos ARS baja $1.500.000
+//       Banco Dólar USD sube USD 1.500
+//       TC = 1000
+//     El monto destino se auto-calcula del TC pero es editable (por
+//     redondeo de la financiera).
 //   - `costo` opcional: comisión bancaria que sale de la caja origen ADEMÁS del
-//     monto que llega al destino.
+//     monto que llega al destino. Se aplica en ambos modos, en moneda origen.
 //   - No es editable — solo crear + eliminar (patrón consistente con Egresos y
 //     Cambios).
 //   - Al eliminar: reversa los 2 asientos del ledger. Si eso dejaría alguna
@@ -61,6 +68,13 @@ export default function MovimientosCajaPanel() {
       monto: '',
       costo: '',
       descripcion: '',
+      // 2026-07-13 (cross-currency): campos opcionales. El operador los
+      // completa cuando origen/destino son de grupos distintos. `montoDestinoManual`
+      // es un flag: si true, el operador editó el monto destino manualmente
+      // y NO auto-recalculamos al cambiar TC/monto (respeta redondeo).
+      tc: '',
+      monto_destino: '',
+      montoDestinoManual: false,
     });
   };
 
@@ -84,32 +98,69 @@ export default function MovimientosCajaPanel() {
   }, [toast]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Origen y destino disponibles según la moneda. Cuando cambia origen, si
-  // destino ya no es válido (grupo distinto) lo limpiamos para evitar submit
-  // inválido.
-  const cajaOrigen = form ? cajasList.find(c => String(c.id) === String(form.caja_origen_id)) : null;
-  const monedaOrigen = cajaOrigen?.moneda || null;
-  // El compilador React infiere `form.caja_origen_id` como dep — usamos `form`
-  // completo para evitar mismatch entre inferred vs source deps
-  // (react-hooks/preserve-manual-memoization). El early-return de `monedaOrigen`
-  // ya garantiza que dentro del filter form nunca sea null.
+  // Cajas origen/destino resueltas del state actual.
+  const cajaOrigen  = form ? cajasList.find(c => String(c.id) === String(form.caja_origen_id))  : null;
+  const cajaDestino = form ? cajasList.find(c => String(c.id) === String(form.caja_destino_id)) : null;
+  const monedaOrigen  = cajaOrigen?.moneda  || null;
+  const monedaDestino = cajaDestino?.moneda || null;
+  // 2026-07-13: el select destino AHORA muestra TODAS las cajas (menos la de
+  // origen). Antes filtrábamos solo mismo grupo; ahora que soportamos cross-
+  // currency el operador puede elegir cualquier caja y aparece el campo TC.
   const destinoOpts = useMemo(() => {
-    if (!monedaOrigen) return [];
-    const g = grupoMoneda(monedaOrigen);
-    return cajasList.filter(c =>
-      String(c.id) !== String(form.caja_origen_id) && grupoMoneda(c.moneda) === g
-    );
-  }, [cajasList, form, monedaOrigen]);
+    if (!form?.caja_origen_id) return [];
+    return cajasList.filter(c => String(c.id) !== String(form.caja_origen_id));
+  }, [cajasList, form]);
+
+  // Cross-currency: cajas de grupos distintos → aparece la sección TC.
+  const isCross = monedaOrigen && monedaDestino && grupoMoneda(monedaOrigen) !== grupoMoneda(monedaDestino);
 
   function setF(k, v) { setForm(f => ({ ...f, [k]: v })); }
   function setOrigen(id) {
     setForm(f => {
-      const nuevoOrigen = cajasList.find(c => String(c.id) === String(id));
-      const g = nuevoOrigen ? grupoMoneda(nuevoOrigen.moneda) : null;
       const destinoActual = cajasList.find(c => String(c.id) === String(f.caja_destino_id));
-      const destinoValido = destinoActual && grupoMoneda(destinoActual.moneda) === g && String(destinoActual.id) !== String(id);
-      return { ...f, caja_origen_id: id, caja_destino_id: destinoValido ? f.caja_destino_id : '' };
+      // Si el nuevo origen es igual al destino actual, limpiar destino.
+      const conflicto = destinoActual && String(destinoActual.id) === String(id);
+      return {
+        ...f,
+        caja_origen_id: id,
+        caja_destino_id: conflicto ? '' : f.caja_destino_id,
+        // Al cambiar origen invalidamos monto_destino manual (moneda destino
+        // puede cambiar y el número ya no aplica).
+        montoDestinoManual: false,
+      };
     });
+  }
+
+  // 2026-07-13: al cambiar TC o monto, auto-calcular monto_destino (a menos
+  // que el operador lo haya editado a mano — flag montoDestinoManual).
+  // Fórmula: USD siempre es la base. Si origen es USD y destino es fiat →
+  // monto_destino = monto * tc. Si origen es fiat y destino USD → monto/tc.
+  // ARS↔UYU cross no está soportado (edge case raro, requiere 2 TCs).
+  function calcularMontoDestino(monto, tc, mOrigen, mDestino) {
+    const m = Number(monto), t = Number(tc);
+    if (!m || !t || t <= 0 || !mOrigen || !mDestino) return '';
+    const gO = grupoMoneda(mOrigen);
+    const gD = grupoMoneda(mDestino);
+    if (gO === 'USD' && gD !== 'USD') return String(Math.round(m * t * 100) / 100); // USD→ARS/UYU
+    if (gO !== 'USD' && gD === 'USD') return String(Math.round((m / t) * 100) / 100); // ARS/UYU→USD
+    return ''; // ARS↔UYU no soportado
+  }
+  function setMontoOrTc(k, v) {
+    setForm(f => {
+      const next = { ...f, [k]: v };
+      if (!next.montoDestinoManual && isCross) {
+        const nuevo = calcularMontoDestino(
+          k === 'monto' ? v : next.monto,
+          k === 'tc' ? v : next.tc,
+          monedaOrigen, monedaDestino,
+        );
+        next.monto_destino = nuevo;
+      }
+      return next;
+    });
+  }
+  function setMontoDestinoManual(v) {
+    setForm(f => ({ ...f, monto_destino: v, montoDestinoManual: true }));
   }
 
   async function guardar() {
@@ -118,8 +169,18 @@ export default function MovimientosCajaPanel() {
     if (!(Number(form.monto) > 0)) return toast.error('El monto debe ser mayor a 0.');
     if (form.costo && Number(form.costo) < 0) return toast.error('El costo no puede ser negativo.');
 
-    // La moneda del movimiento se toma de la caja origen — el backend valida
-    // que ambas cajas coincidan en grupo.
+    // 2026-07-13 cross-currency: validaciones adicionales cuando origen/destino
+    // son de grupos distintos.
+    if (isCross) {
+      if (!(Number(form.tc) > 0)) return toast.error('El TC debe ser mayor a 0 para cambio de moneda.');
+      if (!(Number(form.monto_destino) > 0)) return toast.error('El monto destino debe ser mayor a 0.');
+      // Bloqueo: ARS↔UYU sin USD de por medio no está soportado (requiere 2 TCs).
+      const gO = grupoMoneda(monedaOrigen), gD = grupoMoneda(monedaDestino);
+      if (gO !== 'USD' && gD !== 'USD') {
+        return toast.error(`Cambio ${monedaOrigen}↔${monedaDestino} directo no soportado. Hacé 2 pasos: ${monedaOrigen}→USD y luego USD→${monedaDestino}.`);
+      }
+    }
+
     const payload = {
       fecha: form.fecha,
       caja_origen_id: Number(form.caja_origen_id),
@@ -129,6 +190,12 @@ export default function MovimientosCajaPanel() {
       costo: form.costo ? Number(form.costo) : 0,
       descripcion: form.descripcion.trim() || null,
     };
+    // Cross-currency: incluir los 3 campos nuevos.
+    if (isCross) {
+      payload.moneda_destino = cajaDestino.moneda;
+      payload.monto_destino  = Number(form.monto_destino);
+      payload.tc             = Number(form.tc);
+    }
     try {
       await cajaTransferencias.create(payload);
       toast.success('Transferencia registrada.');
@@ -161,9 +228,9 @@ export default function MovimientosCajaPanel() {
       {/* Toolbar del tab */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <p className="muted" style={{ margin: 0, fontSize: 13, maxWidth: 620 }}>
-          Traslados internos entre <strong>2 cajas propias</strong> de la misma moneda
-          (ej. retiro banco USD → efectivo USD). No modifica tu patrimonio total.
-          Para cambios de moneda usá <strong>Cambios de Divisa</strong>.
+          Traslados internos entre <strong>2 cajas propias</strong>. Si son de la misma
+          moneda, un solo monto. Si son de distinta moneda (ej. Banco Pesos → Banco Dólar),
+          agregás el TC y el monto que efectivamente entra en la caja destino.
         </p>
         <button className="btn btn-primary" onClick={abrirModal}>
           <Icons.Plus size={14} /> Nueva transferencia
@@ -195,25 +262,41 @@ export default function MovimientosCajaPanel() {
               </tr>
             </thead>
             <tbody>
-              {transferencias.map(t => (
-                <tr key={t.id}>
-                  <td className="mono">{fmtFecha(t.fecha)}</td>
-                  <td>{t.caja_origen_nombre || '—'}</td>
-                  <td>{t.caja_destino_nombre || '—'}</td>
-                  <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
-                    {fmtMoney(t.monto, t.moneda)}
-                  </td>
-                  <td className="mono" style={{ textAlign: 'right', color: Number(t.costo) > 0 ? 'var(--neg)' : 'var(--text-muted)' }}>
-                    {Number(t.costo) > 0 ? fmtMoney(t.costo, t.moneda) : '—'}
-                  </td>
-                  <td className="muted" style={{ fontSize: 12 }}>{t.descripcion || '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button className="icon-btn" onClick={() => eliminar(t)} title="Eliminar transferencia">
-                      <Icons.Trash size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {transferencias.map(t => {
+                // 2026-07-13: si es cross-currency, mostrar los 2 montos con
+                // → separador. Sino, el monto simple como siempre.
+                const isCross = t.moneda_destino && t.monto_destino;
+                return (
+                  <tr key={t.id}>
+                    <td className="mono">{fmtFecha(t.fecha)}</td>
+                    <td>{t.caja_origen_nombre || '—'}</td>
+                    <td>{t.caja_destino_nombre || '—'}</td>
+                    <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>
+                      {isCross ? (
+                        <span>
+                          {fmtMoney(t.monto, t.moneda)}
+                          <span className="muted" style={{ fontWeight: 400, margin: '0 4px' }}>→</span>
+                          {fmtMoney(t.monto_destino, t.moneda_destino)}
+                        </span>
+                      ) : (
+                        fmtMoney(t.monto, t.moneda)
+                      )}
+                      {isCross && (
+                        <div className="muted" style={{ fontSize: 10, fontWeight: 400 }}>TC {fmt(t.tc)}</div>
+                      )}
+                    </td>
+                    <td className="mono" style={{ textAlign: 'right', color: Number(t.costo) > 0 ? 'var(--neg)' : 'var(--text-muted)' }}>
+                      {Number(t.costo) > 0 ? fmtMoney(t.costo, t.moneda) : '—'}
+                    </td>
+                    <td className="muted" style={{ fontSize: 12 }}>{t.descripcion || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="icon-btn" onClick={() => eliminar(t)} title="Eliminar transferencia">
+                        <Icons.Trash size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -267,9 +350,9 @@ export default function MovimientosCajaPanel() {
               <div className="field">
                 <label className="field-label">
                   Caja de destino
-                  {monedaOrigen && (
-                    <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
-                      (solo cajas {grupoMoneda(monedaOrigen)})
+                  {isCross && (
+                    <span style={{ fontSize: 11, marginLeft: 8, color: 'var(--accent)', fontWeight: 600 }}>
+                      · Cambio de moneda {monedaOrigen} → {monedaDestino}
                     </span>
                   )}
                 </label>
@@ -286,11 +369,6 @@ export default function MovimientosCajaPanel() {
                     </option>
                   ))}
                 </select>
-                {form.caja_origen_id && destinoOpts.length === 0 && (
-                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                    No hay otra caja de la misma moneda. Necesitás crear una en Cajas → Config.
-                  </div>
-                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -299,7 +377,7 @@ export default function MovimientosCajaPanel() {
                   <input
                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
                     className="input mono" placeholder="0"
-                    value={form.monto} onChange={e => setF('monto', e.target.value)}
+                    value={form.monto} onChange={e => setMontoOrTc('monto', e.target.value)}
                   />
                 </div>
                 <div className="field">
@@ -318,6 +396,50 @@ export default function MovimientosCajaPanel() {
                 El destino recibe solo el monto.
               </div>
 
+              {/* 2026-07-13: sección cross-currency con TC + monto destino
+                  editable. Solo aparece cuando origen/destino son de grupos
+                  distintos. El monto_destino se auto-calcula del TC pero el
+                  operador puede sobrescribirlo (por redondeo del banco). */}
+              {isCross && (
+                <div style={{
+                  padding: 12, borderRadius: 6,
+                  background: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.28)',
+                  display: 'grid', gap: 10,
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>
+                    Cambio de moneda · {monedaOrigen} → {monedaDestino}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className="field">
+                      <label className="field-label">TC {grupoMoneda(monedaOrigen) === 'USD' || grupoMoneda(monedaDestino) === 'USD' ? '(1 USD = X)' : ''}</label>
+                      <input
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                        className="input mono" placeholder="Ej. 1000"
+                        value={form.tc} onChange={e => setMontoOrTc('tc', e.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <label className="field-label">
+                        Monto destino ({monedaDestino})
+                        {form.montoDestinoManual && (
+                          <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>· editado</span>
+                        )}
+                      </label>
+                      <input
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                        className="input mono" placeholder="Auto"
+                        value={form.monto_destino}
+                        onChange={e => setMontoDestinoManual(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    El monto destino se calcula del TC. Si el banco redondea (ej. tocan USD 1499.98), tipealo a mano acá.
+                  </div>
+                </div>
+              )}
+
               <div className="field">
                 <label className="field-label">Descripción <span className="muted" style={{ fontSize: 11 }}>(opcional)</span></label>
                 <input
@@ -329,16 +451,24 @@ export default function MovimientosCajaPanel() {
                 />
               </div>
 
-              {/* Resumen del impacto para que el operador sepa qué va a pasar */}
+              {/* Resumen del impacto para que el operador sepa qué va a pasar.
+                  Same-currency: monto entra en misma moneda. Cross-currency:
+                  ambos lados en su moneda propia con TC. */}
               {form.caja_origen_id && form.caja_destino_id && form.monto && (
                 <div style={{
                   padding: 10, borderRadius: 6, fontSize: 12,
-                  background: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.28)',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.28)',
                 }}>
                   <div><strong>Sale de origen:</strong> {fmt(Number(form.monto) + Number(form.costo || 0))} {monedaOrigen}</div>
-                  <div><strong>Entra al destino:</strong> {fmt(form.monto)} {monedaOrigen}</div>
+                  <div>
+                    <strong>Entra al destino:</strong>{' '}
+                    {isCross
+                      ? (form.monto_destino ? `${fmt(form.monto_destino)} ${monedaDestino}` : '— (falta TC/monto destino)')
+                      : `${fmt(form.monto)} ${monedaOrigen}`}
+                  </div>
                   {Number(form.costo) > 0 && <div className="muted">Costo (comisión): {fmt(form.costo)} {monedaOrigen}</div>}
+                  {isCross && form.tc && <div className="muted">TC aplicado: {fmt(form.tc)}</div>}
                 </div>
               )}
             </div>
