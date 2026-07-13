@@ -190,6 +190,13 @@ async function loginDirect({ username, password, code, hcaptchaResponse }) {
   throw err;
 }
 
+// 2026-07-13 (feature búsqueda global Cmd+K): sirve al CommandPalette.
+// Devuelve `{ q, total, results: { productos, ventas, contactos, envios, cajas, egresos } }`.
+// Cada item tiene shape uniforme: { id, label, sublabel, url, badge?, amount? }.
+export const search = {
+  query: (q, limit = 5) => api(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+};
+
 export const auth = {
   // 2026-07-12 (P0-1 Externa): 4to arg opcional hcaptchaResponse. Undefined
   // en dev/local (widget bypasa) o cuando el widget aún no verificó.

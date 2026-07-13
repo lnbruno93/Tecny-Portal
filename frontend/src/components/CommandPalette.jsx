@@ -1,5 +1,11 @@
-// CommandPalette.jsx — Global ⌘K command palette for navigation.
+// CommandPalette.jsx — Global ⌘K command palette for navigation + content search.
 // Controlled by parent via `open` / `onClose` props.
+//
+// 2026-07-13 (feature): además de navegar entre pantallas (comportamiento
+// original), busca contenido en la DB via /api/search — productos por
+// nombre/IMEI/color, ventas por order_id/cliente, contactos, envíos, cajas,
+// egresos. Todo en 1 request con `Promise.all` server-side (~50-150ms).
+// Debounce 180ms sobre el input para no martillar la API en cada tecla.
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -7,6 +13,7 @@ import { Icons } from './Icons';
 // Auditoría 2026-06-30 F-02→05: descripción del Cotizador hardcoded "USD →
 // ARS" — para tenants UY toca "USD → UYU". Moneda local dinámica.
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+import { search as searchApi } from '../lib/api';
 
 // Listado completo de rutas — la auditoría detectó que faltaban 10 (Ventas,
 // Inventario, Desglose 360, Contactos, Proyectos, Egresos, Capital, Cambios,
@@ -40,9 +47,36 @@ return [
 ];
 }
 
+// Etiquetas por categoría (visibles como header en la lista de resultados).
+const CATEGORY_LABELS = {
+  productos: 'Productos',
+  ventas:    'Ventas',
+  contactos: 'Contactos',
+  envios:    'Envíos',
+  cajas:     'Cajas',
+  egresos:   'Egresos',
+};
+
+// Icono por categoría.
+const CATEGORY_ICONS = {
+  productos: 'Box',
+  ventas:    'Receipt',
+  contactos: 'Users',
+  envios:    'Truck',
+  cajas:     'Wallet',
+  egresos:   'ArrowDownRight',
+};
+
 export default function CommandPalette({ open, onClose }) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  // 2026-07-13: resultados de la búsqueda server-side.
+  // { productos: [], ventas: [], contactos: [], envios: [], cajas: [], egresos: [] }
+  const [apiResults, setApiResults] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  // Token para "última query gana" — evita que una respuesta lenta pise a
+  // una nueva búsqueda hecha después. Pattern usado en Ventas.jsx (prodReq).
+  const requestToken = useRef(0);
   const inputRef = useRef(null);
   const filteredRef = useRef([]); // always-current ref used inside keydown handler
   const navigate = useNavigate();
@@ -57,10 +91,42 @@ export default function CommandPalette({ open, onClose }) {
     if (open) {
       setQuery('');
       setActiveIndex(0);
+      setApiResults(null);
       // Autofocus input on next tick so the DOM is ready
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
+
+  // 2026-07-13: debounce sobre query → llama /api/search cuando >= 2 chars.
+  // 180ms es sweet-spot: rápido para sentirse "instantáneo", suficiente para
+  // no martillar la API en cada tecla del operador.
+  useEffect(() => {
+    if (!open) return;
+    const q = query.trim();
+    if (q.length < 2) {
+      setApiResults(null);
+      setApiLoading(false);
+      return;
+    }
+    const myToken = ++requestToken.current;
+    setApiLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchApi.query(q);
+        // Última query gana: si mientras esperaba la respuesta el operador
+        // siguió tipeando, esta respuesta es obsoleta y la descartamos.
+        if (myToken !== requestToken.current) return;
+        setApiResults(res.results || {});
+      } catch {
+        // Fallo silencioso (network hiccup, 401 tras logout, etc.). El
+        // palette sigue funcional con navegación local.
+        if (myToken === requestToken.current) setApiResults(null);
+      } finally {
+        if (myToken === requestToken.current) setApiLoading(false);
+      }
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [query, open]);
 
   // Keyboard navigation inside the palette
   useEffect(() => {
@@ -91,8 +157,8 @@ export default function CommandPalette({ open, onClose }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeIndex]);
 
-  // Filter commands based on query
-  const filtered = COMMANDS.filter(cmd => {
+  // Filter commands based on query (navegación local)
+  const filteredCommands = COMMANDS.filter(cmd => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
     return (
@@ -100,6 +166,22 @@ export default function CommandPalette({ open, onClose }) {
       cmd.desc.toLowerCase().includes(q)
     );
   });
+
+  // 2026-07-13: `filtered` combina navegación local + resultados API en un
+  // solo array plano para simplificar keydown handler (flechas + Enter).
+  // Cada item tiene `_type` para saber cómo renderizarlo y a dónde navegar.
+  const filtered = useMemo(() => {
+    const list = filteredCommands.map(cmd => ({ ...cmd, _type: 'nav' }));
+    if (apiResults) {
+      for (const [category, items] of Object.entries(apiResults)) {
+        for (const it of items) {
+          list.push({ ...it, _type: 'api', _category: category });
+        }
+      }
+    }
+    return list;
+  }, [filteredCommands, apiResults]);
+
   // Keep ref in sync so keydown handler always reads the current filtered list
   filteredRef.current = filtered;
 
@@ -108,10 +190,30 @@ export default function CommandPalette({ open, onClose }) {
     setActiveIndex(0);
   }, [query]);
 
-  function handleSelect(cmd) {
-    navigate(cmd.path);
+  function handleSelect(item) {
+    if (item._type === 'nav') {
+      navigate(item.path);
+    } else {
+      // Item de la API — navigate al url (con buscar/filtro pre-aplicado).
+      navigate(item.url);
+    }
     onClose();
   }
+
+  // Agrupamos por sección para render — mantenemos el orden: navegación primero,
+  // después las 6 categorías de contenido.
+  const grouped = useMemo(() => {
+    const groups = [];
+    const nav = filtered.filter(x => x._type === 'nav');
+    if (nav.length) groups.push({ key: 'nav', label: 'Navegación', items: nav });
+    for (const category of ['productos', 'ventas', 'contactos', 'envios', 'cajas', 'egresos']) {
+      const items = filtered.filter(x => x._type === 'api' && x._category === category);
+      if (items.length) {
+        groups.push({ key: category, label: CATEGORY_LABELS[category], items });
+      }
+    }
+    return groups;
+  }, [filtered]);
 
   if (!open) return null;
 
@@ -149,7 +251,7 @@ export default function CommandPalette({ open, onClose }) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar pantallas…"
+            placeholder="Buscar pantallas, productos, ventas, clientes…"
             style={{
               flex: 1,
               border: 'none',
@@ -181,60 +283,89 @@ export default function CommandPalette({ open, onClose }) {
         {/* Divider */}
         <div style={{ height: 1, background: 'var(--hairline)' }} />
 
-        {/* Results */}
-        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+        {/* Results — grouped by section (Navegación + 6 categorías API) */}
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
           {filtered.length > 0 ? (
-            <>
-              <div style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--text-muted)',
-                padding: '10px 16px 4px',
-              }}>
-                Navegación
+            grouped.map(group => (
+              <div key={group.key}>
+                <div style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-muted)',
+                  padding: '10px 16px 4px',
+                }}>
+                  {group.label}
+                </div>
+                {group.items.map(item => {
+                  // idx global (para activeIndex/keyboard) porque `filtered` es plano.
+                  const globalIdx = filtered.indexOf(item);
+                  const isActive = globalIdx === activeIndex;
+                  // Icon: nav usa item.icon; api usa por categoría.
+                  const iconKey = item._type === 'nav' ? item.icon : CATEGORY_ICONS[item._category];
+                  const Icon = Icons[iconKey];
+                  return (
+                    <div
+                      key={`${item._type}-${item.id ?? item.path}`}
+                      onClick={() => handleSelect(item)}
+                      onMouseEnter={() => setActiveIndex(globalIdx)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '10px 16px',
+                        cursor: 'pointer',
+                        borderRadius: 8,
+                        margin: '2px 6px',
+                        background: isActive ? 'var(--accent-soft)' : 'transparent',
+                        color: isActive ? 'var(--accent)' : 'var(--text)',
+                        transition: 'background 0.1s, color 0.1s',
+                      }}
+                    >
+                      <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }}>
+                        {Icon && <Icon size={16} />}
+                      </span>
+                      <span style={{ fontWeight: 600, fontSize: 14, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item._type === 'nav' ? item.label : item.label}
+                      </span>
+                      <span style={{
+                        fontSize: 13,
+                        color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        flex: 1,
+                      }}>
+                        {item._type === 'nav' ? item.desc : item.sublabel}
+                      </span>
+                      {/* Badge + amount opcionales para items API (estado + total) */}
+                      {item._type === 'api' && item.badge && (
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: 'var(--surface-2)',
+                          color: 'var(--text-muted)',
+                          flexShrink: 0,
+                        }}>{item.badge}</span>
+                      )}
+                      {item._type === 'api' && item.amount && (
+                        <span style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          fontFamily: 'monospace',
+                          color: isActive ? 'var(--accent)' : 'var(--text)',
+                          flexShrink: 0,
+                        }}>{item.amount}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              {filtered.map((cmd, idx) => {
-                const Icon = Icons[cmd.icon];
-                const isActive = idx === activeIndex;
-                return (
-                  <div
-                    key={cmd.id}
-                    onClick={() => handleSelect(cmd)}
-                    onMouseEnter={() => setActiveIndex(idx)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '10px 16px',
-                      cursor: 'pointer',
-                      borderRadius: 8,
-                      margin: '2px 6px',
-                      background: isActive ? 'var(--accent-soft)' : 'transparent',
-                      color: isActive ? 'var(--accent)' : 'var(--text)',
-                      transition: 'background 0.1s, color 0.1s',
-                    }}
-                  >
-                    <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.6 }}>
-                      {Icon && <Icon size={16} />}
-                    </span>
-                    <span style={{ fontWeight: 600, fontSize: 14, minWidth: 90 }}>
-                      {cmd.label}
-                    </span>
-                    <span style={{
-                      fontSize: 13,
-                      color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {cmd.desc}
-                    </span>
-                  </div>
-                );
-              })}
-            </>
+            ))
           ) : (
             <div style={{
               padding: '24px 16px',
@@ -242,7 +373,7 @@ export default function CommandPalette({ open, onClose }) {
               color: 'var(--text-muted)',
               fontSize: 14,
             }}>
-              Sin resultados para "{query}"
+              {apiLoading ? 'Buscando…' : `Sin resultados para "${query}"`}
             </div>
           )}
         </div>

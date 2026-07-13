@@ -92,6 +92,7 @@ const sanidadRoutes      = require('./routes/sanidad');
 const cambiosRoutes      = require('./routes/cambios');
 const tarjetasRoutes     = require('./routes/tarjetas');
 const enviosRoutes       = require('./routes/envios');
+const searchRoutes       = require('./routes/search');
 const usuariosRoutes     = require('./routes/usuarios');
 const capabilitiesRoutes = require('./routes/capabilities');
 const cuentasRoutes      = require('./routes/cuentas');
@@ -782,6 +783,13 @@ app.use('/api/tarjetas',      requireAuth, requireCapability('tarjetas.trabajar'
 
 // Envíos — requires `envios.trabajar`.
 app.use('/api/envios',        requireAuth, requireCapability('envios.trabajar'), enviosRoutes);
+
+// 2026-07-13 (feature búsqueda global Cmd+K): sirve al command palette del
+// frontend. Sin requireCapability adicional — RLS del tenant ya scopea los
+// resultados; queries de tablas cuyas capabilities específicas el user NO
+// tenga (ej. no ver egresos) igual devuelven rows porque RLS es tenant-level.
+// El frontend hidea las secciones que el user no debería ver via `hasCap`.
+app.use('/api/search',        requireAuth, searchRoutes);
 
 // Cuentas Corrientes / B2B — capability `b2b.trabajar` (slug nuevo, módulo
 // se renombró visualmente a "Venta & Gestión B2B" en 2026-04, el route path
