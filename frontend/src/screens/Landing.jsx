@@ -643,11 +643,43 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── CTA FINAL ────────────────────────────────────── */}
+      <section className="s">
+        <div className="wrap">
+          <div className="cta-final">
+            <h2>Ordená tu negocio hoy</h2>
+            <p>Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.</p>
+            <div className="hero-actions">
+              <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
+              {/* 2026-06-25 ONB-8 → Calendly: era mailto: como fallback temporal.
+                  Ahora abre el booking de Calendly con utm_campaign=cta-final
+                  para que sepamos si la sección final convierte más que el CTA
+                  del nav (insight para iterar copy/posicionamiento). */}
+              <a
+                href={calendlyHref('cta-final')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-lg"
+              >
+                Agendá una demo
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── CONTACTO (2026-07-13) ────────────────────────── */}
       {/* Sección editable desde admin.tecnyapp.com/sitio-publico (CMS Fase 1).
           Los datos vienen del fetch a /api/public/site-config arriba —
           fallback hardcodeado si el backend no responde. El link "Contacto"
-          del footer scrollea acá (antes era SoonLink, cf. #441). */}
+          del footer scrollea acá (antes era SoonLink, cf. #441).
+
+          Placement decision 2026-07-13 (Lucas): DESPUÉS del CTA final.
+          Rationale: el CTA "Ordená tu negocio hoy" es el pico de conversión —
+          va sin nada abajo compitiendo. Contacto acá funciona como "escape
+          hatch" para el visitor que scrolleó todo pero no cliqueó — última
+          chance de captarlo por WhatsApp/Email/IG. Convención SaaS
+          (Notion, Linear, Stripe, etc.). */}
       <section className="s" id="contacto">
         <div className="wrap">
           <div className="s-head center">
@@ -727,31 +759,6 @@ export default function Landing() {
                 <div className="contact-value">{contact.address}</div>
                 <div className="contact-hint">Reuniones a coordinar</div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA FINAL ────────────────────────────────────── */}
-      <section className="s">
-        <div className="wrap">
-          <div className="cta-final">
-            <h2>Ordená tu negocio hoy</h2>
-            <p>Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.</p>
-            <div className="hero-actions">
-              <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
-              {/* 2026-06-25 ONB-8 → Calendly: era mailto: como fallback temporal.
-                  Ahora abre el booking de Calendly con utm_campaign=cta-final
-                  para que sepamos si la sección final convierte más que el CTA
-                  del nav (insight para iterar copy/posicionamiento). */}
-              <a
-                href={calendlyHref('cta-final')}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-lg"
-              >
-                Agendá una demo
-              </a>
             </div>
           </div>
         </div>
