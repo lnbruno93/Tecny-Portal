@@ -91,7 +91,38 @@
   max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);
   display: flex; align-items: center; gap: 28px;
 }
-.tecny-landing .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+/* 2026-07-14 (v5): defensiva completa contra "la rayita" que Lucas ve como
+   underline del texto "Tecny". Después de 4 PRs (border-bottom, box-shadow,
+   backdrop-filter, radial-gradient), Lucas mandó foto de su monitor y la
+   línea está EXACTAMENTE al baseline del texto "Tecny" — patrón clásico de
+   text-decoration: underline.
+
+   No encontré ninguna regla en el CSS deployed que aplique underline aquí,
+   pero por si acaso hay una regla de default del browser, una extensión, o
+   algo heredado, forzamos remove de todo posible source: */
+.tecny-landing .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  /* Nuclear override — defensive contra cualquier text-decoration heredada */
+  text-decoration: none !important;
+  text-decoration-line: none !important;
+  text-decoration-color: transparent !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background-image: none !important;
+}
+.tecny-landing .brand > * {
+  text-decoration: none !important;
+  text-decoration-line: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 /* 2026-07-13: removida box-shadow del logo T — Lucas UX. El glow azul
    (rgba 14,165,233 con 12px blur) se veía como una raya horizontal turquesa
    justo abajo del cuadrado. El gradiente del cuadrado + el texto adjacente
