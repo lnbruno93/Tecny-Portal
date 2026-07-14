@@ -111,6 +111,91 @@ function makeToken(user, tenant, capInfo) {
   );
 }
 
+/**
+ * Construye el objeto `tenant` que va en el response de /login y /me.
+ *
+ * Historia:
+ *   - 2026-07-04 (#506): agregado a /me para que el frontend brandee comprobantes
+ *     con el nombre del negocio del tenant en vez de "Tecny" (nombre del SaaS).
+ *   - 2026-07-11: fallback query directo a `tenants` si getTenantStatus falla
+ *     (bug reportado por Tek Haus: comprobantes salían con "Tecny" cuando el
+ *     cache del helper hipeaba).
+ *   - 2026-07-14: bug reportado por Tek Haus (de nuevo, otro path) — vendedor
+ *     se logueaba, hacía ventas SIN recargar la pestaña, y los comprobantes
+ *     salían con "Tu comercio". Root cause: el response de /login NO incluía
+ *     `tenant` — solo /me. `AuthContext.login()` setea user con el response
+ *     del /login, así que hasta el próximo hard-refresh (que dispara /me al
+ *     mount), user.tenant era undefined → frontend caía al placeholder.
+ *     Fix: extraer este helper y llamarlo también desde /login.
+ *
+ * @param {number} tenantId — req.tenantId (JWT) o tenant.tenant_id (post-login)
+ * @returns {Promise<object|null>} tenantInfo con shape:
+ *   { id, nombre, plan, paid_until, suspended_at, is_active, pais, moneda_local }
+ *   o null si ambos paths (cache + fallback DB) fallan. El frontend maneja
+ *   null cayendo a placeholders neutros.
+ */
+async function buildTenantInfo(tenantId) {
+  if (!tenantId) return null;
+
+  const { getMonedaLocalPais } = require('../lib/money');
+  let tenantInfo = null;
+
+  // Path 1: cache 5min via getTenantStatus (hit típico).
+  try {
+    const { getTenantStatus } = require('../lib/tenantStatus');
+    const status = await getTenantStatus(tenantId);
+    if (status) {
+      tenantInfo = {
+        id:           status.id,
+        // Nombre del negocio (owner-set). Fallback a null — el frontend usa
+        // un placeholder neutro ("Tu comercio") si no llega.
+        nombre:       status.nombre || null,
+        plan:         status.plan,
+        paid_until:   status.paid_until,
+        suspended_at: status.suspended_at,
+        is_active:    status.is_active,
+        pais:         status.pais || 'AR',
+        moneda_local: getMonedaLocalPais(status.pais || 'AR'),
+      };
+    }
+  } catch (e) {
+    logger.warn({ err: e.message, tenantId },
+      'buildTenantInfo: getTenantStatus falló, intentando fallback query directo a tenants');
+  }
+
+  // Path 2: fallback query directo a `tenants` — garantiza `nombre` para
+  // el brand del PDF de comprobante aunque el cache haya fallado.
+  if (!tenantInfo) {
+    try {
+      const row = await db.adminQuery(async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, nombre, pais FROM tenants
+            WHERE id = $1 AND deleted_at IS NULL`,
+          [tenantId]
+        );
+        return rows[0];
+      });
+      if (row) {
+        tenantInfo = {
+          id:           row.id,
+          nombre:       row.nombre || null,
+          plan:         null,        // desconocido en el fallback
+          paid_until:   null,        // idem — el banner de billing se recomputa al próximo /me
+          suspended_at: null,
+          is_active:    true,        // asumimos activo (si estaba suspended, requireAuth ya rebotó)
+          pais:         row.pais || 'AR',
+          moneda_local: getMonedaLocalPais(row.pais || 'AR'),
+        };
+      }
+    } catch (e) {
+      logger.warn({ err: e.message, tenantId },
+        'buildTenantInfo: fallback query tenants falló — response va sin tenant info');
+    }
+  }
+
+  return tenantInfo;
+}
+
 router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
     const { username, email, password, code } = req.body;
@@ -407,6 +492,18 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       }
     }
 
+    // 2026-07-14 (bug Tek Haus): incluir `tenant` en el response del /login.
+    // Antes solo lo devolvía /me → si un vendedor se logueaba y hacía ventas
+    // en el mismo tab (sin recargar), `AuthContext.setUser(data.user)` dejaba
+    // `user.tenant` undefined → los comprobantes PDF salían con el placeholder
+    // "Tu comercio" en vez del nombre del negocio hasta el próximo hard-refresh
+    // (que disparaba /me al mount). Usamos el mismo helper que /me para
+    // garantizar shape consistente.
+    //
+    // Nota: si buildTenantInfo devuelve null (ambos paths cache+DB fallaron),
+    // el frontend maneja graceful con placeholders. No bloqueamos el login.
+    const tenantInfo = await buildTenantInfo(tenant.tenant_id);
+
     res.json({
       token: makeToken(user, tenant, capInfo),
       user: {
@@ -429,6 +526,9 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         // o null para bypass (owner/admin). Admin global → caps undefined.
         tenant_cap_rol: rolResponse,
         caps: capsResponse,
+        // 2026-07-14: tenant info (nombre para brand del PDF, plan/paid_until
+        // para banners, pais/moneda_local para dropdowns). Mismo shape que /me.
+        tenant: tenantInfo,
       },
     });
   } catch (err) {
@@ -487,84 +587,16 @@ router.get('/me', requireAuth, async (req, res, next) => {
     const { email_verified_at, is_super_admin, ...rest } = userRow;
 
     // TANDA 4.C (billing pre-live 2026-06-25): incluir tenant.paid_until +
-    // is_active en la respuesta para que el frontend pueda mostrar:
-    //   - Banner rojo permanente si is_active=false (suspended o expired)
-    //   - Banner amarillo de warning si paid_until ∈ [hoy, hoy+7d]
-    //   - Nada si grandfathered (paid_until=null) o lejos del vencimiento
+    // is_active + nombre + pais en la respuesta para que el frontend pueda:
+    //   - Mostrar banner rojo si is_active=false / amarillo si paid_until ∈ [hoy, +7d]
+    //   - Brandear comprobantes con `nombre` (owner-set, no "Tecny")
+    //   - Filtrar dropdowns / formatear locale por `pais` + `moneda_local`
     //
-    // Pega al cache TENANT_STATUS (5min, cross-instance) — el costo extra es
-    // imperceptible. Si el lookup falla (Redis/DB hiccup), devolvemos tenant
-    // null y el frontend asume "activo" (fail-open en lectura, igual que el
-    // middleware en writes).
-    let tenantInfo = null;
-    if (req.tenantId) {
-      const { getMonedaLocalPais } = require('../lib/money');
-      try {
-        const { getTenantStatus } = require('../lib/tenantStatus');
-        const status = await getTenantStatus(req.tenantId);
-        if (status) {
-          // 2026-06-29 Multi-país F2: incluimos `pais` y `moneda_local` para
-          // que el frontend pueda filtrar dropdowns + formatear locale sin
-          // pegar a otro endpoint. `moneda_local` se deriva del país (AR→ARS,
-          // UY→UYU) — convenience del backend, no es source-of-truth en DB.
-          tenantInfo = {
-            id:           status.id,
-            // 2026-07-04 (#506) — Nombre del negocio para brandear comprobantes
-            // en el frontend. Fallback a null (el frontend usa un placeholder
-            // neutro si no llega — ver 2026-07-11 más abajo).
-            nombre:       status.nombre || null,
-            plan:         status.plan,
-            paid_until:   status.paid_until,
-            suspended_at: status.suspended_at,
-            is_active:    status.is_active,
-            pais:         status.pais || 'AR',
-            moneda_local: getMonedaLocalPais(status.pais || 'AR'),
-          };
-        }
-      } catch (e) {
-        // Fail-open: si el helper falla, no rompemos /me. El usuario sigue
-        // pudiendo usar el portal; el banner simplemente no se muestra hasta
-        // el próximo /me que recupere el status.
-        logger.warn({ err: e.message, tenantId: req.tenantId },
-          '/me: getTenantStatus falló, intentando fallback query directo a tenants');
-      }
-
-      // 2026-07-11: defensa en profundidad — si `tenantInfo` sigue null
-      // (getTenantStatus falló o devolvió stale/null), hacemos un fallback
-      // query directo a `tenants` para al menos garantizar el `nombre` en el
-      // response. Bug reportado por Tek Haus: algunos comprobantes salían con
-      // "Tecny" (nombre del SaaS) porque /me devolvía tenant: null → el
-      // frontend caía al fallback hardcoded. El campo `nombre` es crítico
-      // para brand del PDF — no puede quedar unset por un cache miss o hiccup
-      // del helper.
-      if (!tenantInfo) {
-        try {
-          const row = await db.adminQuery(async (client) => {
-            const { rows } = await client.query(
-              `SELECT id, nombre, pais FROM tenants
-                WHERE id = $1 AND deleted_at IS NULL`,
-              [req.tenantId]
-            );
-            return rows[0];
-          });
-          if (row) {
-            tenantInfo = {
-              id:           row.id,
-              nombre:       row.nombre || null,
-              plan:         null,        // desconocido en el fallback
-              paid_until:   null,        // idem — el banner de billing se recomputa al próximo /me
-              suspended_at: null,
-              is_active:    true,        // asumimos activo (si estaba suspended, requireAuth ya rebotó)
-              pais:         row.pais || 'AR',
-              moneda_local: getMonedaLocalPais(row.pais || 'AR'),
-            };
-          }
-        } catch (e) {
-          logger.warn({ err: e.message, tenantId: req.tenantId },
-            '/me: fallback query tenants falló — response va sin tenant info');
-        }
-      }
-    }
+    // 2026-07-14: la lógica se extrajo a `buildTenantInfo(tenantId)` para
+    // compartir con /login (bug Tek Haus: comprobantes salían con "Tu
+    // comercio" para vendedores que se logueaban y hacían ventas sin recargar
+    // — /login no devolvía tenant.nombre, solo /me).
+    const tenantInfo = await buildTenantInfo(req.tenantId);
 
     res.json({
       ...rest,

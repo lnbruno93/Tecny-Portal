@@ -37,6 +37,63 @@ describe('POST /api/auth/login', () => {
     token = res.body.token; // guardar para tests siguientes
   });
 
+  // 2026-07-14 (bug Tek Haus): el response del /login debe incluir `tenant`
+  // (mismo shape que /me). Sin esto, cuando el vendedor se logueaba y hacía
+  // ventas en el mismo tab (sin recargar), user.tenant era undefined →
+  // comprobantes PDF salían brandeados con el placeholder "Tu comercio"
+  // en lugar del nombre del negocio. El fix comparte el helper buildTenantInfo
+  // entre /login y /me para garantizar shape consistente.
+  it('bug Tek Haus 2026-07-14: /login incluye user.tenant con nombre', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: TEST_USER.username, password: TEST_USER.password });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toHaveProperty('tenant');
+    expect(res.body.user.tenant).not.toBeNull();
+    // Campo CRÍTICO — sin nombre, el PDF sale con "Tu comercio".
+    expect(res.body.user.tenant.nombre).toBeTruthy();
+    expect(typeof res.body.user.tenant.nombre).toBe('string');
+    // Shape completo — debe matchear el de /me para consistencia.
+    expect(res.body.user.tenant).toMatchObject({
+      id:           expect.any(Number),
+      nombre:       expect.any(String),
+      pais:         expect.stringMatching(/^(AR|UY)$/),
+      moneda_local: expect.stringMatching(/^(ARS|UYU)$/),
+      is_active:    true,
+    });
+    expect('plan' in res.body.user.tenant).toBe(true);
+    expect('paid_until' in res.body.user.tenant).toBe(true);
+    expect('suspended_at' in res.body.user.tenant).toBe(true);
+  });
+
+  // Defense-in-depth: si getTenantStatus falla en /login (cache miss + DB
+  // hiccup), el helper cae al fallback query directo a `tenants` y sigue
+  // devolviendo `nombre` para el brand del PDF. Mismo shape que el test
+  // análogo del /me.
+  it('bug Tek Haus 2026-07-14: /login fallback query si getTenantStatus falla → nombre presente', async () => {
+    const tenantStatus = require('../src/lib/tenantStatus');
+    const spy = jest.spyOn(tenantStatus, 'getTenantStatus')
+      .mockRejectedValue(new Error('simulated cache/DB hiccup'));
+    try {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ username: TEST_USER.username, password: TEST_USER.password });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toHaveProperty('tenant');
+      expect(res.body.user.tenant).not.toBeNull();
+      expect(res.body.user.tenant.nombre).toBeTruthy();
+      expect(res.body.user.tenant.pais).toMatch(/^(AR|UY)$/);
+      // En fallback path, plan/paid_until quedan null (mismo racional que /me).
+      expect(res.body.user.tenant.plan).toBeNull();
+      expect(res.body.user.tenant.paid_until).toBeNull();
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('rechaza contraseña incorrecta → 401', async () => {
     const res = await request(app)
       .post('/api/auth/login')
