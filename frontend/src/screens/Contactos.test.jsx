@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../lib/api', () => ({
   contactos: {
@@ -21,9 +22,11 @@ describe('Pantalla Contactos', () => {
 
   it('lista contactos con su origen', async () => {
     render(
-      <ToastProvider><ConfirmProvider><PageActionsProvider>
-        <Contactos />
-      </PageActionsProvider></ConfirmProvider></ToastProvider>
+      <MemoryRouter>
+        <ToastProvider><ConfirmProvider><PageActionsProvider>
+          <Contactos />
+        </PageActionsProvider></ConfirmProvider></ToastProvider>
+      </MemoryRouter>
     );
     expect(await screen.findByText('Ana García')).toBeInTheDocument();
     expect(screen.getByText('ana@mail.com')).toBeInTheDocument();
