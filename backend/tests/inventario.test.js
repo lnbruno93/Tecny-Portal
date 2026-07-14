@@ -1254,3 +1254,137 @@ describe('GET /api/inventario/usados', () => {
     expect(r.status).toBe(400);
   });
 });
+
+// 2026-07-14: reporte de cliente — filtro "iPhone 17" devolvía iPads. Añadimos
+// batería de tests que garantizan que la tokenización del buscar excluye
+// productos no matcheantes, con casos borde comunes (multi-token, orden
+// inverso, matching cross-campo, integración con clase_id).
+describe('GET /api/inventario/productos — precisión del search (tokenización)', () => {
+  let iphone17Id, iphone15Id, ipadA16Id, macbookId;
+
+  beforeAll(async () => {
+    // Categorías dummy — algún endpoint las requiere.
+    const cat = catBase;
+    // Insertamos productos con nombres realistas de cliente. Nota: incluimos
+    // "17" en el IMEI del iPhone 15 a propósito para asegurar que
+    // tokenización NO matchea con substrings casuales en IMEI si el nombre
+    // no matchea.
+    const seed = async (nombre, imei, color, gb, clase = 'celular_sellado') => {
+      const r = await request(app).post('/api/inventario/productos').set(auth())
+        .send({ nombre, imei, color, gb, categoria_id: cat, tipo_carga: 'unitario', clase,
+                costo: 100, precio_venta: 200, costo_moneda: 'USD', precio_moneda: 'USD' });
+      expect(r.status).toBe(201);
+      return r.body.id;
+    };
+    // IMEIs sin "17" ni "iPhone" para que la tokenización pueda excluirlos
+    // limpio. iPhone 15 tiene "iPhone" pero NADA con "17" en ningún campo →
+    // NO matchea "iPhone 17" (correcto).
+    iphone17Id = await seed('iPhone 17 Pro Max', 'AABBCCDDEEFF001', 'Titanio', '256');
+    iphone15Id = await seed('iPhone 15 Pro',      'GGHHIIJJKKLL002', 'Negro',   '128');
+    ipadA16Id  = await seed('iPad A16 2025',      'MMNNOOPPQQRR003', 'Blue',    '128', 'ipads');
+    macbookId  = await seed('MacBook Pro M3',     'SSTTUUVVWWXX004', 'Silver',  '512', 'computadoras');
+  });
+
+  it('buscar "iPhone 17" solo devuelve el iPhone 17 (NO iPad, NO MacBook, NO iPhone 15)', async () => {
+    const r = await request(app).get('/api/inventario/productos?buscar=iPhone%2017').set(auth());
+    expect(r.status).toBe(200);
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(iphone17Id);
+    expect(ids).not.toContain(ipadA16Id);    // ← el bug reportado por el cliente
+    expect(ids).not.toContain(macbookId);    // no tiene "iPhone" en ningún campo
+    expect(ids).not.toContain(iphone15Id);   // "iPhone" sí, "17" NO en ningún campo → excluido
+  });
+
+  it('buscar "17 iPhone" (orden invertido) → mismo resultado', async () => {
+    const r = await request(app).get('/api/inventario/productos?buscar=17%20iPhone').set(auth());
+    expect(r.status).toBe(200);
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(iphone17Id);
+    expect(ids).not.toContain(ipadA16Id);
+    expect(ids).not.toContain(macbookId);
+  });
+
+  it('buscar por 1 sola palabra "iPad" solo devuelve iPad', async () => {
+    const r = await request(app).get('/api/inventario/productos?buscar=iPad').set(auth());
+    expect(r.status).toBe(200);
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(ipadA16Id);
+    expect(ids).not.toContain(iphone17Id);
+    expect(ids).not.toContain(iphone15Id);
+  });
+
+  it('buscar cross-campo "Blue 128" matchea producto con color=Blue AND gb=128', async () => {
+    const r = await request(app).get('/api/inventario/productos?buscar=Blue%20128').set(auth());
+    expect(r.status).toBe(200);
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(ipadA16Id); // color=Blue + gb=128
+    expect(ids).not.toContain(iphone17Id); // color=Titanio, gb=256
+    expect(ids).not.toContain(iphone15Id); // color=Negro
+  });
+
+  it('buscar case-insensitive: "IPHONE 17" == "iphone 17" == "iPhone 17"', async () => {
+    const r1 = await request(app).get('/api/inventario/productos?buscar=IPHONE%2017').set(auth());
+    const r2 = await request(app).get('/api/inventario/productos?buscar=iphone%2017').set(auth());
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    const ids1 = r1.body.data.map(p => p.id).sort();
+    const ids2 = r2.body.data.map(p => p.id).sort();
+    expect(ids1).toEqual(ids2);
+    expect(ids1).toContain(iphone17Id);
+  });
+
+  it('buscar espacios extra "iPhone    17" (whitespace múltiple) matchea igual', async () => {
+    const r = await request(app).get('/api/inventario/productos?buscar=iPhone%20%20%20%2017').set(auth());
+    expect(r.status).toBe(200);
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(iphone17Id);
+  });
+
+  it('buscar vacío / whitespace-only no filtra (devuelve todos)', async () => {
+    const rEmpty = await request(app).get('/api/inventario/productos?buscar=').set(auth());
+    const rSpaces = await request(app).get('/api/inventario/productos?buscar=%20%20%20').set(auth());
+    expect(rEmpty.status).toBe(200);
+    expect(rSpaces.status).toBe(200);
+    // Sin filtro de buscar, ambos IDs seed deberían estar en la lista.
+    const idsEmpty = rEmpty.body.data.map(p => p.id);
+    const idsSpaces = rSpaces.body.data.map(p => p.id);
+    expect(idsEmpty).toContain(iphone17Id);
+    expect(idsEmpty).toContain(ipadA16Id);
+    expect(idsSpaces).toContain(iphone17Id);
+  });
+
+  it('buscar con más de 5 tokens: solo usa los primeros 5 (safety cap)', async () => {
+    // 6 tokens — el 6to ("EXTRAWORD") NO debería filtrar. Si filtrara, iPhone 17
+    // no aparecería (porque no tiene "EXTRAWORD" en ningún campo).
+    const r = await request(app).get(
+      '/api/inventario/productos?buscar=iPhone%2017%20Pro%20Max%20Titanio%20EXTRAWORD'
+    ).set(auth());
+    expect(r.status).toBe(200);
+    const ids = r.body.data.map(p => p.id);
+    expect(ids).toContain(iphone17Id); // Primeros 5 tokens matchean, 6to ignorado
+  });
+
+  it('clase_id + buscar combinados aplican AND (no OR)', async () => {
+    // clase ipads + buscar iPad → solo iPad A16 aparece.
+    // clase ipads + buscar iPhone → nada aparece (iPhones no están en clase ipads).
+    const clases = await request(app).get('/api/inventario/clases').set(auth());
+    const ipadsClase = clases.body.find(c => c.slug_legacy === 'ipads');
+    expect(ipadsClase).toBeTruthy();
+
+    const rMatch = await request(app).get(
+      `/api/inventario/productos?clase_id=${ipadsClase.id}&buscar=iPad`
+    ).set(auth());
+    expect(rMatch.status).toBe(200);
+    const idsMatch = rMatch.body.data.map(p => p.id);
+    expect(idsMatch).toContain(ipadA16Id);
+
+    const rExclude = await request(app).get(
+      `/api/inventario/productos?clase_id=${ipadsClase.id}&buscar=iPhone`
+    ).set(auth());
+    expect(rExclude.status).toBe(200);
+    const idsExclude = rExclude.body.data.map(p => p.id);
+    expect(idsExclude).not.toContain(iphone17Id);
+    expect(idsExclude).not.toContain(iphone15Id);
+    expect(idsExclude).not.toContain(ipadA16Id); // ipad no tiene "iPhone" en ningún campo
+  });
+});
