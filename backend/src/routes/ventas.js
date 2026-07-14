@@ -138,14 +138,43 @@ function validarTc(items, pagos, tcVenta) {
 // (helpers de stock movidos a lib/ventaCore.js — reusados desde envíos)
 
 // Totales de una venta en USD (normalizados por TC). { totalUsd, gananciaUsd }
-function calcularTotales(items, tc) {
+//
+// 2026-07-14 (bug reportado por Lucas): agregamos el descuento del `vuelto`
+// en el cálculo de gananciaUsd. Antes: se ignoraba → la ganancia_usd persistida
+// mentía cuando el operador daba vuelto (típicamente en ARS/UYU con TC distinto
+// al pago).
+//
+// El vuelto convertido a USD se resta directamente de la ganancia — es dinero
+// que sale del comercio y va al cliente, no importa por qué. La conversión
+// usa `vuelto_tc` para ARS/UYU; USD/USDT usan tc=1.
+//
+// @param {object} [vuelto] — { monto, moneda, tc } opcional. Si es null/undefined
+//   o falta alguno de los 3 campos requeridos, el vuelto se ignora en el cálculo
+//   (equivalente a "sin vuelto"). El schema Zod ya valida que si hay monto haya
+//   moneda + tc para monedas locales.
+function calcularTotales(items, tc, vuelto) {
   let totalUsd = 0, costoUsd = 0, comisionUsd = 0;
   for (const it of items) {
     totalUsd    += toUsd(it.precio_vendido * it.cantidad, it.moneda, tc);
     costoUsd    += toUsd(it.costo * it.cantidad, it.moneda, tc);
     comisionUsd += toUsd(it.comision, it.moneda, tc);
   }
-  return { totalUsd: round2(totalUsd), gananciaUsd: round2(totalUsd - costoUsd - comisionUsd) };
+  // Vuelto convertido a USD. Si no hay vuelto o el shape es incompleto, es 0.
+  let vueltoUsd = 0;
+  if (vuelto && vuelto.monto != null && Number(vuelto.monto) > 0 && vuelto.moneda) {
+    const vuMonto = Number(vuelto.monto);
+    if (vuelto.moneda === 'USD' || vuelto.moneda === 'USDT') {
+      vueltoUsd = vuMonto;
+    } else if (vuelto.tc != null && Number(vuelto.tc) > 0) {
+      vueltoUsd = toUsd(vuMonto, vuelto.moneda, Number(vuelto.tc));
+    }
+    // Si moneda es ARS/UYU y tc está ausente (no debería pasar por el schema
+    // Zod), preferimos ignorar el vuelto que persistir una ganancia con ruido.
+  }
+  return {
+    totalUsd: round2(totalUsd),
+    gananciaUsd: round2(totalUsd - costoUsd - comisionUsd - vueltoUsd),
+  };
 }
 
 // BLOCKER 2026-07-05 P1 (seguridad ganancias): helper para redactar los campos
@@ -1280,7 +1309,15 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
       }
     }
 
-    const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta);
+    // 2026-07-14 (bug reportado por Lucas): pasamos el vuelto a calcularTotales
+    // para que se reste de gananciaUsd. Antes se ignoraba → ganancia_usd mentía
+    // cuando el operador daba vuelto.
+    const vueltoObj = b.vuelto_monto != null ? {
+      monto:  b.vuelto_monto,
+      moneda: b.vuelto_moneda,
+      tc:     b.vuelto_tc,
+    } : null;
+    const { totalUsd, gananciaUsd } = calcularTotales(b.items, b.tc_venta, vueltoObj);
 
     // #509 — vendedor_nombre es opcional al alta: normalizamos '' → null para
     // consistencia con el PATCH focalizado (que hace lo mismo). Si no viene, el
@@ -1288,13 +1325,14 @@ router.post('/', validate(createVentaSchema), async (req, res, next) => {
     const vendedorNombreCreate = b.vendedor_nombre && b.vendedor_nombre.trim()
       ? b.vendedor_nombre.trim() : null;
     const { rows: vrows } = await client.query(
-      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id, client_generated_id, vuelto_monto, vuelto_moneda, vuelto_caja_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+      `INSERT INTO ventas (order_id, fecha, hora, cliente_id, cliente_cc_id, cliente_nombre, etiqueta_id, garantia_id, estado, tc_venta, tc_compra, total_usd, ganancia_usd, notas, vendedor_nombre, user_id, client_generated_id, vuelto_monto, vuelto_moneda, vuelto_caja_id, vuelto_tc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
       [genOrderId(), b.fecha, b.hora ?? null, b.cliente_id ?? null, b.cliente_cc_id ?? null, b.cliente_nombre ?? null,
        b.etiqueta_id ?? null, b.garantia_id ?? null, b.estado, b.tc_venta ?? null, b.tc_compra ?? null, totalUsd, gananciaUsd, b.notas ?? null, vendedorNombreCreate, req.user.id, idem.key,
        // 2026-07-13 (feature vuelto): persistir los 3 campos si vinieron. El
        // CHECK "todo-o-nada" del schema + DB garantiza que los 3 o los 3 son NULL.
-       b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null]
+       // 2026-07-14: vuelto_tc también — requerido si vuelto_moneda ∈ {ARS,UYU}.
+       b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, b.vuelto_tc ?? null]
     );
     const venta = vrows[0];
 
@@ -1437,7 +1475,20 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
         .filter(x => x != null);
       await revertirCanjesDeVenta(client, id, { preserveProductoIds });
 
-      const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc);
+      // 2026-07-14 (bug reportado por Lucas): resolver el vuelto efectivo
+      // para el cálculo de gananciaUsd. Si el body edita vuelto, usa esos
+      // valores; sino usa los persistidos en `before` (edit parcial no debe
+      // recomputar la ganancia sin considerar el vuelto que ya tenía).
+      const hasVuelto = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
+      const effVueltoMonto  = hasVuelto ? b.vuelto_monto  : before.vuelto_monto;
+      const effVueltoMoneda = hasVuelto ? b.vuelto_moneda : before.vuelto_moneda;
+      const effVueltoTc     = ('vuelto_tc' in b)          ? b.vuelto_tc      : before.vuelto_tc;
+      const vueltoObj = effVueltoMonto != null ? {
+        monto:  effVueltoMonto,
+        moneda: effVueltoMoneda,
+        tc:     effVueltoTc,
+      } : null;
+      const { totalUsd, gananciaUsd } = calcularTotales(b.items, tc, vueltoObj);
       const { estado, etiqueta_id, garantia_id, cliente_id, cliente_cc_id, cliente_nombre, notas, hora, vendedor_nombre } = b;
       // #509 — vendedor_nombre: COALESCE-based (undefined = keep, null/string = set).
       // Para "borrar" el override usar el PATCH focalizado.
@@ -1458,11 +1509,12 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
       // 2026-07-13 (feature vuelto): actualizar los 3 campos SI el body los
       // envía (aunque sea con null para borrar el vuelto). El schema garantiza
       // consistencia todo-o-nada. Si no vienen, no tocamos los valores actuales.
+      // 2026-07-14: también persistir vuelto_tc.
       const hasVueltoInBody = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
       if (hasVueltoInBody) {
         const { rows: upd } = await client.query(
-          `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3 WHERE id = $4 RETURNING *`,
-          [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, id]
+          `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3, vuelto_tc = $4 WHERE id = $5 RETURNING *`,
+          [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, b.vuelto_tc ?? null, id]
         );
         vrows[0] = upd[0];
       }
@@ -1505,11 +1557,28 @@ router.put('/:id', validate(updateVentaSchema), async (req, res, next) => {
     await syncVentaCaja(client, rows[0], req.user.id);
     // 2026-07-13 (feature vuelto): mismo patrón que fullEdit — solo tocamos
     // si el body trajo alguno de los 3 campos.
+    // 2026-07-14: también persistir vuelto_tc + recomputar ganancia_usd
+    // (el vuelto afecta la ganancia; sin este recomputo, cambiar el vuelto
+    // en un edit "solo metadatos" dejaría la ganancia obsoleta).
     const hasVueltoInBody = 'vuelto_monto' in b || 'vuelto_moneda' in b || 'vuelto_caja_id' in b;
     if (hasVueltoInBody) {
+      // Cargar items persistidos para recomputar ganancia con el vuelto nuevo.
+      const { rows: itemsDb } = await client.query(
+        `SELECT precio_vendido, costo, cantidad, moneda, comision
+           FROM venta_items WHERE venta_id = $1`, [id]
+      );
+      const vueltoObj = b.vuelto_monto != null ? {
+        monto:  b.vuelto_monto,
+        moneda: b.vuelto_moneda,
+        tc:     b.vuelto_tc,
+      } : null;
+      const { totalUsd: _totalRecomputed, gananciaUsd: gananciaRecomputed } =
+        calcularTotales(itemsDb, before.tc_venta, vueltoObj);
       const { rows: upd } = await client.query(
-        `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3 WHERE id = $4 RETURNING *`,
-        [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, id]
+        `UPDATE ventas
+            SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3, vuelto_tc = $4, ganancia_usd = $5
+          WHERE id = $6 RETURNING *`,
+        [b.vuelto_monto ?? null, b.vuelto_moneda ?? null, b.vuelto_caja_id ?? null, b.vuelto_tc ?? null, gananciaRecomputed, id]
       );
       rows[0] = upd[0];
     }

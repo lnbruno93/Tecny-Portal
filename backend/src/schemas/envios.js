@@ -50,24 +50,39 @@ const baseEnvio = z.object({
   // Si registrar_venta=false, un vuelto sería "suelto" (sin venta madre),
   // no lo soportamos por ahora. El handler valida esta coherencia y devuelve
   // 400 explícito si el operador manda vuelto sin registrar_venta.
+  //
+  // 2026-07-14 (bug reportado por Lucas): agregado `vuelto_tc` — obligatorio
+  // cuando la moneda del vuelto es ARS/UYU (necesario para restar el vuelto
+  // convertido a USD de la ganancia_usd de la venta).
   vuelto_monto:   z.number().positive('El vuelto debe ser mayor a 0').optional().nullable(),
   vuelto_moneda:  MonedaEnum.optional().nullable(),
   vuelto_caja_id: z.coerce.number().int().positive().optional().nullable(),
+  vuelto_tc:      z.coerce.number().positive('El TC del vuelto debe ser mayor a 0').optional().nullable(),
 });
 
-// Helper: valida "todo o nada" para los 3 campos de vuelto. Idéntico al
-// refine de `schemas/ventas.js` — mantenemos duplicado a propósito porque
-// las condiciones downstream difieren (acá también se valida contra
-// `registrar_venta`).
+// Helper: valida "todo o nada" para los 3 campos de vuelto core (monto/moneda/
+// caja). Idéntico al refine de `schemas/ventas.js` — mantenemos duplicado a
+// propósito porque las condiciones downstream difieren (acá también se valida
+// contra `registrar_venta`).
 function refineVueltoTodoONada(d) {
   const set = [d.vuelto_monto, d.vuelto_moneda, d.vuelto_caja_id].filter(x => x != null).length;
   return set === 0 || set === 3;
 }
 const vueltoTodoONadaMsg = 'Vuelto: si cargás uno de los 3 campos (monto/moneda/caja), los 3 son obligatorios';
 
+// 2026-07-14: si el vuelto es en moneda local (ARS/UYU), el TC es REQUERIDO.
+function refineVueltoTcRequerido(d) {
+  if (d.vuelto_moneda === 'ARS' || d.vuelto_moneda === 'UYU') {
+    return d.vuelto_tc != null && d.vuelto_tc > 0;
+  }
+  return true;
+}
+const vueltoTcRequeridoMsg = 'Vuelto: si la moneda es ARS o UYU, el TC del vuelto es obligatorio';
+
 // .strict(): un campo extra en POST/PUT da 400 (defensa contra typos del cliente)
 const createEnvioSchema = baseEnvio.strict()
   .refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] })
+  .refine(refineVueltoTcRequerido, { message: vueltoTcRequeridoMsg, path: ['vuelto_tc'] })
   .refine(
     // Solo permitimos vuelto cuando `registrar_venta=true`. El egreso a caja
     // se hace vía la venta que crea el envío — sin venta no hay row donde
@@ -79,7 +94,8 @@ const createEnvioSchema = baseEnvio.strict()
 // PUT — todo opcional. items sin default para que undefined signifique "no tocar"
 const updateEnvioSchema = baseEnvio.omit({ items: true }).strict().partial().extend({
   items: z.array(envioItemSchema).max(100, 'Máximo 100 items por envío').optional(),
-}).refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] });
+}).refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] })
+  .refine(refineVueltoTcRequerido, { message: vueltoTcRequeridoMsg, path: ['vuelto_tc'] });
 
 const queryEnviosSchema = z.object({
   estado: z.enum(['Pendiente','En camino','Entregado','Cancelado']).optional(),

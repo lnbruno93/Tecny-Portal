@@ -75,6 +75,10 @@ const EMPTY_VENTA = {
   vuelto_monto:   '',
   vuelto_moneda:  'ARS',   // default ARS (el 99% de los casos)
   vuelto_caja_id: '',
+  // 2026-07-14 (bug reportado por Lucas): TC del vuelto, obligatorio si
+  // moneda ∈ {ARS, UYU}. Sin esto el backend rechaza + la ganancia_usd no
+  // reflejaba el vuelto (mentía sobre la rentabilidad de la venta).
+  vuelto_tc:      '',
 };
 
 // Forma de un canje vacío para usar como template al "+ Agregar equipo".
@@ -370,6 +374,8 @@ export default function Ventas() {
       vuelto_monto:   v.vuelto_monto != null ? String(v.vuelto_monto) : '',
       vuelto_moneda:  v.vuelto_moneda || 'ARS',
       vuelto_caja_id: v.vuelto_caja_id || '',
+      // 2026-07-14: TC del vuelto (populate para edición).
+      vuelto_tc:      v.vuelto_tc != null ? String(v.vuelto_tc) : '',
     });
     setCart((v.items || []).map(it => ({ _id: newItemId(), producto_id: it.producto_id, descripcion: it.descripcion, imei: it.imei || '', cantidad: it.cantidad, precio_vendido: Number(it.precio_vendido), costo: Number(it.costo), moneda: it.moneda })));
     setPagos((v.pagos || []).map(p => ({
@@ -754,9 +760,22 @@ export default function Ventas() {
   // ventas/utils.js para poder testearla como unidad pura (ver utils.test.js).
   // El cambio de criterio bruto-vs-neto para el "Cubierto ✓" (#506) vive dentro
   // del helper; ver comment allí. El useMemo acá es solo el wire-up + deps.
+  //
+  // 2026-07-14 (bug reportado por Lucas): pasamos el vuelto al helper para que
+  // se descuente de `real`. Antes el preview mentía sobre la rentabilidad
+  // cuando había vuelto (típicamente ARS/UYU sobre venta USD).
+  const vueltoPreview = useMemo(() => {
+    const monto = Number(vForm.vuelto_monto);
+    if (!vForm.vuelto_monto || monto <= 0) return null;
+    return {
+      monto,
+      moneda: vForm.vuelto_moneda,
+      tc:     vForm.vuelto_tc ? Number(vForm.vuelto_tc) : null,
+    };
+  }, [vForm.vuelto_monto, vForm.vuelto_moneda, vForm.vuelto_tc]);
   const totales = useMemo(
-    () => computeVentaTotales(cart, pagos, vForm.canjes, metodos, pctFinanciera, vForm.tc_venta),
-    [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera]
+    () => computeVentaTotales(cart, pagos, vForm.canjes, metodos, pctFinanciera, vForm.tc_venta, vueltoPreview),
+    [cart, pagos, vForm.tc_venta, vForm.canjes, metodos, pctFinanciera, vueltoPreview]
   );
 
   // ── Helpers para manipular el array de canjes (junio 2026) ─────────────
@@ -885,12 +904,18 @@ export default function Ventas() {
       payload.vuelto_monto   = vueltoMontoNum;
       payload.vuelto_moneda  = vForm.vuelto_moneda;
       payload.vuelto_caja_id = Number(vForm.vuelto_caja_id);
+      // 2026-07-14: TC del vuelto. Requerido si moneda ∈ {ARS, UYU} (el schema
+      // backend rechaza sino). Para USD/USDT mandamos null explícito (el TC no
+      // aplica — 1 unidad = 1 USD).
+      const esLocal = vForm.vuelto_moneda === 'ARS' || vForm.vuelto_moneda === 'UYU';
+      payload.vuelto_tc = esLocal && vForm.vuelto_tc ? Number(vForm.vuelto_tc) : null;
     } else if (editId) {
       // En edición, si el operador vació el vuelto, hay que persistir NULL
       // (sino el backend hace COALESCE y el vuelto viejo persiste).
       payload.vuelto_monto = null;
       payload.vuelto_moneda = null;
       payload.vuelto_caja_id = null;
+      payload.vuelto_tc = null;
     }
     // #475 — pasar opt-in del comprobante por email solo en alta (no en edición).
     // El backend acepta ambos campos como opcionales en createVentaSchema; el
@@ -2061,6 +2086,36 @@ export default function Ventas() {
                         </select>
                       </div>
                     </div>
+                    {/* 2026-07-14 (bug reportado por Lucas): TC del vuelto, visible
+                       solo si moneda ∈ {ARS, UYU}. Sin este TC la Ganancia real
+                       no puede descontar el vuelto en USD → mentía sobre la
+                       rentabilidad de la venta. Backend rechaza el submit si
+                       falta. Default sugerido: TC de la venta si está cargado. */}
+                    {(vForm.vuelto_moneda === 'ARS' || vForm.vuelto_moneda === 'UYU') && vForm.vuelto_monto && (
+                      <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8, alignItems: 'center' }}>
+                        <div>
+                          <div className="muted tiny" style={{ marginBottom: 2 }}>
+                            TC del vuelto{' '}
+                            {!vForm.vuelto_tc && (
+                              <span className="warn" style={{ fontWeight: 600 }}>· requerido</span>
+                            )}
+                          </div>
+                          <input
+                            type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys}
+                            className="input mono"
+                            value={vForm.vuelto_tc}
+                            onChange={e => setVF('vuelto_tc', e.target.value)}
+                            placeholder={vForm.tc_venta ? String(vForm.tc_venta) : 'Ej: 1000'}
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                        <div className="muted tiny">
+                          Se usa para convertir el vuelto a USD y descontarlo de la
+                          ganancia real. Podés cargar el TC del día o reusar el TC
+                          de la venta si aplica.
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Totales */}
@@ -2100,6 +2155,10 @@ export default function Ventas() {
                       const brutaNeg = totales.bruta < -0.005;
                       const realNeg  = totales.real  < -0.005;
                       const realPos  = totales.real  >  0.005;
+                      // 2026-07-14: si hay vuelto, mostramos su impacto USD como
+                      // línea propia para que el operador vea CUÁNTO baja la
+                      // ganancia por darlo. Solo visible si vueltoUsd > 0.
+                      const hayVueltoUsd = (totales.vueltoUsd || 0) > 0.005;
                       return (
                         <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
                           <div className="flex-between" style={{ fontSize: 13 }}>
@@ -2108,6 +2167,12 @@ export default function Ventas() {
                               {brutaNeg ? '−' : ''}u$s{fmt(totales.bruta)}
                             </span>
                           </div>
+                          {hayVueltoUsd && (
+                            <div className="flex-between" style={{ fontSize: 13 }}>
+                              <span className="muted">Vuelto entregado</span>
+                              <span className="mono neg">−u$s{fmt(totales.vueltoUsd)}</span>
+                            </div>
+                          )}
                           <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
                             <span style={{ fontWeight: 600 }}>{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
                             <span

@@ -57,6 +57,12 @@ export function weekStart() {
 // La Ganancia real SÍ usa neto (para reflejar el impacto real de la comisión
 // sobre el profit del negocio).
 //
+// 2026-07-14 (bug reportado por Lucas): agregamos `vuelto` como input. El
+// vuelto sale del comercio y va al cliente — reduce la ganancia real. Antes se
+// ignoraba en el cálculo del preview → cuando se daba vuelto en ARS/UYU sobre
+// una venta cubierta, la Ganancia real mostraba el margen sin descontar el
+// vuelto (mentía sobre la rentabilidad).
+//
 // Contrato:
 //   Inputs:
 //     cart      — array de items { cantidad, precio_vendido, costo, moneda }
@@ -65,11 +71,14 @@ export function weekStart() {
 //     metodos   — array de métodos de pago { id, es_tarjeta, es_financiera, comision_pct }
 //     pctFinanciera — float, comisión default de financiera si el método es_financiera
 //     tcVenta   — TC de la venta (para convertir montos no-USD)
-//   Output: { items, cubierto, dif, canjeTotal, bruta, costoFin, real, pagosDetalle }
+//     vuelto    — { monto, moneda, tc } opcional. Se descuenta de `real`. Si tc
+//                 falta para moneda local (ARS/UYU), el vuelto se ignora
+//                 defensively (el schema backend ya lo bloquea al submit).
+//   Output: { items, cubierto, dif, canjeTotal, bruta, costoFin, vueltoUsd, real, pagosDetalle }
 //
 // Import de toUsd hardcoded al final del archivo para evitar circular deps
 // con lib/money.js (utils.js ya re-exporta toUsd desde ahí).
-export function computeVentaTotales(cart, pagos, canjes, metodos, pctFinanciera, tcVenta) {
+export function computeVentaTotales(cart, pagos, canjes, metodos, pctFinanciera, tcVenta, vuelto) {
   const tc = Number(tcVenta) || null;
   const items = (cart || []).reduce((acc, it) => {
     const qty = Number(it.cantidad) || 0;
@@ -106,11 +115,23 @@ export function computeVentaTotales(cart, pagos, canjes, metodos, pctFinanciera,
   // Cubierto = BRUTO + canjes (chequeo pagos-vs-venta ignora comisión).
   const cubierto = brutoTotalUsd + canjeTotal;
   const bruta = items - costosUsd;
-  // Ganancia real usa NETO para reflejar el impacto de la comisión.
-  const real = (netoTotalUsd + canjeTotal) - costosUsd;
+  // Vuelto convertido a USD. Si no hay vuelto o el shape es incompleto → 0.
+  // El schema backend ya valida que ARS/UYU tenga tc; acá somos defensivos.
+  let vueltoUsd = 0;
+  if (vuelto && vuelto.monto != null && Number(vuelto.monto) > 0 && vuelto.moneda) {
+    const vuMonto = Number(vuelto.monto);
+    if (vuelto.moneda === 'USD' || vuelto.moneda === 'USDT') {
+      vueltoUsd = vuMonto;
+    } else if (vuelto.tc != null && Number(vuelto.tc) > 0) {
+      vueltoUsd = toUsdImpl(vuMonto, vuelto.moneda, Number(vuelto.tc));
+    }
+    // else: moneda local sin TC → ignoramos (defensive; el submit lo bloquea).
+  }
+  // Ganancia real: neto de comisión + canjes − costos − vuelto.
+  const real = (netoTotalUsd + canjeTotal) - costosUsd - vueltoUsd;
   return {
     items, cubierto, dif: cubierto - items, canjeTotal,
-    bruta, costoFin: costoFinTotal, real, pagosDetalle,
+    bruta, costoFin: costoFinTotal, vueltoUsd, real, pagosDetalle,
   };
 }
 

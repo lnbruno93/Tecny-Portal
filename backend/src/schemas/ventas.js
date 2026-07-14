@@ -88,16 +88,35 @@ const clienteEmailSchema = z.string().trim().toLowerCase().regex(EMAIL_RE, 'Emai
 // error 400 amigable en vez de 500 de constraint violation. La caja del
 // vuelto es libre (cualquier moneda) — la validación de coherencia moneda
 // vs caja se hace en el handler al postear el egreso a caja_movimientos.
+//
+// 2026-07-14 (bug reportado por Lucas): agregamos `vuelto_tc` opcional. Es
+// REQUERIDO cuando `vuelto_moneda ∈ {ARS, UYU}` (necesario para convertir
+// el vuelto a USD y restarlo de la ganancia). Si `vuelto_moneda` es USD/USDT,
+// el TC no aplica (siempre 1) y el campo puede quedar null.
 const vueltoFields = {
   vuelto_monto:   z.coerce.number().positive('El vuelto debe ser mayor a 0').optional().nullable(),
   vuelto_moneda:  MonedaEnum.optional().nullable(),
   vuelto_caja_id: z.coerce.number().int().positive().optional().nullable(),
+  vuelto_tc:      z.coerce.number().positive('El TC del vuelto debe ser mayor a 0').optional().nullable(),
 };
 function refineVueltoTodoONada(d) {
+  // Set de campos "core" (monto/moneda/caja) — el TC no cuenta para el todo-o-nada
+  // porque puede ser null legítimamente cuando la moneda es USD/USDT.
   const set = [d.vuelto_monto, d.vuelto_moneda, d.vuelto_caja_id].filter(x => x != null).length;
   return set === 0 || set === 3;
 }
 const vueltoTodoONadaMsg = 'Vuelto: si cargás uno de los 3 campos (monto/moneda/caja), los 3 son obligatorios';
+
+// 2026-07-14: si el vuelto es en moneda local (ARS/UYU), el TC es REQUERIDO
+// para poder convertir a USD y restar de la ganancia. Sin TC, el backend no
+// sabría cuánto vale realmente el vuelto en la moneda de referencia.
+function refineVueltoTcRequerido(d) {
+  if (d.vuelto_moneda === 'ARS' || d.vuelto_moneda === 'UYU') {
+    return d.vuelto_tc != null && d.vuelto_tc > 0;
+  }
+  return true; // USD/USDT/NULL → TC no requerido
+}
+const vueltoTcRequeridoMsg = 'Vuelto: si la moneda es ARS o UYU, el TC del vuelto es obligatorio';
 
 const createVentaSchema = z.object({
   fecha:          z.string().date('Fecha inválida — usar YYYY-MM-DD'),
@@ -124,7 +143,9 @@ const createVentaSchema = z.object({
   enviar_comprobante_email: z.boolean().optional(),
   cliente_email:            clienteEmailSchema.optional().nullable(),
   ...vueltoFields,
-}).strict().refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] });
+}).strict()
+  .refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] })
+  .refine(refineVueltoTcRequerido, { message: vueltoTcRequeridoMsg, path: ['vuelto_tc'] });
 
 // Edición de metadatos (no se editan items/pagos para no descuadrar el stock).
 const updateVentaSchema = z.object({
@@ -155,7 +176,9 @@ const updateVentaSchema = z.object({
   // vuelto de una venta que ya lo tenía, el frontend envía los 3 en null
   // (todo-o-nada aplica igual — 3 null o 3 con valor).
   ...vueltoFields,
-}).strict().refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] });
+}).strict()
+  .refine(refineVueltoTodoONada, { message: vueltoTodoONadaMsg, path: ['vuelto_monto'] })
+  .refine(refineVueltoTcRequerido, { message: vueltoTcRequeridoMsg, path: ['vuelto_tc'] });
 
 /* ── Plantillas de garantía ── */
 const garantiaSchema = z.object({

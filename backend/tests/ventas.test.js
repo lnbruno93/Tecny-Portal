@@ -1457,12 +1457,13 @@ describe('Ventas — canjes soft-delete + revert de producto (P1-1)', () => {
 // Al cancelar la venta, reverseCajaMovimientos revierte automáticamente
 // (mismo ref_tabla + ref_id que los ingresos, en una sola pasada).
 describe('Ventas — vuelto/cambio (feature)', () => {
-  async function crearCajaEfectivo(nombre, saldo = 0) {
+  async function crearCajaEfectivo(nombre, saldo = 0, moneda = 'ARS') {
     // saldo_inicial permite seedear la caja sin necesidad de postear un
     // movimiento aparte — necesario para que los tests de vuelto puedan
     // hacer egresos sin que la caja quede negativa (postCajaMovimiento valida).
+    // 2026-07-14: agregar `moneda` para tests que necesitan cajas USD.
     const r = await request(app).post('/api/cajas/cajas').set(auth())
-      .send({ nombre, moneda: 'ARS', saldo_inicial: saldo });
+      .send({ nombre, moneda, saldo_inicial: saldo });
     return r.body.id;
   }
 
@@ -1479,11 +1480,13 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       vuelto_monto:   1000,     // cliente pagó 10000 ARS por venta de $9 USD (=9000 ARS), vuelto 1000
       vuelto_moneda:  'ARS',
       vuelto_caja_id: cajaId,
+      vuelto_tc:      1000,     // 2026-07-14: TC obligatorio para ARS/UYU
     });
     expect(r.status).toBe(201);
     expect(Number(r.body.vuelto_monto)).toBe(1000);
     expect(r.body.vuelto_moneda).toBe('ARS');
     expect(Number(r.body.vuelto_caja_id)).toBe(cajaId);
+    expect(Number(r.body.vuelto_tc)).toBe(1000);
 
     // La caja del vuelto debe reflejar el egreso.
     const movs = await request(app).get(`/api/cajas/movimientos?caja_id=${cajaId}`).set(auth());
@@ -1517,6 +1520,7 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       vuelto_monto:   500,
       vuelto_moneda:  'ARS',
       vuelto_caja_id: cajaId,
+      vuelto_tc:      1000,
     });
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/negativo|saldo|excede|insuficiente/i);
@@ -1533,7 +1537,7 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       tc_venta: 1000,
       items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 5, costo: 3, moneda: 'USD' }],
       pagos: [{ metodo_pago_id: cajaCobro, metodo_nombre: 'Caja Cobro Revert', monto: 5500, moneda: 'ARS', tc: 1000 }],
-      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaId,
+      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaId, vuelto_tc: 1000,
     });
     expect(r.status).toBe(201);
 
@@ -1568,6 +1572,7 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       vuelto_monto: 500,
       vuelto_moneda: 'ARS',
       vuelto_caja_id: cajaId,
+      vuelto_tc:     1000,
     });
     expect(put.status).toBe(200);
     expect(Number(put.body.vuelto_monto)).toBe(500);
@@ -1578,5 +1583,99 @@ describe('Ventas — vuelto/cambio (feature)', () => {
       m.ref_tabla === 'ventas' && Number(m.ref_id) === r.body.id && m.tipo === 'egreso' && !m.deleted_at
     );
     expect(egreso).toBeDefined();
+  });
+
+  // 2026-07-14 (bug reportado por Lucas): la ganancia_usd persistida no
+  // consideraba el vuelto → reportes de ganancia mentían. Estos tests
+  // cubren el shape del vuelto_tc + el impacto en ganancia_usd.
+  describe('vuelto_tc + ganancia (fix 2026-07-14)', () => {
+    it('rechaza vuelto en ARS sin vuelto_tc → 400', async () => {
+      const cajaId = await crearCajaEfectivo('Caja Vuelto Sin TC', 5000);
+      const r = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy,
+        estado: 'acreditado',
+        items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }],
+        pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+        vuelto_monto:   500,
+        vuelto_moneda:  'ARS',
+        vuelto_caja_id: cajaId,
+        // Falta vuelto_tc — schema debe rechazar.
+      });
+      expect(r.status).toBe(400);
+      // El error de Zod viene con detalle en `fields`, el `error` es genérico.
+      const vueltoErr = (r.body.fields || []).find(f => f.field === 'vuelto_tc');
+      expect(vueltoErr).toBeDefined();
+      expect(vueltoErr.error).toMatch(/vuelto|tc/i);
+    });
+
+    it('acepta vuelto en USD sin vuelto_tc (TC no aplica)', async () => {
+      // Caja USD para que el egreso del vuelto (USD 10) coincida en moneda.
+      const cajaId = await crearCajaEfectivo('Caja Vuelto USD', 5000, 'USD');
+      const r = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy,
+        estado: 'acreditado',
+        items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }],
+        pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 110, moneda: 'USD' }],
+        vuelto_monto:   10,
+        vuelto_moneda:  'USD',
+        vuelto_caja_id: cajaId,
+        // Sin vuelto_tc — moneda USD no lo requiere.
+      });
+      expect(r.status).toBe(201);
+      expect(r.body.vuelto_tc).toBeNull();
+    });
+
+    it('ganancia_usd descuenta el vuelto (bug del screenshot)', async () => {
+      // Reproduce el screenshot: venta USD 600, pago USD 600 exacto (cubierto),
+      // vuelto 150.000 ARS con tc=1000 (=USD 150). Ganancia bruta debía ser
+      // 600 - 480 (costo) = 120. Con el vuelto de 150 USD → ganancia real -30.
+      const cajaId = await crearCajaEfectivo('Caja Vuelto Ganancia', 200000);
+      const r = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy,
+        estado: 'acreditado',
+        items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 600, costo: 480, moneda: 'USD' }],
+        pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 600, moneda: 'USD' }],
+        vuelto_monto:   150000,
+        vuelto_moneda:  'ARS',
+        vuelto_caja_id: cajaId,
+        vuelto_tc:      1000,      // 150000 / 1000 = USD 150
+      });
+      expect(r.status).toBe(201);
+      // Ganancia real = 600 (total) - 480 (costo) - 150 (vuelto USD) = -30.
+      expect(Number(r.body.ganancia_usd)).toBe(-30);
+    });
+
+    it('ganancia_usd sin vuelto es 100% margen (sanity check)', async () => {
+      const r = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy,
+        estado: 'acreditado',
+        items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }],
+        pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+      });
+      expect(r.status).toBe(201);
+      expect(Number(r.body.ganancia_usd)).toBe(40);
+    });
+
+    it('PUT que agrega vuelto recomputa ganancia_usd', async () => {
+      // Caja USD para que el egreso del vuelto USD tenga moneda coherente.
+      const cajaId = await crearCajaEfectivo('Caja Vuelto Recomp', 1000, 'USD');
+      // Alta sin vuelto: ganancia = 40.
+      const r = await request(app).post('/api/ventas').set(auth()).send({
+        fecha: hoy,
+        estado: 'acreditado',
+        items: [{ descripcion: 'iPhone', cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }],
+        pagos:  [{ metodo_nombre: 'USD | Efectivo', monto: 100, moneda: 'USD' }],
+      });
+      expect(Number(r.body.ganancia_usd)).toBe(40);
+
+      // PUT sumando vuelto 10 USD → nueva ganancia = 30.
+      const put = await request(app).put(`/api/ventas/${r.body.id}`).set(auth()).send({
+        vuelto_monto:   10,
+        vuelto_moneda:  'USD',
+        vuelto_caja_id: cajaId,
+      });
+      expect(put.status).toBe(200);
+      expect(Number(put.body.ganancia_usd)).toBe(30);
+    });
   });
 });
