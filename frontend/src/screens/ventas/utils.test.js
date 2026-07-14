@@ -151,4 +151,78 @@ describe('computeVentaTotales', () => {
       expect(r.real).toBeCloseTo(-300); // realidad: perdimos 300
     });
   });
+
+  // 2026-07-14 (bug reportado por Lucas): el vuelto no se descontaba del
+  // preview de Ganancia real → mentía cuando había vuelto en ARS/UYU sobre
+  // una venta USD cubierta. Estos tests cubren el descuento del vuelto.
+  describe('vuelto descuenta de la ganancia real', () => {
+    it('pago exacto + vuelto adicional (regalo): real cae en el monto del vuelto', () => {
+      // Venta USD 100 con costo 60 → bruta = 40. Pago EXACTO 100 (cubierto) +
+      // vuelto USD 10 adicional (regalo/error). El vuelto sale del comercio
+      // sin cash compensatorio → perdemos 10 respecto al margen.
+      const cart = [{ cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }];
+      const pagos = [{ monto: 100, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const vuelto = { monto: 10, moneda: 'USD', tc: null };
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null, vuelto);
+      expect(r.bruta).toBe(40);       // margen del producto, no cambia por el vuelto
+      expect(r.vueltoUsd).toBe(10);
+      expect(r.real).toBe(30);        // 100 - 60 - 10 (regalamos 10)
+    });
+
+    it('pago excedente + vuelto por la diferencia: real ≡ bruta (se compensan)', () => {
+      // Escenario canónico: cliente paga MÁS de lo que costó, el operador le
+      // devuelve la diferencia como vuelto. El pago excedente y el vuelto
+      // se anulan en el flujo neto → ganancia real = margen del producto.
+      const cart = [{ cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }];
+      const pagos = [{ monto: 110, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const vuelto = { monto: 10, moneda: 'USD', tc: null };
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null, vuelto);
+      expect(r.bruta).toBe(40);
+      expect(r.vueltoUsd).toBe(10);
+      expect(r.real).toBe(40); // 110 (pago) - 60 (costo) - 10 (vuelto) = 40
+    });
+
+    it('vuelto en ARS con TC 1000: descuenta la conversión USD del real (bug del screenshot)', () => {
+      // Reproduce el screenshot: venta USD 600, pago USD 600 cubierto, vuelto
+      // 150000 ARS con TC 1000 → USD 150 de vuelto. Bruta = 120. Real = -30.
+      const cart = [{ cantidad: 1, precio_vendido: 600, costo: 480, moneda: 'USD' }];
+      const pagos = [{ monto: 600, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const vuelto = { monto: 150000, moneda: 'ARS', tc: 1000 };
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null, vuelto);
+      expect(r.bruta).toBe(120);
+      expect(r.vueltoUsd).toBe(150);
+      expect(r.real).toBe(-30); // 600 - 480 - 150
+    });
+
+    it('sin vuelto: vueltoUsd es 0 y real no se toca', () => {
+      const cart = [{ cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }];
+      const pagos = [{ monto: 100, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null); // sin vuelto
+      expect(r.vueltoUsd).toBe(0);
+      expect(r.real).toBe(40);
+    });
+
+    it('vuelto en ARS sin TC: defensively se ignora (real queda igual)', () => {
+      // Guard defensive del helper: si el shape del vuelto es inválido (moneda
+      // local sin TC), NO explota — devuelve vueltoUsd=0 y real sin descontar.
+      // El schema Zod del backend bloquea el submit, así que esto solo aplica
+      // durante la edición del form antes de submit.
+      const cart = [{ cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }];
+      const pagos = [{ monto: 100, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const vuelto = { monto: 5000, moneda: 'ARS', tc: null };
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null, vuelto);
+      expect(r.vueltoUsd).toBe(0);
+      expect(r.real).toBe(40); // no se descontó nada
+    });
+
+    it('vuelto en UYU con TC 40: descuenta correctamente en moneda uruguaya', () => {
+      // Venta USD 100 (costo 60), vuelto UYU 200 con TC 40 → USD 5.
+      const cart = [{ cantidad: 1, precio_vendido: 100, costo: 60, moneda: 'USD' }];
+      const pagos = [{ monto: 105, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const vuelto = { monto: 200, moneda: 'UYU', tc: 40 };
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null, vuelto);
+      expect(r.vueltoUsd).toBe(5);
+      expect(r.real).toBe(40); // 105 - 60 - 5
+    });
+  });
 });
