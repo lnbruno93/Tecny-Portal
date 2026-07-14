@@ -87,10 +87,19 @@
   position: sticky; top: 0; z-index: 100;
   background: var(--bg);
 }
+/* 2026-07-14 (v9): align-items baseline en nav-inner — alinea las baselines
+   del texto de "Tecny" con los nav links ("Cómo funciona / Módulos / etc").
+   Antes: center alignment → los centros verticales alineaban pero baselines
+   distintas (texto "Tecny" más arriba porque el .brand container es más alto
+   por el T logo). Ahora: text-to-text alignment perfecta.
+   El T box (dentro de .brand) mantiene su posición vía flex interno. */
 .tecny-landing .nav-inner {
   max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);
-  display: flex; align-items: center; gap: 28px;
+  display: flex; align-items: baseline; gap: 28px;
 }
+/* Excepciones — buttons y brand's .mk necesitan center para no descuadrar */
+.tecny-landing .nav-inner > .nav-cta { align-self: center; }
+.tecny-landing .brand { align-self: baseline; }
 /* 2026-07-14 (v5): defensiva completa contra "la rayita" que Lucas veía en Safari.
    Overrides con !important porque el CSS del source estaba clean pero Safari
    renderizaba algo raro. Sí, cerramos que era un bug de Safari (Chrome se ve
