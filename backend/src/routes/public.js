@@ -93,7 +93,10 @@ router.get('/site-config', async (_req, res) => {
       const { rows } = await client.query(
         `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
                 contact_address, contact_instagram_handle, contact_instagram_url,
-                testimonials, updated_at
+                testimonials,
+                hero_headline, hero_subheadline, hero_blurb,
+                cta_headline, cta_body, faq,
+                updated_at
            FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
@@ -114,7 +117,19 @@ router.get('/site-config', async (_req, res) => {
       // significa "usá los hardcodeados de la landing" — el hook use-site-config
       // ya tiene ese fallback.
       testimonials: Array.isArray(row?.testimonials) ? row.testimonials : [],
-      // Placeholder Fase 3 (footer).
+      // 2026-07-13 Fase 3: Hero + CTA + FAQ editables. Null en cualquier campo
+      // texto significa "landing usa hardcoded fallback"; FAQ vacío ídem.
+      hero: {
+        headline:    row?.hero_headline    || null,
+        subheadline: row?.hero_subheadline || null,
+        blurb:       row?.hero_blurb       || null,
+      },
+      cta: {
+        headline: row?.cta_headline || null,
+        body:     row?.cta_body     || null,
+      },
+      faq: Array.isArray(row?.faq) ? row.faq : [],
+      // Placeholder Fase futura (footer, si Lucas decide hacerlo editable).
       footer: null,
       updated_at: row?.updated_at || null,
     });

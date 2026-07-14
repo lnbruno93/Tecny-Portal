@@ -239,6 +239,17 @@ const testimonialItemSchema = z.object({
   text:     z.string().trim().min(10, 'Texto muy corto').max(1000, 'Texto muy largo (máx 1000 chars)'),
 }).strict();
 
+// 2026-07-13 (CMS Landing Fase 3): schema de un item de FAQ.
+// Shape (matchea el hardcoded en frontend/src/screens/Landing.jsx sección FAQ):
+//   { id: uuid, question: string, answer: string }
+// - question max 200 chars (headline en <summary>, más largo no wrap bien)
+// - answer max 1000 chars (párrafo en <div class="a">)
+const faqItemSchema = z.object({
+  id:       z.string().regex(uuidLoose, 'id inválido (debe ser UUID)').optional(),
+  question: z.string().trim().min(3, 'Pregunta muy corta').max(200, 'Pregunta muy larga'),
+  answer:   z.string().trim().min(3, 'Respuesta muy corta').max(1000, 'Respuesta muy larga'),
+}).strict();
+
 const updateSiteLandingContactSchema = z.object({
   contact_email: z.union([
     z.string().trim().toLowerCase().regex(CONTACT_EMAIL_RE, 'Email inválido').max(254),
@@ -279,6 +290,31 @@ const updateSiteLandingContactSchema = z.object({
   // false → backend deja de llamar a Places API, landing muestra solo manuales.
   // true (default en DB) → reseñas de Google visibles si hay ≥ threshold.
   google_reviews_enabled: z.boolean().optional(),
+
+  // 2026-07-13 CMS Landing Fase 3: Hero editable.
+  // - headline: título principal. Max 100 (2 líneas @ ~50 chars).
+  // - subheadline: subtítulo debajo. Max 120.
+  // - blurb: párrafo descriptivo bajo el subtítulo. Max 400 (~ 3 líneas).
+  // Todos opcionales — null/vacío → landing usa fallback hardcoded del design.
+  hero_headline:    z.union([z.string().trim().max(100, 'Headline muy largo (máx 100)'),
+                             z.literal(''), z.null()]).optional(),
+  hero_subheadline: z.union([z.string().trim().max(120, 'Subheadline muy largo (máx 120)'),
+                             z.literal(''), z.null()]).optional(),
+  hero_blurb:       z.union([z.string().trim().max(400, 'Blurb muy largo (máx 400)'),
+                             z.literal(''), z.null()]).optional(),
+
+  // 2026-07-13 CMS Landing Fase 3: CTA final editable.
+  // - headline: el "Ordená tu negocio hoy" (max 80, 1 línea).
+  // - body: subtítulo bajo el headline (max 250, 2 líneas).
+  cta_headline: z.union([z.string().trim().max(80, 'CTA headline muy largo (máx 80)'),
+                         z.literal(''), z.null()]).optional(),
+  cta_body:     z.union([z.string().trim().max(250, 'CTA body muy largo (máx 250)'),
+                         z.literal(''), z.null()]).optional(),
+
+  // 2026-07-13 CMS Landing Fase 3: FAQ editable (max 20 items).
+  // Mismo patrón que testimonials — si viene, reemplaza el array completo.
+  // Server genera UUID para items sin id (nuevos).
+  faq: z.array(faqItemSchema).max(20, 'Máximo 20 preguntas').optional(),
 }).strict().refine(
   // Al menos un campo debe venir. Sin esto, PATCH con body {} pasaría el
   // Zod y haría un UPDATE no-op — patrón consistente con schemas del resto
