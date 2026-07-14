@@ -21,16 +21,31 @@ const todayISO = () => new Date().toLocaleDateString('sv');
 // El módulo Cambios de Divisa nació 100% para ARS/USD, pero desde F1-F5
 // multi-país los tenants UY operan en UYU. Backend PR #514 ya soporta el
 // par UYU/USD via CHECK constraint extendido + tipos 'entrega_uyu' /
-// 'recibo_usd_uy'. Este componente ahora usa el país del tenant para:
-//   - Elegir el tipo correcto al crear un movimiento.
-//   - Rotular labels/badges/columnas con la moneda local correcta.
-//   - Filtrar las cajas por la moneda local (no siempre ARS).
-// AR sigue viendo exactamente lo mismo que antes; UY empieza a ver labels
-// "Entrega UYU" / cajas UYU / columna "$ UYU".
+// 'recibo_usd_uy'.
+//
+// 2026-07-14 (feature dirección inversa): agregamos los 4 tipos "les damos
+// USD, nos devuelven pesos". Ahora hay 4 tipos por país (2 direcciones ×
+// 2 operaciones — entrega/recibo):
+//   Dirección A (les damos pesos, nos deben USD):
+//     · entregaLocal    → entrega_ars / entrega_uyu
+//     · reciboUsd       → recibo_usd / recibo_usd_uy
+//   Dirección B (les damos USD, nos deben pesos):
+//     · entregaUsd      → entrega_usd_por_ars / entrega_usd_por_uyu
+//     · reciboLocal     → recibo_ars / recibo_uyu
 function tiposPorPais(pais) {
   return pais === 'UY'
-    ? { entregaLocal: 'entrega_uyu', reciboUsd: 'recibo_usd_uy' }
-    : { entregaLocal: 'entrega_ars', reciboUsd: 'recibo_usd' };
+    ? {
+        entregaLocal: 'entrega_uyu',
+        reciboUsd:    'recibo_usd_uy',
+        entregaUsd:   'entrega_usd_por_uyu',
+        reciboLocal:  'recibo_uyu',
+      }
+    : {
+        entregaLocal: 'entrega_ars',
+        reciboUsd:    'recibo_usd',
+        entregaUsd:   'entrega_usd_por_ars',
+        reciboLocal:  'recibo_ars',
+      };
 }
 
 // Etiqueta corta del tipo — para el badge en la grilla histórica. Soporta
@@ -38,11 +53,24 @@ function tiposPorPais(pais) {
 // y viceversa, pero el switch es defensivo por si alguna migración cambia
 // el país del tenant a mitad de camino).
 function labelTipo(tipo) {
-  if (tipo === 'entrega_ars') return 'Entrega ARS';
-  if (tipo === 'entrega_uyu') return 'Entrega UYU';
+  if (tipo === 'entrega_ars') return 'Entrega ARS → USD';
+  if (tipo === 'entrega_uyu') return 'Entrega UYU → USD';
   if (tipo === 'recibo_usd' || tipo === 'recibo_usd_uy') return 'Recibo USD';
+  if (tipo === 'entrega_usd_por_ars') return 'Entrega USD → ARS';
+  if (tipo === 'entrega_usd_por_uyu') return 'Entrega USD → UYU';
+  if (tipo === 'recibo_ars') return 'Recibo ARS';
+  if (tipo === 'recibo_uyu') return 'Recibo UYU';
   return tipo;
 }
+
+// Categorías: usan monto local? USD? tc? — helpers reutilizados por la UI.
+const isEntregaLocalTipo = (t) => t === 'entrega_ars' || t === 'entrega_uyu';
+const isEntregaUsdTipo   = (t) => t === 'entrega_usd_por_ars' || t === 'entrega_usd_por_uyu';
+const isReciboUsdTipo    = (t) => t === 'recibo_usd' || t === 'recibo_usd_uy';
+const isReciboLocalTipo  = (t) => t === 'recibo_ars' || t === 'recibo_uyu';
+// Qué moneda va la caja de este movimiento (USD o la local).
+const monedaCajaDelTipo  = (t, monedaLocal) =>
+  (isEntregaUsdTipo(t) || isReciboUsdTipo(t)) ? 'USD' : monedaLocal;
 
 export default function Cambios() {
   const { toast } = useToast();
@@ -112,22 +140,39 @@ export default function Cambios() {
   }
   useEffect(() => { loadDetalle(); setMov(EMPTY_MOV); }, [selectedId, EMPTY_MOV]); // eslint-disable-line
 
-  // Cajas filtradas según el tipo del movimiento en carga:
-  //   - Entrega local (ARS o UYU): solo cajas de esa moneda local.
-  //   - Recibo USD: solo cajas USD.
+  // 2026-07-14 (dirección inversa): cajas filtradas por moneda según tipo.
+  //   · Movimientos USD (entrega_usd_por_* / recibo_usd*): cajas USD.
+  //   · Movimientos locales (entrega_local / recibo_local): cajas moneda local.
+  const cajaMonedaEsperada = monedaCajaDelTipo(mov.tipo, monedaLocal);
   const cajasFiltradas = useMemo(
-    () => cajas.filter(c => mov.tipo === TIPOS.entregaLocal
-      ? c.moneda === monedaLocal
-      : c.moneda !== monedaLocal),
-    [cajas, mov.tipo, monedaLocal, TIPOS.entregaLocal]
+    () => cajas.filter(c => c.moneda === cajaMonedaEsperada),
+    [cajas, cajaMonedaEsperada]
   );
+
+  // Preview del USD equivalente / deuda local — depende del tipo:
+  //   · entrega local: usd = monto_local / tc     (nos deben esa USD)
+  //   · entrega USD:   local = monto_usd × tc     (nos deben esa cantidad local)
+  //   · recibo USD/local: solo el monto tal cual, sin conversión
   const usdPreview = useMemo(() => {
-    if (mov.tipo === TIPOS.entregaLocal) {
+    if (isEntregaLocalTipo(mov.tipo)) {
       const a = parseFloat(mov.monto_ars), t = parseFloat(mov.tc);
       return (a > 0 && t > 0) ? Math.round((a / t) * 100) / 100 : 0;
     }
+    if (isEntregaUsdTipo(mov.tipo)) {
+      // Para entrega USD el input es USD directo — no hay preview cross-moneda
+      // en la columna USD (usamos la columna local para mostrar la deuda).
+      return parseFloat(mov.monto_usd) || 0;
+    }
     return parseFloat(mov.monto_usd) || 0;
-  }, [mov, TIPOS.entregaLocal]);
+  }, [mov]);
+  // Preview local: solo aplica a entrega_usd_por_* (la deuda es en local).
+  const localPreview = useMemo(() => {
+    if (isEntregaUsdTipo(mov.tipo)) {
+      const u = parseFloat(mov.monto_usd), t = parseFloat(mov.tc);
+      return (u > 0 && t > 0) ? Math.round((u * t) * 100) / 100 : 0;
+    }
+    return null;
+  }, [mov]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -146,13 +191,22 @@ export default function Cambios() {
     if (!mov.caja_id) { toast.error('Elegí la caja.'); return; }
     await withSavingMov(async () => {
       try {
+        // 2026-07-14 (dirección inversa): payload adaptado por tipo.
+        //   · entrega local: monto_ars (monto local) + tc (para calcular USD deuda)
+        //   · entrega USD:   monto_usd + tc (para calcular deuda local — server-side)
+        //   · recibo USD:    monto_usd solo
+        //   · recibo local:  monto_ars solo
+        // `monto_ars` es alias legacy — contiene monto en la moneda local
+        // (ARS o UYU según país + tipo específico).
+        const t = mov.tipo;
+        const needsLocalInput = isEntregaLocalTipo(t) || isReciboLocalTipo(t);
+        const needsUsdInput   = isEntregaUsdTipo(t) || isReciboUsdTipo(t);
+        const needsTc         = isEntregaLocalTipo(t) || isEntregaUsdTipo(t);
         await cambiosApi.createMovimiento({
-          entidad_id: selectedId, fecha: mov.fecha, tipo: mov.tipo,
-          // monto_ars es el nombre legacy de la columna DB — contiene el
-          // monto en la moneda local del tenant (ARS o UYU).
-          monto_ars: mov.tipo === TIPOS.entregaLocal ? Number(mov.monto_ars) || 0 : 0,
-          tc:        mov.tipo === TIPOS.entregaLocal ? Number(mov.tc) || null : null,
-          monto_usd: mov.tipo === TIPOS.reciboUsd    ? Number(mov.monto_usd) || 0 : 0,
+          entidad_id: selectedId, fecha: mov.fecha, tipo: t,
+          monto_ars: needsLocalInput ? Number(mov.monto_ars) || 0 : 0,
+          tc:        needsTc         ? Number(mov.tc) || null   : null,
+          monto_usd: needsUsdInput   ? Number(mov.monto_usd) || 0 : 0,
           caja_id: Number(mov.caja_id), comentarios: mov.comentarios.trim() || null,
         }, movIdempotencyKey);
         setMov({ ...EMPTY_MOV, tipo: mov.tipo, fecha: mov.fecha });
@@ -183,14 +237,24 @@ export default function Cambios() {
   }
 
   const r = detalle?.resumen || {};
-  const esEntregaLocal = mov.tipo === TIPOS.entregaLocal;
+  // 2026-07-14 (dirección inversa): 4 categorías de tipo. Cada una habilita
+  // distintos inputs (local vs USD, con o sin TC).
+  const isEntregaLocal = isEntregaLocalTipo(mov.tipo);
+  const isEntregaUsd   = isEntregaUsdTipo(mov.tipo);
+  const isReciboUsd    = isReciboUsdTipo(mov.tipo);
+  const isReciboLocal  = isReciboLocalTipo(mov.tipo);
+  const inputLocalActivo = isEntregaLocal || isReciboLocal; // input "$ Local"
+  const inputUsdActivo   = isEntregaUsd || isReciboUsd;     // input "USD"
+  const inputTcActivo    = isEntregaLocal || isEntregaUsd;  // input "TC"
 
   return (
     <div>
       <div className="page-head">
         <div>
           <h1 className="page-title">Cambios de Divisa</h1>
-          <div className="page-sub">Cuenta corriente con financieras de cambio · entregás {monedaLocal} y te devuelven USD</div>
+          <div className="page-sub">
+            Cuenta corriente con financieras de cambio · entregás {monedaLocal} y te devuelven USD, o entregás USD y te devuelven {monedaLocal}
+          </div>
         </div>
       </div>
 
@@ -219,9 +283,22 @@ export default function Cambios() {
                 borderLeft: selectedId === e.id ? '3px solid var(--accent)' : '3px solid transparent',
               }}>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{e.nombre}{!e.activo && <span className="muted tiny"> (inactiva)</span>}</div>
+                {/* 2026-07-14 (dirección inversa): puede haber saldos en 3 monedas
+                   simultáneamente. Mostramos los que son != 0 (o solo USD si
+                   no hay deuda local, para no romper la altura de la card). */}
                 <div className="mono tiny" style={{ marginTop: 2, color: Number(e.saldo_usd) > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
                   Te deben: u$s {fmt(e.saldo_usd)}
                 </div>
+                {Number(e.saldo_ars) > 0 && (
+                  <div className="mono tiny" style={{ marginTop: 2, color: 'var(--accent)' }}>
+                    + $ {fmt(e.saldo_ars)} ARS
+                  </div>
+                )}
+                {Number(e.saldo_uyu) > 0 && (
+                  <div className="mono tiny" style={{ marginTop: 2, color: 'var(--accent)' }}>
+                    + $U {fmt(e.saldo_uyu)} UYU
+                  </div>
+                )}
               </div>
             ))}
         </div>
@@ -241,8 +318,22 @@ export default function Cambios() {
             <div className="row">
               <div className="card card-tight" style={{ flex: 1 }}>
                 <div className="kpi-label">Te deben · USD</div>
-                <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>u$s {fmt(r.saldo_usd)}</div>
+                <div className="kpi-value mono" style={{ color: Number(r.saldo_usd) > 0 ? 'var(--accent)' : 'inherit' }}>u$s {fmt(r.saldo_usd)}</div>
               </div>
+              {/* 2026-07-14 (dirección inversa): saldos en moneda local, solo
+                 si != 0 para no llenar de "0" a users que no usan la inversa. */}
+              {Number(r.saldo_ars) !== 0 && (
+                <div className="card card-tight" style={{ flex: 1 }}>
+                  <div className="kpi-label">Te deben · ARS</div>
+                  <div className="kpi-value mono" style={{ color: Number(r.saldo_ars) > 0 ? 'var(--accent)' : 'inherit' }}>$ {fmt(r.saldo_ars)}</div>
+                </div>
+              )}
+              {Number(r.saldo_uyu) !== 0 && (
+                <div className="card card-tight" style={{ flex: 1 }}>
+                  <div className="kpi-label">Te deben · UYU</div>
+                  <div className="kpi-value mono" style={{ color: Number(r.saldo_uyu) > 0 ? 'var(--accent)' : 'inherit' }}>$U {fmt(r.saldo_uyu)}</div>
+                </div>
+              )}
               <div className="card card-tight" style={{ flex: 1 }}>
                 <div className="kpi-label">Entregado · USD equiv.</div>
                 <div className="kpi-value mono">u$s {fmt(r.entregado_usd)}</div>
@@ -268,11 +359,17 @@ export default function Cambios() {
                   </thead>
                   <tbody>
                     {movs.map(m => {
-                      const isEntregaLocal = m.tipo === 'entrega_ars' || m.tipo === 'entrega_uyu';
+                      // 2026-07-14 (dirección inversa): 4 categorías. El color
+                      // del badge diferencia: entrega/recibo × local/USD.
+                      const cat = isEntregaLocalTipo(m.tipo) ? 'ent-loc'
+                                : isEntregaUsdTipo(m.tipo)   ? 'ent-usd'
+                                : isReciboUsdTipo(m.tipo)    ? 'rec-usd'
+                                : 'rec-loc';
+                      const badgeCls = cat === 'ent-loc' ? '' : 'badge-info';
                       return (
                         <tr key={m.id}>
                           <td className="mono tiny">{fmtFecha(m.fecha)}</td>
-                          <td><span className={'badge ' + (isEntregaLocal ? '' : 'badge-info')}>{labelTipo(m.tipo)}</span></td>
+                          <td><span className={'badge ' + badgeCls}>{labelTipo(m.tipo)}</span></td>
                           <td className="mono" style={{ textAlign: 'right' }}>{Number(m.monto_ars) > 0 ? '$ ' + fmt(m.monto_ars) : '—'}</td>
                           <td className="mono tiny" style={{ textAlign: 'right' }}>{m.tc ? fmt(m.tc) : '—'}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>u$s {fmt(m.monto_usd)}</td>
@@ -287,25 +384,49 @@ export default function Cambios() {
                     <tr style={{ background: 'rgba(99,102,241,0.05)' }}>
                       <td><input type="date" className="input" style={{ height: 30, fontSize: 12 }} value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
                       <td>
-                        <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.tipo} onChange={e => setMov(m => ({ ...m, tipo: e.target.value, caja_id: '' }))}>
-                          <option value={TIPOS.entregaLocal}>Entrega {monedaLocal}</option>
-                          <option value={TIPOS.reciboUsd}>Recibo USD</option>
+                        {/* 2026-07-14 (dirección inversa): 4 opciones. Agrupadas
+                           visualmente por dirección con separadores textuales. */}
+                        <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.tipo} onChange={e => setMov(m => ({ ...m, tipo: e.target.value, caja_id: '', monto_ars: '', monto_usd: '', tc: '' }))}>
+                          <optgroup label={`Entregás ${monedaLocal} → te deben USD`}>
+                            <option value={TIPOS.entregaLocal}>Entrega {monedaLocal}</option>
+                            <option value={TIPOS.reciboUsd}>Recibo USD</option>
+                          </optgroup>
+                          <optgroup label={`Entregás USD → te deben ${monedaLocal}`}>
+                            <option value={TIPOS.entregaUsd}>Entrega USD</option>
+                            <option value={TIPOS.reciboLocal}>Recibo {monedaLocal}</option>
+                          </optgroup>
                         </select>
                       </td>
-                      <td><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="0" disabled={!esEntregaLocal} value={mov.monto_ars} onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} /></td>
                       <td>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={!esEntregaLocal} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
-                        {esEntregaLocal && <TcWarning tc={mov.tc} />}
+                        {/* Input local ($ monedaLocal): activo cuando el mov usa
+                           input local (entrega_local o recibo_local). Cuando
+                           es entrega_usd, muestra el localPreview (readonly)
+                           que es la deuda calculada usd × tc. */}
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
+                          style={{ height: 30, fontSize: 12, textAlign: 'right', background: isEntregaUsd ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                          placeholder="0"
+                          disabled={!inputLocalActivo && !isEntregaUsd}
+                          readOnly={isEntregaUsd}
+                          value={isEntregaUsd ? (localPreview || '') : mov.monto_ars}
+                          onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} />
                       </td>
                       <td>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: esEntregaLocal ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
-                          placeholder="USD" readOnly={esEntregaLocal}
-                          value={esEntregaLocal ? (usdPreview || '') : mov.monto_usd}
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={!inputTcActivo} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
+                        {inputTcActivo && <TcWarning tc={mov.tc} />}
+                      </td>
+                      <td>
+                        {/* Input USD: activo cuando el mov usa input USD (entrega_usd
+                           o recibo_usd). Cuando es entrega_local, muestra
+                           usdPreview readonly (usd = local / tc). */}
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: isEntregaLocal ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
+                          placeholder="USD" readOnly={isEntregaLocal}
+                          disabled={!inputUsdActivo && !isEntregaLocal}
+                          value={isEntregaLocal ? (usdPreview || '') : mov.monto_usd}
                           onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />
                       </td>
                       <td>
                         <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.caja_id} onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
-                          <option value="">{esEntregaLocal ? `Caja ${monedaLocal}…` : 'Caja USD…'}</option>
+                          <option value="">Caja {cajaMonedaEsperada}…</option>
                           {cajasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                           <CajaSelectHint />
                         </select>
