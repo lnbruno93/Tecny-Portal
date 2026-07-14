@@ -91,23 +91,20 @@
   max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);
   display: flex; align-items: center; gap: 28px;
 }
-/* 2026-07-14 (v5): defensiva completa contra "la rayita" que Lucas ve como
-   underline del texto "Tecny". Después de 4 PRs (border-bottom, box-shadow,
-   backdrop-filter, radial-gradient), Lucas mandó foto de su monitor y la
-   línea está EXACTAMENTE al baseline del texto "Tecny" — patrón clásico de
-   text-decoration: underline.
-
-   No encontré ninguna regla en el CSS deployed que aplique underline aquí,
-   pero por si acaso hay una regla de default del browser, una extensión, o
-   algo heredado, forzamos remove de todo posible source: */
+/* 2026-07-14 (v5): defensiva completa contra "la rayita" que Lucas veía en Safari.
+   Overrides con !important porque el CSS del source estaba clean pero Safari
+   renderizaba algo raro. Sí, cerramos que era un bug de Safari (Chrome se ve
+   perfecto), pero dejamos estos !important como defensivos.
+   2026-07-14 (v6): brand agrandado para matchear la altura del btn "Solicitá
+   una demo" (42px) — antes el T box era 28px, se veía chico al lado del CTA. */
 .tecny-landing .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 22px;             /* was 17px — matchea visualmente la altura del btn */
   letter-spacing: -0.02em;
-  /* Nuclear override — defensive contra cualquier text-decoration heredada */
+  /* Nuclear override — defensivo contra cualquier text-decoration heredada */
   text-decoration: none !important;
   text-decoration-line: none !important;
   text-decoration-color: transparent !important;
@@ -127,11 +124,14 @@
    (rgba 14,165,233 con 12px blur) se veía como una raya horizontal turquesa
    justo abajo del cuadrado. El gradiente del cuadrado + el texto adjacente
    sostienen visualmente al logo sin necesidad de shadow. */
+/* 2026-07-14 (v6): T box agrandado (28→40px) + border-radius (8→10) para
+   matchear la altura del btn "Solicitá una demo" del nav (42px) y el radius
+   de los btns (10px). Consistencia visual entre brand + CTA. */
 .tecny-landing .brand .mk {
-  width: 28px; height: 28px; border-radius: 8px;
+  width: 40px; height: 40px; border-radius: 10px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: var(--accent-ink); display: grid; place-items: center;
-  font-weight: 800; font-size: 12px; letter-spacing: -0.04em;
+  font-weight: 800; font-size: 18px; letter-spacing: -0.04em;
 }
 .tecny-landing .nav-links { display: flex; gap: 4px; margin-left: 8px; }
 .tecny-landing .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 7px; transition: .15s; }
@@ -435,8 +435,9 @@
          text-replacement, NO toca JSX. Ahorra ~80px.
      Total adicional: ~134px más de espacio en el nav. */
   .tecny-landing .nav-inner { padding: 14px 12px; gap: 10px; }
-  .tecny-landing .brand { font-size: 14px; gap: 6px; }
-  .tecny-landing .brand .mk { width: 24px; height: 24px; }
+  /* 2026-07-14 (v6): mobile matched to new desktop proportions. */
+  .tecny-landing .brand { font-size: 18px; gap: 8px; }
+  .tecny-landing .brand .mk { width: 32px; height: 32px; font-size: 14px; border-radius: 8px; }
   .tecny-landing .nav-cta { gap: 6px; }
   .tecny-landing .nav-cta > :nth-child(2) { display: none; }
   .tecny-landing .nav-cta .btn { padding: 0 10px; font-size: 13px; height: 36px; }
