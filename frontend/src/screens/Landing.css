@@ -101,11 +101,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  font-weight: 700;
-  /* 2026-07-14 (v7): tamaño de texto matcheado con los nav links (14px) para
-     que las baselines "Tecny" / "Cómo funciona / Módulos / Precios / FAQ"
-     queden alineadas. El T box grande (40px) mantiene el peso visual del
-     logo, pero el texto ya no sobresale hacia arriba del baseline común. */
+  /* 2026-07-14 (v8): weight bajado 700 → 600 para matchear el peso visual
+     de los nav links (500 medium). Bold 700 hacía que "Tecny" se viera más
+     grande que "Cómo funciona" aún al mismo font-size (14px). Con 600
+     semibold "Tecny" mantiene identidad de brand (más peso que un link
+     random) pero visualmente se alinea mejor con los links del nav. */
+  font-weight: 600;
   font-size: 14px;
   letter-spacing: -0.02em;
   /* Nuclear override — defensivo contra cualquier text-decoration heredada */
