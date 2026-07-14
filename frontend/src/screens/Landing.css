@@ -102,7 +102,11 @@
   align-items: center;
   gap: 12px;
   font-weight: 700;
-  font-size: 22px;             /* was 17px — matchea visualmente la altura del btn */
+  /* 2026-07-14 (v7): tamaño de texto matcheado con los nav links (14px) para
+     que las baselines "Tecny" / "Cómo funciona / Módulos / Precios / FAQ"
+     queden alineadas. El T box grande (40px) mantiene el peso visual del
+     logo, pero el texto ya no sobresale hacia arriba del baseline común. */
+  font-size: 14px;
   letter-spacing: -0.02em;
   /* Nuclear override — defensivo contra cualquier text-decoration heredada */
   text-decoration: none !important;
