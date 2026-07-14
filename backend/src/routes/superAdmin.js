@@ -58,6 +58,7 @@ const {
   changePaisSchema,
   updateComprobanteFooterSchema,
   updateSiteLandingContactSchema,
+  mergeClasesProductoSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
@@ -2457,5 +2458,293 @@ router.get('/google-reviews-status', async (_req, res, next) => {
     next(err);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLASES DUPLICADAS — detección + merge por tenant.
+//
+// 2026-07-14 (feature): cliente reportó tabs de categoría duplicadas en
+// Inventario (ej. "iPads" + "ipad", "Accesorios" + "Accesorios/Varios").
+// La UNIQUE constraint del schema evita duplicados EXACTOS
+// (`LOWER(nombre)` case-insensitive por tenant), pero permite near-duplicates
+// con distinto casing o palabras similares.
+//
+// Herramienta admin de 2 endpoints:
+//   GET  /tenants/:id/clases-duplicadas  → detecta pares near-duplicate
+//   POST /tenants/:id/clases-merge       → consolida 2 clases en 1 (atómico)
+//
+// Solo super-admin — es una operación correctiva sensible que puede mover
+// muchos productos y cambiar la categorización visible del tenant.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /tenants/:id/clases-duplicadas
+//
+// Detecta pares de clases (a, b) del tenant que son near-duplicates via
+// `pg_trgm.similarity()` + containment (`LIKE '%X%'`).
+//
+// Threshold: similarity >= 0.5 OR containment. El score final expuesto al
+// frontend es 1.0 si hay containment (alta confianza) o el valor de
+// similarity trigram (media confianza).
+//
+// Response:
+//   [
+//     {
+//       a: { id, nombre, count_productos },
+//       b: { id, nombre, count_productos },
+//       similarity: 0.73,          // trigram similarity case-insensitive
+//       contain_kind: 'A_CONTAINS_B' | 'B_CONTAINS_A' | null,
+//       score: 1.0 | similarity,   // 1.0 si hay containment, sino similarity
+//       confidence: 'high' | 'medium',  // >= 0.9 → high; sino medium
+//       canonica_suggested_id: uuid,    // la de más productos gana (empate → más antigua)
+//     },
+//     ...
+//   ]
+//
+// pg_trgm ya está habilitado en prod (migration 20260524000006).
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/tenants/:id/clases-duplicadas', async (req, res, next) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'id inválido' });
+    }
+    const rows = await db.adminQuery(async (client) => {
+      // Verificar que el tenant existe (evita devolver [] para tenants inexistentes,
+      // que sería ambiguo con "no hay duplicados").
+      const t = await client.query(
+        `SELECT id FROM tenants WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (!t.rows[0]) return null;
+
+      const q = await client.query(
+        `WITH clases_con_count AS (
+           SELECT c.*,
+                  COUNT(p.id) FILTER (WHERE p.deleted_at IS NULL)::int AS count_productos
+             FROM clases_producto c
+             LEFT JOIN productos p ON p.clase_id = c.id
+            WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
+            GROUP BY c.id
+         )
+         SELECT
+           a.id                AS a_id,
+           a.nombre            AS a_nombre,
+           a.count_productos   AS a_count,
+           a.created_at        AS a_created_at,
+           a.es_base           AS a_es_base,
+           a.es_sin_categoria  AS a_es_sin_categoria,
+           b.id                AS b_id,
+           b.nombre            AS b_nombre,
+           b.count_productos   AS b_count,
+           b.created_at        AS b_created_at,
+           b.es_base           AS b_es_base,
+           b.es_sin_categoria  AS b_es_sin_categoria,
+           similarity(LOWER(a.nombre), LOWER(b.nombre)) AS sim,
+           CASE
+             WHEN LOWER(a.nombre) LIKE '%' || LOWER(b.nombre) || '%' THEN 'A_CONTAINS_B'
+             WHEN LOWER(b.nombre) LIKE '%' || LOWER(a.nombre) || '%' THEN 'B_CONTAINS_A'
+             ELSE NULL
+           END AS contain_kind
+           FROM clases_con_count a
+           JOIN clases_con_count b ON b.id < a.id  -- evita pares duplicados (a,b) y (b,a)
+          WHERE similarity(LOWER(a.nombre), LOWER(b.nombre)) >= 0.5
+             OR LOWER(a.nombre) LIKE '%' || LOWER(b.nombre) || '%'
+             OR LOWER(b.nombre) LIKE '%' || LOWER(a.nombre) || '%'
+          ORDER BY
+            -- containment primero (alta confianza), luego similarity
+            (CASE WHEN LOWER(a.nombre) LIKE '%' || LOWER(b.nombre) || '%'
+                    OR LOWER(b.nombre) LIKE '%' || LOWER(a.nombre) || '%'
+                  THEN 1.0 ELSE similarity(LOWER(a.nombre), LOWER(b.nombre)) END) DESC,
+            a.nombre ASC`,
+        [id]
+      );
+      return q.rows;
+    });
+
+    if (rows === null) return res.status(404).json({ error: 'Tenant no encontrado' });
+
+    // Post-process: agregar canónica sugerida, score, confidence.
+    // Regla de canónica: más productos gana. Empate → más antigua (created_at ASC).
+    // Empate total → alfabético (menor). Las clases `es_base` y `es_sin_categoria`
+    // se prefieren como canónicas (nunca se van a mergear como "duplicadas").
+    const enriched = rows.map(r => {
+      const contain = r.contain_kind !== null;
+      const score = contain ? 1.0 : Number(r.sim);
+      const confidence = score >= 0.9 ? 'high' : 'medium';
+
+      // Elegir canónica.
+      const pickCanonica = () => {
+        // Nunca mergear una base o sin_categoria (serían la canónica siempre).
+        if (r.a_es_base || r.a_es_sin_categoria) return r.a_id;
+        if (r.b_es_base || r.b_es_sin_categoria) return r.b_id;
+        // Sino, la de más productos.
+        if (r.a_count > r.b_count) return r.a_id;
+        if (r.b_count > r.a_count) return r.b_id;
+        // Empate → la más antigua.
+        if (new Date(r.a_created_at) < new Date(r.b_created_at)) return r.a_id;
+        if (new Date(r.b_created_at) < new Date(r.a_created_at)) return r.b_id;
+        // Empate total → alfabético.
+        return r.a_nombre.toLowerCase() <= r.b_nombre.toLowerCase() ? r.a_id : r.b_id;
+      };
+      const canonica_suggested_id = pickCanonica();
+      const duplicada_suggested_id = canonica_suggested_id === r.a_id ? r.b_id : r.a_id;
+
+      return {
+        a: {
+          id: r.a_id, nombre: r.a_nombre, count_productos: r.a_count,
+          es_base: r.a_es_base, es_sin_categoria: r.a_es_sin_categoria,
+        },
+        b: {
+          id: r.b_id, nombre: r.b_nombre, count_productos: r.b_count,
+          es_base: r.b_es_base, es_sin_categoria: r.b_es_sin_categoria,
+        },
+        similarity: Math.round(Number(r.sim) * 100) / 100,
+        contain_kind: r.contain_kind,
+        score: Math.round(score * 100) / 100,
+        confidence,
+        canonica_suggested_id,
+        duplicada_suggested_id,
+      };
+    });
+
+    logger.info(
+      { super_admin: req.user.id, tenant_id: id, pairs_found: enriched.length },
+      '[super-admin] GET /tenants/:id/clases-duplicadas'
+    );
+    res.json({ tenant_id: id, pairs: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /tenants/:id/clases-merge
+//
+// Consolida 2 clases_producto: mueve todos los productos de `duplicada_id`
+// a `canonica_id` y soft-deletea la duplicada. Auditado en tenant_admin_actions.
+//
+// Body: { duplicada_id: UUID, canonica_id: UUID }
+//
+// Precauciones:
+//   - SELECT FOR UPDATE en las 2 clases → serializa contra edits/merges concurrentes.
+//   - Verifica que ambas pertenecen al mismo tenant (RLS bypass, así que validación manual).
+//   - Rechaza mergear una `es_base` o `es_sin_categoria` como duplicada (serían
+//     las canónicas). Si el super-admin realmente quiere hacerlo, tiene que renombrar
+//     primero (fuera del scope de este endpoint).
+//   - Todo en 1 tx atómica: rollback automático si algo falla.
+// ──────────────────────────────────────────────────────────────────────────
+router.post('/tenants/:id/clases-merge',
+  validate(mergeClasesProductoSchema),
+  async (req, res, next) => {
+    try {
+      const id = parseId(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'id inválido' });
+      }
+      const { duplicada_id, canonica_id } = req.body;
+
+      const result = await db.adminQuery(async (client) => {
+        // Todo dentro de una tx explícita para atomicidad + FOR UPDATE lock.
+        await client.query('BEGIN');
+        try {
+          // Lock ambas clases + verifica que pertenezcan al tenant + no estén ya borradas.
+          const clases = await client.query(
+            `SELECT id, nombre, es_base, es_sin_categoria, tenant_id, deleted_at
+               FROM clases_producto
+              WHERE id = ANY($1::uuid[])
+                AND tenant_id = $2
+                AND deleted_at IS NULL
+              FOR UPDATE`,
+            [[duplicada_id, canonica_id], id]
+          );
+          if (clases.rows.length !== 2) {
+            const err = new Error('Alguna de las 2 clases no existe, ya fue borrada, o no pertenece al tenant');
+            err.status = 404;
+            throw err;
+          }
+          const duplicada = clases.rows.find(r => r.id === duplicada_id);
+          const canonica = clases.rows.find(r => r.id === canonica_id);
+          if (!duplicada || !canonica) {
+            const err = new Error('IDs no matchean con las filas encontradas');
+            err.status = 500;
+            throw err;
+          }
+          // No permitir borrar una base o sin_categoria como "duplicada"
+          // — deben ser la canónica siempre. Super-admin puede renombrar
+          // primero si realmente quiere.
+          if (duplicada.es_base) {
+            const err = new Error('No se puede mergear una categoría base como duplicada');
+            err.status = 409;
+            err.code = 'duplicada_es_base';
+            throw err;
+          }
+          if (duplicada.es_sin_categoria) {
+            const err = new Error('No se puede mergear "Sin categoría" (protegida por sistema)');
+            err.status = 409;
+            err.code = 'duplicada_es_sin_categoria';
+            throw err;
+          }
+
+          // Mover productos. Nota: tabla productos NO tiene updated_at, solo
+          // created_at (histórico — se pensó como append-mostly con edits vía
+          // audit_logs). Por eso NO seteamos updated_at acá.
+          const upd = await client.query(
+            `UPDATE productos
+                SET clase_id = $1
+              WHERE clase_id = $2 AND tenant_id = $3`,
+            [canonica_id, duplicada_id, id]
+          );
+          const productos_movidos = upd.rowCount;
+
+          // Soft-delete la duplicada.
+          await client.query(
+            `UPDATE clases_producto
+                SET deleted_at = NOW(), updated_at = NOW()
+              WHERE id = $1 AND tenant_id = $2`,
+            [duplicada_id, id]
+          );
+
+          // Audit trail. Reusa insertAdminAction para consistencia con
+          // resto de acciones super-admin. before/after captura info clave
+          // para forense + posible rollback manual.
+          await insertAdminAction(client, {
+            tenantId: id,
+            superAdminUserId: req.user.id,
+            action: 'clases_merge',
+            beforeState: {
+              duplicada: { id: duplicada.id, nombre: duplicada.nombre },
+              canonica:  { id: canonica.id,  nombre: canonica.nombre  },
+            },
+            afterState: {
+              productos_movidos,
+              canonica_final_id: canonica.id,
+              canonica_final_nombre: canonica.nombre,
+            },
+            reason: null,
+          });
+
+          await client.query('COMMIT');
+          return {
+            duplicada_id, canonica_id,
+            duplicada_nombre: duplicada.nombre,
+            canonica_nombre: canonica.nombre,
+            productos_movidos,
+          };
+        } catch (e) {
+          await client.query('ROLLBACK');
+          throw e;
+        }
+      });
+
+      logger.info(
+        { super_admin: req.user.id, tenant_id: id, ...result },
+        '[super-admin] POST /tenants/:id/clases-merge'
+      );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;

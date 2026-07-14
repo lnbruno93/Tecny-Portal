@@ -423,6 +423,28 @@ export const adminApi = {
   // usado por la card "Reseñas de Google" (toggle enabled + status display).
   getGoogleReviewsStatus: () => api('/api/super-admin/google-reviews-status'),
 
+  // ── Clases duplicadas (2026-07-14) ────────────────────────────────────
+  // Herramienta de mantenimiento cross-tenant: detectar y fusionar categorías
+  // de producto (`clases_producto`) casi-duplicadas dentro de UN tenant.
+  //
+  // Caso típico: el tenant tiene ambos "iPads" (base, del catálogo Tecny) y
+  // "ipad" (custom, creado por el cliente al importar XLSX o al tipear
+  // manualmente). Ambos apuntan a productos separados → KPIs y filtros
+  // fragmentados. La detección usa trigram similarity + containment.
+  //
+  // GET /tenants/:id/clases-duplicadas → { pairs: [{ a, b, similarity,
+  //   contain_kind, score, confidence, canonica_suggested_id, duplicada_suggested_id }] }
+  //
+  // POST /tenants/:id/clases-merge → body { duplicada_id, canonica_id }.
+  // Response 200: { productos_movidos, canonica_nombre, duplicada_nombre }.
+  // Errors: 400 (mismo id, base/sin_categoría como duplicada), 404 (cross-tenant),
+  // 409 (rules del negocio), 23514 CHECK (audit action inválida — evitado por
+  // migration 20260714).
+  getClasesDuplicadas: (tenantId) =>
+    api(`/api/super-admin/tenants/${tenantId}/clases-duplicadas`),
+  mergeClasesProducto: (tenantId, body) =>
+    api(`/api/super-admin/tenants/${tenantId}/clases-merge`, 'POST', body),
+
   // ── Team (#499) — gestión de co-super-admins ────────────────────────────
   // GET  /team           → { super_admins, pending_invites }
   // POST /team/invite    → { invite, email_sent }
