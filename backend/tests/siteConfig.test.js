@@ -76,10 +76,14 @@ describe('GET /api/public/site-config', () => {
     expect(r.status).toBe(200);
   });
 
-  it('tiene shape { contact, testimonials, footer } — fase-safe', async () => {
+  it('tiene shape { contact, testimonials, hero, cta, faq, footer } — fase-safe', async () => {
     const r = await request(app).get('/api/public/site-config');
     expect(r.body).toHaveProperty('contact');
     expect(r.body).toHaveProperty('testimonials');
+    // 2026-07-13 Fase 3: hero + cta + faq.
+    expect(r.body).toHaveProperty('hero');
+    expect(r.body).toHaveProperty('cta');
+    expect(r.body).toHaveProperty('faq');
     expect(r.body).toHaveProperty('footer');
     // Sub-shape de contacto.
     expect(r.body.contact).toEqual(expect.objectContaining({
@@ -90,8 +94,12 @@ describe('GET /api/public/site-config', () => {
       instagram_handle:   expect.any(String),
       instagram_url:      expect.any(String),
     }));
+    // Sub-shape de hero + cta (todos null en el seed — landing usa fallback).
+    expect(r.body.hero).toEqual({ headline: null, subheadline: null, blurb: null });
+    expect(r.body.cta).toEqual({ headline: null, body: null });
     // Placeholders para fases futuras — la landing puede referenciar sin crashear.
     expect(r.body.testimonials).toEqual([]);
+    expect(r.body.faq).toEqual([]);
     expect(r.body.footer).toBeNull();
   });
 
@@ -277,6 +285,100 @@ describe('PATCH /api/super-admin/site-config — testimonials (Fase 2)', () => {
     const r = await request(app).patch('/api/super-admin/site-config').set(auth())
       .send({ testimonials: arr });
     expect(r.status).toBe(400);
+  });
+});
+
+// 2026-07-13 (CMS Landing Fase 3): Hero + CTA + FAQ editables desde admin.
+describe('CMS Fase 3 — hero + cta + faq', () => {
+  it('PATCH hero_headline se guarda y refleja en GET público', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ hero_headline: 'Ordená tu revendedora hoy' });
+    expect(r.status).toBe(200);
+    expect(r.body.hero_headline).toBe('Ordená tu revendedora hoy');
+
+    const pub = await request(app).get('/api/public/site-config');
+    expect(pub.body.hero.headline).toBe('Ordená tu revendedora hoy');
+  });
+
+  it('PATCH hero_blurb con string vacío → null (normalización)', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ hero_blurb: '' });
+    expect(r.status).toBe(200);
+    expect(r.body.hero_blurb).toBeNull();
+  });
+
+  it('PATCH cta_headline y cta_body se persisten juntos', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ cta_headline: 'Empezá gratis hoy', cta_body: 'Sin tarjeta requerida.' });
+    expect(r.status).toBe(200);
+    expect(r.body.cta_headline).toBe('Empezá gratis hoy');
+    expect(r.body.cta_body).toBe('Sin tarjeta requerida.');
+
+    const pub = await request(app).get('/api/public/site-config');
+    expect(pub.body.cta).toEqual({ headline: 'Empezá gratis hoy', body: 'Sin tarjeta requerida.' });
+  });
+
+  it('rechaza hero_headline > 100 chars → 400', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ hero_headline: 'x'.repeat(101) });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza cta_headline > 80 chars → 400', async () => {
+    const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+      .send({ cta_headline: 'x'.repeat(81) });
+    expect(r.status).toBe(400);
+  });
+
+  describe('FAQ (JSONB array)', () => {
+    it('crea FAQ nuevo → server genera UUIDs', async () => {
+      const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+        .send({
+          faq: [
+            { question: '¿Es difícil de usar?', answer: 'Para nada — 15 min de onboarding.' },
+            { question: '¿Cuánto sale?', answer: 'Desde USD 39/mes.' },
+          ],
+        });
+      expect(r.status).toBe(200);
+      expect(r.body.faq).toHaveLength(2);
+      expect(r.body.faq[0]).toEqual(expect.objectContaining({
+        id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}/i),
+        question: '¿Es difícil de usar?',
+      }));
+    });
+
+    it('preserva id de FAQ existente al editar', async () => {
+      const create = await request(app).patch('/api/super-admin/site-config').set(auth())
+        .send({ faq: [{ question: '¿Pregunta original?', answer: 'Respuesta original válida.' }] });
+      const origId = create.body.faq[0].id;
+
+      const edit = await request(app).patch('/api/super-admin/site-config').set(auth())
+        .send({ faq: [{ id: origId, question: '¿Pregunta editada?', answer: 'Respuesta editada válida.' }] });
+      expect(edit.body.faq[0].id).toBe(origId);
+      expect(edit.body.faq[0].question).toBe('¿Pregunta editada?');
+    });
+
+    it('permite array vacío (borra todos)', async () => {
+      const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+        .send({ faq: [] });
+      expect(r.status).toBe(200);
+      expect(r.body.faq).toEqual([]);
+    });
+
+    it('rechaza FAQ con answer < 3 chars → 400', async () => {
+      const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+        .send({ faq: [{ question: '¿Sí?', answer: 'no' }] });
+      expect(r.status).toBe(400);
+    });
+
+    it('rechaza más de 20 preguntas → 400', async () => {
+      const arr = Array.from({ length: 21 }, (_, i) => ({
+        question: `¿Pregunta ${i}?`, answer: 'Respuesta suficientemente larga.',
+      }));
+      const r = await request(app).patch('/api/super-admin/site-config').set(auth())
+        .send({ faq: arr });
+      expect(r.status).toBe(400);
+    });
   });
 });
 

@@ -42,6 +42,43 @@ const AVATAR_COLORS = ['#4285F4', '#EA4335', '#FBBC04', '#34A853', '#9C27B0', '#
 
 const EMPTY_CONTACT = CONTACT_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), {});
 
+// 2026-07-13 CMS Fase 3: campos de Hero — headline, subheadline, blurb.
+// Placeholders son los valores actuales hardcodeados en Landing.jsx (para
+// que el operador vea qué está sobrescribiendo y qué queda como fallback).
+const HERO_FIELDS = [
+  { key: 'hero_headline',    label: 'Título principal (Hero headline)',
+    placeholder: 'Todo tu negocio, en una sola pantalla.', type: 'text', maxLength: 100,
+    hint: 'El título grande arriba. Vacío → usa el default de la landing. Máx 100 chars.' },
+  { key: 'hero_subheadline', label: 'Subtítulo (Hero subheadline)',
+    placeholder: 'El sistema para revendedores de tecnología.', type: 'text', maxLength: 120,
+    hint: 'Debajo del título. Máx 120 chars.' },
+  { key: 'hero_blurb',       label: 'Descripción (Hero blurb)',
+    placeholder: 'Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — para equipos que...',
+    type: 'textarea', maxLength: 400,
+    hint: 'Párrafo descriptivo. Máx 400 chars.' },
+];
+const EMPTY_HERO = HERO_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), {});
+
+// 2026-07-13 CMS Fase 3: campos de CTA final.
+const CTA_FIELDS = [
+  { key: 'cta_headline', label: 'Título del CTA',
+    placeholder: 'Ordená tu negocio hoy', type: 'text', maxLength: 80,
+    hint: 'El título grande del bloque final antes del footer. Máx 80 chars.' },
+  { key: 'cta_body',     label: 'Descripción del CTA',
+    placeholder: 'Sumate a los equipos que ya dejaron las planillas atrás...',
+    type: 'textarea', maxLength: 250,
+    hint: 'Subtítulo bajo el título del CTA. Máx 250 chars.' },
+];
+const EMPTY_CTA = CTA_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: '' }), {});
+
+function sameFaq(a, b) {
+  return JSON.stringify(a || []) === JSON.stringify(b || []);
+}
+function emptyFaq() {
+  return { _tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+           question: '', answer: '' };
+}
+
 // Deep-equal chico para arrays de testimonials (comparación por serialización).
 // Suficiente para el diff-tracking: 50 items × ~500 chars = ~25kB, JSON.stringify
 // es sub-ms en esa escala.
@@ -69,6 +106,14 @@ export default function SitioPublico() {
   // paralelo con el config — si falla no rompe la página (card muestra fallback).
   const [googleStatus, setGoogleStatus]     = useState(null);
   const [copyMsg, setCopyMsg]               = useState(null);
+  // 2026-07-13 Fase 3: hero + cta como grupos de campos texto (mismo patrón
+  // que contact), y faq como array editable (mismo patrón que testimonials).
+  const [hero, setHero]                 = useState(EMPTY_HERO);
+  const [heroOriginal, setHeroOriginal] = useState(EMPTY_HERO);
+  const [cta, setCta]                   = useState(EMPTY_CTA);
+  const [ctaOriginal, setCtaOriginal]   = useState(EMPTY_CTA);
+  const [faq, setFaq]                   = useState([]);
+  const [faqOriginal, setFaqOriginal]   = useState([]);
   const [meta, setMeta]         = useState({ updated_at: null });
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
@@ -93,6 +138,16 @@ export default function SitioPublico() {
       const nEnabled = row?.google_reviews_enabled !== false;
       setGoogleEnabled(nEnabled);
       setGoogleEnabledOriginal(nEnabled);
+      // 2026-07-13 Fase 3: cargar hero + cta + faq. Null → '' para inputs.
+      const nHero = HERO_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: row?.[f.key] ?? '' }), {});
+      setHero(nHero);
+      setHeroOriginal(nHero);
+      const nCta = CTA_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: row?.[f.key] ?? '' }), {});
+      setCta(nCta);
+      setCtaOriginal(nCta);
+      const nFaq = Array.isArray(row?.faq) ? row.faq : [];
+      setFaq(nFaq);
+      setFaqOriginal(nFaq);
       setMeta({ updated_at: row?.updated_at || null });
 
       // Cargar status en paralelo — no bloquea si falla (feature no crítica).
@@ -108,14 +163,31 @@ export default function SitioPublico() {
   }
   useEffect(() => { cargar(); }, []);
 
-  // Dirty state combinado (contacto + reseñas + toggle Google).
+  // Dirty state combinado (contacto + reseñas + toggle Google + hero + cta + faq).
   const dirtyContactKeys = CONTACT_FIELDS
     .map(f => f.key)
     .filter(k => (contact[k] || '') !== (contactOriginal[k] || ''));
+  const dirtyHeroKeys = HERO_FIELDS
+    .map(f => f.key)
+    .filter(k => (hero[k] || '') !== (heroOriginal[k] || ''));
+  const dirtyCtaKeys = CTA_FIELDS
+    .map(f => f.key)
+    .filter(k => (cta[k] || '') !== (ctaOriginal[k] || ''));
   const testimonialsDirty = !sameTestimonials(testimonials, testimonialsOriginal);
+  const faqDirty = !sameFaq(faq, faqOriginal);
   const googleEnabledDirty = googleEnabled !== googleEnabledOriginal;
-  const isDirty = dirtyContactKeys.length > 0 || testimonialsDirty || googleEnabledDirty;
-  const totalChanges = dirtyContactKeys.length + (testimonialsDirty ? 1 : 0) + (googleEnabledDirty ? 1 : 0);
+  const isDirty = dirtyContactKeys.length > 0
+    || dirtyHeroKeys.length > 0
+    || dirtyCtaKeys.length > 0
+    || testimonialsDirty
+    || faqDirty
+    || googleEnabledDirty;
+  const totalChanges = dirtyContactKeys.length
+    + dirtyHeroKeys.length
+    + dirtyCtaKeys.length
+    + (testimonialsDirty ? 1 : 0)
+    + (faqDirty ? 1 : 0)
+    + (googleEnabledDirty ? 1 : 0);
 
   async function guardar() {
     if (!isDirty) return;
@@ -125,10 +197,18 @@ export default function SitioPublico() {
     try {
       const patch = {};
       for (const k of dirtyContactKeys) patch[k] = contact[k];
+      for (const k of dirtyHeroKeys)    patch[k] = hero[k];
+      for (const k of dirtyCtaKeys)     patch[k] = cta[k];
       if (testimonialsDirty) {
         // Sanitizar: strip claves internas de UI (_tempId) antes de enviar.
         patch.testimonials = testimonials.map(t => {
           const { _tempId, ...clean } = t;
+          return clean;
+        });
+      }
+      if (faqDirty) {
+        patch.faq = faq.map(q => {
+          const { _tempId, ...clean } = q;
           return clean;
         });
       }
@@ -146,6 +226,16 @@ export default function SitioPublico() {
       const nEnabled = updated?.google_reviews_enabled !== false;
       setGoogleEnabled(nEnabled);
       setGoogleEnabledOriginal(nEnabled);
+      // 2026-07-13 Fase 3: refresh hero/cta/faq desde el response.
+      const nHero = HERO_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: updated?.[f.key] ?? '' }), {});
+      setHero(nHero);
+      setHeroOriginal(nHero);
+      const nCta = CTA_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: updated?.[f.key] ?? '' }), {});
+      setCta(nCta);
+      setCtaOriginal(nCta);
+      const nFaq = Array.isArray(updated?.faq) ? updated.faq : [];
+      setFaq(nFaq);
+      setFaqOriginal(nFaq);
       setMeta({ updated_at: updated?.updated_at || null });
       setSavedMsg('Guardado. Los cambios aparecen en tecnyapp.com en máx. 5 minutos.');
       setTimeout(() => setSavedMsg(null), 6000);
@@ -171,7 +261,24 @@ export default function SitioPublico() {
     setContact(contactOriginal);
     setTestimonials(testimonialsOriginal);
     setGoogleEnabled(googleEnabledOriginal);
+    setHero(heroOriginal);
+    setCta(ctaOriginal);
+    setFaq(faqOriginal);
     setError(null);
+  }
+
+  // FAQ ops — mismo patrón que testimonials (mutan array local, diff-tracking se encarga).
+  function addFaq()                        { setFaq(f => [...f, emptyFaq()]); }
+  function updateFaq(idx, key, value)      { setFaq(f => f.map((it, i) => i === idx ? { ...it, [key]: value } : it)); }
+  function removeFaq(idx)                  { setFaq(f => f.filter((_, i) => i !== idx)); }
+  function moveFaq(idx, dir) {
+    setFaq(f => {
+      const next = [...f];
+      const swap = idx + dir;
+      if (swap < 0 || swap >= next.length) return f;
+      [next[idx], next[swap]] = [next[swap], next[idx]];
+      return next;
+    });
   }
 
   // Copiar link "escribir reseña" al clipboard — el mismo que Google usa para
@@ -268,6 +375,187 @@ export default function SitioPublico() {
                   </div>
                 );
               })}
+            </div>
+          </Card>
+
+          {/* ── SECCIÓN HERO (Fase 3) ── */}
+          <Card>
+            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Hero (top de la landing)
+                  {dirtyHeroKeys.length > 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                   borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                      {dirtyHeroKeys.length} MODIFICADO{dirtyHeroKeys.length > 1 ? 'S' : ''}
+                    </span>
+                  )}
+                </h3>
+                <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                  Título grande + subtítulo + descripción arriba de todo. Vacío → landing usa el default.
+                </p>
+              </div>
+              {HERO_FIELDS.map(f => {
+                const changed = (hero[f.key] || '') !== (heroOriginal[f.key] || '');
+                return (
+                  <div key={f.key} className="field">
+                    <label className="field-label" htmlFor={`sc-${f.key}`}
+                           style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {f.label}
+                      {changed && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                       borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                          MODIFICADO
+                        </span>
+                      )}
+                    </label>
+                    {f.type === 'textarea' ? (
+                      <textarea id={`sc-${f.key}`} className="input" rows={3} maxLength={f.maxLength}
+                                placeholder={f.placeholder} value={hero[f.key]}
+                                onChange={e => setHero(x => ({ ...x, [f.key]: e.target.value }))}
+                                disabled={saving} style={{ width: '100%', resize: 'vertical' }} />
+                    ) : (
+                      <input id={`sc-${f.key}`} type={f.type} className="input" maxLength={f.maxLength}
+                             placeholder={f.placeholder} value={hero[f.key]}
+                             onChange={e => setHero(x => ({ ...x, [f.key]: e.target.value }))}
+                             disabled={saving} style={{ width: '100%' }} />
+                    )}
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{f.hint}</span>
+                      <span>{(hero[f.key] || '').length} / {f.maxLength}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* ── SECCIÓN CTA FINAL (Fase 3) ── */}
+          <Card>
+            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  CTA final
+                  {dirtyCtaKeys.length > 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                   borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                      {dirtyCtaKeys.length} MODIFICADO{dirtyCtaKeys.length > 1 ? 'S' : ''}
+                    </span>
+                  )}
+                </h3>
+                <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                  Bloque de conversión antes del footer. Máxima visibilidad del CTA "Empezá gratis".
+                </p>
+              </div>
+              {CTA_FIELDS.map(f => {
+                const changed = (cta[f.key] || '') !== (ctaOriginal[f.key] || '');
+                return (
+                  <div key={f.key} className="field">
+                    <label className="field-label" htmlFor={`sc-${f.key}`}
+                           style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {f.label}
+                      {changed && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                       borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                          MODIFICADO
+                        </span>
+                      )}
+                    </label>
+                    {f.type === 'textarea' ? (
+                      <textarea id={`sc-${f.key}`} className="input" rows={2} maxLength={f.maxLength}
+                                placeholder={f.placeholder} value={cta[f.key]}
+                                onChange={e => setCta(x => ({ ...x, [f.key]: e.target.value }))}
+                                disabled={saving} style={{ width: '100%', resize: 'vertical' }} />
+                    ) : (
+                      <input id={`sc-${f.key}`} type={f.type} className="input" maxLength={f.maxLength}
+                             placeholder={f.placeholder} value={cta[f.key]}
+                             onChange={e => setCta(x => ({ ...x, [f.key]: e.target.value }))}
+                             disabled={saving} style={{ width: '100%' }} />
+                    )}
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{f.hint}</span>
+                      <span>{(cta[f.key] || '').length} / {f.maxLength}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* ── SECCIÓN FAQ (Fase 3) ── */}
+          <Card>
+            <div style={{ padding: 20, display: 'grid', gap: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Preguntas frecuentes (FAQ)
+                    {faqDirty && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px',
+                                     borderRadius: 4, background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                        MODIFICADO
+                      </span>
+                    )}
+                  </h3>
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+                    Aparecen en la sección FAQ de la landing. Vacío → landing muestra las 6 default.
+                  </p>
+                </div>
+                <Btn variant="ghost" onClick={addFaq} disabled={saving || faq.length >= 20}>
+                  <Icons.Plus size={14} /> Agregar pregunta
+                </Btn>
+              </div>
+
+              {faq.length === 0 ? (
+                <div className="muted" style={{ padding: 16, textAlign: 'center',
+                     border: '1px dashed var(--hairline)', borderRadius: 8, fontSize: 13 }}>
+                  Todavía no cargaste ninguna pregunta. La landing muestra su set default hardcodeado.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {faq.map((q, idx) => (
+                    <div key={q.id || q._tempId} style={{
+                      padding: 14, borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'rgba(255,255,255,0.02)',
+                      display: 'grid', gap: 10,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          #{idx + 1} — {q.question ? q.question.slice(0, 60) : 'Sin pregunta'}
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button type="button" className="icon-btn" onClick={() => moveFaq(idx, -1)}
+                                  disabled={saving || idx === 0} title="Subir">▲</button>
+                          <button type="button" className="icon-btn" onClick={() => moveFaq(idx, 1)}
+                                  disabled={saving || idx === faq.length - 1} title="Bajar">▼</button>
+                          <button type="button" className="icon-btn" onClick={() => removeFaq(idx)}
+                                  disabled={saving} title="Eliminar">
+                            <Icons.Trash size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="field">
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Pregunta</div>
+                        <input className="input" maxLength={200}
+                               placeholder="Ej. ¿Necesito instalar algo?"
+                               value={q.question} disabled={saving}
+                               onChange={e => updateFaq(idx, 'question', e.target.value)} />
+                      </div>
+                      <div className="field">
+                        <div className="muted tiny" style={{ marginBottom: 2 }}>Respuesta</div>
+                        <textarea className="input" rows={3} maxLength={1000}
+                                  placeholder="Ej. No. Tecny funciona desde el navegador..."
+                                  value={q.answer} disabled={saving}
+                                  onChange={e => updateFaq(idx, 'answer', e.target.value)}
+                                  style={{ width: '100%', resize: 'vertical' }} />
+                        <div className="muted tiny" style={{ marginTop: 2, textAlign: 'right' }}>
+                          {(q.answer || '').length} / 1000
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Card>
 

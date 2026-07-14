@@ -99,6 +99,38 @@ const FALLBACK_CONTACT = Object.freeze({
   instagram_url:    'https://instagram.com/tecny.app',
 });
 
+// 2026-07-13 CMS Fase 3 fallbacks — matchean lo hardcodeado del diseño original
+// (2026-06-19). Si el backend responde con NULL para hero/cta o [] para faq,
+// la landing usa estos. Cambios sólo desde admin/sitio-publico.
+const FALLBACK_HERO = Object.freeze({
+  // headline es el título GRANDE. Aquí se pierde el <br /> del diseño original
+  // porque el CMS lo guarda como string plano; si Lucas quiere corte de línea,
+  // lo mete manualmente con \n o edita el HTML del CMS (futuro).
+  headline:    'Todo tu negocio, en una sola pantalla.',
+  subheadline: null,  // no había en el diseño original — reservado
+  blurb:       'Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — para equipos que venden tecnología. Dejá las planillas sueltas y los grupos de WhatsApp: Tecny ordena la operación de toda tu mesa de trabajo.',
+});
+const FALLBACK_CTA = Object.freeze({
+  headline: 'Ordená tu negocio hoy',
+  body:     'Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.',
+});
+// FAQ default — los 6 Q&A hardcodeados del diseño original. Si el admin carga
+// aunque sea 1, se usan los del admin (Lucas queda con control total).
+const FALLBACK_FAQ = Object.freeze([
+  { id: 'default-1', question: '¿Necesito instalar algo?',
+    answer: 'No. Tecny funciona desde el navegador, en la compu o el celular. Creás tu cuenta y empezás a usarlo en minutos, sin descargas ni configuración técnica.' },
+  { id: 'default-2', question: '¿Cómo funciona el lector de comprobantes (OCR)?',
+    answer: 'Sacás una foto del comprobante de pago o subís el PDF, y el sistema detecta el monto automáticamente con inteligencia artificial. Si la confianza es alta, queda pre-cargado; si no, te avisa para que lo revises. Aceptamos JPG, PNG, WEBP y PDF de hasta 5 MB.' },
+  { id: 'default-3', question: '¿Mis vendedores van a ver toda la información?',
+    answer: 'Vos decidís. Cada usuario tiene permisos por módulo: podés darle acceso solo al Cotizador y Envíos, por ejemplo, mientras que la parte financiera y de caja queda reservada para administradores.' },
+  { id: 'default-4', question: '¿Puedo manejar pesos y dólares?',
+    answer: 'Sí. Cuentas corrientes, cajas, comprobantes y catálogo de usados manejan ARS y USD por separado, sin mezclarlos. El cotizador convierte con el tipo de cambio que vos cargues.' },
+  { id: 'default-5', question: '¿Qué pasa con mis datos si dejo de usarlo?',
+    answer: 'Tus datos son tuyos. Podés exportarlos en cualquier momento. Nada se borra de forma definitiva sin tu confirmación — el sistema usa borrado suave para que nunca pierdas un registro por error.' },
+  { id: 'default-6', question: '¿Ofrecen prueba gratis?',
+    answer: '14 días gratis con todas las funciones, sin tarjeta de crédito. Si te sirve, elegís un plan; si no, no pagás nada.' },
+]);
+
 // Helper para armar link wa.me con mensaje pre-cargado. Normaliza el número
 // stripeando cualquier cosa que no sea dígito (por si el admin editó con
 // espacios o "+" por accidente).
@@ -124,6 +156,10 @@ export default function Landing() {
   // Mismo patrón que prices: fallback hardcoded → fetch reemplaza en mount.
   // Si backend falla, se muestra el fallback (nunca queda vacía la sección).
   const [contact, setContact] = useState(FALLBACK_CONTACT);
+  // 2026-07-13 CMS Fase 3: Hero + CTA final + FAQ dinámicos. Mismo patrón.
+  const [hero, setHero] = useState(FALLBACK_HERO);
+  const [cta, setCta]   = useState(FALLBACK_CTA);
+  const [faq, setFaq]   = useState(FALLBACK_FAQ);
 
   useEffect(() => {
     // AbortController para cancelar si el user navega antes de que resuelva
@@ -177,6 +213,30 @@ export default function Landing() {
           instagram_handle: c.instagram_handle || FALLBACK_CONTACT.instagram_handle,
           instagram_url:    c.instagram_url    || FALLBACK_CONTACT.instagram_url,
         });
+
+        // 2026-07-13 Fase 3: hero, cta, faq. Solo campos truthy overriden el
+        // fallback — el CMS puede tener parciales (ej. Lucas cambió el headline
+        // pero dejó el blurb como default).
+        const h = data?.hero;
+        if (h && typeof h === 'object') {
+          setHero({
+            headline:    h.headline    || FALLBACK_HERO.headline,
+            subheadline: h.subheadline || FALLBACK_HERO.subheadline,
+            blurb:       h.blurb       || FALLBACK_HERO.blurb,
+          });
+        }
+        const ct = data?.cta;
+        if (ct && typeof ct === 'object') {
+          setCta({
+            headline: ct.headline || FALLBACK_CTA.headline,
+            body:     ct.body     || FALLBACK_CTA.body,
+          });
+        }
+        // FAQ: si el admin cargó al menos 1, usa los del admin. Si es [], mantiene
+        // el fallback de 6 defaults hardcodeados.
+        if (Array.isArray(data?.faq) && data.faq.length > 0) {
+          setFaq(data.faq);
+        }
       })
       .catch(() => { /* silencioso, mismo criterio que pricing */ })
       .finally(() => clearTimeout(timer));
@@ -225,12 +285,21 @@ export default function Landing() {
         <div className="wrap hero-grid">
           <div>
             <div className="eyebrow"><span className="dot"></span> El portal operativo para revendedores</div>
-            <h1 className="hero-h">Todo tu negocio,<br /><span className="hl">en una sola pantalla.</span></h1>
-            <p className="hero-sub">
-              Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — para equipos que
-              venden tecnología. Dejá las planillas sueltas y los grupos de WhatsApp: Tecny
-              ordena la operación de toda tu mesa de trabajo.
-            </p>
+            {/* 2026-07-13 Fase 3: headline dinámico desde CMS. Si Lucas no
+                cargó nada custom, cae al fallback con <br /> preservado.
+                Cuando edita desde el admin, se muestra como single-line
+                (perdemos el corte de línea del diseño original a cambio de
+                editabilidad). */}
+            {hero.headline === FALLBACK_HERO.headline ? (
+              <h1 className="hero-h">Todo tu negocio,<br /><span className="hl">en una sola pantalla.</span></h1>
+            ) : (
+              <h1 className="hero-h">{hero.headline}</h1>
+            )}
+            {/* Subheadline opcional — solo se muestra si Lucas lo cargó desde admin. */}
+            {hero.subheadline && (
+              <p className="hero-sub" style={{ fontWeight: 600, marginBottom: 8 }}>{hero.subheadline}</p>
+            )}
+            <p className="hero-sub">{hero.blurb}</p>
             <div className="hero-actions">
               <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
               <a href="#como" className="btn btn-lg">Ver cómo funciona</a>
@@ -590,55 +659,20 @@ export default function Landing() {
             <div className="s-kicker">Preguntas frecuentes</div>
             <h2 className="s-title">Lo que todos preguntan</h2>
           </div>
+          {/* 2026-07-13 Fase 3: FAQ dinámica desde CMS. Si el admin no cargó
+              nada, se usa FALLBACK_FAQ (los 6 defaults del diseño original).
+              El primer item se abre por default (patrón <details open>). */}
           <div className="faq">
-            <details className="qa" open>
-              <summary>¿Necesito instalar algo?
-                <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </summary>
-              <div className="a">No. Tecny funciona desde el navegador, en la compu o el celular. Creás tu cuenta y empezás a usarlo en minutos, sin descargas ni configuración técnica.</div>
-            </details>
-            <details className="qa">
-              <summary>¿Cómo funciona el lector de comprobantes (OCR)?
-                <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </summary>
-              <div className="a">Sacás una foto del comprobante de pago o subís el PDF, y el sistema detecta el monto automáticamente con inteligencia artificial. Si la confianza es alta, queda pre-cargado; si no, te avisa para que lo revises. Aceptamos JPG, PNG, WEBP y PDF de hasta 5 MB.</div>
-            </details>
-            <details className="qa">
-              <summary>¿Mis vendedores van a ver toda la información?
-                <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </summary>
-              <div className="a">Vos decidís. Cada usuario tiene permisos por módulo: podés darle acceso solo al Cotizador y Envíos, por ejemplo, mientras que la parte financiera y de caja queda reservada para administradores.</div>
-            </details>
-            <details className="qa">
-              <summary>¿Puedo manejar pesos y dólares?
-                <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </summary>
-              <div className="a">Sí. Cuentas corrientes, cajas, comprobantes y catálogo de usados manejan ARS y USD por separado, sin mezclarlos. El cotizador convierte con el tipo de cambio que vos cargues.</div>
-            </details>
-            <details className="qa">
-              <summary>¿Qué pasa con mis datos si dejo de usarlo?
-                <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </summary>
-              <div className="a">Tus datos son tuyos. Podés exportarlos en cualquier momento. Nada se borra de forma definitiva sin tu confirmación — el sistema usa borrado suave para que nunca pierdas un registro por error.</div>
-            </details>
-            <details className="qa">
-              <summary>¿Ofrecen prueba gratis?
-                <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </summary>
-              <div className="a">14 días gratis con todas las funciones, sin tarjeta de crédito. Si te sirve, elegís un plan; si no, no pagás nada.</div>
-            </details>
+            {faq.map((q, i) => (
+              <details key={q.id || `faq-${i}`} className="qa" open={i === 0}>
+                <summary>{q.question}
+                  <svg className="pm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                </summary>
+                <div className="a">{q.answer}</div>
+              </details>
+            ))}
           </div>
         </div>
       </section>
@@ -647,8 +681,9 @@ export default function Landing() {
       <section className="s">
         <div className="wrap">
           <div className="cta-final">
-            <h2>Ordená tu negocio hoy</h2>
-            <p>Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.</p>
+            {/* 2026-07-13 Fase 3: CTA final dinámico desde CMS. */}
+            <h2>{cta.headline}</h2>
+            <p>{cta.body}</p>
             <div className="hero-actions">
               <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
               {/* 2026-06-25 ONB-8 → Calendly: era mailto: como fallback temporal.

@@ -2321,7 +2321,10 @@ router.get('/site-config', async (_req, res, next) => {
       const { rows } = await client.query(
         `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
                 contact_address, contact_instagram_handle, contact_instagram_url,
-                testimonials, google_reviews_enabled, updated_at, updated_by
+                testimonials, google_reviews_enabled,
+                hero_headline, hero_subheadline, hero_blurb,
+                cta_headline, cta_body, faq,
+                updated_at, updated_by
            FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
@@ -2340,13 +2343,16 @@ router.patch('/site-config',
       // el input; consolidamos a null para tener una sola representación.
       // Excepción: `testimonials` es JSONB array, se serializa aparte.
       const norm = (v) => (v === '' || v === undefined) ? null : v;
+      // Fields que son arrays JSONB — misma serialización + server-generated UUIDs.
+      // Fase 2: testimonials. Fase 3: faq. Se comportan igual (add/edit/delete
+      // en el frontend antes de PATCH; server preserva id de items existentes,
+      // genera UUID para los nuevos).
+      const JSONB_ARRAY_FIELDS = new Set(['testimonials', 'faq']);
+
       const patch = {};
       for (const key of Object.keys(req.body)) {
-        if (key === 'testimonials') {
-          // 2026-07-13 Fase 2: server genera UUID para items sin id (nuevos
-          // agregados desde el admin). Items con id existente lo preservan
-          // (edits). Esto permite react key stable + drag&drop sin flicker.
-          const withIds = (req.body.testimonials || []).map(t => ({
+        if (JSONB_ARRAY_FIELDS.has(key)) {
+          const withIds = (req.body[key] || []).map(t => ({
             ...t,
             id: t.id || crypto.randomUUID(),
           }));
@@ -2359,8 +2365,8 @@ router.patch('/site-config',
       // Build dynamic UPDATE — solo los campos que vinieron en el body.
       const keys = Object.keys(patch);
       const setPieces = keys.map((k, i) => {
-        // testimonials es jsonb; los demás son text/int genéricos.
-        return k === 'testimonials'
+        // testimonials y faq son jsonb; los demás son text/bool genéricos.
+        return JSONB_ARRAY_FIELDS.has(k)
           ? `${k} = $${i + 1}::jsonb`
           : `${k} = $${i + 1}`;
       });
@@ -2376,7 +2382,10 @@ router.patch('/site-config',
             WHERE id = 1
             RETURNING contact_email, contact_whatsapp, contact_whatsapp_display,
                       contact_address, contact_instagram_handle, contact_instagram_url,
-                      testimonials, google_reviews_enabled, updated_at, updated_by`,
+                      testimonials, google_reviews_enabled,
+                hero_headline, hero_subheadline, hero_blurb,
+                cta_headline, cta_body, faq,
+                updated_at, updated_by`,
           values
         );
         return rows[0];
