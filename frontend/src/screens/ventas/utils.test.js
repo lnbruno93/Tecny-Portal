@@ -109,4 +109,46 @@ describe('computeVentaTotales', () => {
     expect(r.costoFin).toBe(0); // CC no comisiona
     expect(r.real).toBe(200);   // 500 - 300 (bruta = real cuando no hay comisión)
   });
+
+  // 2026-07-14 (bug reportado por Lucas): el preview de "Ganancia real"
+  // salía en verde con el monto absoluto cuando en realidad la venta era
+  // una pérdida (sin pagos suficientes). Estos tests cubren el signo del
+  // `real` en escenarios de sub-cobro para que el render pueda decidir
+  // "Ganancia" vs "Pérdida" basado en `real < 0`.
+  describe('sub-cobro (pérdida real)', () => {
+    it('sin pagos y con costo → real es NEGATIVO (perdimos el costo)', () => {
+      // Vender un producto en 720 sin cobrar nada: dimos el producto y no
+      // percibimos plata. La ganancia real debe ser -720 (pérdida = costo del
+      // producto entregado). El operador ve "Pérdida u$s720" en el preview.
+      const cart = [{ cantidad: 1, precio_vendido: 720, costo: 720, moneda: 'USD' }];
+      const r = computeVentaTotales(cart, [], [], [], 0, null);
+      expect(r.items).toBe(720);
+      expect(r.cubierto).toBe(0);
+      expect(r.dif).toBe(-720);
+      expect(r.bruta).toBe(0);
+      expect(r.real).toBe(-720);
+    });
+
+    it('pago parcial menor al costo → real refleja el faltante', () => {
+      // Cliente paga 700 de un producto que costó 720 (margen 0). Perdimos 20.
+      const cart = [{ cantidad: 1, precio_vendido: 720, costo: 720, moneda: 'USD' }];
+      const pagos = [{ monto: 700, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null);
+      expect(r.items).toBe(720);
+      expect(r.cubierto).toBe(700);
+      expect(r.dif).toBeCloseTo(-20);
+      expect(r.bruta).toBe(0);
+      expect(r.real).toBeCloseTo(-20);
+    });
+
+    it('pago menor al costo con margen positivo pactado → sigue perdiendo si no cubre costo', () => {
+      // Venta 1000 con costo 800 (margen bruto 200). Cliente paga solo 500.
+      // Bruta = 200 (potencial). Real = 500 - 800 = -300 (perdimos parte del costo).
+      const cart = [{ cantidad: 1, precio_vendido: 1000, costo: 800, moneda: 'USD' }];
+      const pagos = [{ monto: 500, moneda: 'USD', metodo_pago_id: null, es_cuenta_corriente: false }];
+      const r = computeVentaTotales(cart, pagos, [], [], 0, null);
+      expect(r.bruta).toBe(200);       // margen potencial (si cobrara todo)
+      expect(r.real).toBeCloseTo(-300); // realidad: perdimos 300
+    });
+  });
 });
