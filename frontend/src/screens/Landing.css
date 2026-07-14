@@ -88,12 +88,15 @@
   display: flex; align-items: center; gap: 28px;
 }
 .tecny-landing .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+/* 2026-07-13: removida box-shadow del logo T — Lucas UX. El glow azul
+   (rgba 14,165,233 con 12px blur) se veía como una raya horizontal turquesa
+   justo abajo del cuadrado. El gradiente del cuadrado + el texto adjacente
+   sostienen visualmente al logo sin necesidad de shadow. */
 .tecny-landing .brand .mk {
   width: 28px; height: 28px; border-radius: 8px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: var(--accent-ink); display: grid; place-items: center;
   font-weight: 800; font-size: 12px; letter-spacing: -0.04em;
-  box-shadow: 0 4px 12px -2px rgba(14,165,233,0.4);
 }
 .tecny-landing .nav-links { display: flex; gap: 4px; margin-left: 8px; }
 .tecny-landing .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 7px; transition: .15s; }
