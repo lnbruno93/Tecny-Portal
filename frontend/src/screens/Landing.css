@@ -73,12 +73,15 @@
 .tecny-landing .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
 
 /* ── Nav ─────────────────────────────────────────────── */
+/* 2026-07-13: removida la border-bottom (rayita bajo el nav) — Lucas UX.
+   El backdrop-filter blur + el bg semi-translúcido separan el nav del hero
+   sin necesidad de línea horizontal explícita — es lo que hacen Notion,
+   Linear, Stripe: nav sticky sin línea. */
 .tecny-landing .nav {
   position: sticky; top: 0; z-index: 100;
   background: rgba(10,14,24,0.78);
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
-  border-bottom: 1px solid var(--hairline);
 }
 .tecny-landing .nav-inner {
   max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);

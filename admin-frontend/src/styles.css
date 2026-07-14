@@ -145,12 +145,14 @@ a { color: inherit; text-decoration: none; }
   min-height: 0;
   overflow: hidden;
 }
+/* 2026-07-13: removida la border-bottom (rayita bajo el logo) — Lucas UX.
+   El padding-bottom + margin-bottom mantienen la separación con las secciones
+   siguientes del sidebar (GESTIÓN, MARCA, etc.), sin línea visual competing. */
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 8px 16px;
-  border-bottom: 1px solid var(--hairline);
   margin-bottom: 10px;
 }
 .brand-mark {
