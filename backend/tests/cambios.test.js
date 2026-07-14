@@ -84,4 +84,89 @@ describe('Cambios de Divisa', () => {
     // borró 100 → no cambia el neto. Tenemos que dar 400.
     expect(r.body.saldo_usd).toBe(400);
   });
+
+  // 2026-07-14 (feature dirección inversa): 4 tipos nuevos permiten hacer
+  // la operación al revés — le doy USD, me devuelven ARS/UYU. Los saldos
+  // ahora se separan por moneda (saldo_usd, saldo_ars, saldo_uyu) porque
+  // una misma entidad puede tener deuda simultánea en las 3.
+  describe('dirección inversa (entrega USD → recibo local)', () => {
+    let entB, cajaArsB, cajaUsdB;
+    beforeAll(async () => {
+      // Entidad separada para no ensuciar los saldos de los tests previos.
+      const e = await request(app).post('/api/cambios/entidades').set(auth()).send({ nombre: 'DirB Test' });
+      entB = e.body.id;
+      const ca = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'DirB ARS', moneda: 'ARS', saldo_inicial: 0 });
+      const cu = await request(app).post('/api/cajas/cajas').set(auth()).send({ nombre: 'DirB USD', moneda: 'USD', saldo_inicial: 5000 });
+      cajaArsB = ca.body.id;
+      cajaUsdB = cu.body.id;
+    });
+
+    it('entrega_usd_por_ars: egreso de caja USD + deuda ARS = usd × tc', async () => {
+      const saldoUsdAntes = await saldoDe(cajaUsdB);
+      const m = await request(app).post('/api/cambios/movimientos').set(auth())
+        .send({ entidad_id: entB, fecha: hoy, tipo: 'entrega_usd_por_ars', monto_usd: 100, tc: 1200, caja_id: cajaUsdB });
+      expect(m.status).toBe(201);
+      // Caja USD baja en 100.
+      expect(await saldoDe(cajaUsdB)).toBe(saldoUsdAntes - 100);
+      // Persistimos monto_ars = 120000 (deuda local).
+      expect(Number(m.body.monto_ars)).toBe(120000);
+      // Saldo ARS de la entidad = 120000 (nos deben).
+      const det = await request(app).get(`/api/cambios/entidades/${entB}`).set(auth());
+      expect(Number(det.body.resumen.saldo_ars)).toBe(120000);
+      expect(Number(det.body.resumen.saldo_uyu)).toBe(0);
+      expect(Number(det.body.resumen.saldo_usd)).toBe(0);
+    });
+
+    it('recibo_ars: ingreso a caja ARS + cancela deuda ARS', async () => {
+      const saldoArsAntes = await saldoDe(cajaArsB);
+      const m = await request(app).post('/api/cambios/movimientos').set(auth())
+        .send({ entidad_id: entB, fecha: hoy, tipo: 'recibo_ars', monto_ars: 50000, caja_id: cajaArsB });
+      expect(m.status).toBe(201);
+      expect(await saldoDe(cajaArsB)).toBe(saldoArsAntes + 50000);
+      // Saldo ARS pasó de 120000 a 70000.
+      const det = await request(app).get(`/api/cambios/entidades/${entB}`).set(auth());
+      expect(Number(det.body.resumen.saldo_ars)).toBe(70000);
+    });
+
+    it('recibo_ars sin monto → 400', async () => {
+      const m = await request(app).post('/api/cambios/movimientos').set(auth())
+        .send({ entidad_id: entB, fecha: hoy, tipo: 'recibo_ars', caja_id: cajaArsB });
+      expect(m.status).toBe(400);
+    });
+
+    it('entrega_usd_por_uyu sin tc → 400', async () => {
+      const m = await request(app).post('/api/cambios/movimientos').set(auth())
+        .send({ entidad_id: entB, fecha: hoy, tipo: 'entrega_usd_por_uyu', monto_usd: 100, caja_id: cajaUsdB });
+      expect(m.status).toBe(400);
+    });
+
+    it('entrega_usd_por_ars contra caja ARS → 400 (moneda no coincide)', async () => {
+      const m = await request(app).post('/api/cambios/movimientos').set(auth())
+        .send({ entidad_id: entB, fecha: hoy, tipo: 'entrega_usd_por_ars', monto_usd: 100, tc: 1000, caja_id: cajaArsB });
+      expect(m.status).toBe(400);
+    });
+
+    it('saldos por moneda coexisten (USD + ARS) en la misma entidad', async () => {
+      // Nota: el tenant test es AR (multi-país es opt-in por tenant), así que
+      // no podemos crear cajas UYU acá. Testeamos coexistencia USD + ARS en
+      // la misma entidad. Para el saldo UYU hay coverage indirecto via el
+      // test "entrega_usd_por_uyu sin tc → 400" arriba y la lógica en
+      // SALDO_UYU_SQL espeja la de ARS (mismo pattern).
+      //
+      // La caja DirB ARS tiene saldo 50000 (del recibo_ars anterior). Le
+      // damos ARS 30000 con TC 1000 → nos deben USD 30. Deja saldo ARS 20000.
+      const mA = await request(app).post('/api/cambios/movimientos').set(auth())
+        .send({ entidad_id: entB, fecha: hoy, tipo: 'entrega_ars', monto_ars: 30000, tc: 1000, caja_id: cajaArsB });
+      if (mA.status !== 201) console.log('DEBUG entrega_ars:', mA.status, JSON.stringify(mA.body));
+      expect(mA.status).toBe(201);
+
+      const det = await request(app).get(`/api/cambios/entidades/${entB}`).set(auth());
+      // ARS sigue en 70000 (del test anterior — entrega_usd_por_ars 120000 − recibo_ars 50000).
+      expect(Number(det.body.resumen.saldo_ars)).toBe(70000);
+      // USD = 30 (nuevo entrega_ars 30000 / 1000).
+      expect(Number(det.body.resumen.saldo_usd)).toBe(30);
+      // UYU sigue 0 — sin movimientos UYU en este tenant AR.
+      expect(Number(det.body.resumen.saldo_uyu)).toBe(0);
+    });
+  });
 });
