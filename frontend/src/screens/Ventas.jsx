@@ -2086,19 +2086,40 @@ export default function Ventas() {
                       pasó el recargo al cliente, el neto cubre el precio y la
                       ganancia real ≡ bruta. Si no lo pasó, la ganancia real cae
                       por la comisión que se come la financiera/procesadora.
+
+                      2026-07-14 (bug reportado por Lucas): cuando la venta era
+                      una PÉRDIDA (sin cobrar todo o pago 0), el preview salía
+                      con el monto absoluto en verde ("u$s720") en vez de reflejar
+                      la pérdida. Causa: `fmt()` hace Math.abs por diseño, y la
+                      class `pos` estaba hardcoded. Fix: label dinámico
+                      "Pérdida" cuando real < 0, color rojo, prefijo "−".
+                      Mismo tratamiento para Ganancia bruta.
                     */}
-                    {cart.length > 0 && (
-                      <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
-                        <div className="flex-between" style={{ fontSize: 13 }}>
-                          <span className="muted">Ganancia bruta</span>
-                          <span className="mono">u$s{fmt(totales.bruta)}</span>
+                    {cart.length > 0 && (() => {
+                      // Threshold chico para evitar flip por floating-point (ej: -0.001).
+                      const brutaNeg = totales.bruta < -0.005;
+                      const realNeg  = totales.real  < -0.005;
+                      const realPos  = totales.real  >  0.005;
+                      return (
+                        <div data-testid="ganancia-preview" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
+                          <div className="flex-between" style={{ fontSize: 13 }}>
+                            <span className="muted">{brutaNeg ? 'Pérdida bruta' : 'Ganancia bruta'}</span>
+                            <span className={`mono ${brutaNeg ? 'neg' : ''}`}>
+                              {brutaNeg ? '−' : ''}u$s{fmt(totales.bruta)}
+                            </span>
+                          </div>
+                          <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+                            <span style={{ fontWeight: 600 }}>{realNeg ? 'Pérdida' : 'Ganancia real'}</span>
+                            <span
+                              className={`mono ${realNeg ? 'neg' : realPos ? 'pos' : ''}`}
+                              style={{ fontWeight: 700 }}
+                            >
+                              {realNeg ? '−' : ''}u$s{fmt(totales.real)}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex-between" style={{ fontSize: 13, borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
-                          <span style={{ fontWeight: 600 }}>Ganancia real</span>
-                          <span className="mono pos" style={{ fontWeight: 700 }}>u$s{fmt(totales.real)}</span>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Comprobantes */}
