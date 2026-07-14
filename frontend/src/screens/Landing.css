@@ -73,15 +73,19 @@
 .tecny-landing .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
 
 /* ── Nav ─────────────────────────────────────────────── */
-/* 2026-07-13: removida la border-bottom (rayita bajo el nav) — Lucas UX.
-   El backdrop-filter blur + el bg semi-translúcido separan el nav del hero
-   sin necesidad de línea horizontal explícita — es lo que hacen Notion,
-   Linear, Stripe: nav sticky sin línea. */
+/* 2026-07-13 (v3): removidos backdrop-filter + bg semi-translúcido — Lucas UX.
+   El `saturate(160%)` del backdrop-filter creaba una línea visual sutil en el
+   borde inferior del nav (donde termina el área filtrada, la saturación baja
+   de golpe → transición perceptible como raya horizontal). Es un artefacto
+   conocido de backdrop-filter.
+   Trade-off: perdemos el efecto glassmorphism al scrollear (nav se ve como
+   bloque sólido sobre el contenido). Aceptable — Lucas priorizó "sin raya"
+   sobre "efecto glass".
+   Solución: nav 100% sólido, mismo color que el body → cero transición
+   visible en el borde inferior. */
 .tecny-landing .nav {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(10,14,24,0.78);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  background: var(--bg);
 }
 .tecny-landing .nav-inner {
   max-width: var(--maxw); margin: 0 auto; padding: 14px var(--pad);
