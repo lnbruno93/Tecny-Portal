@@ -39,6 +39,7 @@ import ExtendTrialModal from '../components/modals/ExtendTrialModal.jsx';
 import SetPaidUntilModal from '../components/modals/SetPaidUntilModal.jsx';
 import DeleteTenantModal from '../components/modals/DeleteTenantModal.jsx';
 import ChangePaisTenantModal from '../components/modals/ChangePaisTenantModal.jsx';
+import MergeClasesModal from '../components/modals/MergeClasesModal.jsx';
 
 // ── Helpers locales ───────────────────────────────────────────────────
 
@@ -566,6 +567,15 @@ export default function Ficha() {
         />
       )}
 
+      {/* Card de clases duplicadas (2026-07-14) — visible en tab Resumen.
+         Detecta categorías de producto casi-duplicadas via trigram similarity
+         + containment; permite fusionarlas con audit trail. Herramienta de
+         mantenimiento post-hoc para clientes que dupliquen categorías via
+         import XLSX / typing manual antes de que existiera este check. */}
+      {activeTab === 'resumen' && (
+        <ClasesDuplicadasCard tenantId={tenant.id} />
+      )}
+
       {activeTab === 'actividad' && (
         <div style={{ marginTop: 'var(--gap)' }}>
           <div className="flex-row" style={{ marginBottom: 12 }}>
@@ -1024,5 +1034,180 @@ function ComprobanteEmailFooterCard({ tenant, onSaved }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Sub-componente: card de "Categorías duplicadas" (2026-07-14) ──────
+//
+// Diseñado como herramienta on-demand (fetch al clickear "Buscar duplicados"),
+// no fetch automático al montar. Razón: la lista de tenants tiene ~10 clientes
+// y solo pocos van a tener duplicados; hacer 10 queries pg_trgm cada vez que
+// se abre una ficha es waste. El operador clickea cuando sospecha.
+//
+// El componente maneja su propio estado (pairs + loading + error + modal
+// abierto). No participa del handleSaved del componente padre porque las
+// mutations acá no afectan al objeto tenant (solo tocan clases_producto +
+// productos + tenant_admin_actions).
+function ClasesDuplicadasCard({ tenantId }) {
+  const [pairs, setPairs] = useState(null);   // null = no fetched, [] = fetched empty
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [openPair, setOpenPair] = useState(null);
+  const [lastMergeResult, setLastMergeResult] = useState(null);
+
+  const fetchPairs = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setLastMergeResult(null);
+    try {
+      const data = await adminApi.getClasesDuplicadas(tenantId);
+      setPairs(Array.isArray(data?.pairs) ? data.pairs : []);
+    } catch (err) {
+      setError(err?.message || 'No pudimos buscar duplicados.');
+      setPairs(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId]);
+
+  const handleMerged = useCallback((result) => {
+    // Post-merge: cerramos el modal, guardamos el resultado para mostrar un
+    // banner de éxito, y re-fetcheamos la lista (la duplicada ya no debería
+    // aparecer, pero puede haber otros pares afectados por el mismo cambio).
+    setOpenPair(null);
+    setLastMergeResult(result);
+    fetchPairs();
+  }, [fetchPairs]);
+
+  const confidenceTone = (c) => {
+    if (c === 'high')   return 'pos';
+    if (c === 'medium') return 'warn';
+    return 'muted';
+  };
+
+  return (
+    <>
+      <div className="card" style={{ marginTop: 'var(--gap)' }}>
+        <div className="flex-between" style={{ marginBottom: 8 }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px' }}>Categorías duplicadas</h3>
+            <p className="muted tiny" style={{ margin: 0 }}>
+              Detecta categorías de producto casi-duplicadas dentro del tenant
+              (ej: <code>iPads</code> vs <code>ipad</code>) via trigram similarity
+              + containment. Fusionar mueve los productos a la canónica y
+              soft-deletea la duplicada.
+            </p>
+          </div>
+          <Btn
+            icon="Search"
+            onClick={fetchPairs}
+            disabled={loading}
+          >
+            {loading ? 'Buscando…' : (pairs == null ? 'Buscar duplicados' : 'Refrescar')}
+          </Btn>
+        </div>
+
+        {lastMergeResult && (
+          <div className="banner banner-info" style={{ marginTop: 10 }}>
+            <Icons.Sparkle size={16} />
+            <span>
+              Fusionadas: <code>{lastMergeResult.duplicada_nombre}</code>
+              {' → '}
+              <code>{lastMergeResult.canonica_nombre}</code>
+              {' '}({lastMergeResult.productos_movidos} producto{lastMergeResult.productos_movidos === 1 ? '' : 's'} movido{lastMergeResult.productos_movidos === 1 ? '' : 's'}).
+            </span>
+          </div>
+        )}
+
+        {error && (
+          <div className="banner banner-neg" role="alert" style={{ marginTop: 10 }}>
+            {error}
+          </div>
+        )}
+
+        {pairs != null && !loading && !error && pairs.length === 0 && (
+          <div className="empty-state" style={{ marginTop: 10 }}>
+            <div className="empty-title">Sin duplicados detectados</div>
+            No se encontraron categorías casi-duplicadas en este tenant.
+          </div>
+        )}
+
+        {Array.isArray(pairs) && pairs.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <table className="tbl">
+              <caption className="sr-only">
+                Pares de categorías casi-duplicadas detectadas en el catálogo del tenant.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Canónica sugerida</th>
+                  <th scope="col">Duplicada sugerida</th>
+                  <th scope="col" className="num">Sim.</th>
+                  <th scope="col">Confianza</th>
+                  <th scope="col" style={{ width: 100 }}>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pairs.map((p) => {
+                  const canonica = p.a.id === p.canonica_suggested_id ? p.a : p.b;
+                  const duplicada = p.a.id === p.duplicada_suggested_id ? p.a : p.b;
+                  const key = `${p.a.id}::${p.b.id}`;
+                  return (
+                    <tr key={key}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{canonica.nombre}</div>
+                        <div className="muted tiny">
+                          {canonica.count_productos} prod
+                          {canonica.es_base && ' · base'}
+                          {canonica.es_sin_categoria && ' · sin_cat'}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600, opacity: 0.85 }}>{duplicada.nombre}</div>
+                        <div className="muted tiny">
+                          {duplicada.count_productos} prod
+                          {duplicada.es_base && ' · base'}
+                          {duplicada.es_sin_categoria && ' · sin_cat'}
+                        </div>
+                      </td>
+                      <td className="num mono tiny">
+                        {Math.round((p.similarity || 0) * 100)}%
+                      </td>
+                      <td>
+                        <Status tone={confidenceTone(p.confidence)}>
+                          {p.confidence}
+                        </Status>
+                      </td>
+                      <td>
+                        <Btn sm onClick={() => setOpenPair(p)}>
+                          Fusionar
+                        </Btn>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="muted tiny" style={{ marginTop: 8 }}>
+              Ordenados por score (containment {'>'} similitud). Confianza{' '}
+              <strong>high</strong> = score ≥ 0.9 (típicamente uno contiene al otro);
+              {' '}<strong>medium</strong> = resto de matches.
+            </div>
+          </div>
+        )}
+
+        {loading && pairs == null && (
+          <div className="muted tiny" style={{ marginTop: 10 }}>Analizando el catálogo…</div>
+        )}
+      </div>
+
+      <MergeClasesModal
+        tenantId={tenantId}
+        pair={openPair}
+        open={!!openPair}
+        onClose={() => setOpenPair(null)}
+        onMerged={handleMerged}
+      />
+    </>
   );
 }

@@ -323,8 +323,23 @@ const updateSiteLandingContactSchema = z.object({
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 
+// 2026-07-14 (feature): merge de clases_producto duplicadas por tenant.
+// Endpoint POST /super-admin/tenants/:id/clases-merge — recibe la clase
+// duplicada (a mergear/soft-delete) y la canónica (donde van los productos).
+// Ambas deben ser UUIDs válidos. El backend valida que pertenezcan al mismo
+// tenant y que sean distintas.
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const mergeClasesProductoSchema = z.object({
+  duplicada_id: z.string().regex(uuidRegex, 'duplicada_id inválido (debe ser UUID)'),
+  canonica_id:  z.string().regex(uuidRegex, 'canonica_id inválido (debe ser UUID)'),
+}).strict().refine(
+  (d) => d.duplicada_id !== d.canonica_id,
+  { message: 'duplicada_id y canonica_id deben ser distintos' }
+);
+
 module.exports = {
   PLANES,
+  mergeClasesProductoSchema,
   patchTenantSchema,
   extendTrialSchema,
   suspendTenantSchema,
