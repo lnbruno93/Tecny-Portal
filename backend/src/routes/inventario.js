@@ -51,6 +51,47 @@ const {
   reorderClasesProductoSchema,
 } = require('../schemas/clasesProducto');
 
+/**
+ * buildSearchClause — construye clause SQL tokenizado para búsqueda multi-campo.
+ *
+ * 2026-07-14 (feature): antes usábamos un solo ILIKE con la query completa
+ * (ej. `%iPhone 17%`). Requería que la frase EXACTA aparezca en algún campo,
+ * lo cual dependía del orden y forma del texto en `nombre`. Cliente reportó
+ * que "iPhone 17" a veces no matcheaba productos que sí eran iPhone 17
+ * (nombre = "Apple iPhone 17 Pro Max 256GB" → sí matchea, pero "17 iPhone Pro"
+ * → no matcheaba).
+ *
+ * Ahora tokenizamos por whitespace y hacemos AND entre tokens: cada token
+ * debe aparecer en ALGÚN campo, sin importar orden. Precisión:
+ *   · "iPhone 17"   → producto debe tener "iPhone" AND "17" en algún campo
+ *   · "17 iPhone"   → mismo resultado (orden no importa)
+ *   · "Blue 128"    → producto debe tener "Blue" AND "128" (color=Blue + gb=128 ok)
+ *   · Un iPad "iPad A16 2025" con IMEI "SG942P321XL":
+ *     - Con query "iPhone 17": "iPhone" no está en NINGÚN campo → NO matchea ✅
+ *     - Con query "17": "17" no está en NINGÚN campo → NO matchea ✅
+ *
+ * Cap de 5 tokens para prevenir queries maliciosas con muchos términos
+ * (cada token agrega N sub-clauses OR, con 5 tokens y 4 campos = 20 ILIKE).
+ * En la práctica, nadie busca con más de 3-4 palabras.
+ *
+ * @param {string|null|undefined} buscar - raw query del usuario
+ * @param {string[]} fields - columnas SQL a buscar (ej. ['p.nombre', 'p.imei', 'p.color', 'p.gb'])
+ * @param {any[]} params - array de parámetros (se MUTATE con push)
+ * @returns {string|null} clause SQL para agregar a WHERE, o null si no hay tokens
+ */
+function buildSearchClause(buscar, fields, params) {
+  if (!buscar || typeof buscar !== 'string') return null;
+  const tokens = buscar.trim().split(/\s+/).filter(Boolean).slice(0, 5);
+  if (tokens.length === 0) return null;
+  const tokenClauses = tokens.map(token => {
+    params.push(`%${token}%`);
+    const paramIdx = params.length;
+    const fieldConditions = fields.map(f => `${f} ILIKE $${paramIdx}`).join(' OR ');
+    return `(${fieldConditions})`;
+  });
+  return `(${tokenClauses.join(' AND ')})`;
+}
+
 router.use(requireAuth);
 
 /* ───────────────────────── Catálogos: categorías ───────────────────────── */
@@ -426,11 +467,10 @@ router.get('/desglose', requireCapability('inventario.ver_costos'), validate(que
     if (deposito_id)  { params.push(deposito_id);  conditions.push(`p.deposito_id = $${params.length}`); }
     if (proveedor)    { params.push(proveedor);    conditions.push(`TRIM(COALESCE(p.proveedor, '')) = $${params.length}`); }
     if (solo_stock)   { conditions.push(`p.estado = 'disponible' AND p.cantidad > 0`); }
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      conditions.push(`(p.nombre ILIKE $${params.length} OR p.imei ILIKE $${params.length}
-                        OR p.color ILIKE $${params.length} OR p.gb ILIKE $${params.length})`);
-    }
+    // 2026-07-14: tokenización — cada palabra debe aparecer en algún campo.
+    // Precisión reforzada vs. `%iPhone 17%` literal anterior.
+    const searchClauseDesglose = buildSearchClause(buscar, ['p.nombre', 'p.imei', 'p.color', 'p.gb'], params);
+    if (searchClauseDesglose) conditions.push(searchClauseDesglose);
     const where = conditions.join(' AND ');
 
     const aggSelect = `
@@ -588,11 +628,10 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
     if (proveedor) { params.push(proveedor); conditions.push(`TRIM(COALESCE(p.proveedor, '')) = $${params.length}`); }
     if (gb)        { params.push(gb);        conditions.push(`TRIM(COALESCE(p.gb, '')) = $${params.length}`); }
     if (color)     { params.push(color);     conditions.push(`TRIM(COALESCE(p.color, '')) = $${params.length}`); }
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      conditions.push(`(p.nombre ILIKE $${params.length} OR p.imei ILIKE $${params.length}
-                        OR p.color ILIKE $${params.length} OR p.gb ILIKE $${params.length})`);
-    }
+    // 2026-07-14: tokenización — cada palabra debe aparecer en algún campo.
+    // Precisión reforzada vs. `%iPhone 17%` literal anterior.
+    const searchClauseProd = buildSearchClause(buscar, ['p.nombre', 'p.imei', 'p.color', 'p.gb'], params);
+    if (searchClauseProd) conditions.push(searchClauseProd);
     const where = conditions.join(' AND ');
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
@@ -700,14 +739,12 @@ router.get('/usados', validate(queryUsadosSchema, 'query'), async (req, res, nex
     if (solo_manual) {
       conditions.push(`cj.id IS NULL`);
     }
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      conditions.push(`(p.nombre ILIKE $${params.length}
-                        OR p.imei ILIKE $${params.length}
-                        OR p.color ILIKE $${params.length}
-                        OR p.gb ILIKE $${params.length}
-                        OR v.cliente_nombre ILIKE $${params.length})`);
-    }
+    // 2026-07-14: tokenización — /vendidos incluye v.cliente_nombre en los
+    // campos buscables además del producto. Ej. "Juan iPhone" busca ventas
+    // de cliente Juan con producto iPhone.
+    const searchClauseVend = buildSearchClause(buscar,
+      ['p.nombre', 'p.imei', 'p.color', 'p.gb', 'v.cliente_nombre'], params);
+    if (searchClauseVend) conditions.push(searchClauseVend);
     const where = conditions.join(' AND ');
 
     // JOIN LATERAL sobre `canjes` para tomar solo el canje más reciente si
