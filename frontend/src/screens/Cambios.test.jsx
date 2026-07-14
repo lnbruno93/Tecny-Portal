@@ -57,28 +57,32 @@ describe('Pantalla Cambios de Divisa', () => {
     expect(screen.getByText('Recibido · USD')).toBeInTheDocument();
   });
 
-  // UYU follow-up audit 2026-07-06: tenants AR mantienen labels ARS.
-  it('AR: subtítulo dice "entregás ARS", columna header "$ ARS", select "Entrega ARS"', async () => {
+  // UYU follow-up audit 2026-07-06 + UX B 2026-07-14: tenants AR mantienen
+  // labels ARS. El subtítulo ahora menciona ambas direcciones.
+  it('AR: subtítulo menciona ARS, columna header "$ ARS", segmented controls presentes', async () => {
     render(wrap(<Cambios />));
+    // Subtítulo actualizado: ahora incluye ambas direcciones ("entregás ARS y
+    // te devuelven USD, o entregás USD y te devuelven ARS").
     expect(await screen.findByText(/entregás ARS y te devuelven USD/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('$ ARS')).toBeInTheDocument());
-    // El option del select se renderiza con el texto "Entrega ARS" (el value
-    // interno sigue siendo 'entrega_ars', pero la etiqueta al usuario cambia).
-    expect(screen.getByRole('option', { name: 'Entrega ARS' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Recibo USD' })).toBeInTheDocument();
-    // Badge del histórico: fila con tipo='entrega_ars' → "Entrega ARS".
-    // "Entrega ARS" aparece 2 veces (badge del histórico + option del select
-    // en la fila de carga), así que usamos getAllByText.
-    expect(screen.getAllByText('Entrega ARS').length).toBeGreaterThanOrEqual(1);
+    // UX B: ahora hay 2 segmented controls (dirección + operación) en vez de
+    // un dropdown. Los botones dicen "↑ Entregás ARS → USD" y "Entrega".
+    expect(screen.getByRole('button', { name: /Entregás ARS → USD/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Entregás USD → ARS/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Entrega$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Recibo$/ })).toBeInTheDocument();
+    // Badge del histórico: fila con tipo='entrega_ars' → labelTipo devuelve
+    // "Entrega ARS → USD" con el nuevo formato.
+    expect(screen.getAllByText(/Entrega ARS/).length).toBeGreaterThanOrEqual(1);
   });
 
-  // UYU follow-up audit 2026-07-06: tenants UY ven labels UYU en todos lados.
-  it('UY: subtítulo dice "entregás UYU", columna header "$ UYU", select "Entrega UYU"', async () => {
+  it('UY: subtítulo dice "entregás UYU", columna header "$ UYU", segmented UYU', async () => {
     mockUser.value = { tenant: { pais: 'UY', moneda_local: 'UYU' } };
     render(wrap(<Cambios />));
     expect(await screen.findByText(/entregás UYU y te devuelven USD/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('$ UYU')).toBeInTheDocument());
-    expect(screen.getByRole('option', { name: 'Entrega UYU' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Recibo USD' })).toBeInTheDocument();
+    // Segmented con labels UYU.
+    expect(screen.getByRole('button', { name: /Entregás UYU → USD/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Entregás USD → UYU/ })).toBeInTheDocument();
   });
 });
