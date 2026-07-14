@@ -92,6 +92,81 @@ function buildSearchClause(buscar, fields, params) {
   return `(${tokenClauses.join(' AND ')})`;
 }
 
+/**
+ * buildSearchWithRanking — v2 del search: agrega ranking por relevancia.
+ *
+ * 2026-07-14 (feedback Lucas, follow-up del tokenización PR #615):
+ *   Cuando hay varios matches, mostrar arriba los que matchean en `nombre`
+ *   sobre los que solo matchean en IMEI/color/gb. Además usar `similarity()`
+ *   de pg_trgm como boost adicional al ranking (misma info que reordena
+ *   matches muy parecidos).
+ *
+ * Nota importante — NO metemos fuzzy en el WHERE. Evaluamos primero (2026-07-14):
+ * el approach original agregaba una vía fuzzy `similarity(nombre, query) >= 0.35`
+ * en el WHERE para tolerar typos. Pero pg_trgm devuelve similarity ~0.5 para
+ * "iPhone 15 Pro" vs "iPhone 17" (comparten trigramas iph/pho/hon/one/_17),
+ * lo que metía "iPhone 15" al buscar "iPhone 17" — falso positivo grave.
+ *
+ * Trade-off elegido: precisión estricta en WHERE (nada de fuzzy) + ranking por
+ * similarity como tie-breaker. Si el user busca "iphon 17" (typo real) NO va
+ * a matchear nada — mejor que meter ruido. Si en el futuro necesitamos typo
+ * tolerance real, usaríamos autocompletado (endpoint separado con sugerencias).
+ *
+ * Solo se usa en /productos (donde reporta Lucas la fricción de UX). Los
+ * endpoints /desglose y /vendidos siguen usando `buildSearchClause` legacy
+ * porque son drill-downs analíticos donde el orden por relevancia no aplica.
+ *
+ * @returns {{where: string|null, orderBy: string|null, orderByParams: any[]}}
+ *   - where: cláusula WHERE (tokens AND). null si no hay `buscar`.
+ *   - orderBy: expresión de scoring para ORDER BY. null si no hay `buscar`.
+ *   - orderByParams: params extra que el ORDER BY necesita (a agregar SOLO
+ *     al dataQuery, NO al countQuery — el count no usa ORDER BY). Los índices
+ *     de estos params en el ORDER BY están calculados asumiendo que se
+ *     appendan a `params` DESPUÉS del where.
+ */
+function buildSearchWithRanking(buscar, params) {
+  if (!buscar || typeof buscar !== 'string') return { where: null, orderBy: null, orderByParams: [] };
+  const rawQuery = buscar.trim();
+  if (!rawQuery) return { where: null, orderBy: null, orderByParams: [] };
+  const tokens = rawQuery.split(/\s+/).filter(Boolean).slice(0, 5);
+  if (tokens.length === 0) return { where: null, orderBy: null, orderByParams: [] };
+
+  const fields = ['p.nombre', 'p.imei', 'p.color', 'p.gb'];
+
+  // Push cada token UNA vez a `params` (usados por WHERE). Reusamos esos
+  // índices también en el ORDER BY.
+  const tokenParamIdxs = tokens.map(token => {
+    params.push(`%${token}%`);
+    return params.length;
+  });
+
+  // WHERE: tokens AND estricto sobre CUALQUIER campo (mismo que buildSearchClause).
+  const strictClause = '(' + tokenParamIdxs.map(idx =>
+    `(${fields.map(f => `${f} ILIKE $${idx}`).join(' OR ')})`
+  ).join(' AND ') + ')';
+
+  // ORDER BY: score compuesto por relevancia.
+  //   +100 si TODOS los tokens matchean en NOMBRE (match perfecto texto)
+  //   +similarity(nombre, rawQuery) * 10 → 0-10 como tie-breaker fino
+  //     (rescata "iPhone 17 Pro Max 256GB" sobre "iPhone 17 Base" cuando ambos
+  //      matchean todos los tokens; el primero tiene similarity mayor con la
+  //      query completa "iPhone 17").
+  //
+  // El `rawQuery` para similarity() NO se puede pushear a `params` porque
+  // countQuery (que reusa `params`) NO tiene ORDER BY y se rompería con
+  // "bind message supplies N params, but prepared statement requires N-1".
+  // Devolvemos por separado en `orderByParams` y el caller lo appenda solo
+  // al dataQuery. El placeholder del rawQuery queda como $ (params.length + 1).
+  const scoreNombreExact = tokenParamIdxs.map(idx => `p.nombre ILIKE $${idx}`).join(' AND ');
+  const rawParamIdx = params.length + 1; // primer slot después del último WHERE param
+  const orderBy = `(
+    CASE WHEN ${scoreNombreExact} THEN 100 ELSE 0 END
+    + (similarity(LOWER(p.nombre), LOWER($${rawParamIdx})) * 10)
+  ) DESC`;
+
+  return { where: strictClause, orderBy, orderByParams: [rawQuery] };
+}
+
 router.use(requireAuth);
 
 /* ───────────────────────── Catálogos: categorías ───────────────────────── */
@@ -628,14 +703,31 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
     if (proveedor) { params.push(proveedor); conditions.push(`TRIM(COALESCE(p.proveedor, '')) = $${params.length}`); }
     if (gb)        { params.push(gb);        conditions.push(`TRIM(COALESCE(p.gb, '')) = $${params.length}`); }
     if (color)     { params.push(color);     conditions.push(`TRIM(COALESCE(p.color, '')) = $${params.length}`); }
-    // 2026-07-14: tokenización — cada palabra debe aparecer en algún campo.
-    // Precisión reforzada vs. `%iPhone 17%` literal anterior.
-    const searchClauseProd = buildSearchClause(buscar, ['p.nombre', 'p.imei', 'p.color', 'p.gb'], params);
-    if (searchClauseProd) conditions.push(searchClauseProd);
+    // 2026-07-14 v2 (follow-up del tokenización PR #615, feedback Lucas):
+    // ahora usamos `buildSearchWithRanking` en /productos. Diferencias vs
+    // buildSearchClause legacy (que sigue vivo para /desglose y /vendidos):
+    //   · WHERE: agrega 2da vía fuzzy (similarity(nombre) >= 0.35) para tolerar
+    //     typos. Ej: "iphon 17" (typo) → matchea "iPhone 17 Pro Max".
+    //   · ORDER BY: score compuesto que prioriza matches en `nombre` sobre
+    //     matches en IMEI/color/gb. Los más relevantes salen primero.
+    const searchRanking = buildSearchWithRanking(buscar, params);
+    if (searchRanking.where) conditions.push(searchRanking.where);
     const where = conditions.join(' AND ');
+    // ORDER BY: si hay búsqueda activa, prioriza por score; sino, orden alfabético.
+    // El `p.nombre, p.id DESC` queda como tie-breaker en ambos casos.
+    const orderByClause = searchRanking.orderBy
+      ? `${searchRanking.orderBy}, p.nombre, p.id DESC`
+      : `p.nombre, p.id DESC`;
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
     const countQuery = `SELECT COUNT(*) FROM productos p WHERE ${where}`;
+    // LIMIT/OFFSET indexes en el dataQuery deben apuntar DESPUÉS de los
+    // orderByParams (que también se appendan al final). Con búsqueda activa:
+    // [...params, rawQuery, limit, offset] → limit=$N+1, offset=$N+2 donde
+    // N = params.length + orderByParams.length.
+    const orderByParamsCount = (searchRanking.orderByParams || []).length;
+    const limitIdx = params.length + orderByParamsCount + 1;
+    const offsetIdx = params.length + orderByParamsCount + 2;
     const dataQuery = `
       SELECT p.id, p.tipo_carga, p.clase_id, cp.slug_legacy AS clase,
              p.nombre, p.imei, p.gb, p.color, p.bateria,
@@ -649,13 +741,16 @@ router.get('/productos', validate(queryProductosSchema, 'query'), async (req, re
       LEFT JOIN depositos  d ON d.id = p.deposito_id
       LEFT JOIN clases_producto cp ON cp.id = p.clase_id AND cp.deleted_at IS NULL
       WHERE ${where}
-      ORDER BY p.nombre, p.id DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      ORDER BY ${orderByClause}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
 
+    // countQuery usa solo los params del WHERE (no tiene ORDER BY).
+    // dataQuery usa params WHERE + orderByParams (rawQuery para similarity) + limit + offset.
+    const orderByParams = searchRanking.orderByParams || [];
     const [countRes, dataRes] = await db.withTenant(req.tenantId, async (client) => {
       const countRes = await client.query(countQuery, params);
-      const dataRes = await client.query(dataQuery, [...params, limit, offset]);
+      const dataRes = await client.query(dataQuery, [...params, ...orderByParams, limit, offset]);
       return [countRes, dataRes];
     });
 
