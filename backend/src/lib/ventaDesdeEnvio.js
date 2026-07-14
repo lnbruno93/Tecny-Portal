@@ -74,7 +74,20 @@ async function crearVentaDesdeEnvio(client, envio, items, userId, opts = {}) {
     }
     costoUsd = round2(costoUsd);
   }
-  const gananciaUsd = round2(totalUsd - costoUsd);
+  // 2026-07-14 (bug reportado por Lucas): descontamos el vuelto convertido
+  // a USD de la ganancia_usd persistida. Antes se ignoraba → reportes de
+  // ganancia mentían para envíos con vuelto.
+  let vueltoUsd = 0;
+  if (vueltoCompleto) {
+    const vuMonto = Number(opts.vuelto_monto);
+    if (opts.vuelto_moneda === 'USD' || opts.vuelto_moneda === 'USDT') {
+      vueltoUsd = vuMonto;
+    } else if (opts.vuelto_tc != null && Number(opts.vuelto_tc) > 0) {
+      vueltoUsd = toUsd(vuMonto, opts.vuelto_moneda, Number(opts.vuelto_tc));
+    }
+    // Sin TC para ARS/UYU: el schema Zod ya rechazó, no llegaría acá.
+  }
+  const gananciaUsd = round2(totalUsd - costoUsd - vueltoUsd);
 
   // 2026-06-10 — La venta nace 'pendiente' hasta que el envío se marca como
   // 'Entregado'. Mientras está pendiente, NO suma en la ganancia neta del
@@ -86,13 +99,15 @@ async function crearVentaDesdeEnvio(client, envio, items, userId, opts = {}) {
   // extra de confirmación.
   const estadoVenta = envio.estado === 'Entregado' ? 'acreditado' : 'pendiente';
   const { rows } = await client.query(
-    `INSERT INTO ventas (order_id, fecha, cliente_nombre, cliente_cc_id, estado, total_usd, ganancia_usd, tc_venta, notas, user_id, vuelto_monto, vuelto_moneda, vuelto_caja_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    `INSERT INTO ventas (order_id, fecha, cliente_nombre, cliente_cc_id, estado, total_usd, ganancia_usd, tc_venta, notas, user_id, vuelto_monto, vuelto_moneda, vuelto_caja_id, vuelto_tc)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
     [genOrderId(), envio.fecha, envio.cliente, envio.cliente_cc_id ?? null, estadoVenta, totalUsd, gananciaUsd, envio.tc ?? null, 'Generada automáticamente desde un envío', userId,
      // 2026-07-13 (Fase 2): 3 campos del vuelto pasan al INSERT.
+     // 2026-07-14: vuelto_tc también (necesario para conversión USD).
      vueltoCompleto ? opts.vuelto_monto : null,
      vueltoCompleto ? opts.vuelto_moneda : null,
-     vueltoCompleto ? opts.vuelto_caja_id : null]
+     vueltoCompleto ? opts.vuelto_caja_id : null,
+     vueltoCompleto ? (opts.vuelto_tc ?? null) : null]
   );
   const venta = rows[0];
 
@@ -186,6 +201,17 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId, opts = {}
   if (!envio.venta_id) return null;
   const hasVueltoInOpts = 'vuelto_monto' in opts || 'vuelto_moneda' in opts || 'vuelto_caja_id' in opts;
   const vueltoCompleto = opts.vuelto_monto && opts.vuelto_moneda && opts.vuelto_caja_id;
+
+  // 2026-07-14 (bug reportado por Lucas): cargamos la venta persistida para
+  // conocer el vuelto actual — necesario para recomputar ganancia_usd cuando
+  // el body del envío NO edita el vuelto pero editamos otras cosas (o cuando
+  // los items cambian y la ganancia también cambia).
+  const { rows: prevVenta } = await client.query(
+    'SELECT vuelto_monto, vuelto_moneda, vuelto_tc FROM ventas WHERE id = $1',
+    [envio.venta_id]
+  );
+  const ventaPrev = prevVenta[0] || null;
+
   // Reponer stock de los items linkeados anteriores antes de borrar.
   const { rows: prev } = await client.query(
     'SELECT producto_id, cantidad FROM venta_items WHERE venta_id = $1 AND producto_id IS NOT NULL',
@@ -244,7 +270,22 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId, opts = {}
       [envio.venta_id, it.producto_id || null, it.descripcion || 'Producto', precio, costoItem, moneda, round2(precio - costoItem)]
     );
   }
-  const gananciaUsd = round2(totalUsd - costoUsd);
+  // 2026-07-14 (bug reportado por Lucas): descontar el vuelto de la ganancia.
+  // Si el body edita el vuelto usamos esos valores; sino leemos los persistidos
+  // en la venta actual (que la carga previa ya trae).
+  const effVueltoMonto  = hasVueltoInOpts ? opts.vuelto_monto  : ventaPrev && ventaPrev.vuelto_monto;
+  const effVueltoMoneda = hasVueltoInOpts ? opts.vuelto_moneda : ventaPrev && ventaPrev.vuelto_moneda;
+  const effVueltoTc     = ('vuelto_tc' in opts) ? opts.vuelto_tc : (ventaPrev && ventaPrev.vuelto_tc);
+  let vueltoUsdUpd = 0;
+  if (effVueltoMonto != null && Number(effVueltoMonto) > 0 && effVueltoMoneda) {
+    const vuMonto = Number(effVueltoMonto);
+    if (effVueltoMoneda === 'USD' || effVueltoMoneda === 'USDT') {
+      vueltoUsdUpd = vuMonto;
+    } else if (effVueltoTc != null && Number(effVueltoTc) > 0) {
+      vueltoUsdUpd = toUsd(vuMonto, effVueltoMoneda, Number(effVueltoTc));
+    }
+  }
+  const gananciaUsd = round2(totalUsd - costoUsd - vueltoUsdUpd);
   const { rows: vrows } = await client.query(
     `UPDATE ventas SET total_usd = $1, ganancia_usd = $2, cliente_cc_id = COALESCE($3, cliente_cc_id), tc_venta = COALESCE($4, tc_venta) WHERE id = $5 RETURNING *`,
     [totalUsd, gananciaUsd, envio.cliente_cc_id ?? null, envio.tc ?? null, envio.venta_id]
@@ -254,10 +295,17 @@ async function actualizarVentaDesdeEnvio(client, envio, items, userId, opts = {}
   // 2026-07-13 (Fase 2): mismo patrón que routes/ventas.js — UPDATE dedicado
   // de los 3 campos SI el body del envío los envía (aunque sean null para
   // "quitar" el vuelto de un envío que lo tenía).
+  // 2026-07-14: también persistir vuelto_tc.
   if (venta && hasVueltoInOpts) {
     const { rows: upd } = await client.query(
-      `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3 WHERE id = $4 RETURNING *`,
-      [vueltoCompleto ? opts.vuelto_monto : null, vueltoCompleto ? opts.vuelto_moneda : null, vueltoCompleto ? opts.vuelto_caja_id : null, venta.id]
+      `UPDATE ventas SET vuelto_monto = $1, vuelto_moneda = $2, vuelto_caja_id = $3, vuelto_tc = $4 WHERE id = $5 RETURNING *`,
+      [
+        vueltoCompleto ? opts.vuelto_monto : null,
+        vueltoCompleto ? opts.vuelto_moneda : null,
+        vueltoCompleto ? opts.vuelto_caja_id : null,
+        vueltoCompleto ? (opts.vuelto_tc ?? null) : null,
+        venta.id,
+      ]
     );
     venta = upd[0];
   }

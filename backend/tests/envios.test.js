@@ -413,7 +413,7 @@ describe('POST /api/envios — vuelto/cambio Fase 2', () => {
         { tipo: 'producto', descripcion: 'iPhone Envío Vuelto', monto: 9, moneda: 'USD', producto_id: prod.body.id },
         { tipo: 'pago', monto: 10000, moneda: 'ARS', tc: 1000, metodo_pago_id: cajaCobro },
       ],
-      vuelto_monto: 1000, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto,
+      vuelto_monto: 1000, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto, vuelto_tc: 1000,
     });
     expect(env.status).toBe(201);
     expect(env.body.venta_id).toBeTruthy();
@@ -438,7 +438,7 @@ describe('POST /api/envios — vuelto/cambio Fase 2', () => {
     const r = await request(app).post('/api/envios').set(auth()).send({
       fecha: hoy, cliente: 'X', direccion: 'X', registrar_venta: false,
       items: [{ tipo: 'pago', monto: 5000, moneda: 'ARS', metodo_pago_id: cajaVuelto }],
-      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto,
+      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto, vuelto_tc: 1000,
     });
     expect(r.status).toBe(400);
     // El schema tira el refine → response del middleware validate contiene
@@ -461,7 +461,7 @@ describe('POST /api/envios — vuelto/cambio Fase 2', () => {
         { tipo: 'producto', descripcion: 'iPhone Envío Cancel Vuelto', monto: 9, moneda: 'USD', producto_id: prod.body.id },
         { tipo: 'pago', monto: 10000, moneda: 'ARS', tc: 1000, metodo_pago_id: cajaCobro },
       ],
-      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto,
+      vuelto_monto: 500, vuelto_moneda: 'ARS', vuelto_caja_id: cajaVuelto, vuelto_tc: 1000,
     });
     expect(env.status).toBe(201);
 

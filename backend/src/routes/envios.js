@@ -161,7 +161,8 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       // 2026-07-13 (Fase 2): 3 campos del vuelto opcionales — se propagan a la
       // venta que crea el envío. El schema valida "todo-o-nada" + "requiere
       // registrar_venta". Acá los pasamos como opts a crearVentaDesdeEnvio.
-      vuelto_monto, vuelto_moneda, vuelto_caja_id,
+      // 2026-07-14: agregado vuelto_tc — obligatorio si moneda ∈ {ARS, UYU}.
+      vuelto_monto, vuelto_moneda, vuelto_caja_id, vuelto_tc,
     } = req.body;
 
     const client = await db.connect();
@@ -195,7 +196,7 @@ router.post('/', validate(createEnvioSchema), async (req, res, next) => {
       let ventaCreada = null;
       if (registrar_venta) {
         ventaCreada = await crearVentaDesdeEnvio(client, envio, items, req.user.id, {
-          vuelto_monto, vuelto_moneda, vuelto_caja_id,
+          vuelto_monto, vuelto_moneda, vuelto_caja_id, vuelto_tc,
         });
         if (ventaCreada) {
           await client.query('UPDATE envios SET venta_id = $1 WHERE id = $2', [ventaCreada.id, envio.id]);
@@ -237,7 +238,7 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
   const {
     fecha, cliente, telefono, direccion, barrio,
     costo_envio, total_cobrado, horario, operador, notas, estado, prioridad, tc, cliente_cc_id, items,
-    vuelto_monto, vuelto_moneda, vuelto_caja_id,
+    vuelto_monto, vuelto_moneda, vuelto_caja_id, vuelto_tc,
   } = req.body;
 
   const client = await db.connect();
@@ -293,6 +294,7 @@ router.put('/:id', validate(updateEnvioSchema), async (req, res, next) => {
           if ('vuelto_monto' in req.body)   vueltoOpts.vuelto_monto   = vuelto_monto;
           if ('vuelto_moneda' in req.body)  vueltoOpts.vuelto_moneda  = vuelto_moneda;
           if ('vuelto_caja_id' in req.body) vueltoOpts.vuelto_caja_id = vuelto_caja_id;
+          if ('vuelto_tc' in req.body)      vueltoOpts.vuelto_tc      = vuelto_tc;
           ventaSincronizada = await actualizarVentaDesdeEnvio(client, envio, items, req.user.id, vueltoOpts);
         }
       }
