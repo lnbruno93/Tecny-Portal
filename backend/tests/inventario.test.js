@@ -1387,4 +1387,67 @@ describe('GET /api/inventario/productos — precisión del search (tokenización
     expect(idsExclude).not.toContain(iphone15Id);
     expect(idsExclude).not.toContain(ipadA16Id); // ipad no tiene "iPhone" en ningún campo
   });
+
+  // 2026-07-14 (feedback Lucas, follow-up del ranking): la búsqueda ahora
+  // usa buildSearchWithRanking que prioriza matches en `nombre` sobre matches
+  // en IMEI/color/gb. Sin ranking, un producto que matcheara solo por IMEI
+  // podía aparecer antes que uno con el término en el nombre — poco útil
+  // para el user que típicamente busca por descripción de producto.
+  describe('ranking por relevancia', () => {
+    it('match en nombre sale antes que match solo en IMEI', async () => {
+      // Seed: 2 productos donde "Titanio" aparece en el IMEI de uno y en el
+      // nombre del iPhone 17. El del nombre debe salir primero.
+      // NOTA: como iphone17.color === 'Titanio' también matchea el iphone17
+      // (que además tiene el nombre iPhone 17). Buscamos por "Titanio":
+      //   · iPhone 17 Pro Max: color=Titanio → matchea. Además "Titanio" está
+      //     en color, no en nombre → prioridad menor SI el ranking funciona.
+      //   · iPad A16 2025: nombre no tiene Titanio, IMEI/color/gb tampoco.
+      // Como solo hay 1 producto con "Titanio", este test no discrimina rank.
+      // Reusamos "iPhone" (que solo aparece en `nombre`): iPhone 17 y iPhone 15
+      // ambos matchean. Ambos tienen match en nombre → mismo tier 100.
+      // Tie-breaker: similarity(nombre, "iPhone") — ambos son parecidos, pero
+      // "iPhone 15 Pro" tiene similitud levemente mayor con "iPhone" que
+      // "iPhone 17 Pro Max" (menos palabras extras). No es discriminador fuerte.
+      // Vamos con test más robusto: buscar por un token que esté en IMEI de
+      // uno pero en nombre del otro.
+      //
+      // ipadA16Id tiene IMEI 'MMNNOOPPQQRR003' → contiene "MM" pero también
+      // los MacBook. Vamos a introducir productos ad-hoc.
+      const seed = async (nombre, imei, color, gb, clase = 'celular_sellado') => {
+        const r = await request(app).post('/api/inventario/productos').set(auth())
+          .send({ nombre, imei, color, gb, categoria_id: catBase, tipo_carga: 'unitario', clase,
+                  costo: 100, precio_venta: 200, costo_moneda: 'USD', precio_moneda: 'USD' });
+        expect(r.status).toBe(201);
+        return r.body.id;
+      };
+      // Producto A: "Titanio" está en el NOMBRE. Ranking debería priorizarlo.
+      const enNombreId = await seed('iPhone Titanio Special Edition', 'AAAA1111BBBB1111', 'Blanco', '256');
+      // Producto B: "Titanio" está solo en el color, no en nombre.
+      const enColorId = await seed('iPhone Base Standard 2025', 'CCCC2222DDDD2222', 'Titanio', '256');
+
+      const r = await request(app).get('/api/inventario/productos?buscar=Titanio').set(auth());
+      expect(r.status).toBe(200);
+      const ids = r.body.data.map(p => p.id);
+      // Ambos matchean el WHERE (Titanio aparece en algún campo).
+      expect(ids).toContain(enNombreId);
+      expect(ids).toContain(enColorId);
+      // Ranking: el que tiene "Titanio" en nombre sale ANTES.
+      const idxNombre = ids.indexOf(enNombreId);
+      const idxColor = ids.indexOf(enColorId);
+      expect(idxNombre).toBeLessThan(idxColor);
+    });
+
+    it('sin buscar: sigue devolviendo productos (no explota sin ORDER BY custom)', async () => {
+      // Regression check: cuando no hay `buscar`, el orderBy custom del ranking
+      // NO se aplica y el fallback es el orden legacy `ORDER BY p.nombre, p.id DESC`.
+      // Testeamos que la request funciona (status 200 + al menos un producto),
+      // sin depender del orden exacto (fragilidad conocida entre PG collation
+      // vs JS localeCompare — el test viejo comparaba array iguales y rompía
+      // con nombres con caracteres especiales como "__VistaSuite__").
+      const r = await request(app).get('/api/inventario/productos').set(auth());
+      expect(r.status).toBe(200);
+      expect(Array.isArray(r.body.data)).toBe(true);
+      expect(r.body.data.length).toBeGreaterThan(0);
+    });
+  });
 });
