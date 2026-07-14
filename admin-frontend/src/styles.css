@@ -155,6 +155,9 @@ a { color: inherit; text-decoration: none; }
   padding: 6px 8px 16px;
   margin-bottom: 10px;
 }
+/* 2026-07-13: removida box-shadow del logo T — Lucas UX (la sombra se veía
+   como una micro-raya oscura justo abajo del cuadrado). En dark mode con
+   contraste alto, el T se sostiene visualmente sin sombra. */
 .brand-mark {
   width: 32px; height: 32px;
   border-radius: 8px;
@@ -164,7 +167,6 @@ a { color: inherit; text-decoration: none; }
   font-weight: 700;
   font-size: 14px;
   letter-spacing: -0.02em;
-  box-shadow: var(--shadow-sm);
   flex-shrink: 0;
 }
 .brand-name {
