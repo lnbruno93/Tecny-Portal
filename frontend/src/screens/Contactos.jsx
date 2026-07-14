@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Icons } from '../components/Icons';
 import { contactos as contactosApi } from '../lib/api';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -32,7 +33,14 @@ export default function Contactos() {
 
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  // 2026-07-14 (bug reportado por TekHaus vía Lucas): al clickear un resultado
+  // en el CommandPalette (⌘K), navegamos a /contactos?q=<término> para pre-
+  // llenar el filtro. Sin esta lectura, la navegación ocurría pero el input
+  // quedaba vacío y visualmente "no pasaba nada". Init con el param del URL,
+  // el resto sigue como state local (no persistimos el filtro en URL).
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get('q') || '';
+  const [search, setSearch] = useState(initialSearch);
   const dSearch = useDebouncedValue(search, 350);
   const [origenFilter, setOrigenFilter] = useState('');
 

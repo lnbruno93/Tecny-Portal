@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { silentReport } from '../lib/reportError';
 import { Icons } from '../components/Icons';
 import { envios, ventas, cajas as cajasApi, inventario, cuentas as cuentasApi, config as configApi, ocr as ocrApi } from '../lib/api';
@@ -90,7 +91,12 @@ export default function Envios() {
   const [enviosList, setEnviosList] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [estadoFilter, setEstadoFilter] = useState('todos');
-  const [search, setSearch] = useState('');
+  // 2026-07-14 (bug reportado por TekHaus vía Lucas): init `search` desde
+  // ?q= del URL para que el CommandPalette pueda deep-linkear a un envío
+  // específico (/envios?q=Juan Perez → filtro pre-aplicado). Antes el input
+  // quedaba vacío y "no pasaba nada" visualmente.
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') || '');
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);

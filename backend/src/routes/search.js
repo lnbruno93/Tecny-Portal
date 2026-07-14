@@ -43,9 +43,23 @@ const querySchema = z.object({
 // 2026-07-13: helper — el user tiene la capability? Fast path desde
 // req.user.caps del JWT. Bypass roles (owner/admin del tenant) devuelven
 // true incondicional — ver isBypassRole en middleware/requireCapability.js.
+//
+// 2026-07-14 (bug reportado por TekHaus): 2 problemas de bypass:
+//   1. El rol del cap-system está en `tenant_cap_rol` (nuevo), NO
+//      `tenant_rol` (viejo, mantenido para compat).
+//   2. Admin GLOBAL (users.role='admin') NO tiene `tenant_cap_rol` embebido
+//      en el JWT (auth.js:97 skipea el embed para admin global). El bypass
+//      para admin global es via req.user.role === 'admin' — ver
+//      requireCapability.js:37-40 que chequea ambos paths.
+// Sin chequear los 2, TODAS las categorías gate-adas devolvían 0 rows para
+// admin global (TEST_USER) y para owners con caps: undefined.
 function hasCap(req, slug) {
-  const rol = req.user?.tenant_rol;
-  if (rol === 'owner' || rol === 'admin') return true;
+  // Bypass 1: admin global (users.role='admin').
+  if (req.user?.role === 'admin') return true;
+  // Bypass 2: owner/admin del tenant (cap-system).
+  const capRol = req.user?.tenant_cap_rol;
+  if (capRol === 'owner' || capRol === 'admin') return true;
+  // Sino, chequeo explícito de caps (objeto { slug: true } del JWT).
   return req.user?.caps?.[slug] === true;
 }
 
@@ -153,7 +167,7 @@ router.get('/', validate(querySchema, 'query'), async (req, res, next) => {
           label:    p.nombre,
           sublabel: [p.imei, p.color, p.gb].filter(Boolean).join(' · '),
           badge:    p.estado, // 'disponible' / 'vendido' / etc
-          url:      `/inventario?buscar=${encodeURIComponent(p.nombre)}`,
+          url:      `/inventario?q=${encodeURIComponent(p.nombre)}`,
         })),
         ventas: rows(ventas).map(v => ({
           id:       v.id,
@@ -161,21 +175,21 @@ router.get('/', validate(querySchema, 'query'), async (req, res, next) => {
           sublabel: [v.cliente_nombre, v.fecha].filter(Boolean).join(' · '),
           badge:    v.estado,
           amount:   v.total_usd != null ? `u$s${Number(v.total_usd).toFixed(2)}` : null,
-          url:      `/ventas?buscar=${encodeURIComponent(v.order_id)}`,
+          url:      `/ventas?q=${encodeURIComponent(v.order_id)}`,
         })),
         contactos: rows(contactos).map(c => ({
           id:       c.id,
           label:    c.nombre,
           sublabel: [c.email, c.telefono].filter(Boolean).join(' · '),
           badge:    c.tipo, // 'cliente' / 'proveedor'
-          url:      `/contactos?buscar=${encodeURIComponent(c.nombre)}`,
+          url:      `/contactos?q=${encodeURIComponent(c.nombre)}`,
         })),
         envios: rows(envios).map(e => ({
           id:       e.id,
           label:    e.cliente,
           sublabel: [e.direccion, e.fecha].filter(Boolean).join(' · '),
           badge:    e.estado,
-          url:      `/envios?buscar=${encodeURIComponent(e.cliente)}`,
+          url:      `/envios?q=${encodeURIComponent(e.cliente)}`,
         })),
         cajas: rows(cajas).map(c => ({
           id:       c.id,
@@ -189,7 +203,12 @@ router.get('/', validate(querySchema, 'query'), async (req, res, next) => {
           sublabel: [e.fecha].filter(Boolean).join(' · '),
           badge:    e.estado,
           amount:   e.monto != null ? `${e.moneda === 'USD' || e.moneda === 'USDT' ? 'u$s' : '$'}${Number(e.monto).toFixed(2)}` : null,
-          url:      `/egresos?buscar=${encodeURIComponent(e.concepto)}`,
+          // Nota (2026-07-14): EgresosPanel.jsx no tiene search input por texto
+          // (solo filtros de estado + categoría). Llevamos a la lista completa
+          // — el user ya vio el egreso en el palette y puede scrollear /
+          // filtrar por categoría desde ahí. Follow-up: agregar input de
+          // texto a EgresosPanel para poder pre-filtrar como en Ventas/Envíos.
+          url:      `/egresos`,
         })),
       };
     });

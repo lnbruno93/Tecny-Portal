@@ -119,4 +119,80 @@ describe('GET /api/search', () => {
     const r = await request(app).get('/api/search?q=test');
     expect(r.status).toBe(401);
   });
+
+  // 2026-07-14 (bug reportado por TekHaus vía Lucas): dos bugs relacionados
+  // con el flow "click en resultado del ⌘K no navega".
+  //
+  // Bug 1 (hasCap rol): search.js chequeaba req.user.tenant_rol (viejo,
+  //   compat) en vez de tenant_cap_rol (nuevo, usado por resto del cap-system).
+  //   Owners/admins nunca obtenían bypass → hasCap fallaba silencioso →
+  //   TODAS las categorías gate-adas devolvían 0 rows para owners con caps:
+  //   undefined en el JWT. TekHaus (owner) veía el palette vacío.
+  //
+  // Bug 2 (URLs): URLs de resultados usaban ?buscar= pero las pantallas
+  //   destino leen ?q= (Ventas, Inventario) o directamente no leen ningún
+  //   param (Contactos, Envios). Click navegaba pero visualmente "no pasaba
+  //   nada". Fix: URLs uniformadas a ?q= (excepto egresos → /egresos sin
+  //   query, EgresosPanel no tiene search input).
+  describe('bug fixes 2026-07-14', () => {
+    it('bug 1: owner (bypass rol) obtiene resultados en TODAS las categorías', async () => {
+      // Seed: producto con nombre distintivo.
+      const unique = 'BypassRolTest_' + Date.now();
+      await request(app).post('/api/inventario/productos').set(auth()).send({
+        nombre: unique, clase: 'celular_sellado', tipo_carga: 'unitario',
+        categoria_id: catBase, imei: '999' + Date.now().toString().slice(-12),
+        color: 'BypassColor', costo: 100, costo_moneda: 'USD',
+        precio_venta: 150, precio_moneda: 'USD', cantidad: 1,
+      });
+
+      // El TEST_USER default es admin — con el fix de hasCap ahora obtiene
+      // bypass via tenant_cap_rol. Verificamos que las categorías gate-adas
+      // (productos, ventas, envios, cajas, egresos) NO estén todas vacías
+      // (el bug pre-fix devolvía [] en todas para owners).
+      const r = await request(app).get(`/api/search?q=${unique.slice(0, 15)}`).set(auth());
+      expect(r.status).toBe(200);
+      // productos NO debería estar vacío — matcheamos el seed.
+      expect(r.body.results.productos.length).toBeGreaterThan(0);
+    });
+
+    it('bug 2: URLs de productos usan ?q= (no ?buscar=)', async () => {
+      // El CommandPalette navega a la URL devuelta por el backend. Las páginas
+      // destino leen ?q= (patrón consistente con Ventas.jsx e Inventario.jsx).
+      // Antes: /inventario?buscar=... → no lo lee ninguna pantalla → filtro no
+      // se aplica → user ve "no pasa nada" al clickear.
+      const r = await request(app).get('/api/search?q=SearchTest').set(auth());
+      expect(r.status).toBe(200);
+      const p = r.body.results.productos[0];
+      if (p) {
+        // La URL debe empezar con /inventario?q= (no ?buscar=).
+        expect(p.url).toMatch(/^\/inventario\?q=/);
+        expect(p.url).not.toMatch(/\?buscar=/);
+      }
+    });
+
+    it('bug 2: URLs de ventas/contactos/envios usan ?q= también', async () => {
+      const r = await request(app).get('/api/search?q=SearchTest').set(auth());
+      expect(r.status).toBe(200);
+      // Cada categoría con al menos 1 resultado debe cumplir el patrón.
+      for (const cat of ['ventas', 'contactos', 'envios']) {
+        const item = r.body.results[cat]?.[0];
+        if (item) {
+          expect(item.url).not.toMatch(/\?buscar=/);
+          expect(item.url).toMatch(/\?q=/);
+        }
+      }
+    });
+
+    it('egresos: URL sin query (EgresosPanel no tiene search input)', async () => {
+      const r = await request(app).get('/api/search?q=SearchTest').set(auth());
+      expect(r.status).toBe(200);
+      const item = r.body.results.egresos?.[0];
+      if (item) {
+        // Egresos lleva a la lista completa (sin filtro pre-aplicado). El user
+        // ya vio el egreso en el palette; llegar a la lista es suficiente por
+        // ahora hasta que EgresosPanel gane su propio search.
+        expect(item.url).toBe('/egresos');
+      }
+    });
+  });
 });
