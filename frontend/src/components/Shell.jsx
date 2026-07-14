@@ -19,6 +19,10 @@ import { alertas as alertasApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 // 2026-06-29 Multi-país F3: badge país en topbar (sec 5.3 design doc).
 import { useMonedasTenant } from '../lib/useMonedasTenant';
+// 2026-07-14 (bug TekHaus): auto-reload cuando el user está inactivo. Cubre
+// el caso "user con tab abierto hace horas no ve fixes deployados" sin
+// depender de que clickee el banner de update.
+import { startAutoReloadWatcher } from '../lib/swAutoReload';
 
 // ── UpdateBanner ─────────────────────────────────────────────────────────────
 // Shown when the service worker detects a new version waiting to activate.
@@ -49,6 +53,16 @@ function UpdateBanner() {
     },
   });
 
+  // 2026-07-14 (bug reportado por TekHaus): auto-reload silencioso cuando el
+  // user está inactivo Y no hay forms con datos sin guardar. Cierra el gap
+  // del banner "Actualizar ahora" que muchos users ignoran o dismissean.
+  // El banner sigue visible como fallback — si el user está tipeando, no lo
+  // interrumpimos. Ver `lib/swAutoReload.js` para la lógica + tests.
+  useEffect(() => {
+    if (!needRefresh) return;
+    return startAutoReloadWatcher(() => updateServiceWorker(true));
+  }, [needRefresh, updateServiceWorker]);
+
   if (!needRefresh) return null;
 
   return (
@@ -66,7 +80,12 @@ function UpdateBanner() {
       fontSize: 13,
       fontWeight: 500,
     }}>
-      <span>Nueva versión del portal disponible.</span>
+      <span>
+        Nueva versión del portal disponible.
+        <span style={{ opacity: 0.75, fontWeight: 400, marginLeft: 6 }}>
+          Se aplicará automáticamente si estás inactivo.
+        </span>
+      </span>
       <div style={{ display: 'flex', gap: 8 }}>
         <button
           onClick={() => updateServiceWorker(true)}
