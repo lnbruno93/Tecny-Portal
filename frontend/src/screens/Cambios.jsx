@@ -12,6 +12,7 @@ import TcWarning from '../components/TcWarning';
 import CajaSelectHint from '../components/CajaSelectHint';
 import useModal from '../lib/useModal';
 import { useAuth } from '../contexts/AuthContext';
+import Seg from '../components/Seg';
 
 
 
@@ -71,6 +72,24 @@ const isReciboLocalTipo  = (t) => t === 'recibo_ars' || t === 'recibo_uyu';
 // Qué moneda va la caja de este movimiento (USD o la local).
 const monedaCajaDelTipo  = (t, monedaLocal) =>
   (isEntregaUsdTipo(t) || isReciboUsdTipo(t)) ? 'USD' : monedaLocal;
+
+// 2026-07-14 (UX B): separamos el "tipo" persistido (8 valores enum) en dos
+// dimensiones ortogonales para el UI: `direccion` (A/B) × `operacion` (E/R).
+// El backend sigue recibiendo un `tipo` único; estos helpers hacen la trad.
+// Dirección A: "les damos pesos → nos deben USD"
+// Dirección B: "les damos USD → nos deben pesos"
+const dirDeTipo = (t) =>
+  (isEntregaLocalTipo(t) || isReciboUsdTipo(t)) ? 'A' : 'B';
+const opDeTipo = (t) =>
+  (isEntregaLocalTipo(t) || isEntregaUsdTipo(t)) ? 'entrega' : 'recibo';
+// Reverse: dado (direccion, operacion, TIPOS), devuelve el tipo enum.
+function tipoDe(direccion, operacion, TIPOS) {
+  if (direccion === 'A' && operacion === 'entrega') return TIPOS.entregaLocal;
+  if (direccion === 'A' && operacion === 'recibo')  return TIPOS.reciboUsd;
+  if (direccion === 'B' && operacion === 'entrega') return TIPOS.entregaUsd;
+  if (direccion === 'B' && operacion === 'recibo')  return TIPOS.reciboLocal;
+  return TIPOS.entregaLocal; // fallback
+}
 
 export default function Cambios() {
   const { toast } = useToast();
@@ -348,6 +367,155 @@ export default function Cambios() {
               </div>
             </div>
 
+            {/* 2026-07-14 (UX B): Sección de carga separada del histórico.
+               2 segmented controls (dirección + operación) determinan qué
+               tipo enum se persiste. La fila de inputs debajo muestra SOLO
+               los campos relevantes según el tipo — cada uno con label y
+               espacio propio. La tabla del histórico queda para lectura. */}
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 78 }}>Dirección:</span>
+                  <Seg
+                    value={dirDeTipo(mov.tipo)}
+                    options={[
+                      { value: 'A', label: `↑ Entregás ${monedaLocal} → USD` },
+                      { value: 'B', label: `↓ Entregás USD → ${monedaLocal}` },
+                    ]}
+                    onChange={(dir) => setMov(m => ({
+                      ...m,
+                      tipo: tipoDe(dir, opDeTipo(m.tipo), TIPOS),
+                      caja_id: '', monto_ars: '', monto_usd: '', tc: '',
+                    }))}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 78 }}>Operación:</span>
+                  <Seg
+                    value={opDeTipo(mov.tipo)}
+                    options={[
+                      { value: 'entrega', label: 'Entrega' },
+                      { value: 'recibo',  label: 'Recibo' },
+                    ]}
+                    onChange={(op) => setMov(m => ({
+                      ...m,
+                      tipo: tipoDe(dirDeTipo(m.tipo), op, TIPOS),
+                      caja_id: '', monto_ars: '', monto_usd: '', tc: '',
+                    }))}
+                  />
+                </div>
+              </div>
+
+              {/* Fila de inputs — cada campo con label + espacio. Los inputs
+                 no relevantes al tipo se ocultan (grid dinámico) para que la
+                 UI muestre solo lo que hay que llenar. */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: inputTcActivo
+                  ? '130px 1fr 100px 1fr 220px 1fr 110px'
+                  : '130px 1fr 220px 1fr 110px',
+                gap: 10,
+                alignItems: 'end',
+                borderTop: '1px solid var(--hairline)',
+                paddingTop: 12,
+              }}>
+                <div>
+                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Fecha</div>
+                  <input type="date" className="input" value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} />
+                </div>
+
+                {/* Input del monto principal — depende del tipo */}
+                {(isEntregaLocal || isReciboLocal) && (
+                  <div>
+                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Monto {monedaLocal}
+                    </div>
+                    <input
+                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                      className="input mono"
+                      placeholder="0"
+                      value={mov.monto_ars}
+                      onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))}
+                    />
+                  </div>
+                )}
+                {(isEntregaUsd || isReciboUsd) && (
+                  <div>
+                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Monto USD {isEntregaUsd ? '(egreso)' : ''}
+                    </div>
+                    <input
+                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                      className="input mono"
+                      placeholder="0"
+                      value={mov.monto_usd}
+                      onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))}
+                    />
+                  </div>
+                )}
+
+                {/* TC — solo entregas */}
+                {inputTcActivo && (
+                  <div>
+                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      TC
+                    </div>
+                    <input
+                      type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                      className="input mono"
+                      placeholder="Ej 1000"
+                      value={mov.tc}
+                      onChange={e => setMov(m => ({ ...m, tc: e.target.value }))}
+                    />
+                    <TcWarning tc={mov.tc} />
+                  </div>
+                )}
+
+                {/* Preview del equiv en la otra moneda (readonly, calculado) */}
+                {(isEntregaLocal || isEntregaUsd) && (
+                  <div>
+                    <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {isEntregaLocal ? 'Equiv. USD (te deben)' : `Equiv. ${monedaLocal} (te deben)`}
+                    </div>
+                    <input
+                      type="text" readOnly
+                      className="input mono"
+                      style={{ background: 'rgba(56,182,255,0.08)', cursor: 'default' }}
+                      value={isEntregaLocal ? (usdPreview ? `u$s ${usdPreview}` : '—') : (localPreview ? `$ ${localPreview}` : '—')}
+                    />
+                  </div>
+                )}
+
+                {/* Caja destino/origen */}
+                <div>
+                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Caja ({cajaMonedaEsperada})
+                  </div>
+                  <select className="input" value={mov.caja_id} onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
+                    <option value="">Elegí caja…</option>
+                    {cajasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                  <CajaSelectHint />
+                </div>
+
+                {/* Comentarios */}
+                <div>
+                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Comentarios
+                  </div>
+                  <input className="input" placeholder="Opcional" value={mov.comentarios} onChange={e => setMov(m => ({ ...m, comentarios: e.target.value }))} />
+                </div>
+
+                {/* Botón Agregar */}
+                <div>
+                  <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, visibility: 'hidden' }}>·</div>
+                  <button className="btn btn-primary" style={{ width: '100%' }} disabled={savingMov} onClick={handleAddMov}>
+                    {savingMov ? 'Guardando…' : 'Agregar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="card card-flush">
               <div style={{ overflow: 'auto' }}>
                 <table className="tbl">
@@ -380,60 +548,8 @@ export default function Cambios() {
                       );
                     })}
 
-                    {/* Fila de carga */}
-                    <tr style={{ background: 'rgba(99,102,241,0.05)' }}>
-                      <td><input type="date" className="input" style={{ height: 30, fontSize: 12 }} value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} /></td>
-                      <td>
-                        {/* 2026-07-14 (dirección inversa): 4 opciones. Agrupadas
-                           visualmente por dirección con separadores textuales. */}
-                        <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.tipo} onChange={e => setMov(m => ({ ...m, tipo: e.target.value, caja_id: '', monto_ars: '', monto_usd: '', tc: '' }))}>
-                          <optgroup label={`Entregás ${monedaLocal} → te deben USD`}>
-                            <option value={TIPOS.entregaLocal}>Entrega {monedaLocal}</option>
-                            <option value={TIPOS.reciboUsd}>Recibo USD</option>
-                          </optgroup>
-                          <optgroup label={`Entregás USD → te deben ${monedaLocal}`}>
-                            <option value={TIPOS.entregaUsd}>Entrega USD</option>
-                            <option value={TIPOS.reciboLocal}>Recibo {monedaLocal}</option>
-                          </optgroup>
-                        </select>
-                      </td>
-                      <td>
-                        {/* Input local ($ monedaLocal): activo cuando el mov usa
-                           input local (entrega_local o recibo_local). Cuando
-                           es entrega_usd, muestra el localPreview (readonly)
-                           que es la deuda calculada usd × tc. */}
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
-                          style={{ height: 30, fontSize: 12, textAlign: 'right', background: isEntregaUsd ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
-                          placeholder="0"
-                          disabled={!inputLocalActivo && !isEntregaUsd}
-                          readOnly={isEntregaUsd}
-                          value={isEntregaUsd ? (localPreview || '') : mov.monto_ars}
-                          onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))} />
-                      </td>
-                      <td>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right' }} placeholder="TC" disabled={!inputTcActivo} value={mov.tc} onChange={e => setMov(m => ({ ...m, tc: e.target.value }))} />
-                        {inputTcActivo && <TcWarning tc={mov.tc} />}
-                      </td>
-                      <td>
-                        {/* Input USD: activo cuando el mov usa input USD (entrega_usd
-                           o recibo_usd). Cuando es entrega_local, muestra
-                           usdPreview readonly (usd = local / tc). */}
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" style={{ height: 30, fontSize: 12, textAlign: 'right', background: isEntregaLocal ? 'rgba(99,102,241,0.08)' : 'var(--surface)' }}
-                          placeholder="USD" readOnly={isEntregaLocal}
-                          disabled={!inputUsdActivo && !isEntregaLocal}
-                          value={isEntregaLocal ? (usdPreview || '') : mov.monto_usd}
-                          onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))} />
-                      </td>
-                      <td>
-                        <select className="input" style={{ height: 30, fontSize: 12 }} value={mov.caja_id} onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
-                          <option value="">Caja {cajaMonedaEsperada}…</option>
-                          {cajasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                          <CajaSelectHint />
-                        </select>
-                      </td>
-                      <td><input className="input" style={{ height: 30, fontSize: 12 }} placeholder="Comentarios" value={mov.comentarios} onChange={e => setMov(m => ({ ...m, comentarios: e.target.value }))} /></td>
-                      <td><button className="btn btn-primary btn-sm" disabled={savingMov} onClick={handleAddMov}>{savingMov ? '…' : 'Agregar'}</button></td>
-                    </tr>
+                    {/* Fila de carga movida a card separada ARRIBA (2026-07-14 UX B).
+                       El histórico queda para lectura pura, sin inputs mezclados. */}
                   </tbody>
                 </table>
               </div>
