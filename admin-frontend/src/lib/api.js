@@ -423,22 +423,30 @@ export const adminApi = {
   // usado por la card "Reseñas de Google" (toggle enabled + status display).
   getGoogleReviewsStatus: () => api('/api/super-admin/google-reviews-status'),
 
-  // ── Facturación (2026-07-15, task #130) ───────────────────────────────
-  // GET /facturacion → dashboard SaaS billing. MOCK por ahora: genera
-  // facturas determinísticas desde tenants reales. La UI no cambia cuando
-  // integremos billing real (Stripe/MP) — solo cambia lo que devuelve el
-  // backend por debajo.
+  // ── Facturación (2026-07-15 v2, task #131) ────────────────────────────
+  // GET /facturacion → estado de cuenta de todos los tenants (no soft-deleted).
+  // Refleja la realidad del cobro manual (WhatsApp/transferencia) — no
+  // inventa facturas, deriva el estado de campos que ya usa Ficha
+  // (paid_until, trial_until, suspended_at).
   //
   // Response: {
-  //   kpis: { mrr_usd, mrr_delta_pct, cobrado_mes_usd, cobrado_count,
-  //           pendiente_usd, pendiente_count, fallidos_usd, fallidos_count,
-  //           reintento_dias },
-  //   facturas: [{ id, numero, tenant_id, tenant_nombre, plan, plan_label,
-  //                monto_usd, fecha, metodo, estado }]
+  //   kpis: {
+  //     mrr_usd, total_clientes,
+  //     al_dia_count, al_dia_usd,
+  //     vencidos_count, vencidos_usd,
+  //     trials_count, trials_por_vencer_7d,
+  //     suspendidos_count, sin_config_count
+  //   },
+  //   clientes: [{ id, tenant_id, tenant_nombre, plan, plan_label,
+  //                monto_usd, fecha_referencia, estado, suspended_reason }]
   // }
   //
-  // estado ∈ { 'pagada', 'pendiente', 'fallida' }
-  // metodo ∈ { 'tarjeta', 'transferencia', 'mercadopago' }
+  // estado ∈ { 'al_dia' | 'vencida' | 'trial' | 'trial_vencido' |
+  //            'sin_config' | 'suspendida' }
+  //
+  // Orden de las filas: prioriza los que necesitan atención (vencida >
+  // sin_config > trial_vencido > trial > al_dia > suspendida). Dentro de
+  // cada estado, por fecha_referencia asc (más urgente primero).
   getFacturacion: () => api('/api/super-admin/facturacion'),
 
   // ── Clases duplicadas (2026-07-14) ────────────────────────────────────

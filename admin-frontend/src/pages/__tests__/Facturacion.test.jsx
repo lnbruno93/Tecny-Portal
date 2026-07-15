@@ -1,14 +1,16 @@
-// Tests de Facturación — dashboard SaaS billing del back-office (task #130).
+// Tests de Facturación v2 — estado de cuenta real de tenants (task #131).
 //
-// Cubrimos los escenarios que dan valor sin sobre-testear el mock:
-//   1. Render feliz: 4 KPIs + tabla de facturas con badges de estado
-//   2. Tabs filtran por estado (todas / pagadas / pendientes / fallidas)
-//   3. Empty state cuando el endpoint devuelve facturas=[]
+// Cubrimos los escenarios que dan valor real:
+//   1. Render feliz: 4 KPIs (MRR / Al día / Vencidos / Trials) + tabla con
+//      todos los estados posibles
+//   2. Tabs filtran por estado (todos / al_dia / vencidos / trials / suspendidos)
+//   3. Empty state cuando el backend devuelve clientes=[]
 //   4. Error banner cuando el endpoint falla
-//   5. Click en row navega a /clientes/:id (drill-down al tenant)
+//   5. Click en row navega a /clientes/:id
+//   6. Trial muestra "Trial hasta {fecha}" en próximo cobro
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
 vi.mock('../../lib/api.js', () => ({
@@ -48,128 +50,178 @@ function renderFacturacion() {
   );
 }
 
-// Fixture "feliz": 3 facturas cubriendo los 3 estados posibles, para poder
-// probar filtros con al menos 1 row en cada tab.
+// Fixture cubriendo los 6 estados posibles + KPIs coherentes.
 function happyData() {
   return {
     kpis: {
-      mrr_usd: 1051,
-      mrr_delta_pct: 8.4,
-      cobrado_mes_usd: 784,
-      cobrado_count: 6,
-      pendiente_usd: 89,
-      pendiente_count: 1,
-      fallidos_usd: 89,
-      fallidos_count: 1,
-      reintento_dias: 2,
+      mrr_usd: 456,
+      total_clientes: 6,
+      al_dia_count: 2,
+      al_dia_usd: 288,
+      vencidos_count: 1,
+      vencidos_usd: 89,
+      trials_count: 2,
+      trials_por_vencer_7d: 1,
+      suspendidos_count: 1,
+      sin_config_count: 0,
     },
-    facturas: [
+    clientes: [
       {
-        id: 41, numero: 'INV-2041', tenant_id: 41,
-        tenant_nombre: 'Mac Center', plan: 'pro', plan_label: 'Pro',
-        monto_usd: 189, fecha: '2026-05-23T10:00:00Z',
-        metodo: 'tarjeta', estado: 'pagada',
+        id: 10, tenant_id: 10,
+        tenant_nombre: 'Vencida SA', plan: 'starter', plan_label: 'Starter',
+        monto_usd: 89, fecha_referencia: '2026-06-15T00:00:00Z',
+        estado: 'vencida', suspended_reason: null,
       },
       {
-        id: 38, numero: 'INV-2038', tenant_id: 38,
-        tenant_nombre: 'TecnoCelu', plan: 'starter', plan_label: 'Starter',
-        monto_usd: 89, fecha: '2026-05-22T10:00:00Z',
-        metodo: 'tarjeta', estado: 'fallida',
+        id: 11, tenant_id: 11,
+        tenant_nombre: 'Trial Vencido SRL', plan: 'trial', plan_label: 'Trial',
+        monto_usd: 0, fecha_referencia: '2026-07-01T00:00:00Z',
+        estado: 'trial_vencido', suspended_reason: null,
       },
       {
-        id: 35, numero: 'INV-2035', tenant_id: 35,
-        tenant_nombre: 'iFix Palermo', plan: 'starter', plan_label: 'Starter',
-        monto_usd: 89, fecha: '2026-05-20T10:00:00Z',
-        metodo: 'tarjeta', estado: 'pendiente',
+        id: 12, tenant_id: 12,
+        tenant_nombre: 'Trial Vigente SA', plan: 'trial', plan_label: 'Trial',
+        monto_usd: 0, fecha_referencia: '2026-07-20T00:00:00Z',
+        estado: 'trial', suspended_reason: null,
+      },
+      {
+        id: 13, tenant_id: 13,
+        tenant_nombre: 'Cliente Al Dia', plan: 'pro', plan_label: 'Pro',
+        monto_usd: 199, fecha_referencia: '2026-08-15T00:00:00Z',
+        estado: 'al_dia', suspended_reason: null,
+      },
+      {
+        id: 14, tenant_id: 14,
+        tenant_nombre: 'Otro Al Dia', plan: 'starter', plan_label: 'Starter',
+        monto_usd: 89, fecha_referencia: '2026-08-10T00:00:00Z',
+        estado: 'al_dia', suspended_reason: null,
+      },
+      {
+        id: 15, tenant_id: 15,
+        tenant_nombre: 'Suspendida SA', plan: 'pro', plan_label: 'Pro',
+        monto_usd: 199, fecha_referencia: null,
+        estado: 'suspendida', suspended_reason: 'Falta de pago 60 días',
       },
     ],
   };
 }
 
-describe('Pantalla Facturación (admin)', () => {
+describe('Pantalla Facturación (admin) — v2 estado de cuenta', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navigateMock.mockClear();
   });
 
-  it('renderiza los 4 KPIs y la tabla con las facturas', async () => {
+  it('renderiza los 4 KPIs con la semántica nueva y la tabla', async () => {
     adminApi.getFacturacion.mockResolvedValue(happyData());
     renderFacturacion();
 
-    // Título de página.
     expect(await screen.findByText('Facturación y cobros')).toBeInTheDocument();
 
-    // Los 4 labels de KPI (algunos textos como "Pendiente" también aparecen
-    // como estado en filas de la tabla — usamos getAllByText y verificamos
-    // que exista al menos uno).
+    // Los 4 labels de KPI. Casi todos aparecen 2x (KPI + tab con mismo
+    // nombre o estado en fila) → usamos getAllByText para todos.
     expect(screen.getByText('MRR')).toBeInTheDocument();
-    expect(screen.getByText('Cobrado (mes)')).toBeInTheDocument();
-    // "Pendiente" aparece 2x (KPI label + estado en fila iFix Palermo).
-    expect(screen.getAllByText('Pendiente').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Fallidos')).toBeInTheDocument();
+    expect(screen.getAllByText('Al día').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Vencidos').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Trials').length).toBeGreaterThanOrEqual(1);
 
-    // Valores esperados (MRR $1.051 y cobrado $784 vienen del fixture).
+    // MRR muestra $456.
     await waitFor(() => {
-      expect(screen.getByText('$1.051')).toBeInTheDocument();
+      expect(screen.getByText('$456')).toBeInTheDocument();
     });
-    expect(screen.getByText('$784')).toBeInTheDocument();
 
-    // Delta chip del MRR: 8.4% con flecha up.
-    expect(screen.getByText(/8\.4%/)).toBeInTheDocument();
+    // "6 clientes total" del KPI MRR.
+    expect(screen.getByText('6 clientes total')).toBeInTheDocument();
 
-    // Contador de pagos en cobrado.
-    expect(screen.getByText('6 pagos')).toBeInTheDocument();
-    // Reintento en 2 días para el KPI fallidos.
-    expect(screen.getByText(/reintento en 2 d/)).toBeInTheDocument();
+    // KPI Al día: count=2, monto=$288/mes.
+    expect(screen.getByText('$288/mes')).toBeInTheDocument();
 
-    // Filas de la tabla — 3 tenants.
-    expect(screen.getByText('Mac Center')).toBeInTheDocument();
-    expect(screen.getByText('TecnoCelu')).toBeInTheDocument();
-    expect(screen.getByText('iFix Palermo')).toBeInTheDocument();
+    // KPI Vencidos: $89 pendiente.
+    expect(screen.getByText('$89 pendiente')).toBeInTheDocument();
 
-    // Número de factura (formato INV-XXXX).
-    expect(screen.getByText('INV-2041')).toBeInTheDocument();
-    // Estado con status dot: los 3 estados presentes.
-    expect(screen.getByText('Pagada')).toBeInTheDocument();
-    expect(screen.getByText('Fallida')).toBeInTheDocument();
+    // KPI Trials: "1 vencen en 7d" warning.
+    expect(screen.getByText('1 vencen en 7d')).toBeInTheDocument();
+
+    // Filas de la tabla — algunos nombres representativos.
+    expect(screen.getByText('Vencida SA')).toBeInTheDocument();
+    expect(screen.getByText('Cliente Al Dia')).toBeInTheDocument();
+    expect(screen.getByText('Suspendida SA')).toBeInTheDocument();
+
+    // Badges de estado — verificamos que aparezcan los distintos labels.
+    expect(screen.getByText('Vencida')).toBeInTheDocument();
+    expect(screen.getByText('Trial vencido')).toBeInTheDocument();
+    expect(screen.getByText('Suspendida')).toBeInTheDocument();
+    // "Al día" aparece 2x (KPI label + estados en filas).
+    expect(screen.getAllByText('Al día').length).toBeGreaterThanOrEqual(2);
+    // "Trial" aparece en KPI y en fila.
+    expect(screen.getAllByText('Trial').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('filtra la tabla por tab (Fallidas muestra solo la de TecnoCelu)', async () => {
+  it('trial muestra "Trial hasta {fecha}" en próximo cobro', async () => {
     adminApi.getFacturacion.mockResolvedValue(happyData());
     renderFacturacion();
 
-    await screen.findByText('Mac Center');
+    await screen.findByText('Vencida SA');
 
-    // Click en tab "Fallidas".
-    fireEvent.click(screen.getByRole('tab', { name: 'Fallidas' }));
-
-    // Solo TecnoCelu (estado='fallida') queda visible.
-    expect(screen.getByText('TecnoCelu')).toBeInTheDocument();
-    expect(screen.queryByText('Mac Center')).not.toBeInTheDocument();
-    expect(screen.queryByText('iFix Palermo')).not.toBeInTheDocument();
+    // Trial Vigente SA tiene fecha_referencia 2026-07-20 → celda muestra
+    // "Trial hasta {fmtDate}". Regex flexible por locale/TZ (puede caer
+    // en 19 o 20 según UTC vs America/Argentina).
+    expect(screen.getByText(/Trial hasta.*jul.*2026/i)).toBeInTheDocument();
   });
 
-  it('muestra empty state cuando no hay facturas', async () => {
+  it('filtra por tab Vencidos (muestra vencida + sin_config)', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    await screen.findByText('Vencida SA');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Vencidos' }));
+
+    // Solo Vencida SA (estado='vencida') aparece; los otros no.
+    expect(screen.getByText('Vencida SA')).toBeInTheDocument();
+    expect(screen.queryByText('Cliente Al Dia')).not.toBeInTheDocument();
+    expect(screen.queryByText('Trial Vigente SA')).not.toBeInTheDocument();
+    expect(screen.queryByText('Suspendida SA')).not.toBeInTheDocument();
+  });
+
+  it('filtra por tab Trials (muestra ambos: vigente + vencido)', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    await screen.findByText('Vencida SA');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Trials' }));
+
+    expect(screen.getByText('Trial Vencido SRL')).toBeInTheDocument();
+    expect(screen.getByText('Trial Vigente SA')).toBeInTheDocument();
+    // Los que NO son trials no deben aparecer.
+    expect(screen.queryByText('Vencida SA')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cliente Al Dia')).not.toBeInTheDocument();
+  });
+
+  it('empty state cuando no hay clientes', async () => {
     adminApi.getFacturacion.mockResolvedValue({
       kpis: {
-        mrr_usd: 0, mrr_delta_pct: 0,
-        cobrado_mes_usd: 0, cobrado_count: 0,
-        pendiente_usd: 0, pendiente_count: 0,
-        fallidos_usd: 0, fallidos_count: 0,
-        reintento_dias: 2,
+        mrr_usd: 0, total_clientes: 0,
+        al_dia_count: 0, al_dia_usd: 0,
+        vencidos_count: 0, vencidos_usd: 0,
+        trials_count: 0, trials_por_vencer_7d: 0,
+        suspendidos_count: 0, sin_config_count: 0,
       },
-      facturas: [],
+      clientes: [],
     });
     renderFacturacion();
 
     await waitFor(() => {
-      expect(screen.getByText('Sin facturas todavía.')).toBeInTheDocument();
+      expect(screen.getByText('Sin clientes todavía.')).toBeInTheDocument();
     });
-    // KPIs de fallidos "sin fallidos" en vez de reintento.
-    expect(screen.getByText('sin fallidos')).toBeInTheDocument();
+    // KPI Vencidos "sin vencidos" cuando count=0.
+    expect(screen.getByText('sin vencidos')).toBeInTheDocument();
+    // KPI Trials "sin urgencias" cuando trials_por_vencer_7d=0.
+    expect(screen.getByText('sin urgencias')).toBeInTheDocument();
   });
 
-  it('muestra banner de error si el endpoint falla', async () => {
+  it('banner de error si el endpoint falla', async () => {
     adminApi.getFacturacion.mockRejectedValue(new Error('boom'));
     renderFacturacion();
 
@@ -183,9 +235,9 @@ describe('Pantalla Facturación (admin)', () => {
     adminApi.getFacturacion.mockResolvedValue(happyData());
     renderFacturacion();
 
-    const cell = await screen.findByText('Mac Center');
+    const cell = await screen.findByText('Vencida SA');
     fireEvent.click(cell.closest('tr'));
 
-    expect(navigateMock).toHaveBeenCalledWith('/clientes/41');
+    expect(navigateMock).toHaveBeenCalledWith('/clientes/10');
   });
 });
