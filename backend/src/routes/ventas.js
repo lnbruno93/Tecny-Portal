@@ -1036,15 +1036,25 @@ router.get('/dashboard', validate(queryDashboardSchema, 'query'), async (req, re
 // sobre N=limit filas, no sobre toda la tabla.
 router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => {
   try {
-    const { desde, hasta, estado, etiqueta_id, buscar } = req.query;
+    const { desde, hasta, estado, etiqueta_id, buscar, id } = req.query;
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 50 });
 
     // ── Step 1: build the UNION ALL of (id, origen, fecha) for pagination ──
     // Filtros retail
     const condR = ['v.deleted_at IS NULL'];
     const paramsR = [];
-    if (desde)       { paramsR.push(desde);       condR.push(`v.fecha >= $${paramsR.length}`); }
-    if (hasta)       { paramsR.push(hasta);       condR.push(`v.fecha <= $${paramsR.length}`); }
+    // 2026-07-15 (task #134): filtro puntual por ID (viene del Cmd+K deep-link
+    // ?open=<id>). Cuando llega, ignoramos desde/hasta — el ID es único global
+    // y no queremos exigirle al frontend que sepa la fecha exacta. Igual
+    // seguimos respetando estado/etiqueta_id si vinieron (aunque el uso típico
+    // manda solo el id).
+    if (id) {
+      paramsR.push(id);
+      condR.push(`v.id = $${paramsR.length}`);
+    } else {
+      if (desde)     { paramsR.push(desde);       condR.push(`v.fecha >= $${paramsR.length}`); }
+      if (hasta)     { paramsR.push(hasta);       condR.push(`v.fecha <= $${paramsR.length}`); }
+    }
     if (estado)      { paramsR.push(estado);      condR.push(`v.estado = $${paramsR.length}`); }
     if (etiqueta_id) { paramsR.push(etiqueta_id); condR.push(`v.etiqueta_id = $${paramsR.length}`); }
     if (buscar) {
@@ -1055,8 +1065,13 @@ router.get('/', validate(queryVentasSchema, 'query'), async (req, res, next) => 
     const whereR = condR.join(' AND ');
 
     // Filtros B2B. Skipea cuando filtros lo descartan.
+    // 2026-07-15 (task #134): `id` filtra por retail-only (venta_id numérico).
+    // Los movimientos B2B tienen su propio espacio de IDs — buscar el mismo
+    // número ahí devolvería un movimiento no relacionado y ensuciaría la
+    // respuesta del Cmd+K deep-link.
     const skipB2B = (etiqueta_id != null && etiqueta_id !== '') ||
-                    (estado && !['acreditado', 'pendiente'].includes(estado));
+                    (estado && !['acreditado', 'pendiente'].includes(estado)) ||
+                    (id != null);
     const condB = [
       `m.deleted_at IS NULL`,
       `m.tipo = 'compra'`,

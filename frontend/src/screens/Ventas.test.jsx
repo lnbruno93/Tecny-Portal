@@ -240,4 +240,52 @@ describe('Pantalla Ventas', () => {
       expect(segMes.className).toMatch(/on/);
     });
   });
+
+  // task #134 (2026-07-15): deep-link desde Cmd+K.
+  // Cuando el usuario clickea un resultado de "Ventas" en la búsqueda global,
+  // navegamos a /ventas?open=<id> y Ventas.jsx auto-abre el modal de edición.
+  describe('Deep-link ?open=<id> (Cmd+K)', () => {
+    it('llama a ventas.list con { id } cuando llega ?open=42', async () => {
+      renderVentas(['/ventas?open=42']);
+      // Además del list del dashboard normal (que puede o no correr según
+      // filtros), esperamos una llamada con { id: '42', limit: 1 }.
+      await waitFor(() => {
+        const calls = ventasApi.list.mock.calls;
+        const found = calls.some((args) => {
+          const p = args[0] || {};
+          return String(p.id) === '42' && Number(p.limit) === 1;
+        });
+        expect(found).toBe(true);
+      });
+    });
+
+    it('abre el modal en modo edición cuando la venta se encuentra', async () => {
+      // Fixture mínimo de venta retail (mismo shape que devuelve /api/ventas).
+      const ventaFixture = {
+        id: 42, order_id: 'ORD-26-abc123', fecha: '2026-07-01', hora: '10:00',
+        cliente_nombre: 'Cliente Test', cliente_id: null, cliente_cc_id: null,
+        etiqueta_id: null, garantia_id: null, tc_venta: null,
+        estado: 'acreditado', notas: '', origen: 'retail',
+        items: [], canjes: [], pagos: [], comprobantes: [],
+      };
+      ventasApi.list.mockImplementation((params) => {
+        if (params && String(params.id) === '42') {
+          return Promise.resolve({ data: [ventaFixture], pagination: { page: 1, pages: 1, total: 1 } });
+        }
+        return Promise.resolve({ data: [], pagination: { page: 1, pages: 1, total: 0 } });
+      });
+      renderVentas(['/ventas?open=42']);
+      // El modal de edición muestra el título "Editar venta".
+      expect(await screen.findByText('Editar venta')).toBeInTheDocument();
+    });
+
+    it('limpia ?open del URL después de intentar abrir', async () => {
+      renderVentas(['/ventas?open=42']);
+      await waitFor(() => {
+        // La URL post-effect no debería contener ?open=
+        const text = screen.getByTestId('location').textContent;
+        expect(text).not.toMatch(/[?&]open=/);
+      });
+    });
+  });
 });

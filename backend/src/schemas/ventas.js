@@ -201,6 +201,11 @@ const queryVentasSchema = z.object({
   buscar:      z.string().trim().max(200).optional(),
   page:        z.coerce.number().int().positive().optional(),
   limit:       z.coerce.number().int().positive().max(200).optional(),
+  // 2026-07-15 (task #134): filtro puntual por ID de venta. Cuando el usuario
+  // llega desde Cmd+K con `?open=<id>`, el frontend hace fetch dirigido con
+  // este filtro para conseguir la venta sin importar qué período/estado
+  // tenía activo. El handler ignora desde/hasta cuando id está presente.
+  id:          z.coerce.number().int().positive().optional(),
 });
 
 /* ── Comprobantes de venta ── */

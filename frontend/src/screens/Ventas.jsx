@@ -412,6 +412,40 @@ export default function Ventas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPrimaryAction, vendedores]);
 
+  // 2026-07-15 (task #134): deep-link `?open=<venta_id>` desde Cmd+K.
+  // Cuando el usuario clickea un resultado de "Ventas" en la búsqueda global,
+  // el CommandPalette navega a /ventas?open=<id>. Este effect fetchea esa
+  // venta específica (usando el filtro `id` del backend, que ignora fechas)
+  // y abre el modal de edición directamente. Después limpia el param para
+  // que un refresh o back no re-abra el modal.
+  const openedOnceRef = useRef(false);
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || openedOnceRef.current) return;
+    openedOnceRef.current = true;
+    (async () => {
+      try {
+        const res = await ventas.list({ id: openId, limit: 1 });
+        const v = (res?.data || [])[0];
+        if (v) {
+          openEdit(v);
+        } else {
+          // No la encontramos (borrada o id inválido) — mostramos toast y
+          // dejamos al user en el dashboard. No forzamos error banner.
+          toast.error?.('No pudimos abrir esa venta (¿fue eliminada?).');
+        }
+      } catch (err) {
+        toast.error?.(err?.message || 'No pudimos abrir la venta.');
+      } finally {
+        // Limpiamos el param para que un refresh no re-abra el modal.
+        const next = new URLSearchParams(searchParams);
+        next.delete('open');
+        setSearchParams(next, { replace: true });
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Pattern G — regenerar Idempotency-Key cada vez que se abre el modal para
   // una NUEVA venta. En modo edit no aplica (PUT /ventas/:id no usa el key).
   // El key se persiste durante la vida del modal para que doble-click/retry
