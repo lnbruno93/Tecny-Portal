@@ -197,6 +197,81 @@ describe('GET /api/historial', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBeLessThanOrEqual(2);
   });
+
+  // 2026-07-15 (task #136): antes el detalle caía a JSON crudo cuando el row
+  // no tenía cliente/nombre/username (típico: movimientos_deudas mostraba el
+  // objeto entero: {"id": 7, "tipo": "debe", ...}). Ahora cascada de
+  // candidatos + formato especial "concepto · $monto".
+  //
+  // Usamos POST /api/cajas/deudas real (con contexto RLS correcto vía auth
+  // middleware) en vez de INSERT manual — más fiel al comportamiento real.
+  describe('detalle: formato humano (task #136)', () => {
+    let contactoId;
+    beforeAll(async () => {
+      // Contacto dedicado para no interferir con los tests anteriores.
+      const c = await request(app)
+        .post('/api/contactos')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ nombre: 'Deudor', apellido: 'Test136', tipo: 'cliente' });
+      contactoId = c.body.id;
+    });
+
+    it('movimientos_deudas: "concepto · u$sXXX" cuando hay monto_usd', async () => {
+      await request(app)
+        .post('/api/cajas/deudas')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          fecha: new Date().toISOString().slice(0, 10),
+          contacto_id: contactoId,
+          tipo: 'debe',
+          monto_ars: 0,
+          monto_usd: 250,
+          concepto: 'iPhone 16 T136-USD',
+        });
+      const res = await request(app)
+        .get('/api/historial?tabla=movimientos_deudas')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      const row = res.body.data.find(r => r.detalle && r.detalle.startsWith('iPhone 16 T136-USD'));
+      expect(row).toBeDefined();
+      // Nota: el TRIM en el SQL saca los ceros trailing (250.00 → 250).
+      expect(row.detalle).toBe('iPhone 16 T136-USD · u$s250');
+    });
+
+    it('movimientos_deudas: "concepto · $XXX" cuando solo hay monto_ars', async () => {
+      await request(app)
+        .post('/api/cajas/deudas')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          fecha: new Date().toISOString().slice(0, 10),
+          contacto_id: contactoId,
+          tipo: 'debe',
+          monto_ars: 350000,
+          monto_usd: 0,
+          concepto: 'iPhone 15 T136-ARS',
+        });
+      const res = await request(app)
+        .get('/api/historial?tabla=movimientos_deudas')
+        .set('Authorization', `Bearer ${token}`);
+      const row = res.body.data.find(r => r.detalle && r.detalle.startsWith('iPhone 15 T136-ARS'));
+      expect(row).toBeDefined();
+      expect(row.detalle).toBe('iPhone 15 T136-ARS · $350000');
+    });
+
+    it('detalle nunca contiene JSON crudo (regresión)', async () => {
+      // Cualquier row de movimientos_deudas debería tener detalle plain-text.
+      const res = await request(app)
+        .get('/api/historial?tabla=movimientos_deudas')
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      res.body.data.forEach(row => {
+        if (row.detalle) {
+          expect(row.detalle).not.toMatch(/^\{/); // NUNCA JSON crudo
+          expect(row.detalle).not.toMatch(/"tipo":/); // Sanity: sin claves JSON
+        }
+      });
+    });
+  });
 });
 
 // ─── Logout ──────────────────────────────────────────────────
