@@ -175,7 +175,11 @@ router.get('/', validate(querySchema, 'query'), async (req, res, next) => {
           sublabel: [v.cliente_nombre, v.fecha].filter(Boolean).join(' · '),
           badge:    v.estado,
           amount:   v.total_usd != null ? `u$s${Number(v.total_usd).toFixed(2)}` : null,
-          url:      `/ventas?q=${encodeURIComponent(v.order_id)}`,
+          // 2026-07-15 (task #134): antes devolvíamos `?q=<order_id>` que sólo
+          // filtraba el dashboard. Ahora `?open=<id>` — Ventas.jsx detecta el
+          // param, fetchea la venta específica y abre el modal de edición
+          // directamente, sin importar el período/estado activos.
+          url:      `/ventas?open=${v.id}`,
         })),
         contactos: rows(contactos).map(c => ({
           id:       c.id,
