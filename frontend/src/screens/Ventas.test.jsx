@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useEffect } from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
 vi.mock('../lib/api', () => {
   const paginated = { data: [], pagination: { page: 1, pages: 1, total: 0 } };
@@ -286,6 +287,51 @@ describe('Pantalla Ventas', () => {
         const text = screen.getByTestId('location').textContent;
         expect(text).not.toMatch(/[?&]open=/);
       });
+    });
+
+    // task #135 (2026-07-15): bug reportado en producción — el user ya
+    // estaba en /ventas y hacía Cmd+K a otra venta. React Router actualizaba
+    // searchParams sin remontar → useEffect con deps=[] no disparaba y el
+    // usuario veía el dashboard sin modal. Fix: deps=[openIdParam] +
+    // guard lastOpenedRef por id.
+    it('reacciona a ?open aparecido después del mount (sin remount)', async () => {
+      const ventaFixture = {
+        id: 99, order_id: 'ORD-26-nuevo', fecha: '2026-06-01', hora: '10:00',
+        cliente_nombre: 'Otro', cliente_id: null, cliente_cc_id: null,
+        etiqueta_id: null, garantia_id: null, tc_venta: null,
+        estado: 'acreditado', notas: '', origen: 'retail',
+        items: [], canjes: [], pagos: [], comprobantes: [],
+      };
+      ventasApi.list.mockImplementation((params) => {
+        if (params && String(params.id) === '99') {
+          return Promise.resolve({ data: [ventaFixture], pagination: { page: 1, pages: 1, total: 1 } });
+        }
+        return Promise.resolve({ data: [], pagination: { page: 1, pages: 1, total: 0 } });
+      });
+
+      // Test render con componente extra que simula la navegación tardía
+      // (como haría CommandPalette al clickear un resultado mientras el
+      // user ya está en /ventas).
+      function LateNav() {
+        const nav = useNavigate();
+        useEffect(() => {
+          const t = setTimeout(() => nav('/ventas?open=99'), 50);
+          return () => clearTimeout(t);
+        }, [nav]);
+        return null;
+      }
+      render(
+        <MemoryRouter initialEntries={['/ventas']}>
+          <ToastProvider><ConfirmProvider><PageActionsProvider>
+            <Ventas />
+            <ActionTrigger />
+            <LateNav />
+            <LocationProbe />
+          </PageActionsProvider></ConfirmProvider></ToastProvider>
+        </MemoryRouter>
+      );
+      // Aunque no remontó Ventas, el modal debe abrirse.
+      expect(await screen.findByText('Editar venta', undefined, { timeout: 3000 })).toBeInTheDocument();
     });
   });
 });
