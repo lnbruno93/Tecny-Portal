@@ -237,6 +237,47 @@ describe('Productos', () => {
     expect(res.status).toBe(404);
   });
 
+  // 2026-07-15 (task #138): Sentry detectó 2 events en la última semana
+  // del constraint idx_productos_imei_unique al hacer PUT. El usuario editaba
+  // un producto y cambiaba el IMEI a uno ya usado por otro producto del
+  // tenant → 500 opaco. Ahora 409 con mensaje claro (mismo pattern que POST).
+  //
+  // El índice unique es partial (WHERE estado='disponible') — el test crea
+  // 2 productos frescos que quedan ambos en 'disponible' por default para
+  // asegurar que el conflict se dispare.
+  it('PUT cambiando IMEI a uno ya usado en otro producto disponible → 409', async () => {
+    const imeiA = '111111111111111';
+    const imeiB = '222222222222222';
+
+    const a = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Prod A IMEI dup test',
+      clase: 'celular_sellado', categoria_id: catBase,
+      imei: imeiA, costo: 100, precio_venta: 200,
+    });
+    expect(a.status).toBe(201);
+
+    const b = await request(app).post('/api/inventario/productos').set(auth()).send({
+      nombre: 'Prod B IMEI dup test',
+      clase: 'celular_sellado', categoria_id: catBase,
+      imei: imeiB, costo: 100, precio_venta: 200,
+    });
+    expect(b.status).toBe(201);
+
+    // Intentar cambiar el IMEI de B al mismo que A → debe fallar con 409 amigable.
+    const res = await request(app)
+      .put(`/api/inventario/productos/${b.body.id}`)
+      .set(auth())
+      .send({ imei: imeiA });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/IMEI.*ya.*registrado.*otro/i);
+
+    // B no debe haber cambiado su IMEI (rollback del UPDATE).
+    const bCheck = await request(app).get(`/api/inventario/productos?buscar=Prod B IMEI dup test`).set(auth());
+    const bAfter = bCheck.body.data.find(p => p.id === b.body.id);
+    expect(bAfter.imei).toBe(imeiB);
+  });
+
   it('borra (soft-delete) el producto', async () => {
     const res = await request(app).delete(`/api/inventario/productos/${prodId}`).set(auth());
     expect(res.status).toBe(200);

@@ -74,7 +74,7 @@ O vía UI: `tecny-backend` service → Variables → New Variable.
 |------------------------|-----------|------------------------------------------------------|---------------------------------------------------------------|
 | `VITE_API_URL`         | **sí**    | `https://tecny-backend-production.up.railway.app`    | Ya seteada. Sin esto reportError es no-op + warn.              |
 | `SENTRY_AUTH_TOKEN`    | opcional  | `sntrys_abc...`                                      | Build-time. Sube source maps a Sentry. Sin esto los maps no se suben. |
-| `SENTRY_ORG`           | opcional  | `lnbruno`                                            | Default `'lnbruno'`.                                          |
+| `SENTRY_ORG`           | opcional  | `bruno-iu`                                           | **El slug real de la org es `bruno-iu`** (no `lnbruno`). Verificable en cualquier URL de Sentry. Default del código sigue siendo `'lnbruno'` por compat, pero prod usa `bruno-iu`. |
 | `SENTRY_PROJECT`       | opcional  | `tecny-portal-frontend`                              | Default `'tecny-portal-frontend'`.                            |
 | `COMMIT_REF`           | auto      | (Netlify lo setea automáticamente)                   | Se usa como `release`.                                        |
 
@@ -95,7 +95,7 @@ Netlify UI → site settings → Environment variables → Add variable.
 
 En https://sentry.io:
 1. Login o crear cuenta free (5k errors/mes es suficiente para ~10 tenants).
-2. En la org (ej. `lnbruno`), crear 3 proyectos:
+2. En la org (slug real: **`bruno-iu`**), crear 3 proyectos:
    - **`tecny-portal-backend`** — Platform: **Node.js**
    - **`tecny-portal-frontend`** — Platform: **React**
    - **`tecny-portal-admin`** — Platform: **React**
@@ -233,6 +233,104 @@ Backend: rate limit **60 req/min/IP** en `/api/client-errors`.
 | Sample rate `tracesSampleRate: 0` (solo errores)  | Performance monitoring no crítico ahora. Cambiar cuando haya SLA.        |
 | Source maps con `hidden` no `true`                | Vite no agrega `//# sourceMappingURL=...` al bundle → browser no ve maps. |
 | `filesToDeleteAfterUpload: ['./dist/**/*.map']`   | Sentry los tiene subidos; borrar del bundle público evita exposición.     |
+
+---
+
+## Gotchas descubiertos (2026-07-15)
+
+Cosas que costaron tiempo entender en el setup real. Documentadas para
+que futuro-tú (o próximo dev) no se choque con las mismas piedras.
+
+### 1. Slug real de la org es `bruno-iu`, no `lnbruno`
+
+El default en `frontend/vite.config.js` y `admin-frontend/vite.config.js` es
+`'lnbruno'` (histórico, mi mala asunción). El slug REAL es `bruno-iu`.
+Verificable en cualquier URL de Sentry (`sentry.io/organizations/bruno-iu/...`).
+
+**Netlify env var** `SENTRY_ORG=bruno-iu` overridea el default, así el
+build usa el slug correcto. No hace falta cambiar los defaults del código
+(sirven de fallback en caso de que la env var falte en local).
+
+### 2. Netlify CLI v26 tiene bug con `--site`
+
+El flag `--site <id>` es ignorado por `netlify env:set` en CLI v26.2.x. Además,
+`--secret` requiere `account_id` que solo se resuelve tras un `netlify link`.
+
+**Workaround para scripts**: hacer `cd <project-dir> && netlify link --id
+<site-id>` primero, después `netlify env:set VAR value --force`. Sin `--secret`
+si querés evitar el prompt de account_id (marcala Sensitive por UI después).
+
+### 3. Validar que el DSN esté bien formateado
+
+El `SENTRY_DSN` de Railway se corrompió una vez (le faltaba el `@o<id>.ingest.`
+del medio → los eventos se silenciaban sin error). Los indicadores de un
+DSN válido:
+
+```
+https://<publickey>@<host>.ingest.us.sentry.io/<projectid>
+                  ↑                ↑
+                  debe existir     debe existir
+```
+
+**Chequeo rápido desde CLI:**
+```bash
+railway variables --service tecny-backend --json | \
+  python3 -c "import json,sys; v=json.load(sys.stdin).get('SENTRY_DSN',''); \
+    print('Valid:', '@' in v and 'ingest' in v)"
+```
+
+**Cómo obtenerlo si se pierde:**
+- Sentry.io → project settings → Client Keys → copiar DSN
+- O vía API con auth token:
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    https://sentry.io/api/0/projects/bruno-iu/tecny-portal-backend/keys/
+  ```
+
+**Recomendación**: guardar el DSN correcto en un password manager como backup.
+Sin ese respaldo, si Railway pierde la var hay que redescubrirlo (10 min extra).
+
+### 4. Cambiar env var en Railway NO trigger redeploy automático
+
+En este proyecto Railway no re-arranca el service cuando cambiás una env var.
+Después de `railway variables --set X=Y`, hay que forzar el redeploy:
+
+```bash
+railway redeploy --service tecny-backend --yes
+```
+
+O commit vacío + push (pero requiere pasar branch protection). El CLI redeploy
+es el path más rápido.
+
+### 5. Auth Token de Sentry: scopes mínimos
+
+Para que el `@sentry/vite-plugin` pueda subir source maps + crear releases:
+
+- `project:releases` — crea/edita releases
+- `project:read` — resuelve el project slug
+- `org:read` — resuelve el org slug
+
+Con `event:read` adicional podés también consultar issues via API (útil para
+scripts de verificación, no necesario para el flow normal).
+
+### 6. Test de verificación end-to-end
+
+Después de cualquier cambio en la config de Sentry, verificar el pipeline
+completo con un evento de prueba:
+
+```bash
+# Send test event
+curl -X POST https://tecny-backend-production.up.railway.app/api/client-errors \
+  -H "Content-Type: application/json" \
+  -d '{"message":"TEST_'$(date +%s)'","stack":"Error: test\n    at :1:1","source":"admin:test","build_commit":"unknown","build_version":"0.1.0"}'
+
+# Wait ~30s, verify Sentry received it
+curl -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "https://sentry.io/api/0/projects/bruno-iu/tecny-portal-backend/stats/?stat=received&resolution=1h&since=$(( $(date +%s) - 3600 ))" | \
+  python3 -c "import json,sys; d=json.load(sys.stdin); print('Events:', sum(int(c) for _,c in d))"
+```
+
+Si el count > 0 en el bucket de la última hora, el pipeline funciona.
 
 ---
 

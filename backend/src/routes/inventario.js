@@ -1423,7 +1423,19 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
     });
     invalidateMetricas(req.tenantId);
     res.json(row);
-  } catch (err) { next(err); }
+  } catch (err) {
+    // 2026-07-15 (task post-observabilidad): Sentry detectó 2 events del
+    // constraint idx_productos_imei_unique en PUT — usuario editando un
+    // producto cambia el IMEI a uno ya usado por otro producto del tenant.
+    // Antes: 500 opaco "Error del servidor". Ahora: 409 con mensaje claro,
+    // igual pattern que el POST (línea ~1305).
+    if (err && err.code === '23505' && err.constraint === 'idx_productos_imei_unique') {
+      return res.status(409).json({
+        error: 'Ese IMEI ya está registrado en otro producto de tu inventario.',
+      });
+    }
+    next(err);
+  }
 });
 
 router.delete('/productos/:id', requireCapability('inventario.eliminar'), async (req, res, next) => {
