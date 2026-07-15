@@ -1906,52 +1906,58 @@ router.get('/metrics/recent-actions', async (req, res, next) => {
 // ──────────────────────────────────────────────────────────────────────────
 // GET /facturacion — dashboard de facturación y cobros del SaaS Tecny.
 //
-// 2026-07-15: pantalla nueva del back-office (task #130). Objetivo: eyes on
-// ARR sin construir todavía todo el pipeline real de billing (Stripe / MP
-// webhooks / etc.). El cobro sigue siendo MANUAL — Lucas cobra por WhatsApp
-// y transferencia — pero esta pantalla le da una vista consolidada estilo
-// dashboard de billing hasta que exista el sistema real.
+// 2026-07-15 v2 (task #131): reescrito para reflejar la REALIDAD del cobro
+// manual. Antes (v1) generaba facturas mock por hash — se veía vacío porque
+// muchos tenants están en trial (monto=0) y quedaban skipeados, o los
+// plan_prices estaban en 0. Peor aún, mostraba estados inventados (Pagada /
+// Pendiente / Fallida) que no correspondían a nada real.
 //
-// DECISIÓN durable: este endpoint es MOCK. Genera facturas determinísticas
-// derivadas de tenants reales activos (mismo tenant_id → mismos datos entre
-// requests, así la UI no "salta"). Cuando integremos billing real (Stripe /
-// MP), este endpoint se reescribe leyendo una tabla `invoices` posta y las
-// claves de la response no cambian — la UI no se toca. El shape se pensó
-// forward-compatible.
+// Ahora: lista TODOS los tenants (incluyendo suspendidos, excepto soft-
+// deleted) y deriva el ESTADO REAL de la cuenta a partir de los campos que
+// ya usamos en Ficha de cliente:
 //
-// Filas generadas (una por tenant activo):
-//   · monto = precio del plan (getTenantMrr respeta enterprise custom).
-//   · fecha = distribuida en los últimos 30 días vía hash(tenant_id).
-//   · método = tarjeta (mayoría) | transferencia | mercadopago (por hash).
-//   · estado = pagada (mayoría) | pendiente (~10%) | fallida (~10%). El hash
-//     hace que TecnoCelu (id fijo) siempre caiga en el mismo bucket, lo cual
-//     ayuda a testear la UI sin flicker.
+//   Estado canónico              Condición
+//   ────────────────────────     ──────────────────────────────────────────
+//   suspendida                   suspended_at IS NOT NULL
+//   trial                        plan='trial' AND (trial_until IS NULL OR
+//                                                  trial_until >= NOW)
+//   trial_vencido                plan='trial' AND trial_until < NOW
+//   sin_config                   plan!='trial' AND paid_until IS NULL
+//                                (ej. onboarding legacy o grandfathered)
+//   al_dia                       plan!='trial' AND paid_until >= NOW
+//   vencida                      plan!='trial' AND paid_until < NOW
 //
-// KPIs agregados sobre las facturas generadas:
-//   · mrr_usd: suma de MRR de activos (mismo cálculo que /metrics).
-//   · cobrado_mes_usd: suma de monto donde estado='pagada'.
-//   · pendiente_usd / pendiente_count: donde estado='pendiente'.
-//   · fallidos_usd / fallidos_count: donde estado='fallida'.
-//   · mrr_delta_pct: mock hardcoded 8.4 (mismo que en el mockup original).
-//     Cuando exista history real de MRR, se computa contra 30d atrás.
+// KPIs redefinidos con semántica honesta:
+//   · mrr_usd: suma de MRR de tenants NO suspendidos con plan pago.
+//   · al_dia_count / al_dia_usd: tenants con paid_until vigente.
+//   · vencidos_count / vencidos_usd: tenants con paid_until vencida.
+//   · trials_count: tenants en trial (vigente + vencido).
+//   · trials_por_vencer_7d: trials cuyo trial_until <= NOW+7d (early warning).
+//
+// Cuando integremos billing real (Stripe/MP con webhooks), este endpoint
+// puede coexistir con /facturas — /facturacion sigue siendo el "estado de
+// cuenta" y /facturas será el histórico transaccional.
 // ──────────────────────────────────────────────────────────────────────────
 
-// Hash barato y determinístico string→int. Usado solo para distribuir
-// estados/métodos/días entre tenants — no se necesita crypto ni distribución
-// perfecta, solo estabilidad entre requests para que la UI no cambie.
-function _facturacionHash(s) {
-  let h = 0;
-  const str = String(s);
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+// Deriva el estado canónico desde los campos raw del tenant. Función pura,
+// testeable, sin acceso a DB — todos los inputs son campos ya leídos.
+// Los estados están priorizados: suspendida gana sobre todo lo demás.
+function _facturacionEstadoTenant(t, now) {
+  if (t.suspended_at) return 'suspendida';
+  if (t.plan === 'trial') {
+    if (t.trial_until && new Date(t.trial_until) < now) return 'trial_vencido';
+    return 'trial';
   }
-  return Math.abs(h);
+  // Plan pago (starter/pro/enterprise).
+  if (!t.paid_until) return 'sin_config';
+  if (new Date(t.paid_until) < now) return 'vencida';
+  return 'al_dia';
 }
 
-// Mapa plan canónico → label display en español para el badge de la tabla.
-// El schema soporta trial|starter|pro|enterprise; el mockup y comunicación
-// comercial de Lucas usan "Starter/Negocio/Pro". Mapeamos aquí para no
-// forzar refactor del schema todavía — cuando alineemos, esto se borra.
+// Mapa plan canónico → label display capitalizado. El schema de Tecny
+// soporta exactamente estos 4: trial | starter | pro | enterprise.
+// Confirmado por Lucas 2026-07-15: no hay más planes, no se agrega
+// "negocio" ni ninguna otra variante.
 const _FACTURACION_PLAN_LABEL = {
   trial:      'Trial',
   starter:    'Starter',
@@ -1962,88 +1968,109 @@ const _FACTURACION_PLAN_LABEL = {
 router.get('/facturacion', async (_req, res, next) => {
   try {
     const data = await db.adminQuery(async (client) => {
-      // Tenants activos con su plan actual + custom_mrr_usd para enterprise.
-      // NO incluimos suspendidos ni soft-deleted — no facturan.
+      // Todos los tenants NO soft-deleted. Incluimos suspendidos a propósito
+      // — son parte del "estado de cuenta" y aparecen con badge Suspendida
+      // (sin contribuir al MRR).
       const { rows: tenants } = await client.query(`
-        SELECT id, nombre, plan, custom_mrr_usd, created_at
+        SELECT id, nombre, plan, custom_mrr_usd,
+               created_at, paid_until, trial_until,
+               suspended_at, suspended_reason
           FROM tenants
          WHERE deleted_at IS NULL
-           AND suspended_at IS NULL
-         ORDER BY id DESC
+         ORDER BY id ASC
       `);
 
-      let mrr_total_usd = 0;
-      const facturas = [];
       const now = new Date();
+      const in7d = new Date(now.getTime() + 7 * 86400000);
+
+      let mrr_total_usd = 0;
+      let al_dia_count = 0, al_dia_usd = 0;
+      let vencidos_count = 0, vencidos_usd = 0;
+      let trials_count = 0, trials_por_vencer_7d = 0;
+      let suspendidos_count = 0;
+      let sin_config_count = 0;
+
+      const clientes = [];
 
       for (const t of tenants) {
+        const estado = _facturacionEstadoTenant(t, now);
         const monto = getTenantMrr(t.plan, t.custom_mrr_usd);
-        // Plan sin precio (trial=0 típicamente) NO genera factura — no
-        // ensucia la vista con "$0 Pagada" que confunde más de lo que ayuda.
-        if (monto <= 0) continue;
 
-        mrr_total_usd += monto;
+        // MRR incluye tenants con plan pago no suspendidos, aunque estén
+        // vencidos — refleja el MRR "contratado" incluso si el cobro está
+        // atrasado. Este es el mismo criterio que usa /metrics.
+        if (t.plan !== 'trial' && !t.suspended_at) {
+          mrr_total_usd += monto;
+        }
 
-        const h = _facturacionHash(t.id);
-        // Estado: 80% pagada, 10% pendiente, 10% fallida (determinístico).
-        const bucket = h % 10;
-        const estado = bucket === 0 ? 'fallida'
-                     : bucket === 1 ? 'pendiente'
-                     : 'pagada';
-        // Método: 70% tarjeta, 20% transferencia, 10% mercadopago.
-        const mBucket = (h >> 3) % 10;
-        const metodo = mBucket < 7 ? 'tarjeta'
-                     : mBucket < 9 ? 'transferencia'
-                     : 'mercadopago';
-        // Fecha: últimos 30 días distribuidos por hash. Determinístico
-        // hasta que cambie el mes calendario (fine para el mockup).
-        const daysBack = (h >> 6) % 30;
-        const fecha = new Date(now.getTime() - daysBack * 86400000);
+        if (estado === 'suspendida') suspendidos_count++;
+        else if (estado === 'trial' || estado === 'trial_vencido') {
+          trials_count++;
+          if (t.trial_until && new Date(t.trial_until) <= in7d) {
+            trials_por_vencer_7d++;
+          }
+        } else if (estado === 'al_dia') {
+          al_dia_count++;
+          al_dia_usd += monto;
+        } else if (estado === 'vencida') {
+          vencidos_count++;
+          vencidos_usd += monto;
+        } else if (estado === 'sin_config') {
+          sin_config_count++;
+        }
 
-        facturas.push({
+        // Fecha de referencia para mostrar: paid_until para planes pagos
+        // (próximo cobro), trial_until para trials (fecha de expiración).
+        const fecha_referencia = t.plan === 'trial' ? t.trial_until : t.paid_until;
+
+        clientes.push({
           id: t.id,
-          numero: 'INV-' + String(2000 + t.id).padStart(4, '0'),
           tenant_id: t.id,
           tenant_nombre: t.nombre,
           plan: t.plan,
           plan_label: _FACTURACION_PLAN_LABEL[t.plan] || t.plan,
           monto_usd: monto,
-          fecha: fecha.toISOString(),
-          metodo,
+          fecha_referencia: fecha_referencia
+            ? new Date(fecha_referencia).toISOString()
+            : null,
           estado,
+          suspended_reason: t.suspended_reason || null,
         });
       }
 
-      // Ordenar por fecha desc — la tabla del mockup muestra las más nuevas
-      // arriba. Fallback a tenant_id para desempatar (fechas del mismo día).
-      facturas.sort((a, b) => {
-        if (a.fecha !== b.fecha) return a.fecha < b.fecha ? 1 : -1;
-        return b.tenant_id - a.tenant_id;
+      // Orden: los que necesitan atención primero (vencidos > sin_config >
+      // trial_vencido > trial > al_dia > suspendidos). Dentro de cada estado,
+      // por fecha_referencia asc (más urgente primero) — así los trials que
+      // vencen mañana quedan arriba de los que vencen en 3 meses.
+      const orden = {
+        vencida: 0, sin_config: 1, trial_vencido: 2,
+        trial: 3, al_dia: 4, suspendida: 5,
+      };
+      clientes.sort((a, b) => {
+        const oa = orden[a.estado] ?? 99;
+        const ob = orden[b.estado] ?? 99;
+        if (oa !== ob) return oa - ob;
+        // Dentro del mismo estado: nulls al final, sino asc por fecha.
+        if (!a.fecha_referencia && !b.fecha_referencia) return a.tenant_nombre.localeCompare(b.tenant_nombre);
+        if (!a.fecha_referencia) return 1;
+        if (!b.fecha_referencia) return -1;
+        return a.fecha_referencia.localeCompare(b.fecha_referencia);
       });
-
-      const cobrado = facturas.filter((f) => f.estado === 'pagada');
-      const pendiente = facturas.filter((f) => f.estado === 'pendiente');
-      const fallidos = facturas.filter((f) => f.estado === 'fallida');
-
-      const sumMonto = (arr) => arr.reduce((acc, f) => acc + f.monto_usd, 0);
 
       return {
         kpis: {
           mrr_usd: Math.round(mrr_total_usd * 100) / 100,
-          // Placeholder hasta que existe history real de MRR mensual. Cuando
-          // se compute posta, esta clave es la única que cambia.
-          mrr_delta_pct: 8.4,
-          cobrado_mes_usd: Math.round(sumMonto(cobrado) * 100) / 100,
-          cobrado_count: cobrado.length,
-          pendiente_usd: Math.round(sumMonto(pendiente) * 100) / 100,
-          pendiente_count: pendiente.length,
-          fallidos_usd: Math.round(sumMonto(fallidos) * 100) / 100,
-          fallidos_count: fallidos.length,
-          // Días hasta el próximo reintento automático (mock — cuando exista
-          // integración real, se lee del row de la próxima retry).
-          reintento_dias: 2,
+          al_dia_count,
+          al_dia_usd: Math.round(al_dia_usd * 100) / 100,
+          vencidos_count,
+          vencidos_usd: Math.round(vencidos_usd * 100) / 100,
+          trials_count,
+          trials_por_vencer_7d,
+          suspendidos_count,
+          sin_config_count,
+          total_clientes: tenants.length,
         },
-        facturas,
+        clientes,
       };
     });
     res.json(data);
