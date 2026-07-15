@@ -1970,14 +1970,28 @@ router.get('/facturacion', async (_req, res, next) => {
     const data = await db.adminQuery(async (client) => {
       // Todos los tenants NO soft-deleted. Incluimos suspendidos a propósito
       // — son parte del "estado de cuenta" y aparecen con badge Suspendida
-      // (sin contribuir al MRR).
+      // (sin contribuir al MRR). LEFT JOIN a payment_methods para traer el
+      // nombre del método asignado (task #132 2026-07-15).
       const { rows: tenants } = await client.query(`
-        SELECT id, nombre, plan, custom_mrr_usd,
-               created_at, paid_until, trial_until,
-               suspended_at, suspended_reason
-          FROM tenants
-         WHERE deleted_at IS NULL
-         ORDER BY id ASC
+        SELECT t.id, t.nombre, t.plan, t.custom_mrr_usd,
+               t.created_at, t.paid_until, t.trial_until,
+               t.suspended_at, t.suspended_reason,
+               t.metodo_pago_id,
+               pm.nombre AS metodo_pago_nombre
+          FROM tenants t
+          LEFT JOIN payment_methods pm ON pm.id = t.metodo_pago_id
+         WHERE t.deleted_at IS NULL
+         ORDER BY t.id ASC
+      `);
+
+      // Lista de métodos ACTIVOS para popular el dropdown de asignación.
+      // Los inactivos no se ofrecen para nuevas asignaciones (pero un tenant
+      // ya asignado a uno inactivo sigue mostrándolo en su fila).
+      const { rows: metodos_disponibles } = await client.query(`
+        SELECT id, nombre
+          FROM payment_methods
+         WHERE activo = true
+         ORDER BY orden ASC, LOWER(nombre) ASC
       `);
 
       const now = new Date();
@@ -2035,6 +2049,8 @@ router.get('/facturacion', async (_req, res, next) => {
             : null,
           estado,
           suspended_reason: t.suspended_reason || null,
+          metodo_pago_id: t.metodo_pago_id,
+          metodo_pago_nombre: t.metodo_pago_nombre || null,
         });
       }
 
@@ -2071,10 +2087,232 @@ router.get('/facturacion', async (_req, res, next) => {
           total_clientes: tenants.length,
         },
         clientes,
+        metodos_disponibles,
       };
     });
     res.json(data);
   } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Métodos de pago maestros (task #132, 2026-07-15).
+//
+// CRUD para la lista global editable de métodos de pago. Cada tenant puede
+// tener uno asignado (tenants.metodo_pago_id → payment_methods.id). Se
+// consumen desde la pantalla /facturacion:
+//   · Modal "Métodos de pago" (botón del header): CRUD sobre esta tabla.
+//   · Dropdown inline en cada fila: asigna un método a un tenant específico
+//     vía PATCH /tenants/:id/metodo-pago.
+//
+// Soft-delete via `activo=false`: mantiene tenants ya asignados con el
+// nombre visible, pero saca la opción del dropdown. Hard-delete solo si
+// nadie lo está usando (chequeo en el endpoint DELETE, no en la DB).
+// ──────────────────────────────────────────────────────────────────────────
+
+// GET /payment-methods → lista completa (activos + inactivos) con conteo
+// de tenants usando cada uno. Ordenada por `orden` asc, después por nombre.
+router.get('/payment-methods', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(`
+        SELECT pm.id, pm.nombre, pm.activo, pm.orden,
+               pm.created_at, pm.updated_at,
+               (SELECT COUNT(*)::int FROM tenants t
+                 WHERE t.metodo_pago_id = pm.id AND t.deleted_at IS NULL) AS en_uso
+          FROM payment_methods pm
+         ORDER BY pm.orden ASC, LOWER(pm.nombre) ASC
+      `);
+      return { payment_methods: rows };
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /payment-methods { nombre } → crear.
+// nombre trimmed, no vacío. Unicidad case-insensitive garantizada por index.
+router.post('/payment-methods', async (req, res, next) => {
+  try {
+    const nombre = String(req.body?.nombre || '').trim();
+    if (!nombre) {
+      return res.status(400).json({ error: 'El nombre es requerido.' });
+    }
+    if (nombre.length > 50) {
+      return res.status(400).json({ error: 'El nombre no puede tener más de 50 caracteres.' });
+    }
+    const data = await db.adminQuery(async (client) => {
+      // Orden = último + 10 (dejamos espacios por si Lucas quiere reordenar
+      // en el futuro sin recalcular todo).
+      const { rows: maxRows } = await client.query(
+        `SELECT COALESCE(MAX(orden), 0) + 10 AS next_orden FROM payment_methods`
+      );
+      const nextOrden = maxRows[0].next_orden;
+      try {
+        const { rows } = await client.query(
+          `INSERT INTO payment_methods (nombre, orden)
+                VALUES ($1, $2)
+             RETURNING id, nombre, activo, orden, created_at, updated_at,
+                       0::int AS en_uso`,
+          [nombre, nextOrden]
+        );
+        return rows[0];
+      } catch (err) {
+        // 23505 = unique_violation → nombre duplicado (case-insensitive).
+        if (err.code === '23505') {
+          const e = new Error('Ya existe un método con ese nombre.');
+          e.statusCode = 409;
+          throw e;
+        }
+        throw err;
+      }
+    });
+    res.status(201).json(data);
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+// PATCH /payment-methods/:id { nombre?, activo?, orden? } → edición parcial.
+// Devuelve 404 si no existe. 409 si el nombre choca con otro método.
+router.patch('/payment-methods/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updates = [];
+    const params = [];
+
+    if (req.body?.nombre !== undefined) {
+      const nombre = String(req.body.nombre || '').trim();
+      if (!nombre) return res.status(400).json({ error: 'El nombre no puede ser vacío.' });
+      if (nombre.length > 50) return res.status(400).json({ error: 'El nombre no puede tener más de 50 caracteres.' });
+      params.push(nombre);
+      updates.push(`nombre = $${params.length}`);
+    }
+    if (req.body?.activo !== undefined) {
+      params.push(!!req.body.activo);
+      updates.push(`activo = $${params.length}`);
+    }
+    if (req.body?.orden !== undefined) {
+      const orden = Number(req.body.orden);
+      if (!Number.isInteger(orden)) return res.status(400).json({ error: 'Orden debe ser un entero.' });
+      params.push(orden);
+      updates.push(`orden = $${params.length}`);
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'Nada para actualizar (nombre/activo/orden).' });
+    }
+    updates.push('updated_at = NOW()');
+    params.push(id);
+
+    const data = await db.adminQuery(async (client) => {
+      try {
+        const { rows } = await client.query(
+          `UPDATE payment_methods
+              SET ${updates.join(', ')}
+            WHERE id = $${params.length}
+            RETURNING id, nombre, activo, orden, created_at, updated_at,
+                      (SELECT COUNT(*)::int FROM tenants t
+                        WHERE t.metodo_pago_id = payment_methods.id AND t.deleted_at IS NULL) AS en_uso`,
+          params
+        );
+        return rows[0] || null;
+      } catch (err) {
+        if (err.code === '23505') {
+          const e = new Error('Ya existe otro método con ese nombre.');
+          e.statusCode = 409;
+          throw e;
+        }
+        throw err;
+      }
+    });
+    if (!data) return res.status(404).json({ error: 'Método de pago no encontrado.' });
+    res.json(data);
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+// DELETE /payment-methods/:id → hard-delete solo si en_uso=0.
+// Si hay tenants usándolo, devolvemos 409 con hint — el operador debe primero
+// reasignar/desasignar esos tenants (o soft-delete vía PATCH activo=false).
+router.delete('/payment-methods/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const data = await db.adminQuery(async (client) => {
+      const { rows: uso } = await client.query(
+        `SELECT COUNT(*)::int AS en_uso FROM tenants
+          WHERE metodo_pago_id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      if (uso[0].en_uso > 0) {
+        const e = new Error(
+          `No se puede eliminar: ${uso[0].en_uso} cliente(s) lo tienen asignado. ` +
+          `Reasignalos primero o desactivá el método (soft-delete).`
+        );
+        e.statusCode = 409;
+        throw e;
+      }
+      const { rowCount } = await client.query(
+        `DELETE FROM payment_methods WHERE id = $1`,
+        [id]
+      );
+      return { deleted: rowCount };
+    });
+    if (data.deleted === 0) return res.status(404).json({ error: 'Método de pago no encontrado.' });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+// PATCH /tenants/:id/metodo-pago { metodo_pago_id } → asigna (o desasigna
+// con null). Valida que el método exista y esté activo (evita asignar a
+// uno inactivo desde la UI vieja/cache stale).
+router.patch('/tenants/:id/metodo-pago', async (req, res, next) => {
+  try {
+    const tenantId = Number(req.params.id);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      return res.status(400).json({ error: 'tenant_id inválido.' });
+    }
+    const rawId = req.body?.metodo_pago_id;
+    const metodoId = rawId === null || rawId === undefined || rawId === '' ? null : String(rawId);
+
+    const data = await db.adminQuery(async (client) => {
+      if (metodoId) {
+        const { rows: check } = await client.query(
+          `SELECT id, activo FROM payment_methods WHERE id = $1`,
+          [metodoId]
+        );
+        if (check.length === 0) {
+          const e = new Error('El método de pago no existe.');
+          e.statusCode = 404;
+          throw e;
+        }
+        if (!check[0].activo) {
+          const e = new Error('No se puede asignar un método inactivo. Reactivalo primero.');
+          e.statusCode = 409;
+          throw e;
+        }
+      }
+      const { rows } = await client.query(
+        `UPDATE tenants
+            SET metodo_pago_id = $1
+          WHERE id = $2 AND deleted_at IS NULL
+          RETURNING id, metodo_pago_id,
+                    (SELECT nombre FROM payment_methods WHERE id = $1) AS metodo_pago_nombre`,
+        [metodoId, tenantId]
+      );
+      return rows[0] || null;
+    });
+    if (!data) return res.status(404).json({ error: 'Tenant no encontrado.' });
+    res.json(data);
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 });

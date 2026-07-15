@@ -16,6 +16,7 @@ import { adminApi } from '../lib/api.js';
 import { Btn, Card, Badge, PageHead, Tabs } from '../components/primitives/index.jsx';
 import { fmtMoney, fmtDate, fmt } from '../lib/format.js';
 import { planTone } from '../lib/uiHelpers.js';
+import PaymentMethodsModal from '../components/modals/PaymentMethodsModal.jsx';
 
 // Estado canónico del tenant → { tone, label } para el badge.
 // Los tones ya existen en styles.css (s-pos/s-neg/s-warn/s-info/s-muted).
@@ -35,8 +36,13 @@ export default function Facturacion() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('todos');
+  // Modal "Métodos de pago" — CRUD de la lista maestra desde el header.
+  const [methodsModalOpen, setMethodsModalOpen] = useState(false);
+  // ID del tenant cuyo método está siendo actualizado (para lock del select
+  // durante el PATCH). null = ningún update in-flight.
+  const [assigningTenantId, setAssigningTenantId] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
     let alive = true;
     setLoading(true);
     setError('');
@@ -55,10 +61,50 @@ export default function Facturacion() {
       });
 
     return () => { alive = false; };
+  };
+
+  useEffect(() => {
+    const cleanup = load();
+    return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleAssignMetodo = async (tenantId, metodoPagoId) => {
+    // metodoPagoId puede ser '' cuando se elige "Sin asignar" → mandamos null.
+    const value = metodoPagoId === '' ? null : metodoPagoId;
+    setAssigningTenantId(tenantId);
+    setError('');
+    // Optimistic update: refleja el cambio en la UI sin esperar al server.
+    // Si falla, revertimos vía refetch.
+    setData((prev) => {
+      if (!prev) return prev;
+      const found = value
+        ? (prev.metodos_disponibles || []).find((m) => m.id === value)
+        : null;
+      return {
+        ...prev,
+        clientes: prev.clientes.map((c) =>
+          c.tenant_id === tenantId
+            ? { ...c, metodo_pago_id: value, metodo_pago_nombre: found?.nombre || null }
+            : c
+        ),
+      };
+    });
+    try {
+      await adminApi.setTenantMetodoPago(tenantId, value);
+    } catch (err) {
+      setError(err?.message || 'No pudimos actualizar el método.');
+      // Revertimos con un refetch en background — mejor consistencia que
+      // guardar snapshot local pre-optimistic.
+      load();
+    } finally {
+      setAssigningTenantId(null);
+    }
+  };
 
   const kpis = data?.kpis || {};
   const clientes = data?.clientes || [];
+  const metodosDisponibles = data?.metodos_disponibles || [];
 
   const clientesFiltrados = useMemo(() => {
     if (tab === 'todos') return clientes;
@@ -77,6 +123,13 @@ export default function Facturacion() {
         subtitle="Estado de cuenta de tus clientes · cobros manuales todavía (WhatsApp / transferencia)"
         actions={
           <>
+            <Btn
+              icon="CreditCard"
+              onClick={() => setMethodsModalOpen(true)}
+              title="Configurar métodos de pago disponibles"
+            >
+              Métodos de pago
+            </Btn>
             <Btn
               icon="Download"
               onClick={() => {}}
@@ -236,6 +289,7 @@ export default function Facturacion() {
                 <th scope="col">Plan</th>
                 <th scope="col" className="num">MRR/mes</th>
                 <th scope="col">Próximo cobro</th>
+                <th scope="col">Método</th>
                 <th scope="col">Estado</th>
               </tr>
             </thead>
@@ -248,22 +302,74 @@ export default function Facturacion() {
                     : c.fecha_referencia
                     ? fmtDate(c.fecha_referencia)
                     : '—';
+                const isAssigning = assigningTenantId === c.tenant_id;
+                // Si el tenant tiene un método asignado que ya NO está en
+                // metodos_disponibles (fue desactivado), lo agregamos al
+                // dropdown como opción disabled para que se vea igual y no
+                // se pierda al primer cambio. Cuando Lucas elija otro, la
+                // opción desaparece.
+                const currentMethodInList = metodosDisponibles.some(
+                  (m) => m.id === c.metodo_pago_id
+                );
+                const showLegacyOption = c.metodo_pago_id && !currentMethodInList;
                 return (
-                  <tr
-                    key={c.id}
-                    className="tbl-row-click"
-                    onClick={() => navigate('/clientes/' + c.tenant_id)}
-                    title={`Ver ficha de ${c.tenant_nombre}`}
-                  >
-                    <td style={{ fontWeight: 600 }}>{c.tenant_nombre || '—'}</td>
-                    <td>
+                  <tr key={c.id} title={`Cliente: ${c.tenant_nombre}`}>
+                    <td
+                      style={{ fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => navigate('/clientes/' + c.tenant_id)}
+                      title={`Ver ficha de ${c.tenant_nombre}`}
+                    >
+                      {c.tenant_nombre || '—'}
+                    </td>
+                    <td
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate('/clientes/' + c.tenant_id)}
+                    >
                       <Badge tone={planTone(c.plan)}>{c.plan_label || c.plan}</Badge>
                     </td>
-                    <td className="num mono" style={{ fontWeight: 600 }}>
+                    <td
+                      className="num mono"
+                      style={{ fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => navigate('/clientes/' + c.tenant_id)}
+                    >
                       {c.monto_usd > 0 ? fmtMoney(c.monto_usd) : '—'}
                     </td>
-                    <td className="muted tiny">{fechaLabel}</td>
+                    <td
+                      className="muted tiny"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate('/clientes/' + c.tenant_id)}
+                    >
+                      {fechaLabel}
+                    </td>
                     <td>
+                      {/* Dropdown inline — el <select> se stopPropagation-ea
+                          para que el click no vaya al padre (que no navega
+                          desde acá porque quitamos onClick global de la fila
+                          — la columna Método NO debe drill-downear). */}
+                      <select
+                        className="input"
+                        value={c.metodo_pago_id || ''}
+                        onChange={(e) => handleAssignMetodo(c.tenant_id, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        disabled={isAssigning}
+                        style={{ minWidth: 140, padding: '4px 8px', fontSize: 13 }}
+                        aria-label={`Método de pago de ${c.tenant_nombre}`}
+                      >
+                        <option value="">— Sin asignar —</option>
+                        {metodosDisponibles.map((m) => (
+                          <option key={m.id} value={m.id}>{m.nombre}</option>
+                        ))}
+                        {showLegacyOption && (
+                          <option value={c.metodo_pago_id} disabled>
+                            {c.metodo_pago_nombre} (inactivo)
+                          </option>
+                        )}
+                      </select>
+                    </td>
+                    <td
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate('/clientes/' + c.tenant_id)}
+                    >
                       <span
                         className={'status s-' + est.tone}
                         title={c.suspended_reason || undefined}
@@ -278,6 +384,16 @@ export default function Facturacion() {
           </table>
         )}
       </Card>
+
+      <PaymentMethodsModal
+        open={methodsModalOpen}
+        onClose={() => setMethodsModalOpen(false)}
+        onSaved={() => {
+          // El modal indica que hubo cambios en la lista maestra — refetch
+          // para propagar los nombres/opciones al dropdown de cada fila.
+          load();
+        }}
+      />
     </>
   );
 }

@@ -16,6 +16,11 @@ import { BrowserRouter } from 'react-router-dom';
 vi.mock('../../lib/api.js', () => ({
   adminApi: {
     getFacturacion: vi.fn(),
+    setTenantMetodoPago: vi.fn().mockResolvedValue({ ok: true }),
+    listPaymentMethods: vi.fn().mockResolvedValue({ payment_methods: [] }),
+    createPaymentMethod: vi.fn(),
+    updatePaymentMethod: vi.fn(),
+    deletePaymentMethod: vi.fn(),
   },
   getToken: vi.fn(() => null),
   saveToken: vi.fn(),
@@ -50,7 +55,15 @@ function renderFacturacion() {
   );
 }
 
-// Fixture cubriendo los 6 estados posibles + KPIs coherentes.
+// UUIDs estables para los métodos, así los tests pueden hacer aserciones
+// sobre el <select value=…>.
+const M_TARJETA       = '11111111-1111-1111-1111-111111111111';
+const M_TRANSFERENCIA = '22222222-2222-2222-2222-222222222222';
+const M_MP            = '33333333-3333-3333-3333-333333333333';
+const M_INACTIVO      = '99999999-9999-9999-9999-999999999999';
+
+// Fixture cubriendo los 6 estados posibles + KPIs coherentes + métodos de
+// pago (uno con método asignado, uno sin, uno con método inactivo/legacy).
 function happyData() {
   return {
     kpis: {
@@ -71,37 +84,50 @@ function happyData() {
         tenant_nombre: 'Vencida SA', plan: 'starter', plan_label: 'Starter',
         monto_usd: 89, fecha_referencia: '2026-06-15T00:00:00Z',
         estado: 'vencida', suspended_reason: null,
+        metodo_pago_id: M_TARJETA, metodo_pago_nombre: 'Tarjeta',
       },
       {
         id: 11, tenant_id: 11,
         tenant_nombre: 'Trial Vencido SRL', plan: 'trial', plan_label: 'Trial',
         monto_usd: 0, fecha_referencia: '2026-07-01T00:00:00Z',
         estado: 'trial_vencido', suspended_reason: null,
+        metodo_pago_id: null, metodo_pago_nombre: null,
       },
       {
         id: 12, tenant_id: 12,
         tenant_nombre: 'Trial Vigente SA', plan: 'trial', plan_label: 'Trial',
         monto_usd: 0, fecha_referencia: '2026-07-20T00:00:00Z',
         estado: 'trial', suspended_reason: null,
+        metodo_pago_id: null, metodo_pago_nombre: null,
       },
       {
         id: 13, tenant_id: 13,
         tenant_nombre: 'Cliente Al Dia', plan: 'pro', plan_label: 'Pro',
         monto_usd: 199, fecha_referencia: '2026-08-15T00:00:00Z',
         estado: 'al_dia', suspended_reason: null,
+        metodo_pago_id: M_MP, metodo_pago_nombre: 'MercadoPago',
       },
       {
         id: 14, tenant_id: 14,
         tenant_nombre: 'Otro Al Dia', plan: 'starter', plan_label: 'Starter',
         monto_usd: 89, fecha_referencia: '2026-08-10T00:00:00Z',
         estado: 'al_dia', suspended_reason: null,
+        // Método inactivo: NO está en metodos_disponibles pero el nombre
+        // sigue visible en la fila (opción disabled del select).
+        metodo_pago_id: M_INACTIVO, metodo_pago_nombre: 'Cheque',
       },
       {
         id: 15, tenant_id: 15,
         tenant_nombre: 'Suspendida SA', plan: 'pro', plan_label: 'Pro',
         monto_usd: 199, fecha_referencia: null,
         estado: 'suspendida', suspended_reason: 'Falta de pago 60 días',
+        metodo_pago_id: null, metodo_pago_nombre: null,
       },
+    ],
+    metodos_disponibles: [
+      { id: M_TARJETA, nombre: 'Tarjeta' },
+      { id: M_TRANSFERENCIA, nombre: 'Transferencia' },
+      { id: M_MP, nombre: 'MercadoPago' },
     ],
   };
 }
@@ -236,9 +262,98 @@ describe('Pantalla Facturación (admin) — v2 estado de cuenta', () => {
     adminApi.getFacturacion.mockResolvedValue(happyData());
     renderFacturacion();
 
+    // Click sobre el nombre (celda Cliente) navega. NO usamos closest('tr')
+    // porque el <select> Método no drill-downea a propósito (stopPropagation
+    // + sin onClick global en la fila).
     const cell = await screen.findByText('Vencida SA');
-    fireEvent.click(cell.closest('tr'));
+    fireEvent.click(cell);
 
     expect(navigateMock).toHaveBeenCalledWith('/clientes/10');
+  });
+
+  it('columna Método muestra dropdown con el valor asignado + opción "Sin asignar"', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    // Esperar a que cargue.
+    await screen.findByText('Vencida SA');
+
+    // El primer cliente (Vencida SA) tiene M_TARJETA asignado.
+    const selectVencida = screen.getByLabelText('Método de pago de Vencida SA');
+    expect(selectVencida.value).toBe(M_TARJETA);
+
+    // Trial Vencido SRL no tiene método → valor vacío = "Sin asignar".
+    const selectTrial = screen.getByLabelText('Método de pago de Trial Vencido SRL');
+    expect(selectTrial.value).toBe('');
+
+    // Todas las opciones activas + "Sin asignar" están en el dropdown.
+    const opciones = Array.from(selectVencida.options).map((o) => o.text);
+    expect(opciones).toContain('— Sin asignar —');
+    expect(opciones).toContain('Tarjeta');
+    expect(opciones).toContain('Transferencia');
+    expect(opciones).toContain('MercadoPago');
+  });
+
+  it('método inactivo se muestra como opción disabled con "(inactivo)"', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    await screen.findByText('Otro Al Dia');
+
+    // Otro Al Dia tiene un método (Cheque) que NO está en metodos_disponibles
+    // → aparece como opción disabled con sufijo "(inactivo)".
+    const selectLegacy = screen.getByLabelText('Método de pago de Otro Al Dia');
+    expect(selectLegacy.value).toBe(M_INACTIVO);
+    const inactivo = Array.from(selectLegacy.options).find(
+      (o) => o.value === M_INACTIVO
+    );
+    expect(inactivo).toBeDefined();
+    expect(inactivo.disabled).toBe(true);
+    expect(inactivo.text).toMatch(/Cheque.*inactivo/i);
+  });
+
+  it('cambiar método llama a setTenantMetodoPago con el id nuevo', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    await screen.findByText('Trial Vencido SRL');
+
+    const select = screen.getByLabelText('Método de pago de Trial Vencido SRL');
+    fireEvent.change(select, { target: { value: M_TRANSFERENCIA } });
+
+    await waitFor(() => {
+      expect(adminApi.setTenantMetodoPago).toHaveBeenCalledWith(11, M_TRANSFERENCIA);
+    });
+  });
+
+  it('cambiar a "Sin asignar" manda null al backend', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    await screen.findByText('Vencida SA');
+
+    const select = screen.getByLabelText('Método de pago de Vencida SA');
+    fireEvent.change(select, { target: { value: '' } });
+
+    await waitFor(() => {
+      expect(adminApi.setTenantMetodoPago).toHaveBeenCalledWith(10, null);
+    });
+  });
+
+  it('botón "Métodos de pago" abre el modal de configuración', async () => {
+    adminApi.getFacturacion.mockResolvedValue(happyData());
+    renderFacturacion();
+
+    await screen.findByText('Vencida SA');
+
+    // El botón existe en el header. El modal empieza cerrado.
+    const btn = screen.getByRole('button', { name: /Métodos de pago/i });
+    expect(btn).toBeInTheDocument();
+
+    // Al hacer click se abre el modal (dispara listPaymentMethods).
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(adminApi.listPaymentMethods).toHaveBeenCalled();
+    });
   });
 });
