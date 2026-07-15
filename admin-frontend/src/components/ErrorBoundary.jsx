@@ -22,6 +22,7 @@
 // es suficiente y evita una dep más.
 
 import { Component } from 'react';
+import { reportError } from '../lib/reportError.js';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -37,12 +38,16 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Loggea para debug local + para que Sentry/console-listeners agarren.
-    // En prod, podríamos integrar con Sentry directo acá si se agrega más
-    // adelante al admin-frontend (hoy el portal lo tiene, admin no).
     this.setState({ info });
+    // 2026-07-15 (task #137): antes solo console.error — errors del admin
+    // eran ciegos para Sentry. Ahora reportamos con source='admin:react-boundary'
+    // + componentStack para que en Sentry se vea qué componente crasheó.
     // eslint-disable-next-line no-console
     console.error('[admin] ErrorBoundary captured:', error, info?.componentStack);
+    reportError(error, {
+      source: 'admin:react-boundary',
+      component_stack: info?.componentStack?.slice(0, 2000) || null,
+    });
   }
 
   handleReload() {
