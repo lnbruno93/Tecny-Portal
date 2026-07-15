@@ -163,10 +163,11 @@ describe('Pantalla Facturación (admin) — v2 estado de cuenta', () => {
 
     await screen.findByText('Vencida SA');
 
-    // Trial Vigente SA tiene fecha_referencia 2026-07-20 → celda muestra
-    // "Trial hasta {fmtDate}". Regex flexible por locale/TZ (puede caer
-    // en 19 o 20 según UTC vs America/Argentina).
-    expect(screen.getByText(/Trial hasta.*jul.*2026/i)).toBeInTheDocument();
+    // El fixture tiene 2 trials (Trial Vencido SRL + Trial Vigente SA), ambos
+    // con fecha_referencia en 2026 → matchean "Trial hasta" ambos. Usamos
+    // getAllByText para confirmar que ambos renderizan con el label correcto.
+    const trialLabels = screen.getAllByText(/^Trial hasta /);
+    expect(trialLabels.length).toBe(2);
   });
 
   it('filtra por tab Vencidos (muestra vencida + sin_config)', async () => {
