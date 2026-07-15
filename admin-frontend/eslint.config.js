@@ -11,10 +11,10 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 // react-hooks como warn (los false positives en effects con debounce son
 // frecuentes y los reviewás manualmente).
 //
-// La única diferencia con el portal: admin-frontend NO tiene globals
-// inyectadas por vite (__BUILD_COMMIT__ / __BUILD_VERSION__). Si en el
-// futuro las agregamos al vite.config.js del admin, sumar el override
-// correspondiente.
+// 2026-07-15 (task #137): agregamos __BUILD_COMMIT__ / __BUILD_VERSION__
+// como readonly globals — el vite.config.js del admin ahora las inyecta
+// vía `define` para que reportError.js pueda taggear los errores con la
+// release. Sin este override, ESLint lanza `no-undef` en cada uso.
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -28,6 +28,10 @@ export default defineConfig([
       globals: {
         ...globals.browser,
         ...globals.node,
+        // Inyectadas por vite.config.js via `define` — usadas por
+        // reportError.js para incluir la release/commit en cada Sentry event.
+        __BUILD_COMMIT__:  'readonly',
+        __BUILD_VERSION__: 'readonly',
       },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
