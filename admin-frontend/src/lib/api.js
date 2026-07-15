@@ -423,6 +423,33 @@ export const adminApi = {
   // usado por la card "Reseñas de Google" (toggle enabled + status display).
   getGoogleReviewsStatus: () => api('/api/super-admin/google-reviews-status'),
 
+  // ── Métodos de pago (task #132, 2026-07-15) ──────────────────────────
+  // Catálogo global editable. Cada tenant puede tener uno asignado
+  // (tenants.metodo_pago_id). Se gestiona desde el modal del header de
+  // Facturación, y se asigna con dropdown inline en cada fila.
+  //
+  // GET /payment-methods → { payment_methods: [{id, nombre, activo, orden,
+  //                          en_uso, created_at, updated_at}] }
+  //   Devuelve activos + inactivos (ordenados). en_uso = count de tenants.
+  //
+  // POST /payment-methods { nombre } → 201 con el método creado.
+  //   409 si nombre duplicado (case-insensitive).
+  //
+  // PATCH /payment-methods/:id { nombre?, activo?, orden? } → 200 con el
+  //   método actualizado. 404 si no existe. 409 si nombre duplicado.
+  //
+  // DELETE /payment-methods/:id → 200 { ok: true }. 409 si en_uso > 0
+  //   (reasignar tenants primero, o usar PATCH activo=false para soft-delete).
+  //
+  // PATCH /tenants/:id/metodo-pago { metodo_pago_id } → asigna. metodo_pago_id
+  //   puede ser null (desasigna). 409 si el método está inactivo.
+  listPaymentMethods:   () => api('/api/super-admin/payment-methods'),
+  createPaymentMethod:  (nombre) => api('/api/super-admin/payment-methods', 'POST', { nombre }),
+  updatePaymentMethod:  (id, body) => api(`/api/super-admin/payment-methods/${encodeURIComponent(id)}`, 'PATCH', body),
+  deletePaymentMethod:  (id) => api(`/api/super-admin/payment-methods/${encodeURIComponent(id)}`, 'DELETE'),
+  setTenantMetodoPago:  (tenantId, metodoPagoId) =>
+    api(`/api/super-admin/tenants/${tenantId}/metodo-pago`, 'PATCH', { metodo_pago_id: metodoPagoId }),
+
   // ── Facturación (2026-07-15 v2, task #131) ────────────────────────────
   // GET /facturacion → estado de cuenta de todos los tenants (no soft-deleted).
   // Refleja la realidad del cobro manual (WhatsApp/transferencia) — no
@@ -438,7 +465,9 @@ export const adminApi = {
   //     suspendidos_count, sin_config_count
   //   },
   //   clientes: [{ id, tenant_id, tenant_nombre, plan, plan_label,
-  //                monto_usd, fecha_referencia, estado, suspended_reason }]
+  //                monto_usd, fecha_referencia, estado, suspended_reason,
+  //                metodo_pago_id, metodo_pago_nombre }],
+  //   metodos_disponibles: [{ id, nombre }]  // solo métodos activos
   // }
   //
   // estado ∈ { 'al_dia' | 'vencida' | 'trial' | 'trial_vencido' |
