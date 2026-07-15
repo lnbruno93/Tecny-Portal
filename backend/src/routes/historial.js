@@ -52,23 +52,59 @@ const VALID_TABLAS = [
 // a text sobre toda la tabla `audit_logs` (que crece linealmente con uso real).
 const Q_RANGO_DIAS_MAX = 90;
 
+// 2026-07-15 (task #136): Lucas reportó que la "Actividad reciente" del
+// dashboard mostraba JSON crudo (ej. `{"id": 7, "tipo": "debe", ...}`) para
+// tablas cuyo row no tiene columnas cliente/nombre/username — típicamente
+// movimientos_deudas, canjes, venta_items. El SQL original caía a
+// `datos_despues::text` como último recurso; ahora:
+//   1. Ampliamos el COALESCE con más candidatos genéricos (concepto,
+//      descripcion, order_id, titulo).
+//   2. Para `movimientos_deudas` en particular, componemos "{concepto} ·
+//      {monto formateado}" — el user ve "iPhone 16 · u$s250" en vez del
+//      JSON de 8 campos.
+//   3. Como último recurso ya NO devolvemos el JSON crudo; devolvemos
+//      `#{registro_id}` (feo pero legible), consistente con el path de
+//      eliminados que ya lo hacía así.
+//
+// `detalle_humano_json` es un helper CTE-like para no duplicar el CASE
+// entre datos_despues y datos_antes (deleted path).
 const HISTORIAL_SELECT = `
   SELECT
     a.id,
     a.tabla || ': ' || a.accion                AS accion,
     CASE
-      WHEN a.datos_despues IS NOT NULL
-        THEN COALESCE(
+      -- movimientos_deudas: concepto + monto (USD si > 0, sino ARS).
+      WHEN a.tabla = 'movimientos_deudas' AND a.datos_despues IS NOT NULL THEN
+        COALESCE(a.datos_despues->>'concepto', '#' || a.registro_id::text) ||
+        CASE
+          WHEN COALESCE((a.datos_despues->>'monto_usd')::numeric, 0) > 0
+            THEN ' · u$s' || TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM (a.datos_despues->>'monto_usd')::text))
+          WHEN COALESCE((a.datos_despues->>'monto_ars')::numeric, 0) > 0
+            THEN ' · $' || TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM (a.datos_despues->>'monto_ars')::text))
+          ELSE ''
+        END
+      -- Path genérico INSERT/UPDATE: cascada de candidatos legibles.
+      WHEN a.datos_despues IS NOT NULL THEN
+        COALESCE(
           a.datos_despues->>'cliente',
           a.datos_despues->>'nombre',
           a.datos_despues->>'username',
-          a.datos_despues::text
+          a.datos_despues->>'concepto',
+          a.datos_despues->>'descripcion',
+          a.datos_despues->>'order_id',
+          a.datos_despues->>'titulo',
+          '#' || a.registro_id::text
         )
-      WHEN a.datos_antes IS NOT NULL
-        THEN 'eliminado: ' || COALESCE(
+      -- Path DELETE: prefijo "eliminado: " + mismos candidatos sobre datos_antes.
+      WHEN a.datos_antes IS NOT NULL THEN
+        'eliminado: ' || COALESCE(
           a.datos_antes->>'cliente',
           a.datos_antes->>'nombre',
           a.datos_antes->>'username',
+          a.datos_antes->>'concepto',
+          a.datos_antes->>'descripcion',
+          a.datos_antes->>'order_id',
+          a.datos_antes->>'titulo',
           '#' || a.registro_id::text
         )
       ELSE NULL
