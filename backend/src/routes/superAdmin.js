@@ -1904,6 +1904,155 @@ router.get('/metrics/recent-actions', async (req, res, next) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// GET /facturacion — dashboard de facturación y cobros del SaaS Tecny.
+//
+// 2026-07-15: pantalla nueva del back-office (task #130). Objetivo: eyes on
+// ARR sin construir todavía todo el pipeline real de billing (Stripe / MP
+// webhooks / etc.). El cobro sigue siendo MANUAL — Lucas cobra por WhatsApp
+// y transferencia — pero esta pantalla le da una vista consolidada estilo
+// dashboard de billing hasta que exista el sistema real.
+//
+// DECISIÓN durable: este endpoint es MOCK. Genera facturas determinísticas
+// derivadas de tenants reales activos (mismo tenant_id → mismos datos entre
+// requests, así la UI no "salta"). Cuando integremos billing real (Stripe /
+// MP), este endpoint se reescribe leyendo una tabla `invoices` posta y las
+// claves de la response no cambian — la UI no se toca. El shape se pensó
+// forward-compatible.
+//
+// Filas generadas (una por tenant activo):
+//   · monto = precio del plan (getTenantMrr respeta enterprise custom).
+//   · fecha = distribuida en los últimos 30 días vía hash(tenant_id).
+//   · método = tarjeta (mayoría) | transferencia | mercadopago (por hash).
+//   · estado = pagada (mayoría) | pendiente (~10%) | fallida (~10%). El hash
+//     hace que TecnoCelu (id fijo) siempre caiga en el mismo bucket, lo cual
+//     ayuda a testear la UI sin flicker.
+//
+// KPIs agregados sobre las facturas generadas:
+//   · mrr_usd: suma de MRR de activos (mismo cálculo que /metrics).
+//   · cobrado_mes_usd: suma de monto donde estado='pagada'.
+//   · pendiente_usd / pendiente_count: donde estado='pendiente'.
+//   · fallidos_usd / fallidos_count: donde estado='fallida'.
+//   · mrr_delta_pct: mock hardcoded 8.4 (mismo que en el mockup original).
+//     Cuando exista history real de MRR, se computa contra 30d atrás.
+// ──────────────────────────────────────────────────────────────────────────
+
+// Hash barato y determinístico string→int. Usado solo para distribuir
+// estados/métodos/días entre tenants — no se necesita crypto ni distribución
+// perfecta, solo estabilidad entre requests para que la UI no cambie.
+function _facturacionHash(s) {
+  let h = 0;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+// Mapa plan canónico → label display en español para el badge de la tabla.
+// El schema soporta trial|starter|pro|enterprise; el mockup y comunicación
+// comercial de Lucas usan "Starter/Negocio/Pro". Mapeamos aquí para no
+// forzar refactor del schema todavía — cuando alineemos, esto se borra.
+const _FACTURACION_PLAN_LABEL = {
+  trial:      'Trial',
+  starter:    'Starter',
+  pro:        'Pro',
+  enterprise: 'Enterprise',
+};
+
+router.get('/facturacion', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      // Tenants activos con su plan actual + custom_mrr_usd para enterprise.
+      // NO incluimos suspendidos ni soft-deleted — no facturan.
+      const { rows: tenants } = await client.query(`
+        SELECT id, nombre, plan, custom_mrr_usd, created_at
+          FROM tenants
+         WHERE deleted_at IS NULL
+           AND suspended_at IS NULL
+         ORDER BY id DESC
+      `);
+
+      let mrr_total_usd = 0;
+      const facturas = [];
+      const now = new Date();
+
+      for (const t of tenants) {
+        const monto = getTenantMrr(t.plan, t.custom_mrr_usd);
+        // Plan sin precio (trial=0 típicamente) NO genera factura — no
+        // ensucia la vista con "$0 Pagada" que confunde más de lo que ayuda.
+        if (monto <= 0) continue;
+
+        mrr_total_usd += monto;
+
+        const h = _facturacionHash(t.id);
+        // Estado: 80% pagada, 10% pendiente, 10% fallida (determinístico).
+        const bucket = h % 10;
+        const estado = bucket === 0 ? 'fallida'
+                     : bucket === 1 ? 'pendiente'
+                     : 'pagada';
+        // Método: 70% tarjeta, 20% transferencia, 10% mercadopago.
+        const mBucket = (h >> 3) % 10;
+        const metodo = mBucket < 7 ? 'tarjeta'
+                     : mBucket < 9 ? 'transferencia'
+                     : 'mercadopago';
+        // Fecha: últimos 30 días distribuidos por hash. Determinístico
+        // hasta que cambie el mes calendario (fine para el mockup).
+        const daysBack = (h >> 6) % 30;
+        const fecha = new Date(now.getTime() - daysBack * 86400000);
+
+        facturas.push({
+          id: t.id,
+          numero: 'INV-' + String(2000 + t.id).padStart(4, '0'),
+          tenant_id: t.id,
+          tenant_nombre: t.nombre,
+          plan: t.plan,
+          plan_label: _FACTURACION_PLAN_LABEL[t.plan] || t.plan,
+          monto_usd: monto,
+          fecha: fecha.toISOString(),
+          metodo,
+          estado,
+        });
+      }
+
+      // Ordenar por fecha desc — la tabla del mockup muestra las más nuevas
+      // arriba. Fallback a tenant_id para desempatar (fechas del mismo día).
+      facturas.sort((a, b) => {
+        if (a.fecha !== b.fecha) return a.fecha < b.fecha ? 1 : -1;
+        return b.tenant_id - a.tenant_id;
+      });
+
+      const cobrado = facturas.filter((f) => f.estado === 'pagada');
+      const pendiente = facturas.filter((f) => f.estado === 'pendiente');
+      const fallidos = facturas.filter((f) => f.estado === 'fallida');
+
+      const sumMonto = (arr) => arr.reduce((acc, f) => acc + f.monto_usd, 0);
+
+      return {
+        kpis: {
+          mrr_usd: Math.round(mrr_total_usd * 100) / 100,
+          // Placeholder hasta que existe history real de MRR mensual. Cuando
+          // se compute posta, esta clave es la única que cambia.
+          mrr_delta_pct: 8.4,
+          cobrado_mes_usd: Math.round(sumMonto(cobrado) * 100) / 100,
+          cobrado_count: cobrado.length,
+          pendiente_usd: Math.round(sumMonto(pendiente) * 100) / 100,
+          pendiente_count: pendiente.length,
+          fallidos_usd: Math.round(sumMonto(fallidos) * 100) / 100,
+          fallidos_count: fallidos.length,
+          // Días hasta el próximo reintento automático (mock — cuando exista
+          // integración real, se lee del row de la próxima retry).
+          reintento_dias: 2,
+        },
+        facturas,
+      };
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // PATCH /tenants/:id/pais — cambiar el país de un tenant existente (#473).
 //
 // Use case que motiva el endpoint: cliente UY que signupeó pre-F4 cuando el
