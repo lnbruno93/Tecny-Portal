@@ -1,6 +1,9 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 // Admin console build. Separada del portal de usuarios para deployar en
 // admin.tecnyapp.com con su propio bundle, su propio CSP, y sin exponer
@@ -8,6 +11,42 @@ import react from '@vitejs/plugin-react';
 //
 // Port 5174 elegido a propósito para no chocar con el portal (5173) cuando
 // Lucas levanta los dos en paralelo en local.
+
+// ─────────────────────────────────────────────────────────────────────────
+// Build metadata + Sentry source maps (task #137, 2026-07-15)
+//
+// Mismo pattern que frontend/vite.config.js — inyectamos __BUILD_COMMIT__ y
+// __BUILD_VERSION__ al bundle para que reportError.js pueda taggear los
+// errores con la release que los generó. Sin esto los stacktraces
+// minificados de Sentry son ilegibles.
+//
+// El plugin de Sentry es no-op sin SENTRY_AUTH_TOKEN → build local /
+// preview no requieren token. En Netlify (main + staging) el token va
+// como env var → los .map se suben a Sentry y se borran del bundle
+// público para no exponer código admin.
+// ─────────────────────────────────────────────────────────────────────────
+function buildCommit() {
+  if (process.env.RAILWAY_GIT_COMMIT_SHA) return process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7);
+  if (process.env.COMMIT_REF)             return process.env.COMMIT_REF.slice(0, 7); // Netlify
+  if (process.env.GIT_COMMIT_SHA)         return process.env.GIT_COMMIT_SHA.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
+function buildVersion() {
+  try {
+    return JSON.parse(readFileSync('./package.json', 'utf8')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+const SENTRY_TOKEN   = process.env.SENTRY_AUTH_TOKEN;
+const SENTRY_ORG     = process.env.SENTRY_ORG     || 'lnbruno';
+const SENTRY_PROJECT = process.env.SENTRY_PROJECT || 'tecny-portal-admin';
+const BUILD_SHA      = buildCommit();
+const BUILD_VER      = buildVersion();
 
 // ─────────────────────────────────────────────────────────────────────────
 // Fail-loud gate para VITE_API_URL en builds de Netlify (2026-07-04 P0).
@@ -53,7 +92,32 @@ if (NETLIFY_CONTEXT) {
 // ─────────────────────────────────────────────────────────────────────────
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // sentryVitePlugin DEBE ir después de los demás plugins para procesar
+    // los source maps ya generados. No-op sin SENTRY_AUTH_TOKEN (build
+    // local / preview sin token siguen funcionando).
+    SENTRY_TOKEN && sentryVitePlugin({
+      org:       SENTRY_ORG,
+      project:   SENTRY_PROJECT,
+      authToken: SENTRY_TOKEN,
+      release:   { name: BUILD_SHA },
+      sourcemaps: {
+        // Sube los .map a Sentry y los borra del bundle público — el admin
+        // no debería exponer su source code (super-admin panel).
+        filesToDeleteAfterUpload: ['./dist/**/*.map'],
+      },
+      silent:    false,
+      telemetry: false,
+    }),
+  ].filter(Boolean),
+  // Constantes inyectadas al bundle — accesibles desde reportError.js
+  // como __BUILD_COMMIT__ y __BUILD_VERSION__. Serializadas con JSON.stringify
+  // para que Vite las trate como string literals (no expresiones).
+  define: {
+    __BUILD_COMMIT__:  JSON.stringify(BUILD_SHA),
+    __BUILD_VERSION__: JSON.stringify(BUILD_VER),
+  },
   server: {
     port: 5174,
     strictPort: false,
@@ -63,7 +127,11 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: false,
+    // 'hidden' cuando hay token: genera .map para que Sentry los suba, pero
+    // NO agrega el "//# sourceMappingURL=..." al bundle público — el browser
+    // no descarga los maps ni loguea warnings. Sentry lee los .map directo.
+    // Sin token, sourcemap=false → no se generan (mantiene el bundle chico).
+    sourcemap: SENTRY_TOKEN ? 'hidden' : false,
     target: 'es2022',
   },
   test: {
