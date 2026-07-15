@@ -25,6 +25,15 @@ const NAV = [
     ],
   },
   {
+    // 2026-07-15 (task #130): sección "Operación" vuelve al sidebar con
+    // Facturación como primer item real. Antes se había eliminado en #450
+    // (Facturación/Onboarding/Uso/Soporte eran todas ComingSoon).
+    sec: 'Operación',
+    items: [
+      { id: 'facturacion', label: 'Facturación', icon: 'CreditCard', path: '/facturacion' },
+    ],
+  },
+  {
     // 2026-07-13 CMS Landing Fase 1: editor de contenido del sitio público.
     // Sección separada porque no es "gestión de clientes" — es config de
     // NUESTRA marca (Tecny) que aparece en tecnyapp.com.
@@ -33,11 +42,6 @@ const NAV = [
       { id: 'sitio',       label: 'Sitio público', icon: 'Building', path: '/sitio-publico' },
     ],
   },
-  // #450 (2026-06-26): se removió la sección "Operación" del sidebar.
-  // Tenía 4 items (Facturación / Onboarding / Uso / Soporte) que linkeaban
-  // a páginas ComingSoon, ofuscando que las 3 secciones REALES (Gestión)
-  // son lo único implementado. Cuando se construya alguna de esas features
-  // (probablemente Facturación cuando integremos Stripe), se agrega de nuevo.
 ];
 
 // Mapa flat para derivar el label del breadcrumb desde la ruta. Mantenido

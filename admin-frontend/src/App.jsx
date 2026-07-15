@@ -36,6 +36,10 @@ const Equipo     = lazy(() => import('./pages/Equipo.jsx'));
 // 2026-07-13 CMS Landing Fase 1: editar el contenido de tecnyapp.com
 // (contacto: mail, WA, dirección, IG) sin redeploy.
 const SitioPublico = lazy(() => import('./pages/SitioPublico.jsx'));
+// 2026-07-15 (task #130): Facturación y cobros — dashboard SaaS billing.
+// Mock por ahora (backend genera facturas desde tenants reales) hasta que
+// integremos billing real (Stripe/MP).
+const Facturacion = lazy(() => import('./pages/Facturacion.jsx'));
 // #499 pantalla PÚBLICA (sin auth): landing del invitado que clickea el link
 // del email. Se carga fuera del ProtectedRoute — el user recién va a crearse.
 const AcceptSuperAdminInvite = lazy(() => import('./pages/AcceptSuperAdminInvite.jsx'));
@@ -210,8 +214,20 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* #450 (2026-06-26): rutas /facturacion, /onboarding, /uso, /soporte
-          eliminadas. Eran páginas ComingSoon — confundían más de lo que ayudaban.
+      {/* 2026-07-15 (task #130): Facturación y cobros — vuelve como ruta real
+          (antes había sido eliminada en #450 por estar en ComingSoon). Ahora
+          renderiza una pantalla con backend mock — cuando integremos billing
+          real, se reescribe el endpoint por debajo sin tocar acá. */}
+      <Route
+        path="/facturacion"
+        element={
+          <ProtectedRoute>
+            <Facturacion />
+          </ProtectedRoute>
+        }
+      />
+      {/* #450 (2026-06-26): rutas /onboarding, /uso, /soporte eliminadas.
+          Eran páginas ComingSoon — confundían más de lo que ayudaban.
           Bookmarks viejos caen al NotFound (que tiene un botón "Ir a Resumen"). */}
       <Route path="*" element={<NotFound />} />
     </Routes>

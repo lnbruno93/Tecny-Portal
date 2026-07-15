@@ -423,6 +423,24 @@ export const adminApi = {
   // usado por la card "Reseñas de Google" (toggle enabled + status display).
   getGoogleReviewsStatus: () => api('/api/super-admin/google-reviews-status'),
 
+  // ── Facturación (2026-07-15, task #130) ───────────────────────────────
+  // GET /facturacion → dashboard SaaS billing. MOCK por ahora: genera
+  // facturas determinísticas desde tenants reales. La UI no cambia cuando
+  // integremos billing real (Stripe/MP) — solo cambia lo que devuelve el
+  // backend por debajo.
+  //
+  // Response: {
+  //   kpis: { mrr_usd, mrr_delta_pct, cobrado_mes_usd, cobrado_count,
+  //           pendiente_usd, pendiente_count, fallidos_usd, fallidos_count,
+  //           reintento_dias },
+  //   facturas: [{ id, numero, tenant_id, tenant_nombre, plan, plan_label,
+  //                monto_usd, fecha, metodo, estado }]
+  // }
+  //
+  // estado ∈ { 'pagada', 'pendiente', 'fallida' }
+  // metodo ∈ { 'tarjeta', 'transferencia', 'mercadopago' }
+  getFacturacion: () => api('/api/super-admin/facturacion'),
+
   // ── Clases duplicadas (2026-07-14) ────────────────────────────────────
   // Herramienta de mantenimiento cross-tenant: detectar y fusionar categorías
   // de producto (`clases_producto`) casi-duplicadas dentro de UN tenant.
