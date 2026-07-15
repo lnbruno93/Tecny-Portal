@@ -412,20 +412,27 @@ export default function Ventas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPrimaryAction, vendedores]);
 
-  // 2026-07-15 (task #134): deep-link `?open=<venta_id>` desde Cmd+K.
+  // 2026-07-15 (task #134/#135): deep-link `?open=<venta_id>` desde Cmd+K.
   // Cuando el usuario clickea un resultado de "Ventas" en la búsqueda global,
   // el CommandPalette navega a /ventas?open=<id>. Este effect fetchea esa
   // venta específica (usando el filtro `id` del backend, que ignora fechas)
-  // y abre el modal de edición directamente. Después limpia el param para
-  // que un refresh o back no re-abra el modal.
-  const openedOnceRef = useRef(false);
+  // y abre el modal de edición directamente.
+  //
+  // #135 fix (2026-07-15 v2): deps era `[]` — corría solo al mount. Si el
+  // usuario ya está en /ventas y hace Cmd+K a otra venta, React Router
+  // actualiza searchParams SIN remontar → el effect no volvía a disparar
+  // y el user quedaba mirando el dashboard sin modal. Ahora dep = [openId]
+  // con guard `lastOpenedRef` para deduplicar (evita re-abrir al mismo id
+  // después de limpiar el param).
+  const lastOpenedRef = useRef(null);
+  const openIdParam = searchParams.get('open');
   useEffect(() => {
-    const openId = searchParams.get('open');
-    if (!openId || openedOnceRef.current) return;
-    openedOnceRef.current = true;
+    if (!openIdParam) return;
+    if (lastOpenedRef.current === openIdParam) return;
+    lastOpenedRef.current = openIdParam;
     (async () => {
       try {
-        const res = await ventas.list({ id: openId, limit: 1 });
+        const res = await ventas.list({ id: openIdParam, limit: 1 });
         const v = (res?.data || [])[0];
         if (v) {
           openEdit(v);
@@ -437,14 +444,19 @@ export default function Ventas() {
       } catch (err) {
         toast.error?.(err?.message || 'No pudimos abrir la venta.');
       } finally {
-        // Limpiamos el param para que un refresh no re-abra el modal.
-        const next = new URLSearchParams(searchParams);
-        next.delete('open');
-        setSearchParams(next, { replace: true });
+        // Limpiamos el param con callback pattern para evitar stale closure
+        // sobre searchParams (importante en el async: entre el await y este
+        // finally, searchParams del closure puede estar desactualizado si
+        // el user cambió otros filtros).
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('open');
+          return next;
+        }, { replace: true });
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [openIdParam]);
 
   // Pattern G — regenerar Idempotency-Key cada vez que se abre el modal para
   // una NUEVA venta. En modo edit no aplica (PUT /ventas/:id no usa el key).
