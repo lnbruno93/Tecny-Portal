@@ -236,6 +236,34 @@ Backend: rate limit **60 req/min/IP** en `/api/client-errors`.
 
 ---
 
+## Alert rules (task #139, 2026-07-16)
+
+Cada uno de los 3 projects (`tecny-portal-backend/frontend/admin`) tiene **3 alert rules** activas:
+
+| Rule | Cuándo dispara | Frecuencia máx | Notificación |
+|------|----------------|----------------|--------------|
+| **🚨 Nuevo issue (error+)** | Primera vez que Sentry ve un issue nuevo con `level >= error` | 5 min / issue | Email al team `bruno` |
+| **🔁 Regresión** | Un issue marcado como `resolved` vuelve a ocurrir | 30 min / issue | Email al team `bruno` |
+| Send a notification for high priority issues | Default de Sentry — issues con auto-priority `high` | (default) | Email al team `bruno` |
+
+**Rationale de nivel medio** (no mínimo ni avanzado):
+
+- **Mínimo** (solo new issue) es riesgoso — si marcás como resolved y vuelve, no te enterás salvo mirando dashboard manualmente. Regresiones son señal de fix incompleto.
+- **Avanzado** (con spike detection) tiene mal ratio señal/ruido con volumen bajo (~10 tenants). Un endpoint roto ya se manifiesta como "muchos issues nuevos" que la alerta base agarra. Cuando el negocio crezca a 50+ tenants, revisitar.
+
+### Re-crear las alertas (si Sentry se resetea)
+
+Script idempotente en `scripts/sentry-setup-alerts.py`:
+
+```bash
+# Requiere SENTRY_TOKEN con scopes: alerts:write, project:write, project:read, org:read
+SENTRY_TOKEN=<tu-token> python3 scripts/sentry-setup-alerts.py
+```
+
+El script chequea si cada rule ya existe por nombre antes de crear, así podés re-correrlo sin duplicar. Si querés modificar frecuencia/target/conditions, edita el script y re-corré — vas a tener que borrar la rule vieja primero (o hacer PUT via API — TODO futuro si hace falta).
+
+---
+
 ## Gotchas descubiertos (2026-07-15)
 
 Cosas que costaron tiempo entender en el setup real. Documentadas para
