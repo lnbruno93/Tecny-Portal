@@ -27,6 +27,34 @@ const COLOR = {
   pageBg:     [248, 250, 252],
 };
 
+/**
+ * Suma pagos en USD (los pagos ya vienen con `monto_usd` calculado por el backend).
+ * Exportado para poder testear el cálculo del comprobante sin generar el PDF.
+ */
+export function sumPagosUsd(pagos) {
+  if (!Array.isArray(pagos)) return 0;
+  return pagos.reduce((s, p) => s + (Number(p.monto_usd) || 0), 0);
+}
+
+/**
+ * Suma canjes convertidos a USD. Si el canje se tomó en ARS/UYU y la venta
+ * tiene tc_venta > 0, se divide por el tc para obtener el equivalente USD.
+ * Sino se toma el valor_toma tal cual (asumido USD).
+ *
+ * 2026-07-16 (task #140): antes el comprobante ignoraba canjes → total_cobrado
+ * subvaluado → "diferencia en contra" espuria.
+ */
+export function sumCanjesUsd(canjes, tcVenta) {
+  if (!Array.isArray(canjes)) return 0;
+  const tc = Number(tcVenta) || 0;
+  return canjes.reduce((s, c) => {
+    const valor = Number(c.valor_toma) || 0;
+    const moneda = String(c.moneda || 'USD').toUpperCase();
+    const enUsd = (moneda === 'ARS' || moneda === 'UYU') && tc > 0 ? valor / tc : valor;
+    return s + enUsd;
+  }, 0);
+}
+
 function fmtMoney(n, moneda = 'USD') {
   const sym = moneda === 'ARS' ? '$' : 'u$s';
   const num = Math.abs(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -205,9 +233,14 @@ export async function generarComprobantePdf(venta, opts = {}) {
   y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 100) + 20;
 
   // ── 5. Resumen ──────────────────────────────────────────
+  // 2026-07-16 (task #140): totalCobrado ahora incluye el valor_toma de los
+  // canjes (convertido a USD). Antes solo sumaba pagos → los comprobantes
+  // con canje mostraban "diferencia en contra" falsa. Ver helpers exportados
+  // sumPagosUsd/sumCanjesUsd (arriba de este archivo) para el detalle.
   const totalVenta   = Number(venta.total_usd || 0);
   const pagos        = Array.isArray(venta.pagos) ? venta.pagos : [];
-  const totalCobrado = pagos.reduce((s, p) => s + Number(p.monto_usd || 0), 0);
+  const canjes       = Array.isArray(venta.canjes) ? venta.canjes : [];
+  const totalCobrado = sumPagosUsd(pagos) + sumCanjesUsd(canjes, venta.tc_venta);
   const dif          = totalCobrado - totalVenta;
 
   const resumenX = pageWidth - margin - 220;
@@ -258,6 +291,60 @@ export async function generarComprobantePdf(venta, opts = {}) {
       startY: y,
       head: [['Método', 'Monto', '', 'Equivalente USD']],
       body: pagoRows,
+      theme: 'plain',
+      headStyles: { fontSize: 9, textColor: COLOR.textSoft, fontStyle: 'normal' },
+      bodyStyles: { fontSize: 10, textColor: COLOR.text, cellPadding: { top: 6, right: 10, bottom: 6, left: 10 } },
+      columnStyles: {
+        1: { halign: 'right' },
+        2: { halign: 'right', textColor: COLOR.textSoft, fontSize: 9 },
+        3: { halign: 'right', fontStyle: 'bold' },
+      },
+      margin: { left: margin, right: margin },
+    });
+    y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 60) + 18;
+  }
+
+  // ── 6.b. Equipo(s) en canje ─────────────────────────────
+  // 2026-07-16 (task #140): sección separada porque un canje NO es un método
+  // de pago sino un bien físico entregado. Preferencia UX de Lucas: mostrarlo
+  // aparte con detalle completo (descripción, IMEI, GB, color, batería) para
+  // que el cliente vea claro qué entregó como parte del pago.
+  if (canjes.length) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    tc(doc, COLOR.brandSoft);
+    doc.text('EQUIPO ENTREGADO EN CANJE', margin, y);
+    y += 6;
+
+    const canjeRows = canjes.map(c => {
+      const especs = [
+        c.gb ? `${c.gb} GB` : null,
+        c.color || null,
+        c.bateria != null ? `Batería ${c.bateria}%` : null,
+      ].filter(Boolean).join(' · ');
+      const desc = [
+        String(c.descripcion || 'Equipo usado'),
+        c.imei ? `IMEI/Serial: ${c.imei}` : null,
+        especs || null,
+      ].filter(Boolean).join('\n');
+
+      const valor = Number(c.valor_toma) || 0;
+      const moneda = String(c.moneda || 'USD').toUpperCase();
+      const tc = Number(venta.tc_venta) || 0;
+      const enUsd = (moneda === 'ARS' || moneda === 'UYU') && tc > 0 ? valor / tc : valor;
+
+      return [
+        desc,
+        fmtMoney(valor, moneda),
+        moneda !== 'USD' && tc > 0 ? `(TC ${Number(tc).toLocaleString('es-AR')})` : '',
+        fmtMoney(enUsd, 'USD'),
+      ];
+    });
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Descripción', 'Valor toma', '', 'Equivalente USD']],
+      body: canjeRows,
       theme: 'plain',
       headStyles: { fontSize: 9, textColor: COLOR.textSoft, fontStyle: 'normal' },
       bodyStyles: { fontSize: 10, textColor: COLOR.text, cellPadding: { top: 6, right: 10, bottom: 6, left: 10 } },
