@@ -513,6 +513,30 @@ export const adminApi = {
     resendInvite:  (id) => api(`/api/super-admin/team/invite/${id}/resend`, 'POST'),
     revokeAdmin:   (userId) => api(`/api/super-admin/team/revoke/${userId}`, 'POST'),
   },
+
+  // ── Release notes / Novedades (task #141, 2026-07-16) ─────────────────
+  // CRUD del CMS de novedades. Las notas son GLOBAL cross-tenant (mismas
+  // notas para todos los clientes del portal). El backend las persiste
+  // en la tabla `release_notes` sin RLS — reads públicas via
+  // /api/release-notes (portal cliente), writes admin-only acá.
+  //
+  // Endpoints:
+  //   GET    /release-notes           → { release_notes: [...] } ordenado DESC
+  //   POST   /release-notes           → 201 { ...nota } | 400 { error, fields }
+  //   PATCH  /release-notes/:id       → 200 { ...nota } | 404 | 400
+  //   DELETE /release-notes/:id       → 200 { ok: true } | 404
+  //
+  // Body de create/update: { titulo, descripcion, tipo, publicado_en? }
+  //   titulo:       string 1-60 chars (trim)
+  //   descripcion:  string 1-280 chars (trim)
+  //   tipo:         'feature' | 'mejora' | 'fix'
+  //   publicado_en: ISO 8601 opcional (default NOW)
+  releaseNotes: {
+    list:   () => api('/api/super-admin/release-notes'),
+    create: (body) => api('/api/super-admin/release-notes', 'POST', body),
+    update: (id, body) => api(`/api/super-admin/release-notes/${encodeURIComponent(id)}`, 'PATCH', body),
+    remove: (id) => api(`/api/super-admin/release-notes/${encodeURIComponent(id)}`, 'DELETE'),
+  },
 };
 
 // ─── Public — aceptar invitación de super-admin (#499) ──────────────────
