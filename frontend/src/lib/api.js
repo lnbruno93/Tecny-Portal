@@ -792,6 +792,20 @@ export const alertas = {
   updateConfig: (tipo, data) => api(`/api/alertas/config/${tipo}`, 'PUT', data),
 };
 
+// Release notes / Novedades (task #142, 2026-07-16). Cliente-facing.
+// El CMS lo maneja el super-admin desde admin-frontend (/api/super-admin/*).
+// Acá solo consumimos las notas ya publicadas + el tracking por-user.
+//
+//   list()          → { release_notes: [{ id, titulo, descripcion, tipo, publicado_en }] }
+//   countUnseen()   → { count: N }  — usado por el badge del sidebar
+//   markSeen()      → { ok: true }  — setea last_seen_release_notes_at = NOW()
+//                                     para el user actual (limpia el badge)
+export const releaseNotes = {
+  list:        () => api('/api/release-notes'),
+  countUnseen: () => api('/api/release-notes/count-unseen'),
+  markSeen:    () => api('/api/release-notes/mark-seen', 'POST'),
+};
+
 // Feature flags (M-08 GRAN auditoría 2026-06-10).
 //   · list() lo consume el FeatureFlagsContext al mount → map { name: bool }.
 //   · adminList/Create/Update/Delete requieren role='admin' (server-side

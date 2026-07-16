@@ -35,11 +35,15 @@ const NAV = [
   },
   {
     // 2026-07-13 CMS Landing Fase 1: editor de contenido del sitio público.
-    // Sección separada porque no es "gestión de clientes" — es config de
-    // NUESTRA marca (Tecny) que aparece en tecnyapp.com.
-    sec: 'Marca',
+    // 2026-07-16 (task #142): renombrada de "Marca" → "Contenido" para
+    // acomodar Novedades, que también es CMS (release notes que se
+    // muestran a todos los clientes del portal). Antes tenía solo Sitio
+    // público — la nueva label describe mejor la categoría (todo lo que
+    // es contenido editable de Tecny, no gestión de clientes).
+    sec: 'Contenido',
     items: [
       { id: 'sitio',       label: 'Sitio público', icon: 'Building', path: '/sitio-publico' },
+      { id: 'novedades',   label: 'Novedades',     icon: 'Sparkle',  path: '/novedades' },
     ],
   },
 ];

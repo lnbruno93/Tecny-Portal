@@ -15,7 +15,7 @@ import ChangePasswordModal from './ChangePasswordModal';
 import ChatWidget from './ChatWidget';
 // 2026-06-29 #458 Red B2B F5: bell de notificaciones cross-tenant en topbar.
 import RedB2BNotificationsBell from './RedB2BNotificationsBell';
-import { alertas as alertasApi } from '../lib/api';
+import { alertas as alertasApi, releaseNotes as releaseNotesApi } from '../lib/api';
 import { userHasCap, userHasAnyCap, isTenantAdmin } from '../lib/userHasCap';
 // 2026-06-29 Multi-país F3: badge país en topbar (sec 5.3 design doc).
 import { useMonedasTenant } from '../lib/useMonedasTenant';
@@ -181,6 +181,12 @@ const NAV_MAIN = [
 ];
 
 const NAV_SYS = [
+  // 2026-07-16 (task #142): Novedades — release notes de Tecny. Sin cap
+  // porque es visible para TODOS los users autenticados (nadie tiene menos
+  // derecho a saber qué cambió). El badge celeste ("nuevas notas desde tu
+  // última visita") lo popula el polling de `releaseNotes.countUnseen()`
+  // en el useEffect del Shell — se apaga cuando el user abre /novedades.
+  { id: 'novedades', path: '/novedades', label: 'Novedades', icon: 'Sparkles', cap: null },
   { id: 'historial', path: '/historial', label: 'Historial', icon: 'Refresh',  cap: 'historial.ver' },
   { id: 'usuarios',  path: '/usuarios',  label: 'Usuarios',  icon: 'Users',    adminOnly: true       },
   // 2026-06-23 F5c: visible si el user puede ver CUALQUIERA de los 3 tabs
@@ -217,6 +223,7 @@ const SCREEN_LABELS = {
   historial:  'Historial',
   usuarios:   'Usuarios',
   config:     'Config',
+  novedades:  'Novedades',
 };
 
 function getInitials(name) {
@@ -322,18 +329,30 @@ function Sidebar({ badges = {}, open, onClose }) {
               // lee al montar. Sin badge, va al destino normal.
               const isConfigConBadge = n.id === 'config' && badges[n.id] != null;
               const target = isConfigConBadge ? `${n.path}#alertas` : n.path;
+              // Badge color por semántica del item:
+              //   - config (alertas): rojo/neg → algo requiere atención
+              //   - novedades: accent/celeste → info positiva ("hay novedades nuevas")
+              // Diferenciar el color evita que un badge celeste se lea como
+              // "alerta pendiente" y viceversa (task #142, 2026-07-16).
+              const badgeIsPositive = n.id === 'novedades';
+              const badgeBg = badgeIsPositive ? 'var(--accent)' : 'var(--neg)';
+              const ariaLabel = isConfigConBadge
+                ? `${n.label} — ${badges[n.id]} alertas pendientes`
+                : (badgeIsPositive && badges[n.id] != null
+                    ? `${n.label} — ${badges[n.id]} novedades nuevas`
+                    : n.label);
               return (
                 <NavLink
                   key={n.id}
                   to={target}
                   className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
                   onClick={onClose}
-                  aria-label={isConfigConBadge ? `${n.label} — ${badges[n.id]} alertas pendientes` : n.label}
+                  aria-label={ariaLabel}
                 >
                   <span className="ico">{I && <I size={16} />}</span>
                   <span>{n.label}</span>
                   {badges[n.id] != null && (
-                    <span className="badge" style={{ background: 'var(--neg)', color: '#fff' }}>{badges[n.id]}</span>
+                    <span className="badge" style={{ background: badgeBg, color: '#fff' }}>{badges[n.id]}</span>
                   )}
                 </NavLink>
               );
@@ -547,6 +566,50 @@ export default function Shell() {
     refresh();
     const id = setInterval(refresh, 2 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
+  }, [user]);
+
+  // 2026-07-16 (task #142): polling del badge Novedades. Similar al de
+  // alertas pero:
+  //   · Sin gate de capability — Novedades es visible para todos.
+  //   · Poll más lento (5 min) — las release notes cambian pocas veces
+  //     por semana; no vale la pena hitear el backend cada 2 min.
+  //   · Se refresca también cuando el user vuelve al tab (visibilitychange)
+  //     — así si estaba con la tab en background y Lucas publicó una nota
+  //     nueva, al volver aparece el badge en el próximo tick.
+  //   · Cuando el usuario abre /novedades, la propia pantalla llama a
+  //     mark-seen y setea el badge a null explícitamente vía window event
+  //     `release-notes:marked-seen` — evitamos que el próximo tick del
+  //     poll (que puede tardar 5min) todavía muestre el badge viejo.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    function refresh() {
+      releaseNotesApi.countUnseen()
+        .then(r => {
+          if (!cancelled) {
+            const n = Number(r?.count) || 0;
+            setBadges(b => ({ ...b, novedades: n > 0 ? n : null }));
+          }
+        })
+        .catch(() => {});
+    }
+    refresh();
+    const id = setInterval(refresh, 5 * 60 * 1000);
+    // Refresh al volver al tab (deja el badge fresco sin esperar 5 min).
+    function onVis() { if (document.visibilityState === 'visible') refresh(); }
+    document.addEventListener('visibilitychange', onVis);
+    // Evento para que /novedades pueda limpiar el badge inmediato al
+    // hacer mark-seen (sin esperar al próximo tick del poll).
+    function onMarkedSeen() {
+      if (!cancelled) setBadges(b => ({ ...b, novedades: null }));
+    }
+    window.addEventListener('release-notes:marked-seen', onMarkedSeen);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('release-notes:marked-seen', onMarkedSeen);
+    };
   }, [user]);
 
   return (

@@ -40,6 +40,9 @@ const SitioPublico = lazy(() => import('./pages/SitioPublico.jsx'));
 // Mock por ahora (backend genera facturas desde tenants reales) hasta que
 // integremos billing real (Stripe/MP).
 const Facturacion = lazy(() => import('./pages/Facturacion.jsx'));
+// 2026-07-16 (task #142): Novedades — CMS de release notes que se muestran
+// a todos los clientes del portal (badge en el sidebar + pantalla /novedades).
+const Novedades  = lazy(() => import('./pages/Novedades.jsx'));
 // #499 pantalla PÚBLICA (sin auth): landing del invitado que clickea el link
 // del email. Se carga fuera del ProtectedRoute — el user recién va a crearse.
 const AcceptSuperAdminInvite = lazy(() => import('./pages/AcceptSuperAdminInvite.jsx'));
@@ -223,6 +226,16 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Facturacion />
+          </ProtectedRoute>
+        }
+      />
+      {/* 2026-07-16 (task #142): Novedades — CMS de release notes. Las notas
+          se muestran a TODOS los clientes en el portal (badge + /novedades). */}
+      <Route
+        path="/novedades"
+        element={
+          <ProtectedRoute>
+            <Novedades />
           </ProtectedRoute>
         }
       />

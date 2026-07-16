@@ -53,6 +53,9 @@ const Historial  = lazy(() => import('./screens/Historial'));
 const Usuarios   = lazy(() => import('./screens/Usuarios'));
 const Config     = lazy(() => import('./screens/Config'));
 const Cotizador  = lazy(() => import('./screens/Cotizador'));
+// 2026-07-16 (task #142): Novedades — release notes que publica el super-admin
+// desde admin-frontend. Cualquier user autenticado puede verlas.
+const Novedades  = lazy(() => import('./screens/Novedades'));
 const Inventario = lazy(() => import('./screens/Inventario'));
 const Desglose360 = lazy(() => import('./screens/Desglose360'));
 const RecepcionStock = lazy(() => import('./screens/RecepcionStock'));
@@ -434,6 +437,14 @@ export default function App() {
                     <RequirePermission cap="tarjetas.trabajar">
                       <ErrorBoundary><Tarjetas /></ErrorBoundary>
                     </RequirePermission>
+                  } />
+
+                  {/* 2026-07-16 (task #142): Novedades — release notes de
+                      Tecny. Sin cap: visible para cualquier user autenticado
+                      (por eso no envolvemos en RequirePermission). Es
+                      comunicación de producto, no funcionalidad operativa. */}
+                  <Route path="/novedades" element={
+                    <ErrorBoundary><Novedades /></ErrorBoundary>
                   } />
 
                   {/* ── Historial y Config requieren 'financiera' ── */}
