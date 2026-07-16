@@ -2318,6 +2318,144 @@ router.patch('/tenants/:id/metodo-pago', async (req, res, next) => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// Release notes / novedades (task #141, 2026-07-16).
+//
+// CRUD para el sistema de comunicación de cambios/features al cliente final.
+// El super-admin (Lucas) crea/edita/borra notas desde admin-frontend. Los
+// tenants las consumen en /novedades del portal con badge de "N no vistas"
+// en el sidebar.
+//
+// Formato: título corto (max 60) + descripción tipo tweet (max 280) + tipo
+// (feature | mejora | fix) + fecha de publicación (default NOW).
+//
+// Sin RLS — las notas son globales, mismas para todos los tenants.
+// ──────────────────────────────────────────────────────────────────────────
+
+const RELEASE_NOTE_TIPOS = ['feature', 'mejora', 'fix'];
+
+function _validateReleaseNoteBody(body, { partial = false } = {}) {
+  const errors = {};
+  const t = body?.titulo != null ? String(body.titulo).trim() : undefined;
+  const d = body?.descripcion != null ? String(body.descripcion).trim() : undefined;
+  const tipo = body?.tipo != null ? String(body.tipo).trim() : undefined;
+  const publicado_en = body?.publicado_en;
+
+  if (!partial || t !== undefined) {
+    if (!t) errors.titulo = 'El título es requerido.';
+    else if (t.length > 60) errors.titulo = 'Máximo 60 caracteres.';
+  }
+  if (!partial || d !== undefined) {
+    if (!d) errors.descripcion = 'La descripción es requerida.';
+    else if (d.length > 280) errors.descripcion = 'Máximo 280 caracteres.';
+  }
+  if (!partial || tipo !== undefined) {
+    if (!tipo || !RELEASE_NOTE_TIPOS.includes(tipo)) {
+      errors.tipo = `Tipo inválido. Valores: ${RELEASE_NOTE_TIPOS.join(', ')}.`;
+    }
+  }
+  if (publicado_en !== undefined && publicado_en !== null) {
+    // Aceptamos ISO 8601 o el string vacío = usar default (NOW).
+    if (typeof publicado_en !== 'string' || (publicado_en && isNaN(Date.parse(publicado_en)))) {
+      errors.publicado_en = 'Fecha inválida (usar ISO 8601 o omitir para NOW).';
+    }
+  }
+  return Object.keys(errors).length ? errors : null;
+}
+
+// GET /release-notes → lista todas ordenada por publicado_en DESC.
+router.get('/release-notes', async (_req, res, next) => {
+  try {
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(`
+        SELECT id, titulo, descripcion, tipo, publicado_en, created_at, updated_at
+          FROM release_notes
+         ORDER BY publicado_en DESC
+      `);
+      return { release_notes: rows };
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /release-notes { titulo, descripcion, tipo, publicado_en? } → crear.
+router.post('/release-notes', async (req, res, next) => {
+  try {
+    const errors = _validateReleaseNoteBody(req.body);
+    if (errors) return res.status(400).json({ error: 'Validación falló.', fields: errors });
+
+    const { titulo, descripcion, tipo, publicado_en } = req.body;
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO release_notes (titulo, descripcion, tipo, publicado_en)
+              VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()))
+           RETURNING id, titulo, descripcion, tipo, publicado_en, created_at, updated_at`,
+        [String(titulo).trim(), String(descripcion).trim(), tipo, publicado_en || null]
+      );
+      return rows[0];
+    });
+    res.status(201).json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /release-notes/:id { titulo?, descripcion?, tipo?, publicado_en? } → edición parcial.
+router.patch('/release-notes/:id', async (req, res, next) => {
+  try {
+    const errors = _validateReleaseNoteBody(req.body, { partial: true });
+    if (errors) return res.status(400).json({ error: 'Validación falló.', fields: errors });
+
+    const { id } = req.params;
+    const updates = [];
+    const params = [];
+
+    if (req.body.titulo !== undefined)      { params.push(String(req.body.titulo).trim());      updates.push(`titulo = $${params.length}`); }
+    if (req.body.descripcion !== undefined) { params.push(String(req.body.descripcion).trim()); updates.push(`descripcion = $${params.length}`); }
+    if (req.body.tipo !== undefined)        { params.push(req.body.tipo);                       updates.push(`tipo = $${params.length}`); }
+    if (req.body.publicado_en !== undefined){ params.push(req.body.publicado_en || null);       updates.push(`publicado_en = $${params.length}::timestamptz`); }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'Nada para actualizar.' });
+    updates.push('updated_at = NOW()');
+    params.push(id);
+
+    const data = await db.adminQuery(async (client) => {
+      const { rows } = await client.query(
+        `UPDATE release_notes SET ${updates.join(', ')}
+          WHERE id = $${params.length}
+          RETURNING id, titulo, descripcion, tipo, publicado_en, created_at, updated_at`,
+        params
+      );
+      return rows[0] || null;
+    });
+    if (!data) return res.status(404).json({ error: 'Release note no encontrada.' });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /release-notes/:id → hard-delete (no soft — el histórico no importa
+// para este dominio: si Lucas la borra es porque fue un typo o duplicado).
+router.delete('/release-notes/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const data = await db.adminQuery(async (client) => {
+      const { rowCount } = await client.query(
+        `DELETE FROM release_notes WHERE id = $1`,
+        [id]
+      );
+      return { deleted: rowCount };
+    });
+    if (data.deleted === 0) return res.status(404).json({ error: 'Release note no encontrada.' });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // PATCH /tenants/:id/pais — cambiar el país de un tenant existente (#473).
 //
 // Use case que motiva el endpoint: cliente UY que signupeó pre-F4 cuando el

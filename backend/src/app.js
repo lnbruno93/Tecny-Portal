@@ -93,6 +93,7 @@ const cambiosRoutes      = require('./routes/cambios');
 const tarjetasRoutes     = require('./routes/tarjetas');
 const enviosRoutes       = require('./routes/envios');
 const searchRoutes       = require('./routes/search');
+const releaseNotesRoutes = require('./routes/releaseNotes');
 const usuariosRoutes     = require('./routes/usuarios');
 const capabilitiesRoutes = require('./routes/capabilities');
 const cuentasRoutes      = require('./routes/cuentas');
@@ -790,6 +791,12 @@ app.use('/api/envios',        requireAuth, requireCapability('envios.trabajar'),
 // tenga (ej. no ver egresos) igual devuelven rows porque RLS es tenant-level.
 // El frontend hidea las secciones que el user no debería ver via `hasCap`.
 app.use('/api/search',        requireAuth, searchRoutes);
+
+// Release notes (novedades) — tabla global, cualquier user autenticado
+// puede leer las notas y marcarlas como vistas. CRUD admin vive en
+// /api/super-admin/release-notes. Sin capability específica: la pantalla
+// /novedades es visible para todos los roles (owner/admin/member/vendedor).
+app.use('/api/release-notes', requireAuth, releaseNotesRoutes);
 
 // Cuentas Corrientes / B2B — capability `b2b.trabajar` (slug nuevo, módulo
 // se renombró visualmente a "Venta & Gestión B2B" en 2026-04, el route path
