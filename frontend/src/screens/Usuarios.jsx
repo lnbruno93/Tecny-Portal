@@ -20,6 +20,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import Badge from '../components/Badge';
 import useModal from '../lib/useModal';
+import useFormFields from '../lib/useFormFields';
 
 // Labels descriptivos de cada rol. Tienen que matchear ROLES_VALIDOS del
 // backend (`backend/src/lib/capabilityCatalog.js`). El backend acepta el
@@ -121,9 +122,38 @@ export default function Usuarios() {
   // después del create.
   const EMPTY_NEW = { nombre: '', username: '', email: '', password: '', rol: 'vendedor' };
   const [showCreate, setShowCreate]   = useState(false);
-  const [newUser, setNewUser]         = useState(EMPTY_NEW);
+  // 2026-07-16 (task #145 UX B): validación inline con useFormFields.
+  // Antes: 5 chequeos secuenciales con `if (X) { setCreateError(msg); return; }`
+  // → user completaba todo, submitteaba, veía UNO solo por vez. Ahora todos
+  // los errores relevantes aparecen JUNTOS debajo de cada campo, y se van
+  // limpiando al empezar a corregir.
+  const {
+    form: newUser,
+    setForm: setNewUser,
+    setField: setNU,
+    fieldErrors,
+    setFieldErrors,
+    validate: validateNewUser,
+    resetErrors,
+  } = useFormFields(EMPTY_NEW, (u) => {
+    const errs = {};
+    const nombre = u.nombre?.trim() || '';
+    const username = u.username?.trim().toLowerCase() || '';
+    const email = u.email?.trim() || '';
+    if (!nombre) errs.nombre = 'Requerido.';
+    if (!username) errs.username = 'Requerido.';
+    else if (username.length < 2) errs.username = 'Mínimo 2 caracteres.';
+    else if (!/^[a-z0-9_]+$/.test(username)) errs.username = 'Solo minúsculas, números y guión bajo.';
+    if (!email) errs.email = 'Requerido.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = 'Formato inválido. Ej: nombre@dominio.com';
+    // 2026-06-26 (#446): mismo mínimo que el backend — 8 chars con letra y número.
+    if (u.password.length < 8 || !/[A-Za-z]/.test(u.password) || !/[0-9]/.test(u.password)) {
+      errs.password = 'Mínimo 8 caracteres, con al menos una letra y un número.';
+    }
+    return Object.keys(errs).length ? errs : null;
+  });
   const [creating, setCreating]       = useState(false);
-  const [createError, setCreateError] = useState('');
+  const [createError, setCreateError] = useState(''); // errores no-field (ej. 409, 500)
   const createModalRef = useRef(null);
   useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
 
@@ -160,32 +190,22 @@ export default function Usuarios() {
   // ── Crear usuario ────────────────────────────────────────────────────────
   function openCreate() {
     setNewUser(EMPTY_NEW);
+    resetErrors();
     setCreateError('');
     setShowCreate(true);
   }
-  const setNU = (field, val) => setNewUser(u => ({ ...u, [field]: val }));
+  // 2026-07-16 (task #145 UX B): setNU ahora viene de useFormFields — misma
+  // firma (field, val), pero además limpia fieldErrors[field] al setear.
 
   async function handleCreate(e) {
     e.preventDefault();
+    // 2026-07-16 (task #145 UX B): validación inline consolidada — todos los
+    // errores de field aparecen a la vez, no de uno en uno con early return.
+    if (!validateNewUser()) return;
+    // Normalizamos los mismos campos que ya normalizaba la versión previa.
     const nombre = newUser.nombre.trim();
     const username = newUser.username.trim().toLowerCase();
     const email = newUser.email.trim();
-    if (!nombre) { setCreateError('El nombre es obligatorio.'); return; }
-    if (username.length < 2) { setCreateError('El usuario debe tener al menos 2 caracteres.'); return; }
-    if (!/^[a-z0-9_]+$/.test(username)) { setCreateError('Usuario: solo minúsculas, números y guión bajo.'); return; }
-    // 2026-06-26 (#446): email obligatorio + formato válido. Validación
-    // cliente-side para feedback inmediato; el backend rechaza igual con 400.
-    // Regex razonable (no RFC-5322 completo — Zod del backend usa el built-in
-    // que es más estricto, pero el simple cubre 99% de typos comunes).
-    if (!email) { setCreateError('El email es obligatorio.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setCreateError('Email inválido. Debe tener formato nombre@dominio.com');
-      return;
-    }
-    if (newUser.password.length < 8 || !/[A-Za-z]/.test(newUser.password) || !/[0-9]/.test(newUser.password)) {
-      setCreateError('La contraseña debe tener mínimo 8 caracteres, con al menos una letra y un número.');
-      return;
-    }
     setCreating(true);
     setCreateError('');
     try {
@@ -218,7 +238,13 @@ export default function Usuarios() {
       toast.success('Usuario creado.');
       refresh(); // reload — más simple que insertar inline (rol + caps resueltos backend-side)
     } catch (err) {
-      setCreateError(err.message || 'No se pudo crear el usuario.');
+      // 2026-07-16 (task #145 UX B): si el backend devuelve `fields` (400),
+      // mapear a fieldErrors. Sino, error genérico.
+      if (err.status === 400 && err.body?.fields) {
+        setFieldErrors(err.body.fields);
+      } else {
+        setCreateError(err.message || 'No se pudo crear el usuario.');
+      }
     } finally {
       setCreating(false);
     }
@@ -470,14 +496,17 @@ export default function Usuarios() {
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input className="input" placeholder="Juan Pérez" value={newUser.nombre}
-                        onChange={e => setNU('nombre', e.target.value)} autoFocus />
+                      <input className={'input' + (fieldErrors.nombre ? ' input-error' : '')} placeholder="Juan Pérez" value={newUser.nombre}
+                        onChange={e => setNU('nombre', e.target.value)} autoFocus aria-invalid={!!fieldErrors.nombre} />
+                      {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Usuario <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input className="input mono" placeholder="juanp" value={newUser.username}
-                        onChange={e => setNU('username', e.target.value.toLowerCase())} />
-                      <div className="muted tiny" style={{ marginTop: 3 }}>Solo minúsculas, números y guión bajo.</div>
+                      <input className={'input mono' + (fieldErrors.username ? ' input-error' : '')} placeholder="juanp" value={newUser.username}
+                        onChange={e => setNU('username', e.target.value.toLowerCase())} aria-invalid={!!fieldErrors.username} />
+                      {fieldErrors.username
+                        ? <div className="field-error">{fieldErrors.username}</div>
+                        : <div className="muted tiny" style={{ marginTop: 3 }}>Solo minúsculas, números y guión bajo.</div>}
                     </div>
                   </div>
 
@@ -487,14 +516,17 @@ export default function Usuarios() {
                           Sin email no podemos invitarlo, mandarle resets de pass,
                           ni notificaciones. */}
                       <label className="field-label">Email <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input type="email" className="input" placeholder="juan@empresa.com" value={newUser.email}
-                        onChange={e => setNU('email', e.target.value)} required />
+                      <input type="email" className={'input' + (fieldErrors.email ? ' input-error' : '')} placeholder="juan@empresa.com" value={newUser.email}
+                        onChange={e => setNU('email', e.target.value)} required aria-invalid={!!fieldErrors.email} />
+                      {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input type="password" className="input" placeholder="••••••••" value={newUser.password}
-                        onChange={e => setNU('password', e.target.value)} autoComplete="new-password" />
-                      <div className="muted tiny" style={{ marginTop: 3 }}>Mínimo 8 caracteres, con al menos una letra y un número.</div>
+                      <input type="password" className={'input' + (fieldErrors.password ? ' input-error' : '')} placeholder="••••••••" value={newUser.password}
+                        onChange={e => setNU('password', e.target.value)} autoComplete="new-password" aria-invalid={!!fieldErrors.password} />
+                      {fieldErrors.password
+                        ? <div className="field-error">{fieldErrors.password}</div>
+                        : <div className="muted tiny" style={{ marginTop: 3 }}>Mínimo 8 caracteres, con al menos una letra y un número.</div>}
                     </div>
                   </div>
 
