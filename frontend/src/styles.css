@@ -940,6 +940,19 @@ input[type="number"] {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* 2026-07-16 (task #145 UX B): styling de validación inline.
+   `.input-error` marca el input con borde rojo (feedback inmediato).
+   `.field-error` es el mensaje debajo del input — mismo pattern que
+   admin-frontend/Novedades.jsx. */
+.input.input-error {
+  border-color: var(--neg);
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.10);
+}
+.field-error {
+  font-size: 11.5px;
+  color: var(--neg);
+  margin-top: -2px;
+}
 
 /* ── Segment / tabs ──────────────────────────────────────────────── */
 .seg {

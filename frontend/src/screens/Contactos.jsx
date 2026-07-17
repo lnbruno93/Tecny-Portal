@@ -9,6 +9,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../components/ConfirmModal';
 import { SkeletonRow } from '../components/Skeleton';
 import useModal from '../lib/useModal';
+import useFormFields from '../lib/useFormFields';
 import { exportCsv } from '../lib/exportCsv';
 import { writeXlsx } from '../lib/xlsx';
 
@@ -47,7 +48,27 @@ export default function Contactos() {
   // Modal alta/edición (editId === null → alta)
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState(EMPTY);
+  // 2026-07-16 (task #145 UX B): validación inline con useFormFields.
+  // Antes: el error mostraba una string en formError al submit. Ahora
+  // cada field tiene su propio error debajo, se limpia al empezar a
+  // corregir. Menos frustración cuando fallás con 2+ campos a la vez.
+  const {
+    form,
+    setForm,
+    setField,
+    fieldErrors,
+    setFieldErrors,
+    validate: validateForm,
+    resetErrors,
+  } = useFormFields(EMPTY, (f) => {
+    const errs = {};
+    if (!f.nombre.trim()) errs.nombre = 'Requerido.';
+    // Email: si el user cargó algo, tiene que parecer email. Si dejó vacío, OK.
+    if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
+      errs.email = 'Formato inválido. Ej: nombre@dominio.com';
+    }
+    return Object.keys(errs).length ? errs : null;
+  });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const formModalRef = useRef(null);
@@ -72,14 +93,22 @@ export default function Contactos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dSearch, origenFilter]);
 
-  function openCreate() { setEditId(null); setForm(EMPTY); setFormError(''); setShowForm(true); }
+  function openCreate() {
+    setEditId(null);
+    setForm(EMPTY);
+    resetErrors();
+    setFormError('');
+    setShowForm(true);
+  }
   function openEdit(c) {
     setEditId(c.id);
     setForm({
       nombre: c.nombre || '', apellido: c.apellido || '', telefono: c.telefono || '',
       dni: c.dni || '', email: c.email || '', tipo: c.tipo || 'cliente', origen: c.origen || 'manual',
     });
-    setFormError(''); setShowForm(true);
+    resetErrors();
+    setFormError('');
+    setShowForm(true);
   }
 
   useEffect(() => {
@@ -89,7 +118,9 @@ export default function Contactos() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
+    // 2026-07-16 (task #145 UX B): validación inline. Si falla, cada field
+    // muestra su error debajo, no un banner genérico al final del form.
+    if (!validateForm()) return;
     setSaving(true); setFormError('');
     const payload = {
       nombre: form.nombre.trim(),
@@ -111,7 +142,15 @@ export default function Contactos() {
         toast.success('Contacto creado.');
       }
       setShowForm(false);
-    } catch (err) { setFormError(err.message); } finally { setSaving(false); }
+    } catch (err) {
+      // Si el backend devolvió `fields`, mapearlos a fieldErrors (mismos
+      // keys) — patrón consistente con admin-frontend/Novedades.jsx.
+      if (err.status === 400 && err.body?.fields) {
+        setFieldErrors(err.body.fields);
+      } else {
+        setFormError(err.message);
+      }
+    } finally { setSaving(false); }
   }
 
   // 2026-07-04 (#508) — Dropdown "Exportar mails" con 3 acciones:
@@ -402,37 +441,39 @@ export default function Contactos() {
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label" htmlFor="contacto-nombre">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input id="contacto-nombre" className="input" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
+                      <input id="contacto-nombre" className={'input' + (fieldErrors.nombre ? ' input-error' : '')} value={form.nombre} onChange={e => setField('nombre', e.target.value)} autoFocus aria-invalid={!!fieldErrors.nombre} />
+                      {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label" htmlFor="contacto-apellido">Apellido</label>
-                      <input id="contacto-apellido" className="input" value={form.apellido} onChange={e => setForm(f => ({ ...f, apellido: e.target.value }))} />
+                      <input id="contacto-apellido" className="input" value={form.apellido} onChange={e => setField('apellido', e.target.value)} />
                     </div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label" htmlFor="contacto-tel">Contacto (teléfono / WhatsApp)</label>
-                      <input id="contacto-tel" type="tel" inputMode="tel" autoComplete="tel" className="input" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
+                      <input id="contacto-tel" type="tel" inputMode="tel" autoComplete="tel" className="input" value={form.telefono} onChange={e => setField('telefono', e.target.value)} />
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label" htmlFor="contacto-dni">DNI</label>
-                      <input id="contacto-dni" inputMode="numeric" pattern="[0-9]*" className="input" value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value }))} />
+                      <input id="contacto-dni" inputMode="numeric" pattern="[0-9]*" className="input" value={form.dni} onChange={e => setField('dni', e.target.value)} />
                     </div>
                   </div>
                   <div className="field">
                     <label className="field-label" htmlFor="contacto-email">Mail</label>
-                    <input id="contacto-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" className="input" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                    <input id="contacto-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" className={'input' + (fieldErrors.email ? ' input-error' : '')} value={form.email} onChange={e => setField('email', e.target.value)} aria-invalid={!!fieldErrors.email} />
+                    {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
                   </div>
                   <div className="row" style={{ gap: 12 }}>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">De dónde vino</label>
-                      <select className="input" value={form.origen} onChange={e => setForm(f => ({ ...f, origen: e.target.value }))}>
+                      <select className="input" value={form.origen} onChange={e => setField('origen', e.target.value)}>
                         {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Tipo</label>
-                      <select className="input" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}>
+                      <select className="input" value={form.tipo} onChange={e => setField('tipo', e.target.value)}>
                         {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>

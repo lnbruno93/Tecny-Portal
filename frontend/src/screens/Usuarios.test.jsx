@@ -127,10 +127,22 @@ describe('Pantalla Usuarios — alta', () => {
     await userEvent.type(screen.getByPlaceholderText('••••••••'), 'abc'); // <8 chars
     await userEvent.click(screen.getByRole('button', { name: /crear usuario/i }));
 
-    expect(await screen.findByText(/contraseña debe tener mínimo 8/i)).toBeInTheDocument();
+    // 2026-07-16 (task #145 UX B): la validación migró a fieldErrors inline —
+    // el mensaje ahora aparece debajo del input de password (no como banner
+    // arriba). El texto también se recortó a "Mínimo 8 caracteres…" (más
+    // conciso, mismo significado).
+    expect(await screen.findByText(/Mínimo 8 caracteres/i)).toBeInTheDocument();
     expect(usuariosApi.create).not.toHaveBeenCalled();
     expect(capsApi.update).not.toHaveBeenCalled();
   });
+
+  // 2026-07-16 (task #145 UX B): la migración a useFormFields cubre validación
+  // inline (fieldErrors + setField que limpia al tipear). El caso de "error
+  // inline por campo" se cubre en tests dedicados del hook (useFormFields.test.js).
+  // No re-testeamos acá porque jsdom + form submit tiene un edge case con
+  // react-testing-library que necesitaría fireEvent.submit directo — no vale
+  // la complejidad extra dado el coverage del hook + el smoke que ya existe
+  // ("rechaza contraseña inválida" arriba).
 
   it('crea el usuario y le setea el rol nuevo', async () => {
     usuariosApi.create.mockResolvedValue({
