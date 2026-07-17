@@ -367,7 +367,14 @@ export default function NotificationsBell() {
             border: '1px solid var(--border, #2c3656)',
             borderRadius: 10,
             boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
-            zIndex: 100,
+            // 2026-07-17 (post-#657): stacking context propio. Sin `isolation:
+            // isolate`, headers sticky de tablas debajo (ej. CuentasCC con su
+            // propio zIndex en un contexto padre distinto) se pintaban en la
+            // franja intermedia del dropdown — Lucas lo reportó con screenshot
+            // mostrando "IMEI/SERIAL" atravesando el panel a media altura.
+            // Con isolate + z-index alto queda encapsulado.
+            isolation: 'isolate',
+            zIndex: 1000,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -396,8 +403,10 @@ export default function NotificationsBell() {
             )}
           </div>
 
-          {/* Body scrolleable */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Body scrolleable — background explícito por defensa: aunque el
+              contenedor padre ya tiene --surface, cualquier hueco/gap entre
+              items o padding transparente podría dejar ver el layout debajo. */}
+          <div style={{ flex: 1, overflowY: 'auto', background: 'var(--surface, #131a2b)' }}>
             {loadingList && (
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 13 }}>
                 Cargando…
