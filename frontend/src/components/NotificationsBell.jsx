@@ -37,7 +37,8 @@
 // Compat: el import antiguo `RedB2BNotificationsBell` sigue existiendo
 // como re-export defensivo (por si algún test lo consumía sin actualizar).
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Icons } from './Icons';
 import { redB2b as redB2bApi, releaseNotes as releaseNotesApi } from '../lib/api';
@@ -158,8 +159,42 @@ export default function NotificationsBell() {
   const [b2bItems, setB2bItems] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
   const [open, setOpen] = useState(false);
+  // 2026-07-17 (post-#658): posición del panel calculada en runtime a partir
+  // de la bounding rect del botón. Necesario porque el panel se renderea vía
+  // React Portal en <body> — ya no puede posicionarse relative al botón.
+  // Ver comentario sobre el portal más abajo.
+  const [panelPos, setPanelPos] = useState({ top: 0, right: 0 });
   const panelRef = useRef(null);
   const btnRef = useRef(null);
+
+  // Calcular la posición del panel: bajo el botón, alineado a la derecha.
+  // Se corre al abrir y en cada resize/scroll para mantener el panel pegado.
+  const recomputePanelPos = useCallback(() => {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setPanelPos({
+      top: rect.bottom + 8,
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePanelPos();
+  }, [open, recomputePanelPos]);
+
+  // Sync de posición en resize + scroll. Si el user scrollea con el dropdown
+  // abierto, el panel se mueve con el botón. (Alternativa: cerrar en scroll,
+  // pero eso es peor UX cuando el user está leyendo el dropdown.)
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener('resize', recomputePanelPos);
+    window.addEventListener('scroll', recomputePanelPos, true);
+    return () => {
+      window.removeEventListener('resize', recomputePanelPos);
+      window.removeEventListener('scroll', recomputePanelPos, true);
+    };
+  }, [open, recomputePanelPos]);
 
   // ── Poll: Novedades (5 min + on visibility) ─────────────────────────────────
   //
@@ -349,16 +384,25 @@ export default function NotificationsBell() {
         )}
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           ref={panelRef}
           role="dialog"
           aria-label="Notificaciones"
           data-testid="notif-bell-panel"
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
+            // 2026-07-17 (post-#658): renderizado vía React Portal en <body>
+            // para escapar CUALQUIER stacking context del árbol del Shell.
+            // El fix previo con `isolation: isolate` + z-index 1000 no
+            // alcanzó — el sticky header de las tablas debajo (CuentasCC,
+            // etc) seguía atravesando el panel. Renderear en el body directo
+            // + position: fixed + z-index 10000 es la solución bulletproof:
+            // el panel NO comparte stacking context con ningún elemento de
+            // la página, por lo que ningún z-index de la página puede
+            // "escaparse" hacia arriba y pintarse encima.
+            position: 'fixed',
+            top: panelPos.top,
+            right: panelPos.right,
             width: 380,
             maxWidth: 'calc(100vw - 24px)',
             maxHeight: '70vh',
@@ -367,14 +411,7 @@ export default function NotificationsBell() {
             border: '1px solid var(--border, #2c3656)',
             borderRadius: 10,
             boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
-            // 2026-07-17 (post-#657): stacking context propio. Sin `isolation:
-            // isolate`, headers sticky de tablas debajo (ej. CuentasCC con su
-            // propio zIndex en un contexto padre distinto) se pintaban en la
-            // franja intermedia del dropdown — Lucas lo reportó con screenshot
-            // mostrando "IMEI/SERIAL" atravesando el panel a media altura.
-            // Con isolate + z-index alto queda encapsulado.
-            isolation: 'isolate',
-            zIndex: 1000,
+            zIndex: 10000,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -578,7 +615,8 @@ export default function NotificationsBell() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
