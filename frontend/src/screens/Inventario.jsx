@@ -39,6 +39,7 @@ import EditableCell from '../components/EditableCell';
 import ScrollFadeX from '../components/ScrollFadeX'; // #F-4
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import useModal from '../lib/useModal';
+import useFormFields from '../lib/useFormFields';
 import { fmt, fmtMoney, fmtImei } from '../lib/format';
 import { rangeToParams, RANGE_PRESETS } from '../lib/dateRange';
 import Badge from '../components/Badge';
@@ -327,7 +328,24 @@ export default function Inventario() {
   // Modal alta/edición
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState(EMPTY_PRODUCTO);
+  // 2026-07-16 (task #147 UX B.2): validación inline con useFormFields.
+  // El form del producto solo tiene 1 required (`nombre`) pero pasarlo al
+  // hook consolida el pattern con Contactos/Usuarios/Cambios/Envios — y
+  // deja abierta la puerta para agregar validaciones granulares (IMEI
+  // duplicado, monto > 0, etc.) sin refactor futuro.
+  const {
+    form,
+    setForm,
+    setField: setF,
+    fieldErrors,
+    setFieldErrors,
+    validate: validateProducto,
+    resetErrors: resetProductoErrors,
+  } = useFormFields(EMPTY_PRODUCTO, (f) => {
+    const errs = {};
+    if (!f.nombre.trim()) errs.nombre = 'Requerido.';
+    return Object.keys(errs).length ? errs : null;
+  });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   // 2026-06-30 #imei-dup: warning inline cuando el IMEI tipeado ya está
@@ -339,7 +357,6 @@ export default function Inventario() {
   // el mismo IMEI (ej. usuario tab-tab-tab por el form), o cuando el blur
   // viene de un IMEI que ya validamos.
   const lastCheckedImeiRef = useRef('');
-  const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Modal historial (Fase 2 trazabilidad, 2026-06-15)
   const [historialProductoId, setHistorialProductoId] = useState(null);
@@ -547,7 +564,7 @@ export default function Inventario() {
 
   // ── Modal alta/edición ──
   function openCreate() {
-    setEditId(null); setForm(EMPTY_PRODUCTO); setFormError(''); setShowForm(true);
+    setEditId(null); setForm(EMPTY_PRODUCTO); resetProductoErrors(); setFormError(''); setShowForm(true);
     // 2026-06-30 #imei-dup: limpiar el warning y el cache del último IMEI
     // chequeado al abrir el modal — sino, un alta previa con warning vivo
     // bloquearía la siguiente sesión del modal con un IMEI distinto.
@@ -567,6 +584,7 @@ export default function Inventario() {
       cantidad: p.cantidad, estado: p.estado, observaciones: p.observaciones ?? '',
       condicion: p.condicion || 'nuevo',
     });
+    resetProductoErrors();
     setFormError(''); setShowForm(true);
     // En edit no chequeamos: el producto YA existe con ese IMEI por
     // definición, sería un falso positivo. Pre-cargamos el cache para que
@@ -607,7 +625,9 @@ export default function Inventario() {
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!form.nombre.trim()) { setFormError('El nombre es obligatorio.'); return; }
+    // 2026-07-16 (task #147): validación inline consolidada — el error
+    // aparece debajo del input de nombre, no como banner al final.
+    if (!validateProducto()) return;
     // 2026-07-11: el field "Colección" (categoria_id) se removió del form y
     // de la tabla. La validación frontend + refine del backend también se
     // relajaron — categoria_id es opcional en todos los flujos de create.
@@ -656,7 +676,13 @@ export default function Inventario() {
       setShowForm(false);
       await Promise.all([loadProductos(), loadMetricas()]);
     } catch (err) {
-      setFormError(err.message);
+      // Si el backend devolvió `fields`, mapearlos a fieldErrors (mismos
+      // keys) — patrón consistente con otros forms migrados en task #145/147.
+      if (err.status === 400 && err.body?.fields) {
+        setFieldErrors(err.body.fields);
+      } else {
+        setFormError(err.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -1600,7 +1626,15 @@ export default function Inventario() {
                   </div>
                   <div className="field">
                     <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
-                    <input className="input" placeholder="ej. iPhone 15 Pro" value={form.nombre} onChange={e => setF('nombre', e.target.value)} autoFocus />
+                    <input
+                      className={'input' + (fieldErrors.nombre ? ' input-error' : '')}
+                      placeholder="ej. iPhone 15 Pro"
+                      value={form.nombre}
+                      onChange={e => setF('nombre', e.target.value)}
+                      autoFocus
+                      aria-invalid={!!fieldErrors.nombre}
+                    />
+                    {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1 }}><label className="field-label">Batería (%)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="85" value={form.bateria} onChange={e => setF('bateria', e.target.value)} /></div>
