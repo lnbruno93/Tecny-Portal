@@ -373,32 +373,65 @@ export default function Historial() {
       </div>
 
       {/* ── Detail modal ──────────────────────────────────────────────────── */}
+      {/* 2026-07-16 (task #144 UX A): fix P0 — antes este modal renderizaba
+          JSON.stringify(detail) crudo en un <pre>, lo cual mostraba el objeto
+          entero (id, accion, detalle, usuario_nombre, creado_en) — todos los
+          fields que ya se ven en la fila + en el header. Redundante Y feo.
+          El backend ya devuelve `detalle` humanizado (PR #633), así que el
+          modal solo tiene que presentarlo con estructura clara. */}
       {detail && (
         <div ref={detailModalRef} className="modal-overlay" onClick={() => setDetail(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-hd">
               <span style={{ fontWeight: 600 }}>Detalle del evento #{detail.id}</span>
-              <button className="icon-btn" onClick={() => setDetail(null)}>
+              <button className="icon-btn" aria-label="Cerrar" onClick={() => setDetail(null)}>
                 <Icons.X size={16} />
               </button>
             </div>
             <div className="modal-body">
-              <div className="muted tiny" style={{ marginBottom: 8 }}>
-                {detail.accion} · {detail.usuario_nombre || 'Sistema'} · {rel(detail.creado_en)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {/* Qué pasó — la descripción humanizada, prominente. */}
+                <div>
+                  <div
+                    className="muted tiny"
+                    style={{ textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, fontWeight: 600 }}
+                  >
+                    Qué pasó
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.4 }}>
+                    {detail.detalle || <span className="dim">Sin descripción disponible.</span>}
+                  </div>
+                </div>
+
+                {/* Metadatos en grilla — 2×2 en desktop, stack en mobile. */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                    gap: 12,
+                    padding: '14px 16px',
+                    background: 'var(--surface-2)',
+                    borderRadius: 8,
+                  }}
+                >
+                  <DetailField label="Usuario">
+                    {detail.usuario_nombre || <span className="dim">Sistema</span>}
+                  </DetailField>
+                  <DetailField label="Acción">
+                    <AccionBadge raw={detail.accion} />
+                  </DetailField>
+                  <DetailField label="Módulo">
+                    <span className="mono tiny" style={{ color: 'var(--text-2)' }}>
+                      {parseAccion(detail.accion).tabla || <span className="dim">—</span>}
+                    </span>
+                  </DetailField>
+                  <DetailField label="Fecha">
+                    <span title={new Date(detail.creado_en).toLocaleString('es-AR')}>
+                      {rel(detail.creado_en)}
+                    </span>
+                  </DetailField>
+                </div>
               </div>
-              <pre style={{
-                fontSize: 12,
-                lineHeight: 1.6,
-                background: 'var(--surface-2)',
-                borderRadius: 8,
-                padding: 14,
-                overflow: 'auto',
-                maxHeight: 400,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}>
-                {JSON.stringify(detail, null, 2)}
-              </pre>
             </div>
             <div className="modal-ft">
               <button className="btn btn-ghost btn-sm" onClick={() => setDetail(null)}>
@@ -408,6 +441,22 @@ export default function Historial() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Helper de campo label + value para el modal de detalle (task #144).
+// Reemplaza la mezcla de estilos ad-hoc con un layout consistente.
+function DetailField({ label, children }) {
+  return (
+    <div>
+      <div
+        className="muted tiny"
+        style={{ textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, fontWeight: 600 }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 13 }}>{children}</div>
     </div>
   );
 }

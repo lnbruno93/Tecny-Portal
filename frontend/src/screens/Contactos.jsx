@@ -53,17 +53,24 @@ export default function Contactos() {
   const formModalRef = useRef(null);
   useModal({ open: showForm, onClose: () => setShowForm(false), overlayRef: formModalRef });
 
-  function loadList() {
+  // 2026-07-16 (task #144 UX A): cleanup flag para evitar race condition.
+  // Antes: si el user cambiaba dSearch/origenFilter rápido, un fetch tardío
+  // podía pisar el estado con datos de una request anterior (ordering no
+  // determinístico). El flag `cancelled` corta el setList si el effect ya
+  // se re-ejecutó. Mismo pattern que Historial.jsx:92 y Novedades.jsx:117.
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     const params = {};
     if (dSearch) params.buscar = dSearch;
     if (origenFilter) params.origen = origenFilter;
     contactosApi.list(params)
-      .then(r => setList(Array.isArray(r) ? r : (r.data || [])))
-      .catch(e => toast.error(e.message))
-      .finally(() => setLoading(false));
-  }
-  useEffect(() => { loadList(); /* eslint-disable-next-line */ }, [dSearch, origenFilter]);
+      .then(r => { if (!cancelled) setList(Array.isArray(r) ? r : (r.data || [])); })
+      .catch(e => { if (!cancelled) toast.error(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dSearch, origenFilter]);
 
   function openCreate() { setEditId(null); setForm(EMPTY); setFormError(''); setShowForm(true); }
   function openEdit(c) {
@@ -325,7 +332,36 @@ export default function Contactos() {
               {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} columns={6} />)}
             </tbody>
           </table>
-        ) : list.length === 0 ? <div className="empty">Sin contactos. Creá el primero con "Nuevo contacto".</div>
+        ) : list.length === 0 ? (
+          // 2026-07-16 (task #144 UX A): empty state diferenciado. Antes:
+          // mismo mensaje sin importar si el user filtró o si aún no
+          // cargó contactos. Ahora sabemos qué caso es y damos la acción
+          // correcta (crear vs limpiar filtros).
+          <div className="empty" style={{ textAlign: 'center', padding: '32px 20px' }}>
+            {(dSearch || origenFilter) ? (
+              <>
+                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                  Ningún contacto matchea con esos filtros.
+                </div>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => { setSearch(''); setOrigenFilter(''); }}
+                >
+                  Limpiar filtros
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                  Todavía no cargaste contactos.
+                </div>
+                <button className="btn btn-sm btn-primary" onClick={openCreate}>
+                  <Icons.Plus size={13} /> Nuevo contacto
+                </button>
+              </>
+            )}
+          </div>
+        )
           : (
             <table className="tbl">
               <thead>

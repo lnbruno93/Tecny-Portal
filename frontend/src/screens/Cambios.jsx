@@ -116,6 +116,11 @@ export default function Cambios() {
 
   const [list, setList] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
+  // 2026-07-16 (task #144 UX A): antes usábamos `toast.error(e.message)`
+  // que desaparece en 5s — si la red falló, el user no puede reintentar
+  // sin refrescar la página. Ahora persistimos el error en state para
+  // renderizar un banner con botón Reintentar (pattern de Inicio.jsx).
+  const [listError, setListError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [movs, setMovs] = useState([]);
@@ -139,7 +144,11 @@ export default function Cambios() {
 
   function loadList() {
     setLoadingList(true);
-    cambiosApi.entidades().then(r => setList(r || [])).catch(e => toast.error(e.message)).finally(() => setLoadingList(false));
+    setListError(null);
+    cambiosApi.entidades()
+      .then(r => setList(r || []))
+      .catch(e => setListError(e.message || 'No se pudieron cargar las financieras.'))
+      .finally(() => setLoadingList(false));
   }
   useEffect(() => { loadList(); }, []); // eslint-disable-line
   useEffect(() => { cajasApi.listCajas().then(r => setCajas(Array.isArray(r) ? r : [])).catch(() => {}); }, []);
@@ -293,6 +302,19 @@ export default function Cambios() {
               ))}
             </div>
           )
+            : listError ? (
+              // 2026-07-16 (task #144 UX A): banner de error con retry visible,
+              // en vez del toast que desaparece a los 5s. Si la red falla, el
+              // user tiene forma de reintentar sin refrescar la página.
+              <div style={{ padding: 20, textAlign: 'center' }}>
+                <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 10 }}>
+                  {listError}
+                </div>
+                <button className="btn btn-sm" onClick={loadList}>
+                  <Icons.Refresh size={13} /> Reintentar
+                </button>
+              </div>
+            )
             : list.length === 0 ? <div className="empty">Sin financieras. Creá la primera con "Nueva financiera".</div>
             : list.map((e, i) => (
               <div key={e.id} onClick={() => setSelectedId(e.id)} style={{

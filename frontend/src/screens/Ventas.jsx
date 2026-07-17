@@ -12,6 +12,7 @@ import useLoadingAction from '../lib/useLoadingAction'; // #F-2
 import useModal from '../lib/useModal';
 import TcWarning from '../components/TcWarning';
 import Badge from '../components/Badge';
+import { SkeletonRow } from '../components/Skeleton';
 import VendedoresCatalogModal from '../components/VendedoresCatalogModal';
 import { fmt, fmt2, fmtImei } from '../lib/format';
 // 2026-06-29 Multi-país F3: dropdowns moneda gated por tenant.pais.
@@ -1439,10 +1440,31 @@ export default function Ventas() {
       )}
 
       {/* Lista de movimientos */}
+      {/* 2026-07-16 (task #144 UX A): loading + empty states mejorados.
+          Antes: "Cargando…" plano y "Sin ventas en el período" sin acción.
+          Ahora: skeleton table (perceived load time menor, misma estructura)
+          + empty con CTA que invita a la acción principal (crear venta) o
+          a revisar los filtros — user no queda mirando pantalla vacía sin
+          saber qué hacer. */}
       {loading ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '12px 0' }}>Cargando…</div>
+        <table className="table" aria-busy="true">
+          <thead>
+            <tr>
+              <th>Estado</th><th>Fecha</th><th>Cliente</th>
+              <th>Productos</th><th>Pagos</th><th>Total</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} columns={7} />)}
+          </tbody>
+        </table>
       ) : lista.length === 0 ? (
-        <div className="empty">Sin ventas en el período</div>
+        <div className="empty" style={{ textAlign: 'center', padding: '32px 20px' }}>
+          <div style={{ fontSize: 14, marginBottom: 6 }}>No hay ventas en el período seleccionado.</div>
+          <div className="muted tiny">
+            Cargá una nueva desde el botón <strong>Nueva venta</strong> del header, o cambiá el filtro de fechas.
+          </div>
+        </div>
       ) : (
         <VentasList
           lista={lista}

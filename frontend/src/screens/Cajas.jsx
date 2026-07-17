@@ -202,16 +202,26 @@ export default function Cajas() {
     return () => setPrimaryAction(null);
   }, [tab, setPrimaryAction]);
 
+  // 2026-07-16 (task #144 UX A): estado de error persistente para el load
+  // de cajas. Antes: solo toast que desaparece en 5s → user perdía la señal
+  // y no podía reintentar sin refrescar la página completa.
+  const [cajasError, setCajasError] = useState(null);
+
   // Cargar cajas al entrar a la hoja Config
   async function loadCajas() {
     setLoadingCajas(true);
+    setCajasError(null);
     try { setCajasList(await cajas.listCajas() || []); }
     catch (e) {
       // Auditoría 2026-06-30 Q-08: era console.error silencioso.
       // El user veía la lista vacía sin entender por qué (cualquier 5xx /
       // network error pasaba mudo). Ahora reportamos a Sentry y avisamos.
       silentReport(e, { context: 'Cajas.loadCajas' });
-      toast.error('No pudimos cargar las cajas. Reintentá.');
+      // 2026-07-16 (#144): además del toast (visibilidad inmediata), guardamos
+      // el error en state para renderizar banner + Reintentar persistente.
+      const msg = 'No pudimos cargar las cajas. Reintentá.';
+      toast.error(msg);
+      setCajasError(msg);
     }
     finally { setLoadingCajas(false); }
   }
@@ -951,6 +961,18 @@ export default function Cajas() {
             <div className="card-hd"><h3>Cajas — {cajasList.length}</h3></div>
             {loadingCajas ? (
               <div className="empty">Cargando…</div>
+            ) : cajasError ? (
+              // 2026-07-16 (task #144 UX A): banner con retry visible cuando
+              // el load falla, en vez de dejar la tabla vacía y solo el toast
+              // efímero. El user tiene forma de reintentar sin refrescar.
+              <div style={{ padding: 20, textAlign: 'center' }}>
+                <div style={{ color: 'var(--neg)', fontSize: 13, marginBottom: 10 }}>
+                  {cajasError}
+                </div>
+                <button className="btn btn-sm" onClick={loadCajas}>
+                  <Icons.Refresh size={13} /> Reintentar
+                </button>
+              </div>
             ) : cajasList.length === 0 ? (
               <div className="empty">Sin cajas. Creá la primera arriba.</div>
             ) : (
