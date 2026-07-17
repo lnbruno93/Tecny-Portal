@@ -1116,15 +1116,14 @@ export default function CuentasCC() {
                     </div>
                   </div>
                   {/* 2026-07-17 (task #155): "Recibí mercadería" — el cliente
-                      cancela deuda entregando productos (van al stock + baja el
-                      saldo). Sólo se ofrece si hay saldo distinto de 0; si el
-                      cliente está en 0 no hay caso de uso normal. */}
-                  {Number(resumen.saldo || 0) !== 0 && (
-                    <button className="btn btn-sm" onClick={() => setShowMercaderiaRecibida(true)}
-                            title="El cliente te entrega productos que cancelan su deuda">
-                      <Icons.Box size={13} /> Recibí mercadería
-                    </button>
-                  )}
+                      cancela deuda O adelanta stock a cuenta entregando productos
+                      (van al stock + baja el saldo). Siempre visible: cubre
+                      también el caso "cliente nuevo que ya me entregó algo antes
+                      de deberme" (decisión de Lucas post-merge PR #652). */}
+                  <button className="btn btn-sm" onClick={() => setShowMercaderiaRecibida(true)}
+                          title="El cliente te entrega productos — entran al stock y bajan su saldo">
+                    <Icons.Box size={13} /> Recibí mercadería
+                  </button>
                   <button className="btn btn-sm btn-primary" onClick={() => setShowVentaModal(true)}>
                     <Icons.Plus size={13} /> Cargar venta
                   </button>
