@@ -33,6 +33,7 @@ const db = require('../config/database');
 const logger = require('./logger');
 const { periodoRange, PERIODO_SCHEMA_FRAGMENT } = require('./chat-periods');
 const { SALDO_CASE_M } = require('./saldoCC');
+const { SALDO_CASE_M: SALDO_PROV_CASE_M } = require('./saldoProveedor');
 const { evaluarTodas } = require('./alertas');
 const { saldoNetoCase } = require('./tarjetasSaldo');
 
@@ -982,30 +983,19 @@ const handlers = {
     return db.withTenant(ctx.tenantId, async (client) => {
       // proveedor_movimientos.monto_usd ya viene normalizado a USD al insertar.
       //
-      // 2026-06-20 TANDA 1 fix #341 P1: usar la fórmula canónica de
-      // routes/proveedores.js#79-86 (el GET /api/proveedores que renderiza la
-      // pantalla operativa):
-      //   - 'pago' / 'devolucion'             → resta (les pagamos / devolvimos)
-      //   - 'compra' AND caja_id IS NOT NULL  → 0 (contado, no genera deuda)
-      //   - 'saldo_inicial' / 'compra'        → suma (deuda heredada / a crédito)
-      // La versión previa ignoraba 'saldo_inicial' (cliente con apertura
-      // de deuda lo veía como 0) y trataba TODA 'compra' como deuda
-      // (compras de contado infladas). Resultado: el bot mostraba saldos
-      // distintos a /api/proveedores.
-      //
-      // COR-2 audit 2026-07-06: 'devolucion' cross-tenant B2B baja la deuda
-      // al proveedor (equivalente contable a 'pago').
+      // 2026-06-20 fix #341 P1: consistencia con routes/proveedores.js. En vez
+      // de duplicar la CASE inline se usa la fórmula canónica de
+      // `lib/saldoProveedor.js` (consolidada 2026-07-17, task #150). Cubre:
+      //   - 'saldo_inicial'                  → +monto (deuda heredada)
+      //   - 'compra' + caja_id               → 0 (contado, no genera deuda)
+      //   - 'compra' sin caja_id             → +monto (deuda real)
+      //   - 'pago' / 'devolucion' / 'entrega_mercaderia' → -monto (baja deuda)
+      // La versión previa a #341 ignoraba 'saldo_inicial' y trataba TODA
+      // 'compra' como deuda. La versión intermedia inline duplicaba la lógica.
       const { rows } = await client.query(
         `WITH saldos AS (
            SELECT p.id, p.nombre,
-                  COALESCE(SUM(
-                    CASE
-                      WHEN m.tipo='pago'                             THEN -m.monto_usd
-                      WHEN m.tipo='devolucion'                       THEN -m.monto_usd
-                      WHEN m.tipo='compra' AND m.caja_id IS NOT NULL THEN 0
-                      ELSE m.monto_usd
-                    END
-                  ), 0) AS saldo,
+                  COALESCE(SUM(${SALDO_PROV_CASE_M}), 0) AS saldo,
                   MAX(m.fecha) AS ultimo_mov
              FROM proveedores p
              LEFT JOIN proveedor_movimientos m

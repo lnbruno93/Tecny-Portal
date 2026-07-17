@@ -24,6 +24,9 @@ const {
   createProveedorSchema, updateProveedorSchema, createMovimientoProveedorSchema,
   bulkCreateMovimientosProveedorSchema, nombresBulkProveedoresSchema,
 } = require('../schemas/proveedores');
+// Fórmula canónica del saldo por proveedor — evita divergencia entre listado,
+// resumen, chat-tools y dashboardMensual (task #150 consolidación).
+const { SALDO_CASE_M } = require('../lib/saldoProveedor');
 
 // Mapeo de columnas de productos a su tipo PostgreSQL para UNNEST batched
 // inserts (#P-01). Se actualiza si STOCK_COLS cambia.
@@ -44,6 +47,11 @@ const pgArrayType = (col) => PRODUCT_COL_TYPES[col] || 'text';
 // compra trae producto_stock, hace hasta 200 INSERTs productos + IMEI locks
 // + audit. Sin tope dedicado, un script puede agotar conexiones del pool en
 // minutos. 30 lotes / 15 min por user es generoso para uso humano.
+//
+// 2026-07-17 (task #150): agregado `skip` para tests. Los suites del feature
+// entrega_mercaderia + regressions del helper saldoProveedor disparan >30
+// creates en la misma ventana, saturando el limiter. Mismo pattern que
+// signupLimiter, loginLimiter, changePasswordLimiter, etc.
 const compraMovimientoLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -52,6 +60,7 @@ const compraMovimientoLimiter = rateLimit({
   keyGenerator: (req) => req.user?.id != null
     ? `prov-mov:${req.user.id}`
     : `prov-mov:ip:${ipKeyGenerator(req)}`,
+  skip: () => process.env.NODE_ENV === 'test',
   message: { error: 'Demasiadas compras a proveedor en poco tiempo. Probá en unos minutos.' },
 });
 
@@ -70,11 +79,10 @@ router.get('/', async (req, res, next) => {
 
     const { page, limit, offset } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 200 });
 
-    // Cálculo de saldo (lo que les debemos):
-    //   - 'pago'    : resta (les pagamos)
-    //   - 'compra' con caja_id → contado, no genera deuda (se descuenta al instante)
-    //   - 'compra' sin caja_id → a crédito, suma como deuda
-    //   - 'saldo_inicial'      → suma (deuda heredada)
+    // Cálculo de saldo (lo que les debemos): fórmula canónica en
+    // `lib/saldoProveedor.js` — consolidada 2026-07-17 (task #150). Antes esta
+    // CASE convivía inline duplicada con /resumen/saldos + chat-tools +
+    // dashboardMensual (este último con bug: no distinguía compras contado).
     //
     // 2026-06-15 multi-tenant (PR 4.4): count + data en una sola withTenant
     // → comparten SET LOCAL. RLS filtra proveedores y proveedor_movimientos.
@@ -82,16 +90,7 @@ router.get('/', async (req, res, next) => {
       const countRes = await client.query(`SELECT COUNT(*) FROM proveedores p ${where}`, params);
       const dataRes = await client.query(
         `SELECT p.id, p.nombre, p.contacto_nombre, p.contacto_apellido, p.whatsapp, p.ubicacion, p.notas,
-                COALESCE(SUM(
-                  CASE
-                    WHEN m.tipo='pago'                                  THEN -m.monto_usd
-                    -- COR-2 audit 2026-07-06: devolución cross-tenant baja
-                    -- la deuda al proveedor (equivalente contable a pago).
-                    WHEN m.tipo='devolucion'                            THEN -m.monto_usd
-                    WHEN m.tipo='compra' AND m.caja_id IS NOT NULL      THEN 0
-                    ELSE m.monto_usd
-                  END
-                ), 0) AS saldo_usd,
+                COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo_usd,
                 COALESCE(SUM(CASE WHEN m.tipo='saldo_inicial' THEN m.monto_usd ELSE 0 END), 0) AS saldo_inicial,
                 COUNT(m.id) FILTER (WHERE m.id IS NOT NULL) AS movimientos
            FROM proveedores p
@@ -466,11 +465,16 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     // Multi-país F2: rechazar moneda no habilitada para el país del tenant.
     assertMonedaValidaParaPais(moneda, req.tenantPais, 'moneda');
 
-    // #H-05 cross-module: si la compra crea productos en Inventario, exigir
+    // #H-05 cross-module: si el movimiento crea productos en Inventario, exigir
     // también permiso `inventario` (no alcanza con solo `proveedores`).
     // Evita que un user al que se le quitó `inventario` siga creando stock
     // por la puerta de atrás.
-    const creaStock = tipo === 'compra' && items.some(it => it.producto_stock);
+    //
+    // 2026-07-17 (task #150): también aplica a `entrega_mercaderia` — el
+    // proveedor entrega productos que INGRESAN al stock, misma superficie
+    // que una `compra` en términos de creación de inventario.
+    const puedeCrearStock = ['compra', 'entrega_mercaderia'].includes(tipo);
+    const creaStock = puedeCrearStock && items.some(it => it.producto_stock);
     if (creaStock) {
       // 2026-06-23 F4: cutover a requireCapability. hasCapability mantiene
       // la misma semántica para checks cross-módulo inline.
@@ -503,7 +507,9 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     // Pre-validación IMEI duplicado: si algún item.producto_stock trae un IMEI
     // que ya existe en `productos` (vivo), abortar ANTES de hacer cualquier
     // INSERT. Regla del negocio: IMEI es único físicamente.
-    if (tipo === 'compra' && items.length > 0) {
+    // 2026-07-17 (task #150): mismo path para `entrega_mercaderia` — también
+    // ingresa productos con posibles IMEIs.
+    if (puedeCrearStock && items.length > 0) {
       const imeisACrear = items
         .filter(it => it.producto_stock?.imei)
         .map(it => String(it.producto_stock.imei).trim())
@@ -550,7 +556,12 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     );
     const mov = rows[0];
 
-    // Ítems solo en compras (los pagos no llevan productos)
+    // Ítems en compras y entregas de mercadería (los pagos no llevan productos).
+    // 2026-07-17 (task #150): entrega_mercaderia comparte 100% del bulk-insert
+    // de items + productos porque el efecto sobre inventario es idéntico al de
+    // una compra (ingresa stock nuevo con IMEIs, cantidades, etc.). Sólo
+    // difieren en el saldo (ver `lib/saldoProveedor.js`) y en la caja (entrega
+    // no toca caja — rechazado en el schema).
     //
     // #P-01 bulkificado con UNNEST: antes era un loop con 1 INSERT por item +
     // 1 INSERT por producto + 1 audit por producto. Para 50 items con stock:
@@ -558,7 +569,7 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     // Ahora: 1 INSERT items + 1 INSERT productos + 1 audit del lote = 3 RTT.
     let insertedItems = [];
     let productosCreados = [];
-    if (tipo === 'compra' && items.length > 0) {
+    if (puedeCrearStock && items.length > 0) {
       // 1) Bulk INSERT de los items (siempre).
       const itemRes = await client.query(
         `INSERT INTO proveedor_movimiento_items
@@ -612,13 +623,18 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
         productosCreados = prodRes.rows;
 
         // 1 sólo audit-lote en vez de 1 por producto. La trazabilidad queda
-        // en el JSON 'despues.ids' + ref al movimiento de compra.
+        // en el JSON 'despues.ids' + ref al movimiento origen.
         // 1 audit-lote con flag _bulk: true (constraint solo acepta
         // INSERT/UPDATE/DELETE).
+        // 2026-07-17 (task #150): `_origen` diferencia compra vs entrega para
+        // que reportes futuros puedan filtrar sin releer el proveedor_movimiento.
+        const origenAudit = tipo === 'entrega_mercaderia'
+          ? 'entrega_mercaderia_proveedor'
+          : 'compra_proveedor';
         await audit(client, 'productos', 'INSERT', productosCreados[0]?.id || mov.id, {
           despues: {
             _bulk: true,
-            _origen: 'compra_proveedor',
+            _origen: origenAudit,
             proveedor_movimiento_id: mov.id,
             ids: productosCreados.map(p => p.id),
             count: productosCreados.length,
@@ -632,6 +648,11 @@ router.post('/movimientos', compraMovimientoLimiter, validate(createMovimientoPr
     // se trata como contado (sale el efectivo al instante). Sin caja_id queda
     // como deuda con el proveedor (flujo histórico, se paga después con tipo=pago).
     // Un PAGO siempre sale de la caja indicada.
+    //
+    // 2026-07-17 (task #150): `entrega_mercaderia` NO cae acá — el schema Zod
+    // rechaza `caja_id + entrega_mercaderia`. Los productos son "el pago" y
+    // la caja no se toca. Whitelist explícita para defensa en profundidad
+    // (si mañana se afloja el schema, el endpoint sigue sano).
     if (caja_id && (tipo === 'pago' || tipo === 'compra')) {
       await postCajaMovimiento(client, {
         caja_id, fecha, tipo: 'egreso', monto, moneda, tc,
@@ -951,25 +972,18 @@ router.delete('/movimientos/:id', requireCapability('proveedores.eliminar_compra
 
 router.get('/resumen/saldos', async (req, res, next) => {
   try {
-    // Misma regla que el listado: compras con caja_id son contado, no deuda.
-    // COR-2 audit 2026-07-06: 'devolucion' cross-tenant baja la deuda (= pago).
-    const SALDO_EXPR = `
-      CASE
-        WHEN m.tipo='pago'                              THEN -m.monto_usd
-        WHEN m.tipo='devolucion'                        THEN -m.monto_usd
-        WHEN m.tipo='compra' AND m.caja_id IS NOT NULL  THEN 0
-        ELSE m.monto_usd
-      END
-    `;
+    // Fórmula canónica en `lib/saldoProveedor.js` (task #150 consolidación).
+    // Reglas: pago/devolucion/entrega_mercaderia bajan deuda; compra con
+    // caja_id = contado (no deuda); compra sin caja_id + saldo_inicial suman.
     const rows = await db.withTenant(req.tenantId, async (client) => {
       const { rows } = await client.query(
         `SELECT p.id, p.nombre,
-                COALESCE(SUM(${SALDO_EXPR}), 0) AS saldo_usd
+                COALESCE(SUM(${SALDO_CASE_M}), 0) AS saldo_usd
            FROM proveedores p
            LEFT JOIN proveedor_movimientos m ON m.proveedor_id = p.id AND m.deleted_at IS NULL
           WHERE p.deleted_at IS NULL
           GROUP BY p.id
-         HAVING COALESCE(SUM(${SALDO_EXPR}), 0) <> 0
+         HAVING COALESCE(SUM(${SALDO_CASE_M}), 0) <> 0
           ORDER BY saldo_usd DESC`
       );
       return rows;
