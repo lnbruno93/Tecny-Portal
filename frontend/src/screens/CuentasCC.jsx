@@ -226,11 +226,31 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
   const setRef    = (i, col) => el => { cr.current[`${i}_${col}`] = el; };
   const focusCell = (i, col) => cr.current[`${i}_${col}`]?.focus();
 
+  // 2026-07-17: helper para leer la moneda de la caja seleccionada por row.
+  //   · Sin caja seleccionada → 'ARS' (default histórico del portal AR).
+  //   · Con caja USD/USDT → esa moneda (el monto se ingresa directo en USD).
+  //   · Con caja ARS/UYU → esa moneda (el user ingresa en la moneda nativa
+  //     de la caja + TC para calcular el equivalente USD del saldo B2B).
+  function monedaDeCaja(row) {
+    if (!row.caja_id) return 'ARS';
+    const c = cajas.find(x => String(x.id) === String(row.caja_id));
+    return c?.moneda || 'ARS';
+  }
+
   function upd(i, field, val) {
     setRows(rs => rs.map((r, idx) => {
       if (idx !== i) return r;
       const next = { ...r, [field]: val };
-      // Auto-calcula USD cuando cambian ARS o TC
+      // 2026-07-17: cuando cambia la caja seleccionada, resetear los inputs
+      // para que el user vuelva a ingresar el monto en la moneda correcta.
+      // Sin este reset, un monto "500" ingresado con caja ARS seguiría en el
+      // input después de cambiar a caja USD (con signficado distinto: 500
+      // ARS vs 500 USD son montos muy diferentes).
+      if (field === 'caja_id' && val !== r.caja_id) {
+        next.ars = ''; next.tc = ''; next.monto = '';
+      }
+      // Auto-calcula el monto USD cuando cambian ARS/moneda-nativa o TC.
+      // Si la caja es USD/USDT, `next.monto` viene tipeado directo por el user.
       if (field === 'ars' || field === 'tc') {
         const ars = parseFloat(next.ars);
         const tc  = parseFloat(next.tc);
@@ -244,7 +264,12 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
 
   function saveRow(i) {
     const row = rows[i];
-    if (parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
+    // 2026-07-17: validación multi-moneda. Con cajas locales (ARS/UYU/etc)
+    // requerimos TC para poder convertir a USD; con cajas USD/USDT no hace
+    // falta porque el monto ya está en la moneda de la caja.
+    const _mCaja = monedaDeCaja(row);
+    const _esGrupoDolar = _mCaja === 'USD' || _mCaja === 'USDT';
+    if (!_esGrupoDolar && parseFloat(row.ars) > 0 && !(parseFloat(row.tc) > 0)) {
       setErrs(e => ({ ...e, [i]: 'Ingresá el tipo de cambio' }));
       // Destildar visualmente el check para que vuelva a estar disponible.
       if (row._confirming) upd(i, '_confirming', false);
@@ -253,7 +278,10 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     if (!row.monto || Number(row.monto) <= 0) {
       // Bug 2026-06-09: antes era un return silencioso — el operador marcaba
       // el check con fila vacía y "no pasaba nada". Ahora avisamos.
-      setErrs(e => ({ ...e, [i]: 'Ingresá el monto en USD (o ARS + TC)' }));
+      setErrs(e => ({ ...e, [i]: _esGrupoDolar
+        ? `Ingresá el monto en ${_mCaja}`
+        : 'Ingresá el monto (o moneda local + TC)',
+      }));
       if (row._confirming) upd(i, '_confirming', false);
       return;
     }
@@ -270,7 +298,26 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     const notasTrim = row.notas ? row.notas.trim() : '';
     const notasFinal = notasTrim || null;
 
-    // 2. Actualización optimista instantánea en la lista
+    // 2026-07-17: Payload multi-moneda para que el backend consuma la caja
+    // en su moneda nativa (evita "moneda del pago no coincide con la caja").
+    //   · Cajas USD/USDT: monto_total = valor USD directo, moneda = USD/USDT,
+    //     tc = null (no hay conversión).
+    //   · Cajas ARS/UYU:  monto_total = row.ars (nativo), moneda = ARS/UYU,
+    //     tc = row.tc (para que el backend convierta a USD y persista en
+    //     movimientos_cc.monto_total y postCajaMovimiento use la moneda nativa).
+    // El helper `monedaDeCaja(row)` resuelve la moneda desde la caja
+    // seleccionada; si no hay caja aún seleccionada, default 'ARS' (compat
+    // con clientes AR sin caja donde solo se refleja en CC).
+    const monedaCaja = monedaDeCaja(row);
+    const esGrupoDolar = monedaCaja === 'USD' || monedaCaja === 'USDT';
+    const payloadMoneda = monedaCaja;
+    const payloadTc     = esGrupoDolar ? null : Number(row.tc) || null;
+    const payloadMonto  = esGrupoDolar ? Number(row.monto) : Number(row.ars);
+
+    // 2. Actualización optimista instantánea en la lista.
+    // `monto_total` optimista se muestra en USD para que el listado sea
+    // homogéneo mientras el backend confirma (la fila real que vuelve del
+    // backend viene con el USD calculado).
     onSave({
       id: tempId, _pending: true,
       fecha: row.fecha, tipo: row.tipo,
@@ -283,7 +330,10 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     // submit de la misma fila (ej. usuario presiona Tab dos veces por reflex).
     cuentas.createMovimiento({
       cliente_cc_id: clienteId,
-      fecha: row.fecha, tipo: row.tipo, monto_total: Number(row.monto),
+      fecha: row.fecha, tipo: row.tipo,
+      monto_total: payloadMonto,
+      moneda: payloadMoneda,
+      tc: payloadTc,
       caja_id: row.caja_id ? Number(row.caja_id) : null,
       notas: notasFinal,
       items: [], // pagos no tienen items
@@ -346,42 +396,55 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
               </select>
             </td>
 
-            {/* Pago: $ ARS ÷ TC → USD (solo modo). Columnas Producto/Modelo/
+            {/* Pago: si la caja es USD/USDT el user ingresa el monto directo;
+                si la caja es ARS/UYU muestra el flow "$ Moneda ÷ TC → USD"
+                (los saldos B2B se persisten en USD). Columnas Producto/Modelo/
                 Cap/Color/IMEI quedan absorbidas por el colSpan. */}
             <td colSpan={6} style={{ padding: '4px 12px' }}>
+              {(() => {
+                const monedaCaja = monedaDeCaja(row);
+                // Grupo "dólar": USD y USDT. Para estas cajas el saldo B2B ya
+                // es la moneda de la caja → no hay conversión, el user tipea
+                // directo el monto.
+                const esGrupoDolar = monedaCaja === 'USD' || monedaCaja === 'USDT';
+                return (
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>$ ARS</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>$ {monedaCaja}</span>
+                  {!esGrupoDolar && (
+                    <>
+                      <input
+                        ref={setRef(i, 'first')}
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                        style={{ ...inp, flex: '1.6 1 0', textAlign: 'right' }}
+                        placeholder="0"
+                        value={row.ars}
+                        onChange={e => upd(i, 'ars', e.target.value)}
+                      />
+                      <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>÷</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>TC</span>
+                      <input
+                        type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
+                        style={{ ...inp, flex: '1 1 0', textAlign: 'right' }}
+                        placeholder="1200"
+                        value={row.tc}
+                        onChange={e => upd(i, 'tc', e.target.value)}
+                      />
+                      <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
+                    </>
+                  )}
                   <input
-                    ref={setRef(i, 'first')}
-                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                    style={{ ...inp, flex: '1.6 1 0', textAlign: 'right' }}
-                    placeholder="0"
-                    value={row.ars}
-                    onChange={e => upd(i, 'ars', e.target.value)}
-                  />
-                  <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>÷</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>TC</span>
-                  <input
-                    type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                    style={{ ...inp, flex: '1 1 0', textAlign: 'right' }}
-                    placeholder="1200"
-                    value={row.tc}
-                    onChange={e => upd(i, 'tc', e.target.value)}
-                  />
-                  <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--pos)', whiteSpace: 'nowrap' }}>USD</span>
-                  <input
-                    ref={setRef(i, 'monto')}
+                    ref={esGrupoDolar ? setRef(i, 'first') : setRef(i, 'monto')}
                     type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
                     style={{
                       ...inp, flex: '1.6 1 0', textAlign: 'right', fontWeight: 700,
-                      color:      autoUSD ? 'var(--pos)' : 'inherit',
-                      background: autoUSD ? 'rgba(34,197,94,0.08)' : 'var(--surface)',
+                      color:      autoUSD && !esGrupoDolar ? 'var(--pos)' : 'inherit',
+                      background: autoUSD && !esGrupoDolar ? 'rgba(34,197,94,0.08)' : 'var(--surface)',
                     }}
                     placeholder="0"
                     value={row.monto}
-                    readOnly={autoUSD}
-                    onChange={e => { if (!autoUSD) upd(i, 'monto', e.target.value); }}
+                    readOnly={autoUSD && !esGrupoDolar}
+                    onChange={e => { if (esGrupoDolar || !autoUSD) upd(i, 'monto', e.target.value); }}
                     onKeyDown={e => {
                       if (e.key === 'Enter') { e.preventDefault(); saveRow(i); }
                       else handleLastKey(e, i);
@@ -390,18 +453,24 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   <span style={{ color: 'var(--text-muted)', fontSize: 14, userSelect: 'none' }}>→</span>
                   <select
                     style={{ ...inp, flex: '1.4 1 0', cursor: 'pointer' }}
-                    title="Caja donde ingresa el pago"
+                    title="Caja donde ingresa/sale el pago"
                     value={row.caja_id}
                     onChange={e => upd(i, 'caja_id', e.target.value)}>
                     <option value="">Caja (opcional)…</option>
-                    {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    {cajas.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre} ({c.moneda})
+                      </option>
+                    ))}
                     <CajaSelectHint />
                   </select>
                 </div>
-                {/* TC warning debajo del row: solo se muestra si el TC ARS tipeado
-                    está por debajo del umbral configurado en Alertas. */}
-                {parseFloat(row.ars) > 0 && <TcWarning tc={row.tc} />}
-              </td>
+                );
+              })()}
+              {/* TC warning debajo del row: solo se muestra si el TC de la
+                  moneda local tipeado está por debajo del umbral en Alertas. */}
+              {parseFloat(row.ars) > 0 && <TcWarning tc={row.tc} />}
+            </td>
 
             {/* Confirmar fila — el check dispara saveRow al marcarse.
                 Bug reportado 2026-06-09 (testing pre-salida): antes solo
@@ -544,10 +613,15 @@ export default function CuentasCC() {
   const notasTimerRef = useRef(null);
   useEffect(() => () => clearTimeout(notasTimerRef.current), []);
 
-  // ── Cargar cajas (para asignar el pago a una caja USD) ──
+  // ── Cargar cajas (todas las activas, cualquier moneda) ──
+  // 2026-07-17 (post-#660): Lucas reportó que no aparecían todas las cajas
+  // configuradas en el negocio. Filtro histórico las restringía a USD/USDT
+  // (pattern legacy de cuando los pagos B2B se hacían solo en USD nativo).
+  // Hoy el backend acepta cualquier moneda + tc para conversión, así que
+  // no hay razón para el filtro. Sacamos USD/USDT; mantenemos `activo`.
   useEffect(() => {
     cajasApi.listCajas()
-      .then(list => setCajasUsd((list || []).filter(c => c.activo !== false && (c.moneda === 'USD' || c.moneda === 'USDT'))))
+      .then(list => setCajasUsd((list || []).filter(c => c.activo !== false)))
       .catch(silentReport);
   }, []);
 
