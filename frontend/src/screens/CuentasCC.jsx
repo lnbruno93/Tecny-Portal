@@ -11,6 +11,7 @@ import { userHasCap } from '../lib/userHasCap';
 import { fmt, fmtSigned, fmtFecha } from '../lib/format';
 import VentaB2BModal from '../components/VentaB2BModal';
 import CobranzaMasivaModal from '../components/CobranzaMasivaModal';
+import MercaderiaRecibidaModal from '../components/MercaderiaRecibidaModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -27,13 +28,19 @@ function fmtUSD(n) { return 'USD ' + fmt(n); }
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra:             { label: 'Compra',        tone: 'pos',  signo: +1 },
-  pago:               { label: 'Pago',          tone: 'neg',  signo: -1 },
+  compra:              { label: 'Compra',         tone: 'pos',  signo: +1 },
+  pago:                { label: 'Pago',           tone: 'neg',  signo: -1 },
   // tone='neg' (rojo) — la devolución reduce la venta original, visualmente
   // es una "salida". signo=-1 sigue indicando que RESTA del saldo del cliente.
-  devolucion:         { label: 'Devolución',     tone: 'neg',  signo: -1 },
-  parte_de_pago:      { label: 'Parte pago',     tone: 'neg',  signo: -1 },
-  entrega_mercaderia: { label: 'Entrega',        tone: 'info', signo: -1 },
+  devolucion:          { label: 'Devolución',     tone: 'neg',  signo: -1 },
+  parte_de_pago:       { label: 'Parte pago',     tone: 'neg',  signo: -1 },
+  entrega_mercaderia:  { label: 'Entrega',        tone: 'info', signo: -1 },
+  saldo_inicial:       { label: 'Saldo inicial',  tone: 'default', signo: +1 },
+  // 2026-07-17 (task #155): el cliente entrega productos que cancelan deuda.
+  // Ingresa stock + baja saldo (mismo efecto contable que un pago). Tono
+  // `info` para diferenciarlo visualmente del pago (rojo) — es un ingreso,
+  // no una salida de dinero.
+  mercaderia_recibida: { label: 'Recibí mercadería', tone: 'info', signo: -1 },
 };
 const CAT_TONE = { 'VIP': 'accent', 'A+': 'pos', 'A-': 'default' };
 
@@ -485,6 +492,10 @@ export default function CuentasCC() {
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [showVentaModal,   setShowVentaModal]   = useState(false);
   const [showCobranzaMasiva, setShowCobranzaMasiva] = useState(false);
+  // 2026-07-17 (task #155) — cliente cancela deuda entregando mercadería.
+  // Los items ingresan al Inventario + el saldo del cliente baja. Sólo se
+  // ofrece el botón si el cliente tiene saldo distinto de 0.
+  const [showMercaderiaRecibida, setShowMercaderiaRecibida] = useState(false);
   const [clienteForm, setClienteForm]       = useState(EMPTY_CLIENTE);
   const [clienteCreating, setClienteCreating] = useState(false);
   const [clienteError, setClienteError]     = useState('');
@@ -1104,6 +1115,16 @@ export default function CuentasCC() {
                       {resumen.cant_movimientos || 0}
                     </div>
                   </div>
+                  {/* 2026-07-17 (task #155): "Recibí mercadería" — el cliente
+                      cancela deuda entregando productos (van al stock + baja el
+                      saldo). Sólo se ofrece si hay saldo distinto de 0; si el
+                      cliente está en 0 no hay caso de uso normal. */}
+                  {Number(resumen.saldo || 0) !== 0 && (
+                    <button className="btn btn-sm" onClick={() => setShowMercaderiaRecibida(true)}
+                            title="El cliente te entrega productos que cancelan su deuda">
+                      <Icons.Box size={13} /> Recibí mercadería
+                    </button>
+                  )}
                   <button className="btn btn-sm btn-primary" onClick={() => setShowVentaModal(true)}>
                     <Icons.Plus size={13} /> Cargar venta
                   </button>
@@ -1421,6 +1442,27 @@ export default function CuentasCC() {
           onSaved={() => {
             setShowVentaModal(false);
             // Refrescar detalle + saldo en la lista
+            if (selectedId) {
+              Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId, { page: 1, limit: 100 })])
+                .then(([resumen, movsResp]) => {
+                  setClienteDetail({ resumen, movimientos: movsResp.data || [] });
+                  setMovsPag(movsResp.pagination || { page: 1, pages: 1, total: 0 });
+                  setClientes(prev => prev.map(c => c.id === selectedId ? { ...c, saldo: resumen.saldo } : c));
+                })
+                .catch(() => {});
+            }
+          }}
+        />
+      )}
+
+      {/* ── Modal Recibí mercadería (task #155, 2026-07-17) ── */}
+      {showMercaderiaRecibida && cliente && (
+        <MercaderiaRecibidaModal
+          cliente={cliente}
+          saldoActual={Number(resumen.saldo || 0)}
+          onClose={() => setShowMercaderiaRecibida(false)}
+          onSaved={() => {
+            setShowMercaderiaRecibida(false);
             if (selectedId) {
               Promise.all([cuentas.resumen(selectedId), cuentas.movimientos(selectedId, { page: 1, limit: 100 })])
                 .then(([resumen, movsResp]) => {
