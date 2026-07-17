@@ -42,12 +42,16 @@ function todayISO() { return new Date().toLocaleDateString('sv'); }
 // Item vacío con defaults sensatos. tipo_carga='unitario' + condicion='nuevo'
 // se pueden reajustar por item (aunque en general la UX apunta al equipo
 // unitario nuevo que trae el cliente).
+// 2026-07-17 (pedido de Lucas post-#654): agregado `color` + `bateria` para
+// alinear con los campos que ya usa el modal Inventario (celulares/consolas).
 const mkItem = () => ({
   _id: Math.random().toString(36).slice(2),
   nombre: '',
   categoria_id: '',
   clase_id: '',
   imei: '',
+  color: '',
+  bateria: '',
   cantidad: '1',
   valor_unitario: '',
 });
@@ -128,6 +132,14 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
       if (!q || q <= 0) return `Item ${i + 1}: la cantidad debe ser mayor a 0`;
       const v = Number(it.valor_unitario);
       if (!v || v <= 0) return `Item ${i + 1}: el valor unitario debe ser mayor a 0`;
+      // Batería: opcional pero si viene, 0..100 (schema Zod en backend hace
+      // el mismo guard — validamos acá para feedback rápido).
+      if (it.bateria !== '' && it.bateria != null) {
+        const b = Number(it.bateria);
+        if (!Number.isFinite(b) || b < 0 || b > 100) {
+          return `Item ${i + 1}: la batería debe estar entre 0 y 100`;
+        }
+      }
     }
     if (totalUsd <= 0) return 'El total debe ser mayor a 0';
     const imeis = items.map(it => it.imei.trim()).filter(Boolean);
@@ -168,6 +180,8 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
         // Sin caja_id, sin tc → el backend rechaza si vienen.
         items: items.map(it => ({
           producto: it.nombre.trim(),
+          modelo: null,
+          color: it.color.trim() || null,
           imei_serial: it.imei.trim() || null,
           valor: Number(it.valor_unitario) || 0,
           verificado: false,
@@ -176,6 +190,11 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             clase_id: it.clase_id,
             nombre: it.nombre.trim(),
             imei: it.imei.trim() || null,
+            color: it.color.trim() || null,
+            // Batería en %: 0..100. Vacío → null (el schema es opcional).
+            bateria: it.bateria !== '' && it.bateria != null
+              ? Number(it.bateria)
+              : null,
             categoria_id: it.categoria_id ? Number(it.categoria_id) : null,
             costo: Number(it.valor_unitario) || 0,
             costo_moneda: 'USD',
@@ -232,8 +251,8 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
     fontSize: 12,
   };
   // Grid compartido para header + filas. Un cambio acá y todo queda alineado.
-  //  Producto | Categoría | IMEI | Cant | Valor unit. | Subtotal | ✕
-  const gridCols = 'minmax(180px, 2fr) 140px minmax(120px, 1.2fr) 60px 100px 100px 28px';
+  //  Producto | Categoría | IMEI | Color | Bat% | Cant | Valor unit. | Subtotal | ✕
+  const gridCols = 'minmax(160px, 1.4fr) 130px minmax(100px, 1fr) 90px 60px 55px 90px 90px 28px';
   const cellPad = '6px 8px';
   const inputCell = { width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 4 };
   const previewStyle = {
@@ -259,7 +278,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true"
          aria-labelledby="mercaderia-recibida-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
-      <div className="modal" style={{ maxWidth: 1080, width: '95vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 1200, width: '96vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="mercaderia-recibida-modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icons.Box size={16} /> Recibir mercadería · {nombreCliente}
@@ -333,6 +352,8 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
               <span>Producto</span>
               <span>Categoría</span>
               <span>IMEI / Serial</span>
+              <span>Color</span>
+              <span style={{ textAlign: 'center' }}>Bat.%</span>
               <span style={{ textAlign: 'center' }}>Cant.</span>
               <span style={{ textAlign: 'right' }}>Valor unit.</span>
               <span style={{ textAlign: 'right' }}>Subtotal</span>
@@ -374,6 +395,22 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
                       onChange={e => updItem(idx, 'imei', e.target.value)}
                       placeholder="—"
                       style={{ ...inputCell, fontFamily: 'monospace' }}
+                    />
+                    <input
+                      type="text" className="input"
+                      value={it.color}
+                      onChange={e => updItem(idx, 'color', e.target.value)}
+                      placeholder="Negro"
+                      style={inputCell}
+                    />
+                    <input
+                      type="number" className="input mono"
+                      min="0" max="100" step="1"
+                      onKeyDown={blockInvalidNumberKeys}
+                      value={it.bateria}
+                      onChange={e => updItem(idx, 'bateria', e.target.value)}
+                      placeholder="—"
+                      style={{ ...inputCell, textAlign: 'center' }}
                     />
                     <input
                       type="number" className="input mono"
