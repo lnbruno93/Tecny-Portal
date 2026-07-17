@@ -48,6 +48,9 @@ const TIPO_DISPLAY = {
   // Sale plata de una caja (EGRESO) y sube el saldo del cliente. Tono `pos`
   // porque suma al saldo (mismo tono que compra), signo +1.
   pago_a_cliente:      { label: 'Le pago',           tone: 'pos',     signo: +1 },
+  // 2026-07-17 (ter): mismo efecto contable que pago_a_cliente pero semántica
+  // distinta — "Doy" (cambio, adelanto, favor puntual) vs "Le pago" (reintegro).
+  entrega_dinero:      { label: 'Doy',               tone: 'pos',     signo: +1 },
 };
 const CAT_TONE = { 'VIP': 'accent', 'A+': 'pos', 'A-': 'default' };
 
@@ -329,20 +332,21 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   Ventas (compras/devoluciones/entregas) se hacen vía
                   "Cargar venta" arriba. */}
             <td style={{ padding: '4px 5px' }}>
-              {/* 2026-07-17: labels renombrados post-Lucas request:
-                    Pago       → "Me pagan" (el cliente me paga)
-                    Le pago    → "pago_a_cliente" (yo le doy dinero)
-                    Doy        → "entrega_mercaderia" (yo le entrego productos,
-                                 abre modal en un follow-up, hoy disabled).
+              {/* 2026-07-17: 3 opciones cubren los pagos B2B monetarios:
+                    Me pagan → `pago` — cliente me paga (INGRESO caja, baja saldo)
+                    Le pago  → `pago_a_cliente` — le devuelvo/reintegro (EGRESO caja, sube saldo)
+                    Doy      → `entrega_dinero` — le doy dinero puntual: cambio,
+                               adelanto, favor (EGRESO caja, sube saldo). Mismo
+                               efecto contable que Le pago pero label distinto
+                               para que el histórico + reportes diferencien.
                   "Parte pago" (parte_de_pago) removido del dropdown por
-                  simplificar — sigue soportado por backend, solo no está
-                  expuesto en la planilla inline. */}
+                  simplificar — sigue soportado por backend, solo no expuesto. */}
               <select style={{ ...inp, cursor: 'pointer' }}
                 value={row.tipo}
                 onChange={e => upd(i, 'tipo', e.target.value)}>
                 <option value="pago">− Me pagan</option>
                 <option value="pago_a_cliente">+ Le pago</option>
-                <option value="entrega_mercaderia" disabled>− Doy (próximamente)</option>
+                <option value="entrega_dinero">+ Doy</option>
               </select>
             </td>
 

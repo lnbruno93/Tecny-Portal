@@ -9,7 +9,11 @@ const CATEGORIAS_CC       = ['VIP', 'A+', 'A-'];
 // 2026-07-17 (bis): agregado 'pago_a_cliente'. Simetría del `pago`: nosotros
 // le damos dinero al cliente (reembolso, devolución, anticipo). Requiere
 // caja_id (EGRESO) y sube el saldo del cliente.
-const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia', 'mercaderia_recibida', 'pago_a_cliente'];
+// 2026-07-17 (ter): agregado 'entrega_dinero'. Mismo efecto contable que
+// pago_a_cliente pero semántica distinta: "le doy" (cambio, adelanto,
+// favor) vs "le pago" (reintegro/devolución). Separado para que el
+// histórico + reportes puedan filtrarlos.
+const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia', 'mercaderia_recibida', 'pago_a_cliente', 'entrega_dinero'];
 
 // Sub-objeto opcional para crear producto en Inventario cuando el cliente
 // entrega mercadería (tipo=mercaderia_recibida). Reutiliza el mismo schema de
@@ -123,8 +127,11 @@ const createMovimientoCCSchema = z.object({
   // Tipos que requieren caja_id:
   //   - 'pago'           — el cliente paga su deuda. Cobramos en alguna caja.
   //   - 'parte_de_pago'  — pago parcial. Mismo razonamiento.
-  //   - 'pago_a_cliente' — NOSOTROS le damos dinero al cliente. La plata sale
-  //                        de una caja específica (EGRESO).
+  //   - 'pago_a_cliente' — NOSOTROS le damos dinero al cliente (reintegro).
+  //                        La plata sale de una caja específica (EGRESO).
+  //   - 'entrega_dinero' — le damos dinero puntual (cambio, adelanto, favor).
+  //                        Mismo efecto contable que pago_a_cliente pero
+  //                        distinto sema (task 2026-07-17).
   //   - 'compra'         — venta a crédito. Si hay caja, registra el cobro
   //                        inicial; si no, queda totalmente a crédito. Acá
   //                        SÍ aceptamos caja_id null (es por diseño).
@@ -132,8 +139,8 @@ const createMovimientoCCSchema = z.object({
   // El refine valida los 3 primeros casos; 'compra' y otros tipos
   // ('devolucion', 'ajuste') siguen aceptando caja_id null.
   .refine(
-    d => !['pago', 'parte_de_pago', 'pago_a_cliente'].includes(d.tipo) || (d.caja_id != null && d.caja_id > 0),
-    { message: 'caja_id requerido para tipo pago/parte_de_pago/pago_a_cliente', path: ['caja_id'] }
+    d => !['pago', 'parte_de_pago', 'pago_a_cliente', 'entrega_dinero'].includes(d.tipo) || (d.caja_id != null && d.caja_id > 0),
+    { message: 'caja_id requerido para tipo pago/parte_de_pago/pago_a_cliente/entrega_dinero', path: ['caja_id'] }
   )
   // 2026-07-12 P0-1: si el pago NO es USD, exigir `tc` positivo (para convertir
   // a USD y persistir en `movimientos_cc.monto_total` correcto). Consistente con
