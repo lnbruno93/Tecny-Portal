@@ -362,11 +362,11 @@ export default function NotificationsBell() {
             width: 380,
             maxWidth: 'calc(100vw - 24px)',
             maxHeight: '70vh',
-            background: 'var(--surface, #fff)',
-            color: 'var(--ink, #0d1220)',
-            border: '1px solid var(--border, #e5e7eb)',
+            background: 'var(--surface, #131a2b)',
+            color: 'var(--text, #e8ecf6)',
+            border: '1px solid var(--border, #2c3656)',
             borderRadius: 10,
-            boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
             zIndex: 100,
             overflow: 'hidden',
             display: 'flex',
@@ -377,7 +377,7 @@ export default function NotificationsBell() {
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '12px 14px',
-            borderBottom: '1px solid var(--border, #e5e7eb)',
+            borderBottom: '1px solid var(--border, #2c3656)',
             fontSize: 13, fontWeight: 600,
           }}>
             <span>Notificaciones</span>
@@ -399,7 +399,7 @@ export default function NotificationsBell() {
           {/* Body scrolleable */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {loadingList && (
-              <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted, #6b7280)', fontSize: 13 }}>
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 13 }}>
                 Cargando…
               </div>
             )}
@@ -411,8 +411,8 @@ export default function NotificationsBell() {
                   padding: '8px 14px',
                   fontSize: 10, fontWeight: 700,
                   letterSpacing: '0.06em', textTransform: 'uppercase',
-                  color: 'var(--muted, #6b7280)',
-                  background: 'var(--surface-2, rgba(0,0,0,0.02))',
+                  color: 'var(--text-muted, #7c87a5)',
+                  background: 'var(--surface-2, #1a2238)',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
                   <span>Novedades</span>
@@ -428,7 +428,7 @@ export default function NotificationsBell() {
                 </div>
 
                 {novedadesItems.length === 0 ? (
-                  <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--muted, #6b7280)', fontSize: 12 }}>
+                  <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 12 }}>
                     Sin novedades por ahora.
                   </div>
                 ) : (
@@ -447,7 +447,7 @@ export default function NotificationsBell() {
                               padding: '10px 14px',
                               background: isUnseen ? 'rgba(14,165,233,0.06)' : 'transparent',
                               border: 'none',
-                              borderBottom: '1px solid var(--border, #f0f0f0)',
+                              borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
                               textAlign: 'left', cursor: 'pointer',
                               display: 'flex', gap: 10,
                               font: 'inherit', color: 'inherit',
@@ -462,7 +462,7 @@ export default function NotificationsBell() {
                               }}>
                                 {nota.titulo}
                               </div>
-                              <div style={{ fontSize: 11, color: 'var(--muted, #6b7280)' }}>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted, #7c87a5)' }}>
                                 {fmtRelative(nota.publicado_en)}
                               </div>
                             </div>
@@ -485,7 +485,7 @@ export default function NotificationsBell() {
                   style={{
                     width: '100%', padding: '8px 14px',
                     background: 'transparent', border: 'none',
-                    borderBottom: '1px solid var(--border, #e5e7eb)',
+                    borderBottom: '1px solid var(--border, #2c3656)',
                     color: 'var(--accent, #0ea5e9)',
                     fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     textAlign: 'center',
@@ -503,8 +503,8 @@ export default function NotificationsBell() {
                   padding: '8px 14px',
                   fontSize: 10, fontWeight: 700,
                   letterSpacing: '0.06em', textTransform: 'uppercase',
-                  color: 'var(--muted, #6b7280)',
-                  background: 'var(--surface-2, rgba(0,0,0,0.02))',
+                  color: 'var(--text-muted, #7c87a5)',
+                  background: 'var(--surface-2, #1a2238)',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
                   <span>Red B2B</span>
@@ -519,7 +519,7 @@ export default function NotificationsBell() {
                   )}
                 </div>
                 {b2bItems.length === 0 ? (
-                  <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--muted, #6b7280)', fontSize: 12 }}>
+                  <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--text-muted, #7c87a5)', fontSize: 12 }}>
                     Sin notificaciones Red B2B.
                   </div>
                 ) : (
@@ -538,7 +538,7 @@ export default function NotificationsBell() {
                               padding: '10px 14px',
                               background: unread ? 'rgba(14,165,233,0.06)' : 'transparent',
                               border: 'none',
-                              borderBottom: '1px solid var(--border, #f0f0f0)',
+                              borderBottom: '1px solid var(--hairline, rgba(255,255,255,0.06))',
                               textAlign: 'left', cursor: 'pointer',
                               display: 'flex', flexDirection: 'column', gap: 4,
                               font: 'inherit', color: 'inherit',
@@ -557,7 +557,7 @@ export default function NotificationsBell() {
                               )}
                               <span style={{ flex: 1 }}>{label}</span>
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--muted, #6b7280)', paddingLeft: unread ? 16 : 0 }}>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted, #7c87a5)', paddingLeft: unread ? 16 : 0 }}>
                               {fmtRelative(n.created_at)}
                             </div>
                           </button>
