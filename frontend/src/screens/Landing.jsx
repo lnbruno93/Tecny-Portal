@@ -838,9 +838,10 @@ export default function Landing() {
           </div>
           <div className="foot-bottom">
             {/* #441: removido "Tech Reseller" del crédito — era un nombre
-                inventado de la franja de logos fake. Celnyx es el tenant
-                interno real (ex-iPro, ver #449). */}
-            <div className="cr">© 2026 Tecny · Celnyx · Buenos Aires, Argentina</div>
+                inventado de la franja de logos fake.
+                2026-07-17: Lucas pidió sacar "Celnyx" también — el crédito
+                queda solo con la marca del producto (Tecny) + ubicación. */}
+            <div className="cr">© 2026 Tecny · Buenos Aires, Argentina</div>
             <div className="soc">
               <SoonLink label="Instagram">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-label="Instagram">
