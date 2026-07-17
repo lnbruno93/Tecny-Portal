@@ -565,7 +565,7 @@ export default function Cambios() {
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>u$s {fmt(m.monto_usd)}</td>
                           <td className="tiny">{m.caja_nombre || '—'}</td>
                           <td className="muted tiny">{m.comentarios || '—'}</td>
-                          <td><button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
+                          <td><button className="icon-btn" title="Eliminar movimiento" aria-label="Eliminar movimiento" style={{ color: 'var(--neg)' }} onClick={() => handleDeleteMov(m.id)}><Icons.Trash size={13} /></button></td>
                         </tr>
                       );
                     })}

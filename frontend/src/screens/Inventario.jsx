@@ -2007,7 +2007,7 @@ export default function Inventario() {
                 {depositos.map(d => (
                   <div key={d.id} className="flex-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
                     <span>{d.nombre}</span>
-                    <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
+                    <button className="icon-btn" title="Eliminar depósito" aria-label="Eliminar depósito" style={{ color: 'var(--neg)' }} onClick={() => delDeposito(d)}><Icons.Trash size={13} /></button>
                   </div>
                 ))}
               </div>

@@ -889,6 +889,7 @@ export default function Envios() {
           <button
             className="icon-btn"
             title="Día anterior"
+            aria-label="Día anterior"
             onClick={() => setDateFilter(d => d ? shiftDate(d, -1) : shiftDate(todayStr(), -1))}
           >
             <Icons.ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} />
@@ -899,6 +900,7 @@ export default function Envios() {
           <button
             className="icon-btn"
             title="Día siguiente"
+            aria-label="Día siguiente"
             onClick={() => setDateFilter(d => d ? shiftDate(d, +1) : shiftDate(todayStr(), +1))}
           >
             <Icons.ChevronRight size={14} />
@@ -1465,7 +1467,7 @@ export default function Envios() {
                                     .map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                               </div>
-                              <button type="button" className="icon-btn" style={{ marginBottom: 1 }} onClick={() => rmItem(it._id)}>
+                              <button type="button" className="icon-btn" title="Quitar ítem" aria-label="Quitar ítem" style={{ marginBottom: 1 }} onClick={() => rmItem(it._id)}>
                                 <Icons.X size={14} />
                               </button>
                             </div>
@@ -1620,7 +1622,7 @@ export default function Envios() {
                                   />
                                 </div>
                               )}
-                              <button type="button" className="icon-btn" onClick={() => rmItem(it._id)}>
+                              <button type="button" className="icon-btn" title="Quitar ítem" aria-label="Quitar ítem" onClick={() => rmItem(it._id)}>
                                 <Icons.X size={14} />
                               </button>
                             </div>
