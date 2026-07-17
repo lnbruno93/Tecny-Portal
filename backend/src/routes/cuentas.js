@@ -637,6 +637,19 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       });
     }
 
+    // 2026-07-17 (pago_a_cliente): simetría inversa del `pago`. Cuando
+    // NOSOTROS le damos dinero al cliente, la plata SALE de la caja
+    // indicada — es EGRESO. El saldo del cliente sube (queda debiéndonos
+    // más O canceló su crédito a favor) por la fórmula canónica en saldoCC.js.
+    if (caja_id && tipo === 'pago_a_cliente') {
+      await postCajaMovimiento(client, {
+        caja_id, fecha, tipo: 'egreso', monto: monto_total, moneda, tc,
+        origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
+        concepto: `Pago al cliente #${cliente_cc_id}`,
+        user_id: req.user.id,
+      });
+    }
+
     // Insertar items y, si tienen `producto_id`, validar stock y descontar.
     //   - compra / entrega_mercaderia → salida de stock (descuenta cantidad).
     //   - devolucion → entrada de stock (suma cantidad).

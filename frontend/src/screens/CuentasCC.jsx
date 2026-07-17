@@ -28,19 +28,26 @@ function fmtUSD(n) { return 'USD ' + fmt(n); }
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra:              { label: 'Compra',         tone: 'pos',  signo: +1 },
-  pago:                { label: 'Pago',           tone: 'neg',  signo: -1 },
+  compra:              { label: 'Compra',            tone: 'pos',     signo: +1 },
+  // 2026-07-17: renombrado el label a "Me pagan" para dropdown inline coherente
+  // con la simetría "Me pagan / Le pago" (ver debajo). El value backend sigue
+  // siendo 'pago', esto es sólo el label visible al user.
+  pago:                { label: 'Me pagan',          tone: 'neg',     signo: -1 },
   // tone='neg' (rojo) — la devolución reduce la venta original, visualmente
   // es una "salida". signo=-1 sigue indicando que RESTA del saldo del cliente.
-  devolucion:          { label: 'Devolución',     tone: 'neg',  signo: -1 },
-  parte_de_pago:       { label: 'Parte pago',     tone: 'neg',  signo: -1 },
-  entrega_mercaderia:  { label: 'Entrega',        tone: 'info', signo: -1 },
-  saldo_inicial:       { label: 'Saldo inicial',  tone: 'default', signo: +1 },
+  devolucion:          { label: 'Devolución',        tone: 'neg',     signo: -1 },
+  parte_de_pago:       { label: 'Parte pago',        tone: 'neg',     signo: -1 },
+  entrega_mercaderia:  { label: 'Entrega',           tone: 'info',    signo: -1 },
+  saldo_inicial:       { label: 'Saldo inicial',     tone: 'default', signo: +1 },
   // 2026-07-17 (task #155): el cliente entrega productos que cancelan deuda.
   // Ingresa stock + baja saldo (mismo efecto contable que un pago). Tono
   // `info` para diferenciarlo visualmente del pago (rojo) — es un ingreso,
   // no una salida de dinero.
-  mercaderia_recibida: { label: 'Recibí mercadería', tone: 'info', signo: -1 },
+  mercaderia_recibida: { label: 'Recibí mercadería', tone: 'info',    signo: -1 },
+  // 2026-07-17 (bis): NOSOTROS le damos dinero al cliente (reembolso, ajuste).
+  // Sale plata de una caja (EGRESO) y sube el saldo del cliente. Tono `pos`
+  // porque suma al saldo (mismo tono que compra), signo +1.
+  pago_a_cliente:      { label: 'Le pago',           tone: 'pos',     signo: +1 },
 };
 const CAT_TONE = { 'VIP': 'accent', 'A+': 'pos', 'A-': 'default' };
 
@@ -193,8 +200,12 @@ const mkRow = (prev = null) => ({
   // Monto final en USD (auto-calculado desde ARS ÷ TC si se llenan)
   monto: '',
   ars: '', tc: '',
-  // Caja donde ingresa el dinero
+  // Caja donde ingresa/sale el dinero
   caja_id: prev?.caja_id || '',
+  // 2026-07-17: comentarios opcionales por movimiento — para que el user pueda
+  // dejar contexto de por qué se hizo (ej: "Devolución excedente", "Cliente
+  // pagó con USD y USDT"). Se envía como `notas` al backend.
+  notas: '',
   // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
   // Idempotency-Key por row. Cada fila de esta planilla es un movimiento
   // independiente — si el user hace Tab dos veces por accidente sobre la
@@ -256,11 +267,14 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
     setErrs(e => { const n = { ...e }; delete n[i]; return n; });
     setTimeout(() => focusCell((i + 1) % ROW_COUNT, 'first'), 20);
 
+    const notasTrim = row.notas ? row.notas.trim() : '';
+    const notasFinal = notasTrim || null;
+
     // 2. Actualización optimista instantánea en la lista
     onSave({
       id: tempId, _pending: true,
       fecha: row.fecha, tipo: row.tipo,
-      monto_total: Number(row.monto), descripcion: null, notas: null,
+      monto_total: Number(row.monto), descripcion: null, notas: notasFinal,
       items: [], // pagos no tienen items
     });
 
@@ -271,6 +285,7 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
       cliente_cc_id: clienteId,
       fecha: row.fecha, tipo: row.tipo, monto_total: Number(row.monto),
       caja_id: row.caja_id ? Number(row.caja_id) : null,
+      notas: notasFinal,
       items: [], // pagos no tienen items
     }, row.idempotency_key)
     .then(real => onSaveDone(tempId, real))
@@ -314,11 +329,20 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   Ventas (compras/devoluciones/entregas) se hacen vía
                   "Cargar venta" arriba. */}
             <td style={{ padding: '4px 5px' }}>
+              {/* 2026-07-17: labels renombrados post-Lucas request:
+                    Pago       → "Me pagan" (el cliente me paga)
+                    Le pago    → "pago_a_cliente" (yo le doy dinero)
+                    Doy        → "entrega_mercaderia" (yo le entrego productos,
+                                 abre modal en un follow-up, hoy disabled).
+                  "Parte pago" (parte_de_pago) removido del dropdown por
+                  simplificar — sigue soportado por backend, solo no está
+                  expuesto en la planilla inline. */}
               <select style={{ ...inp, cursor: 'pointer' }}
                 value={row.tipo}
                 onChange={e => upd(i, 'tipo', e.target.value)}>
-                <option value="pago">− Pago</option>
-                <option value="parte_de_pago">− Parte pago</option>
+                <option value="pago">− Me pagan</option>
+                <option value="pago_a_cliente">+ Le pago</option>
+                <option value="entrega_mercaderia" disabled>− Doy (próximamente)</option>
               </select>
             </td>
 
@@ -399,6 +423,20 @@ function InlineAddRows({ clienteId, cajas = [], onSave, onSaveDone, onSaveError 
                   }
                 }}
                 onKeyDown={e => handleLastKey(e, i)}
+              />
+            </td>
+
+            {/* 2026-07-17: Comentarios opcionales por movimiento */}
+            <td style={{ padding: '4px 5px' }}>
+              <input
+                type="text"
+                className="input"
+                style={{ ...inp, fontSize: 12 }}
+                placeholder="—"
+                title="Comentarios (opcional)"
+                value={row.notas || ''}
+                onChange={e => upd(i, 'notas', e.target.value)}
+                maxLength={1000}
               />
             </td>
 
@@ -1163,14 +1201,15 @@ export default function CuentasCC() {
                   <col style={{ width: 66  }} />{/* Cap.         */}
                   <col style={{ width: 76  }} />{/* Color        */}
                   <col style={{ width: 130 }} />{/* IMEI/Serial  */}
-                  <col style={{ width: 94  }} />{/* Monto ARS    */}
+                  <col style={{ width: 94  }} />{/* Monto USD    */}
                   <col style={{ width: 30  }} />{/* ✓            */}
+                  <col style={{ width: 150 }} />{/* Comentarios  */}
                   <col style={{ width: 48  }} />{/* Acción       */}
                 </colgroup>
 
                 <thead>
                   <tr style={{ background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 1 }}>
-                    {['Fecha', 'Tipo', 'Detalle', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', ''].map((h, i) => (
+                    {['Fecha', 'Tipo', 'Detalle', 'Modelo', 'Cap.', 'Color', 'IMEI / Serial', 'Monto USD', '✓', 'Comentarios', ''].map((h, i) => (
                       <th key={i} style={{
                         padding: '7px 8px', fontSize: 11, fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -1185,7 +1224,7 @@ export default function CuentasCC() {
                   {/* Movimientos existentes (ASC — cronológico) */}
                   {movimientos.length === 0 && !loadingDetail && (
                     <tr>
-                      <td colSpan={10} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
+                      <td colSpan={11} style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13, textAlign: 'center' }}>
                         Sin movimientos — completá la fila azul para agregar el primero
                       </td>
                     </tr>
@@ -1277,6 +1316,13 @@ export default function CuentasCC() {
                             ? <span style={{ color: 'var(--pos)', fontSize: 14 }}>✓</span>
                             : <span className="dim" style={{ fontSize: 11 }}>—</span>}
                         </td>
+                        {/* 2026-07-17: columna Comentarios */}
+                        <td style={{ ...cell, color: 'var(--text-2)', fontSize: 12 }}
+                            title={m.notas || ''}>
+                          {m.notas
+                            ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', whiteSpace: 'nowrap' }}>{m.notas}</span>
+                            : <span className="dim">—</span>}
+                        </td>
                         <td style={{ padding: '7px 6px' }}>
                           {!m._pending && (
                             <button className="icon-btn" title="Eliminar" onClick={() => handleDeleteMovimiento(m.id)}>
@@ -1287,7 +1333,7 @@ export default function CuentasCC() {
                       </tr>
                       {isExpanded && (
                         <tr key={`${m.id}-detail`} style={{ borderBottom: '1px solid var(--hairline)' }}>
-                          <td colSpan={10} style={{ padding: '4px 12px 12px 36px', background: 'var(--surface-2, rgba(0,0,0,0.02))' }}>
+                          <td colSpan={11} style={{ padding: '4px 12px 12px 36px', background: 'var(--surface-2, rgba(0,0,0,0.02))' }}>
                             <MovimientoDesglose mov={m} onDevolverItem={handleDevolverItem} />
                           </td>
                         </tr>
@@ -1298,7 +1344,7 @@ export default function CuentasCC() {
 
                   {movsPag.page < movsPag.pages && (
                     <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '8px' }}>
+                      <td colSpan={11} style={{ textAlign: 'center', padding: '8px' }}>
                         <button className="btn btn-ghost btn-sm" onClick={loadMasMovimientos} disabled={loadingMasMovs}>
                           {loadingMasMovs ? 'Cargando…' : `Ver movimientos más antiguos (${movimientos.length} de ${movsPag.total})`}
                         </button>
