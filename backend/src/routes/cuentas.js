@@ -544,9 +544,15 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     const montoUsd = round2(toUsd(monto_total, moneda, tc));
 
     // #H-05 cross-module: si la venta/devolución toca stock de inventario
-    // (producto_id en algún item), exigir también permiso `inventario`.
-    const tocaStock = ['compra', 'devolucion', 'entrega_mercaderia'].includes(tipo)
-      && items.some(it => it.producto_id);
+    // (producto_id en algún item) O si estamos creando productos nuevos
+    // (mercaderia_recibida con producto_stock), exigir permiso `inventario`.
+    // 2026-07-17 (task #155): mercaderia_recibida agregado al set. También
+    // considera el nuevo camino de creación (producto_stock).
+    const tocaStock = (
+      (['compra', 'devolucion', 'entrega_mercaderia', 'mercaderia_recibida'].includes(tipo)
+        && items.some(it => it.producto_id))
+      || (tipo === 'mercaderia_recibida' && items.some(it => it.producto_stock))
+    );
     if (tocaStock) {
       // 2026-06-23 F4: cutover a requireCapability. hasCapability mantiene
       // la misma semántica para checks cross-módulo inline.
@@ -634,12 +640,16 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     // Insertar items y, si tienen `producto_id`, validar stock y descontar.
     //   - compra / entrega_mercaderia → salida de stock (descuenta cantidad).
     //   - devolucion → entrada de stock (suma cantidad).
+    //   - mercaderia_recibida (task #155) → entrada de stock. Los items pueden
+    //     traer producto_id (referencia a producto existente) o producto_stock
+    //     (crea uno nuevo con la info del cliente).
     //
     // #P-02 bulkificado: antes era loop con N SELECT FOR UPDATE + N INSERT
     // items + N UPDATE productos = ~3N round-trips. Ahora: 1 SELECT batch
     // ordenado + 1 INSERT bulk + 1 UPDATE bulk = 3 RTT total.
     let insertedItems = [];
-    const tiposConItems = ['compra', 'devolucion', 'entrega_mercaderia'];
+    let productosCreados = [];
+    const tiposConItems = ['compra', 'devolucion', 'entrega_mercaderia', 'mercaderia_recibida'];
     if (tiposConItems.includes(tipo) && items.length > 0) {
       const esSalida = tipo === 'compra' || tipo === 'entrega_mercaderia';
 
@@ -813,6 +823,97 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
           });
         }
       }
+
+      // 2026-07-17 (task #155): creación de productos nuevos para
+      // `mercaderia_recibida`. El cliente entrega productos que NO están en
+      // nuestro catálogo — los creamos en la misma transacción con IMEI
+      // validation + audit-lote. Mismo pattern que `routes/proveedores.js`
+      // POST /movimientos con producto_stock. Sólo aplica cuando tipo es
+      // `mercaderia_recibida` (los demás tipos ignoran producto_stock).
+      if (tipo === 'mercaderia_recibida') {
+        const stockItems = items.filter(it => it.producto_stock);
+        if (stockItems.length > 0) {
+          // Pre-validación IMEI: primero interno al lote, después vs stock vivo.
+          const imeisACrear = stockItems
+            .map(it => String(it.producto_stock.imei || '').trim())
+            .filter(Boolean);
+          if (imeisACrear.length > 0) {
+            const seenImei = new Set();
+            for (const im of imeisACrear) {
+              if (seenImei.has(im)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: `IMEI duplicado dentro del mismo lote: ${im}` });
+              }
+              seenImei.add(im);
+            }
+            // Lock por IMEI (#H-04) — hashes ordenados evitan deadlock entre
+            // lotes concurrentes que compartan IMEIs.
+            const hashes = [...new Set(imeisACrear)].sort();
+            for (const imei of hashes) {
+              await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [imei]);
+            }
+            const { rows: exist } = await client.query(
+              `SELECT imei FROM productos WHERE imei = ANY($1::text[]) AND deleted_at IS NULL`,
+              [imeisACrear]
+            );
+            if (exist.length > 0) {
+              await client.query('ROLLBACK');
+              return res.status(409).json({
+                error: `IMEI ya existe${exist.length > 1 ? 's' : ''} en Inventario: ${exist.map(r => r.imei).join(', ')}`,
+                imeis_existentes: exist.map(r => r.imei),
+              });
+            }
+          }
+
+          // Bulk INSERT de productos. `movimiento_cc_id` = mov.id para trazar
+          // cascade en el DELETE del movimiento.
+          const STOCK_COLS = [
+            'tipo_carga', 'clase_id', 'nombre', 'imei', 'gb', 'color', 'bateria',
+            'categoria_id', 'deposito_id', 'proveedor', 'costo', 'costo_moneda',
+            'precio_venta', 'precio_moneda', 'trackear_stock', 'cantidad', 'estado',
+            'observaciones', 'condicion', 'oculto', 'movimiento_cc_id',
+          ];
+          const PRODUCT_COL_TYPES = {
+            tipo_carga: 'text', clase_id: 'uuid', nombre: 'text', imei: 'text',
+            gb: 'text', color: 'text', bateria: 'int',
+            categoria_id: 'int', deposito_id: 'int', proveedor: 'text',
+            costo: 'numeric', costo_moneda: 'text',
+            precio_venta: 'numeric', precio_moneda: 'text',
+            trackear_stock: 'boolean', cantidad: 'int', estado: 'text',
+            observaciones: 'text', condicion: 'text', oculto: 'boolean',
+            movimiento_cc_id: 'int',
+          };
+          const params = STOCK_COLS.map((col, i) => `$${i + 1}::${PRODUCT_COL_TYPES[col]}[]`).join(', ');
+          const colsAlias = STOCK_COLS.map((_, i) => `c${i + 1}`).join(', ');
+          const insertCols = STOCK_COLS.join(', ');
+          const arrays = STOCK_COLS.map(col => stockItems.map(it => {
+            const ps = it.producto_stock;
+            if (col === 'condicion')        return ps.condicion ?? 'nuevo';
+            if (col === 'oculto')           return ps.oculto    ?? false;
+            if (col === 'movimiento_cc_id') return mov.id;
+            return ps[col] ?? null;
+          }));
+          const prodRes = await client.query(
+            `INSERT INTO productos (${insertCols})
+               SELECT ${colsAlias} FROM UNNEST(${params}) AS u(${colsAlias})
+               RETURNING *`,
+            arrays
+          );
+          productosCreados = prodRes.rows;
+
+          // 1 audit-lote (constraint acepta INSERT/UPDATE/DELETE).
+          await audit(client, 'productos', 'INSERT', productosCreados[0]?.id || mov.id, {
+            despues: {
+              _bulk: true,
+              _origen: 'mercaderia_recibida_cliente',
+              movimiento_cc_id: mov.id,
+              ids: productosCreados.map(p => p.id),
+              count: productosCreados.length,
+            },
+            user_id: req.user.id,
+          });
+        }
+      }
     }
 
     await audit(client, 'movimientos_cc', 'INSERT', mov.id, {
@@ -822,9 +923,9 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
     await client.query('COMMIT');
     // Venta B2B descontó stock — invalidar el cache de métricas para que el
     // dashboard de Inventario refleje el nuevo total en el próximo refresh.
-    if (insertedItems.length > 0) invalidateMetricas(req.tenantId);
+    if (insertedItems.length > 0 || productosCreados.length > 0) invalidateMetricas(req.tenantId);
 
-    res.status(201).json({ ...mov, items: insertedItems });
+    res.status(201).json({ ...mov, items: insertedItems, productos_creados: productosCreados });
   } catch (err) {
     await client.query('ROLLBACK');
     // Race window residual Pattern G: 2 requests con la misma key llegan al
