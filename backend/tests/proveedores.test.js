@@ -617,6 +617,22 @@ describe('POST /api/proveedores/movimientos/bulk', () => {
     expect(r.status).toBe(400);
   });
 
+  it('rechaza tipo=entrega_mercaderia (bulk es solo para compras)', async () => {
+    // 2026-07-17 (task #150) — el bulk es para import XLSX de compras. Si se
+    // cuela una entrega_mercaderia, el loop del endpoint solo procesa items
+    // cuando tipo=compra → los productos NO llegarían al stock. Rechazamos
+    // en el schema para evitar el bug silencioso.
+    const prov = await crearProveedor({ nombre: `Bulk Rechazo Entrega ${Date.now()}` });
+    const r = await request(app).post('/api/proveedores/movimientos/bulk').set(auth()).send({
+      movimientos: [{
+        proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 100, moneda: 'USD',
+        items: [{ producto: 'X', valor: 100 }],
+      }],
+    });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/bulk.*compra|entrega.*single/i);
+  });
+
   it('respeta el rate limit del compraMovimientoLimiter', async () => {
     // Sanity: 1 request entra normal (los límites son por user/ip-window, no
     // queremos spam acá). El test específico de límite ya está cubierto en
@@ -722,5 +738,323 @@ describe('Proveedores — bulk-delete-all (admin)', () => {
     // Cleanup.
     await pool.query(`UPDATE productos SET deleted_at = NOW() WHERE id = $1`, [prodId]);
     await pool.query(`UPDATE proveedores SET deleted_at = NOW() WHERE id = $1`, [prov.id]);
+  });
+});
+
+// ─── Feature: entrega_mercaderia (task #150, 2026-07-17) ─────────────────────
+// Escenario disparador: un proveedor cancela deuda entregando productos en vez
+// de dinero. Ej: Lucas adelantó $2500 a Kevin y ahora Kevin le trae PS5s por
+// ese valor. En el modelo viejo no había forma limpia de registrarlo — una
+// `compra` sin caja_id SUMABA deuda (incorrecto: la deuda ya existía). El
+// nuevo tipo `entrega_mercaderia`:
+//   - INGRESA productos al stock (como una compra).
+//   - REDUCE el saldo del proveedor (como un pago).
+//   - NO toca caja (los productos SON el pago).
+describe('Proveedores — entrega_mercaderia', () => {
+  let catEntrega;
+
+  beforeAll(async () => {
+    const cat = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `Cat Entrega Mercaderia ${Date.now()}` });
+    catEntrega = cat.body.id;
+  });
+
+  it('happy path: reduce saldo, crea productos, NO toca caja', async () => {
+    // Setup: caja USD para verificar que no se mueve.
+    const caja = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: `Caja Entrega ${Date.now()}`, moneda: 'USD', saldo_inicial: 5000 });
+    expect(caja.status).toBe(201);
+    const cajaId = caja.body.id;
+
+    async function saldoCaja(id) {
+      const r = await request(app).get('/api/cajas/cajas').set(auth());
+      return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+    }
+    const saldoCajaInicial = await saldoCaja(cajaId);
+
+    // Prov con compra a crédito de 800 → nos debe... perdón, le debemos 800.
+    const prov = await crearProveedor({ nombre: `Prov Entrega Feliz ${Date.now()}` });
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 800, moneda: 'USD' });
+
+    // Ahora el proveedor cancela 500 entregándonos mercadería.
+    const entrega = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 500, moneda: 'USD',
+        descripcion: '1x PlayStation 5 a cuenta',
+        items: [{ producto: 'PlayStation 5', valor: 500,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'consolas',
+            nombre: 'PlayStation 5', imei: `PS5-${Date.now()}`,
+            cantidad: 1, categoria_id: catEntrega,
+            costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+          },
+        }],
+      });
+    expect(entrega.status).toBe(201);
+    expect(entrega.body.tipo).toBe('entrega_mercaderia');
+    expect(entrega.body.productos_creados).toHaveLength(1);
+    // Auto-fill del proveedor en el producto (mismo pattern que compra).
+    expect(entrega.body.productos_creados[0].proveedor).toContain('Prov Entrega Feliz');
+
+    // Saldo del proveedor: 800 (compra) - 500 (entrega) = 300.
+    const list = await request(app).get('/api/proveedores').set(auth());
+    const row = list.body.data.find(p => p.id === prov.id);
+    expect(Number(row.saldo_usd)).toBeCloseTo(300, 2);
+
+    // La caja NO se movió (aunque la creamos, no la pasamos como caja_id).
+    expect(await saldoCaja(cajaId)).toBeCloseTo(saldoCajaInicial, 2);
+
+    // Cleanup.
+    await pool.query(`UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1`, [cajaId]);
+  });
+
+  it('flujo operativo Tek Haus: compra a crédito + entrega_mercaderia cierra a 0', async () => {
+    // Caso más común según el pedido del cliente Tek Haus (task #150):
+    // proveedor con deuda (compra a crédito NO PAGADA todavía), y cancela
+    // entregando productos por el mismo valor. Saldo debe cerrar en 0.
+    const prov = await crearProveedor({ nombre: `Tek Haus Proveedor ${Date.now()}` });
+
+    // Compra a crédito de 2000 → nosotros le debemos 2000 al proveedor.
+    const compra = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 2000, moneda: 'USD',
+              descripcion: '4 PlayStations a crédito' });
+    expect(compra.status).toBe(201);
+
+    let list = await request(app).get('/api/proveedores').set(auth());
+    let row = list.body.data.find(p => p.id === prov.id);
+    expect(Number(row.saldo_usd)).toBeCloseTo(2000, 2);
+
+    // El proveedor entrega 4 PS5 valuados en 2000 → cancela la deuda.
+    // Alt: podría entregar productos DISTINTOS (a cuenta del anterior).
+    const entrega = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 2000, moneda: 'USD',
+        descripcion: 'PS5s entregadas a cuenta de la compra',
+        items: [{ producto: 'PS5', valor: 2000,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'consolas',
+            nombre: 'PS5 Slim', imei: `TEK-${Date.now()}`,
+            cantidad: 1, categoria_id: catEntrega,
+            costo: 2000, costo_moneda: 'USD', precio_venta: 2500, precio_moneda: 'USD',
+          },
+        }],
+      });
+    expect(entrega.status).toBe(201);
+    expect(entrega.body.productos_creados).toHaveLength(1);
+
+    // Saldo final: compra +2000 + entrega -2000 = 0.
+    list = await request(app).get('/api/proveedores').set(auth());
+    row = list.body.data.find(p => p.id === prov.id);
+    expect(Number(row.saldo_usd)).toBeCloseTo(0, 2);
+  });
+
+  it('sin items → 400 (no tiene sentido — sería un pago sin caja)', async () => {
+    const prov = await crearProveedor({ nombre: `Prov Sin Items ${Date.now()}` });
+    const r = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 100, moneda: 'USD' });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/items|entrega/i);
+  });
+
+  it('con caja_id → 400 (entrega no toca caja)', async () => {
+    const caja = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: `Caja Rechazo ${Date.now()}`, moneda: 'USD', saldo_inicial: 100 });
+    const prov = await crearProveedor({ nombre: `Prov Con Caja ${Date.now()}` });
+    const r = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 100, moneda: 'USD',
+        caja_id: caja.body.id,
+        items: [{ producto: 'X', valor: 100 }],
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/caja_id|entrega/i);
+
+    // Cleanup.
+    await pool.query(`UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1`, [caja.body.id]);
+  });
+
+  it('rechaza monto=0 cuando los items crean stock', async () => {
+    const prov = await crearProveedor({ nombre: `Prov Monto 0 ${Date.now()}` });
+    const r = await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({
+        proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 0, moneda: 'USD',
+        items: [{ producto: 'X', valor: 100,
+          producto_stock: {
+            tipo_carga: 'unitario', clase: 'consolas',
+            nombre: 'PS5 Gratis', imei: `FREE-${Date.now()}`, cantidad: 1, categoria_id: catEntrega,
+            costo: 100, costo_moneda: 'USD', precio_venta: 200, precio_moneda: 'USD',
+          },
+        }],
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/monto/i);
+  });
+
+  it('IMEI duplicado en la entrega → 409 (mismo path que compra)', async () => {
+    const prov = await crearProveedor({ nombre: `Prov IMEI Dup ${Date.now()}` });
+    const imei = `DUP-${Date.now()}`;
+    // Primero cargamos el IMEI vía compra normal.
+    await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 100, moneda: 'USD',
+      items: [{ valor: 100, producto_stock: {
+        tipo_carga: 'unitario', clase: 'consolas', categoria_id: catEntrega,
+        nombre: 'Existente', imei, cantidad: 1,
+        costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
+      } }],
+    });
+    // Ahora una entrega con el mismo IMEI debe caer.
+    const r = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 100, moneda: 'USD',
+      items: [{ valor: 100, producto_stock: {
+        tipo_carga: 'unitario', clase: 'consolas', categoria_id: catEntrega,
+        nombre: 'Dup entrega', imei, cantidad: 1,
+        costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
+      } }],
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.imeis_existentes).toContain(imei);
+  });
+
+  it('resumen de saldos: entrega_mercaderia baja la deuda mostrada', async () => {
+    const prov = await crearProveedor({ nombre: `Prov Resumen ${Date.now()}` });
+    // Compra a crédito 1000.
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 1000, moneda: 'USD' });
+
+    let resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    let entry = resumen.body.proveedores.find(p => p.id === prov.id);
+    expect(Number(entry.saldo_usd)).toBeCloseTo(1000, 2);
+
+    // Entrega mercadería 400 → deuda pasa a 600.
+    await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 400, moneda: 'USD',
+      items: [{ valor: 400, producto_stock: {
+        tipo_carga: 'unitario', clase: 'consolas', categoria_id: catEntrega,
+        nombre: 'Resumen', imei: `RES-${Date.now()}`, cantidad: 1,
+        costo: 400, costo_moneda: 'USD', precio_venta: 550, precio_moneda: 'USD',
+      } }],
+    });
+    resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    entry = resumen.body.proveedores.find(p => p.id === prov.id);
+    expect(Number(entry.saldo_usd)).toBeCloseTo(600, 2);
+  });
+
+  it('DELETE entrega_mercaderia: soft-deletea productos y revierte saldo', async () => {
+    const prov = await crearProveedor({ nombre: `Prov Delete Entrega ${Date.now()}` });
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD' });
+
+    const entrega = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 200, moneda: 'USD',
+      items: [{ valor: 200, producto_stock: {
+        tipo_carga: 'unitario', clase: 'consolas', categoria_id: catEntrega,
+        nombre: 'Revert Test', imei: `REV-${Date.now()}`, cantidad: 1,
+        costo: 200, costo_moneda: 'USD', precio_venta: 300, precio_moneda: 'USD',
+      } }],
+    });
+    expect(entrega.status).toBe(201);
+    const prodId = entrega.body.productos_creados[0].id;
+
+    // Antes del delete: saldo = 500 - 200 = 300, producto vivo.
+    let list = await request(app).get('/api/proveedores').set(auth());
+    let row = list.body.data.find(p => p.id === prov.id);
+    expect(Number(row.saldo_usd)).toBeCloseTo(300, 2);
+    let prodRes = await pool.query(`SELECT deleted_at FROM productos WHERE id = $1`, [prodId]);
+    expect(prodRes.rows[0].deleted_at).toBeNull();
+
+    // Delete → saldo vuelve a 500, producto soft-deleted.
+    const del = await request(app).delete(`/api/proveedores/movimientos/${entrega.body.id}`).set(auth());
+    expect(del.status).toBe(200);
+    list = await request(app).get('/api/proveedores').set(auth());
+    row = list.body.data.find(p => p.id === prov.id);
+    expect(Number(row.saldo_usd)).toBeCloseTo(500, 2);
+    prodRes = await pool.query(`SELECT deleted_at FROM productos WHERE id = $1`, [prodId]);
+    expect(prodRes.rows[0].deleted_at).not.toBeNull();
+  });
+
+  it('DELETE entrega_mercaderia con producto ya vendido → 409 (mismo guard que compra)', async () => {
+    const prov = await crearProveedor({ nombre: `Prov Delete Vendido ${Date.now()}` });
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD' });
+
+    const entrega = await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 200, moneda: 'USD',
+      items: [{ valor: 200, producto_stock: {
+        tipo_carga: 'unitario', clase: 'consolas', categoria_id: catEntrega,
+        nombre: 'Ya Vendido', imei: `SOLD-${Date.now()}`, cantidad: 1,
+        costo: 200, costo_moneda: 'USD', precio_venta: 300, precio_moneda: 'USD',
+      } }],
+    });
+    const prodId = entrega.body.productos_creados[0].id;
+    await pool.query(`UPDATE productos SET estado = 'vendido' WHERE id = $1`, [prodId]);
+
+    const del = await request(app).delete(`/api/proveedores/movimientos/${entrega.body.id}`).set(auth());
+    expect(del.status).toBe(409);
+    expect(del.body.error).toMatch(/se vendieron/i);
+  });
+});
+
+// ─── Consolidación helper saldoProveedor (task #150) ─────────────────────────
+// Verifica que el helper `lib/saldoProveedor.js` es la fuente única de verdad
+// y que el bug histórico de `dashboardMensual.deudaProveedores` está resuelto.
+// Antes: la deuda del dashboard estaba INFLADA cuando había compras contado
+// (compras con caja_id NO deberían sumar deuda — se pagaron al instante).
+describe('Proveedores — helper saldoProveedor consolidación', () => {
+  it('dashboardMensual respeta caja_id: compra contado NO suma a la deuda', async () => {
+    // Preparación: 1 proveedor con una compra CONTADO $500 (caja ya paga).
+    const caja = await request(app).post('/api/cajas/cajas').set(auth())
+      .send({ nombre: `Caja HelperContado ${Date.now()}`, moneda: 'USD', saldo_inicial: 2000 });
+    const prov = await crearProveedor({ nombre: `Prov Helper Contado ${Date.now()}` });
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 500, moneda: 'USD', caja_id: caja.body.id });
+
+    // Snapshot: el resumen ejecutivo del proveedor (canónico) dice deuda=0.
+    const resumen = await request(app).get('/api/proveedores/resumen/saldos').set(auth());
+    expect(resumen.body.proveedores.find(p => p.id === prov.id)).toBeUndefined();
+
+    // Dashboard mensual — antes del fix devolvía $500 acá (bug); ahora
+    // esa contribución NO debe estar. Hacemos el diff pre/post para aislarlo
+    // de otras deudas históricas del tenant de test.
+    const antes = await request(app).get('/api/dashboard/resumen-mensual').set(auth());
+    // Otra compra contado $700, mismo proveedor: si el bug estuviera, el
+    // deuda_usd subiría en $700. Con el fix, sube en $0.
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 700, moneda: 'USD', caja_id: caja.body.id });
+    // Cache-buster: el endpoint tiene TTL 60s per (tenant, periodo). Rompemos
+    // con un param dummy para que refetche.
+    const despues = await request(app).get(`/api/dashboard/resumen-mensual?_ts=${Date.now()}`).set(auth());
+    const deltaDeuda = Number(despues.body.actual.deuda_proveedores.deuda_usd)
+                     - Number(antes.body.actual.deuda_proveedores.deuda_usd);
+    // Sin bug: la compra contado no impacta deuda. Antes del fix: +700 acá.
+    expect(deltaDeuda).toBeCloseTo(0, 1);
+
+    // Cleanup.
+    await pool.query(`UPDATE metodos_pago SET deleted_at = NOW() WHERE id = $1`, [caja.body.id]);
+  });
+
+  it('dashboardMensual reconoce entrega_mercaderia como reductor de deuda', async () => {
+    // Prov con compra a crédito $600 → deuda=600 en el dashboard.
+    const prov = await crearProveedor({ nombre: `Prov Helper Entrega ${Date.now()}` });
+    await request(app).post('/api/proveedores/movimientos').set(auth())
+      .send({ proveedor_id: prov.id, fecha: hoy, tipo: 'compra', monto: 600, moneda: 'USD' });
+
+    const catHelper = await request(app).post('/api/inventario/categorias').set(auth())
+      .send({ nombre: `Cat Helper ${Date.now()}` });
+
+    const antes = await request(app).get(`/api/dashboard/resumen-mensual?_ts=${Date.now()}`).set(auth());
+    // Entrega $400 → deuda debería BAJAR $400.
+    await request(app).post('/api/proveedores/movimientos').set(auth()).send({
+      proveedor_id: prov.id, fecha: hoy, tipo: 'entrega_mercaderia', monto: 400, moneda: 'USD',
+      items: [{ valor: 400, producto_stock: {
+        tipo_carga: 'unitario', clase: 'consolas', categoria_id: catHelper.body.id,
+        nombre: 'Helper Test', imei: `HLP-${Date.now()}`, cantidad: 1,
+        costo: 400, costo_moneda: 'USD', precio_venta: 550, precio_moneda: 'USD',
+      } }],
+    });
+    const despues = await request(app).get(`/api/dashboard/resumen-mensual?_ts=${Date.now()}-2`).set(auth());
+    const deltaDeuda = Number(despues.body.actual.deuda_proveedores.deuda_usd)
+                     - Number(antes.body.actual.deuda_proveedores.deuda_usd);
+    expect(deltaDeuda).toBeCloseTo(-400, 1);
   });
 });

@@ -20,6 +20,10 @@
 
 const db = require('../config/database');
 const { toUsd, round2, getTcDefaultPais } = require('./money');
+// Fórmula canónica del saldo por proveedor — consolidada 2026-07-17 (task #150).
+// Antes este archivo tenía una CASE inline INCOMPLETA que ignoraba caja_id +
+// saldo_inicial, inflando la deuda cuando había compras pagadas de contado.
+const { SALDO_CASE_M: SALDO_PROV_CASE_M } = require('./saldoProveedor');
 
 // Duck-type para distinguir un pg Client/PoolClient del pool global. Si el
 // primer arg tiene .query (es decir, parece un Client o el pool mismo) Y NO
@@ -322,22 +326,31 @@ async function deudaCCClientes(...allArgs) {
 async function deudaProveedores(...allArgs) {
   const { exec, restArgs } = _resolveExec(allArgs[0], allArgs.slice(1));
   const [fechaCorte] = restArgs;
-  // Saldo proveedores: compras suman deuda, pagos + devoluciones la restan.
+  // Saldo proveedores: fórmula canónica de `lib/saldoProveedor.js`
+  // (consolidada 2026-07-17, task #150). Antes esta función tenía una CASE
+  // inline que:
+  //   - Ignoraba `compra + caja_id IS NOT NULL` (contado, no deuda) → sumaba
+  //     todas las compras y devolvía deuda INFLADA cuando había contado.
+  //   - Ignoraba `saldo_inicial` → deudas heredadas al alta del proveedor
+  //     nunca aparecían en el dashboard.
+  //   - No conocía `entrega_mercaderia` (introducido en task #150).
   // COR-2 audit 2026-07-06: devolución cross-tenant B2B (buyer devuelve al
-  // seller) baja la deuda del buyer con ese proveedor.
+  // seller) baja la deuda del buyer con ese proveedor — cubierto por el helper.
+  //
+  // Sub-agregado por proveedor evita over-count del COUNT(DISTINCT) cuando
+  // el saldo por proveedor es 0 (todas las compras fueron contado).
   const { rows } = await exec.query(
-    `SELECT COALESCE(SUM(
-       CASE m.tipo
-         WHEN 'compra'     THEN m.monto_usd
-         WHEN 'pago'       THEN -m.monto_usd
-         WHEN 'devolucion' THEN -m.monto_usd
-         ELSE 0
-       END
-     ), 0) AS deuda_usd,
-     COUNT(DISTINCT m.proveedor_id)::int AS proveedores_con_deuda
-     FROM proveedor_movimientos m
-     JOIN proveedores p ON p.id = m.proveedor_id
-    WHERE m.fecha <= $1 AND m.deleted_at IS NULL AND p.deleted_at IS NULL`,
+    `WITH saldos AS (
+       SELECT m.proveedor_id,
+              COALESCE(SUM(${SALDO_PROV_CASE_M}), 0) AS saldo
+         FROM proveedor_movimientos m
+         JOIN proveedores p ON p.id = m.proveedor_id
+        WHERE m.fecha <= $1 AND m.deleted_at IS NULL AND p.deleted_at IS NULL
+        GROUP BY m.proveedor_id
+     )
+     SELECT COALESCE(SUM(saldo), 0) AS deuda_usd,
+            COUNT(*) FILTER (WHERE saldo > 0)::int AS proveedores_con_deuda
+       FROM saldos`,
     [fechaCorte]
   );
   return {
