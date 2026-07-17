@@ -1432,7 +1432,7 @@ export default function Ventas() {
               </div>
               <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
                 <button className="btn btn-sm" onClick={() => openVenta(r)}><Icons.Check size={13} /> Procesar</button>
-                <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => deleteRapida(r.id)}><Icons.Trash size={13} /></button>
+                <button className="icon-btn" title="Eliminar venta rápida" aria-label="Eliminar venta rápida" style={{ color: 'var(--neg)' }} onClick={() => deleteRapida(r.id)}><Icons.Trash size={13} /></button>
               </div>
             </div>
           ))}
@@ -1567,7 +1567,7 @@ export default function Ventas() {
                             {Array.from(new Set(['USD', monedaLocal, it.moneda].filter(Boolean)))
                               .map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
-                          <button type="button" className="icon-btn" onClick={() => rmItem(it._id)}><Icons.X size={14} /></button>
+                          <button type="button" className="icon-btn" title="Quitar ítem" aria-label="Quitar ítem" onClick={() => rmItem(it._id)}><Icons.X size={14} /></button>
                         </div>
                       ))}
                     </div>
@@ -1943,7 +1943,7 @@ export default function Ventas() {
                                     .map(mm => <option key={mm} value={mm}>{mm}</option>)}
                                 </select>
                                 <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="TC" value={p.tc} onChange={e => setPago(p._id, 'tc', e.target.value)} />
-                                <button type="button" className="icon-btn" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
+                                <button type="button" className="icon-btn" title="Quitar pago" aria-label="Quitar pago" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
                               </div>
                               <TcWarning tc={p.tc} />
                             </div>
@@ -2022,7 +2022,7 @@ export default function Ventas() {
                                   />
                                 </div>
                               )}
-                              <button type="button" className="icon-btn" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
+                              <button type="button" className="icon-btn" title="Quitar pago" aria-label="Quitar pago" onClick={() => rmPago(p._id)}><Icons.X size={14} /></button>
                             </div>
                             {showDesglose && (
                               <div
@@ -2381,8 +2381,8 @@ Pago: Efectivo + Transferencia`}
                         operador ve cómo va a quedar el comprobante final, no el placeholder crudo. */}
                     <div style={{ fontSize: 13, maxWidth: '78%' }}><strong>{g.nombre}</strong>{g.es_default && <> <Badge tone="pos">Predeterminada</Badge></>}<div className="muted tiny" style={{ whiteSpace: 'pre-wrap', maxHeight: 50, overflow: 'hidden' }}>{renderPlantilla(g.texto, tenantNombre)}</div></div>
                     <div className="flex-row" style={{ gap: 6, flexShrink: 0 }}>
-                      <button className="icon-btn" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
-                      <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
+                      <button className="icon-btn" title="Editar plantilla" aria-label="Editar plantilla de garantía" onClick={() => setGForm({ id: g.id, nombre: g.nombre, texto: g.texto, es_default: !!g.es_default })}><Icons.Edit size={14} /></button>
+                      <button className="icon-btn" title="Eliminar plantilla" aria-label="Eliminar plantilla de garantía" style={{ color: 'var(--neg)' }} onClick={() => deleteGarantia(g.id)}><Icons.Trash size={14} /></button>
                     </div>
                   </div>
                 ))}
@@ -2418,7 +2418,7 @@ Pago: Efectivo + Transferencia`}
       {showEtiquetas && (
         <div ref={etiquetasModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowEtiquetas(false)} role="dialog" aria-modal="true" aria-labelledby="etiquetas-modal-title">
           <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button className="icon-btn" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="etiquetas-modal-title">Etiquetas de venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowEtiquetas(false)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               <div className="flex-row" style={{ gap: 6, marginBottom: 10 }}>
                 <input className="input" placeholder="Nueva etiqueta (ej. Mayorista)" value={nuevaEtiqueta} onChange={e => setNuevaEtiqueta(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtiqueta(); } }} />
@@ -2429,7 +2429,7 @@ Pago: Efectivo + Transferencia`}
                 {etiquetas.map(et => (
                   <div key={et.id} className="flex-between" style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--hairline)' }}>
                     <span>{et.nombre}</span>
-                    <button className="icon-btn" style={{ color: 'var(--neg)' }} onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
+                    <button className="icon-btn" title="Eliminar etiqueta" aria-label="Eliminar etiqueta" style={{ color: 'var(--neg)' }} onClick={() => delEtiqueta(et.id)}><Icons.Trash size={13} /></button>
                   </div>
                 ))}
               </div>
@@ -2452,7 +2452,7 @@ Pago: Efectivo + Transferencia`}
       {showComprob != null && (
         <div ref={comprobModalRef} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowComprob(null)} role="dialog" aria-modal="true" aria-labelledby="comprob-modal-title">
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-hd"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button className="icon-btn" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
+            <div className="modal-hd"><h3 id="comprob-modal-title">Comprobantes de la venta</h3><button className="icon-btn" title="Cerrar" aria-label="Cerrar" onClick={() => setShowComprob(null)}><Icons.X size={16} /></button></div>
             <div className="modal-body">
               {comprobList == null ? <div className="muted">Cargando…</div> : comprobList.length === 0 ? <div className="empty">Sin comprobantes</div> : (
                 comprobList.map(c => (
