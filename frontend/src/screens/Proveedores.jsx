@@ -10,7 +10,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { isTenantAdmin } from '../lib/userHasCap'; // 2026-06-25 Bug #1 — fix owner gating
 import { fmt, fmtFecha } from '../lib/format';
 import CompraProveedorModal from '../components/CompraProveedorModal';
-import EntregaMercaderiaModal from '../components/EntregaMercaderiaModal';
 import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import CajaSelectHint from '../components/CajaSelectHint';
 import TcWarning from '../components/TcWarning';
@@ -24,18 +23,13 @@ function fmtUSD(n) { return 'USD ' + fmt(n); }
 function todayISO() { return new Date().toLocaleDateString('sv'); }
 
 const TIPO_DISPLAY = {
-  compra:             { label: 'Compra',              tone: 'pos',     signo: +1 },
-  pago:               { label: 'Pago',                tone: 'neg',     signo: -1 },
-  saldo_inicial:      { label: 'Saldo inicial',       tone: 'default', signo: +1 },
+  compra:        { label: 'Compra',        tone: 'pos',     signo: +1 },
+  pago:          { label: 'Pago',          tone: 'neg',     signo: -1 },
+  saldo_inicial: { label: 'Saldo inicial', tone: 'default', signo: +1 },
   // 2026-07-06 (COR-2): devolución cross-tenant B2B — el buyer devuelve al
   // seller. Contablemente equivalente a un pago del buyer al seller: reduce
   // deuda. Antes caía al catch-all con label crudo "devolucion".
-  devolucion:         { label: 'Devolución',          tone: 'neg',     signo: -1 },
-  // 2026-07-17 (task #150): el proveedor entrega productos que cancelan
-  // deuda. Signo negativo (baja el saldo, como un pago). Tono `info` (azul)
-  // para diferenciarlo visualmente del pago (rojo) — no perdemos dinero,
-  // recibimos productos.
-  entrega_mercaderia: { label: 'Entrega mercadería',  tone: 'info',    signo: -1 },
+  devolucion:    { label: 'Devolución',    tone: 'neg',     signo: -1 },
 };
 
 function Status({ tone = 'default', children }) {
@@ -255,10 +249,6 @@ export default function Proveedores() {
   const [showCompra, setShowCompra] = useState(false);
   // ── Modal de pago simple (caja + monto + tc opcional + notas) ──────────
   const [showPago, setShowPago] = useState(false);
-  // ── Modal de entrega de mercadería (task #150) ──────────────────────────
-  // El proveedor entrega productos que cancelan (todo o parte de) su deuda.
-  // Los items se crean en Inventario en la misma tx (backend PR #648).
-  const [showEntrega, setShowEntrega] = useState(false);
   // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G): Idempotency-Key
   // regenerado cada vez que se abre el modal de pago. Previene duplicados
   // por doble-click del botón "Guardar pago" o retry por error transient.
@@ -480,16 +470,6 @@ export default function Proveedores() {
                 <button className="btn btn-sm" onClick={openPago}>
                   <Icons.Dollar size={13} /> Registrar pago
                 </button>
-                {/* 2026-07-17 (task #150): "Entrega mercadería" — el proveedor
-                    cancela deuda con productos (van al stock + baja el saldo).
-                    Sólo se ofrece si hay algo para cancelar (deuda O saldo a
-                    favor); si el saldo está en 0 no hay caso de uso normal. */}
-                {Number(kpis.saldo || 0) !== 0 && (
-                  <button className="btn btn-sm" onClick={() => setShowEntrega(true)}
-                          title="El proveedor te entrega productos que cancelan su deuda">
-                    <Icons.Box size={13} /> Entrega mercadería
-                  </button>
-                )}
                 <button className="btn btn-sm btn-primary" onClick={() => setShowCompra(true)}>
                   <Icons.Plus size={13} /> Cargar compra
                 </button>
@@ -570,9 +550,7 @@ export default function Proveedores() {
                         <td style={{ ...cell, fontSize: 12 }}>
                           {m.caja_nombre
                             ? <span title="Movimiento de contado: descontó esta caja">{m.caja_nombre}</span>
-                            : m.tipo === 'entrega_mercaderia'
-                              ? <span className="dim" title="No toca caja: los productos son el pago">—</span>
-                              : <span className="dim" title="A crédito (suma deuda)">CC</span>}
+                            : <span className="dim" title="A crédito (suma deuda)">CC</span>}
                         </td>
                         <td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>
                           <span className={t.tone === 'neg' ? 'neg' : 'pos'}>
@@ -698,16 +676,6 @@ export default function Proveedores() {
           proveedor={selected}
           onClose={() => setShowCompra(false)}
           onSaved={handleCompraSaved}
-        />
-      )}
-
-      {/* ── Modal Entrega de mercadería (task #150, 2026-07-17) ── */}
-      {showEntrega && selected && (
-        <EntregaMercaderiaModal
-          proveedor={selected}
-          saldoActual={Number(kpis.saldo || 0)}
-          onClose={() => setShowEntrega(false)}
-          onSaved={() => { setShowEntrega(false); handleCompraSaved(); }}
         />
       )}
 

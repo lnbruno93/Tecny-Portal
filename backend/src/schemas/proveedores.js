@@ -56,11 +56,7 @@ const createMovimientoProveedorSchema = z.object({
   proveedor_id: z.coerce.number().int().positive('proveedor_id inválido'),
   // Fecha con validación compartida (M-07): no futura, no antes del 2000.
   fecha:        fechaNoFutura,
-  // 2026-07-17 (task #150): agregado 'entrega_mercaderia'. El proveedor
-  // cancela deuda entregando productos en vez de dinero (los productos entran
-  // al inventario como en una compra, pero el saldo se REDUCE como si fuera
-  // un pago). Ver `lib/saldoProveedor.js` para la semántica en la fórmula.
-  tipo:         z.enum(['compra', 'pago', 'entrega_mercaderia'], { error: 'tipo debe ser: compra, pago, entrega_mercaderia' }),
+  tipo:         z.enum(['compra', 'pago'], { error: 'tipo debe ser: compra, pago' }),
   descripcion:  z.string().trim().max(500).optional().nullable(),
   // Hard cap: 10M USD por movimiento (auditoría #B-04).
   monto:        z.coerce.number().min(0).max(10_000_000, 'Monto excede el máximo (10M)').default(0),
@@ -68,9 +64,8 @@ const createMovimientoProveedorSchema = z.object({
   tc:           z.coerce.number().positive().optional().nullable(),
   caja_id:      z.coerce.number().int().positive().optional().nullable(),
   notas:        z.string().trim().max(1000).optional().nullable(),
-  // items aplica a 'compra' y 'entrega_mercaderia' (ambos ingresan stock);
-  // la ruta los ignora en 'pago'.
-  items:        z.array(itemProveedorSchema).max(200, 'Máximo 200 ítems por movimiento').optional().default([]),
+  // items solo aplica a 'compra' (productos comprados); la ruta los ignora en 'pago'
+  items:        z.array(itemProveedorSchema).max(200, 'Máximo 200 ítems por compra').optional().default([]),
 }).strict()
   // 2026-07-08 Multi-país F2 backfill: antes solo cubría ARS; UYU tenía el
   // mismo bug (`toUsd(m,'UYU',null)=0` → saldo del proveedor corrupto).
@@ -81,32 +76,14 @@ const createMovimientoProveedorSchema = z.object({
   // #M-02: si la compra crea productos, el monto debe ser > 0 (antes se
   // podía mandar monto=0 con producto_stock → producto "gratis" sin
   // auditoría de caja).
-  //
-  // 2026-07-17 (task #150): extendido a entrega_mercaderia. Una entrega
-  // también genera productos en Inventario y debe traer un monto real (es
-  // el valor por el que se cancela deuda al proveedor). monto=0 con items
-  // sería inconsistente.
   .refine(d => {
-    if (!['compra', 'entrega_mercaderia'].includes(d.tipo)) return true;
+    if (d.tipo !== 'compra') return true;
     const tieneStock = (d.items || []).some(it => it.producto_stock);
     if (!tieneStock) return true;
     return Number(d.monto) > 0;
   }, {
-    message: 'Un movimiento que crea productos en Inventario debe tener monto > 0',
+    message: 'Una compra que crea productos en Inventario debe tener monto > 0',
     path: ['monto'],
-  })
-  // 2026-07-17 (task #150): entrega_mercaderia NO admite caja_id (no hay
-  // dinero involucrado — los productos SON el pago). Si el caller lo manda
-  // por error rechazamos con error explícito.
-  .refine(d => !(d.tipo === 'entrega_mercaderia' && d.caja_id != null), {
-    message: 'entrega_mercaderia no admite caja_id: los productos entregados son el pago',
-    path: ['caja_id'],
-  })
-  // 2026-07-17 (task #150): entrega_mercaderia requiere al menos 1 item.
-  // Sin items sería equivalente a un `pago` — pero sin caja. No tiene sentido.
-  .refine(d => d.tipo !== 'entrega_mercaderia' || (d.items || []).length >= 1, {
-    message: 'entrega_mercaderia requiere al menos 1 item (los productos entregados)',
-    path: ['items'],
   });
 
 // Resolve-or-create bulk de proveedores — usado por el import de stock.
@@ -132,17 +109,7 @@ const bulkCreateMovimientosProveedorSchema = z.object({
   movimientos: z.array(createMovimientoProveedorSchema)
     .min(1, 'Al menos 1 movimiento es requerido')
     .max(50, 'Máximo 50 movimientos por bulk (uno por proveedor en el XLSX)'),
-}).strict()
-  // 2026-07-17 (task #150): el bulk es para import XLSX de compras masivas —
-  // los tipos `pago` y `entrega_mercaderia` son operaciones puntuales UI-driven
-  // y no forman parte de ese flujo. Rechazamos explícitamente para evitar
-  // procesamiento silencioso (el loop del endpoint solo maneja `compra`, así
-  // que una `entrega_mercaderia` bulk-eada crearía el movimiento pero perdería
-  // los items → producto no llega al stock, saldo se ajusta mal).
-  .refine(d => d.movimientos.every(m => m.tipo === 'compra'), {
-    message: 'Bulk solo admite tipo=compra. Para pagos o entregas de mercadería usá el endpoint single.',
-    path: ['movimientos'],
-  });
+}).strict();
 
 module.exports = {
   createProveedorSchema,

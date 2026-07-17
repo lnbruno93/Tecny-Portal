@@ -1,8 +1,8 @@
 // saldoProveedor.js — fórmula canónica para calcular el saldo de un proveedor
 // (cuentas por pagar). FUENTE ÚNICA DE VERDAD, espejo de `saldoCC.js`.
 //
-// 2026-07-17 (task #150) — Hasta hoy la fórmula estaba duplicada en 3 lugares
-// con divergencias silenciosas:
+// 2026-07-17 — Hasta hoy la fórmula estaba duplicada en 4 lugares con
+// divergencias silenciosas:
 //   · routes/proveedores.js#GET / (listado)      — completa
 //   · routes/proveedores.js#GET /resumen/saldos  — completa
 //   · lib/chat-tools.js#get_proveedores_pendientes — completa
@@ -13,15 +13,14 @@
 // pagada de contado. Cash flow reports viciados.
 //
 // La fórmula correcta (ya vigente en /proveedores + /resumen + chat-tools):
-//   - `saldo_inicial`                             → +monto_usd (deuda heredada)
-//   - `compra` con caja_id                        → 0 (contado, no genera deuda)
-//   - `compra` sin caja_id                        → +monto_usd (deuda real)
-//   - `pago`                                      → -monto_usd (reduce deuda)
-//   - `devolucion` (cross-tenant COR-2)           → -monto_usd (reduce deuda)
-//   - `entrega_mercaderia` (task #150, 2026-07-17)→ -monto_usd (reduce deuda)
-//   - otros                                       → 0 (defensivo: si mañana
-//     alguien agrega un tipo al CHECK sin tocar este helper, el saldo NO se
-//     corrompe silenciosamente — se ignora hasta actualizar).
+//   - `saldo_inicial`                    → +monto_usd (deuda heredada)
+//   - `compra` con caja_id               → 0 (contado, no genera deuda)
+//   - `compra` sin caja_id               → +monto_usd (deuda real)
+//   - `pago`                             → -monto_usd (reduce deuda)
+//   - `devolucion` (cross-tenant COR-2)  → -monto_usd (reduce deuda)
+//   - otros                              → 0 (defensivo: si mañana alguien
+//     agrega un tipo al CHECK sin tocar este helper, el saldo NO se corrompe
+//     silenciosamente — se ignora hasta actualizar).
 //
 // Convención: monto positivo = les debemos al proveedor. Monto negativo = el
 // proveedor nos debe (típico cuando adelantamos y aún no recibimos mercadería).
@@ -37,7 +36,6 @@ const SALDO_CASE = `
     WHEN tipo = 'compra'                               THEN  monto_usd
     WHEN tipo = 'pago'                                 THEN -monto_usd
     WHEN tipo = 'devolucion'                           THEN -monto_usd
-    WHEN tipo = 'entrega_mercaderia'                   THEN -monto_usd
     ELSE 0
   END
 `;
@@ -49,7 +47,6 @@ const SALDO_CASE_M = `
     WHEN m.tipo = 'compra'                             THEN  m.monto_usd
     WHEN m.tipo = 'pago'                               THEN -m.monto_usd
     WHEN m.tipo = 'devolucion'                         THEN -m.monto_usd
-    WHEN m.tipo = 'entrega_mercaderia'                 THEN -m.monto_usd
     ELSE 0
   END
 `;
