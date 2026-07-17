@@ -1,8 +1,20 @@
 const { z } = require('zod');
+const { baseProducto } = require('./inventario');
 const { fechaNoFutura, MonedaEnum } = require('./_common');
 
 const CATEGORIAS_CC       = ['VIP', 'A+', 'A-'];
-const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia'];
+// 2026-07-17 (task #155): agregado 'mercaderia_recibida'. Cliente entrega
+// productos que cancelan (todo o parte) de su deuda con nosotros. Distinto de
+// `entrega_mercaderia` (semántica opuesta: nosotros le entregamos al cliente).
+const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia', 'mercaderia_recibida'];
+
+// Sub-objeto opcional para crear producto en Inventario cuando el cliente
+// entrega mercadería (tipo=mercaderia_recibida). Reutiliza el mismo schema de
+// Inventario (sin foto). Espejo del que ya existe en schemas/proveedores.js
+// para las compras a proveedores.
+const productoEnEntregaSchema = baseProducto
+  .omit({ foto_data: true, foto_nombre: true, foto_tipo: true })
+  .strict();
 
 // ─── Cliente CC ───────────────────────────────────────────────────────────────
 
@@ -43,6 +55,13 @@ const itemMovimientoCCSchema = z.object({
   // Hard cap en cantidad + positive() (auditoría #M-03): líneas con
   // cantidad=0 no tenían sentido (item fantasma sin efecto en stock).
   cantidad:    z.coerce.number().int().positive().max(10_000).optional().default(1),
+  // 2026-07-17 (task #155): sólo para tipo=mercaderia_recibida — el cliente
+  // entrega productos que NO están en nuestro catálogo. Al guardar el
+  // movimiento, la ruta INSERTa el producto en `productos`. Espejo del
+  // `producto_stock` del itemProveedorSchema. Si se envía en otro tipo, la
+  // ruta lo ignora (el schema no lo rechaza para no romper backwards compat
+  // en clientes que envíen accidentalmente el campo).
+  producto_stock: productoEnEntregaSchema.optional().nullable(),
 }).strict(); // #H-08 — rechaza campos extra para defense-in-depth
 
 // ─── Movimiento CC ────────────────────────────────────────────────────────────
@@ -117,6 +136,21 @@ const createMovimientoCCSchema = z.object({
   .refine(
     d => d.moneda === 'USD' || (d.tc != null && d.tc > 0),
     { message: 'Para montos en ARS/UYU/USDT se requiere TC positivo', path: ['tc'] }
+  )
+  // 2026-07-17 (task #155): mercaderia_recibida NO admite caja_id — los
+  // productos entregados por el cliente SON el pago, no hay dinero involucrado.
+  // Defensa en profundidad: si el caller lo manda por error, rechazamos.
+  .refine(
+    d => !(d.tipo === 'mercaderia_recibida' && d.caja_id != null),
+    { message: 'mercaderia_recibida no admite caja_id: los productos recibidos son el pago', path: ['caja_id'] }
+  )
+  // 2026-07-17 (task #155): mercaderia_recibida requiere al menos 1 item con
+  // producto_stock (para crear el producto en Inventario) o producto_id (para
+  // referenciar uno existente). Sin items no tendría efecto sobre stock —
+  // sería equivalente a un pago sin caja, que no tiene sentido.
+  .refine(
+    d => d.tipo !== 'mercaderia_recibida' || (d.items || []).length >= 1,
+    { message: 'mercaderia_recibida requiere al menos 1 item (los productos entregados)', path: ['items'] }
   );
 
 // PATCH /movimientos/:id/estado — alternar entre acreditado/pendiente desde la grilla.

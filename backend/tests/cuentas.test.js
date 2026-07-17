@@ -1586,3 +1586,263 @@ describe('Schemas .strict() — rechazar campos extra', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ─── Feature: mercaderia_recibida (task #155, 2026-07-17) ───────────────────
+// Escenario disparador: cliente B2B nos entrega productos que cancelan (todo
+// o parte de) su deuda. Ej: Kevin tiene deuda de u$s 5.000 con nosotros por
+// una venta B2B anterior; ahora nos vende 2 PS5 valuadas u$s 2.500. Los
+// productos entran al inventario + el saldo baja u$s 2.500.
+//
+// Nombre distinto de `entrega_mercaderia` que ya existe en movimientos_cc
+// con semántica opuesta (nosotros le entregamos al cliente, sale stock).
+describe('Cuentas — mercaderia_recibida', () => {
+  let catId, cliDeudorId;
+  const hoy = new Date().toISOString().split('T')[0];
+
+  beforeAll(async () => {
+    // Categoría para los productos entregados por el cliente.
+    const cat = await request(app).post('/api/inventario/categorias')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: `CatMercaderia ${Date.now()}` });
+    catId = cat.body.id;
+
+    // Cliente con deuda: creamos + le vendemos u$s 3.000 a crédito.
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Deudor', apellido: 'Mercadería', categoria: 'A+' });
+    cliDeudorId = cli.body.id;
+    // Venta a crédito de u$s 3.000 (sin caja_id → suma deuda directo).
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'compra',
+        monto_total: 3000, moneda: 'USD',
+      });
+  });
+
+  async function saldoCliente(id) {
+    const r = await request(app).get(`/api/cuentas/clientes/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    return Number(r.body.saldo || 0);
+  }
+
+  it('happy path: cliente entrega 2 productos, entran stock + baja saldo', async () => {
+    const saldoAntes = await saldoCliente(cliDeudorId);
+    expect(saldoAntes).toBeCloseTo(3000, 2);
+
+    const res = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 1200, moneda: 'USD',
+        descripcion: 'Kevin nos vendió 2 PS5 a cuenta de deuda',
+        items: [
+          { producto: 'PS5 Slim', valor: 600, producto_stock: {
+            tipo_carga: 'unitario', nombre: 'PS5 Slim',
+            imei: `PS5-A-${Date.now()}`, cantidad: 1, categoria_id: catId,
+            costo: 600, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD',
+            condicion: 'nuevo',
+          } },
+          { producto: 'PS5 Slim', valor: 600, producto_stock: {
+            tipo_carga: 'unitario', nombre: 'PS5 Slim',
+            imei: `PS5-B-${Date.now()}`, cantidad: 1, categoria_id: catId,
+            costo: 600, costo_moneda: 'USD', precio_venta: 800, precio_moneda: 'USD',
+            condicion: 'nuevo',
+          } },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.tipo).toBe('mercaderia_recibida');
+    expect(res.body.productos_creados).toHaveLength(2);
+    expect(res.body.productos_creados[0].movimiento_cc_id).toBe(res.body.id);
+
+    // Saldo bajó u$s 1.200 → queda 1.800.
+    const saldoDesp = await saldoCliente(cliDeudorId);
+    expect(saldoDesp).toBeCloseTo(1800, 2);
+
+    // Los productos aparecen en Inventario.
+    for (const p of res.body.productos_creados) {
+      const listado = await request(app).get(`/api/inventario/productos?buscar=${p.imei}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(listado.body.data.some(x => x.id === p.id)).toBe(true);
+    }
+  });
+
+  it('sin items → 400 (schema)', async () => {
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 500, moneda: 'USD',
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/items|mercaderia_recibida/i);
+  });
+
+  it('con caja_id → 400 (no admite caja: los productos son el pago)', async () => {
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 500, moneda: 'USD',
+        caja_id: cajaUsdId,
+        items: [{ producto: 'X', valor: 500 }],
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/caja_id|mercaderia_recibida/i);
+  });
+
+  it('IMEI duplicado dentro del lote → 409', async () => {
+    const dupImei = `DUP-${Date.now()}`;
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 1000, moneda: 'USD',
+        items: [
+          { valor: 500, producto_stock: {
+            tipo_carga: 'unitario', nombre: 'A', imei: dupImei, cantidad: 1, categoria_id: catId,
+            costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+          } },
+          { valor: 500, producto_stock: {
+            tipo_carga: 'unitario', nombre: 'B', imei: dupImei, cantidad: 1, categoria_id: catId,
+            costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+          } },
+        ],
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/duplicado/i);
+  });
+
+  it('IMEI que ya existe en Inventario → 409 con imeis_existentes', async () => {
+    const imei = `EXIST-${Date.now()}`;
+    // Primera entrega OK.
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 500, moneda: 'USD',
+        items: [{ valor: 500, producto_stock: {
+          tipo_carga: 'unitario', nombre: 'X', imei, cantidad: 1, categoria_id: catId,
+          costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+        } }],
+      });
+    // Segunda con el mismo IMEI: rechaza.
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cliDeudorId, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 500, moneda: 'USD',
+        items: [{ valor: 500, producto_stock: {
+          tipo_carga: 'unitario', nombre: 'X dup', imei, cantidad: 1, categoria_id: catId,
+          costo: 500, costo_moneda: 'USD', precio_venta: 700, precio_moneda: 'USD',
+        } }],
+      });
+    expect(r.status).toBe(409);
+    expect(r.body.imeis_existentes).toContain(imei);
+  });
+
+  it('DELETE mercaderia_recibida: soft-deletea productos y revierte saldo', async () => {
+    // Cliente propio para no ensuciar el estado del suite.
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Delete', apellido: 'Test', categoria: 'A-' });
+    // Le vendemos u$s 800 a crédito.
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra',
+        monto_total: 800, moneda: 'USD',
+      });
+
+    // Cliente entrega productos por u$s 300.
+    const entrega = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 300, moneda: 'USD',
+        items: [{ valor: 300, producto_stock: {
+          tipo_carga: 'unitario', nombre: 'Revert', imei: `REV-${Date.now()}`, cantidad: 1, categoria_id: catId,
+          costo: 300, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD',
+        } }],
+      });
+    expect(entrega.status).toBe(201);
+    const prodId = entrega.body.productos_creados[0].id;
+
+    // Antes del delete: saldo = 800 - 300 = 500, producto vivo.
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(500, 2);
+    let p = await pool.query(`SELECT deleted_at FROM productos WHERE id = $1`, [prodId]);
+    expect(p.rows[0].deleted_at).toBeNull();
+
+    // DELETE del movimiento → saldo vuelve a 800, producto soft-deleted.
+    const del = await request(app).delete(`/api/cuentas/movimientos/${entrega.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(800, 2);
+    p = await pool.query(`SELECT deleted_at FROM productos WHERE id = $1`, [prodId]);
+    expect(p.rows[0].deleted_at).not.toBeNull();
+  });
+
+  it('DELETE con producto ya vendido → 409 (mismo guard que proveedor)', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Vendido', apellido: 'Test', categoria: 'A-' });
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra',
+        monto_total: 500, moneda: 'USD',
+      });
+
+    const entrega = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 300, moneda: 'USD',
+        items: [{ valor: 300, producto_stock: {
+          tipo_carga: 'unitario', nombre: 'Sold', imei: `SOLD-${Date.now()}`, cantidad: 1, categoria_id: catId,
+          costo: 300, costo_moneda: 'USD', precio_venta: 500, precio_moneda: 'USD',
+        } }],
+      });
+    const prodId = entrega.body.productos_creados[0].id;
+    // Simular venta directa via DB.
+    await pool.query(`UPDATE productos SET estado = 'vendido' WHERE id = $1`, [prodId]);
+
+    const del = await request(app).delete(`/api/cuentas/movimientos/${entrega.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(409);
+    expect(del.body.error).toMatch(/se vendieron|vendido/i);
+  });
+
+  it('cliente con saldo a favor: mercaderia_recibida lo hace más negativo (uso legítimo pero warning en UI)', async () => {
+    // Cliente que YA nos pagó de más — le debemos.
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'ACredito', apellido: 'Test', categoria: 'A+' });
+    // Compra chica + pago grande → cliente queda a favor.
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 200, moneda: 'USD' });
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago', monto_total: 500, moneda: 'USD', caja_id: cajaUsdId });
+    // Saldo: 200 - 500 = -300 (le debemos).
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(-300, 2);
+
+    // Cliente encima nos ENTREGA mercadería por 100 (raro pero backend acepta;
+    // la UI muestra warning). El saldo baja a -400.
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'mercaderia_recibida',
+        monto_total: 100, moneda: 'USD',
+        items: [{ valor: 100, producto_stock: {
+          tipo_carga: 'unitario', nombre: 'Extra', imei: `EXTRA-${Date.now()}`, cantidad: 1, categoria_id: catId,
+          costo: 100, costo_moneda: 'USD', precio_venta: 150, precio_moneda: 'USD',
+        } }],
+      });
+    expect(r.status).toBe(201);
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(-400, 2);
+  });
+});
+

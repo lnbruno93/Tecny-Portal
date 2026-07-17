@@ -141,17 +141,53 @@ async function cancelMovimientoCC(client, { movimientoId, userId, origen = 'manu
     itemsDestachados = rowCount;
   }
 
+  // 5.b (task #155) — Si el mov es tipo 'mercaderia_recibida', soft-delete
+  //     cascada de los productos creados por ese movimiento. Mismo pattern
+  //     que el DELETE de proveedores.js: bloquea si algún producto ya fue
+  //     vendido (evita el double-benefit de "revertir el saldo + mantener
+  //     el stock"). Los items con producto_id existente (referencia a
+  //     producto ya en catálogo) no se tocan acá — el ajuste de cantidad
+  //     ya lo hizo el paso 4 con sign=+1.
+  let productosBorrados = 0;
+  if (mov.tipo === 'mercaderia_recibida') {
+    const { rows: prods } = await client.query(
+      `SELECT id, nombre, estado FROM productos
+         WHERE movimiento_cc_id = $1 AND deleted_at IS NULL
+         ORDER BY id FOR UPDATE`,
+      [movimientoId]
+    );
+    const vendidos = prods.filter(p => p.estado === 'vendido');
+    if (vendidos.length > 0) {
+      const err = new Error(
+        `No se puede borrar la entrega: ${vendidos.length} producto(s) ya se vendieron: ${vendidos.map(p => p.nombre).slice(0, 3).join(', ')}${vendidos.length > 3 ? '…' : ''}`
+      );
+      err.status = 409;
+      err.productos_vendidos = vendidos.map(p => p.id);
+      throw err;
+    }
+    if (prods.length > 0) {
+      const { rowCount } = await client.query(
+        `UPDATE productos SET deleted_at = NOW()
+           WHERE movimiento_cc_id = $1 AND deleted_at IS NULL`,
+        [movimientoId]
+      );
+      productosBorrados = rowCount;
+    }
+  }
+
   // 6. Audit: incluye `_origen` para distinguir manual / cascada / cleanup.
   await audit(client, 'movimientos_cc', 'DELETE', movimientoId, {
     antes: mov,
     user_id: userId,
     _origen: origen,
     _items_destachados: itemsDestachados,
+    _productos_borrados: productosBorrados,
   });
 
   return {
     movimiento: mov,
     productos_restaurados: productosRestaurados,
+    productos_borrados: productosBorrados,
     caja_revertida: true,
     items_destachados: itemsDestachados,
   };
