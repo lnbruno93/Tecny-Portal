@@ -11,6 +11,7 @@ import useLoadingAction from '../lib/useLoadingAction';
 import TcWarning from '../components/TcWarning';
 import CajaSelectHint from '../components/CajaSelectHint';
 import useModal from '../lib/useModal';
+import useFormFields from '../lib/useFormFields';
 import { useAuth } from '../contexts/AuthContext';
 import Seg from '../components/Seg';
 
@@ -133,7 +134,42 @@ export default function Cambios() {
   const createModalRef = useRef(null);
   useModal({ open: showCreate, onClose: () => setShowCreate(false), overlayRef: createModalRef });
 
-  const [mov, setMov] = useState(EMPTY_MOV);
+  // 2026-07-16 (task #147 UX B.2): validación inline con useFormFields.
+  // Antes: `if (!mov.caja_id) { toast.error('Elegí la caja.'); return; }`
+  // → user veía UN error a la vez (toast que desaparece). Ahora todos los
+  // campos requeridos (variables según el tipo de movimiento) muestran su
+  // error debajo, y se limpian al empezar a corregir.
+  //
+  // Requeridos según el tipo:
+  //   entrega local (ars/uyu)  → monto_ars + tc + caja
+  //   entrega USD (usd_por_*)  → monto_usd + tc + caja
+  //   recibo local (ars/uyu)   → monto_ars + caja
+  //   recibo USD (usd/usd_uy)  → monto_usd + caja
+  const {
+    form: mov,
+    setForm: setMov,
+    setField: setMovField,
+    fieldErrors: movErrors,
+    validate: validateMov,
+    resetErrors: resetMovErrors,
+  } = useFormFields(EMPTY_MOV, (m) => {
+    const errs = {};
+    const t = m.tipo;
+    const needsLocal = isEntregaLocalTipo(t) || isReciboLocalTipo(t);
+    const needsUsd   = isEntregaUsdTipo(t) || isReciboUsdTipo(t);
+    const needsTc    = isEntregaLocalTipo(t) || isEntregaUsdTipo(t);
+    if (needsLocal && (!m.monto_ars || Number(m.monto_ars) <= 0)) {
+      errs.monto_ars = 'Ingresá un monto mayor a 0.';
+    }
+    if (needsUsd && (!m.monto_usd || Number(m.monto_usd) <= 0)) {
+      errs.monto_usd = 'Ingresá un monto mayor a 0.';
+    }
+    if (needsTc && (!m.tc || Number(m.tc) <= 0)) {
+      errs.tc = 'Ingresá el TC.';
+    }
+    if (!m.caja_id) errs.caja_id = 'Elegí la caja.';
+    return Object.keys(errs).length ? errs : null;
+  });
   // 2026-07-12 (auditoría TOTAL Financiero P1-1, Pattern G):
   // Idempotency-Key para POST /cambios/movimientos. Se regenera después de
   // cada submit exitoso para permitir múltiples movimientos consecutivos
@@ -166,7 +202,7 @@ export default function Cambios() {
       .then(([det, m]) => { setDetalle(det); setMovs(m.data || []); })
       .catch(e => toast.error(e.message));
   }
-  useEffect(() => { loadDetalle(); setMov(EMPTY_MOV); }, [selectedId, EMPTY_MOV]); // eslint-disable-line
+  useEffect(() => { loadDetalle(); setMov(EMPTY_MOV); resetMovErrors(); }, [selectedId, EMPTY_MOV]); // eslint-disable-line
 
   // 2026-07-14 (dirección inversa): cajas filtradas por moneda según tipo.
   //   · Movimientos USD (entrega_usd_por_* / recibo_usd*): cajas USD.
@@ -216,7 +252,9 @@ export default function Cambios() {
 
   async function handleAddMov(e) {
     e.preventDefault();
-    if (!mov.caja_id) { toast.error('Elegí la caja.'); return; }
+    // 2026-07-16 (task #147): validación inline consolidada — todos los
+    // errores relevantes al tipo actual aparecen JUNTOS bajo su input.
+    if (!validateMov()) return;
     await withSavingMov(async () => {
       try {
         // 2026-07-14 (dirección inversa): payload adaptado por tipo.
@@ -404,11 +442,18 @@ export default function Cambios() {
                       { value: 'A', label: `↑ Entregás ${monedaLocal} → USD` },
                       { value: 'B', label: `↓ Entregás USD → ${monedaLocal}` },
                     ]}
-                    onChange={(dir) => setMov(m => ({
-                      ...m,
-                      tipo: tipoDe(dir, opDeTipo(m.tipo), TIPOS),
-                      caja_id: '', monto_ars: '', monto_usd: '', tc: '',
-                    }))}
+                    onChange={(dir) => {
+                      // Al cambiar dirección/operación reseteamos los campos
+                      // que dependen del tipo (los inputs se re-renderean).
+                      // Uso setForm (setMov) del hook con el objeto entero
+                      // para actualizar múltiples campos en un solo tick.
+                      setMov({
+                        ...mov,
+                        tipo: tipoDe(dir, opDeTipo(mov.tipo), TIPOS),
+                        caja_id: '', monto_ars: '', monto_usd: '', tc: '',
+                      });
+                      resetMovErrors();
+                    }}
                   />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -419,11 +464,14 @@ export default function Cambios() {
                       { value: 'entrega', label: 'Entrega' },
                       { value: 'recibo',  label: 'Recibo' },
                     ]}
-                    onChange={(op) => setMov(m => ({
-                      ...m,
-                      tipo: tipoDe(dirDeTipo(m.tipo), op, TIPOS),
-                      caja_id: '', monto_ars: '', monto_usd: '', tc: '',
-                    }))}
+                    onChange={(op) => {
+                      setMov({
+                        ...mov,
+                        tipo: tipoDe(dirDeTipo(mov.tipo), op, TIPOS),
+                        caja_id: '', monto_ars: '', monto_usd: '', tc: '',
+                      });
+                      resetMovErrors();
+                    }}
                   />
                 </div>
               </div>
@@ -443,7 +491,7 @@ export default function Cambios() {
               }}>
                 <div>
                   <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Fecha</div>
-                  <input type="date" className="input" value={mov.fecha} onChange={e => setMov(m => ({ ...m, fecha: e.target.value }))} />
+                  <input type="date" className="input" value={mov.fecha} onChange={e => setMovField('fecha', e.target.value)} />
                 </div>
 
                 {/* Input del monto principal — depende del tipo */}
@@ -454,11 +502,13 @@ export default function Cambios() {
                     </div>
                     <input
                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                      className="input mono"
+                      className={'input mono' + (movErrors.monto_ars ? ' input-error' : '')}
                       placeholder="0"
                       value={mov.monto_ars}
-                      onChange={e => setMov(m => ({ ...m, monto_ars: e.target.value }))}
+                      onChange={e => setMovField('monto_ars', e.target.value)}
+                      aria-invalid={!!movErrors.monto_ars}
                     />
+                    {movErrors.monto_ars && <div className="field-error">{movErrors.monto_ars}</div>}
                   </div>
                 )}
                 {(isEntregaUsd || isReciboUsd) && (
@@ -468,11 +518,13 @@ export default function Cambios() {
                     </div>
                     <input
                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                      className="input mono"
+                      className={'input mono' + (movErrors.monto_usd ? ' input-error' : '')}
                       placeholder="0"
                       value={mov.monto_usd}
-                      onChange={e => setMov(m => ({ ...m, monto_usd: e.target.value }))}
+                      onChange={e => setMovField('monto_usd', e.target.value)}
+                      aria-invalid={!!movErrors.monto_usd}
                     />
+                    {movErrors.monto_usd && <div className="field-error">{movErrors.monto_usd}</div>}
                   </div>
                 )}
 
@@ -484,12 +536,15 @@ export default function Cambios() {
                     </div>
                     <input
                       type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0"
-                      className="input mono"
+                      className={'input mono' + (movErrors.tc ? ' input-error' : '')}
                       placeholder="Ej 1000"
                       value={mov.tc}
-                      onChange={e => setMov(m => ({ ...m, tc: e.target.value }))}
+                      onChange={e => setMovField('tc', e.target.value)}
+                      aria-invalid={!!movErrors.tc}
                     />
-                    <TcWarning tc={mov.tc} />
+                    {movErrors.tc
+                      ? <div className="field-error">{movErrors.tc}</div>
+                      : <TcWarning tc={mov.tc} />}
                   </div>
                 )}
 
@@ -513,11 +568,18 @@ export default function Cambios() {
                   <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     Caja ({cajaMonedaEsperada})
                   </div>
-                  <select className="input" value={mov.caja_id} onChange={e => setMov(m => ({ ...m, caja_id: e.target.value }))}>
+                  <select
+                    className={'input' + (movErrors.caja_id ? ' input-error' : '')}
+                    value={mov.caja_id}
+                    onChange={e => setMovField('caja_id', e.target.value)}
+                    aria-invalid={!!movErrors.caja_id}
+                  >
                     <option value="">Elegí caja…</option>
                     {cajasFiltradas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
-                  <CajaSelectHint />
+                  {movErrors.caja_id
+                    ? <div className="field-error">{movErrors.caja_id}</div>
+                    : <CajaSelectHint />}
                 </div>
 
                 {/* Comentarios */}
@@ -525,7 +587,7 @@ export default function Cambios() {
                   <div className="muted tiny" style={{ marginBottom: 3, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     Comentarios
                   </div>
-                  <input className="input" placeholder="Opcional" value={mov.comentarios} onChange={e => setMov(m => ({ ...m, comentarios: e.target.value }))} />
+                  <input className="input" placeholder="Opcional" value={mov.comentarios} onChange={e => setMovField('comentarios', e.target.value)} />
                 </div>
 
                 {/* Botón Agregar */}
