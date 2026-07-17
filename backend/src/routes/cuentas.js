@@ -637,15 +637,19 @@ router.post('/movimientos', validate(createMovimientoCCSchema), async (req, res,
       });
     }
 
-    // 2026-07-17 (pago_a_cliente): simetría inversa del `pago`. Cuando
-    // NOSOTROS le damos dinero al cliente, la plata SALE de la caja
-    // indicada — es EGRESO. El saldo del cliente sube (queda debiéndonos
-    // más O canceló su crédito a favor) por la fórmula canónica en saldoCC.js.
-    if (caja_id && tipo === 'pago_a_cliente') {
+    // 2026-07-17: pago_a_cliente + entrega_dinero comparten efecto contable
+    // (EGRESO de caja + suma al saldo del cliente). Se diferencian solo por
+    // el tipo persistido y el concepto de la caja — reportes filtran.
+    //   · pago_a_cliente = reintegro / devolución de un anticipo
+    //   · entrega_dinero = cambio / adelanto / favor puntual
+    if (caja_id && ['pago_a_cliente', 'entrega_dinero'].includes(tipo)) {
+      const concepto = tipo === 'entrega_dinero'
+        ? `Entrega de dinero al cliente #${cliente_cc_id}`
+        : `Pago al cliente #${cliente_cc_id}`;
       await postCajaMovimiento(client, {
         caja_id, fecha, tipo: 'egreso', monto: monto_total, moneda, tc,
         origen: 'b2b', ref_tabla: 'movimientos_cc', ref_id: mov.id,
-        concepto: `Pago al cliente #${cliente_cc_id}`,
+        concepto,
         user_id: req.user.id,
       });
     }

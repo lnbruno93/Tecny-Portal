@@ -1958,3 +1958,90 @@ describe('Cuentas — pago_a_cliente', () => {
   });
 });
 
+// ─── Feature: entrega_dinero (2026-07-17) ────────────────────────────────────
+// Mismo efecto contable que pago_a_cliente (EGRESO + sube saldo del cliente).
+// Se diferencia solo por el `tipo` persistido y el concepto de caja — para
+// que el histórico distinga "le pago" (reintegro) de "doy" (cambio/adelanto).
+describe('Cuentas — entrega_dinero', () => {
+  const hoy = new Date().toISOString().split('T')[0];
+
+  async function saldoCliente(id) {
+    const r = await request(app).get(`/api/cuentas/clientes/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    return Number(r.body.saldo || 0);
+  }
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas')
+      .set('Authorization', `Bearer ${adminToken}`);
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+
+  it('happy path: caja baja + saldo cliente sube (mismo efecto que pago_a_cliente)', async () => {
+    const caja = await request(app).post('/api/cajas/cajas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: `Caja EntDin ${Date.now()}`, moneda: 'USD', saldo_inicial: 1000 });
+    const cajaId = caja.body.id;
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'DoyCambio', apellido: 'x', categoria: 'A+' });
+    const cajaAntes = await saldoCaja(cajaId);
+    const saldoAntes = await saldoCliente(cli.body.id);
+    expect(saldoAntes).toBeCloseTo(0, 2);
+
+    const res = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'entrega_dinero',
+        monto_total: 150, moneda: 'USD', caja_id: cajaId,
+        notas: 'Cambio: le doy USD a cambio de USDT',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.tipo).toBe('entrega_dinero');
+
+    // Saldo cliente sube 150. Caja baja 150.
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(150, 2);
+    expect(await saldoCaja(cajaId)).toBeCloseTo(cajaAntes - 150, 2);
+  });
+
+  it('sin caja_id → 400 (schema)', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'EntDinSinCaja', apellido: 'x', categoria: 'A-' });
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'entrega_dinero',
+        monto_total: 50, moneda: 'USD',
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/caja_id|entrega_dinero/i);
+  });
+
+  it('el `tipo` persiste distinto de pago_a_cliente (para reportes)', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'TipoDistinto', apellido: 't', categoria: 'A-' });
+    const mov1 = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'entrega_dinero',
+        monto_total: 30, moneda: 'USD', caja_id: cajaUsdId,
+      });
+    const mov2 = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago_a_cliente',
+        monto_total: 30, moneda: 'USD', caja_id: cajaUsdId,
+      });
+    expect(mov1.body.tipo).toBe('entrega_dinero');
+    expect(mov2.body.tipo).toBe('pago_a_cliente');
+
+    // Consulta histórico: ambos aparecen con distinto tipo.
+    const movs = await request(app).get(`/api/cuentas/clientes/${cli.body.id}/movimientos`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const tipos = movs.body.data.map(m => m.tipo).sort();
+    expect(tipos).toContain('entrega_dinero');
+    expect(tipos).toContain('pago_a_cliente');
+  });
+});
+
