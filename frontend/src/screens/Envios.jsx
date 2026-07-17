@@ -12,6 +12,7 @@ import { blockInvalidNumberKeys } from '../lib/inputUtils'; // #F-1
 import TcWarning from '../components/TcWarning';
 import BarrioCombobox from '../components/BarrioCombobox';
 import useModal from '../lib/useModal';
+import useFormFields from '../lib/useFormFields';
 import Badge from '../components/Badge';
 import Seg from '../components/Seg';
 import { Skeleton } from '../components/Skeleton';
@@ -141,7 +142,25 @@ export default function Envios() {
   const showCreate = modalMode !== null; // mantiene el nombre original donde se usa
   const [editingId, setEditingId] = useState(null);
   const setShowCreate = (open) => { if (!open) { setModalMode(null); setEditingId(null); } };
-  const [form, setForm] = useState(EMPTY_FORM);
+  // 2026-07-16 (task #147 UX B.2): validación inline con useFormFields.
+  // Antes: 2 chequeos secuenciales `if (!X.trim()) { setCreateError(); return; }`
+  // → user completaba cliente + dirección + N items, submitteaba, veía
+  // "Cliente obligatorio", corregía, veía "Dirección obligatoria", etc.
+  // Ahora los errores aparecen JUNTOS bajo cada input.
+  const {
+    form,
+    setForm,
+    setField,
+    fieldErrors,
+    setFieldErrors,
+    validate: validateEnvio,
+    resetErrors: resetEnvioErrors,
+  } = useFormFields(EMPTY_FORM, (f) => {
+    const errs = {};
+    if (!f.cliente.trim()) errs.cliente = 'Requerido.';
+    if (!f.direccion.trim()) errs.direccion = 'Requerido.';
+    return Object.keys(errs).length ? errs : null;
+  });
   const [items, setItems] = useState([{ ...EMPTY_ITEM, _id: newItemId() }]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -161,7 +180,10 @@ export default function Envios() {
     overlayRef: createModalRef,
   });
 
-  const setF = (field, val) => setForm(f => ({ ...f, [field]: val }));
+  // 2026-07-16 (task #147 UX B.2): setF ahora delega al setField del hook
+  // useFormFields — mismo signature, además limpia fieldErrors[field] al
+  // setear (feedback UX inmediato al empezar a corregir un input inválido).
+  const setF = setField;
   // Auditoría 2026-06-30 F-13/14: cada item tiene _id estable. rmItem opera
   // por id (el JSX pasa it._id). setItem mantiene firma por índice porque los
   // call-sites del JSX están dentro del .map y conocen idx, y porque hay
@@ -478,6 +500,7 @@ export default function Envios() {
 
   function openCreate() {
     setForm(EMPTY_FORM);
+    resetEnvioErrors();
     setItems([{ ...EMPTY_ITEM, _id: newItemId() }]);
     setCreateError('');
     setComprobantes([]);
@@ -579,8 +602,8 @@ export default function Envios() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.cliente.trim()) { setCreateError('El cliente es obligatorio.'); return; }
-    if (!form.direccion.trim()) { setCreateError('La dirección es obligatoria.'); return; }
+    // 2026-07-16 (task #147 UX B.2): validación inline consolidada.
+    if (!validateEnvio()) return;
     // Paridad con Ventas: si algún pago usa la caja Financiera, exigir el
     // comprobante en el alta (no en edición — desde la pantalla del envío se
     // puede adjuntar después). Sin esto, syncFinancieraComprobante corre en
@@ -1360,8 +1383,10 @@ export default function Envios() {
                   <div className="row">
                     <div className="field" style={{ flex: 2 }}>
                       <label className="field-label">Cliente <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input className="input" placeholder="Nombre del cliente"
-                        value={form.cliente} onChange={e => setF('cliente', e.target.value)} autoFocus />
+                      <input className={'input' + (fieldErrors.cliente ? ' input-error' : '')} placeholder="Nombre del cliente"
+                        value={form.cliente} onChange={e => setF('cliente', e.target.value)} autoFocus
+                        aria-invalid={!!fieldErrors.cliente} />
+                      {fieldErrors.cliente && <div className="field-error">{fieldErrors.cliente}</div>}
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Teléfono</label>
@@ -1374,8 +1399,10 @@ export default function Envios() {
                   <div className="row">
                     <div className="field" style={{ flex: 2 }}>
                       <label className="field-label">Dirección <span style={{ color: 'var(--neg)' }}>*</span></label>
-                      <input className="input" placeholder="ej. San Martín 450"
-                        value={form.direccion} onChange={e => setF('direccion', e.target.value)} />
+                      <input className={'input' + (fieldErrors.direccion ? ' input-error' : '')} placeholder="ej. San Martín 450"
+                        value={form.direccion} onChange={e => setF('direccion', e.target.value)}
+                        aria-invalid={!!fieldErrors.direccion} />
+                      {fieldErrors.direccion && <div className="field-error">{fieldErrors.direccion}</div>}
                     </div>
                     <div className="field" style={{ flex: 1 }}>
                       <label className="field-label">Barrio</label>
