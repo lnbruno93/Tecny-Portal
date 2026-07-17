@@ -1846,3 +1846,115 @@ describe('Cuentas — mercaderia_recibida', () => {
   });
 });
 
+// ─── Feature: pago_a_cliente (2026-07-17) ───────────────────────────────────
+// Simetría inversa de `pago`: NOSOTROS le damos dinero al cliente (reembolso,
+// devolución, anticipo). Requiere caja_id (EGRESO) y sube el saldo del cliente.
+describe('Cuentas — pago_a_cliente', () => {
+  const hoy = new Date().toISOString().split('T')[0];
+
+  async function saldoCliente(id) {
+    const r = await request(app).get(`/api/cuentas/clientes/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    return Number(r.body.saldo || 0);
+  }
+
+  async function saldoCaja(id) {
+    const r = await request(app).get('/api/cajas/cajas')
+      .set('Authorization', `Bearer ${adminToken}`);
+    return Number((r.body || []).find(c => c.id === id)?.saldo_actual ?? 0);
+  }
+
+  it('happy path: caja baja (egreso) + saldo cliente sube', async () => {
+    const caja = await request(app).post('/api/cajas/cajas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: `Caja PagoAClienteHP ${Date.now()}`, moneda: 'USD', saldo_inicial: 5000 });
+    const cajaId = caja.body.id;
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'Reembolso', apellido: 'Test', categoria: 'A+' });
+    // El cliente tenía saldo a favor (le pagamos 500 de más antes) → saldo -500.
+    // Simulamos: venta 300 (a crédito) + pago 800 del cliente → saldo -500.
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'compra', monto_total: 300, moneda: 'USD' });
+    await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago', monto_total: 800, moneda: 'USD', caja_id: cajaUsdId });
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(-500, 2);
+
+    const saldoCajaAntes = await saldoCaja(cajaId);
+
+    // Le devolvemos los 500 en efectivo.
+    const res = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago_a_cliente',
+        monto_total: 500, moneda: 'USD', caja_id: cajaId,
+        notas: 'Devolución de anticipo excedente',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.tipo).toBe('pago_a_cliente');
+
+    // Saldo cliente: -500 + 500 = 0.
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(0, 2);
+    // Caja: bajó 500.
+    expect(await saldoCaja(cajaId)).toBeCloseTo(saldoCajaAntes - 500, 2);
+  });
+
+  it('sin caja_id → 400 (schema)', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'PagACli SinCaja', apellido: 'x', categoria: 'A-' });
+    const r = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago_a_cliente',
+        monto_total: 100, moneda: 'USD',
+      });
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(r.body)).toMatch(/caja_id|pago_a_cliente/i);
+  });
+
+  it('DELETE pago_a_cliente: revierte caja + baja saldo cliente', async () => {
+    const caja = await request(app).post('/api/cajas/cajas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: `Caja PagoAClienteDel ${Date.now()}`, moneda: 'USD', saldo_inicial: 2000 });
+    const cajaId = caja.body.id;
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'DelPag', apellido: 'test', categoria: 'A+' });
+    const cajaAntes = await saldoCaja(cajaId);
+
+    const mov = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago_a_cliente',
+        monto_total: 200, moneda: 'USD', caja_id: cajaId,
+      });
+    expect(mov.status).toBe(201);
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(200, 2);
+    expect(await saldoCaja(cajaId)).toBeCloseTo(cajaAntes - 200, 2);
+
+    const del = await request(app).delete(`/api/cuentas/movimientos/${mov.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(del.status).toBe(200);
+    expect(await saldoCliente(cli.body.id)).toBeCloseTo(0, 2);
+    expect(await saldoCaja(cajaId)).toBeCloseTo(cajaAntes, 2);
+  });
+
+  it('persiste notas del movimiento', async () => {
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: 'NotasPag', apellido: 't', categoria: 'A-' });
+    const res = await request(app).post('/api/cuentas/movimientos')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        cliente_cc_id: cli.body.id, fecha: hoy, tipo: 'pago_a_cliente',
+        monto_total: 50, moneda: 'USD', caja_id: cajaUsdId,
+        notas: 'Motivo del pago: ajuste de saldo',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.notas).toBe('Motivo del pago: ajuste de saldo');
+  });
+});
+

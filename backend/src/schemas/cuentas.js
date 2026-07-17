@@ -6,7 +6,10 @@ const CATEGORIAS_CC       = ['VIP', 'A+', 'A-'];
 // 2026-07-17 (task #155): agregado 'mercaderia_recibida'. Cliente entrega
 // productos que cancelan (todo o parte) de su deuda con nosotros. Distinto de
 // `entrega_mercaderia` (semántica opuesta: nosotros le entregamos al cliente).
-const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia', 'mercaderia_recibida'];
+// 2026-07-17 (bis): agregado 'pago_a_cliente'. Simetría del `pago`: nosotros
+// le damos dinero al cliente (reembolso, devolución, anticipo). Requiere
+// caja_id (EGRESO) y sube el saldo del cliente.
+const TIPOS_MOVIMIENTO_CC = ['compra', 'pago', 'devolucion', 'parte_de_pago', 'entrega_mercaderia', 'mercaderia_recibida', 'pago_a_cliente'];
 
 // Sub-objeto opcional para crear producto en Inventario cuando el cliente
 // entrega mercadería (tipo=mercaderia_recibida). Reutiliza el mismo schema de
@@ -120,15 +123,17 @@ const createMovimientoCCSchema = z.object({
   // Tipos que requieren caja_id:
   //   - 'pago'           — el cliente paga su deuda. Cobramos en alguna caja.
   //   - 'parte_de_pago'  — pago parcial. Mismo razonamiento.
+  //   - 'pago_a_cliente' — NOSOTROS le damos dinero al cliente. La plata sale
+  //                        de una caja específica (EGRESO).
   //   - 'compra'         — venta a crédito. Si hay caja, registra el cobro
   //                        inicial; si no, queda totalmente a crédito. Acá
   //                        SÍ aceptamos caja_id null (es por diseño).
   //
-  // El refine valida los 2 primeros casos; 'compra' y otros tipos
+  // El refine valida los 3 primeros casos; 'compra' y otros tipos
   // ('devolucion', 'ajuste') siguen aceptando caja_id null.
   .refine(
-    d => !['pago', 'parte_de_pago'].includes(d.tipo) || (d.caja_id != null && d.caja_id > 0),
-    { message: 'caja_id requerido para tipo pago/parte_de_pago', path: ['caja_id'] }
+    d => !['pago', 'parte_de_pago', 'pago_a_cliente'].includes(d.tipo) || (d.caja_id != null && d.caja_id > 0),
+    { message: 'caja_id requerido para tipo pago/parte_de_pago/pago_a_cliente', path: ['caja_id'] }
   )
   // 2026-07-12 P0-1: si el pago NO es USD, exigir `tc` positivo (para convertir
   // a USD y persistir en `movimientos_cc.monto_total` correcto). Consistente con
