@@ -4,14 +4,15 @@
  * Task #155 (2026-07-17). Backend en PR #651. Este modal consume
  * `POST /api/cuentas/movimientos` con `tipo=mercaderia_recibida`.
  *
- * Diseño UX (adaptado del mockup validado con Lucas para el caso proveedor,
- * pero apuntando ahora al cliente en Venta & Gestión B2B):
- *   - Header: fecha + concepto (opcional).
- *   - Items: cards con producto (input con datalist autocomplete de catálogo
- *     existente), categoría, IMEI/serial, cantidad, valor unitario.
- *   - Total y preview del saldo del cliente en tiempo real.
- *   - Guardar permitido aunque el total no coincida con la deuda (queda saldo
- *     remanente); confirm intermedio si no cierra en 0.
+ * Diseño UX (validado con Lucas, iterado post-#652):
+ *   - Header sticky con banner de saldo actual + fecha + concepto.
+ *   - Tabla compacta de items — 1 fila por producto con columnas:
+ *     [Producto][Categoría][IMEI][Cant][Valor unit.][Subtotal][✕]
+ *     Header sticky, filas scrolleables. Escala bien con 10+ productos
+ *     sin romper el layout (v1 con cards se ponía inusable a partir de 4).
+ *   - Footer sticky con total + preview del saldo post-op + botones.
+ *   - Guardar permitido aunque el total no coincida con la deuda (queda
+ *     saldo remanente); confirm intermedio si no cierra en 0.
  *
  * Diferencias vs VentaB2BModal:
  *   - Es un flujo puntual (no data entry masivo tipo planilla).
@@ -219,53 +220,46 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
   const overlayRef = useRef(null);
   useModal({ open: true, onClose: tryClose, overlayRef });
 
+  // ── Estilos ─────────────────────────────────────────────────────────────
   const bannerSaldoStyle = {
     background: 'var(--warn-soft, rgba(251,191,36,0.14))',
     border: '1px solid var(--warn, #fbbf24)',
-    borderRadius: 8,
-    padding: '12px 14px',
-    marginBottom: 16,
+    borderRadius: 6,
+    padding: '8px 12px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    fontSize: 13,
+    fontSize: 12,
   };
+  // Grid compartido para header + filas. Un cambio acá y todo queda alineado.
+  //  Producto | Categoría | IMEI | Cant | Valor unit. | Subtotal | ✕
+  const gridCols = 'minmax(180px, 2fr) 140px minmax(120px, 1.2fr) 60px 100px 100px 28px';
+  const cellPad = '6px 8px';
+  const inputCell = { width: '100%', padding: '6px 8px', fontSize: 12, borderRadius: 4 };
   const previewStyle = {
-    marginTop: 12,
-    padding: '14px 16px',
+    padding: '10px 12px',
     background: saldoCierraEnCero
-      ? 'linear-gradient(180deg, var(--pos-soft, rgba(74,222,128,0.12)), transparent 60%), var(--surface-2)'
-      : 'linear-gradient(180deg, var(--warn-soft, rgba(251,191,36,0.14)), transparent 60%), var(--surface-2)',
+      ? 'var(--pos-soft, rgba(74,222,128,0.12))'
+      : 'var(--warn-soft, rgba(251,191,36,0.14))',
     border: `1px solid ${saldoCierraEnCero ? 'var(--pos, #4ade80)' : 'var(--warn, #fbbf24)'}`,
-    borderRadius: 8,
+    borderRadius: 6,
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    fontSize: 13,
+    gap: 10,
+    fontSize: 12,
     color: 'var(--text-2)',
-  };
-  const itemCardStyle = {
-    background: 'var(--surface-2)',
-    border: '1px solid var(--border)',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 10,
-    position: 'relative',
-  };
-  const totalLineStyle = {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-    padding: '14px 18px', background: 'var(--surface-2)', border: '1px solid var(--border)',
-    borderRadius: 8, marginTop: 8,
   };
 
   const nombreCliente = [cliente.nombre, cliente.apellido].filter(Boolean).join(' ') || cliente.nombre;
   const primerNombre = (cliente.nombre || '').split(' ')[0] || 'Cliente';
 
+  const subtotalDe = (it) => (Number(it.cantidad) || 0) * (Number(it.valor_unitario) || 0);
+
   return (
     <div ref={overlayRef} className="modal-overlay" role="dialog" aria-modal="true"
          aria-labelledby="mercaderia-recibida-modal-title"
          onClick={(e) => { if (e.target === e.currentTarget) tryClose(); }}>
-      <div className="modal" style={{ maxWidth: 760, width: '95vw' }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 1080, width: '95vw' }} onClick={e => e.stopPropagation()}>
         <div className="modal-hd">
           <h3 id="mercaderia-recibida-modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Icons.Box size={16} /> Recibir mercadería · {nombreCliente}
@@ -275,186 +269,217 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
           </button>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '78vh', overflowY: 'auto', padding: 20 }}>
-          {catalogosError && (
-            <div style={{
-              padding: '10px 12px', marginBottom: 12, borderRadius: 6,
-              background: 'var(--warn-soft, rgba(251,191,36,0.14))',
-              border: '1px solid var(--warn)',
-              fontSize: 12,
-            }}>
-              ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>. Algunos selectores estarán vacíos.
+        <div className="modal-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '82vh' }}>
+          {/* ── Header sticky: saldo + fecha + concepto ── */}
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--surface)',
+            display: 'flex', flexDirection: 'column', gap: 10,
+            flexShrink: 0,
+          }}>
+            {catalogosError && (
+              <div style={{
+                padding: '8px 10px', borderRadius: 4,
+                background: 'var(--warn-soft, rgba(251,191,36,0.14))',
+                border: '1px solid var(--warn)',
+                fontSize: 11,
+              }}>
+                ⚠ No se pudieron cargar: <strong>{catalogosError.join(', ')}</strong>. Algunos selectores estarán vacíos.
+              </div>
+            )}
+            <div style={bannerSaldoStyle}>
+              <span style={{ color: 'var(--text-2)' }}>
+                Saldo actual {Number(saldoActual || 0) > 0 ? '(cliente nos debe)' : Number(saldoActual || 0) < 0 ? '(a favor del cliente)' : ''}
+              </span>
+              <span style={{
+                fontWeight: 600, fontSize: 14,
+                color: Number(saldoActual || 0) > 0 ? 'var(--neg)' : Number(saldoActual || 0) < 0 ? 'var(--pos)' : 'var(--text-muted)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {fmtUSD(Number(saldoActual || 0))}
+              </span>
             </div>
-          )}
-
-          {/* Saldo actual del cliente */}
-          <div style={bannerSaldoStyle}>
-            <span style={{ color: 'var(--text-2)' }}>
-              Saldo actual {Number(saldoActual || 0) > 0 ? '(cliente nos debe)' : Number(saldoActual || 0) < 0 ? '(a favor del cliente)' : ''}
-            </span>
-            <span style={{
-              fontWeight: 600, fontSize: 15,
-              color: Number(saldoActual || 0) > 0 ? 'var(--neg)' : Number(saldoActual || 0) < 0 ? 'var(--pos)' : 'var(--text-muted)',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {fmtUSD(Number(saldoActual || 0))}
-            </span>
-          </div>
-
-          {/* Fecha + concepto */}
-          <div className="row" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 4 }}>
-            <div className="field">
-              <label className="field-label">Fecha</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 10 }}>
               <input type="date" className="input" value={fecha}
-                     onChange={e => setFecha(e.target.value)} />
-            </div>
-            <div className="field">
-              <label className="field-label">Concepto (opcional)</label>
-              <input type="text" className="input" placeholder="Ej: 2 PS5 a cuenta de la venta anterior"
-                     value={concepto} onChange={e => setConcepto(e.target.value)} />
+                     onChange={e => setFecha(e.target.value)}
+                     style={{ fontSize: 12, padding: '6px 8px' }} />
+              <input type="text" className="input"
+                     placeholder="Concepto (opcional) — Ej: 2 PS5 a cuenta"
+                     value={concepto} onChange={e => setConcepto(e.target.value)}
+                     style={{ fontSize: 12, padding: '6px 8px' }} />
             </div>
           </div>
 
-          {/* Items */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 10px' }}>
-            <span style={{
-              fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em',
-              color: 'var(--text-muted)', fontWeight: 600,
-            }}>
-              Productos que entrega el cliente
-            </span>
-            <button className="btn btn-sm btn-primary" onClick={addItem} type="button">
-              <Icons.Plus size={13} /> Agregar producto
-            </button>
-          </div>
+          {/* ── Tabla scrolleable ── */}
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 180 }}>
+            {/* Datalist HTML nativo para autocomplete de nombres */}
+            <datalist id="mercaderia-recibida-productos-catalogo">
+              {productosCatalogo.map((n, i) => <option key={i} value={n} />)}
+            </datalist>
 
-          {/* Datalist HTML nativo para autocomplete de nombres */}
-          <datalist id="mercaderia-recibida-productos-catalogo">
-            {productosCatalogo.map((n, i) => <option key={i} value={n} />)}
-          </datalist>
-
-          {items.map((it, idx) => (
-            <div key={it._id} style={itemCardStyle}>
-              {items.length > 1 && (
-                <button
-                  onClick={() => removeItem(idx)} type="button"
-                  aria-label={`Eliminar producto ${idx + 1}`}
-                  style={{
-                    position: 'absolute', top: 8, right: 8,
-                    width: 24, height: 24, borderRadius: 4,
-                    background: 'transparent', border: 'none',
-                    color: 'var(--text-dim, #525c79)', cursor: 'pointer',
-                    display: 'grid', placeItems: 'center',
-                  }}
-                >
-                  <Icons.X size={12} />
-                </button>
-              )}
-
-              {/* Línea 1: nombre + categoría */}
-              <div className="row" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 10 }}>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label className="field-label">Producto</label>
-                  <input
-                    type="text" className="input"
-                    list="mercaderia-recibida-productos-catalogo"
-                    placeholder="Ej: PlayStation 5 Slim"
-                    value={it.nombre}
-                    onChange={e => updItem(idx, 'nombre', e.target.value)}
-                    autoFocus={idx === 0}
-                  />
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label className="field-label">Categoría</label>
-                  <select className="input" value={it.clase_id}
-                          onChange={e => updItem(idx, 'clase_id', e.target.value)}>
-                    <option value="">—</option>
-                    {clases.filter(c => c.activa !== false && !c.es_sin_categoria).map(c => (
-                      <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Línea 2: IMEI + cantidad + valor unitario */}
-              <div className="row" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label className="field-label">IMEI / Serial (opcional)</label>
-                  <input type="text" className="input" value={it.imei}
-                         onChange={e => updItem(idx, 'imei', e.target.value)}
-                         placeholder="—" />
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label className="field-label">Cantidad</label>
-                  <input type="number" className="input mono" min="1" step="1"
-                         onKeyDown={blockInvalidNumberKeys}
-                         value={it.cantidad}
-                         onChange={e => updItem(idx, 'cantidad', e.target.value)} />
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label className="field-label">Valor unitario (USD)</label>
-                  <input type="number" className="input mono" min="0" step="0.01"
-                         onKeyDown={blockInvalidNumberKeys}
-                         value={it.valor_unitario}
-                         onChange={e => updItem(idx, 'valor_unitario', e.target.value)}
-                         placeholder="0.00" />
-                </div>
-              </div>
-
-              {/* Colección (opcional, si el tenant la usa) */}
-              {categorias.length > 0 && (
-                <div className="field" style={{ marginBottom: 0, marginTop: 10 }}>
-                  <label className="field-label">Colección (opcional)</label>
-                  <select className="input" value={it.categoria_id}
-                          onChange={e => updItem(idx, 'categoria_id', e.target.value)}>
-                    <option value="">— Sin colección —</option>
-                    {categorias.map(c => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Total */}
-          <div style={totalLineStyle}>
-            <span style={{
-              fontSize: 12, color: 'var(--text-muted)',
+            {/* Header sticky de la tabla */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: gridCols, gap: 4,
+              padding: '10px 20px 6px',
+              position: 'sticky', top: 0,
+              background: 'var(--surface)',
+              borderBottom: '1px solid var(--hairline)',
+              fontSize: 10, fontWeight: 700,
               textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>Total a cancelar</span>
-            <span style={{
-              fontSize: 22, fontWeight: 700, color: 'var(--pos)',
-              fontVariantNumeric: 'tabular-nums',
-            }}>{fmtUSD(totalUsd)}</span>
+              color: 'var(--text-muted)',
+              zIndex: 1,
+            }}>
+              <span>Producto</span>
+              <span>Categoría</span>
+              <span>IMEI / Serial</span>
+              <span style={{ textAlign: 'center' }}>Cant.</span>
+              <span style={{ textAlign: 'right' }}>Valor unit.</span>
+              <span style={{ textAlign: 'right' }}>Subtotal</span>
+              <span></span>
+            </div>
+
+            {/* Filas */}
+            <div style={{ padding: '4px 20px 12px' }}>
+              {items.map((it, idx) => {
+                const st = subtotalDe(it);
+                return (
+                  <div key={it._id} style={{
+                    display: 'grid', gridTemplateColumns: gridCols, gap: 4,
+                    alignItems: 'center',
+                    padding: '4px 0',
+                    borderBottom: '1px solid var(--hairline)',
+                  }}>
+                    <input
+                      type="text"
+                      className="input"
+                      list="mercaderia-recibida-productos-catalogo"
+                      placeholder="Ej: PlayStation 5 Slim"
+                      value={it.nombre}
+                      onChange={e => updItem(idx, 'nombre', e.target.value)}
+                      autoFocus={idx === 0 && items.length === 1}
+                      style={inputCell}
+                    />
+                    <select className="input" value={it.clase_id}
+                            onChange={e => updItem(idx, 'clase_id', e.target.value)}
+                            style={inputCell}>
+                      <option value="">—</option>
+                      {clases.filter(c => c.activa !== false && !c.es_sin_categoria).map(c => (
+                        <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ${c.nombre}` : c.nombre}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text" className="input"
+                      value={it.imei}
+                      onChange={e => updItem(idx, 'imei', e.target.value)}
+                      placeholder="—"
+                      style={{ ...inputCell, fontFamily: 'monospace' }}
+                    />
+                    <input
+                      type="number" className="input mono"
+                      min="1" step="1"
+                      onKeyDown={blockInvalidNumberKeys}
+                      value={it.cantidad}
+                      onChange={e => updItem(idx, 'cantidad', e.target.value)}
+                      style={{ ...inputCell, textAlign: 'center' }}
+                    />
+                    <input
+                      type="number" className="input mono"
+                      min="0" step="0.01"
+                      onKeyDown={blockInvalidNumberKeys}
+                      value={it.valor_unitario}
+                      onChange={e => updItem(idx, 'valor_unitario', e.target.value)}
+                      placeholder="0.00"
+                      style={{ ...inputCell, textAlign: 'right' }}
+                    />
+                    <span style={{
+                      textAlign: 'right', padding: cellPad,
+                      fontFamily: 'monospace', fontSize: 12,
+                      color: st > 0 ? 'var(--text)' : 'var(--text-dim)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>
+                      {st > 0 ? fmtUSD(st) : '—'}
+                    </span>
+                    <button
+                      onClick={() => removeItem(idx)}
+                      type="button"
+                      disabled={items.length === 1}
+                      aria-label={`Eliminar producto ${idx + 1}`}
+                      title={items.length === 1 ? 'Necesitás al menos un producto' : 'Eliminar producto'}
+                      style={{
+                        width: 24, height: 24, borderRadius: 4,
+                        background: 'transparent', border: 'none',
+                        color: items.length === 1 ? 'var(--text-dim)' : 'var(--text-muted)',
+                        cursor: items.length === 1 ? 'not-allowed' : 'pointer',
+                        display: 'grid', placeItems: 'center',
+                        opacity: items.length === 1 ? 0.4 : 1,
+                      }}
+                    >
+                      <Icons.X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Botón agregar producto */}
+              <button className="btn btn-sm btn-ghost" onClick={addItem} type="button"
+                      style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
+                <Icons.Plus size={13} /> Agregar producto
+              </button>
+            </div>
           </div>
 
-          {/* Preview del saldo post-op */}
-          {totalUsd > 0 && (
-            <div style={previewStyle}>
-              <span style={{ fontSize: 20 }}>{saldoCierraEnCero ? '✓' : '⚠'}</span>
-              <div style={{ flex: 1 }}>
-                {saldoCierraEnCero ? (
-                  <>
-                    Después de esta entrega: <strong style={{ color: 'var(--pos)' }}>saldo {primerNombre} = {fmtUSD(0)}</strong> (deuda cancelada).
-                  </>
-                ) : saldoInvertido ? (
-                  <>
-                    Ojo: el cliente no tiene deuda o ya tiene saldo a favor. Sumar la entrega lo lleva a
-                    {' '}<strong>{fmtUSD(saldoPost)}</strong>. Considerá registrar antes una venta B2B si corresponde.
-                  </>
-                ) : (
-                  <>
-                    Después de esta entrega: <strong>saldo {primerNombre} = {fmtUSD(saldoPost)}</strong>
-                    {' '}({saldoPost > 0 ? 'te va a seguir debiendo' : 'quedará a favor del cliente'}).
-                  </>
-                )}
-              </div>
+          {/* ── Footer sticky: total + preview + botones ── */}
+          <div style={{
+            padding: '12px 20px',
+            borderTop: '1px solid var(--border)',
+            background: 'var(--surface)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+            flexShrink: 0,
+          }}>
+            {/* Total */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+              padding: '10px 14px', background: 'var(--surface-2)',
+              border: '1px solid var(--border)', borderRadius: 6,
+            }}>
+              <span style={{
+                fontSize: 11, color: 'var(--text-muted)',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>Total a cancelar</span>
+              <span style={{
+                fontSize: 18, fontWeight: 700, color: 'var(--pos)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>{fmtUSD(totalUsd)}</span>
             </div>
-          )}
+
+            {/* Preview del saldo post-op */}
+            {totalUsd > 0 && (
+              <div style={previewStyle}>
+                <span style={{ fontSize: 16 }}>{saldoCierraEnCero ? '✓' : '⚠'}</span>
+                <div style={{ flex: 1 }}>
+                  {saldoCierraEnCero ? (
+                    <>
+                      Después de la entrega: <strong style={{ color: 'var(--pos)' }}>saldo {primerNombre} = {fmtUSD(0)}</strong> (deuda cancelada).
+                    </>
+                  ) : saldoInvertido ? (
+                    <>
+                      Ojo: el cliente no tiene deuda o ya está a favor. Con la entrega queda en
+                      {' '}<strong>{fmtUSD(saldoPost)}</strong>. Registrá antes una venta B2B si corresponde.
+                    </>
+                  ) : (
+                    <>
+                      Después de la entrega: <strong>saldo {primerNombre} = {fmtUSD(saldoPost)}</strong>
+                      {' '}({saldoPost > 0 ? 'te va a seguir debiendo' : 'quedará a favor'}).
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="modal-ft" style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="modal-ft" style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-ghost" onClick={tryClose} disabled={saving} type="button">
             Cancelar
           </button>
