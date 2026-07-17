@@ -276,7 +276,7 @@ export default function Signup() {
                     <input
                       id="signup-nombre"
                       type="text"
-                      placeholder="Lucas Bruno"
+                      placeholder="Nombre y apellido"
                       autoComplete="name"
                       autoFocus
                       value={nombre}
