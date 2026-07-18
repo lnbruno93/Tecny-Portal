@@ -359,8 +359,12 @@ export default function Proveedores() {
       {/* Split layout */}
       {/* 2026-06-24 mobile lote D: usar .split-master-detail (de Lote A) que
           colapsa a single col en <=720px. Sin esto, en 375px el master
-          240px = 64% del ancho y el detail queda inusable. */}
-      <div className="split-master-detail" style={{
+          240px = 64% del ancho y el detail queda inusable.
+          2026-07-18: agregado modifier `fill-height` para que la línea
+          divisoria vertical (borderRight del sidebar) llegue hasta el piso
+          del contenedor cuando el sidebar tiene poco contenido. Ver
+          comentario en styles.css. */}
+      <div className="split-master-detail fill-height" style={{
         '--master-width': '240px',
         background: 'var(--surface)', border: '1px solid var(--border)',
         borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 580,

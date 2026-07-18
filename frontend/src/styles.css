@@ -1126,6 +1126,17 @@ input[type="number"] {
   align-items: start;
 }
 .split-master-detail.single { grid-template-columns: 1fr; }
+/* 2026-07-18 fix visual Proveedores: cuando el sidebar del split tiene
+   poco contenido (empty state "Sin proveedores" o pocas filas) el
+   `border-right` que dibuja el divisor entre master y detail solo llega
+   hasta el alto del contenido y deja un gap gris feo hasta el piso del
+   contenedor. Este modifier fuerza a las columnas del grid a llenar el
+   alto completo (align-items: stretch + una row 1fr). Reusable en cualquier
+   split-master-detail que actúe como contenedor con altura definida. */
+.split-master-detail.fill-height {
+  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr);
+}
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .gap-sm { gap: 8px; }
 .gap-md { gap: var(--gap); }
@@ -1423,6 +1434,11 @@ input[type="number"] {
    apretarse antes. Patrón master/detail típico de iOS Settings. */
 @media (max-width: 720px) {
   .split-master-detail { grid-template-columns: 1fr; }
+  /* En single-column el grid apila sidebar + detail en 2 rows implícitas.
+     Con `grid-template-rows: 1fr` el detail (row 2 auto) quedaría empujado
+     abajo del fold del contenedor. Reset a auto para que ambos crezcan por
+     contenido, como en el layout mobile original. */
+  .split-master-detail.fill-height { grid-template-rows: auto; }
 }
 @media (max-width: 880px) {
   .app { grid-template-columns: 64px 1fr; }
