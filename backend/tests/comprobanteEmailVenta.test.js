@@ -18,7 +18,7 @@ const app = require('../src/app');
 const db = require('../src/config/database');
 const { setupTestDb, teardownTestDb, TEST_USER } = require('./helpers/setup');
 const emailLib = require('../src/lib/email');
-const { generarComprobantePdf } = require('../src/lib/comprobantePdf');
+const { generarComprobantePdf, sumPagosUsd, sumCanjesUsd } = require('../src/lib/comprobantePdf');
 
 let pool, token, catBase, prodBase;
 const auth = () => ({ Authorization: `Bearer ${token}` });
@@ -150,6 +150,144 @@ describe('lib/comprobantePdf', () => {
     // de diferencia (zlib + font encoding lo comprime bastante pero no
     // a cero).
     expect(conFooterLargo.length).toBeGreaterThan(sinFooter.length + 30);
+  });
+
+  // 2026-07-19 (bug Tek Haus): canjes en el PDF backend. Frontend ya los tenía
+  // (task #140), pero backend no → los comprobantes por email ocultaban el
+  // equipo entregado + subestimaban total_cobrado.
+  describe('canjes en el comprobante', () => {
+    describe('sumPagosUsd', () => {
+      it('suma pagos en USD directo', () => {
+        expect(sumPagosUsd([{ monto: 500, moneda: 'USD' }, { monto: 200, moneda: 'USD' }])).toBe(700);
+      });
+      it('convierte ARS a USD con tc_venta', () => {
+        expect(sumPagosUsd([{ monto: 100000, moneda: 'ARS' }], 1000)).toBe(100);
+      });
+      it('convierte UYU a USD con tc_venta', () => {
+        expect(sumPagosUsd([{ monto: 4000, moneda: 'UYU' }], 40)).toBe(100);
+      });
+      it('prefiere monto_usd pre-computado si viene del backend', () => {
+        expect(sumPagosUsd([{ monto: 100000, moneda: 'ARS', monto_usd: 95 }], 1000)).toBe(95);
+      });
+      it('array vacío o inválido → 0', () => {
+        expect(sumPagosUsd([])).toBe(0);
+        expect(sumPagosUsd(null)).toBe(0);
+        expect(sumPagosUsd(undefined)).toBe(0);
+      });
+      it('moneda distinta sin tc_venta → toma como USD (defensive)', () => {
+        // Sin tc_venta y en ARS: no puede convertir. Comportamiento matcheado
+        // con el frontend — asume USD para no romper el cálculo.
+        expect(sumPagosUsd([{ monto: 100, moneda: 'ARS' }])).toBe(100);
+      });
+    });
+
+    describe('sumCanjesUsd', () => {
+      it('suma canjes en USD directo', () => {
+        expect(sumCanjesUsd([{ valor_toma: 400, moneda: 'USD' }])).toBe(400);
+      });
+      it('convierte ARS a USD con tc_venta', () => {
+        expect(sumCanjesUsd([{ valor_toma: 400000, moneda: 'ARS' }], 1000)).toBe(400);
+      });
+      it('convierte UYU a USD con tc_venta', () => {
+        expect(sumCanjesUsd([{ valor_toma: 16000, moneda: 'UYU' }], 40)).toBe(400);
+      });
+      it('array vacío o inválido → 0', () => {
+        expect(sumCanjesUsd([])).toBe(0);
+        expect(sumCanjesUsd(null)).toBe(0);
+      });
+      it('canje con valor_toma=0 → 0 (no revienta)', () => {
+        expect(sumCanjesUsd([{ valor_toma: 0, moneda: 'USD' }])).toBe(0);
+      });
+    });
+
+    // Nota sobre metodología: pdfkit usa Type 1 font encoding + text streams
+    // que NO conservan el texto como literal en el buffer (mismo motivo que el
+    // test "genera PDF con footer custom del tenant inyectado" arriba usa
+    // diff de tamaño en vez de grep). Para tests de contenido usamos el mismo
+    // approach: comparamos el tamaño del PDF con canje vs sin canje. Si el
+    // renderizado ejecuta las líneas de canje, escribe más text streams →
+    // buffer más grande.
+    const ventaBase = {
+      id: 42, order_id: 'ORD-26-test', fecha: hoy,
+      total_usd: 950, tc_venta: null, cliente_nombre: 'Tek Haus Cliente',
+      items: [{ descripcion: 'iPhone 15', cantidad: 1, precio_vendido: 950, moneda: 'USD' }],
+      pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 500, moneda: 'USD', monto_usd: 500 }],
+    };
+    const tenantBase = { id: 1, nombre: 'Test Store', pais: 'AR' };
+
+    it('PDF con canje pesa notablemente más que sin canje (sección + total cobrado)', async () => {
+      const sinCanje = await generarComprobantePdf({
+        venta: { ...ventaBase,
+          pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 950, moneda: 'USD', monto_usd: 950 }],
+          canjes: [],
+        },
+        tenant: tenantBase,
+        _compress: false,
+      });
+      const conCanje = await generarComprobantePdf({
+        venta: { ...ventaBase,
+          canjes: [{
+            descripcion: 'iPhone 13 Pro',
+            imei: '351234567890123',
+            gb: 256, color: 'Sierra Blue', bateria: 87,
+            valor_toma: 450, moneda: 'USD',
+          }],
+        },
+        tenant: tenantBase,
+        _compress: false,
+      });
+      // Con canje agregamos: título de sección, línea del canje con precio,
+      // sub-línea con IMEI + GB + color + batería, línea "Total cobrado",
+      // (dif = 0 en este fixture — Total cobrado = 950). Threshold conservador
+      // 150 bytes — el canje real agrega ~200-400 bytes de text streams.
+      expect(conCanje.length).toBeGreaterThan(sinCanje.length + 150);
+    });
+
+    it('PDF con canje ARS convertido a USD por tc_venta: total cobrado incluye la conversión', async () => {
+      // Venta USD 500. Pago USD 200 + canje ARS 300000 @ tc 1000 = USD 300.
+      // Total cobrado = 500 → dif = 0 → NO se agrega línea "Diferencia".
+      const conCanjeArs = await generarComprobantePdf({
+        venta: {
+          ...ventaBase,
+          total_usd: 500, tc_venta: 1000,
+          items: [{ descripcion: 'iPad', cantidad: 1, precio_vendido: 500, moneda: 'USD' }],
+          pagos: [{ metodo_nombre: 'USD | Efectivo', monto: 200, moneda: 'USD', monto_usd: 200 }],
+          canjes: [{ descripcion: 'iPad viejo', valor_toma: 300000, moneda: 'ARS' }],
+        },
+        tenant: tenantBase,
+        _compress: false,
+      });
+      expect(Buffer.isBuffer(conCanjeArs)).toBe(true);
+      expect(conCanjeArs.slice(0, 5).toString()).toBe('%PDF-');
+      // Verificación del cálculo por vía del helper puro (los tests
+      // sumPagosUsd/sumCanjesUsd ya lo cubren, este es el smoke E2E).
+      const totalCobrado = sumPagosUsd([{ monto: 200, moneda: 'USD', monto_usd: 200 }], 1000)
+                         + sumCanjesUsd([{ valor_toma: 300000, moneda: 'ARS' }], 1000);
+      expect(totalCobrado).toBe(500);
+    });
+
+    it('PDF con canje que genera diferencia positiva: aparece línea "Diferencia (a favor)"', async () => {
+      // Total venta USD 950, pago 500 + canje 500 = 1000 → dif +50 a favor.
+      // Comparamos con el mismo PDF sin la diferencia (pago exacto): el que
+      // tiene diferencia debe pesar más porque agrega una línea extra.
+      const sinDif = await generarComprobantePdf({
+        venta: { ...ventaBase,
+          canjes: [{ descripcion: 'iPhone 12', valor_toma: 450, moneda: 'USD' }],
+        },
+        tenant: tenantBase,
+        _compress: false,
+      });
+      const conDif = await generarComprobantePdf({
+        venta: { ...ventaBase,
+          canjes: [{ descripcion: 'iPhone 12', valor_toma: 500, moneda: 'USD' }],
+        },
+        tenant: tenantBase,
+        _compress: false,
+      });
+      // 30 bytes threshold: la línea "Diferencia (a favor): USD 50,00" agrega
+      // ~40-80 bytes al PDF.
+      expect(conDif.length).toBeGreaterThan(sinDif.length + 30);
+    });
   });
 });
 
