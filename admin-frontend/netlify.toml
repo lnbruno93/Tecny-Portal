@@ -10,7 +10,29 @@
 
 [build]
   base    = "admin-frontend"
-  command = "npm run build"
+  # 2026-07-19 hotfix workaround del bug "Skip pristine deploys" de Netlify.
+  #
+  # Contexto: Netlify tiene una feature que compara el `dist/` compilado con el
+  # anterior y cancela el deploy si son idénticos ("Canceled build due to no
+  # content change"). El problema: cambios en este `netlify.toml` (CSP, redirects,
+  # headers) NO afectan el `dist/` de Vite → Netlify skipea el deploy → los
+  # headers nuevos NUNCA se aplican. Bug reproducido con el PR #667: mergeamos
+  # cambio de CSP a las 18:03 UTC, Netlify buildeó pero cancelo con "no content
+  # change", el CSP viejo persistió en admin.tecnyapp.com hasta que hice
+  # `netlify api createSiteBuild` manual.
+  #
+  # El workaround `date > dist/.build-timestamp.txt` agrega un archivo con
+  # timestamp único a cada build → el `dist/` siempre difiere del anterior →
+  # Netlify NUNCA skipea. Costo: ~30 bytes extra en el bundle publicado.
+  # Beneficio: cualquier cambio en `netlify.toml` (CSP, redirects, headers,
+  # env vars) queda aplicado tras el merge sin intervención manual.
+  #
+  # Truco canónico de la comunidad Netlify — hay hilos oficiales de discurso
+  # que lo referencian como el fix estándar para el bug de skip-pristine.
+  # Si Netlify saca en el futuro una opción para desactivar "skip pristine"
+  # desde la config, este workaround puede reemplazarse por esa opción oficial.
+  # Ver también: docs/NETLIFY_BUILDS.md.
+  command = "npm run build && date -u +%FT%TZ > dist/.build-timestamp.txt"
   publish = "dist"
 
 # VITE_API_URL — hardcoded acá para que NO dependa de la Netlify UI env vars
