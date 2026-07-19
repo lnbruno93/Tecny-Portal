@@ -203,6 +203,15 @@ test.describe('Landing pública', () => {
     const section = page.locator('#empresas');
     await expect(section).toBeVisible({ timeout: 10_000 });
 
+    // Los <img> del carrusel llevan `loading="lazy"` — no fetchean hasta
+    // estar cerca del viewport. Con el viewport default de Playwright
+    // (1280x720) `#empresas` queda muy debajo del fold. Scroll manual acá:
+    // sin esto `naturalWidth` queda en 0 no porque haya un bug de CSP, sino
+    // porque el browser nunca disparó el request. Es el equivalente a un
+    // usuario que ve la landing pero nunca scrollea — el test valida "si
+    // scrolleás, cargan bien", no "cargan al arrancar".
+    await section.scrollIntoViewIfNeeded();
+
     // El carrusel duplica las empresas (set A + set B) → esperamos 4 <img>.
     // Verificamos que cada uno haya CARGADO (naturalWidth > 0). Si el CSP o
     // el CORP están mal, `naturalWidth === 0` — el bug del día 2026-07-19.
