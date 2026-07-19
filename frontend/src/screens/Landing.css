@@ -501,10 +501,16 @@
 .tecny-landing .trusted-logo {
   /* Tamaño uniforme por logo — asegura consistencia visual sin que un logo
      rectangular gigante empuje al resto. object-fit: contain en la <img>
-     evita deformaciones. */
+     evita deformaciones.
+     2026-07-19 tuning post-live: subido de 160×64 → 200×96 para que los
+     logos cuadrados (típicos de marcas tech) no queden achatados. Con
+     64px de alto un logo cuadrado a object-fit contain quedaba de 64×64
+     dentro de un contenedor 160×64 → mucho aire vacío a los lados y
+     sensación de "logos chiquitos". 200×96 da más presencia visual y
+     acepta mejor tanto logos horizontales como cuadrados. */
   flex-shrink: 0;
-  width: 160px;
-  height: 64px;
+  width: 200px;
+  height: 96px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -513,8 +519,15 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  filter: grayscale(1) brightness(0.9);
-  opacity: 0.7;
+  /* 2026-07-19 tuning post-live: quitado `brightness(0.9)` — oscurecía
+     demasiado los logos con fondo pintado (típico caso: fondo azul + texto
+     blanco) sobre el fondo oscuro de la landing, haciendo que casi no se
+     distinguieran del canvas. Con solo grayscale + opacity 0.85 los logos
+     tienen mejor contraste sobre `--bg` mientras se mantiene el efecto
+     "trusted by" homogeneizado. Opacity subida 0.7 → 0.85 en la misma línea:
+     los logos son proof social, no fondo — merecen más presencia. */
+  filter: grayscale(1);
+  opacity: 0.85;
   transition: filter 0.3s ease, opacity 0.3s ease;
 }
 .tecny-landing .trusted-logo:hover img {
@@ -522,10 +535,11 @@
   opacity: 1;
 }
 /* Mobile: logos un poco más chicos y menos gap para que entren más por
-   viewport y el marquee no se sienta "vacío" en pantallas angostas. */
+   viewport y el marquee no se sienta "vacío" en pantallas angostas.
+   2026-07-19: proporcional al desktop tuning (160×48 → 150×72). */
 @media (max-width: 720px) {
-  .tecny-landing .trusted-track { gap: 32px; }
-  .tecny-landing .trusted-logo { width: 120px; height: 48px; }
+  .tecny-landing .trusted-track { gap: 36px; }
+  .tecny-landing .trusted-logo { width: 150px; height: 72px; }
 }
 /* Respetar prefer-reduced-motion (accesibilidad WCAG 2.3.3): si el user
    pidió menos movimiento, apagamos el marquee. Los logos quedan estáticos
