@@ -20,9 +20,8 @@
 // porque el CSS tiene scroll-behavior: smooth y funciona sin tocar el router.
 // React Router NO intercepta hash links cuando el path no cambia.
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { resolveApiBase } from '../lib/api';
 import './Landing.css';
 // 2026-07-19 Sprint 1 H3 — observabilidad de la landing pública.
 // Helpers para: dataLayer events (provider-agnóstico), performance marks,
@@ -31,8 +30,20 @@ import {
   trackEvent,
   markPerformance,
   measurePerformance,
-  reportLandingError,
 } from './Landing.analytics';
+// 2026-07-19 Sprint 2 M1 — hooks del CMS extraídos a archivo aparte.
+// Antes había UN useEffect monolítico con 3 fetches paralelos sharing
+// AbortController; ahora cada hook es independiente y testeable en aislamiento.
+// FALLBACK_* + BACKEND_BASE viven en Landing.hooks.js; los re-importamos
+// para uso local (buildWaLink, <img src>, comparación hero fallback).
+import {
+  useLandingPricing,
+  useLandingCMS,
+  useTrustedCompanies,
+  FALLBACK_CONTACT,
+  FALLBACK_HERO,
+  BACKEND_BASE,
+} from './Landing.hooks';
 
 // Link público del evento "Demo Tecny — Conocé el sistema" en Calendly.
 // Si Lucas cambia el slug en Calendly (Booking page options), actualizar acá
@@ -88,52 +99,11 @@ function SoonLink({ children, label }) {
   );
 }
 
-// Fallback de pricing — matchea el seed de la migration plan_prices y los
-// valores actuales en backend/src/lib/planPricing.js DEFAULT_PRICES. Si
-// el fetch de /api/public/pricing falla (backend down, network slow,
-// CORS hipotético), la landing sigue mostrando estos valores en vez de
-// quedar con "$NaN" o un placeholder. NUNCA debe haber render sin precio.
-//
-// Cuando Lucas cambie pricing desde admin.tecnyapp.com/planes, el primer
-// render mostrará estos defaults pero el useEffect lo reemplaza ~200ms
-// después con los reales. Aceptable — no hay flicker visible para el
-// user típico (carga + scroll a #precios toma más que el fetch).
-const FALLBACK_PRICES = Object.freeze({
-  starter: 39,
-  pro: 189,
-});
-
-// 2026-07-13 Fallback de contacto — matchea el seed de la migration
-// site_landing_config (backend/migrations/20260713200000_site_landing_config.js).
-// Editable desde admin.tecnyapp.com/sitio-publico. Los defaults son el
-// último valor conocido — si la landing carga sin backend, muestra estos
-// hasta que el fetch resuelva. La sección Contacto NUNCA se queda vacía.
-const FALLBACK_CONTACT = Object.freeze({
-  email:            'hola@tecnyapp.com',
-  whatsapp:         '5491126165007',
-  whatsapp_display: '+54 9 11 2616-5007',
-  address:          'Buenos Aires, Argentina',
-  instagram_handle: 'tecny.app',
-  instagram_url:    'https://instagram.com/tecny.app',
-});
-
-// 2026-07-13 CMS Fase 3 fallbacks — matchean lo hardcodeado del diseño original
-// (2026-06-19). Si el backend responde con NULL para hero/cta o [] para faq,
-// la landing usa estos. Cambios sólo desde admin/sitio-publico.
-const FALLBACK_HERO = Object.freeze({
-  // headline es el título GRANDE. Aquí se pierde el <br /> del diseño original
-  // porque el CMS lo guarda como string plano; si Lucas quiere corte de línea,
-  // lo mete manualmente con \n o edita el HTML del CMS (futuro).
-  headline:    'Todo tu negocio, en una sola pantalla.',
-  subheadline: null,  // no había en el diseño original — reservado
-  blurb:       'Cotizaciones, comprobantes, cuentas corrientes, envíos y caja — para equipos que venden tecnología. Dejá las planillas sueltas y los grupos de WhatsApp: Tecny ordena la operación de toda tu mesa de trabajo.',
-});
-const FALLBACK_CTA = Object.freeze({
-  headline: 'Ordená tu negocio hoy',
-  body:     'Sumate a los equipos que ya dejaron las planillas atrás. Empezá gratis y mirá la diferencia en una semana.',
-});
 // FAQ default — los 6 Q&A hardcodeados del diseño original. Si el admin carga
 // aunque sea 1, se usan los del admin (Lucas queda con control total).
+// 2026-07-19 Sprint 2 M1: quedó acá (no se movió a Landing.hooks.js) por su
+// tamaño — bloatearía el hooks file y dificultaría diff en un futuro rediseño.
+// Se pasa como argumento a useLandingCMS para invertir la dependencia.
 const FALLBACK_FAQ = Object.freeze([
   { id: 'default-1', question: '¿Necesito instalar algo?',
     answer: 'No. Tecny funciona desde el navegador, en la compu o el celular. Creás tu cuenta y empezás a usarlo en minutos, sin descargas ni configuración técnica.' },
@@ -157,165 +127,34 @@ function buildWaLink(whatsapp, message) {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
 
-// Resuelve base del backend para el endpoint público. Mismo helper que el
-// resto de api.js — al ser endpoint sin auth, no necesitamos el wrapper
-// completo con manejo de 401/token. fetch directo es suficiente y nos
-// ahorra montar todo el module en el bundle de la landing si en el futuro
-// se hace code-splitting de portal vs landing.
-const BACKEND_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
-
 export default function Landing() {
-  // Pricing dinámico de `plan_prices` table (Sub-fase C.1.4 #353).
-  // Estado inicial = FALLBACK_PRICES para que el primer paint muestre
-  // valores reales (no "—" ni skeleton). El fetch en mount los reemplaza
-  // con los del backend si responde.
-  const [prices, setPrices] = useState(FALLBACK_PRICES);
-  // 2026-07-13 Contacto dinámico desde CMS Fase 1 (site_landing_config).
-  // Mismo patrón que prices: fallback hardcoded → fetch reemplaza en mount.
-  // Si backend falla, se muestra el fallback (nunca queda vacía la sección).
-  const [contact, setContact] = useState(FALLBACK_CONTACT);
-  // 2026-07-13 CMS Fase 3: Hero + CTA final + FAQ dinámicos. Mismo patrón.
-  const [hero, setHero] = useState(FALLBACK_HERO);
-  const [cta, setCta]   = useState(FALLBACK_CTA);
-  const [faq, setFaq]   = useState(FALLBACK_FAQ);
-  // 2026-07-19 CMS Fase 4: "Empresas que confiaron en Tecny" — carrusel de
-  // logos gestionado desde admin.tecnyapp.com/sitio-publico. Empty array por
-  // default → la sección se oculta si no hay empresas cargadas (fail-open).
-  const [trustedCompanies, setTrustedCompanies] = useState([]);
+  // 2026-07-19 Sprint 2 M1a — refactor: los 3 fetches del CMS ahora viven en
+  // hooks independientes (Landing.hooks.js). Cada uno maneja su propio
+  // AbortController + timeout + catch → error reporting específico por
+  // sección. Cero coupling entre ellos, mientras que antes compartían un
+  // AbortController y si uno tardaba podía abortar los otros.
+  const { prices, isReady: pricesReady } = useLandingPricing();
+  const { contact, hero, cta, faq, isReady: cmsReady } = useLandingCMS(FALLBACK_FAQ);
+  const { trustedCompanies, isReady: trustedReady } = useTrustedCompanies();
 
+  // Observabilidad de la landing (Sprint 1 H3):
+  // - `landing_view` + `landing-mount` mark al montar (una vez).
+  // - Cuando los 3 hooks reportan ready, disparamos
+  //   `landing_content_ready` + measure de tiempo total (baseline RUM).
+  //   Antes se hacía con un contador manual dentro del useEffect
+  //   monolítico; ahora es un useEffect chico que reacciona a los
+  //   booleans de cada hook.
   useEffect(() => {
-    // AbortController para cancelar si el user navega antes de que resuelva
-    // (poco probable en la landing pero higiénico). Timeout 8s — si el
-    // backend no responde, nos quedamos con los defaults.
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-
-    // 2026-07-19 Sprint 1 H3: observabilidad de la landing.
-    // - `landing_view` en dataLayer para que analytics vea el pageview.
-    // - `landing-mount` performance mark como baseline del RUM.
-    // - Track de cuántos fetches del CMS resolvieron; cuando llegamos a 3
-    //   emitimos `landing_content_ready` + measure `landing-content-time`.
     trackEvent('landing_view', { url: window.location.href });
     markPerformance('landing-mount');
-    let fetchesDone = 0;
-    const onFetchDone = () => {
-      fetchesDone += 1;
-      if (fetchesDone === 3) {
-        markPerformance('landing-content-ready');
-        measurePerformance('landing-content-time', 'landing-mount', 'landing-content-ready');
-        trackEvent('landing_content_ready');
-      }
-    };
-
-    fetch(BACKEND_BASE + '/api/public/pricing', { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error('http ' + res.status);
-        return res.json();
-      })
-      .then((data) => {
-        const p = data?.prices;
-        if (!p || typeof p !== 'object') return;
-        // Validación defensiva: solo actualizamos si los campos críticos
-        // son números >= 0. Si llega algo raro (NULL, string, negativo)
-        // mantenemos el fallback hardcoded.
-        const next = { ...FALLBACK_PRICES };
-        if (typeof p.starter === 'number' && p.starter >= 0) next.starter = p.starter;
-        if (typeof p.pro === 'number' && p.pro >= 0) next.pro = p.pro;
-        setPrices(next);
-      })
-      .catch((err) => {
-        // 2026-07-19 H3: dejamos de tragar el error silencio absoluto.
-        // Los defaults hardcoded siguen protegiendo la UX; el reporte va
-        // al backend Sentry sólo si NO es "noise" (network/abort — ya
-        // filtrado por reportError). Así detectamos si el endpoint está
-        // caído en prod sin depender de que un cliente avise.
-        reportLandingError(err, { section: 'pricing' });
-      })
-      .finally(onFetchDone);
-
-    // 2026-07-13 Fetch de contacto en paralelo con pricing — comparten el
-    // mismo AbortController + timeout (cancelan juntos si el user navega).
-    // Silent fail idéntico al de pricing: si falla, usamos FALLBACK_CONTACT.
-    fetch(BACKEND_BASE + '/api/public/site-config', { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error('http ' + res.status);
-        return res.json();
-      })
-      .then((data) => {
-        const c = data?.contact;
-        if (!c || typeof c !== 'object') return;
-        // Merge defensivo con el fallback: cualquier campo null/missing
-        // en el response mantiene el valor default (evita renderizar "null"
-        // en la landing si Lucas dejó un campo vacío en el admin).
-        setContact({
-          email:            c.email            || FALLBACK_CONTACT.email,
-          whatsapp:         c.whatsapp         || FALLBACK_CONTACT.whatsapp,
-          whatsapp_display: c.whatsapp_display || FALLBACK_CONTACT.whatsapp_display,
-          address:          c.address          || FALLBACK_CONTACT.address,
-          instagram_handle: c.instagram_handle || FALLBACK_CONTACT.instagram_handle,
-          instagram_url:    c.instagram_url    || FALLBACK_CONTACT.instagram_url,
-        });
-
-        // 2026-07-13 Fase 3: hero, cta, faq. Solo campos truthy overriden el
-        // fallback — el CMS puede tener parciales (ej. Lucas cambió el headline
-        // pero dejó el blurb como default).
-        const h = data?.hero;
-        if (h && typeof h === 'object') {
-          setHero({
-            headline:    h.headline    || FALLBACK_HERO.headline,
-            subheadline: h.subheadline || FALLBACK_HERO.subheadline,
-            blurb:       h.blurb       || FALLBACK_HERO.blurb,
-          });
-        }
-        const ct = data?.cta;
-        if (ct && typeof ct === 'object') {
-          setCta({
-            headline: ct.headline || FALLBACK_CTA.headline,
-            body:     ct.body     || FALLBACK_CTA.body,
-          });
-        }
-        // FAQ: si el admin cargó al menos 1, usa los del admin. Si es [], mantiene
-        // el fallback de 6 defaults hardcodeados.
-        if (Array.isArray(data?.faq) && data.faq.length > 0) {
-          setFaq(data.faq);
-        }
-      })
-      .catch((err) => {
-        // 2026-07-19 H3: reportar al backend Sentry. Los fallbacks siguen
-        // protegiendo la UX. Ver comentario en el catch de pricing.
-        reportLandingError(err, { section: 'site-config' });
-      })
-      .finally(onFetchDone);
-
-    // 2026-07-19 CMS Fase 4: fetch de logos de empresas — endpoint separado
-    // de /site-config para no bloatear ese payload con base64/URLs de 30-40
-    // logos. Cache HTTP 5min matchea el resto del CMS.
-    fetch(BACKEND_BASE + '/api/public/trusted-companies', { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error('http ' + res.status);
-        return res.json();
-      })
-      .then((data) => {
-        if (Array.isArray(data?.companies) && data.companies.length > 0) {
-          setTrustedCompanies(data.companies);
-        }
-        // Si viene vacío, mantenemos []: la sección no se renderiza.
-      })
-      .catch((err) => {
-        // 2026-07-19 H3: reportar al backend Sentry. La sección se oculta
-        // si no hay data — cero impacto visible al visitor. Ver pricing.
-        reportLandingError(err, { section: 'trusted-companies' });
-      })
-      .finally(() => {
-        clearTimeout(timer);
-        onFetchDone();
-      });
-
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
   }, []);
+  useEffect(() => {
+    if (pricesReady && cmsReady && trustedReady) {
+      markPerformance('landing-content-ready');
+      measurePerformance('landing-content-time', 'landing-mount', 'landing-content-ready');
+      trackEvent('landing_content_ready');
+    }
+  }, [pricesReady, cmsReady, trustedReady]);
 
   return (
     <div className="tecny-landing">
