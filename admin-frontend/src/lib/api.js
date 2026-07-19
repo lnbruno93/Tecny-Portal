@@ -423,6 +423,24 @@ export const adminApi = {
   // usado por la card "Reseñas de Google" (toggle enabled + status display).
   getGoogleReviewsStatus: () => api('/api/super-admin/google-reviews-status'),
 
+  // ── CMS Landing Fase 4 (2026-07-18): Empresas que confiaron en Tecny ────
+  // Grid/carrusel de logos editable desde el admin. Los logos se suben como
+  // base64 (frontend convierte con FileReader antes del POST).
+  //
+  // GET /trusted-companies              → lista con metadata (sin base64)
+  // POST /trusted-companies             → { nombre, logo_data, logo_mime, logo_nombre? }
+  // PATCH /trusted-companies/:id        → { nombre?, position? } (reorder ↑↓)
+  // DELETE /trusted-companies/:id       → soft-delete + R2 cleanup
+  //
+  // La landing pública consume GET /api/public/trusted-companies (metadata)
+  // + /api/public/trusted-companies/:id/logo (blob individual con cache 24h).
+  listTrustedCompanies:   () => api('/api/super-admin/trusted-companies'),
+  createTrustedCompany:   (body) => api('/api/super-admin/trusted-companies', 'POST', body),
+  updateTrustedCompany:   (id, body) =>
+    api(`/api/super-admin/trusted-companies/${encodeURIComponent(id)}`, 'PATCH', body),
+  deleteTrustedCompany:   (id) =>
+    api(`/api/super-admin/trusted-companies/${encodeURIComponent(id)}`, 'DELETE'),
+
   // ── Métodos de pago (task #132, 2026-07-15) ──────────────────────────
   // Catálogo global editable. Cada tenant puede tener uno asignado
   // (tenants.metodo_pago_id). Se gestiona desde el modal del header de

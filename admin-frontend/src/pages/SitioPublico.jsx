@@ -19,6 +19,10 @@ import { adminApi } from '../lib/api.js';
 import { Btn, Card, PageHead } from '../components/primitives/index.jsx';
 import { Icons } from '../components/Icons.jsx';
 import { fmtDateTime } from '../lib/format.js';
+// 2026-07-18 CMS Landing Fase 4: card "Empresas que confiaron en Tecny".
+// Componente aparte porque tiene CRUD granular row-by-row (no comparte el
+// diff-tracking de esta pantalla) y encapsula el modal de upload.
+import TrustedCompaniesCard from '../components/TrustedCompaniesCard.jsx';
 
 // Campos de contacto en el orden que el operador espera verlos en el form.
 const CONTACT_FIELDS = [
@@ -786,6 +790,11 @@ export default function SitioPublico() {
               )}
             </div>
           </Card>
+
+          {/* ── SECCIÓN EMPRESAS QUE CONFIARON (Fase 4, 2026-07-18) ──
+              Card autónoma con su propio CRUD granular row-by-row.
+              Renderiza sus propios mensajes de éxito/error internamente. */}
+          <TrustedCompaniesCard />
 
           {/* Mensajes de estado (compartidos entre Contacto + Reseñas) */}
           {error && (
