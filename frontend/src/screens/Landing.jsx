@@ -24,6 +24,15 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { resolveApiBase } from '../lib/api';
 import './Landing.css';
+// 2026-07-19 Sprint 1 H3 — observabilidad de la landing pública.
+// Helpers para: dataLayer events (provider-agnóstico), performance marks,
+// error reporting via backend Sentry. Ver Landing.analytics.js para detalle.
+import {
+  trackEvent,
+  markPerformance,
+  measurePerformance,
+  reportLandingError,
+} from './Landing.analytics';
 
 // Link público del evento "Demo Tecny — Conocé el sistema" en Calendly.
 // Si Lucas cambia el slug en Calendly (Booking page options), actualizar acá
@@ -172,6 +181,23 @@ export default function Landing() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
 
+    // 2026-07-19 Sprint 1 H3: observabilidad de la landing.
+    // - `landing_view` en dataLayer para que analytics vea el pageview.
+    // - `landing-mount` performance mark como baseline del RUM.
+    // - Track de cuántos fetches del CMS resolvieron; cuando llegamos a 3
+    //   emitimos `landing_content_ready` + measure `landing-content-time`.
+    trackEvent('landing_view', { url: window.location.href });
+    markPerformance('landing-mount');
+    let fetchesDone = 0;
+    const onFetchDone = () => {
+      fetchesDone += 1;
+      if (fetchesDone === 3) {
+        markPerformance('landing-content-ready');
+        measurePerformance('landing-content-time', 'landing-mount', 'landing-content-ready');
+        trackEvent('landing_content_ready');
+      }
+    };
+
     fetch(BACKEND_BASE + '/api/public/pricing', { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error('http ' + res.status);
@@ -188,12 +214,15 @@ export default function Landing() {
         if (typeof p.pro === 'number' && p.pro >= 0) next.pro = p.pro;
         setPrices(next);
       })
-      .catch(() => {
-        // Silencioso a propósito. La landing es pre-auth — un usuario
-        // sin contexto ve "$39/mes" (default) y no "error". Si el backend
-        // está caído al cargar la landing tenemos problemas mayores
-        // (Sentry los reporta desde el portal autenticado).
-      });
+      .catch((err) => {
+        // 2026-07-19 H3: dejamos de tragar el error silencio absoluto.
+        // Los defaults hardcoded siguen protegiendo la UX; el reporte va
+        // al backend Sentry sólo si NO es "noise" (network/abort — ya
+        // filtrado por reportError). Así detectamos si el endpoint está
+        // caído en prod sin depender de que un cliente avise.
+        reportLandingError(err, { section: 'pricing' });
+      })
+      .finally(onFetchDone);
 
     // 2026-07-13 Fetch de contacto en paralelo con pricing — comparten el
     // mismo AbortController + timeout (cancelan juntos si el user navega).
@@ -242,7 +271,12 @@ export default function Landing() {
           setFaq(data.faq);
         }
       })
-      .catch(() => { /* silencioso, mismo criterio que pricing */ });
+      .catch((err) => {
+        // 2026-07-19 H3: reportar al backend Sentry. Los fallbacks siguen
+        // protegiendo la UX. Ver comentario en el catch de pricing.
+        reportLandingError(err, { section: 'site-config' });
+      })
+      .finally(onFetchDone);
 
     // 2026-07-19 CMS Fase 4: fetch de logos de empresas — endpoint separado
     // de /site-config para no bloatear ese payload con base64/URLs de 30-40
@@ -258,8 +292,15 @@ export default function Landing() {
         }
         // Si viene vacío, mantenemos []: la sección no se renderiza.
       })
-      .catch(() => { /* silent — la sección queda oculta si el backend falla */ })
-      .finally(() => clearTimeout(timer));
+      .catch((err) => {
+        // 2026-07-19 H3: reportar al backend Sentry. La sección se oculta
+        // si no hay data — cero impacto visible al visitor. Ver pricing.
+        reportLandingError(err, { section: 'trusted-companies' });
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        onFetchDone();
+      });
 
     return () => {
       clearTimeout(timer);
@@ -280,8 +321,14 @@ export default function Landing() {
             <a href="#faq">FAQ</a>
           </div>
           <div className="nav-cta">
-            <Link to="/login" className="btn btn-ghost">Iniciar sesión</Link>
-            <Link to="/signup" className="btn btn-ghost">Crear cuenta</Link>
+            <Link to="/login" className="btn btn-ghost"
+                  onClick={() => trackEvent('cta_click', { location: 'nav', target: 'login' })}>
+              Iniciar sesión
+            </Link>
+            <Link to="/signup" className="btn btn-ghost"
+                  onClick={() => trackEvent('cta_click', { location: 'nav', target: 'signup' })}>
+              Crear cuenta
+            </Link>
             {/* 2026-06-25 ONB-8 → 2026-06-25 Calendly: "Solicitá una demo" pasa
                 a abrir el booking de Calendly (utm_campaign=nav para tracking).
                 Histórico: antes era mailto: a hola@tecnyapp.com (fallback
@@ -293,6 +340,7 @@ export default function Landing() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary"
+              onClick={() => trackEvent('cta_click', { location: 'nav', target: 'demo' })}
             >
               Solicitá una demo
             </a>
@@ -321,8 +369,14 @@ export default function Landing() {
             )}
             <p className="hero-sub">{hero.blurb}</p>
             <div className="hero-actions">
-              <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
-              <a href="#como" className="btn btn-lg">Ver cómo funciona</a>
+              <Link to="/signup" className="btn btn-primary btn-lg"
+                    onClick={() => trackEvent('cta_click', { location: 'hero', target: 'signup' })}>
+                Empezá gratis
+              </Link>
+              <a href="#como" className="btn btn-lg"
+                 onClick={() => trackEvent('cta_click', { location: 'hero', target: 'scroll-como' })}>
+                Ver cómo funciona
+              </a>
             </div>
             <div className="hero-note">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -623,7 +677,10 @@ export default function Landing() {
                 <li><Check /> Financiera básica</li>
                 <li><Check /> 50 OCR / mes</li>
               </ul>
-              <Link to="/signup" className="btn">Empezar gratis</Link>
+              <Link to="/signup" className="btn"
+                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'solo' })}>
+                Empezar gratis
+              </Link>
             </div>
             <div className="plan featured">
               <div className="tag-pop">Más elegido</div>
@@ -637,7 +694,10 @@ export default function Landing() {
                 <li><Check /> Permisos por usuario</li>
                 <li><Check /> OCR ilimitado + Historial</li>
               </ul>
-              <Link to="/signup" className="btn btn-primary">Empezar gratis</Link>
+              <Link to="/signup" className="btn btn-primary"
+                    onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'signup', plan: 'equipo' })}>
+                Empezar gratis
+              </Link>
             </div>
             <div className="plan">
               <div className="pname">Multi-local</div>
@@ -660,6 +720,7 @@ export default function Landing() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn"
+                onClick={() => trackEvent('cta_click', { location: 'pricing', target: 'demo', plan: 'multi-local' })}
               >
                 Contactar ventas
               </a>
@@ -712,6 +773,20 @@ export default function Landing() {
                       src={`${BACKEND_BASE}/api/public/trusted-companies/${c.id}/logo`}
                       alt={c.nombre}
                       loading="lazy"
+                      // 2026-07-19 Sprint 1 H3: si un <img> del carrusel se rompe
+                      // (CSP mal aplicada, backend caído, blob corrupto, etc.),
+                      // Sentry se entera. Filtramos el 1er evento por id para no
+                      // reportar 2 veces el mismo logo (viene duplicado por el
+                      // loop del marquee). Debounce simple con Set en memoria.
+                      onError={(e) => {
+                        if (i >= trustedCompanies.length) return; // set B del loop
+                        reportLandingError(new Error('trusted_company_logo_failed'), {
+                          section: 'trusted-companies',
+                          logo_id: c.id,
+                          logo_nombre: c.nombre,
+                          logo_url: e?.target?.src,
+                        });
+                      }}
                     />
                   </div>
                 ))}
@@ -754,7 +829,10 @@ export default function Landing() {
             <h2>{cta.headline}</h2>
             <p>{cta.body}</p>
             <div className="hero-actions">
-              <Link to="/signup" className="btn btn-primary btn-lg">Empezá gratis</Link>
+              <Link to="/signup" className="btn btn-primary btn-lg"
+                    onClick={() => trackEvent('cta_click', { location: 'cta-final', target: 'signup' })}>
+                Empezá gratis
+              </Link>
               {/* 2026-06-25 ONB-8 → Calendly: era mailto: como fallback temporal.
                   Ahora abre el booking de Calendly con utm_campaign=cta-final
                   para que sepamos si la sección final convierte más que el CTA
@@ -764,6 +842,7 @@ export default function Landing() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-lg"
+                onClick={() => trackEvent('cta_click', { location: 'cta-final', target: 'demo' })}
               >
                 Agendá una demo
               </a>
