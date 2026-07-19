@@ -1,6 +1,15 @@
 [build]
   base    = "frontend"
-  command = "npm run build"
+  # 2026-07-19 workaround preventivo del bug "Skip pristine deploys" de
+  # Netlify — mismo issue documentado en `admin-frontend/netlify.toml`. En este
+  # site (tecny-portal / tecnyapp.com) no se manifestó hoy porque los cambios
+  # que le corresponden suelen tocar código de `frontend/src/` que sí altera
+  # el `dist/` compilado. Pero un cambio SOLO en headers/CSP/redirects acá
+  # (ej. un hotfix futuro donde solo se toca este `netlify.toml`) tendría el
+  # mismo problema. El archivo `.build-timestamp.txt` con timestamp único
+  # garantiza que Netlify siempre detecte content-change y aplique la config
+  # nueva. Ver docs/NETLIFY_BUILDS.md para el detalle del bug + fix.
+  command = "npm run build && date -u +%FT%TZ > dist/.build-timestamp.txt"
   publish = "dist"
 
 # VITE_API_URL hardcoded acá (2026-07-04 P0). Antes vivía SOLO en Netlify UI
