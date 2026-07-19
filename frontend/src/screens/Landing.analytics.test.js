@@ -144,5 +144,20 @@ describe('Landing.analytics', () => {
       const evt = (window.dataLayer || []).find(e => e.event === 'landing_error');
       expect(evt.message.length).toBeLessThanOrEqual(200);
     });
+
+    it('ignora AbortError silenciosamente (React StrictMode double-mount)', () => {
+      // Errores de aborto se generan cuando React unmountea y el fetch
+      // en curso se cancela. NO son bugs. No queremos noise en Sentry ni
+      // en el dataLayer.
+      const abortErr = new DOMException('signal is aborted without reason', 'AbortError');
+      reportLandingError(abortErr, { section: 'pricing' });
+      expect(silentReport).not.toHaveBeenCalled();
+      expect((window.dataLayer || []).find(e => e.event === 'landing_error')).toBeUndefined();
+    });
+
+    it('ignora también "The operation was aborted" (Safari)', () => {
+      reportLandingError(new Error('The operation was aborted.'), { section: 'x' });
+      expect(silentReport).not.toHaveBeenCalled();
+    });
   });
 });

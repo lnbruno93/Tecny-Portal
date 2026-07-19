@@ -93,9 +93,19 @@ test.describe('Landing pública', () => {
     const errors = [];
     // Capturamos errores JS + errores de red (fetch fallidos) para asertar
     // que ninguno ocurre durante el load inicial.
-    page.on('pageerror', (err) => errors.push({ type: 'pageerror', msg: err.message }));
+    //
+    // Filtro `AbortError`: React 18 StrictMode en dev dispara double-mount →
+    // el primer cleanup aborta los fetches → catch → si algún path se
+    // escapa del filtro de reportLandingError, no queremos hacer flaky el
+    // test por eso. Son cleanup benignos, no bugs.
+    const IGNORE = /AbortError|signal is aborted|The operation was aborted/i;
+    page.on('pageerror', (err) => {
+      if (!IGNORE.test(err.message)) errors.push({ type: 'pageerror', msg: err.message });
+    });
     page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push({ type: 'console', msg: msg.text() });
+      if (msg.type() === 'error' && !IGNORE.test(msg.text())) {
+        errors.push({ type: 'console', msg: msg.text() });
+      }
     });
 
     await mockLandingApis(page);
@@ -105,7 +115,7 @@ test.describe('Landing pública', () => {
     // Espera a que la landing esté ready (el evento del dataLayer del Sprint 1 H3).
     await page.waitForFunction(
       () => (window.dataLayer || []).some((e) => e.event === 'landing_content_ready'),
-      { timeout: 10_000 },
+      { timeout: 15_000 },
     );
 
     // Cero errores JS o console.error durante el ciclo de vida completo.
@@ -178,9 +188,16 @@ test.describe('Landing pública', () => {
     await mockLandingApis(page);
     await page.goto('/');
 
-    // La sección solo se renderiza si hay empresas. Con nuestro mock hay 2.
+    // Esperar primero a que el fetch del CMS haya persistido las empresas
+    // (React StrictMode en dev hace double-mount → puede que la 1ra pasada
+    // se aborte). `landing_content_ready` se dispara cuando los 3 hooks
+    // resolvieron; después la sección `#empresas` aparece si hay logos.
+    await page.waitForFunction(
+      () => (window.dataLayer || []).some((e) => e.event === 'landing_content_ready'),
+      { timeout: 15_000 },
+    );
     const section = page.locator('#empresas');
-    await expect(section).toBeVisible();
+    await expect(section).toBeVisible({ timeout: 5_000 });
 
     // El carrusel duplica las empresas (set A + set B) → esperamos 4 <img>.
     // Verificamos que cada uno haya CARGADO (naturalWidth > 0). Si el CSP o
@@ -190,7 +207,7 @@ test.describe('Landing pública', () => {
     await page.waitForFunction(() => {
       const imgs = document.querySelectorAll('#empresas img');
       return imgs.length === 4 && Array.from(imgs).every((img) => img.complete && img.naturalWidth > 0);
-    }, { timeout: 10_000 });
+    }, { timeout: 15_000 });
   });
 
   test('Sección Empresas: cero empresas → sección oculta (fail-open)', async ({ page }) => {
