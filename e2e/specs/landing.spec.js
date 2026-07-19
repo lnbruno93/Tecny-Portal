@@ -186,24 +186,28 @@ test.describe('Landing pública', () => {
 
   test('Sección Empresas: los logos del carrusel cargan (no rota la imagen)', async ({ page }) => {
     await mockLandingApis(page);
-    await page.goto('/');
-
-    // Esperar primero a que el fetch del CMS haya persistido las empresas
-    // (React StrictMode en dev hace double-mount → puede que la 1ra pasada
-    // se aborte). `landing_content_ready` se dispara cuando los 3 hooks
-    // resolvieron; después la sección `#empresas` aparece si hay logos.
-    await page.waitForFunction(
-      () => (window.dataLayer || []).some((e) => e.event === 'landing_content_ready'),
+    // Esperar la respuesta del mock de trusted-companies antes de asertar la
+    // sección. React 18 StrictMode double-mount en dev puede hacer que el
+    // fetch dispare 2 veces; `waitForResponse` resuelve en el PRIMER 200 del
+    // mock. Con eso sabemos que el estado `trustedCompanies` recibió los
+    // items — el segundo mount solo sobrescribe con lo mismo.
+    const trustedCall = page.waitForResponse(
+      (res) => /\/api\/public\/trusted-companies($|\?)/.test(res.url()) && res.status() === 200,
       { timeout: 15_000 },
     );
+    await page.goto('/');
+    await trustedCall;
+
+    // Ahora la sección debe estar. Damos otro margen por el render de React
+    // (el state update puede diferirse un tick).
     const section = page.locator('#empresas');
-    await expect(section).toBeVisible({ timeout: 5_000 });
+    await expect(section).toBeVisible({ timeout: 10_000 });
 
     // El carrusel duplica las empresas (set A + set B) → esperamos 4 <img>.
     // Verificamos que cada uno haya CARGADO (naturalWidth > 0). Si el CSP o
     // el CORP están mal, `naturalWidth === 0` — el bug del día 2026-07-19.
     const imgs = section.locator('img');
-    await expect(imgs).toHaveCount(4);
+    await expect(imgs).toHaveCount(4, { timeout: 10_000 });
     await page.waitForFunction(() => {
       const imgs = document.querySelectorAll('#empresas img');
       return imgs.length === 4 && Array.from(imgs).every((img) => img.complete && img.naturalWidth > 0);
