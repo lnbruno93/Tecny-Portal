@@ -91,6 +91,21 @@ async function enviarComprobanteVenta({
       );
       v.pagos = pRes.rows;
 
+      // 2026-07-19 fix (bug Tek Haus): canjes faltaban en el PDF que se
+      // envía por email. El frontend generarComprobantePdf ya los incluye
+      // (task #140, commit a331618) pero el backend nunca replicó el fix
+      // → los comprobantes por email mostraban solo pagos, subestimando el
+      // total_cobrado y ocultando el equipo entregado. Query paralela a
+      // items/pagos, filtrando soft-deleted.
+      const cRes = await client.query(
+        `SELECT id, descripcion, imei, gb, color, bateria, valor_toma, moneda
+           FROM canjes
+          WHERE venta_id = $1 AND deleted_at IS NULL
+          ORDER BY id`,
+        [ventaId]
+      );
+      v.canjes = cRes.rows;
+
       // Tenant (nombre + footer custom + pais). `tenants` no tiene RLS por
       // tenant_id (es la tabla raíz) — se filtra por id directo.
       const tRes = await client.query(
@@ -295,6 +310,17 @@ async function sendAndMarkPending({ tenantId, ventaId, emailTo, sentId }) {
         [ventaId]
       );
       v.pagos = pRes.rows;
+
+      // 2026-07-19 fix (bug Tek Haus) — ver comentario largo en la función
+      // enviarComprobanteVenta arriba. Mismo fix aplicado al reenvío manual.
+      const cRes = await client.query(
+        `SELECT id, descripcion, imei, gb, color, bateria, valor_toma, moneda
+           FROM canjes
+          WHERE venta_id = $1 AND deleted_at IS NULL
+          ORDER BY id`,
+        [ventaId]
+      );
+      v.canjes = cRes.rows;
 
       const tRes = await client.query(
         `SELECT id, nombre, comprobante_email_footer, pais

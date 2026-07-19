@@ -119,10 +119,52 @@ function fmtFecha(fecha) {
 }
 
 /**
+ * 2026-07-19 fix (bug Tek Haus): sumas paralelas a las del frontend
+ * (frontend/src/lib/generarComprobantePdf.js) — mismo cálculo del total
+ * cobrado incluye canjes. Antes el backend PDF solo sumaba pagos → los
+ * comprobantes que iban por email ocultaban el equipo entregado en canje
+ * y el total_cobrado quedaba subestimado.
+ *
+ * Regla: los pagos ya vienen con `monto` en su moneda original — para
+ * convertirlos a USD el frontend usa `monto_usd` pre-computado. Backend
+ * hoy solo trae `monto` y `moneda` sin la conversión → sumamos pagos
+ * en su moneda cruda solo cuando son USD/USDT; si son ARS/UYU se
+ * convierten con tc_venta. Mismo criterio aplica a canjes (`valor_toma`).
+ */
+function sumPagosUsd(pagos, tcVenta) {
+  if (!Array.isArray(pagos)) return 0;
+  const tc = Number(tcVenta) || 0;
+  return pagos.reduce((s, p) => {
+    // Si el pago ya trae monto_usd pre-computado (el frontend lo hace en
+    // el POST /api/ventas), usarlo directamente — es más preciso que
+    // recalcular con el tc actual, porque preserva el TC del momento de la
+    // venta si hubiera drift.
+    if (Number.isFinite(Number(p.monto_usd))) return s + Number(p.monto_usd);
+    const monto = Number(p.monto) || 0;
+    const moneda = String(p.moneda || 'USD').toUpperCase();
+    const enUsd = (moneda === 'ARS' || moneda === 'UYU') && tc > 0 ? monto / tc : monto;
+    return s + enUsd;
+  }, 0);
+}
+
+function sumCanjesUsd(canjes, tcVenta) {
+  if (!Array.isArray(canjes)) return 0;
+  const tc = Number(tcVenta) || 0;
+  return canjes.reduce((s, c) => {
+    const valor = Number(c.valor_toma) || 0;
+    const moneda = String(c.moneda || 'USD').toUpperCase();
+    const enUsd = (moneda === 'ARS' || moneda === 'UYU') && tc > 0 ? valor / tc : valor;
+    return s + enUsd;
+  }, 0);
+}
+
+/**
  * Genera el PDF del comprobante como Buffer.
  *
  * @param {object} opts
- * @param {object} opts.venta - { id, order_id, fecha, total_usd, tc_venta, cliente_nombre, notas, items[], pagos[] }
+ * @param {object} opts.venta - { id, order_id, fecha, total_usd, tc_venta,
+ *   cliente_nombre, notas, items[], pagos[], canjes[] }.
+ *   Cada canje: { id, descripcion, imei, gb, color, bateria, valor_toma, moneda }.
  * @param {object} opts.tenant - { nombre, comprobante_email_footer, pais }
  * @returns {Promise<Buffer>}
  */
@@ -133,6 +175,9 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
   const pais = tenant.pais || 'AR';
   const items = Array.isArray(venta.items) ? venta.items : [];
   const pagos = Array.isArray(venta.pagos) ? venta.pagos : [];
+  // 2026-07-19 fix (bug Tek Haus): canjes ahora se cargan en comprobanteEmail.js
+  // y se renderizan abajo en su propia sección.
+  const canjes = Array.isArray(venta.canjes) ? venta.canjes : [];
 
   return await new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -269,6 +314,29 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
       width: colWidth, align: 'right',
     });
 
+    // 2026-07-19 fix (bug Tek Haus): si hay canjes, agregar líneas
+    // "Total cobrado" + "Diferencia" (si aplica). Mismo modelo que el frontend
+    // generarComprobantePdf. Sin canjes mantenemos el layout compacto original
+    // (solo Total).
+    if (canjes.length > 0) {
+      const totalCobrado = sumPagosUsd(pagos, venta.tc_venta) + sumCanjesUsd(canjes, venta.tc_venta);
+      const dif = totalCobrado - totalUsd;
+      doc.moveDown(0.3);
+      doc.font('Helvetica').fontSize(10).fillColor('#3f3a2c');
+      doc.text(`Total cobrado: ${fmtMoney(totalCobrado, 'USD', pais)}`, xStart, doc.y, {
+        width: colWidth, align: 'right',
+      });
+      if (Math.abs(dif) > 0.005) {
+        doc.moveDown(0.1);
+        doc.font('Helvetica').fontSize(9).fillColor(dif > 0 ? '#4caf50' : '#dc3545');
+        const difLabel = dif > 0 ? 'Diferencia (a favor)' : 'Diferencia (en contra)';
+        doc.text(`${difLabel}: ${fmtMoney(Math.abs(dif), 'USD', pais)}`, xStart, doc.y, {
+          width: colWidth, align: 'right',
+        });
+        doc.fillColor('#1c1a14');
+      }
+    }
+
     // TC info (opcional): si la venta tuvo items en moneda local, mostrar TC.
     if (venta.tc_venta && items.some(i => i.moneda !== 'USD' && i.moneda !== 'USDT')) {
       doc.font('Helvetica').fontSize(8).fillColor('#76705c');
@@ -289,6 +357,42 @@ async function generarComprobantePdf({ venta, tenant, _compress = true }) {
         const monto = Number(p.monto) || 0;
         const moneda = p.moneda || 'USD';
         doc.text(`· ${metodo}: ${fmtMoney(monto, moneda, pais)}`, xStart, doc.y);
+      }
+      doc.moveDown(0.5);
+    }
+
+    // ── Equipo(s) entregado(s) en canje ────────────────────────────────
+    // 2026-07-19 fix (bug Tek Haus): un canje NO es método de pago sino un
+    // bien físico entregado como parte del pago. Sección separada con detalle
+    // completo (descripción, IMEI/serial, GB, color, batería) para que el
+    // cliente vea claro qué equipo entregó — paridad con el frontend
+    // generarComprobantePdf que hace lo mismo desde task #140.
+    if (canjes.length > 0) {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#0d1220');
+      doc.text('Equipo entregado en canje', xStart, doc.y);
+      doc.moveDown(0.2);
+      doc.font('Helvetica').fontSize(9).fillColor('#3f3a2c');
+      for (const c of canjes) {
+        // Descripción principal: nombre del equipo + valor en su moneda.
+        // Sanitizamos porque descripcion, imei y color son user-controlled.
+        const desc = sanitizeForPdf(c.descripcion || 'Equipo usado', { maxLen: 120 });
+        const valor = Number(c.valor_toma) || 0;
+        const moneda = c.moneda || 'USD';
+        doc.text(`· ${desc}: ${fmtMoney(valor, moneda, pais)}`, xStart, doc.y);
+        // Sub-línea con especs si están cargadas (GB · Color · Batería%).
+        const especs = [
+          c.gb ? `${c.gb} GB` : null,
+          c.color ? sanitizeForPdf(c.color, { maxLen: 30 }) : null,
+          c.bateria != null ? `Batería ${c.bateria}%` : null,
+        ].filter(Boolean).join(' · ');
+        if (especs || c.imei) {
+          doc.font('Helvetica').fontSize(8).fillColor('#76705c');
+          const partes = [];
+          if (c.imei) partes.push(`IMEI/Serial: ${sanitizeForPdf(c.imei, { maxLen: 40 })}`);
+          if (especs) partes.push(especs);
+          doc.text(`  ${partes.join(' — ')}`, xStart, doc.y, { width: colWidth });
+          doc.font('Helvetica').fontSize(9).fillColor('#3f3a2c');
+        }
       }
       doc.moveDown(0.5);
     }
@@ -335,4 +439,8 @@ module.exports = {
   _fmtFecha: fmtFecha,
   _FOOTER_DEFAULT: FOOTER_DEFAULT,
   _sanitizeForPdf: sanitizeForPdf,
+  // 2026-07-19 (bug Tek Haus): helpers de suma para poder testear el cálculo
+  // del total_cobrado sin generar el PDF completo. Paralelo al frontend.
+  sumPagosUsd,
+  sumCanjesUsd,
 };
