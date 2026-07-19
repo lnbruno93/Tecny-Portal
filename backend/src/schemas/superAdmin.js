@@ -323,6 +323,41 @@ const updateSiteLandingContactSchema = z.object({
   { message: 'Al menos un campo es requerido para actualizar' }
 );
 
+// 2026-07-18 (CMS Landing Fase 4): "Empresas que confiaron en Tecny".
+// POST /api/super-admin/trusted-companies — crear un logo nuevo.
+// El frontend convierte el file a base64 antes de mandar.
+//
+// Límites de tamaño defensivos (protegen a PostgreSQL cuando driver=db, donde
+// el base64 vive en la columna TEXT):
+//   · nombre: 1-120 chars (razas típicas de nombres de empresa; suficiente
+//     para "SociedadAnónima" con espacios).
+//   · logo_data: base64, hard-cap ~4MB (base64 x 4/3 ≈ 5.4MB) — cubre logos
+//     PNG de retina densidad + SVG con embedded fonts. Rechazamos más grande
+//     para no dejar 20MB en la row (el admin siempre puede optimizar antes).
+//   · logo_mime: solo image/*. SVG explícitamente incluido (algunos backends
+//     lo rechazan por XSS de <script>; sanitizamos vía Content-Type headers
+//     y CSP del sitio público, no acá).
+const MIME_LOGO_RE = /^image\/(png|jpeg|jpg|gif|webp|svg\+xml)$/;
+const createTrustedCompanySchema = z.object({
+  nombre: z.string().trim().min(1, 'Nombre requerido').max(120, 'Nombre muy largo (máx 120)'),
+  logo_data: z.string().min(1, 'logo_data requerido')
+    .max(5_600_000, 'Logo muy pesado (máx ~4MB). Optimizá antes de subir.'),
+  logo_mime: z.string().regex(MIME_LOGO_RE,
+    'Formato de imagen no soportado. Usá PNG, JPG, WebP, GIF o SVG.'),
+  logo_nombre: z.string().trim().max(255, 'Nombre de archivo muy largo').optional(),
+}).strict();
+
+// PATCH /api/super-admin/trusted-companies/:id — editar nombre y/o posición.
+// Position se usa para reordenar (flechas ↑↓ en el admin). Al menos un campo
+// debe venir; sin eso el UPDATE sería no-op silencioso.
+const updateTrustedCompanySchema = z.object({
+  nombre:   z.string().trim().min(1, 'Nombre requerido').max(120, 'Nombre muy largo (máx 120)').optional(),
+  position: z.number().int().min(0).max(9999).optional(),
+}).strict().refine(
+  (d) => Object.keys(d).length > 0,
+  { message: 'Al menos un campo es requerido para actualizar' }
+);
+
 // 2026-07-14 (feature): merge de clases_producto duplicadas por tenant.
 // Endpoint POST /super-admin/tenants/:id/clases-merge — recibe la clase
 // duplicada (a mergear/soft-delete) y la canónica (donde van los productos).
@@ -353,4 +388,7 @@ module.exports = {
   updateComprobanteFooterSchema,
   // CMS Landing Fase 1
   updateSiteLandingContactSchema,
+  // CMS Landing Fase 4 — Empresas que confiaron
+  createTrustedCompanySchema,
+  updateTrustedCompanySchema,
 };

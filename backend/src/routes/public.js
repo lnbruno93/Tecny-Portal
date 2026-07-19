@@ -30,6 +30,9 @@ const { getPlanPrices } = require('../lib/planPricing');
 const googleReviews = require('../lib/googleReviews');
 const db = require('../config/database');
 const logger = require('../lib/logger');
+// 2026-07-18 CMS Landing Fase 4: helper para servir logos de empresas
+// (Cloudflare R2 en prod, base64 en columna DB en staging/dev).
+const fileStore = require('../lib/fileStore');
 
 // ──────────────────────────────────────────────────────────────────────────
 // GET /api/public/pricing — precios actuales de los planes (C.1.2 #353).
@@ -236,6 +239,94 @@ router.get('/google-reviews', async (_req, res) => {
       reviews: [], rating: null, count: 0, source: 'google',
       configured: false, error: 'unexpected_error',
     });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/public/trusted-companies — CMS Landing Fase 4: "Empresas que
+// confiaron en Tecny".
+//
+// 2026-07-18 (feature): la landing tecnyapp.com renderiza un carrusel infinito
+// con logos de empresas clientes / partners. Este endpoint devuelve el listado
+// ordenado — el frontend construye el <img src> apuntando al endpoint
+// /trusted-companies/:id/logo para bajar cada blob en paralelo con cache HTTP.
+//
+// Payload liviano (metadata only, sin base64): permite listar 40 logos en
+// ~2KB total en vez de 400KB-1MB si viajaran embebidos en el JSON.
+//
+// Cache HTTP 300s (5min): igual TTL que /site-config para consistencia. La
+// admin edita el listado desde el back office; los cambios aparecen en la
+// landing en <5min. Si Lucas quiere ver YA → hard-refresh.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/trusted-companies', async (_req, res) => {
+  try {
+    const rows = await db.adminQuery(async (client) => {
+      const r = await client.query(
+        `SELECT id, nombre, position
+           FROM site_landing_companies
+          WHERE deleted_at IS NULL
+          ORDER BY position ASC, created_at ASC`
+      );
+      return r.rows;
+    });
+    res.set('Cache-Control', 'public, max-age=300');
+    // Envolvemos en `companies` para poder extender el shape en el futuro
+    // (ej. metadata agregada, count, sort options).
+    res.json({ companies: rows });
+  } catch (err) {
+    // Fail-open: si la DB falla, devolvemos array vacío para que la landing
+    // simplemente oculte la sección en vez de romper el render.
+    logger.error({ err: err.message }, '[public/trusted-companies] fallo, devolviendo vacío');
+    res.status(200).json({ companies: [] });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/public/trusted-companies/:id/logo — sirve el archivo del logo.
+//
+// El frontend construye <img src="/api/public/trusted-companies/{id}/logo">
+// por cada empresa listada. El browser cachea agresivamente (Cache-Control
+// 24h) — los logos cambian raramente y son idempotentes por id (un cambio
+// de logo se hace via DELETE + POST nuevo, no via update in-place).
+//
+// Content-Type se toma de logo_tipo (mime persistido en el upload). Fallback
+// a application/octet-stream si viniera NULL (defensive — createTrustedCompanySchema
+// exige logo_mime).
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/trusted-companies/:id/logo', async (req, res) => {
+  const id = req.params.id;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return res.status(400).json({ error: 'id inválido' });
+  }
+
+  try {
+    const row = await db.adminQuery(async (client) => {
+      const r = await client.query(
+        `SELECT logo_data, logo_key, logo_nombre, logo_tipo
+           FROM site_landing_companies
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [id]
+      );
+      return r.rows[0] || null;
+    });
+
+    if (!row) return res.status(404).json({ error: 'Logo no encontrado' });
+
+    // fileStore.get devuelve { data: base64, tipo, nombre } o null.
+    // Driver r2: baja del bucket. Driver db: lee la columna logo_data.
+    const file = await fileStore.get(row, { prefix: 'logo' });
+    if (!file || !file.data) return res.status(404).json({ error: 'Logo no encontrado' });
+
+    const buffer = Buffer.from(file.data, 'base64');
+    res.set('Content-Type', file.tipo || 'application/octet-stream');
+    res.set('Content-Length', String(buffer.length));
+    // Cache agresivo: los logos son idempotentes por id (cambiar = DELETE + POST
+    // nuevo con id distinto). 24h client + shared (CDN de Netlify si aplica).
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
+    res.send(buffer);
+  } catch (err) {
+    logger.error({ err: err.message, id }, '[public/trusted-companies/:id/logo] fallo');
+    res.status(500).json({ error: 'No se pudo servir el logo' });
   }
 });
 
