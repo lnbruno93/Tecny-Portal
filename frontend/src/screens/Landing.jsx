@@ -30,6 +30,7 @@ import {
   trackEvent,
   markPerformance,
   measurePerformance,
+  reportLandingError,
 } from './Landing.analytics';
 // 2026-07-19 Sprint 2 M1 — hooks del CMS extraídos a archivo aparte.
 // Antes había UN useEffect monolítico con 3 fetches paralelos sharing
