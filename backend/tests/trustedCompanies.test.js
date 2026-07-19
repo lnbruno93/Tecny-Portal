@@ -284,6 +284,10 @@ describe('GET /api/public/trusted-companies/:id/logo', () => {
     expect(r.status).toBe(200);
     expect(r.headers['content-type']).toMatch(/image\/png/);
     expect(r.headers['cache-control']).toMatch(/max-age=86400.*immutable|immutable.*max-age=86400/);
+    // 2026-07-19 hotfix: CORP cross-origin permite que la landing tecnyapp.com
+    // (dominio distinto del backend Railway) haga <img src="...logo">. Sin
+    // este header el browser lo rechaza silenciosamente pese al status 200.
+    expect(r.headers['cross-origin-resource-policy']).toBe('cross-origin');
     // Content-Length coincide con los bytes reales decoded del base64 subido.
     expect(Number(r.headers['content-length'])).toBe(expectedSize);
     expect(r.body.length).toBe(expectedSize);
