@@ -59,8 +59,14 @@ const {
   updateComprobanteFooterSchema,
   updateSiteLandingContactSchema,
   mergeClasesProductoSchema,
+  createTrustedCompanySchema,
+  updateTrustedCompanySchema,
   PLANES,
 } = require('../schemas/superAdmin');
+// 2026-07-18 CMS Landing Fase 4: helper para almacenar logos de empresas
+// (Cloudflare R2 en prod, base64 en columna DB en staging/dev). Ver
+// backend/src/lib/fileStore.js para la abstracción de drivers.
+const fileStore = require('../lib/fileStore');
 const { invalidateTenantStatus } = require('../lib/tenantStatus');
 const { invalidateUserAuth } = require('../lib/userAuthCache');
 // #473: reusamos las defaults de signup para que el set de cajas creado por
@@ -3298,5 +3304,231 @@ router.post('/tenants/:id/clases-merge',
     }
   }
 );
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TRUSTED COMPANIES — sección "Empresas que confiaron en Tecny" (CMS Fase 4)
+//
+// 2026-07-18 (feature): Lucas edita el listado de logos de empresas clientes /
+// partners que se muestra en la landing tecnyapp.com. Diseño en el commit
+// header de migration 20260718000001_site_landing_companies.js.
+//
+// Los logos se suben en base64 desde el admin (frontend hace FileReader →
+// dataURL → split(',')[1]). El backend delega el almacenamiento a fileStore
+// (R2 en prod, columna DB en staging/dev). El endpoint público sirve los
+// bytes con Cache-Control 24h.
+//
+// TENANT_ID = 1 (site-landing es data global de Tecny, no per-tenant; usamos
+// el tenant Tecny para satisfacer el requirement de fileStore.put que aísla
+// keys por tenant).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SITE_LANDING_TENANT_ID = 1;
+const TRUSTED_COMPANIES_LIMIT = 40;
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /api/super-admin/trusted-companies
+//
+// Lista completa (activas + soft-deleted no incluidas), ordenada por position.
+// No incluye logo_data ni logo_key en el payload — el admin renderiza el
+// preview via el endpoint público /trusted-companies/:id/logo (mismo image
+// tag <img src="/api/public/...">). Ahorra ~2-4MB de payload al listar 40 logos.
+// ──────────────────────────────────────────────────────────────────────────
+router.get('/trusted-companies', async (_req, res, next) => {
+  try {
+    const rows = await db.adminQuery(async (client) => {
+      const r = await client.query(
+        `SELECT id, nombre, logo_nombre, logo_tipo, logo_size, position,
+                created_at, updated_at
+           FROM site_landing_companies
+          WHERE deleted_at IS NULL
+          ORDER BY position ASC, created_at ASC`
+      );
+      return r.rows;
+    });
+    res.json({ companies: rows, limit: TRUSTED_COMPANIES_LIMIT });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// POST /api/super-admin/trusted-companies
+//
+// Crea una empresa nueva. Body:
+//   { nombre, logo_data (base64), logo_mime, logo_nombre? }
+//
+// La position se auto-asigna al final (MAX(position)+1). El admin puede
+// reordenar después con PATCH /:id { position }.
+//
+// Errores esperados:
+//   400 — validación (nombre vacío, logo muy pesado, MIME no soportado)
+//   409 — nombre duplicado (UNIQUE parcial en LOWER(nombre))
+//   422 — límite de 40 empresas alcanzado
+// ──────────────────────────────────────────────────────────────────────────
+router.post('/trusted-companies',
+  validate(createTrustedCompanySchema),
+  async (req, res, next) => {
+    try {
+      const { nombre, logo_data, logo_mime, logo_nombre } = req.body;
+
+      // Validar límite ANTES de subir a R2 (para no dejar objetos huérfanos
+      // en el bucket si rebota por count).
+      const count = await db.adminQuery(async (client) => {
+        const r = await client.query(
+          `SELECT COUNT(*)::int AS n FROM site_landing_companies WHERE deleted_at IS NULL`
+        );
+        return r.rows[0].n;
+      });
+      if (count >= TRUSTED_COMPANIES_LIMIT) {
+        return res.status(422).json({
+          error: `Límite de ${TRUSTED_COMPANIES_LIMIT} empresas alcanzado. Eliminá alguna antes de agregar.`,
+        });
+      }
+
+      // Subir a fileStore. En prod (driver r2) esto hace PUT al bucket y
+      // devuelve la key; en dev (driver db) devuelve el base64 passthrough.
+      // entity='site-landing' agrupa las keys de este feature en el bucket.
+      const stored = await fileStore.put({
+        tenantId: SITE_LANDING_TENANT_ID,
+        dataBase64: logo_data,
+        filename: logo_nombre || null,
+        mime: logo_mime,
+        entity: 'site-landing',
+        subpath: 'companies',
+      });
+
+      const result = await db.adminQuery(async (client) => {
+        try {
+          const r = await client.query(
+            `INSERT INTO site_landing_companies
+               (nombre, logo_data, logo_key, logo_nombre, logo_tipo, logo_size, position)
+             VALUES ($1, $2, $3, $4, $5, $6,
+               COALESCE((SELECT MAX(position) + 1 FROM site_landing_companies WHERE deleted_at IS NULL), 0))
+             RETURNING id, nombre, logo_nombre, logo_tipo, logo_size, position, created_at`,
+            [nombre, stored.data, stored.key, stored.nombre, stored.tipo, stored.size]
+          );
+          return r.rows[0];
+        } catch (e) {
+          // Si el INSERT rebotó (23505 unique), limpiamos el objeto que ya
+          // subimos a R2 para no dejar huérfanos.
+          if (stored.key) {
+            await fileStore.remove({ logo_key: stored.key }, { prefix: 'logo' }).catch(() => {});
+          }
+          throw e;
+        }
+      });
+
+      logger.info(
+        { super_admin: req.user.id, id: result.id, nombre },
+        '[super-admin] POST /trusted-companies'
+      );
+      res.status(201).json(result);
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Ya existe una empresa con ese nombre.' });
+      }
+      next(err);
+    }
+  }
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// PATCH /api/super-admin/trusted-companies/:id
+//
+// Edita nombre y/o position. Al menos un campo debe venir.
+// El reorder con flechas ↑↓ en el admin envía { position: n } — el frontend
+// calcula el nuevo valor swapeando con la fila adyacente.
+// ──────────────────────────────────────────────────────────────────────────
+router.patch('/trusted-companies/:id',
+  validate(updateTrustedCompanySchema),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      // Validación UUID defensiva en el path (no pasa por validate()).
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return res.status(400).json({ error: 'id inválido (debe ser UUID)' });
+      }
+
+      const setPieces = [];
+      const values = [];
+      if ('nombre' in req.body) {
+        setPieces.push(`nombre = $${values.length + 1}`);
+        values.push(req.body.nombre);
+      }
+      if ('position' in req.body) {
+        setPieces.push(`position = $${values.length + 1}`);
+        values.push(req.body.position);
+      }
+      setPieces.push('updated_at = NOW()');
+      values.push(id);
+
+      const result = await db.adminQuery(async (client) => {
+        const r = await client.query(
+          `UPDATE site_landing_companies
+              SET ${setPieces.join(', ')}
+            WHERE id = $${values.length} AND deleted_at IS NULL
+            RETURNING id, nombre, logo_nombre, logo_tipo, logo_size, position, updated_at`,
+          values
+        );
+        return r.rows[0];
+      });
+
+      if (!result) return res.status(404).json({ error: 'Empresa no encontrada.' });
+
+      logger.info(
+        { super_admin: req.user.id, id, fields: Object.keys(req.body) },
+        '[super-admin] PATCH /trusted-companies/:id'
+      );
+      res.json(result);
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Ya existe una empresa con ese nombre.' });
+      }
+      next(err);
+    }
+  }
+);
+
+// ──────────────────────────────────────────────────────────────────────────
+// DELETE /api/super-admin/trusted-companies/:id
+//
+// Soft-delete + limpieza del bucket R2 (si driver=r2). El objeto se borra
+// físicamente para no acumular costos de storage — el soft-delete queda por
+// si en el futuro se cambia esa política (por ahora, delete es delete).
+// ──────────────────────────────────────────────────────────────────────────
+router.delete('/trusted-companies/:id', async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return res.status(400).json({ error: 'id inválido (debe ser UUID)' });
+    }
+
+    const row = await db.adminQuery(async (client) => {
+      const r = await client.query(
+        `UPDATE site_landing_companies
+            SET deleted_at = NOW()
+          WHERE id = $1 AND deleted_at IS NULL
+          RETURNING id, logo_key, logo_data`,
+        [id]
+      );
+      return r.rows[0];
+    });
+
+    if (!row) return res.status(404).json({ error: 'Empresa no encontrada.' });
+
+    // Borrar del bucket. fileStore.remove es idempotente y no-op para driver=db.
+    await fileStore.remove({ logo_key: row.logo_key }, { prefix: 'logo' }).catch((e) => {
+      // Si R2 rechazó el DELETE (transient error), logueamos pero no fallamos
+      // el request — la fila ya está soft-deleted, cleanup del objeto se puede
+      // retriar con un job de mantenimiento.
+      logger.warn({ err: e.message, id }, '[super-admin] fileStore.remove falló, orphan posible');
+    });
+
+    logger.info({ super_admin: req.user.id, id }, '[super-admin] DELETE /trusted-companies/:id');
+    res.json({ ok: true, id });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
