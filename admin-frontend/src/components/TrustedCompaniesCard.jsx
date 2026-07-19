@@ -19,9 +19,17 @@
 // que el browser cachea agresivamente y no re-baja en cada render.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { adminApi } from '../lib/api.js';
+import { adminApi, resolveApiBase } from '../lib/api.js';
 import { Btn, Card } from './primitives/index.jsx';
 import { Icons } from './Icons.jsx';
+
+// 2026-07-19 hotfix: los <img src="..."> del preview del logo necesitan el
+// URL completo del backend (admin.tecnyapp.com es SPA estático — un path
+// relativo tipo `/api/public/...` resolvería contra admin.tecnyapp.com/api
+// que no existe, resultando en 404 y "?" en la card). Reutilizamos el
+// mismo helper que api.js usa para todos los fetch — mismo VITE_API_URL,
+// mismo fallback a prod si la env var falta.
+const BACKEND_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 
 const MIME_ACCEPTED = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
 // Cap defensivo en el cliente (matchea el schema Zod del backend: ~4MB decoded).
@@ -272,7 +280,7 @@ export default function TrustedCompaniesCard() {
                   padding: 8,
                 }}>
                   <img
-                    src={`/api/public/trusted-companies/${c.id}/logo`}
+                    src={`${BACKEND_BASE}/api/public/trusted-companies/${c.id}/logo`}
                     alt={c.nombre}
                     style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                   />
