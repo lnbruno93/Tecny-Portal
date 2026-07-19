@@ -323,6 +323,14 @@ router.get('/trusted-companies/:id/logo', async (req, res) => {
     // Cache agresivo: los logos son idempotentes por id (cambiar = DELETE + POST
     // nuevo con id distinto). 24h client + shared (CDN de Netlify si aplica).
     res.set('Cache-Control', 'public, max-age=86400, immutable');
+    // 2026-07-19 hotfix: el helmet global setea CORP=same-origin por default,
+    // lo cual bloquea al browser embeber este recurso desde otro origen
+    // (tecnyapp.com → tecny-backend-production.up.railway.app). Los logos son
+    // públicos y pensados justamente para servirse a la landing en otro dominio
+    // (mismo pattern que un CDN de assets). `cross-origin` es la política
+    // estándar para este caso — sin datos sensibles, sin cookies. Sin este
+    // header, la <img> aparece rota en la landing aunque el 200 responda OK.
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(buffer);
   } catch (err) {
     logger.error({ err: err.message, id }, '[public/trusted-companies/:id/logo] fallo');
