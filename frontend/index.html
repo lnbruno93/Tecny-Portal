@@ -43,6 +43,78 @@
          favicon en algunos clients. Cuando Lucas suba la imagen oficial
          (1200x630 PNG/JPG recomendado), el preview se ve completo. -->
 
+    <!-- Structured Data (JSON-LD) — Sprint 1 SEO, 2026-07-19.
+         Google, Bing y motores de IA (ChatGPT search, Perplexity) usan
+         structured data para entender qué vende el sitio. Sin esto, Tecny
+         aparece en resultados como "una web más" y no como un SaaS con precio
+         y categoría clara.
+
+         Schema.org tipo `SoftwareApplication`: reconocido por Google Search
+         Console, aparece en "rich results" (con estrellitas, precio) si sumamos
+         `aggregateRating` cuando tengamos reviews verificadas de Google.
+
+         El precio está hardcoded en USD 39/mes (starter) — coincide con el
+         fallback de Landing.jsx. Si Lucas cambia el precio desde el admin, la
+         landing dinámica lo actualiza pero este JSON-LD queda estático hasta
+         próximo deploy. Aceptable: Google recrawlea a veces por mes y el
+         precio hardcoded acá NO es el que ve el usuario (ese viene del
+         backend). Es solo el hint estructural para SEO.
+    -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Tecny",
+      "description": "Sistema para revendedores de tecnología: cotizaciones, comprobantes, cuentas corrientes, envíos y caja en un solo portal.",
+      "url": "https://tecnyapp.com/",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "PointOfSale",
+      "operatingSystem": "Web",
+      "browserRequirements": "Requires JavaScript",
+      "inLanguage": "es",
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Solo",
+          "price": "39",
+          "priceCurrency": "USD",
+          "priceValidUntil": "2027-12-31",
+          "url": "https://tecnyapp.com/#precios",
+          "availability": "https://schema.org/InStock",
+          "description": "Para el revendedor independiente. 1 usuario, cotizador + usados, financiera básica."
+        },
+        {
+          "@type": "Offer",
+          "name": "Equipo",
+          "price": "189",
+          "priceCurrency": "USD",
+          "priceValidUntil": "2027-12-31",
+          "url": "https://tecnyapp.com/#precios",
+          "availability": "https://schema.org/InStock",
+          "description": "Hasta 10 usuarios, 7 módulos completos, permisos por usuario, OCR ilimitado."
+        }
+      ],
+      "featureList": [
+        "Cotizador para revendedores",
+        "Comprobantes de venta con PDF y email",
+        "Cuentas corrientes B2B",
+        "Financiera con múltiples divisas",
+        "Gestión de envíos a domicilio",
+        "Caja + control de tarjetas",
+        "OCR de facturas para carga rápida"
+      ],
+      "publisher": {
+        "@type": "Organization",
+        "name": "Tecny",
+        "url": "https://tecnyapp.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tecnyapp.com/pwa-icon.svg"
+        }
+      }
+    }
+    </script>
+
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
