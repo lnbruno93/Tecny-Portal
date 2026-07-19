@@ -48,10 +48,15 @@ const calendlyHref = (source) =>
 
 // Helper visual — checkmark de los bullets de pricing. Repetido tantas veces
 // en el HTML original que vale la pena un sub-component.
+//
+// 2026-07-19 Sprint 2 M3 a11y: agregado role="img" + aria-label. Antes los
+// screen readers no anunciaban los checkmarks del pricing → el usuario ciego
+// no percibía qué features incluía cada plan.
 function Check({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+         strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+         role="img" aria-label="Incluido">
       <path d="M5 12.5 10 17.5 20 7" />
     </svg>
   );
@@ -64,18 +69,22 @@ function Check({ size = 16 }) {
 // Decisión Lucas 2026-06-22: marcarlos como "Próximamente" con aria-disabled
 // + cursor not-allowed + tooltip. Preserva el layout completo del footer
 // para cuando se cableen, sin engañar al visitor.
+// 2026-07-19 Sprint 2 M3 a11y: era un <a href="#"> con aria-disabled="true",
+// pero screen readers ignoran aria-disabled en <a> con href (lo leen como
+// link activo normal). Ahora usamos <span role="link" aria-disabled="true">
+// que sí es interpretado correctamente como "link deshabilitado". Preservamos
+// el mismo look visual (opacity + cursor + tooltip) y semántica de "link
+// próximamente" via role="link".
 function SoonLink({ children, label }) {
   return (
-    <a
-      href="#"
+    <span
       role="link"
       aria-disabled="true"
       title={`${label || children} — próximamente`}
-      onClick={(e) => e.preventDefault()}
       style={{ opacity: 0.45, cursor: 'not-allowed' }}
     >
       {children}
-    </a>
+    </span>
   );
 }
 
@@ -758,15 +767,24 @@ export default function Landing() {
                 Comercios y equipos que ya ordenaron su operación con nosotros.
               </p>
             </div>
-            <div className="trusted-track-wrap">
+            <div className="trusted-track-wrap"
+                 aria-label="Empresas que confiaron en Tecny">
               {/* Duplicamos el array para el loop seamless (set A + set B).
                   El :hover en .trusted-track-wrap pausa el marquee (más
-                  UX-friendly para leer un logo específico). */}
-              <div className="trusted-track">
+                  UX-friendly para leer un logo específico).
+                  2026-07-19 Sprint 2 M3 a11y:
+                  - role="list" + role="listitem" para que screen readers
+                    anuncien "lista de empresas: N ítems".
+                  - Set B (duplicado del loop) va con aria-hidden="true"
+                    para que no lea cada empresa 2 veces. El marquee es
+                    puramente visual — la información completa está en A. */}
+              <div className="trusted-track" role="list">
                 {[...trustedCompanies, ...trustedCompanies].map((c, i) => (
                   <div
                     key={`${c.id}-${i}`}
                     className="trusted-logo"
+                    role="listitem"
+                    aria-hidden={i >= trustedCompanies.length ? 'true' : undefined}
                     title={c.nombre}
                   >
                     <img
