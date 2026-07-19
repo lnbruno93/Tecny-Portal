@@ -1,0 +1,34 @@
+# robots.txt — tecnyapp.com
+# 2026-07-19 (Sprint 1 SEO): antes este path caía al SPA fallback y devolvía
+# el index.html completo — Google no podía distinguir un robots.txt real de
+# una página HTML y trataba el sitio como "sin política declarada". Ahora es
+# un archivo estático real servido por Netlify antes del [[redirects]] SPA.
+
+User-agent: *
+Allow: /
+
+# Rutas del portal que NO son parte del funnel público — bloquear indexado
+# para evitar canonicalización rara. El signup y login son gateways; si el
+# operador ya está autenticado los renderiza redirect al /inicio.
+Disallow: /login
+Disallow: /signup
+Disallow: /verify-email
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /inicio
+Disallow: /ventas
+Disallow: /inventario
+Disallow: /cuentas
+Disallow: /cajas
+Disallow: /financiera
+Disallow: /tarjetas
+Disallow: /proveedores
+Disallow: /egresos
+Disallow: /envios
+Disallow: /proyectos
+Disallow: /configuracion
+Disallow: /sanidad
+Disallow: /admin
+
+# Sitemap principal — Google lo descubre y crawlea las URLs listadas.
+Sitemap: https://tecnyapp.com/sitemap.xml

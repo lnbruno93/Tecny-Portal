@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sitemap.xml — tecnyapp.com
+  2026-07-19 (Sprint 1 SEO): archivo real (antes el path caía al SPA fallback).
+  Vite copia public/ al dist/ y Netlify lo sirve estáticamente antes del
+  [[redirects]] catch-all.
+
+  Solo listamos la landing pública (/) y páginas legales. Las rutas del portal
+  (login, signup, /inicio, etc.) no van al sitemap porque no son parte del
+  funnel indexable — el operador llega por link directo o desde la landing.
+
+  Actualizar `lastmod` cuando se hagan cambios significativos de contenido
+  (rebrand, features, precios, etc.). No hace falta actualizarlo con cada
+  deploy.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://tecnyapp.com/</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://tecnyapp.com/terminos</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://tecnyapp.com/privacidad</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>
