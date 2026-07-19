@@ -41,6 +41,40 @@ beforeAll(async () => {
 
 afterAll(async () => { await teardownTestDb(pool); });
 
+// 2026-07-19 fix flake: los tests originales usaban `setImmediate + setTimeout(50)`
+// para esperar que el dispatch async del email persista la row en DB. En CI con
+// carga variable, 50ms no siempre alcanza y el SELECT posterior encuentra 0
+// filas. Este helper polling reemplaza el sleep fijo con un chequeo cada 50ms
+// hasta 5s — cuando el INSERT completa rápido (happy path local), sale al
+// primer chequeo (~5ms overhead). Cuando el CI está saturado, extiende la
+// espera hasta que la row aparezca o hasta el timeout.
+//
+// IMPORTANTE: usar SOLO para tests que esperan APARICIÓN. Para tests que
+// verifican AUSENCIA (que NO se encoló, que NO hay row), mantener sleep fijo —
+// el polling no puede probar un negativo.
+async function waitForRows(query, params, minCount = 1, { maxMs = 5000, stepMs = 50 } = {}) {
+  const start = Date.now();
+  let rows;
+  while (Date.now() - start < maxMs) {
+    ({ rows } = await pool.query(query, params));
+    if (rows.length >= minCount) return rows;
+    await new Promise(r => setTimeout(r, stepMs));
+  }
+  // Timeout: devolver la última lectura para que el expect() del caller de
+  // el mensaje de error real (Expected length: N, Received length: <last>).
+  return rows || [];
+}
+
+async function waitForQueueItem(predicate, { maxMs = 5000, stepMs = 50 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const item = emailLib._getTestQueue().find(predicate);
+    if (item) return item;
+    await new Promise(r => setTimeout(r, stepMs));
+  }
+  return undefined;
+}
+
 // Helper para crear venta de test simple.
 async function crearVentaRetail(over = {}) {
   // Necesitamos un producto fresco para cada venta (descontamos stock).
@@ -126,18 +160,16 @@ describe('POST /api/ventas con enviar_comprobante_email', () => {
       cliente_email: 'cliente@test.com',
     });
 
-    // setImmediate dispatch: esperamos un tick para que corra.
-    await new Promise(r => setImmediate(r));
-    await new Promise(r => setTimeout(r, 50));
-
-    const queue = emailLib._getTestQueue();
-    const sent = queue.find(p => p.type === 'comprobante_venta');
+    // Esperamos que el dispatch async encole el email + persista la row.
+    // Polling en vez de sleep fijo evita flakes en CI cuando el INSERT
+    // tarda >50ms bajo carga.
+    const sent = await waitForQueueItem(p => p.type === 'comprobante_venta');
     expect(sent).toBeTruthy();
     expect(sent.to).toBe('cliente@test.com');
     expect(sent.pdfSize).toBeGreaterThan(1024);
 
     // Row en venta_emails_enviados.
-    const { rows } = await pool.query(
+    const rows = await waitForRows(
       'SELECT * FROM venta_emails_enviados WHERE venta_id = $1',
       [venta.id]
     );
@@ -197,8 +229,11 @@ describe('POST /api/ventas/:id/enviar-comprobante (envío manual / reenvío)', (
       enviar_comprobante_email: true,
       cliente_email: 'primero@test.com',
     });
-    await new Promise(r => setImmediate(r));
-    await new Promise(r => setTimeout(r, 50));
+    // Esperamos a que el primer envío (del alta) persista antes del reenvío.
+    await waitForRows(
+      'SELECT id FROM venta_emails_enviados WHERE venta_id = $1',
+      [venta.id]
+    );
 
     // Primer row (del alta) ya está. Hacemos reenvío.
     const res = await request(app)
@@ -222,13 +257,13 @@ describe('POST /api/ventas/:id/enviar-comprobante (envío manual / reenvío)', (
     // Status puede ser 'pending' o 'sent' dependiendo del timing del setImmediate.
     expect(['pending', 'sent']).toContain(pendingRows[0].status);
 
-    // Esperamos a que el setImmediate corra el envío + UPDATE.
-    await new Promise(r => setImmediate(r));
-    await new Promise(r => setTimeout(r, 100));
-
-    const { rows } = await pool.query(
-      'SELECT * FROM venta_emails_enviados WHERE venta_id = $1 ORDER BY sent_at ASC',
-      [venta.id]
+    // Esperamos a que el setImmediate del reenvío persista la 2da row + haga
+    // el UPDATE de 'pending' → 'sent'.
+    const rows = await waitForRows(
+      `SELECT * FROM venta_emails_enviados WHERE venta_id = $1
+        AND status = 'sent' ORDER BY sent_at ASC`,
+      [venta.id],
+      2
     );
     expect(rows).toHaveLength(2);
     // Primer envío (del alta): reenvio_de_id = NULL
@@ -306,8 +341,11 @@ describe('GET /api/ventas/:id/emails-enviados', () => {
       enviar_comprobante_email: true,
       cliente_email: 'historial@test.com',
     });
-    await new Promise(r => setImmediate(r));
-    await new Promise(r => setTimeout(r, 50));
+    // Esperamos que el primer envío persista antes del reenvío.
+    await waitForRows(
+      'SELECT id FROM venta_emails_enviados WHERE venta_id = $1',
+      [venta.id]
+    );
 
     // Hacer un reenvío para tener 2 entries.
     await request(app)
@@ -358,20 +396,20 @@ describe('UPSERT contactos.email post-envío exitoso', () => {
       enviar_comprobante_email: true,
       cliente_email: 'nuevo@test.com',
     });
-    await new Promise(r => setImmediate(r));
-    await new Promise(r => setTimeout(r, 100));
-
-    // Verificar venta_emails_enviados está OK (sanity).
-    const { rows: emails } = await pool.query(
-      'SELECT * FROM venta_emails_enviados WHERE venta_id = $1',
+    // Esperar row del envío en status 'sent' (el UPSERT contactos corre
+    // en el mismo callback, después del INSERT venta_emails_enviados).
+    const emails = await waitForRows(
+      `SELECT * FROM venta_emails_enviados WHERE venta_id = $1 AND status = 'sent'`,
       [venta.id]
     );
     expect(emails).toHaveLength(1);
     expect(emails[0].status).toBe('sent');
 
     // Ahora verificar que contactos.email se UPSERTeo.
-    const { rows: contactoAfter } = await pool.query(
-      'SELECT email FROM contactos WHERE id = $1',
+    // Polling por si el UPDATE de contactos corre unos ms después del INSERT
+    // de venta_emails_enviados (mismo callback pero query separada).
+    const contactoAfter = await waitForRows(
+      `SELECT email FROM contactos WHERE id = $1 AND email = 'nuevo@test.com'`,
       [contactoId]
     );
     expect(contactoAfter[0].email).toBe('nuevo@test.com');
@@ -389,24 +427,22 @@ describe('UPSERT contactos.email post-envío exitoso', () => {
       enviar_comprobante_email: true,
       cliente_email: 'nuevo-diferente@test.com',
     });
-    await new Promise(r => setImmediate(r));
-    await new Promise(r => setTimeout(r, 100));
+    // Esperar que el envío haya persistido (después de esto, el UPSERT
+    // contactos ya corrió o corrió su no-op silencioso).
+    const emails = await waitForRows(
+      `SELECT email_to FROM venta_emails_enviados WHERE venta_id = $1 AND status = 'sent'`,
+      [venta.id]
+    );
+    expect(emails[0].email_to).toBe('nuevo-diferente@test.com');
 
     // El email viejo del contacto debe preservarse (no pisamos lo que cargó
-    // el operador a mano antes).
+    // el operador a mano antes). Query directa — no polling porque queremos
+    // verificar que NO cambió (probando estabilidad, no aparición).
     const { rows } = await pool.query(
       'SELECT email FROM contactos WHERE id = $1',
       [contactoId]
     );
     expect(rows[0].email).toBe('previo@test.com');
-
-    // Pero el envío fue al email del POST (no al del contacto) — el operador
-    // mandó explícitamente a "nuevo-diferente@test.com".
-    const { rows: emails } = await pool.query(
-      'SELECT email_to FROM venta_emails_enviados WHERE venta_id = $1',
-      [venta.id]
-    );
-    expect(emails[0].email_to).toBe('nuevo-diferente@test.com');
   });
 });
 
