@@ -160,6 +160,10 @@ export default function Landing() {
   const [hero, setHero] = useState(FALLBACK_HERO);
   const [cta, setCta]   = useState(FALLBACK_CTA);
   const [faq, setFaq]   = useState(FALLBACK_FAQ);
+  // 2026-07-19 CMS Fase 4: "Empresas que confiaron en Tecny" — carrusel de
+  // logos gestionado desde admin.tecnyapp.com/sitio-publico. Empty array por
+  // default → la sección se oculta si no hay empresas cargadas (fail-open).
+  const [trustedCompanies, setTrustedCompanies] = useState([]);
 
   useEffect(() => {
     // AbortController para cancelar si el user navega antes de que resuelva
@@ -238,7 +242,23 @@ export default function Landing() {
           setFaq(data.faq);
         }
       })
-      .catch(() => { /* silencioso, mismo criterio que pricing */ })
+      .catch(() => { /* silencioso, mismo criterio que pricing */ });
+
+    // 2026-07-19 CMS Fase 4: fetch de logos de empresas — endpoint separado
+    // de /site-config para no bloatear ese payload con base64/URLs de 30-40
+    // logos. Cache HTTP 5min matchea el resto del CMS.
+    fetch(BACKEND_BASE + '/api/public/trusted-companies', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error('http ' + res.status);
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data?.companies) && data.companies.length > 0) {
+          setTrustedCompanies(data.companies);
+        }
+        // Si viene vacío, mantenemos []: la sección no se renderiza.
+      })
+      .catch(() => { /* silent — la sección queda oculta si el backend falla */ })
       .finally(() => clearTimeout(timer));
 
     return () => {
@@ -651,6 +671,55 @@ export default function Landing() {
           <div className="price-note">Todos los planes incluyen actualizaciones, backups y soporte en español.</div>
         </div>
       </section>
+
+      {/* ── EMPRESAS QUE CONFIARON (2026-07-19, CMS Fase 4) ────────────
+          Carrusel infinito auto-scroll estilo Stripe/Vercel. Los logos se
+          gestionan desde admin.tecnyapp.com/sitio-publico → card "Empresas
+          que confiaron en Tecny". Duplicamos el array en el DOM para el
+          loop seamless (translateX 0 → -50%: cuando el segundo set queda
+          donde arrancó el primero, la transición es invisible).
+
+          Fail-open silencioso: si trustedCompanies está vacío (backend
+          caído, ninguna empresa cargada, o admin borró todas), la sección
+          NO se renderiza. La landing sigue completa sin placeholder feo.
+
+          Placement decision 2026-07-19: entre Precios y FAQ. Rationale:
+          después de mostrar los precios el visitor está evaluando; ver
+          logos de empresas concretas antes de las FAQ le da un empujón
+          de social proof en el momento de la decisión. */}
+      {trustedCompanies.length > 0 && (
+        <section className="s trusted" id="empresas">
+          <div className="wrap">
+            <div className="s-head center">
+              <div className="s-kicker">Confían en nosotros</div>
+              <h2 className="s-title">Empresas que confiaron en Tecny</h2>
+              <p className="s-sub">
+                Comercios y equipos que ya ordenaron su operación con nosotros.
+              </p>
+            </div>
+            <div className="trusted-track-wrap">
+              {/* Duplicamos el array para el loop seamless (set A + set B).
+                  El :hover en .trusted-track-wrap pausa el marquee (más
+                  UX-friendly para leer un logo específico). */}
+              <div className="trusted-track">
+                {[...trustedCompanies, ...trustedCompanies].map((c, i) => (
+                  <div
+                    key={`${c.id}-${i}`}
+                    className="trusted-logo"
+                    title={c.nombre}
+                  >
+                    <img
+                      src={`${BACKEND_BASE}/api/public/trusted-companies/${c.id}/logo`}
+                      alt={c.nombre}
+                      loading="lazy"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── FAQ ──────────────────────────────────────────── */}
       <section className="s" id="faq" style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--hairline)', borderBottom: '1px solid var(--hairline)' }}>
