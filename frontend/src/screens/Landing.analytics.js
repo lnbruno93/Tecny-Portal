@@ -116,10 +116,22 @@ export function measurePerformance(measureName, startMark, endMark) {
  * @param {object} [context={}] - Metadata extra (section, url, etc.).
  */
 export function reportLandingError(error, context = {}) {
+  // 2026-07-19 Sprint 2 M2: filtrar AbortError antes de reportar. Estos se
+  // disparan naturalmente cuando React 18 StrictMode hace un double-mount
+  // en dev (unmount → remount) y el cleanup aborta los fetches en curso.
+  // NO son bugs — es comportamiento esperado del framework. Reportarlos
+  // ensuciaba Sentry con noise + hacía fallar los tests E2E que verifican
+  // "sin errores en console". El backend Sentry ya los filtra via
+  // NOISE_PATTERNS (reportError.js), pero silentReport en DEV loguea a
+  // console.error ANTES del filtro. Filtramos acá para consistencia.
+  const rawMsg = error?.message || String(error);
+  if (/AbortError|signal is aborted|The operation was aborted/i.test(rawMsg)) {
+    return;
+  }
+
   silentReport(error, { screen: 'landing', ...context });
   // El mensaje viaja al dataLayer + a un potencial destino de analytics —
   // capamos a 200 chars por si un stacktrace largo se cuela en error.message.
-  const rawMsg = error?.message || String(error);
   trackEvent('landing_error', {
     message: String(rawMsg).slice(0, 200),
     section: context.section || 'unknown',
