@@ -1,8 +1,14 @@
 /**
  * Tests del FeatureFlagsContext (M-08 GRAN auditoría 2026-06-10).
  *
+ * 2026-07-20 F3 Rec proactiva #3: el context cambió consumer a
+ * `features.resolved()` (endpoint /api/features per-tenant con overrides)
+ * en vez de `featureFlags.list()` (endpoint /api/feature-flags global).
+ * Shape del response nuevo: `{ features: {...}, resolved_at }` — el context
+ * guarda `data.features` como `flags` en el state para no romper consumers.
+ *
  * Cubre:
- *  - Provider monta y fetch a featureFlags.list() al inicio cuando hay user.
+ *  - Provider monta y fetch a features.resolved() al inicio cuando hay user.
  *  - useFeatureFlag(name) devuelve true cuando el flag está prendido.
  *  - useFeatureFlag(name) devuelve false cuando está apagado.
  *  - useFeatureFlag('inexistente') devuelve false (default seguro).
@@ -14,8 +20,8 @@ import { render, renderHook, waitFor } from '@testing-library/react';
 
 // IMPORTANTE: vi.mock se hoistea — los mocks deben definirse arriba del import.
 vi.mock('../lib/api', () => ({
-  featureFlags: {
-    list: vi.fn(),
+  features: {
+    resolved: vi.fn(),
   },
 }));
 vi.mock('../lib/reportError', () => ({
@@ -28,7 +34,7 @@ vi.mock('./AuthContext', () => ({
 }));
 
 import { FeatureFlagsProvider, useFeatureFlag, useFeatureFlags } from './FeatureFlagsContext';
-import { featureFlags as featureFlagsApi } from '../lib/api';
+import { features as featuresApi } from '../lib/api';
 import { silentReport } from '../lib/reportError';
 import { useAuth } from './AuthContext';
 
@@ -42,21 +48,28 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ user: { id: 1, username: 'test' } });
 });
 
+// Helper que replica el shape del response de /api/features (F3).
+// Facilita cambiar el shape en un solo lugar si el backend evoluciona.
+const resolvedResponse = (features) => ({
+  features,
+  resolved_at: '2026-07-20T18:45:00.000Z',
+});
+
 describe('FeatureFlagsProvider', () => {
-  it('al mount, llama a featureFlags.list() y expone los flags', async () => {
-    featureFlagsApi.list.mockResolvedValueOnce({ flags: { foo: true, bar: false } });
+  it('al mount, llama a features.resolved() y expone los flags', async () => {
+    featuresApi.resolved.mockResolvedValueOnce(resolvedResponse({ foo: true, bar: false }));
 
     const { result } = renderHook(() => useFeatureFlags(), { wrapper: wrap });
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    expect(featureFlagsApi.list).toHaveBeenCalledTimes(1);
+    expect(featuresApi.resolved).toHaveBeenCalledTimes(1);
     expect(result.current.flags).toEqual({ foo: true, bar: false });
     expect(result.current.error).toBe(null);
   });
 
   it('useFeatureFlag("foo") === true cuando el flag está prendido', async () => {
-    featureFlagsApi.list.mockResolvedValueOnce({ flags: { foo: true, bar: false } });
+    featuresApi.resolved.mockResolvedValueOnce(resolvedResponse({ foo: true, bar: false }));
 
     const { result } = renderHook(() => useFeatureFlag('foo'), { wrapper: wrap });
     await waitFor(() => {
@@ -65,33 +78,31 @@ describe('FeatureFlagsProvider', () => {
   });
 
   it('useFeatureFlag("bar") === false cuando el flag está apagado', async () => {
-    featureFlagsApi.list.mockResolvedValueOnce({ flags: { foo: true, bar: false } });
+    featuresApi.resolved.mockResolvedValueOnce(resolvedResponse({ foo: true, bar: false }));
 
     const { result } = renderHook(() => useFeatureFlag('bar'), { wrapper: wrap });
     // Esperamos a que termine el load (sino podríamos leer el default false
     // pre-fetch y dar un falso positivo).
     await waitFor(() => {
-      const all = renderHook(() => useFeatureFlags(), { wrapper: wrap });
-      // Just wait for any settling — use the hook value directly:
-      expect(featureFlagsApi.list).toHaveBeenCalled();
+      expect(featuresApi.resolved).toHaveBeenCalled();
     });
     // Tras settle, bar es false.
     expect(result.current).toBe(false);
   });
 
   it('useFeatureFlag("inexistente") === false (default seguro)', async () => {
-    featureFlagsApi.list.mockResolvedValueOnce({ flags: { foo: true } });
+    featuresApi.resolved.mockResolvedValueOnce(resolvedResponse({ foo: true }));
 
     const { result } = renderHook(() => useFeatureFlag('inexistente'), { wrapper: wrap });
     await waitFor(() => {
-      expect(featureFlagsApi.list).toHaveBeenCalled();
+      expect(featuresApi.resolved).toHaveBeenCalled();
     });
     expect(result.current).toBe(false);
   });
 
   it('fail-safe: si la API rompe, flags queda en {} y se reporta', async () => {
     const apiError = new Error('Network error');
-    featureFlagsApi.list.mockRejectedValueOnce(apiError);
+    featuresApi.resolved.mockRejectedValueOnce(apiError);
 
     const { result } = renderHook(() => useFeatureFlags(), { wrapper: wrap });
     await waitFor(() => {
@@ -118,12 +129,12 @@ describe('FeatureFlagsProvider', () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    expect(featureFlagsApi.list).not.toHaveBeenCalled();
+    expect(featuresApi.resolved).not.toHaveBeenCalled();
     expect(result.current.flags).toEqual({});
   });
 
   it('renderiza children sin errores', () => {
-    featureFlagsApi.list.mockResolvedValueOnce({ flags: {} });
+    featuresApi.resolved.mockResolvedValueOnce(resolvedResponse({}));
     const { container } = render(
       <FeatureFlagsProvider><div>contenido</div></FeatureFlagsProvider>
     );

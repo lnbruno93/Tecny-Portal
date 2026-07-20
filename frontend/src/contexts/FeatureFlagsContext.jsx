@@ -1,7 +1,7 @@
 // FeatureFlagsContext — provee el estado de los feature flags al árbol React.
 //
 // Diseño minimalista (M-08 GRAN auditoría 2026-06-10):
-//   · Al mount (y on user change), fetch a GET /api/feature-flags → guarda el
+//   · Al mount (y on user change), fetch a GET /api/features → guarda el
 //     map { name: bool } en state.
 //   · Hook `useFeatureFlag(name)` → bool (false por default si el flag no
 //     existe o todavía está cargando). El default-false es deliberado: hacer
@@ -9,7 +9,7 @@
 //     feature aún no salió, no exponerla).
 //   · Hook `useFeatureFlags()` → { flags, loading, error } para casos que
 //     necesitan más contexto (admin panel futuro, debug overlays).
-//   · Fail-safe: si /api/feature-flags rompe (red, 5xx, JSON malformado),
+//   · Fail-safe: si /api/features rompe (red, 5xx, JSON malformado),
 //     logueamos via silentReport y `flags` queda en {}. Todos los flags
 //     devuelven false. Bajo NINGUNA circunstancia un fallo de la API debe
 //     romper el árbol — el flag system es metadata, no datos del negocio.
@@ -17,9 +17,15 @@
 // Re-fetch en user change: el endpoint requiere sesión, así que cuando el
 // user se loguea/desloguea, los flags se re-piden (sin auth no hay flags
 // que mostrar; con auth queremos los flags al toque sin esperar refresh).
+//
+// 2026-07-20 F3 Rec proactiva #3: cambiamos el consumer a /api/features
+// nuevo (per-tenant con overrides) en vez del viejo /api/feature-flags
+// (solo default global). El shape del state (`flags` como map) no cambió
+// — los hooks `useFeatureFlag(name)` / `useFeatureFlags()` mantienen su
+// contrato para no romper consumers existentes.
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { featureFlags as featureFlagsApi } from '../lib/api';
+import { features as featuresApi } from '../lib/api';
 import { silentReport } from '../lib/reportError';
 import { useAuth } from './AuthContext';
 
@@ -43,11 +49,13 @@ export function FeatureFlagsProvider({ children }) {
     if (!user) { setFlags({}); setLoading(false); setError(null); return; }
     setLoading(true);
     try {
-      const data = await featureFlagsApi.list();
-      // El endpoint devuelve { flags: { name: bool } }. Si por algún motivo
-      // el shape llega raro, `flags || {}` evita que un undefined rompa
-      // el render.
-      setFlags(data?.flags || {});
+      const data = await featuresApi.resolved();
+      // El endpoint /api/features (F3) devuelve { features: { name: bool },
+      // resolved_at }. Guardamos `features` como `flags` en el state — así
+      // los hooks públicos (useFeatureFlag) siguen leyendo `ctx.flags[name]`.
+      // Fallback `|| {}` por si el shape llega raro (defensive: un undefined
+      // rompería los hooks consumidores).
+      setFlags(data?.features || {});
       setError(null);
     } catch (err) {
       // Fail-safe: si la API rompe, dejamos flags vacíos (todos default

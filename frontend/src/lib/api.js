@@ -819,6 +819,18 @@ export const featureFlags = {
   adminDelete:  (name) => api(`/api/feature-flags/${name}`, 'DELETE'),
 };
 
+// 2026-07-20 Rec proactiva #3 F3: endpoint per-tenant que RESPETA overrides
+// (tenant > plan > rollout > global). Distinto shape que el viejo
+// /api/feature-flags — devuelve { features, resolved_at } con la precedencia
+// completa aplicada al tenant del JWT actual.
+//
+// Este es el consumer default del FeatureFlagsContext desde F3. El viejo
+// featureFlags.list() se mantiene por compat con cualquier consumer suelto
+// que todavía lo llame — no borrarlo sin migrar consumers.
+export const features = {
+  resolved: () => api('/api/features'),
+};
+
 // 2026-06-18 #323 TANDA 1 H3: onboarding status para Inicio.jsx.
 // Devuelve { has_productos, has_contactos, has_ventas }. OnboardingCard
 // lo lee al mount, decide qué items mostrar tachados / pendientes.
