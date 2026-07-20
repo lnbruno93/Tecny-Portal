@@ -2926,54 +2926,97 @@ router.patch('/site-config',
   validate(updateSiteLandingContactSchema),
   async (req, res, next) => {
     try {
-      // Normalizar: '' → null. La UI envía '' cuando el operador limpia
-      // el input; consolidamos a null para tener una sola representación.
-      // Excepción: `testimonials` es JSONB array, se serializa aparte.
+      // Sprint 3 M4c (2026-07-20): writes flipeados a `content` JSONB. El
+      // PATCH ya no toca las cols legacy — actualiza `content` directo, y
+      // el trigger bidireccional de la migration 20260720000002 sincroniza
+      // las cols FROM content para dejar todo consistente. M4d va a hacer
+      // DROP COLUMN + DROP TRIGGER una vez que M4c esté estable en prod.
+      //
+      // Normalización preservada:
+      //   · '' → null (misma convención pre-M4c)
+      //   · Testimonials + FAQ: UUIDs generados server-side para items nuevos
       const norm = (v) => (v === '' || v === undefined) ? null : v;
-      // Fields que son arrays JSONB — misma serialización + server-generated UUIDs.
-      // Fase 2: testimonials. Fase 3: faq. Se comportan igual (add/edit/delete
-      // en el frontend antes de PATCH; server preserva id de items existentes,
-      // genera UUID para los nuevos).
       const JSONB_ARRAY_FIELDS = new Set(['testimonials', 'faq']);
 
-      const patch = {};
-      for (const key of Object.keys(req.body)) {
-        if (JSONB_ARRAY_FIELDS.has(key)) {
-          const withIds = (req.body[key] || []).map(t => ({
-            ...t,
-            id: t.id || crypto.randomUUID(),
-          }));
-          patch[key] = JSON.stringify(withIds);
-        } else {
-          patch[key] = norm(req.body[key]);
+      // Map de "flat body field" → "path en el JSONB content". Es la
+      // fuente de verdad del contract PATCH → content shape.
+      // Ver también: content shape doc en migration 20260720000001.
+      const FIELD_TO_JSONB_PATH = {
+        contact_email:            ['contact', 'email'],
+        contact_whatsapp:         ['contact', 'whatsapp'],
+        contact_whatsapp_display: ['contact', 'whatsapp_display'],
+        contact_address:          ['contact', 'address'],
+        contact_instagram_handle: ['contact', 'instagram_handle'],
+        contact_instagram_url:    ['contact', 'instagram_url'],
+        hero_headline:            ['hero', 'headline'],
+        hero_subheadline:         ['hero', 'subheadline'],
+        hero_blurb:               ['hero', 'blurb'],
+        cta_headline:             ['cta', 'headline'],
+        cta_body:                 ['cta', 'body'],
+        testimonials:             ['testimonials'],
+        faq:                      ['faq'],
+        google_reviews_enabled:   ['features', 'google_reviews_enabled'],
+      };
+
+      // Helper: set `path` en `obj` a `value`, creando containers intermedios.
+      // Mutates obj — usar solo en el clone que armamos abajo.
+      function setDeep(obj, path, value) {
+        let cursor = obj;
+        for (let i = 0; i < path.length - 1; i++) {
+          const key = path[i];
+          if (cursor[key] == null || typeof cursor[key] !== 'object') {
+            cursor[key] = {};
+          }
+          cursor = cursor[key];
         }
+        cursor[path[path.length - 1]] = value;
       }
 
-      // Build dynamic UPDATE — solo los campos que vinieron en el body.
-      const keys = Object.keys(patch);
-      const setPieces = keys.map((k, i) => {
-        // testimonials y faq son jsonb; los demás son text/bool genéricos.
-        return JSONB_ARRAY_FIELDS.has(k)
-          ? `${k} = $${i + 1}::jsonb`
-          : `${k} = $${i + 1}`;
-      });
-      const values = keys.map(k => patch[k]);
-      values.push(req.user.id); // updated_by = último param
-
-      // Sprint 3 M4b (2026-07-20): el UPDATE sigue escribiendo a las cols
-      // legacy (M4c hace la flip a escribir directo al JSONB). RETURNING
-      // trae `content` — el trigger BEFORE UPDATE ya lo sincronizó desde
-      // las nuevas cols antes de que RETURNING vea la row. Consistente con
-      // el shape que el GET /site-config ahora emite.
+      // Read-modify-write en una transacción implícita (single UPDATE). El
+      // read del content actual es necesario para hacer un merge preservando
+      // fields no tocados por el PATCH (partial update).
+      const keys = Object.keys(req.body);
       const result = await db.adminQuery(async (client) => {
+        const { rows: [current] } = await client.query(
+          `SELECT content FROM site_landing_config WHERE id = 1`
+        );
+        // Clone defensivo para no mutar el objeto que pg devuelve.
+        const newContent = JSON.parse(JSON.stringify(current?.content || {}));
+
+        // Aplicar cada field del PATCH sobre el content.
+        for (const key of keys) {
+          const path = FIELD_TO_JSONB_PATH[key];
+          if (!path) {
+            // Field desconocido — no debería pasar (Zod ya filtró), pero
+            // por defensa lo ignoramos.
+            logger.warn({ field: key }, '[super-admin/site-config] field desconocido en body, ignorado');
+            continue;
+          }
+          let value;
+          if (JSONB_ARRAY_FIELDS.has(key)) {
+            // Arrays: preservar id de items existentes, generar UUID nuevos.
+            // Mismo comportamiento que pre-M4c pero ahora aterriza en JSONB.
+            value = (req.body[key] || []).map(t => ({
+              ...t,
+              id: t.id || crypto.randomUUID(),
+            }));
+          } else {
+            value = norm(req.body[key]);
+          }
+          setDeep(newContent, path, value);
+        }
+
+        // UPDATE atómico: solo tocamos content + audit fields. El trigger
+        // bidireccional detecta que content cambió → sincroniza cols ← content
+        // (para clientes legacy que aún puedan leer cols, hasta el sunset M4d).
         const { rows } = await client.query(
           `UPDATE site_landing_config
-              SET ${setPieces.join(', ')},
+              SET content = $1::jsonb,
                   updated_at = NOW(),
-                  updated_by = $${values.length}
+                  updated_by = $2
             WHERE id = 1
             RETURNING content, updated_at, updated_by`,
-          values
+          [JSON.stringify(newContent), req.user.id]
         );
         return rows[0];
       });

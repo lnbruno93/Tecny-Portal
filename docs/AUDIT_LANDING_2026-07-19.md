@@ -160,9 +160,10 @@ Es un rediseño de landing B2C (compare iPhones, drag&drop) hecho en Replit. Nar
 
 | # | Item | Severidad | Esfuerzo | Estado |
 |---|---|---|---|---|
-| M4a | Migration additive `content JSONB` + trigger sync (fase 1 de 3) | MED | 1 día | ✅ Done — PR #680 |
-| M4b | Backend switch de reads a JSONB (fase 2 de 3) | MED | 2 días | 🟡 En progreso |
-| M4c | DROP columns legacy + cleanup dual-write (fase 3 de 3) | MED | 1 día | ⏳ Después de M4b en prod |
+| M4a | Migration additive `content JSONB` + trigger sync (fase 1 de 4) | MED | 1 día | ✅ Done — PR #680 |
+| M4b | Backend switch de reads a JSONB (fase 2 de 4) | MED | 2 días | ✅ Done — PR #681 |
+| M4c | PATCH writes a content + trigger bidireccional (fase 3 de 4) | MED | 1 día | 🟡 En progreso |
+| M4d | DROP columns legacy + drop trigger (fase 4 de 4) | LOW | 30 min | ⏳ Después de M4c estable en prod |
 | L1 | Deduplicar CSP entre `netlify.toml` root y admin | LOW | 30 min | ✅ Done — spec canónica en `scripts/security/csp-spec.js` + test de paridad en CI |
 | L2 | Limpieza `Landing.css` | LOW | 30 min | ✅ Done — 26 líneas de selectores huérfanos removidas (`.strip*`, `.test*`, `.bigstat*`, `.tint-slate`) |
 

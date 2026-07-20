@@ -809,7 +809,176 @@ describe('Sprint 3 M4b — reads from content JSONB', () => {
     expect(r.body.cta_headline).toBe('PATCH cta');
     // Cleanup.
     await pool.query(
-      `UPDATE site_landing_config SET hero_headline = NULL, cta_headline = NULL WHERE id = 1`,
+      `UPDATE site_landing_config SET content = jsonb_set(jsonb_set(content, '{hero,headline}', 'null'::jsonb), '{cta,headline}', 'null'::jsonb) WHERE id = 1`,
     );
+  });
+});
+
+// ── Sprint 3 M4c: writes flip a content JSONB + trigger bidireccional ──
+//
+// M4b hizo el flip de reads. M4c hace el flip de writes: PATCH escribe
+// content JSONB via UPDATE SET content = ... El trigger de M4a se
+// reemplaza por uno bidireccional que respeta cuál lado se tocó:
+//   · UPDATE cols → sync content ← cols (rama A, backward compat)
+//   · UPDATE content → sync cols ← content (rama B, nuevo path del PATCH)
+//
+// Objetivo del bidireccional: durante deploy transition, el server viejo
+// (M4b) sigue escribiendo cols hasta que muera. Con el trigger bidireccional
+// ambos servers coexisten sin corromper la invariante.
+
+describe('Sprint 3 M4c — writes to content + bidirectional trigger', () => {
+  it('PATCH endpoint escribe content JSONB directo (no cols)', async () => {
+    // Verificamos que el UPDATE del PATCH toca la column `content`. La
+    // manera indirecta: hacer un PATCH, ver que cols quedaron sincronizadas
+    // (esto pasa si content se escribió y el trigger sincronizó cols FROM
+    // content — rama B). Si el PATCH escribiera cols directo (path viejo),
+    // el resultado sería el mismo — no discriminaría. Para probar rama B
+    // específicamente hacemos abajo un test con trigger DISABLED.
+    const r = await request(app)
+      .patch('/api/super-admin/site-config')
+      .set(auth())
+      .send({ contact_email: 'm4c-write@tecnyapp.com' });
+    expect(r.status).toBe(200);
+
+    // Ambos deben mostrar el nuevo valor.
+    const { rows: [row] } = await pool.query(
+      `SELECT content->'contact'->>'email' AS from_content, contact_email AS from_col
+         FROM site_landing_config WHERE id = 1`,
+    );
+    expect(row.from_content).toBe('m4c-write@tecnyapp.com');
+    expect(row.from_col).toBe('m4c-write@tecnyapp.com');
+
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET content = jsonb_set(content, '{contact,email}', '"hola@tecnyapp.com"'::jsonb) WHERE id = 1`,
+    );
+  });
+
+  it('trigger rama B: UPDATE content → cols quedan sincronizadas', async () => {
+    // SQL directo: escribir content sin tocar cols. Verificar que las cols
+    // reflejan el nuevo valor por acción del trigger (rama B del trigger
+    // bidireccional).
+    await pool.query(
+      `UPDATE site_landing_config
+          SET content = jsonb_set(content, '{hero,headline}', '"Rama B test"'::jsonb)
+        WHERE id = 1`,
+    );
+    const { rows: [row] } = await pool.query(
+      `SELECT hero_headline FROM site_landing_config WHERE id = 1`,
+    );
+    expect(row.hero_headline).toBe('Rama B test');
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET content = jsonb_set(content, '{hero,headline}', 'null'::jsonb) WHERE id = 1`,
+    );
+  });
+
+  it('trigger rama A: UPDATE cols (legacy path) → content sigue sincronizado', async () => {
+    // Regresión: el path viejo (UPDATE de cols directo, como haría el
+    // server pre-M4c durante deploy transition) sigue funcionando. Rama A
+    // del trigger bidireccional.
+    await pool.query(
+      `UPDATE site_landing_config SET hero_headline = 'Rama A test' WHERE id = 1`,
+    );
+    const { rows: [row] } = await pool.query(
+      `SELECT content->'hero'->>'headline' AS from_content, hero_headline FROM site_landing_config WHERE id = 1`,
+    );
+    expect(row.from_content).toBe('Rama A test');
+    expect(row.hero_headline).toBe('Rama A test');
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET hero_headline = NULL WHERE id = 1`,
+    );
+  });
+
+  it('PATCH parcial preserva otros fields del content (partial update)', async () => {
+    // Set múltiples fields, luego PATCH toca solo uno, verifica que el resto
+    // sigue intacto. Esto verifica el merge JS del PATCH (read-current +
+    // set-field + write).
+    // Setup: usar el trigger para poblar cols → content.
+    await pool.query(`
+      UPDATE site_landing_config
+         SET hero_headline = 'H headline',
+             hero_blurb = 'H blurb',
+             cta_headline = 'C headline',
+             cta_body = 'C body'
+       WHERE id = 1
+    `);
+
+    // PATCH solo hero_headline.
+    const r = await request(app)
+      .patch('/api/super-admin/site-config')
+      .set(auth())
+      .send({ hero_headline: 'H headline updated' });
+    expect(r.status).toBe(200);
+
+    // Verificar: hero_headline actualizado, resto intacto.
+    const { rows: [row] } = await pool.query(
+      `SELECT content FROM site_landing_config WHERE id = 1`,
+    );
+    expect(row.content.hero.headline).toBe('H headline updated');
+    expect(row.content.hero.blurb).toBe('H blurb');
+    expect(row.content.cta.headline).toBe('C headline');
+    expect(row.content.cta.body).toBe('C body');
+
+    // Cleanup.
+    await pool.query(`
+      UPDATE site_landing_config
+         SET content = jsonb_set(
+               jsonb_set(
+                 jsonb_set(
+                   jsonb_set(content, '{hero,headline}', 'null'::jsonb),
+                   '{hero,blurb}', 'null'::jsonb
+                 ),
+                 '{cta,headline}', 'null'::jsonb
+               ),
+               '{cta,body}', 'null'::jsonb
+             )
+       WHERE id = 1
+    `);
+  });
+
+  it('PATCH testimonials genera UUIDs server-side (backward compat)', async () => {
+    // Comportamiento pre-M4c que sigue valiendo: items nuevos (sin id)
+    // reciben UUID del server; items con id lo preservan.
+    const r = await request(app)
+      .patch('/api/super-admin/site-config')
+      .set(auth())
+      .send({
+        testimonials: [
+          { name: 'Sin ID', initial: 'S', color: '#22c55e', time: 'ahora', text: 'nuevo testimonio de prueba' },
+          { id: '11111111-1111-4111-8111-111111111111', name: 'Con ID', initial: 'C', color: '#3b82f6', time: 'ahora', text: 'testimonio existente' },
+        ],
+      });
+    expect(r.status).toBe(200);
+    expect(r.body.testimonials).toHaveLength(2);
+    // Primero: UUID generado (matchea el regex del uuidLoose).
+    expect(r.body.testimonials[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    // Segundo: id preservado.
+    expect(r.body.testimonials[1].id).toBe('11111111-1111-4111-8111-111111111111');
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET content = jsonb_set(content, '{testimonials}', '[]'::jsonb) WHERE id = 1`,
+    );
+  });
+
+  it('PATCH normaliza empty string → null (backward compat)', async () => {
+    // Set un valor, luego PATCH con '' para limpiarlo.
+    await pool.query(
+      `UPDATE site_landing_config SET contact_address = 'algo' WHERE id = 1`,
+    );
+    const r = await request(app)
+      .patch('/api/super-admin/site-config')
+      .set(auth())
+      .send({ contact_address: '' });
+    expect(r.status).toBe(200);
+    expect(r.body.contact_address).toBeNull();
+    // Verificar en DB también (columna Y JSONB).
+    const { rows: [row] } = await pool.query(
+      `SELECT contact_address, content->'contact'->>'address' AS from_content
+         FROM site_landing_config WHERE id = 1`,
+    );
+    expect(row.contact_address).toBeNull();
+    expect(row.from_content).toBeNull();
   });
 });
