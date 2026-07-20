@@ -234,7 +234,7 @@ export default function Inicio() {
             Ahora ofrecemos retry inline (bumpea reloadKey → useEffect re-corre). */}
         <div className="card card-tight" style={{ borderColor: 'var(--neg)', marginTop: 16 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
+            <div className="u-flex-1">
               <div style={{ color: 'var(--neg)', fontWeight: 600, fontSize: 14 }}>
                 No pudimos cargar el inicio
               </div>

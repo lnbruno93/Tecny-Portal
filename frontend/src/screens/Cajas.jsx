@@ -611,7 +611,7 @@ export default function Cajas() {
               { label: 'Contactos con deuda', value: <span className="mono">{conDeuda}</span>, sub: `de ${contactosDeuda.length} total` },
               { label: 'Mayor saldo', value: <><span className="ccy">ARS</span><span className="mono">{fmt(mayorSaldo)}</span></>, sub: 'deuda individual más alta' },
             ].map(k => (
-              <div key={k.label} className="card card-tight" style={{ flex: 1 }}>
+              <div key={k.label} className="card card-tight u-flex-1">
                 <div className="kpi-label">{k.label}</div>
                 <div className="kpi-value">{k.value}</div>
                 <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
@@ -790,7 +790,7 @@ export default function Cajas() {
               { label: 'Inversores activos', value: <span className="mono">{inversoresActivos}</span>, sub: 'contactos únicos' },
               { label: 'Último ingreso', value: <span className="mono" style={{ fontSize: 16 }}>{inversiones[0] ? fmtFecha(inversiones[0].fecha) : '—'}</span>, sub: inversiones[0]?.nombre || '' },
             ].map(k => (
-              <div key={k.label} className="card card-tight" style={{ flex: 1 }}>
+              <div key={k.label} className="card card-tight u-flex-1">
                 <div className="kpi-label">{k.label}</div>
                 <div className="kpi-value">{k.value}</div>
                 <div className="muted tiny" style={{ marginTop: 6 }}>{k.sub}</div>
@@ -1126,12 +1126,12 @@ export default function Cajas() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input className="input" placeholder="ej. Martín"
                         value={cForm.nombre} onChange={e => setCForm(f => ({ ...f, nombre: e.target.value }))} autoFocus />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Apellido</label>
                       <input className="input" placeholder="ej. García"
                         value={cForm.apellido} onChange={e => setCForm(f => ({ ...f, apellido: e.target.value }))} />
@@ -1179,13 +1179,13 @@ export default function Cajas() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="date" className="input"
                         value={deudaForm.fecha}
                         onChange={e => setDeudaForm(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Tipo <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <select className="input"
                         value={deudaForm.tipo}
@@ -1198,13 +1198,13 @@ export default function Cajas() {
                   {/* Picker compartido con modal Inversión — toggle Existente/+Nuevo. */}
                   <ContactoPickerEmbedded form={deudaForm} setForm={setDeudaForm} allContacts={allContacts} />
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Monto ARS</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                         value={deudaForm.monto_ars}
                         onChange={e => setDeudaForm(f => ({ ...f, monto_ars: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Monto USD</label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01" className="input" placeholder="0"
                         value={deudaForm.monto_usd}

@@ -401,7 +401,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">Pagar con</label>
               <select className="input" value={cajaId} onChange={e => setCajaId(e.target.value)}>
                 <option value="">— Cuenta corriente (queda como deuda) —</option>
@@ -641,7 +641,7 @@ export default function CompraProveedorModal({ proveedor, onClose, onSaved }) {
 
           {/* ── Notas + Total ── */}
           <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">Notas de la compra (opcional)</label>
               <input className="input" value={notas} onChange={e => setNotas(e.target.value)}
                 placeholder="Ej. Pago con transferencia, recibo #5421" />

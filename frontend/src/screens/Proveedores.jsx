@@ -624,31 +624,31 @@ export default function Proveedores() {
                     value={provForm.nombre} onChange={e => setProvForm(f => ({ ...f, nombre: e.target.value }))} />
                 </div>
                 <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Contacto (nombre)</label>
                     <input type="text" className="input" placeholder="Ej: Juan"
                       value={provForm.contacto_nombre} onChange={e => setProvForm(f => ({ ...f, contacto_nombre: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Contacto (apellido)</label>
                     <input type="text" className="input" placeholder="Ej: García"
                       value={provForm.contacto_apellido} onChange={e => setProvForm(f => ({ ...f, contacto_apellido: e.target.value }))} />
                   </div>
                 </div>
                 <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">WhatsApp</label>
                     <input type="text" className="input" placeholder="+54 9 11 …"
                       value={provForm.whatsapp} onChange={e => setProvForm(f => ({ ...f, whatsapp: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Ubicación</label>
                     <input type="text" className="input" placeholder="Ej: Miami / CABA"
                       value={provForm.ubicacion} onChange={e => setProvForm(f => ({ ...f, ubicacion: e.target.value }))} />
                   </div>
                 </div>
                 <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Notas internas</label>
                     <input type="text" className="input" placeholder="Ej: paga a 30 días"
                       value={provForm.notas} onChange={e => setProvForm(f => ({ ...f, notas: e.target.value }))} />
@@ -699,7 +699,7 @@ export default function Proveedores() {
                   <input type="date" className="input" value={pagoForm.fecha}
                     onChange={e => setPagoForm(f => ({ ...f, fecha: e.target.value }))} />
                 </div>
-                <div className="field" style={{ flex: 1 }}>
+                <div className="field u-flex-1">
                   <label className="field-label">Pagar con <span style={{ color: 'var(--neg)' }}>*</span></label>
                   <select className="input" value={pagoForm.caja_id}
                     onChange={e => setPagoForm(f => ({ ...f, caja_id: e.target.value }))}>
@@ -714,7 +714,7 @@ export default function Proveedores() {
                 const monedaSel = cajaSel?.moneda || 'USD';
                 return (
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono"
                         value={pagoForm.monto} placeholder="0"

@@ -163,7 +163,7 @@ export default function PaymentMethodsModal({ open, onClose, onSaved }) {
           placeholder="Ej: Transferencia, MercadoPago, Efectivo…"
           maxLength={50}
           disabled={creating}
-          style={{ flex: 1 }}
+          className="u-flex-1"
         />
         <Btn
           kind="primary"

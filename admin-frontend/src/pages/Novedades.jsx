@@ -428,8 +428,7 @@ export default function Novedades() {
                   kind="primary"
                   onClick={submit}
                   disabled={saving}
-                  className="grow"
-                  style={{ flex: 1 }}
+                  className="grow u-flex-1"
                 >
                   {saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Publicar nota'}
                 </Btn>

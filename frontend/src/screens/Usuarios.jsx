@@ -315,21 +315,21 @@ export default function Usuarios() {
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
       <div className="row" style={{ marginBottom: 16 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total usuarios</div>
           <div className="kpi-value mono">{users.length}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Owners + Admins</div>
           <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>{owners + admins}</div>
           <div className="muted tiny" style={{ marginTop: 2 }}>bypass total</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Resto del equipo</div>
           <div className="kpi-value mono">{operadores}</div>
           <div className="muted tiny" style={{ marginTop: 2 }}>permisos por capability</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Capabilities disponibles</div>
           <div className="kpi-value mono">{totalCaps}</div>
           <div className="muted tiny" style={{ marginTop: 2 }}>en {pantallas.length} pantallas</div>
@@ -494,13 +494,13 @@ export default function Usuarios() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 16 }}>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input className={'input' + (fieldErrors.nombre ? ' input-error' : '')} placeholder="Juan Pérez" value={newUser.nombre}
                         onChange={e => setNU('nombre', e.target.value)} autoFocus aria-invalid={!!fieldErrors.nombre} />
                       {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Usuario <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input className={'input mono' + (fieldErrors.username ? ' input-error' : '')} placeholder="juanp" value={newUser.username}
                         onChange={e => setNU('username', e.target.value.toLowerCase())} aria-invalid={!!fieldErrors.username} />
@@ -511,7 +511,7 @@ export default function Usuarios() {
                   </div>
 
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       {/* 2026-06-26 (#446): email pasa de opcional a obligatorio.
                           Sin email no podemos invitarlo, mandarle resets de pass,
                           ni notificaciones. */}
@@ -520,7 +520,7 @@ export default function Usuarios() {
                         onChange={e => setNU('email', e.target.value)} required aria-invalid={!!fieldErrors.email} />
                       {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Contraseña <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="password" className={'input' + (fieldErrors.password ? ' input-error' : '')} placeholder="••••••••" value={newUser.password}
                         onChange={e => setNU('password', e.target.value)} autoComplete="new-password" aria-invalid={!!fieldErrors.password} />
@@ -776,7 +776,7 @@ function EditorPermisos({ usuario, pantallas, onClose, onSaved }) {
                           onChange={() => toggle(cap.slug)}
                           style={{ width: 16, height: 16, cursor: bypass ? 'default' : 'pointer' }}
                         />
-                        <span style={{ flex: 1 }}>{cap.label}</span>
+                        <span className="u-flex-1">{cap.label}</span>
                         {esOverride && (
                           <span style={{
                             fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,

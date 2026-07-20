@@ -873,27 +873,27 @@ export default function Envios() {
           .row colisionan en 375px exprimiendo cada card a ~70px ilegible.
           .kpi-grid hereda los breakpoints del styles.css (2x2 en <=640px). */}
       <div className="kpi-grid" style={{ marginBottom: 18 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total</div>
           <div className="kpi-value mono">{kpiTotal}</div>
           <div className="muted tiny" style={{ marginTop: 6 }}>en sistema</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Entregados</div>
           <div className="kpi-value mono pos">{kpiEntregados}</div>
           <div className="muted tiny" style={{ marginTop: 6 }}>esta semana</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">En camino</div>
           <div className="kpi-value mono" style={{ color: 'var(--info)' }}>{kpiEnCamino}</div>
           <div className="muted tiny" style={{ marginTop: 6 }}>ahora</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pendientes</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{kpiPendientes}</div>
           <div className="muted tiny" style={{ marginTop: 6 }}>por despachar</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Cobros en ruta</div>
           <div className="kpi-value">
             <span className="ccy">u$s</span>
@@ -1354,12 +1354,12 @@ export default function Envios() {
 
                   {/* Fila 1: fecha + estado + prioridad */}
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="date" className="input" value={form.fecha}
                         onChange={e => setF('fecha', e.target.value)} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Estado</label>
                       <select className="input" value={form.estado} onChange={e => setF('estado', e.target.value)}>
                         <option>Pendiente</option>
@@ -1368,7 +1368,7 @@ export default function Envios() {
                         <option>Cancelado</option>
                       </select>
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Prioridad</label>
                       <select className="input" value={form.prioridad} onChange={e => setF('prioridad', e.target.value)}>
                         <option value="">Sin prioridad</option>
@@ -1388,7 +1388,7 @@ export default function Envios() {
                         aria-invalid={!!fieldErrors.cliente} />
                       {fieldErrors.cliente && <div className="field-error">{fieldErrors.cliente}</div>}
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Teléfono</label>
                       <input className="input" placeholder="ej. 3416123456"
                         value={form.telefono} onChange={e => setF('telefono', e.target.value)} />
@@ -1404,7 +1404,7 @@ export default function Envios() {
                         aria-invalid={!!fieldErrors.direccion} />
                       {fieldErrors.direccion && <div className="field-error">{fieldErrors.direccion}</div>}
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Barrio</label>
                       {/* 2026-06-10 — Combobox con autocomplete agrupado por
                           zona (CABA/Norte/Oeste/Sur/Este). Permite tipear libre
@@ -1419,12 +1419,12 @@ export default function Envios() {
 
                   {/* Fila 4: horario + operador */}
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Horario</label>
                       <input className="input" placeholder="ej. 10:00-12:00"
                         value={form.horario} onChange={e => setF('horario', e.target.value)} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Operador</label>
                       <input className="input" placeholder="Quién despacha"
                         value={form.operador} onChange={e => setF('operador', e.target.value)} />

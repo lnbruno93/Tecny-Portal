@@ -177,26 +177,26 @@ export default function Historial() {
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
       <div className="row" style={{ marginBottom: 16 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total eventos</div>
           <div className="kpi-value mono">{fmt(totalRows)}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">INSERT</div>
           <div className="kpi-value mono"><span className="pos">{countByType('INSERT')}</span></div>
           <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">UPDATE</div>
           <div className="kpi-value mono" style={{ color: 'var(--info)' }}>{countByType('UPDATE')}</div>
           <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">DELETE</div>
           <div className="kpi-value mono"><span className="neg">{countByType('DELETE')}</span></div>
           <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">OCR</div>
           <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>{countByType('OCR')}</div>
           <div className="muted tiny" style={{ marginTop: 2 }}>en esta página</div>

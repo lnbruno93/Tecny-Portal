@@ -1503,8 +1503,8 @@ export default function Ventas() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Hora</label><input type="time" className="input" value={vForm.hora} onChange={e => setVF('hora', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={vForm.fecha} onChange={e => setVF('fecha', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Hora</label><input type="time" className="input" value={vForm.hora} onChange={e => setVF('hora', e.target.value)} /></div>
                   </div>
 
                   {/* Productos */}
@@ -1576,8 +1576,8 @@ export default function Ventas() {
 
                   {/* Vendedor / cliente */}
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Vendedor</label><select className="input" value={vForm.vendedor_id} onChange={e => setVF('vendedor_id', e.target.value)}><option value="">—</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Comisión (USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Vendedor</label><select className="input" value={vForm.vendedor_id} onChange={e => setVF('vendedor_id', e.target.value)}><option value="">—</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select></div>
+                    <div className="field u-flex-1"><label className="field-label">Comisión (USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={vForm.comision} onChange={e => setVF('comision', e.target.value)} /></div>
                   </div>
                   <div className="row">
                     <div className="field" style={{ flex: 1, position: 'relative' }}>
@@ -1696,13 +1696,13 @@ export default function Ventas() {
                                 onChange={e => setQuickClient(q => ({ ...q, nombre: e.target.value }))} />
                             </div>
                             <div className="row" style={{ gap: 10 }}>
-                              <div className="field" style={{ flex: 1 }}>
+                              <div className="field u-flex-1">
                                 <label className="field-label" htmlFor="qc-dni">DNI</label>
                                 <input id="qc-dni" className="input" inputMode="numeric" pattern="[0-9]*" placeholder="Ej: 12345678"
                                   value={quickClient.dni}
                                   onChange={e => setQuickClient(q => ({ ...q, dni: e.target.value }))} />
                               </div>
-                              <div className="field" style={{ flex: 1 }}>
+                              <div className="field u-flex-1">
                                 <label className="field-label" htmlFor="qc-tel">WhatsApp</label>
                                 <input id="qc-tel" className="input" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ej: 1123456789"
                                   value={quickClient.telefono}
@@ -1710,13 +1710,13 @@ export default function Ventas() {
                               </div>
                             </div>
                             <div className="row" style={{ gap: 10 }}>
-                              <div className="field" style={{ flex: 1 }}>
+                              <div className="field u-flex-1">
                                 <label className="field-label" htmlFor="qc-email">Correo electrónico</label>
                                 <input id="qc-email" className="input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" placeholder="email@ejemplo.com"
                                   value={quickClient.email}
                                   onChange={e => setQuickClient(q => ({ ...q, email: e.target.value }))} />
                               </div>
-                              <div className="field" style={{ flex: 1 }}>
+                              <div className="field u-flex-1">
                                 <label className="field-label" htmlFor="qc-fnac">Fecha de nacimiento</label>
                                 <input id="qc-fnac" className="input" type="date"
                                   value={quickClient.fecha_nacimiento}
@@ -1736,7 +1736,7 @@ export default function Ventas() {
                         </div>
                       )}
                     </div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
+                    <div className="field u-flex-1"><label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Etiqueta <button type="button" className="btn btn-sm" onClick={() => setShowEtiquetas(true)}><Icons.Settings size={11} /> Gestionar</button></label><select className="input" value={vForm.etiqueta_id} onChange={e => setVF('etiqueta_id', e.target.value)}><option value="">Sin etiqueta</option>{etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}</select></div>
                   </div>
                   <div className="field">
                     <label className="field-label">Cliente cuenta corriente <span className="muted tiny">(requerido si pagás en CC)</span></label>
@@ -1752,8 +1752,8 @@ export default function Ventas() {
                     })()}
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC venta (ARS/USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /><TcWarning tc={vForm.tc_venta} /></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
+                    <div className="field u-flex-1"><label className="field-label">TC venta (ARS/USD)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="1425" value={vForm.tc_venta} onChange={e => setVF('tc_venta', e.target.value)} /><TcWarning tc={vForm.tc_venta} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Estado</label><select className="input" value={vForm.estado} onChange={e => setVF('estado', e.target.value)}><option value="pendiente">Pendiente</option><option value="acreditado">Acreditado</option></select></div>
                   </div>
                   <div className="field">
                     <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>Garantía (para el comprobante)
@@ -1812,7 +1812,7 @@ export default function Ventas() {
                               <input className="input mono" placeholder="35..."
                                      value={c.imei} onChange={e => setCanje(c._id, 'imei', e.target.value)} />
                             </div>
-                            <div className="field" style={{ flex: 1 }}>
+                            <div className="field u-flex-1">
                               <label className="field-label">Valor toma (USD)</label>
                               <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      placeholder="0" value={c.valor_toma} onChange={e => setCanje(c._id, 'valor_toma', e.target.value)} />
@@ -1826,7 +1826,7 @@ export default function Ventas() {
                               <input className="input" placeholder="256"
                                      value={c.gb} onChange={e => setCanje(c._id, 'gb', e.target.value)} />
                             </div>
-                            <div className="field" style={{ flex: 1 }}>
+                            <div className="field u-flex-1">
                               <label className="field-label">Color</label>
                               <input className="input" placeholder="Sierra Blue"
                                      value={c.color} onChange={e => setCanje(c._id, 'color', e.target.value)} />
@@ -1873,7 +1873,7 @@ export default function Ventas() {
                                 ))}
                               </select>
                             </div>
-                            <div className="field" style={{ flex: 1 }}>
+                            <div className="field u-flex-1">
                               <label className="field-label">Precio venta sugerido (USD)</label>
                               <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono"
                                      placeholder="0 (editar en Inventario después)"

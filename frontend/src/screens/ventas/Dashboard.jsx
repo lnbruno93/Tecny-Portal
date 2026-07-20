@@ -79,7 +79,7 @@ export default function Dashboard({ d }) {
           exprimidos en 4 cols estrechas en <414px, los labels wrappeaban a
           3 líneas y se veía horrible. Reportado por Lucas con screenshot. */}
       <div className="kpi-grid" style={{ marginBottom: 12 }}>
-        <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-unidades">
+        <div className="card card-tight u-flex-1" data-testid="kpi-unidades">
           <div className="kpi-label">Unidades vendidas</div>
           {/*
             2026-07-09 (Opción C rediseño post-Fase 2b): card compacto con
@@ -136,7 +136,7 @@ export default function Dashboard({ d }) {
           )}
         </div>
         {showGanancias && (
-        <div className="card card-tight" style={{ flex: 1 }} data-testid="kpi-ganancia">
+        <div className="card card-tight u-flex-1" data-testid="kpi-ganancia">
           <div className="kpi-label">Ganancia neta</div>
           <div className="kpi-value mono pos" style={{ fontSize: 17 }}>u$s{fmt(d.ganancia_neta_usd)}</div>
           {/*
@@ -168,11 +168,11 @@ export default function Dashboard({ d }) {
           </div>
         </div>
         )}
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Costos productos</div>
           <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.costos_usd)}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Inversión canjes</div>
           <div className="kpi-value mono" style={{ fontSize: 17, color: 'var(--warn)' }}>
             u$s{fmt(d.inversion_canjes_usd)}
@@ -186,7 +186,7 @@ export default function Dashboard({ d }) {
           .row con flex-wrap + min-width:180 ya colapsa bien en mobile y
           distribuye 50/50 en desktop. */}
       <div className="row">
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label" style={{ marginBottom: 8 }}>Métodos de pago</div>
           <table className="table" style={{ fontSize: 12 }}>
             <tbody>
@@ -209,7 +209,7 @@ export default function Dashboard({ d }) {
             neto <strong>u$s{fmt(dif.neto)}</strong>
           </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label" style={{ marginBottom: 8 }}>Ventas por horario</div>
           <HourChart data={d.por_horario} />
           <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>
@@ -229,14 +229,14 @@ export default function Dashboard({ d }) {
           Mismo razonamiento que arriba — 3 cards en grid-4 dejan hueco a la
           derecha. .row distribuye 33/33/33 en desktop, colapsa en mobile. */}
       <div className="row" style={{ marginTop: 12 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Ticket promedio</div>
           <div className="kpi-value mono" style={{ fontSize: 17 }}>u$s{fmt(d.ticket_promedio_usd)}</div>
           <div className="muted tiny" style={{ marginTop: 4 }}>
             {d.ventas_count} venta{d.ventas_count === 1 ? '' : 's'}
           </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label" style={{ marginBottom: 8 }}>Top productos</div>
           {(d.top_productos || []).length === 0
             ? <div className="muted tiny">—</div>
@@ -247,7 +247,7 @@ export default function Dashboard({ d }) {
                 </div>
               ))}
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label" style={{ marginBottom: 8 }}>Top vendedores</div>
           {(d.top_vendedores || []).length === 0
             ? <div className="muted tiny">—</div>

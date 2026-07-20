@@ -601,7 +601,7 @@ export default function NotificationsBell() {
                                   flexShrink: 0,
                                 }} />
                               )}
-                              <span style={{ flex: 1 }}>{label}</span>
+                              <span className="u-flex-1">{label}</span>
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--text-muted, #7c87a5)', paddingLeft: unread ? 16 : 0 }}>
                               {fmtRelative(n.created_at)}

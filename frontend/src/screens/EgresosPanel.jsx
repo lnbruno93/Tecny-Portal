@@ -143,15 +143,15 @@ export default function EgresosPanel() {
 
       {/* KPIs */}
       <div className="row" style={{ marginBottom: 14 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pendiente · USD</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn, #d97706)' }}>u$s {fmt(totales.pendiente)}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Pagado · USD</div>
           <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>u$s {fmt(totales.pagado)}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total del mes · USD</div>
           <div className="kpi-value mono">u$s {fmt(totales.pendiente + totales.pagado)}</div>
         </div>
@@ -207,33 +207,33 @@ export default function EgresosPanel() {
                         con el patrón usado en el resto del proyecto (Contactos,
                         Usuarios, CuentasCC). EgresosPanel era el único que usaba
                         `*` plano sin estilizar — desprolijo visto lado a lado. */}
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Fecha <span style={{ color: 'var(--neg)' }}>*</span></label><input type="date" className="input" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
                     <div className="field" style={{ flex: 2 }}><label className="field-label">Concepto <span style={{ color: 'var(--neg)' }}>*</span></label><input className="input" placeholder="Alquiler, sueldos…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} autoFocus /></div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Categoría</label>
+                    <div className="field u-flex-1"><label className="field-label">Categoría</label>
                       <select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}>
                         <option value="">— Sin categoría —</option>
                         {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
                     </div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Monto</label>
+                    <div className="field u-flex-1"><label className="field-label">Monto</label>
                       <div className="flex-row" style={{ gap: 6 }}>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" />
                         <select className="input" style={{ width: 80 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select>
                       </div>
                     </div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">TC (si es ARS)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
+                    <div className="field u-flex-1"><label className="field-label">TC (si es ARS)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Caja {form.estado === 'pagado' && <span style={{ color: 'var(--neg)' }}>*</span>}</label>
+                    <div className="field u-flex-1"><label className="field-label">Caja {form.estado === 'pagado' && <span style={{ color: 'var(--neg)' }}>*</span>}</label>
                       <select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}>
                         <option value="">— Elegir caja —</option>
                         {cajas.map(c => <option key={c.id} value={c.id}>{cajaNombre(c)}</option>)}
                         <CajaSelectHint />
                       </select>
                     </div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Estado</label>
+                    <div className="field u-flex-1"><label className="field-label">Estado</label>
                       <select className="input" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>
                         <option value="pendiente">Pendiente</option><option value="pagado">Pagado (descuenta de la caja)</option>
                       </select>
@@ -276,7 +276,7 @@ function CategoriasModal({ categorias, onClose, onChange, toast, confirm }) {
         <div className="modal-hd"><h3>Categorías de egreso</h3><button className="icon-btn" onClick={onClose}><Icons.X size={16} /></button></div>
         <div className="modal-body">
           <div className="flex-row" style={{ gap: 6, marginBottom: 12 }}>
-            <input className="input" style={{ flex: 1 }} placeholder="Nueva categoría…" value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
+            <input className="input u-flex-1" placeholder="Nueva categoría…" value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!nombre.trim()}>+ Agregar</button>
           </div>
           <div className="stack" style={{ gap: 4 }}>
@@ -327,15 +327,15 @@ function RecurrentesModal({ recurrentes, categorias, cajas, onClose, onChange, t
         <div className="modal-body">
           <div className="row" style={{ gap: 8, marginBottom: 6, alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 2 }}><label className="field-label tiny">Concepto</label><input className="input" placeholder="Alquiler…" value={form.concepto} onChange={e => setForm(f => ({ ...f, concepto: e.target.value }))} /></div>
-            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} style={{ flex: 1 }} /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
+            <div className="field u-flex-1"><label className="field-label tiny">Monto</label><div className="flex-row" style={{ gap: 4 }}><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="0" value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} className="u-flex-1" /><select className="input" style={{ width: 70 }} value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>{Array.from(new Set([...monedas, form.moneda].filter(Boolean))).map(m => <option key={m} value={m}>{m}</option>)}</select></div></div>
             {form.moneda === 'ARS' && (
               <div className="field" style={{ width: 80 }}><label className="field-label tiny">TC</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" className="input mono" placeholder="1425" value={form.tc} onChange={e => setForm(f => ({ ...f, tc: e.target.value }))} /><TcWarning tc={form.tc} /></div>
             )}
             <div className="field" style={{ width: 70 }}><label className="field-label tiny">Día</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="1" max="31" className="input mono" value={form.dia_del_mes} onChange={e => setForm(f => ({ ...f, dia_del_mes: e.target.value }))} /></div>
           </div>
           <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
-            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Categoría</label><select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}><option value="">—</option>{categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
-            <div className="field" style={{ flex: 1 }}><label className="field-label tiny">Caja</label><select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}><option value="">—</option>{cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}<CajaSelectHint /></select></div>
+            <div className="field u-flex-1"><label className="field-label tiny">Categoría</label><select className="input" value={form.categoria_id} onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}><option value="">—</option>{categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+            <div className="field u-flex-1"><label className="field-label tiny">Caja</label><select className="input" value={form.metodo_pago_id} onChange={e => setForm(f => ({ ...f, metodo_pago_id: e.target.value }))}><option value="">—</option>{cajas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.moneda ? ' · ' + c.moneda : ''}</option>)}<CajaSelectHint /></select></div>
             <button className="btn btn-primary btn-sm" onClick={add} disabled={!form.concepto.trim()}>+ Agregar</button>
           </div>
           <div className="stack" style={{ gap: 4 }}>
