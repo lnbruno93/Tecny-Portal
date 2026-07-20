@@ -535,3 +535,151 @@ describe('google_reviews_enabled toggle', () => {
     });
   });
 });
+
+// ── Sprint 3 M4a: content JSONB trigger ────────────────────────────────
+//
+// La migration 20260720000001_site_landing_content_jsonb agrega la columna
+// `content JSONB` + un trigger BEFORE INSERT/UPDATE que la mantiene
+// sincronizada con las columnas legacy. Esta suite verifica la invariante
+// "content == columnas" ante los distintos writes que el sistema puede
+// producir.
+//
+// Se testea acá (no en unit tests) porque necesita PG real — el trigger
+// vive en la DB. Un mock de pg no lo cubriría.
+
+describe('Sprint 3 M4a — trigger site_landing_config_sync_content', () => {
+  // Helper: espera a que la row singleton tenga content JSONB alineado con
+  // las columnas legacy. Es sync porque el trigger corre en el mismo statement.
+  async function readContent() {
+    const { rows } = await pool.query(
+      `SELECT content, contact_email, contact_whatsapp, contact_whatsapp_display,
+              contact_address, contact_instagram_handle, contact_instagram_url,
+              hero_headline, hero_subheadline, hero_blurb,
+              cta_headline, cta_body,
+              testimonials, faq, google_reviews_enabled
+         FROM site_landing_config WHERE id = 1`,
+    );
+    return rows[0];
+  }
+
+  it('content JSONB tiene todas las secciones esperadas', async () => {
+    const row = await readContent();
+    // Contract del content JSONB definido en la migration. Estas keys deben
+    // existir siempre — landing/admin no tolera cambios accidentales.
+    expect(row.content).toHaveProperty('contact');
+    expect(row.content).toHaveProperty('hero');
+    expect(row.content).toHaveProperty('cta');
+    expect(row.content).toHaveProperty('testimonials');
+    expect(row.content).toHaveProperty('faq');
+    expect(row.content).toHaveProperty('features');
+  });
+
+  it('content.contact matchea las columnas contact_*', async () => {
+    const row = await readContent();
+    expect(row.content.contact).toEqual({
+      email: row.contact_email,
+      whatsapp: row.contact_whatsapp,
+      whatsapp_display: row.contact_whatsapp_display,
+      address: row.contact_address,
+      instagram_handle: row.contact_instagram_handle,
+      instagram_url: row.contact_instagram_url,
+    });
+  });
+
+  it('UPDATE de una columna hero_* sincroniza content.hero automáticamente', async () => {
+    await pool.query(
+      `UPDATE site_landing_config SET hero_headline = $1 WHERE id = 1`,
+      ['Test headline sync'],
+    );
+    const row = await readContent();
+    expect(row.content.hero.headline).toBe('Test headline sync');
+    expect(row.hero_headline).toBe('Test headline sync');
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET hero_headline = NULL WHERE id = 1`,
+    );
+  });
+
+  it('UPDATE de testimonials (JSONB) sincroniza content.testimonials', async () => {
+    const testimonials = [
+      { id: 't1', name: 'Test User', initial: 'T', color: 'blue', time: 'hace 1 mes', text: 'ok' },
+    ];
+    await pool.query(
+      `UPDATE site_landing_config SET testimonials = $1::jsonb WHERE id = 1`,
+      [JSON.stringify(testimonials)],
+    );
+    const row = await readContent();
+    expect(row.content.testimonials).toEqual(testimonials);
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET testimonials = '[]'::jsonb WHERE id = 1`,
+    );
+  });
+
+  it('UPDATE de google_reviews_enabled sincroniza content.features', async () => {
+    await pool.query(
+      `UPDATE site_landing_config SET google_reviews_enabled = false WHERE id = 1`,
+    );
+    const row = await readContent();
+    expect(row.content.features.google_reviews_enabled).toBe(false);
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`,
+    );
+  });
+
+  it('el PATCH endpoint del admin dispara el sync (invariante end-to-end)', async () => {
+    // Simula lo que la UI del admin hace: PATCH con hero + testimonials +
+    // toggle google reviews. Después leemos la row y verificamos que content
+    // JSONB refleja los cambios sin que el endpoint escriba a `content`.
+    const payload = {
+      hero_headline: 'Headline via PATCH',
+      cta_body: 'CTA body via PATCH',
+      testimonials: [
+        // Color debe ser #RRGGBB + text mínimo 10 chars — matchea el Zod
+        // schema del PATCH (`testimonialItemSchema` en schemas/superAdmin.js).
+        { name: 'Cliente Real', initial: 'C', color: '#22c55e', time: 'hace 3 días', text: 'testimonio real de prueba' },
+      ],
+      google_reviews_enabled: false,
+    };
+    const r = await request(app)
+      .patch('/api/super-admin/site-config')
+      .set(auth())
+      .send(payload);
+    expect(r.status).toBe(200);
+
+    const row = await readContent();
+    expect(row.content.hero.headline).toBe('Headline via PATCH');
+    expect(row.content.cta.body).toBe('CTA body via PATCH');
+    expect(row.content.features.google_reviews_enabled).toBe(false);
+    expect(row.content.testimonials).toHaveLength(1);
+    expect(row.content.testimonials[0].name).toBe('Cliente Real');
+    // El id fue generado server-side (crypto.randomUUID) — verificamos que
+    // aparece en el JSONB con el mismo valor que en la columna.
+    expect(row.content.testimonials[0].id).toBe(row.testimonials[0].id);
+
+    // Cleanup — restaurar el estado inicial.
+    await pool.query(`
+      UPDATE site_landing_config
+         SET hero_headline = NULL,
+             cta_body = NULL,
+             testimonials = '[]'::jsonb,
+             google_reviews_enabled = true
+       WHERE id = 1
+    `);
+  });
+
+  it('columnas NULL se serializan como null en content JSONB (no como "null" string)', async () => {
+    // Todos los campos hero_* + cta_* arrancan NULL. Verificamos que el
+    // JSONB los expone como null JSON, no como string "null" o missing.
+    await pool.query(`
+      UPDATE site_landing_config
+         SET hero_headline = NULL, hero_subheadline = NULL, hero_blurb = NULL,
+             cta_headline = NULL, cta_body = NULL
+       WHERE id = 1
+    `);
+    const row = await readContent();
+    expect(row.content.hero).toEqual({ headline: null, subheadline: null, blurb: null });
+    expect(row.content.cta).toEqual({ headline: null, body: null });
+  });
+});
