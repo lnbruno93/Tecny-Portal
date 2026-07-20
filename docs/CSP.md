@@ -127,15 +127,67 @@ crecería mientras se migra.
 Congelar el baseline actual + CI check que falla si sube. Documentado
 arriba.
 
-### Fase 2 — Migración incremental (futuro, semanas)
+### Fase 2 — Migración con utility classes (2026-07-20 update)
 
-Aproach por sprints:
-1. **Sprint 1**: Top 5 archivos frontend (~781 matches → clases CSS).
-   Baseline baja de 2956 → ~2175.
-2. **Sprint 2**: Top 5 archivos admin (~254 matches).
-   Admin baseline baja de 588 → ~334.
-3. **Sprint 3-N**: Continuar por count descendente hasta llegar a
-   frontend + admin = ~0.
+Approach original: "1 archivo por PR". Descartado tras análisis:
+
+```bash
+node scripts/csp-inline-styles-analyze.mjs
+```
+
+**Hallazgos del análisis** (2026-07-20):
+- 3512 inline styles total → **94.2% analizables** (3310), 202 dinámicos.
+- Top 20 patterns **completos** cubren **1057 styles = 30% del total**.
+- Patterns son **utility classes clásicas**, no primitivos React.
+
+Top 10 patterns (count × pattern):
+
+| Count | Files | Pattern | CSS class sugerida |
+|--:|--:|:--|:--|
+| 200 | 33 | `{ flex: 1 }` | `.u-flex-1` |
+| 132 | 23 | `{ textAlign: 'right' }` | `.u-text-right` |
+| 111 | 30 | `{ color: 'var(--neg)' }` | `.u-color-neg` |
+|  56 | 31 | `{ fontWeight: 600 }` | `.u-fw-600` |
+|  48 | 29 | `{ marginTop: 4 }` | `.u-mt-4` |
+|  36 | 20 | `{ marginBottom: 14 }` | `.u-mb-14` |
+|  33 | 17 | `{ fontSize: 13, fontWeight: 600 }` | `.u-fs-13-fw-600` |
+|  32 | 20 | `{ marginBottom: 12 }` | `.u-mb-12` |
+|  30 | 14 | `{ marginTop: 6 }` | `.u-mt-6` |
+|  29 | 20 | `{ marginTop: 2 }` | `.u-mt-2` |
+
+**Plan Fase 2 revisado**:
+
+- **Sprint 1 (fast win, horas no semanas)**: crear `utilities.css` en
+  frontend + admin con las 20 utility classes que cubren los top patterns.
+  Migrar 3-5 archivos sample (los que USAN más estos patterns) como
+  showcase del approach. Baseline baja ~200-400 en ese PR.
+- **Sprint 2-N**: cada dev/PR reemplaza `style={{ marginTop: 4 }}` →
+  `className="u-mt-4"` on-touch (cuando toca el archivo por otra razón).
+  El baseline baja gradual sin sprint dedicado.
+- **Después de 3-4 rounds**: baseline debería bajar 3544 → ~1500-2000.
+  Los ~1500 restantes son styles únicos + dinámicos.
+
+**Comparativa vs approach original**:
+
+| Métrica | Original (1 file/PR) | Utility classes |
+|---|---:|---:|
+| PRs para 30% del baseline | ~15-20 | 1 |
+| Tiempo por PR | ~1h | ~2-3h (grande) |
+| Riesgo visual | Alto por archivo | Bajo (1:1 transform) |
+| Escalable después | Manual continuo | Automático on-touch |
+
+**Ejemplo migración** (con utility class):
+
+```jsx
+// Antes:
+<div style={{ marginTop: 4, color: 'var(--neg)', fontSize: 13 }}>Error</div>
+
+// Después:
+<div className="u-mt-4 u-color-neg u-fs-13">Error</div>
+```
+
+Cada PR de migración corre `node scripts/csp-inline-styles-check.mjs update`
+para bajar el baseline. El count nunca sube por check de Fase 1.
 
 Cada sprint es 1 PR chico: migra 1 archivo top, corre el script `update`,
 commit del baseline nuevo, verificación visual (screenshots antes/después).
