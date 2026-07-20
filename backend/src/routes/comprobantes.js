@@ -158,8 +158,11 @@ router.post('/', validate(createComprobanteSchema), async (req, res, next) => {
     // tienen fallback automático: si la fila tiene archivo_key → R2, sino
     // → archivo_data. Por eso flippear el flag NO rompe el acceso a uploads
     // anteriores.
+    // 2026-07-20 F3 Rec proactiva #3: pasamos `req.tenantId` para que el
+    // resolver aplique overrides tenant/plan/rollout (canary R2 por tenant
+    // antes del rollout global).
     const useR2 = fileStore._DRIVER === 'r2'
-               && await storageFlags.isEnabled('storage_r2_comprobantes');
+               && await storageFlags.isEnabled('storage_r2_comprobantes', req.tenantId);
 
     let file;
     if (useR2) {

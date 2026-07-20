@@ -46,6 +46,15 @@ const NAV = [
       { id: 'novedades',   label: 'Novedades',     icon: 'Sparkle',  path: '/novedades' },
     ],
   },
+  {
+    // 2026-07-20 Rec proactiva #3 F2: feature flags per-tenant.
+    // Sección propia (no dentro de Contenido) porque es infra/plataforma,
+    // no CMS editable de cara al cliente.
+    sec: 'Plataforma',
+    items: [
+      { id: 'features',    label: 'Feature flags', icon: 'Bolt',     path: '/features' },
+    ],
+  },
 ];
 
 // Mapa flat para derivar el label del breadcrumb desde la ruta. Mantenido

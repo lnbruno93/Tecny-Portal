@@ -196,8 +196,10 @@ router.post('/:id/comprobantes', validate(comprobanteVentaSchema), async (req, r
     //   Flag OFF o driver=db → bypass al path legacy (base64 directo a
     //     archivo_data). Preserva el comportamiento pre-fase-5 exacto.
     // Reads (GET /comprobantes/:cid) usan fileStore.get con fallback automático.
+    // 2026-07-20 F3 Rec proactiva #3: pasamos `req.tenantId` al resolver
+    // (overrides tenant/plan/rollout para canary R2 por tenant).
     const useR2 = fileStore._DRIVER === 'r2'
-               && await storageFlags.isEnabled('storage_r2_ventas_comprobantes');
+               && await storageFlags.isEnabled('storage_r2_ventas_comprobantes', req.tenantId);
 
     let file;
     if (useR2) {

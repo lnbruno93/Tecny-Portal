@@ -61,6 +61,9 @@ const {
   mergeClasesProductoSchema,
   createTrustedCompanySchema,
   updateTrustedCompanySchema,
+  patchFeatureFlagSchema,
+  upsertTenantOverrideSchema,
+  upsertPlanOverrideSchema,
   PLANES,
 } = require('../schemas/superAdmin');
 // 2026-07-18 CMS Landing Fase 4: helper para almacenar logos de empresas
@@ -3623,6 +3626,375 @@ router.delete('/trusted-companies/:id', async (req, res, next) => {
 
     logger.info({ super_admin: req.user.id, id }, '[super-admin] DELETE /trusted-companies/:id');
     res.json({ ok: true, id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Feature Flags per-tenant — F2 (Rec proactiva #3, 2026-07-20)
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Endpoints super-admin para overrides de feature flags. Design doc:
+// docs/design/feature-flags-per-tenant.md.
+//
+// Resolver (`lib/featureFlags.js`) evalúa: tenant > plan > rollout > global.
+// Estos endpoints escriben en las tablas que alimentan esa precedencia.
+//
+// Cache invalidation: cada mutation invalida el key correspondiente en
+// Redis. Sin pub-sub cross-instance, el TTL (5min) es el techo de
+// staleness. Kill switch efectivo requiere restart de pods o esperar TTL.
+//
+// Audit log: cada cambio → row en audit_logs vía el helper `audit()`.
+// Todos los endpoints usan `requireSuperAdmin` (aplicado a nivel router
+// arriba en app.js — este file entero es super-admin-only).
+
+const featureFlagsLib = require('../lib/featureFlags');
+const audit = require('../lib/audit');
+
+// GET /api/super-admin/features
+//
+// Devuelve todos los flags con overrides. 1 query por tabla (3 total).
+// No paginado — regla del design: max 15 flags activos.
+router.get('/features', async (_req, res, next) => {
+  try {
+    const rows = await db.adminQuery(async (client) => {
+      const { rows: flags } = await client.query(
+        `SELECT name, enabled, rollout_pct, description, created_at, updated_at
+           FROM feature_flags
+          ORDER BY name ASC`
+      );
+      const { rows: tenantOverrides } = await client.query(
+        `SELECT ffo.flag_name, ffo.tenant_id, ffo.enabled, ffo.reason,
+                ffo.updated_at, ffo.updated_by, t.nombre AS tenant_nombre
+           FROM feature_flags_tenants ffo
+           JOIN tenants t ON t.id = ffo.tenant_id
+          ORDER BY ffo.updated_at DESC`
+      );
+      const { rows: planOverrides } = await client.query(
+        `SELECT flag_name, plan_id, enabled, updated_at
+           FROM feature_flags_plans
+          ORDER BY flag_name, plan_id`
+      );
+      return { flags, tenantOverrides, planOverrides };
+    });
+
+    // Agrupar overrides por flag.
+    const byFlag = new Map(rows.flags.map((f) => [f.name, {
+      ...f,
+      tenant_overrides: [],
+      plan_overrides: [],
+    }]));
+    for (const to of rows.tenantOverrides) {
+      byFlag.get(to.flag_name)?.tenant_overrides.push({
+        tenant_id:     to.tenant_id,
+        tenant_nombre: to.tenant_nombre,
+        enabled:       to.enabled,
+        reason:        to.reason,
+        updated_at:    to.updated_at,
+        updated_by:    to.updated_by,
+      });
+    }
+    for (const po of rows.planOverrides) {
+      byFlag.get(po.flag_name)?.plan_overrides.push({
+        plan_id:    po.plan_id,
+        enabled:    po.enabled,
+        updated_at: po.updated_at,
+      });
+    }
+
+    res.json({ flags: Array.from(byFlag.values()) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/super-admin/features/:name
+//
+// Update campos del flag global: enabled, rollout_pct, description.
+// El flag debe existir (creación via routes/feature-flags.js del sistema
+// original).
+router.patch('/features/:name',
+  validate(patchFeatureFlagSchema),
+  async (req, res, next) => {
+    try {
+      const { name } = req.params;
+      const body = req.body;
+
+      // Build dynamic UPDATE — solo campos que vinieron.
+      const setPieces = [];
+      const values = [];
+      for (const [k, v] of Object.entries(body)) {
+        setPieces.push(`${k} = $${values.length + 1}`);
+        values.push(v);
+      }
+      setPieces.push(`updated_at = NOW()`);
+      values.push(name); // último param = WHERE name = $N
+
+      const result = await db.adminQuery(async (client) => {
+        const { rows: prevRows } = await client.query(
+          `SELECT enabled, rollout_pct, description FROM feature_flags WHERE name = $1`,
+          [name]
+        );
+        if (!prevRows[0]) return { notFound: true };
+        const prev = prevRows[0];
+
+        const { rows } = await client.query(
+          `UPDATE feature_flags
+              SET ${setPieces.join(', ')}
+            WHERE name = $${values.length}
+            RETURNING name, enabled, rollout_pct, description, updated_at`,
+          values
+        );
+        const next = rows[0];
+
+        return { next, prev };
+      });
+
+      if (result?.notFound) return res.status(404).json({ error: 'Flag no existe' });
+
+      if (result?.notFound) return res.status(404).json({ error: 'Flag no existe' });
+
+      // Audit sin client (usa pool directo con autocommit). db.adminQuery
+      // no wrapea en tx, entonces el SAVEPOINT interno de audit fallaría.
+      try {
+        await audit('feature_flags', 'UPDATE', null, {
+          antes: result.prev,
+          despues: result.next,
+          user_id: req.user.id,
+          extra: { scope: 'global', flag: name },
+        });
+      } catch (auditErr) {
+        logger.warn({ err: auditErr.message }, '[super-admin/features] audit fallo, ignorado');
+      }
+
+      logger.info({ super_admin: req.user.id, flag: name, fields: Object.keys(body) },
+        '[super-admin] PATCH /features/:name');
+      res.json(result.next);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /api/super-admin/features/:name/tenants/:tenantId
+//
+// Upsert override por tenant. Invalida cache del (flag, tenant).
+router.post('/features/:name/tenants/:tenantId',
+  validate(upsertTenantOverrideSchema),
+  async (req, res, next) => {
+    try {
+      const { name } = req.params;
+      const tenantId = parseId(req.params.tenantId);
+      if (!tenantId) return res.status(400).json({ error: 'tenantId inválido' });
+
+      const { enabled, reason } = req.body;
+
+      const result = await db.adminQuery(async (client) => {
+        const { rows: flagRows } = await client.query(
+          `SELECT 1 FROM feature_flags WHERE name = $1`, [name]
+        );
+        if (!flagRows[0]) return { notFound: 'flag' };
+
+        const { rows: tenantRows } = await client.query(
+          `SELECT 1 FROM tenants WHERE id = $1 AND deleted_at IS NULL`, [tenantId]
+        );
+        if (!tenantRows[0]) return { notFound: 'tenant' };
+
+        const { rows: prevRows } = await client.query(
+          `SELECT enabled, reason FROM feature_flags_tenants
+            WHERE flag_name = $1 AND tenant_id = $2`,
+          [name, tenantId]
+        );
+
+        const { rows } = await client.query(
+          `INSERT INTO feature_flags_tenants (flag_name, tenant_id, enabled, reason, updated_by)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (flag_name, tenant_id) DO UPDATE
+              SET enabled    = EXCLUDED.enabled,
+                  reason     = EXCLUDED.reason,
+                  updated_at = NOW(),
+                  updated_by = EXCLUDED.updated_by
+           RETURNING flag_name, tenant_id, enabled, reason, updated_at, updated_by`,
+          [name, tenantId, enabled, reason ?? null, req.user.id]
+        );
+
+        return { row: rows[0], prev: prevRows[0] || null };
+      });
+
+      if (result?.notFound) {
+        return res.status(404).json({ error: `${result.notFound} no existe` });
+      }
+
+      // Audit fuera de adminQuery (autocommit path — el SAVEPOINT interno
+      // no funciona sin tx explícita, ver PATCH /features arriba).
+      try {
+        await audit('feature_flags_tenants',
+          result.prev ? 'UPDATE' : 'INSERT', null, {
+            antes: result.prev,
+            despues: result.row,
+            user_id: req.user.id,
+            extra: { scope: 'tenant', flag: name, tenant_id: tenantId },
+          });
+      } catch (auditErr) {
+        logger.warn({ err: auditErr.message }, '[super-admin/features] audit fallo, ignorado');
+      }
+
+      await featureFlagsLib.invalidateFeatureCache(name, tenantId);
+
+      logger.info({ super_admin: req.user.id, flag: name, tenant_id: tenantId, enabled },
+        '[super-admin] POST /features/:name/tenants/:tenantId');
+      res.json(result.row);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// DELETE /api/super-admin/features/:name/tenants/:tenantId
+router.delete('/features/:name/tenants/:tenantId', async (req, res, next) => {
+  try {
+    const { name } = req.params;
+    const tenantId = parseId(req.params.tenantId);
+    if (!tenantId) return res.status(400).json({ error: 'tenantId inválido' });
+
+    const result = await db.adminQuery(async (client) => {
+      const { rows: prevRows } = await client.query(
+        `DELETE FROM feature_flags_tenants
+          WHERE flag_name = $1 AND tenant_id = $2
+          RETURNING enabled, reason`,
+        [name, tenantId]
+      );
+      if (!prevRows[0]) return { notFound: true };
+
+      return { prev: prevRows[0] };
+    });
+
+    if (result?.notFound) return res.status(404).json({ error: 'Override no existe' });
+
+    try {
+      await audit('feature_flags_tenants', 'DELETE', null, {
+        antes: result.prev,
+        despues: null,
+        user_id: req.user.id,
+        extra: { scope: 'tenant', flag: name, tenant_id: tenantId },
+      });
+    } catch (auditErr) {
+      logger.warn({ err: auditErr.message }, '[super-admin/features] audit fallo, ignorado');
+    }
+
+    await featureFlagsLib.invalidateFeatureCache(name, tenantId);
+
+    logger.info({ super_admin: req.user.id, flag: name, tenant_id: tenantId },
+      '[super-admin] DELETE /features/:name/tenants/:tenantId');
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/super-admin/features/:name/plans/:planId
+//
+// Upsert override por plan. Valida planId contra el enum PLANES.
+router.post('/features/:name/plans/:planId',
+  validate(upsertPlanOverrideSchema),
+  async (req, res, next) => {
+    try {
+      const { name, planId } = req.params;
+      if (!PLANES.includes(planId)) {
+        return res.status(400).json({ error: `plan_id inválido — debe ser ${PLANES.join('|')}` });
+      }
+
+      const { enabled } = req.body;
+
+      const result = await db.adminQuery(async (client) => {
+        const { rows: flagRows } = await client.query(
+          `SELECT 1 FROM feature_flags WHERE name = $1`, [name]
+        );
+        if (!flagRows[0]) return { notFound: 'flag' };
+
+        const { rows: prevRows } = await client.query(
+          `SELECT enabled FROM feature_flags_plans
+            WHERE flag_name = $1 AND plan_id = $2`,
+          [name, planId]
+        );
+
+        const { rows } = await client.query(
+          `INSERT INTO feature_flags_plans (flag_name, plan_id, enabled)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (flag_name, plan_id) DO UPDATE
+              SET enabled = EXCLUDED.enabled, updated_at = NOW()
+           RETURNING flag_name, plan_id, enabled, updated_at`,
+          [name, planId, enabled]
+        );
+
+        return { row: rows[0], prev: prevRows[0] || null };
+      });
+
+      if (result?.notFound) {
+        return res.status(404).json({ error: `${result.notFound} no existe` });
+      }
+
+      try {
+        await audit('feature_flags_plans',
+          result.prev ? 'UPDATE' : 'INSERT', null, {
+            antes: result.prev,
+            despues: result.row,
+            user_id: req.user.id,
+            extra: { scope: 'plan', flag: name, plan_id: planId },
+          });
+      } catch (auditErr) {
+        logger.warn({ err: auditErr.message }, '[super-admin/features] audit fallo, ignorado');
+      }
+
+      // No invalidamos cache per-tenant acá — un cambio de plan afecta N
+      // tenants. Sin pub-sub cross-instance, aceptamos staleness hasta TTL
+      // 5min. Para override urgente, usar override por-tenant.
+
+      logger.info({ super_admin: req.user.id, flag: name, plan_id: planId, enabled },
+        '[super-admin] POST /features/:name/plans/:planId');
+      res.json(result.row);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// DELETE /api/super-admin/features/:name/plans/:planId
+router.delete('/features/:name/plans/:planId', async (req, res, next) => {
+  try {
+    const { name, planId } = req.params;
+    if (!PLANES.includes(planId)) {
+      return res.status(400).json({ error: `plan_id inválido — debe ser ${PLANES.join('|')}` });
+    }
+
+    const result = await db.adminQuery(async (client) => {
+      const { rows: prevRows } = await client.query(
+        `DELETE FROM feature_flags_plans
+          WHERE flag_name = $1 AND plan_id = $2
+          RETURNING enabled`,
+        [name, planId]
+      );
+      if (!prevRows[0]) return { notFound: true };
+      return { prev: prevRows[0] };
+    });
+
+    if (result?.notFound) return res.status(404).json({ error: 'Override no existe' });
+
+    try {
+      await audit('feature_flags_plans', 'DELETE', null, {
+        antes: result.prev,
+        despues: null,
+        user_id: req.user.id,
+        extra: { scope: 'plan', flag: name, plan_id: planId },
+      });
+    } catch (auditErr) {
+      logger.warn({ err: auditErr.message }, '[super-admin/features] audit fallo, ignorado');
+    }
+
+    logger.info({ super_admin: req.user.id, flag: name, plan_id: planId },
+      '[super-admin] DELETE /features/:name/plans/:planId');
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

@@ -1,68 +1,64 @@
 const db     = require('../config/database');
 const logger = require('./logger');
 const withAdvisoryLock = require('./withAdvisoryLock');
-const { createCachedFetcherRedis } = require('./cacheTtl');
+// 2026-07-20 F3 Rec proactiva #3: delegamos la lectura del flag al resolver
+// per-tenant de F1 (`isFeatureEnabled` con precedencia tenant > plan > rollout >
+// global). El fetcher directo previo (P-07 + P-04 Fase 3) queda deprecado —
+// no lo borramos porque `_clearAsyncCache()` es API pública consumida por
+// `routes/feature-flags.js` y por 2 tests, pero ahora deleguen al resolver.
+//
+// Motivación: hasta hoy el flag era binario global — no había forma de decir
+// "activar async solo para tenant 42 como canary". Con el resolver de F1 se
+// puede setear override tenant/plan y hacer rollout gradual.
+const featureFlagsLib = require('./featureFlags');
 
 // ──────────────────────── P-07 async toggle ───────────────────────
-// `isAsyncEnabled()` lee el feature flag `audit_async_enabled` de la tabla
-// `feature_flags`. Acoplado directamente acá (no via feature-flags.js) para
-// evitar dependencia circular: `feature-flags.js` hace `require('audit')`
-// para auditar sus propias mutations. Si audit.js requiriera feature-flags.js,
-// formaría ciclo.
+// `isAsyncEnabled(tenantId)` consulta el resolver de F1. La firma agregó
+// `tenantId` opcional: si viene null (audit programático sin request), se
+// evalúa el default global. Si viene un id válido, respeta overrides
+// tenant/plan/rollout.
 //
-// 2026-06-12 P-04 Fase 3: el cache pasó de in-memory (60s TTL local) a Redis
-// cross-instance. Cuando admin cambia el flag via PATCH /api/feature-flags/:name,
-// el endpoint llama `audit._clearAsyncCache()` que ahora hace `redis.del(key)`
-// — las 2+ réplicas ven el cambio en <100ms en lugar de hasta 60s TTL natural.
-// Si Redis está down, el wrapper hace fetch directo a Postgres cada vez (sin
-// cachear) — preserva consistency cross-instance a costo de throughput.
+// Dependencia circular: `feature-flags.js` (endpoint viejo) hace
+// `require('./audit')` para auditar sus propias mutations. `audit.js` ahora
+// requiere `./featureFlags` (el lib, no el endpoint viejo) — no forma ciclo
+// porque `featureFlags.js` NO requiere audit.
 //
-// Fail-safe: si la tabla `feature_flags` no existe o la query falla, el
-// fetcher devuelve false (path síncrono sigue). NO se cachea ese false con
-// error — la próxima call vuelve a intentar.
+// Test bypass: preservamos el short-circuit ANTES de llamar al resolver.
+// Razón (original P-07): audit() se llama decenas de veces por test
+// integración; sin bypass, cada llamada haría lookup DB/Redis y saturaría
+// el pool → flakiness histórico (invariants/race-conditions/tarjetas-export).
 //
-// En NODE_ENV=test el wrapper bypasea Redis (createCachedFetcherRedis lo
-// desactiva), pero igualmente hacemos short-circuit ANTES para evitar incluso
-// el round-trip a DB. Razón: audit() se llama decenas de veces por test
-// integración, y aún sin cache cada llamada agregaría una query a feature_flags
-// que satura el pool y genera flakiness (invariants/race-conditions/tarjetas-
-// export fallaban con timeouts).
-const ASYNC_FLAG_TTL_MS = 60_000;
-const ASYNC_FLAG_REDIS_KEY = 'cache:flag:audit_async_enabled';
+// Cache: F1 ya cachea `ff:audit_async_enabled:<tenantId>` en Redis TTL 5min
+// per-tenant. Trade-off vs el cache viejo (1 key global 60s):
+//   · Más granular (rollout por tenant).
+//   · TTL más largo (5min vs 60s) — kill-switch requiere invalidación
+//     manual desde el endpoint admin de F2, o esperar TTL. El runbook de
+//     F3.4 documentará esto.
+//
+// Fail-safe: `isFeatureEnabled` es fail-closed (devuelve false en error).
+// El path síncrono legacy sigue siendo el default — el flag OFF significa
+// "audit sync a audit_logs directo", que es el comportamiento pre-P-07.
 
-async function _fetchFlagFromDb() {
-  try {
-    const { rows } = await db.query(
-      `SELECT enabled FROM feature_flags WHERE name = 'audit_async_enabled'`
-    );
-    return rows[0]?.enabled === true;
-  } catch (err) {
-    // Tabla feature_flags no existe (DB pre-M-08), flag no existe, conexión rota:
-    // fail-safe a path síncrono. NO propagar el error al wrapper (sino el
-    // cache quedaría sin populating y next call también falla).
-    logger.warn({ err: err?.message }, 'audit: isAsyncEnabled fallback a sync (flag no disponible)');
-    return false;
-  }
-}
-
-const _getAsyncFlag = createCachedFetcherRedis(
-  ASYNC_FLAG_REDIS_KEY,
-  ASYNC_FLAG_TTL_MS,
-  _fetchFlagFromDb
-);
-
-async function isAsyncEnabled() {
+async function isAsyncEnabled(tenantId = null) {
   // Test bypass: no tocar DB ni Redis. Ver razón en el header arriba.
   if (process.env.NODE_ENV === 'test') return _testOverride === true;
-  return _getAsyncFlag();
+  return featureFlagsLib.isFeatureEnabled('audit_async_enabled', tenantId);
 }
 
 let _testOverride = false;
+
 function _clearAsyncCache() {
-  // Wrapper devuelve una Promise (es async porque puede llamar redis.del).
-  // Caller debe await si quiere garantía de invalidación pre-response.
-  return _getAsyncFlag.invalidate();
+  // Delegamos al invalidador de F1. Sin tenantId invalida el key global
+  // (`ff:audit_async_enabled:null`). El endpoint viejo `/api/feature-flags`
+  // (que sigue llamando esto) no conoce tenants, así que borrar el key global
+  // es lo correcto para ese path. Los cambios per-tenant de F2 hacen su
+  // propia invalidación con `invalidateFeatureCache(name, tenantId)`.
+  //
+  // Devuelve Promise para preservar la interfaz async previa — el caller
+  // puede await si quiere garantía de invalidación pre-response.
+  return featureFlagsLib.invalidateFeatureCache('audit_async_enabled', null);
 }
+
 function _setAsyncEnabledForTest(value) { _testOverride = value === true; }
 
 // ──────────────────────── Redacción de PII ────────────────────────
@@ -208,7 +204,11 @@ async function audit(...args) {
   // El SAVEPOINT pattern se preserva intacto en ambos paths: si el caller hizo
   // BEGIN y luego ROLLBACK, el audit (sea sync o async) se revierte con la tx.
   // Esto cumple req #9 del doc — el audit NO se procesa si la tx fallo.
-  const asyncEnabled = await isAsyncEnabled();
+  //
+  // 2026-07-20 F3 Rec proactiva #3: pasamos `tenantId` a isAsyncEnabled para
+  // que el resolver aplique overrides tenant/plan (canary por tenant). Sin
+  // tenant (audits programáticos) → cae al default global.
+  const asyncEnabled = await isAsyncEnabled(tenantId);
   const sql = asyncEnabled
     ? `INSERT INTO audit_queue (tabla, accion, registro_id, datos_antes, datos_despues, user_id, ip, user_agent, request_id, tenant_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`

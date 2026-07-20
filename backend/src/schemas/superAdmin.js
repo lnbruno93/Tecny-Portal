@@ -372,6 +372,35 @@ const mergeClasesProductoSchema = z.object({
   { message: 'duplicada_id y canonica_id deben ser distintos' }
 );
 
+// ── Feature flags per-tenant — F2 (Rec proactiva #3, 2026-07-20) ────────
+
+// PATCH /api/super-admin/features/:name — editar flag global (rollout_pct,
+// description, enabled). Todos opcionales — al menos uno requerido.
+//
+// rollout_pct: null → sin rollout, se usa enabled global. 0-100 → porcentaje
+// determinístico via hash. Ver `lib/featureFlags.js` bucketFor.
+const patchFeatureFlagSchema = z.object({
+  enabled:     z.boolean().optional(),
+  rollout_pct: z.union([z.number().int().min(0).max(100), z.null()]).optional(),
+  description: z.union([z.string().trim().max(500), z.null()]).optional(),
+}).strict().refine(
+  (d) => Object.keys(d).length > 0,
+  { message: 'Al menos un campo es requerido' }
+);
+
+// POST /api/super-admin/features/:name/tenants/:tenantId — upsert override
+// por tenant. `reason` opcional pero recomendado (audit trail más útil).
+const upsertTenantOverrideSchema = z.object({
+  enabled: z.boolean(),
+  reason:  z.union([z.string().trim().max(200), z.null()]).optional(),
+}).strict();
+
+// POST /api/super-admin/features/:name/plans/:planId — upsert override por
+// plan. plan_id valida contra PLANES.
+const upsertPlanOverrideSchema = z.object({
+  enabled: z.boolean(),
+}).strict();
+
 module.exports = {
   PLANES,
   mergeClasesProductoSchema,
@@ -391,4 +420,8 @@ module.exports = {
   // CMS Landing Fase 4 — Empresas que confiaron
   createTrustedCompanySchema,
   updateTrustedCompanySchema,
+  // Feature flags per-tenant — F2 (Rec proactiva #3)
+  patchFeatureFlagSchema,
+  upsertTenantOverrideSchema,
+  upsertPlanOverrideSchema,
 };

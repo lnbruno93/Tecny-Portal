@@ -555,6 +555,31 @@ export const adminApi = {
     update: (id, body) => api(`/api/super-admin/release-notes/${encodeURIComponent(id)}`, 'PATCH', body),
     remove: (id) => api(`/api/super-admin/release-notes/${encodeURIComponent(id)}`, 'DELETE'),
   },
+
+  // ─── Feature flags per-tenant — F2 (Rec proactiva #3, 2026-07-20) ───
+  //
+  // Endpoints super-admin para overrides de feature flags.
+  // Design doc: docs/design/feature-flags-per-tenant.md.
+  //
+  //   GET /features                              → lista con overrides
+  //   PATCH /features/:name                       → { enabled?, rollout_pct?, description? }
+  //   POST /features/:name/tenants/:tenantId      → { enabled, reason? }
+  //   DELETE /features/:name/tenants/:tenantId    → 200 { ok: true }
+  //   POST /features/:name/plans/:planId          → { enabled }
+  //   DELETE /features/:name/plans/:planId        → 200 { ok: true }
+  features: {
+    list: () => api('/api/super-admin/features'),
+    updateFlag: (name, body) =>
+      api(`/api/super-admin/features/${encodeURIComponent(name)}`, 'PATCH', body),
+    upsertTenantOverride: (name, tenantId, body) =>
+      api(`/api/super-admin/features/${encodeURIComponent(name)}/tenants/${tenantId}`, 'POST', body),
+    removeTenantOverride: (name, tenantId) =>
+      api(`/api/super-admin/features/${encodeURIComponent(name)}/tenants/${tenantId}`, 'DELETE'),
+    upsertPlanOverride: (name, planId, body) =>
+      api(`/api/super-admin/features/${encodeURIComponent(name)}/plans/${encodeURIComponent(planId)}`, 'POST', body),
+    removePlanOverride: (name, planId) =>
+      api(`/api/super-admin/features/${encodeURIComponent(name)}/plans/${encodeURIComponent(planId)}`, 'DELETE'),
+  },
 };
 
 // ─── Public — aceptar invitación de super-admin (#499) ──────────────────

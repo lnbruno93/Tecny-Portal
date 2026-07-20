@@ -1253,8 +1253,10 @@ router.post('/productos', requireCapability('inventario.crear'), validate(create
     // Reads (GET /productos/:id/foto, listado tiene_foto) usan fileStore.get
     // con fallback automático — flippear el flag no rompe acceso a fotos
     // anteriores.
+    // 2026-07-20 F3 Rec proactiva #3: pasamos `req.tenantId` al resolver
+    // (overrides tenant/plan/rollout para canary R2 por tenant).
     const useR2 = fileStore._DRIVER === 'r2'
-               && await storageFlags.isEnabled('storage_r2_productos');
+               && await storageFlags.isEnabled('storage_r2_productos', req.tenantId);
     let fotoFile;
     if (useR2) {
       fotoFile = await fileStore.put({
@@ -1347,8 +1349,9 @@ router.put('/productos/:id', requireCapability('inventario.editar'), validate(up
     const FOTO_FIELDS = new Set(['foto_data', 'foto_nombre', 'foto_tipo', 'foto_key', 'foto_size']);
 
     if (fotoUpdated) {
+      // 2026-07-20 F3 Rec proactiva #3: idem tenant-aware.
       const useR2 = fileStore._DRIVER === 'r2'
-                 && await storageFlags.isEnabled('storage_r2_productos');
+                 && await storageFlags.isEnabled('storage_r2_productos', req.tenantId);
       let fotoFile;
       if (useR2) {
         fotoFile = await fileStore.put({
