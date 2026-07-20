@@ -23,7 +23,7 @@
     "uuid": "^11.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.97.1",
+    "@anthropic-ai/sdk": "^0.112.4",
     "@aws-sdk/client-s3": "^3.1068.0",
     "@sentry/node": "^10.53.1",
     "archiver": "^7.0.1",
