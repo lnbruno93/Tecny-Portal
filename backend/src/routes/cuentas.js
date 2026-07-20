@@ -153,6 +153,18 @@ router.get('/clientes', async (req, res, next) => {
     //
     // 2026-06-15 multi-tenant (PR 4.3): count + data en una sola withTenant
     // → comparten el SET LOCAL. RLS filtra clientes_cc y movimientos_cc.
+    //
+    // 2026-07-20 (bug Tek Haus): la fórmula acá estaba INLINE y no incluía los
+    // tipos agregados el 2026-07-17 (`pago_a_cliente` + `entrega_dinero`).
+    // Consecuencia: el saldo de la lista discrepaba del saldo de la ficha
+    // (que usa SALDO_CASE canónico) por 2× el monto de esos movimientos.
+    // Reportado por Tek Haus con captura del cliente "pato" mostrando USD 17.706
+    // (ficha) vs USD 11.766 (lista), diff = 5.940 = 2 × USD 2.970 (`Le pago`).
+    // Reemplazado por SALDO_CASE de lib/saldoCC.js — misma fórmula usada por
+    // el resto del backend (dashboard mensual, chat-tools, endpoint search,
+    // stats agregados de línea 1392). No debería haber otra fórmula inline;
+    // si aparece, refactorear igual.
+    const { SALDO_CASE } = require('../lib/saldoCC');
     const { count, dataRows } = await db.withTenant(req.tenantId, async (client) => {
       const countRes = await client.query(`SELECT COUNT(*) FROM clientes_cc c WHERE ${where}`, params);
       const dataRes = await client.query(
@@ -161,14 +173,7 @@ router.get('/clientes', async (req, res, next) => {
          FROM clientes_cc c
          LEFT JOIN (
            SELECT cliente_cc_id,
-                  SUM(
-                    CASE
-                      WHEN tipo = 'saldo_inicial'                  THEN  monto_total
-                      WHEN tipo = 'compra' AND caja_id IS NOT NULL THEN  0
-                      WHEN tipo = 'compra'                         THEN  monto_total
-                      ELSE -monto_total
-                    END
-                  ) AS saldo
+                  SUM(${SALDO_CASE}) AS saldo
            FROM movimientos_cc
            WHERE deleted_at IS NULL
            GROUP BY cliente_cc_id

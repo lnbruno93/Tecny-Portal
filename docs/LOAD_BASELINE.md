@@ -2,6 +2,10 @@
 
 Cómo correr el load test + qué números esperar + cuándo preocuparse.
 
+> **⚠️ 2026-07-20 — Baseline outdated.** La última corrida es del **2026-05-30** (pre multi-tenant, pre auditoría TOTAL, pre M4 JSONB refactor). Los números de §"Resultados actuales" ya NO reflejan la realidad de prod. **Próxima corrida recomendada:** capturar baseline post-M4d + reportar acá. Ejecutar contra staging con `IPRO_TARGET=https://tecny-backend-staging.up.railway.app node loadtest/run.js --check-slo` — el flag `--check-slo` valida cada scenario contra `backend/loadtest/slos.js`.
+
+> **📊 Sentry APM (activo desde 2026-07-20)** captura p50/p95/p99 REAL de tráfico prod, sin sesgo del test sintético. Usar Sentry Performance como fuente de verdad de perf real; usar este load test para regresión + capacity planning.
+
 ---
 
 ## ¿Por qué hacer esto?

@@ -43,6 +43,8 @@ const Facturacion = lazy(() => import('./pages/Facturacion.jsx'));
 // 2026-07-16 (task #142): Novedades — CMS de release notes que se muestran
 // a todos los clientes del portal (badge en el sidebar + pantalla /novedades).
 const Novedades  = lazy(() => import('./pages/Novedades.jsx'));
+// 2026-07-20 Rec proactiva #3 F2: feature flags per-tenant.
+const Features   = lazy(() => import('./pages/Features.jsx'));
 // #499 pantalla PÚBLICA (sin auth): landing del invitado que clickea el link
 // del email. Se carga fuera del ProtectedRoute — el user recién va a crearse.
 const AcceptSuperAdminInvite = lazy(() => import('./pages/AcceptSuperAdminInvite.jsx'));
@@ -236,6 +238,16 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Novedades />
+          </ProtectedRoute>
+        }
+      />
+      {/* 2026-07-20 Rec proactiva #3 F2: feature flags per-tenant. Overrides
+          para canary/kill-switch/rollout% por tenant o por plan. */}
+      <Route
+        path="/features"
+        element={
+          <ProtectedRoute>
+            <Features />
           </ProtectedRoute>
         }
       />

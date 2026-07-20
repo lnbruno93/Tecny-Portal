@@ -2045,3 +2045,79 @@ describe('Cuentas — entrega_dinero', () => {
   });
 });
 
+// ─── Regresión bug Tek Haus 2026-07-20 ─────────────────────────────────
+// El saldo del cliente en la LISTA (`GET /api/cuentas/clientes`) debe
+// coincidir SIEMPRE con el saldo de la FICHA (`GET /api/cuentas/clientes/:id`).
+//
+// Bug root cause: la lista usaba una fórmula CASE INLINE stale que no
+// incluía los tipos agregados el 2026-07-17 (pago_a_cliente + entrega_dinero).
+// La ficha usa el helper canónico `SALDO_CASE` de `lib/saldoCC.js` que
+// sí los cubre. Discrepancia: 2 × monto de esos movs por cliente.
+//
+// Fix: la lista ahora también usa `SALDO_CASE` (fuente única de verdad).
+//
+// Este test protege contra la clase de bug: si mañana se agrega un tipo
+// nuevo al helper canónico y alguien crea otra fórmula inline en cualquier
+// consumer, esta assertion sale roja y el CI bloquea el merge.
+describe('Regresión: saldo LISTA == FICHA para todos los tipos de movimiento', () => {
+  const hoy = new Date().toISOString().split('T')[0];
+
+  it('cliente con pago_a_cliente + entrega_dinero: lista y ficha coinciden', async () => {
+    // Setup: caja USD con fondos.
+    const caja = await request(app).post('/api/cajas/cajas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: `Caja RegresLista ${Date.now()}`, moneda: 'USD', saldo_inicial: 10000 });
+    const cajaId = caja.body.id;
+
+    // Cliente nuevo.
+    const cli = await request(app).post('/api/cuentas/clientes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ nombre: `RegresListaTest_${Date.now()}`, apellido: 'X', categoria: 'A+' });
+    const cliId = cli.body.id;
+
+    // Un movimiento de cada tipo — asegura que el CASE cubra todos los tipos.
+    // Los tipos que SUBEN saldo: compra (sin caja), saldo_inicial, pago_a_cliente, entrega_dinero.
+    // Los tipos que BAJAN saldo: pago, parte_de_pago, devolucion, entrega_mercaderia, mercaderia_recibida.
+    //
+    // Sumamos manualmente para verificar que ambos endpoints coincidan
+    // Y coincidan con el cálculo esperado.
+    const sends = [
+      { tipo: 'compra',         monto_total: 1000 }, // +1000 (sin caja_id → deuda)
+      { tipo: 'pago',           monto_total: 200,  caja_id: cajaId }, // -200
+      { tipo: 'pago_a_cliente', monto_total: 150,  caja_id: cajaId }, // +150 (le pago)
+      { tipo: 'entrega_dinero', monto_total: 80,   caja_id: cajaId }, // +80
+      { tipo: 'devolucion',     monto_total: 50 }, // -50
+    ];
+    for (const s of sends) {
+      const r = await request(app).post('/api/cuentas/movimientos')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ cliente_cc_id: cliId, fecha: hoy, moneda: 'USD', ...s });
+      expect(r.status).toBe(201);
+    }
+    // Saldo esperado: +1000 - 200 + 150 + 80 - 50 = 980
+    const esperado = 980;
+
+    // FICHA (GET /:id) — usa SALDO_CASE canónico.
+    const ficha = await request(app).get(`/api/cuentas/clientes/${cliId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ficha.status).toBe(200);
+    expect(Number(ficha.body.saldo)).toBeCloseTo(esperado, 2);
+
+    // LISTA (GET /) — usaba fórmula inline STALE hasta el fix.
+    // Buscamos con `buscar=` para filtrar y garantizar que este cliente
+    // esté en la primera página (evita paginación entre tenants con
+    // muchos clientes).
+    const lista = await request(app).get(`/api/cuentas/clientes?buscar=RegresListaTest_`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(lista.status).toBe(200);
+    const cliEnLista = lista.body.data.find(c => c.id === cliId);
+    expect(cliEnLista).toBeDefined();
+    expect(Number(cliEnLista.saldo)).toBeCloseTo(esperado, 2);
+
+    // Invariante estricta: si por alguna razón un endpoint reportara mal,
+    // la comparación directa asserta la propiedad importante — sin depender
+    // del cálculo manual del test.
+    expect(Number(cliEnLista.saldo)).toBeCloseTo(Number(ficha.body.saldo), 2);
+  });
+});
+

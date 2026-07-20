@@ -111,6 +111,11 @@ const conciliacionRoutes = require('./routes/conciliacion');
 const alertasRoutes      = require('./routes/alertas');
 const adminRoutes        = require('./routes/admin');
 const featureFlagsRoutes = require('./routes/feature-flags');
+// 2026-07-20 Rec proactiva #3 F3: endpoint `/api/features` que devuelve el
+// map resuelto per-tenant (respeta overrides tenant/plan/rollout). Coexiste
+// con el viejo `/api/feature-flags` que solo lee el default global — ver
+// routes/features-public.js para el rationale del split.
+const featuresPublicRoutes = require('./routes/features-public');
 const onboardingRoutes   = require('./routes/onboarding');
 const chatRoutes         = require('./routes/chat');
 // 2026-06-27 #454 Red B2B F1: partnerships lifecycle (invite/accept/revoke).
@@ -888,6 +893,13 @@ app.use('/api/public/super-admin-invite', signupLimiter, publicSuperAdminInviteR
 // dentro del router porque NO TODO el router es admin (a diferencia de
 // /api/admin). Ver routes/feature-flags.js para el rationale.
 app.use('/api/feature-flags', requireAuth, featureFlagsRoutes);
+
+// 2026-07-20 Rec proactiva #3 F3: endpoint per-tenant que respeta overrides.
+// Distinto shape que `/api/feature-flags` (que devuelve `{ flags: {} }` con
+// SOLO el default global). Este devuelve `{ features: {}, resolved_at }` con
+// la precedencia completa aplicada. El middleware `loadFeatures()` va DENTRO
+// del router — así no lo tenemos que replicar acá.
+app.use('/api/features', requireAuth, featuresPublicRoutes);
 
 // 2026-06-18 #323 TANDA 1 H3: onboarding status. Cualquier user logueado
 // del tenant puede consultar (no requiere permission — es read-only check
