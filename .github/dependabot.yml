@@ -1,26 +1,34 @@
 # Dependabot config — auto-PRs para updates de dependencias.
 #
 # 2026-07-20 — Recomendación #4 del plan proactivo post-audit.
+# 2026-07-20 UPDATE (P0 escalabilidad): agrupación agresiva por update-type.
 #
-# Estrategia:
-#   - Auto-PRs semanales (no diarios) para 4 ecosystems (root Playwright,
-#     backend, frontend, admin-frontend) + GitHub Actions.
-#   - Solo `patch` + `minor` para runtime deps (auto-mergeable si CI verde).
-#   - `major` de runtime deps queda como PR abierto para review manual —
-#     usualmente rompen algo.
-#   - `major` de devDeps se permite (jest/vitest/eslint bumps son
-#     típicamente compatibles con nuestro setup).
+# ¿Qué pasó?
+# La config anterior tenía groups específicos (playwright, sentry, postgres,
+# vite) pero todo lo demás quedaba suelto → 1 PR por dependencia. Primera
+# ronda real: 30 PRs abiertos, imposibles de revisar 1 por 1 (cascada de
+# conflicts en package-lock.json cada merge). Se necesitó cerrar la mayoría
+# y regenerar.
 #
-# Labels y assignee te dejan bandeja "algo-de-dependabot-abierto" fácil de
-# filtrar en GitHub.
+# Nueva estrategia (post-mortem):
+#   - **Group por default**: 1 PR `patch-and-minor` por ecosystem con TODAS
+#     las bumps patch/minor + devDeps major bumps. Escala infinito — 30 deps
+#     con patch → 1 PR.
+#   - **Grupos específicos** (playwright, sentry, postgres, vite) SIGUEN
+#     existiendo pero como sub-grupos coordinados (Dependabot los saca del
+#     grupo default automáticamente porque tienen patrones más específicos).
+#     Esto es útil cuando querés bumpear ecosystem completo aunque haya un
+#     patch fallido en un sub-paquete.
+#   - **Majors runtime deps**: quedan como PRs individuales para review
+#     manual (ignoradas via `ignore` — no aparecen automáticas).
+#   - **Objetivo**: <10 PRs abiertos en cualquier momento.
 #
-# Reviews: al principio revisar 1x/semana los PRs abiertos. Si CI está verde
-# + no hay breaking changes visibles → merge. Si es un bump grande, mirar
-# CHANGELOG del paquete.
+# Reviews: 1x/semana al lunes por la mañana. Si CI verde + no hay major
+# runtime → merge directo del grupo. Si algo específico falla, cerrás el
+# grupo y Dependabot regenera excluyendo el problemático.
 #
-# Cadencia weekly (no daily) porque preferimos ver batch pequeño 1x por
-# semana en vez de "PRs de dependabot todo el tiempo". Escala bien hasta
-# ~50 deps por ecosystem — cuando pase eso, considerar daily con grouping.
+# Cadencia weekly. Escala bien hasta ~200 deps por ecosystem con este
+# grouping — cuando pase eso, se puede split por sub-domain (auth, db, etc).
 
 version: 2
 updates:
@@ -40,15 +48,27 @@ updates:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
       include: "scope"
-    # Playwright es la dep crítica acá — mantenerla al día es importante
-    # para tener browsers actualizados en E2E.
+    ignore:
+      # Root majors → PRs individuales para review manual (ver header).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
-      # Todos los updates de Playwright juntos (@playwright/test + browsers
-      # binarios se versionean coordinado).
+      # Playwright ecosystem coordinado (test infra crítico).
       playwright:
         patterns:
           - "@playwright/*"
           - "playwright"
+      # Todo el resto de patch/minor → 1 solo PR por semana.
+      root-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@playwright/*"
+          - "playwright"
+        update-types:
+          - "patch"
+          - "minor"
 
   # ── Backend (Node 20 + Express + pg + Sentry) ────────────────────────
   - package-ecosystem: "npm"
@@ -66,22 +86,34 @@ updates:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
       include: "scope"
-    # Major bumps de runtime deps quedan como PRs abiertos para review manual.
-    # Empíricamente los majors de express/pg/@sentry/* han roto cosas.
     ignore:
+      # Backend majors → PR individual para review.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
-      # Sentry ecosystem se versionea coordinado.
+      # Sentry ecosystem coordinado (múltiples paquetes @sentry/*).
       sentry:
         patterns:
           - "@sentry/*"
-      # Node-pg-migrate + pg + pg-* juntos.
+      # Postgres tooling coordinado (pg + pg-* + node-pg-migrate).
       postgres:
         patterns:
           - "pg"
           - "pg-*"
           - "node-pg-migrate"
+      # Todo el resto de patch/minor + devDep majors → 1 PR por semana.
+      backend-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@sentry/*"
+          - "pg"
+          - "pg-*"
+          - "node-pg-migrate"
+        update-types:
+          - "patch"
+          - "minor"
 
   # ── Frontend (Vite + React + shared UI) ─────────────────────────────
   - package-ecosystem: "npm"
@@ -100,26 +132,44 @@ updates:
       prefix-development: "chore(deps-dev)"
       include: "scope"
     ignore:
-      # React 19 major bump: hacemos aparte con testing exhaustivo, no via bot.
+      # React 19 major bump: testing exhaustivo, no via bot.
       - dependency-name: "react"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
-      # Vite major: idem — impacto en build config.
+      # Vite major: impacto en build config → manual.
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
-      # Vitest major: idem — a veces cambia API de tests.
+      # Vitest major: a veces cambia API de tests → manual.
       - dependency-name: "vitest"
         update-types: ["version-update:semver-major"]
+      # TypeScript major: puede requerir cambios en tsconfig → manual.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
+      # Vite ecosystem coordinado (vite + @vitejs/* + vite-plugin-*).
       vite-ecosystem:
         patterns:
           - "vite"
           - "@vitejs/*"
           - "vite-plugin-*"
+      # Sentry ecosystem coordinado.
       sentry:
         patterns:
           - "@sentry/*"
+      # Todo el resto de patch/minor + majors de devDeps compatibles.
+      frontend-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vite-plugin-*"
+          - "@sentry/*"
+        update-types:
+          - "patch"
+          - "minor"
 
   # ── Admin frontend (mismo stack que frontend pero deps aparte) ──────
   - package-ecosystem: "npm"
@@ -144,17 +194,34 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
     groups:
       vite-ecosystem:
         patterns:
           - "vite"
           - "@vitejs/*"
           - "vite-plugin-*"
+      admin-patch-minor:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vite-plugin-*"
+        update-types:
+          - "patch"
+          - "minor"
 
   # ── GitHub Actions ──────────────────────────────────────────────────
   # Los workflows usan actions/checkout@v4, actions/setup-node@v4, etc.
   # Dependabot los mantiene al día — updates son casi siempre trivialmente
-  # compatibles.
+  # compatibles, PERO major bumps de actions oficiales (v4→v5) a veces
+  # cambian el shape del input/output → los agrupamos también para reviewear
+  # de una en 1 PR (el ejemplo real: checkout v4→v7, cache v4→v6,
+  # setup-node v4→v7 vinieron como 3 PRs sueltos que necesitaban decision
+  # coordinada de "subimos todas o ninguna" para no romper el pipeline).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -169,3 +236,10 @@ updates:
     commit-message:
       prefix: "chore(ci)"
       include: "scope"
+    groups:
+      # Agrupamos TODAS las actions en 1 PR — patch/minor/major. Son 5-10
+      # actions total, cambia poco. Reviewear todas coordinado evita el
+      # caso "checkout v7 mergeado, cache v4 quedó" que rompe el runner.
+      github-actions-all:
+        patterns:
+          - "*"
