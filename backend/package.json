@@ -50,7 +50,7 @@
     "@types/compression": "^1.8.1",
     "autocannon": "^8.0.0",
     "eslint": "^10.4.0",
-    "globals": "^17.6.0",
+    "globals": "^17.7.0",
     "jest": "^30.4.2",
     "nodemon": "^3.1.4",
     "pino-pretty": "^13.1.3",
