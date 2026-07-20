@@ -213,8 +213,62 @@ En Sentry → Issues → el error nuevo → verificar:
 
 ---
 
-## 9. Roadmap (no urgente)
+## 9. APM (Performance Monitoring) — activo desde 2026-07-20
+
+### Configuración
+
+Sentry Performance activo en el backend via `tracesSampleRate` en `server.js`. Env var `SENTRY_TRACES_SAMPLE_RATE` (float 0..1) controla el % de requests instrumentados. **Default: `0.05` (5%)**.
+
+- `SENTRY_TRACES_SAMPLE_RATE=0` → back a solo errores (pre-2026-07-20 behavior).
+- `SENTRY_TRACES_SAMPLE_RATE=0.05` → default. ~50-100 transactions/hora a nuestro tráfico actual (~10 tenants).
+- `SENTRY_TRACES_SAMPLE_RATE=1.0` → 100% instrumentado. Solo para debugging puntual (costo Sentry alto en prod).
+
+Cambio de sample rate NO requiere redeploy — se ajusta desde Railway env vars y el próximo boot lo toma. Bajar si Sentry alerta por cuota; subir puntualmente si necesitás visibilidad extra durante una investigación.
+
+### ¿Qué desbloquea?
+
+En el dashboard Sentry → **Performance** tab:
+
+- **p50/p95/p99 por endpoint** — latencia real, no la que asume el load test.
+- **Endpoint throughput** — requests/min por ruta.
+- **Slow queries** — pg queries que tardan más que threshold.
+- **N+1 detection** — Sentry marca patterns sospechosos automáticamente.
+- **External HTTP timings** — Google Places API, Resend, hCaptcha, etc.
+- **Custom spans** — cualquier código puede envolverse con `Sentry.startSpan()` para ver su latencia en el trace.
+
+### Integrations activas (auto en `@sentry/node` v10+)
+
+- `httpIntegration` — outbound HTTP requests.
+- `expressIntegration` — cada middleware + route.
+- `postgresIntegration` — pg queries via `pg` package.
+- `nativeNodeFetchIntegration` — `fetch()` builtin (googleReviews, resend, etc.).
+
+Si a futuro querés instrumentar código custom (ej. un job pesado), usar:
+
+```js
+const Sentry = require('@sentry/node');
+await Sentry.startSpan({ name: 'my-heavy-job', op: 'job' }, async () => {
+  // código instrumentado
+});
+```
+
+### Frontend APM — NO activo (decisión intencional)
+
+`frontend/` y `admin-frontend/` NO tienen `@sentry/react`. Los errores se reportan vía POST a `/api/client-errors` que el backend forwardea a Sentry. Razones:
+
+- `@sentry/react` agrega ~30kb gz al bundle — significativo para SaaS con mobile UX crítica.
+- APM del frontend requiere `browserTracingIntegration` que suma ~10kb más.
+- El backend APM ya cubre el 80% del value: las latencias reales de las APIs que consume el frontend.
+
+Si en el futuro necesitamos Web Vitals reales de usuarios (LCP/FID/CLS), agregar `web-vitals` (~1.5kb gz) + POST a un endpoint backend custom que ingesta a Sentry como medición.
+
+Landing pública (`Landing.jsx`) ya tiene su propio pattern via `Landing.analytics.js`: `performance.mark` + `performance.measure` → `dataLayer` (patrón vendor-agnóstico para futuro tag manager).
+
+---
+
+## 10. Roadmap (no urgente)
 
 - [ ] Sentry releases automáticas — vincular commit SHA con cada release en el dashboard.
 - [ ] Custom dashboard de métricas de negocio (cajas, ventas/día). Hoy se mira a ojo desde el resumen mensual.
 - [ ] Alertas Slack/Discord — Sentry hooks integrations cuando haya equipo de más de 1.
+- [ ] Web Vitals reales del frontend (ver Sección 9 — Frontend APM) — cuando haya presión de UX perf.

@@ -48,11 +48,39 @@ if (process.env.SENTRY_DSN) {
   const release = process.env.RAILWAY_GIT_COMMIT_SHA
     ? process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7)
     : undefined;
+
+  // 2026-07-20 (rec proactiva #2): activar Performance Monitoring (APM).
+  // `@sentry/node` v10 auto-instruments HTTP + Express + Postgres (via el
+  // integrations default) apenas `tracesSampleRate > 0`. Antes teníamos 0 =
+  // solo errores; ahora leemos de env var con default seguro.
+  //
+  // Trade-offs del sample rate:
+  //   0.00  = solo errores (comportamiento pre-2026-07-20)
+  //   0.05  = 5% requests instrumentados (default nuevo — a nuestro tráfico
+  //           (~10 tenants), esto genera ~50-100 transactions/hora,
+  //           dentro del free tier de Sentry sin ninguna presión)
+  //   1.00  = 100% (solo para debugging puntual — costo Sentry alto en prod)
+  //
+  // Guardar en env var permite ajustar sin redeploy si Sentry alerta por
+  // cuota. Bajar a 0.01 (1%) escala hasta 50-100 tenants sin cambiar código.
+  //
+  // Beneficios visibles en Sentry Performance dashboard:
+  //   - p50/p95/p99 por endpoint
+  //   - N+1 detection en queries pg
+  //   - slow queries flagged
+  //   - external HTTP timings (Google Places API, Resend, hCaptcha, etc.)
+  //   - custom spans via Sentry.startSpan si queremos instrumentar código específico
+  //
+  // Ver docs/OBSERVABILITY.md — sección "APM (Performance Monitoring)".
+  const tracesSampleRate = process.env.SENTRY_TRACES_SAMPLE_RATE !== undefined
+    ? parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE)
+    : 0.05;
+
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV || 'production',
     ...(release && { release }),
-    tracesSampleRate: 0, // solo errores, sin performance tracing (menor overhead)
+    tracesSampleRate: Number.isFinite(tracesSampleRate) ? tracesSampleRate : 0.05,
   });
 }
 
