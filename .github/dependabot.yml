@@ -1,0 +1,171 @@
+# Dependabot config — auto-PRs para updates de dependencias.
+#
+# 2026-07-20 — Recomendación #4 del plan proactivo post-audit.
+#
+# Estrategia:
+#   - Auto-PRs semanales (no diarios) para 4 ecosystems (root Playwright,
+#     backend, frontend, admin-frontend) + GitHub Actions.
+#   - Solo `patch` + `minor` para runtime deps (auto-mergeable si CI verde).
+#   - `major` de runtime deps queda como PR abierto para review manual —
+#     usualmente rompen algo.
+#   - `major` de devDeps se permite (jest/vitest/eslint bumps son
+#     típicamente compatibles con nuestro setup).
+#
+# Labels y assignee te dejan bandeja "algo-de-dependabot-abierto" fácil de
+# filtrar en GitHub.
+#
+# Reviews: al principio revisar 1x/semana los PRs abiertos. Si CI está verde
+# + no hay breaking changes visibles → merge. Si es un bump grande, mirar
+# CHANGELOG del paquete.
+#
+# Cadencia weekly (no daily) porque preferimos ver batch pequeño 1x por
+# semana en vez de "PRs de dependabot todo el tiempo". Escala bien hasta
+# ~50 deps por ecosystem — cuando pase eso, considerar daily con grouping.
+
+version: 2
+updates:
+  # ── Root: Playwright + scripts de security ──────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "root"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    # Playwright es la dep crítica acá — mantenerla al día es importante
+    # para tener browsers actualizados en E2E.
+    groups:
+      # Todos los updates de Playwright juntos (@playwright/test + browsers
+      # binarios se versionean coordinado).
+      playwright:
+        patterns:
+          - "@playwright/*"
+          - "playwright"
+
+  # ── Backend (Node 20 + Express + pg + Sentry) ────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "backend"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    # Major bumps de runtime deps quedan como PRs abiertos para review manual.
+    # Empíricamente los majors de express/pg/@sentry/* han roto cosas.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Sentry ecosystem se versionea coordinado.
+      sentry:
+        patterns:
+          - "@sentry/*"
+      # Node-pg-migrate + pg + pg-* juntos.
+      postgres:
+        patterns:
+          - "pg"
+          - "pg-*"
+          - "node-pg-migrate"
+
+  # ── Frontend (Vite + React + shared UI) ─────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    ignore:
+      # React 19 major bump: hacemos aparte con testing exhaustivo, no via bot.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      # Vite major: idem — impacto en build config.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      # Vitest major: idem — a veces cambia API de tests.
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+    groups:
+      vite-ecosystem:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vite-plugin-*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+
+  # ── Admin frontend (mismo stack que frontend pero deps aparte) ──────
+  - package-ecosystem: "npm"
+    directory: "/admin-frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "admin-frontend"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+    groups:
+      vite-ecosystem:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vite-plugin-*"
+
+  # ── GitHub Actions ──────────────────────────────────────────────────
+  # Los workflows usan actions/checkout@v4, actions/setup-node@v4, etc.
+  # Dependabot los mantiene al día — updates son casi siempre trivialmente
+  # compatibles.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"

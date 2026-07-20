@@ -418,14 +418,51 @@ Los issues comunes en una primera ejecución:
 
 ### Después del rehearsal: actualizar este doc
 
-Reemplazá la línea de abajo con los resultados reales del primer rehearsal:
+Reemplazá la línea de abajo con los resultados reales de cada rehearsal:
 
 ```
-Último rehearsal exitoso: ____________________
-Wall-clock total: ____ minutos
-Bugs encontrados + resueltos: ____________________
-Próximo drill programado (6 meses): ____________________
+Último rehearsal exitoso: 2026-06-25 (parcial — ver findings §5)
+Wall-clock total: ~40 min (interrumpido en step 5 por bug de política pre-multi-tenant)
+Bugs encontrados + resueltos: (a) política backup mensual insuficiente → cambiada a diaria (b) mismatch PG16/PG18 client tools (warning non-fatal, dejado como known-issue)
+Próximo drill programado: 2026-10-15 (Q4 2026, ver "Cadencia calendarizada" abajo)
 ```
+
+### Cadencia calendarizada — DR rehearsal trimestral
+
+**Definida 2026-07-20 (Rec proactiva #5 post-audit).**
+
+**Trigger:** el primer lunes de cada trimestre calendario. Bloque de 60-90 min en el calendario, marcar como "DR rehearsal Tecny — no interrumpir".
+
+**Próximas 4 fechas** (ir tickando al terminar cada una):
+
+- [ ] **Q4 2026 — Lunes 2026-10-06** (siguiente a este doc): validar restore completo end-to-end contra la política diaria post-rebrand + multi-tenant + capabilities + M4 JSONB refactor. Es el primer rehearsal COMPLETO (el 06-25 fue parcial).
+- [ ] **Q1 2027 — Lunes 2027-01-05**: primer rehearsal del año nuevo. Bonus: verificar que el `crontab` del operador sigue vivo (Mac reinicios pueden matarlo).
+- [ ] **Q2 2027 — Lunes 2027-04-06**: post-clima Semana Santa (fecha ajustable si cae feriado).
+- [ ] **Q3 2027 — Lunes 2027-07-06**.
+
+**Cada rehearsal debe:**
+1. Bajar el dump más reciente de B2.
+2. Restaurar contra sandbox local (postgres nativo o docker compose del proyecto).
+3. Correr `scripts/dr-verify.sh` — debe pasar 100%.
+4. Levantar backend contra el sandbox — verificar `/health` + `/ready`.
+5. Login smoke + una operación end-to-end (ej. crear una venta) → verificar en la DB restaurada.
+6. Medir wall-clock total (RTO real).
+7. Cleanup.
+8. **Actualizar este doc**: agregar bullet al historial + medir RTO + próxima fecha.
+9. Si algo se rompió → doc post-mortem en `docs/audit/YYYY-MM-DD-dr-rehearsal-<Q>.md` con fixes.
+
+**RTO objetivo:** ≤ 30 min end-to-end en el rehearsal (el prod real puede tardar más por tamaño de dump — el rehearsal es la línea base).
+
+**Anti-patterns a evitar:**
+
+- ❌ Skippear un rehearsal porque "hace poco". La política es trimestral fija; sino se atrofia el músculo.
+- ❌ Correr contra el snapshot Railway en vez del B2. El B2 es la garantía offsite — validar EL B2 es el punto del ejercicio.
+- ❌ Actualizar el `Último rehearsal exitoso` sin tickar el checkbox de la fecha correspondiente. El checkbox es el compromiso público.
+
+### Historial de rehearsals
+
+- **2026-06-25** — Parcial (ver §5). Descubrió política mensual insuficiente → cambio a diaria. Restore procedure funcionó; política nueva ya viene lista para el próximo drill.
+- **2026-10-06** — [ ] pendiente.
 
 ### Findings del primer rehearsal — 2026-06-25
 
