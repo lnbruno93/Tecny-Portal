@@ -160,11 +160,18 @@ Es un rediseño de landing B2C (compare iPhones, drag&drop) hecho en Replit. Nar
 
 | # | Item | Severidad | Esfuerzo | Estado |
 |---|---|---|---|---|
-| M4 | Refactor `site_landing_config` → `content JSONB` con schema Zod | MED | 1 semana | ⏳ Pending (disparador no cumplido) |
+| M4a | Migration additive `content JSONB` + trigger sync (fase 1 de 3) | MED | 1 día | 🟡 En progreso |
+| M4b | Backend switch de reads a JSONB + Zod maestro (fase 2 de 3) | MED | 2 días | ⏳ Después de M4a en prod |
+| M4c | DROP columns legacy + cleanup dual-write (fase 3 de 3) | MED | 1 día | ⏳ Después de M4b en prod |
 | L1 | Deduplicar CSP entre `netlify.toml` root y admin | LOW | 30 min | ✅ Done — spec canónica en `scripts/security/csp-spec.js` + test de paridad en CI |
 | L2 | Limpieza `Landing.css` | LOW | 30 min | ✅ Done — 26 líneas de selectores huérfanos removidas (`.strip*`, `.test*`, `.bigstat*`, `.tint-slate`) |
 
-**Disparador M4**: cuando la tabla singleton supere 20 columnas o alguien pida agregar un campo dinámico complejo (ej. hero video URL con thumbnail). Hoy en 15+ columnas — todavía manejable.
+**Nota M4 (2026-07-20)**: la audit estimó "15+" columnas; el conteo real fue **18** (10 create + 8 en 3 migrations). A solo 2 del disparador `20`, más 3 columnas JSONB ya mezcladas → arrancar ahora es más barato que dentro de 3 features.
+
+**Rollout M4 en 3 PRs staged por principio "SIEMPRE solidez"**:
+- **M4a** (este PR): migration additive + trigger BEFORE INSERT/UPDATE que sincroniza `content` JSONB desde columnas legacy. Backend/frontend/admin sin cambio → deploy zero-risk. Verificación: `SELECT content` matchea columns.
+- **M4b**: backend GET/PATCH consumen `content` JSONB. Cols legacy siguen en DB (backup). Zod maestro reemplaza schemas per-field.
+- **M4c**: `DROP COLUMN` de las 12 legacy (contact_*, hero_*, cta_*, testimonials, faq, google_reviews_enabled) + drop del trigger.
 
 ## Métricas baseline (2026-07-19)
 
