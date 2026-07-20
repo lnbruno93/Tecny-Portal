@@ -133,6 +133,13 @@ const TABLAS_TENANT_ID_SIN_RLS = Object.freeze({
     'Audit trail de acciones de super-admin cross-tenant (plan_change, ' +
     'delete_tenant, etc.). El super-admin necesita ver todas las filas. ' +
     'Aislamiento por capability, no RLS.',
+  feature_flags_tenants:
+    'Overrides de feature flags por tenant (Rec proactiva #3, F1 2026-07-20). ' +
+    'Config global de la app, no data de negocio del tenant. Solo se ' +
+    'escribe desde super-admin UI (F2) y solo se lee desde el resolver ' +
+    '`lib/featureFlags.js` que usa `db.adminQuery/BYPASSRLS`. Ningún ' +
+    'endpoint tenant expone la fila a un cliente del tenant. Aislamiento ' +
+    'por requireSuperAdmin en el endpoint que setea el override.',
 });
 
 // ─── Predicate canónico ─────────────────────────────────────────────────

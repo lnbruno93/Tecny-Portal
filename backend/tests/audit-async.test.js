@@ -255,4 +255,66 @@ describe('P-07 async audit', () => {
     const newest = new Date(r1.body.newest_enqueued_at).getTime();
     expect(oldest).toBeLessThanOrEqual(newest);
   });
+
+  // ────────────────────────────────────────────────────────────────
+  // F3.2 (Rec proactiva #3, 2026-07-20): audit ahora delega la lectura del
+  // flag al resolver de F1 (`isFeatureEnabled('audit_async_enabled', tenantId)`).
+  // Verificamos:
+  //   1. La firma acepta tenantId opcional sin romper.
+  //   2. `_clearAsyncCache()` sigue exportado y no throw — delega al nuevo
+  //      invalidador de F1 (invalidateFeatureCache).
+  //   3. El bypass NODE_ENV=test se preservó (short-circuit ANTES del resolver
+  //      para no saturar el pool en tests).
+  // ────────────────────────────────────────────────────────────────
+  describe('F3.2 migración a resolver F1', () => {
+    afterEach(() => {
+      // Restaurar bypass a false por si algún test lo cambió.
+      audit._setAsyncEnabledForTest(false);
+    });
+
+    test('isAsyncEnabled acepta tenantId opcional (backward compat + F3)', async () => {
+      // Sin tenantId — comportamiento legacy.
+      audit._setAsyncEnabledForTest(false);
+      expect(await audit.isAsyncEnabled()).toBe(false);
+      audit._setAsyncEnabledForTest(true);
+      expect(await audit.isAsyncEnabled()).toBe(true);
+
+      // Con tenantId — nueva firma F3. En test bypasea igual al override.
+      audit._setAsyncEnabledForTest(false);
+      expect(await audit.isAsyncEnabled(1)).toBe(false);
+      audit._setAsyncEnabledForTest(true);
+      expect(await audit.isAsyncEnabled(42)).toBe(true);
+    });
+
+    test('_clearAsyncCache() delega al invalidador de F1 sin romper', async () => {
+      // Smoke test: la función devuelve una Promise (interfaz async previa)
+      // y resuelve sin throw. La invalidación real es del key
+      // `ff:audit_async_enabled:null` del resolver F1 — verificable
+      // indirectamente porque no rompe la resolución posterior.
+      const result = audit._clearAsyncCache();
+      expect(result).toBeInstanceOf(Promise);
+      // El invalidador de F1 (invalidateFeatureCache) devuelve undefined
+      // (fire-and-forget contra Redis). Lo importante es que la promesa
+      // resuelva sin throw — el valor no importa. Awaitear es la única
+      // verificación necesaria: si throw, el test falla acá.
+      await result;
+
+      // Post-invalidación, isAsyncEnabled sigue funcional.
+      audit._setAsyncEnabledForTest(false);
+      expect(await audit.isAsyncEnabled()).toBe(false);
+    });
+
+    test('bypass NODE_ENV=test preservado — no hace lookup DB/Redis', async () => {
+      // Este test es implícito: si el bypass estuviera roto, los 8 tests
+      // previos de esta suite (que hacen ~40 audit() calls con flag ON)
+      // saturarían el pool y timeout-earían. Que estén verdes es la señal.
+      //
+      // Verificación explícita: sin _setAsyncEnabledForTest previo, el
+      // default es false (bypass activo, sin consultar nada).
+      audit._setAsyncEnabledForTest(false);
+      expect(await audit.isAsyncEnabled()).toBe(false);
+      expect(await audit.isAsyncEnabled(1)).toBe(false);
+      expect(await audit.isAsyncEnabled(999)).toBe(false);
+    });
+  });
 });

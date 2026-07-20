@@ -3,32 +3,32 @@
 // storageFlags — wrappers para los feature flags `storage_r2_*` que controlan
 // el rollout entity-by-entity del migration a Cloudflare R2 (P-03).
 //
-// Patrón idéntico al de audit.isAsyncEnabled() (P-07): lee el flag desde la
-// tabla `feature_flags`, cachea con Redis TTL 60s para evitar query DB en
-// cada upload, y expone una función de invalidación que se llama desde el
-// PATCH de feature-flags.js.
+// 2026-07-20 F3 Rec proactiva #3: migrados al resolver de F1 (isFeatureEnabled)
+// para respetar overrides tenant/plan/rollout. Antes: solo binario global —
+// no había forma de activar R2 para un cliente específico como canary.
+// Después: se puede activar R2 en Tek Haus antes de rollout global sin tocar
+// el resto de tenants.
 //
-// Decisión: un módulo por flag-set (no un genérico) porque cada uno tiene su
-// propia invalidación, su propio test bypass, y porque hay solo 3. Si en el
-// futuro el set crece a 10+, vale la pena un wrapper genérico — por ahora,
-// duplicar las 3 funciones es más legible que abstraer.
+// La interfaz externa se mantiene:
+//   · `isEnabled(flagName, tenantId?)` — tenantId opcional para backward
+//     compat de los call sites viejos. Los routes nuevos deben pasarlo.
+//   · `invalidate(flagName)` — delega al invalidador de F1 (global).
+//   · `FLAGS` — const array de flag names.
+//   · `_setEnabledForTest` / `_resetTestOverrides` — bypass NODE_ENV=test.
 //
-// Test bypass: NODE_ENV=test no toca DB ni Redis. Devuelve el valor del
-// override (default false) — los tests pueden setear `_setEnabledForTest`
-// para forzar ON. Mismo patrón que audit.js.
+// Test bypass: preservado (short-circuit ANTES del resolver). Sin él, cada
+// upload en test hace lookup DB/Redis → tests de comprobantes/productos/
+// ventas caerían por saturación del pool.
 //
-// Fail-safe: si la tabla feature_flags no existe (DB pre-M-08) o la query
-// falla por cualquier motivo, devolvemos `false` (= R2 OFF) — es el path
-// más conservador. Sin esto, una falla transitoria de DB durante un upload
-// podría hacer fallar el endpoint entero.
+// Fail-safe: `isFeatureEnabled` es fail-closed (false en error). Path R2
+// OFF = fallback a `archivo_data` legacy — comportamiento pre-P-03. Sin
+// regresión posible.
 
-const db = require('../config/database');
-const logger = require('./logger');
-const { createCachedFetcherRedis } = require('./cacheTtl');
+const featureFlagsLib = require('./featureFlags');
 
-const FLAG_TTL_MS = 60_000;
-
-// Lista de flags soportados. Si agregás uno nuevo, sumalo acá.
+// Lista de flags soportados. Si agregás uno nuevo, sumalo acá — pero también
+// insertalo en `feature_flags` via migración (los flags nuevos empiezan
+// desconocidos para el resolver, que fail-closed a false).
 const FLAGS = [
   'storage_r2_comprobantes',
   'storage_r2_productos',
@@ -39,54 +39,34 @@ const FLAGS = [
 // el path de producción al deploy).
 const _testOverrides = Object.fromEntries(FLAGS.map(f => [f, false]));
 
-// Generic fetcher — leer cualquier flag por nombre, fail-safe.
-async function _fetchFlagFromDb(flagName) {
-  try {
-    const { rows } = await db.query(
-      'SELECT enabled FROM feature_flags WHERE name = $1',
-      [flagName],
-    );
-    return rows[0]?.enabled === true;
-  } catch (err) {
-    // Tabla feature_flags no existe, flag no existe, conexión rota:
-    // fail-safe a OFF (no escalamos a R2). NO propagamos el error.
-    logger.warn(
-      { err: err?.message, flag: flagName },
-      'storageFlags: lectura de flag falló, fallback a OFF',
-    );
-    return false;
-  }
-}
-
-// Un fetcher cacheado por flag. La key de Redis es por flag-name → invalidar
-// `storage_r2_comprobantes` no invalida los otros (rollout independiente).
-const _fetchers = {};
-for (const flag of FLAGS) {
-  _fetchers[flag] = createCachedFetcherRedis(
-    `cache:flag:${flag}`,
-    FLAG_TTL_MS,
-    () => _fetchFlagFromDb(flag),
-  );
-}
-
 // API pública.
 //
-// Devuelve true si el flag está ON. En tests, devuelve el override.
-async function isEnabled(flagName) {
+// Devuelve true si el flag está ON para el tenant dado (respetando
+// overrides tenant/plan/rollout). En tests, devuelve el override sin
+// consultar DB/Redis.
+//
+// `tenantId` es opcional para backward compat: si el caller no lo pasa,
+// el resolver evalúa solo el default global (sin overrides tenant/plan/
+// rollout). Los routes nuevos deben pasar `req.tenantId` para aprovechar
+// la precedencia completa.
+async function isEnabled(flagName, tenantId = null) {
   if (!FLAGS.includes(flagName)) {
     throw new Error(`storageFlags: flag desconocido '${flagName}'`);
   }
   if (process.env.NODE_ENV === 'test') return _testOverrides[flagName] === true;
-  return _fetchers[flagName]();
+  return featureFlagsLib.isFeatureEnabled(flagName, tenantId);
 }
 
-// Invalida el cache de un flag específico. Async — el caller puede await si
-// quiere garantía de invalidación pre-response, o fire-and-forget para
-// latencia mínima. Llamado desde el PATCH de feature-flags.js cuando un
-// admin cambia un flag storage_r2_*.
+// Invalida el cache del flag. Delega al invalidador de F1 con `tenantId=null`
+// — invalida el key global (`ff:<flag>:null`). Los cambios per-tenant (F2)
+// hacen su propia invalidación con `invalidateFeatureCache(name, tenantId)`
+// desde el endpoint admin. Este handler cubre el path viejo
+// (routes/feature-flags.js PATCH) que no conoce tenants.
+//
+// Devuelve Promise para preservar la interfaz async previa.
 async function invalidate(flagName) {
   if (!FLAGS.includes(flagName)) return;
-  return _fetchers[flagName].invalidate();
+  return featureFlagsLib.invalidateFeatureCache(flagName, null);
 }
 
 // Test helpers — los tests integration de comprobantes/productos/ventas
