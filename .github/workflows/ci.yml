@@ -34,6 +34,31 @@ jobs:
       - name: Verify CSP parity between netlify.toml files
         run: npm run verify:csp
 
+  # Rec #6 audit 2026-07-20 Fase 1: anti-regression check de inline styles.
+  # Cuenta `style={}` en frontend + admin-frontend y compara con baseline.
+  # Falla si un PR agrega inline styles nuevos (que forzarían mantener
+  # `unsafe-inline` en style-src del CSP). Fase 2 (semanas, futuro): migrar
+  # los existentes en batches; cuando llegue a 0, remover `unsafe-inline`.
+  #
+  # Corre sin services + sin npm ci — el script usa solo Node built-in fs.
+  # Job independiente de csp-parity porque son verificaciones distintas
+  # (una lee netlify.toml, la otra escanea JSX) — fail separado da mejor
+  # señal en la UI de PR.
+  csp-inline-styles:
+    name: CSP inline styles anti-regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check inline style count vs baseline
+        run: node scripts/csp-inline-styles-check.mjs check
+
   test:
     name: Integration Tests
     runs-on: ubuntu-latest
