@@ -58,6 +58,7 @@ describe('rlsCanonical constants (unit)', () => {
     // agrega o quita una excepción sin discutirlo.
     expect(Object.keys(TABLAS_TENANT_ID_SIN_RLS).sort()).toEqual([
       'audit_queue',
+      'feature_flags_tenants',
       'tenant_admin_actions',
       'tenant_users',
     ]);
