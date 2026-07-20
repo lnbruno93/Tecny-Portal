@@ -683,3 +683,133 @@ describe('Sprint 3 M4a — trigger site_landing_config_sync_content', () => {
     expect(row.content.cta).toEqual({ headline: null, body: null });
   });
 });
+
+// ── Sprint 3 M4b: reads desde content JSONB ────────────────────────────
+//
+// M4a agregó `content` JSONB con trigger que la sincroniza desde cols.
+// M4b hace el flip: los reads (GET público + GET super-admin +
+// google-reviews flag) leen desde `content` en vez de las cols.
+//
+// El shape del RESPONSE no cambia (compat con landing y admin). Este
+// bloque de tests prueba que los reads efectivamente vienen del JSONB —
+// no de las cols — creando una divergencia intencional entre ambos.
+
+describe('Sprint 3 M4b — reads from content JSONB', () => {
+  // Helper: fuerza una divergencia entre `content` y las cols. Como el
+  // trigger BEFORE UPDATE sincroniza automáticamente en cada write,
+  // usamos ALTER TABLE ... DISABLE TRIGGER para que el UPDATE se
+  // aplique sin re-sincronizar. Después de asertar el read, re-enable +
+  // fire una UPDATE no-op para restaurar la invariante.
+  //
+  // Ojo: es un patrón invasivo (toca el schema) pero es aislado al test
+  // y se revierte antes del beforeEach del siguiente test — no ensucia.
+  async function withDivergentContent(contentOverrides, fn) {
+    await pool.query(`ALTER TABLE site_landing_config DISABLE TRIGGER site_landing_config_sync_content_trg`);
+    try {
+      await pool.query(
+        `UPDATE site_landing_config SET content = content || $1::jsonb WHERE id = 1`,
+        [JSON.stringify(contentOverrides)],
+      );
+      await fn();
+    } finally {
+      await pool.query(`ALTER TABLE site_landing_config ENABLE TRIGGER site_landing_config_sync_content_trg`);
+      // Re-sync content desde las cols (no-op UPDATE dispara el trigger).
+      await pool.query(`UPDATE site_landing_config SET id = id WHERE id = 1`);
+    }
+  }
+
+  it('GET /api/public/site-config lee contact desde content (no de las cols)', async () => {
+    await withDivergentContent(
+      {
+        contact: {
+          email: 'jsonb@only.test',
+          whatsapp: '9999999999',
+          whatsapp_display: '+99 9 9999-9999',
+          address: 'Solo en JSONB',
+          instagram_handle: 'only.jsonb',
+          instagram_url: 'https://instagram.com/only.jsonb',
+        },
+      },
+      async () => {
+        const r = await request(app).get('/api/public/site-config');
+        expect(r.status).toBe(200);
+        // El endpoint debe devolver los valores DEL JSONB, no de las cols
+        // (que tienen los valores originales del seed).
+        expect(r.body.contact.email).toBe('jsonb@only.test');
+        expect(r.body.contact.address).toBe('Solo en JSONB');
+      },
+    );
+  });
+
+  it('GET /api/public/site-config lee hero + cta + faq desde content', async () => {
+    await withDivergentContent(
+      {
+        hero: { headline: 'H de JSONB', subheadline: null, blurb: 'B de JSONB' },
+        cta: { headline: 'CTA de JSONB', body: 'body de JSONB' },
+        faq: [{ id: '11111111-1111-4111-8111-111111111111', question: 'Q JSONB', answer: 'A JSONB' }],
+      },
+      async () => {
+        const r = await request(app).get('/api/public/site-config');
+        expect(r.status).toBe(200);
+        expect(r.body.hero.headline).toBe('H de JSONB');
+        expect(r.body.cta.headline).toBe('CTA de JSONB');
+        expect(r.body.faq).toHaveLength(1);
+        expect(r.body.faq[0].question).toBe('Q JSONB');
+      },
+    );
+  });
+
+  it('GET /api/public/google-reviews respeta el flag desde content.features', async () => {
+    await withDivergentContent(
+      { features: { google_reviews_enabled: false } },
+      async () => {
+        // Con el flag false, el endpoint devuelve reviews vacías + disabled=true
+        // (misma semantica que el test original de google-reviews toggle).
+        jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ reviews: [{ author_name: 'no-va' }] }),
+        });
+        const r = await request(app).get('/api/public/google-reviews');
+        expect(r.status).toBe(200);
+        expect(r.body.disabled).toBe(true);
+        expect(r.body.reviews).toEqual([]);
+      },
+    );
+  });
+
+  it('GET /api/super-admin/site-config devuelve shape flat desde content', async () => {
+    await withDivergentContent(
+      {
+        contact: { email: 'admin-flat@jsonb.test' },
+        hero: { headline: 'Hero from JSONB via admin GET' },
+      },
+      async () => {
+        const r = await request(app)
+          .get('/api/super-admin/site-config')
+          .set(auth());
+        expect(r.status).toBe(200);
+        // Contract: shape flat (mismos nombres de fields que antes) — la
+        // admin UI no cambia. La source detrás sí (content JSONB).
+        expect(r.body.contact_email).toBe('admin-flat@jsonb.test');
+        expect(r.body.hero_headline).toBe('Hero from JSONB via admin GET');
+      },
+    );
+  });
+
+  it('PATCH endpoint returns response shape flat desde content', async () => {
+    // Verifica que el RETURNING del PATCH también usa content (no cols).
+    // Sin divergence acá porque el PATCH inmediatamente re-sync por el
+    // trigger — solo probamos que el shape de la response es correcto.
+    const r = await request(app)
+      .patch('/api/super-admin/site-config')
+      .set(auth())
+      .send({ hero_headline: 'PATCH → returning', cta_headline: 'PATCH cta' });
+    expect(r.status).toBe(200);
+    expect(r.body.hero_headline).toBe('PATCH → returning');
+    expect(r.body.cta_headline).toBe('PATCH cta');
+    // Cleanup.
+    await pool.query(
+      `UPDATE site_landing_config SET hero_headline = NULL, cta_headline = NULL WHERE id = 1`,
+    );
+  });
+});

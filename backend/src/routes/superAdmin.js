@@ -2876,19 +2876,47 @@ router.patch('/tenants/:id/comprobante-footer',
 // ──────────────────────────────────────────────────────────────────────────
 router.get('/site-config', async (_req, res, next) => {
   try {
+    // Sprint 3 M4b (2026-07-20): source de reads = `content` JSONB.
+    // Igual que el GET público, mantenemos la SHAPE FLAT del response
+    // (contact_email, hero_headline, etc.) para NO romper el admin
+    // (admin-frontend/src/pages/SitioPublico.jsx los consume por nombre
+    // individual). La response shape flat es el contract público; el
+    // JSONB es storage detail interno.
     const row = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
-                contact_address, contact_instagram_handle, contact_instagram_url,
-                testimonials, google_reviews_enabled,
-                hero_headline, hero_subheadline, hero_blurb,
-                cta_headline, cta_body, faq,
-                updated_at, updated_by
+        `SELECT content, updated_at, updated_by
            FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
     });
-    res.json(row || {});
+    if (!row) return res.json({});
+
+    const c = row.content || {};
+    // Reconstruimos el shape flat que el admin espera.
+    res.json({
+      // Contact (6 campos)
+      contact_email:            c.contact?.email             ?? null,
+      contact_whatsapp:         c.contact?.whatsapp          ?? null,
+      contact_whatsapp_display: c.contact?.whatsapp_display  ?? null,
+      contact_address:          c.contact?.address           ?? null,
+      contact_instagram_handle: c.contact?.instagram_handle  ?? null,
+      contact_instagram_url:    c.contact?.instagram_url     ?? null,
+      // Arrays JSONB — pasan tal cual (ya son arrays del JSONB).
+      testimonials: Array.isArray(c.testimonials) ? c.testimonials : [],
+      faq:          Array.isArray(c.faq)          ? c.faq          : [],
+      // Hero (3 campos) + CTA (2 campos)
+      hero_headline:    c.hero?.headline    ?? null,
+      hero_subheadline: c.hero?.subheadline ?? null,
+      hero_blurb:       c.hero?.blurb       ?? null,
+      cta_headline:     c.cta?.headline     ?? null,
+      cta_body:         c.cta?.body         ?? null,
+      // Feature flag — default a true si viene undefined (matchea el
+      // default de la columna que teníamos antes).
+      google_reviews_enabled: c.features?.google_reviews_enabled ?? true,
+      // Audit fields (siguen en columnas, no en JSONB)
+      updated_at: row.updated_at,
+      updated_by: row.updated_by,
+    });
   } catch (err) {
     next(err);
   }
@@ -2932,6 +2960,11 @@ router.patch('/site-config',
       const values = keys.map(k => patch[k]);
       values.push(req.user.id); // updated_by = último param
 
+      // Sprint 3 M4b (2026-07-20): el UPDATE sigue escribiendo a las cols
+      // legacy (M4c hace la flip a escribir directo al JSONB). RETURNING
+      // trae `content` — el trigger BEFORE UPDATE ya lo sincronizó desde
+      // las nuevas cols antes de que RETURNING vea la row. Consistente con
+      // el shape que el GET /site-config ahora emite.
       const result = await db.adminQuery(async (client) => {
         const { rows } = await client.query(
           `UPDATE site_landing_config
@@ -2939,12 +2972,7 @@ router.patch('/site-config',
                   updated_at = NOW(),
                   updated_by = $${values.length}
             WHERE id = 1
-            RETURNING contact_email, contact_whatsapp, contact_whatsapp_display,
-                      contact_address, contact_instagram_handle, contact_instagram_url,
-                      testimonials, google_reviews_enabled,
-                hero_headline, hero_subheadline, hero_blurb,
-                cta_headline, cta_body, faq,
-                updated_at, updated_by`,
+            RETURNING content, updated_at, updated_by`,
           values
         );
         return rows[0];
@@ -2954,7 +2982,29 @@ router.patch('/site-config',
         { super_admin: req.user.id, fields: keys },
         '[super-admin] PATCH /site-config'
       );
-      res.json(result);
+
+      // Response shape flat — matchea lo que el admin (SitioPublico.jsx)
+      // espera. Idéntico al GET /site-config de arriba (misma función de
+      // decompose, sería DRY-eable a un helper cuando M4c estabilice).
+      const c = result?.content || {};
+      res.json({
+        contact_email:            c.contact?.email             ?? null,
+        contact_whatsapp:         c.contact?.whatsapp          ?? null,
+        contact_whatsapp_display: c.contact?.whatsapp_display  ?? null,
+        contact_address:          c.contact?.address           ?? null,
+        contact_instagram_handle: c.contact?.instagram_handle  ?? null,
+        contact_instagram_url:    c.contact?.instagram_url     ?? null,
+        testimonials: Array.isArray(c.testimonials) ? c.testimonials : [],
+        faq:          Array.isArray(c.faq)          ? c.faq          : [],
+        hero_headline:    c.hero?.headline    ?? null,
+        hero_subheadline: c.hero?.subheadline ?? null,
+        hero_blurb:       c.hero?.blurb       ?? null,
+        cta_headline:     c.cta?.headline     ?? null,
+        cta_body:         c.cta?.body         ?? null,
+        google_reviews_enabled: c.features?.google_reviews_enabled ?? true,
+        updated_at: result?.updated_at,
+        updated_by: result?.updated_by,
+      });
     } catch (err) {
       next(err);
     }
@@ -2990,13 +3040,17 @@ router.patch('/site-config',
 router.get('/google-reviews-status', async (_req, res, next) => {
   try {
     // Lee el flag del DB.
+    // Sprint 3 M4b (2026-07-20): flag ahora desde content->'features'.
+    // Trigger de M4a mantiene JSONB sincronizado; DROP COLUMN pendiente
+    // en M4c. `->>` devuelve el bool como text — parseamos en JS.
     const dbRow = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+        `SELECT content->'features'->>'google_reviews_enabled' AS enabled
+           FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
     });
-    const enabled = dbRow?.google_reviews_enabled !== false; // default true si row missing
+    const enabled = dbRow?.enabled !== 'false'; // default true si row missing o null
 
     // Consume el cache del lib (mismo TTL que el endpoint público — no doble hit).
     const data = await googleReviews.getReviews();

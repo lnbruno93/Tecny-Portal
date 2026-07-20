@@ -92,46 +92,54 @@ router.get('/site-config', async (_req, res) => {
   try {
     // db.adminQuery bypasea RLS (site_landing_config no es tenant-scoped,
     // pero usamos el pattern para queries admin-nivel).
+    //
+    // Sprint 3 M4b (2026-07-20): source of reads = `content` JSONB. El
+    // trigger BEFORE INSERT/UPDATE de la migration 20260720000001 garantiza
+    // que `content` está siempre sincronizado con las columnas legacy —
+    // las cols siguen siendo write source (el PATCH del admin las escribe)
+    // hasta el sunset final (M4c). Este SELECT reemplaza 13 columnas por
+    // 2 (content + updated_at), reduciendo I/O y preparando el terreno
+    // para el DROP COLUMN de M4c.
     const row = await db.adminQuery(async (client) => {
       const { rows } = await client.query(
-        `SELECT contact_email, contact_whatsapp, contact_whatsapp_display,
-                contact_address, contact_instagram_handle, contact_instagram_url,
-                testimonials,
-                hero_headline, hero_subheadline, hero_blurb,
-                cta_headline, cta_body, faq,
-                updated_at
-           FROM site_landing_config WHERE id = 1`
+        `SELECT content, updated_at FROM site_landing_config WHERE id = 1`
       );
       return rows[0] || null;
     });
+
+    // Desarmamos el JSONB en el shape "flat" que la landing ya consume.
+    // NO cambiamos la shape del response — sería breaking change para la
+    // landing y admin. El shape flat sigue siendo el contract público; el
+    // JSONB es storage detail interno.
+    const c = row?.content || {};
 
     res.set('Cache-Control', 'public, max-age=300');
     // Envelope explícito para permitir extensión futura sin breaking change.
     res.json({
       contact: {
-        email:              row?.contact_email             || null,
-        whatsapp:           row?.contact_whatsapp          || null,
-        whatsapp_display:   row?.contact_whatsapp_display  || null,
-        address:            row?.contact_address           || null,
-        instagram_handle:   row?.contact_instagram_handle  || null,
-        instagram_url:      row?.contact_instagram_url     || null,
+        email:              c.contact?.email             || null,
+        whatsapp:           c.contact?.whatsapp          || null,
+        whatsapp_display:   c.contact?.whatsapp_display  || null,
+        address:            c.contact?.address           || null,
+        instagram_handle:   c.contact?.instagram_handle  || null,
+        instagram_url:      c.contact?.instagram_url     || null,
       },
       // 2026-07-13 Fase 2: reseñas editables desde el admin. Array vacío
       // significa "usá los hardcodeados de la landing" — el hook use-site-config
       // ya tiene ese fallback.
-      testimonials: Array.isArray(row?.testimonials) ? row.testimonials : [],
+      testimonials: Array.isArray(c.testimonials) ? c.testimonials : [],
       // 2026-07-13 Fase 3: Hero + CTA + FAQ editables. Null en cualquier campo
       // texto significa "landing usa hardcoded fallback"; FAQ vacío ídem.
       hero: {
-        headline:    row?.hero_headline    || null,
-        subheadline: row?.hero_subheadline || null,
-        blurb:       row?.hero_blurb       || null,
+        headline:    c.hero?.headline    || null,
+        subheadline: c.hero?.subheadline || null,
+        blurb:       c.hero?.blurb       || null,
       },
       cta: {
-        headline: row?.cta_headline || null,
-        body:     row?.cta_body     || null,
+        headline: c.cta?.headline || null,
+        body:     c.cta?.body     || null,
       },
-      faq: Array.isArray(row?.faq) ? row.faq : [],
+      faq: Array.isArray(c.faq) ? c.faq : [],
       // Placeholder Fase futura (footer, si Lucas decide hacerlo editable).
       footer: null,
       updated_at: row?.updated_at || null,
@@ -193,13 +201,21 @@ router.get('/google-reviews', async (_req, res) => {
     // usuario por hora — lag DB no importa.
     let enabled = true; // fail-open default (feature ON si DB inaccesible)
     try {
+      // Sprint 3 M4b (2026-07-20): flag ahora vive en content->'features'.
+      // El trigger de M4a mantiene JSONB sincronizado desde la columna
+      // google_reviews_enabled — leer JSONB acá vs columna es funcionalmente
+      // equivalente hoy pero prepara para el DROP COLUMN de M4c. Extraemos
+      // con `->>` para obtener el boolean como text; parseamos a bool en JS.
       const row = await db.adminQuery(async (client) => {
         const { rows } = await client.query(
-          `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+          `SELECT content->'features'->>'google_reviews_enabled' AS enabled
+             FROM site_landing_config WHERE id = 1`
         );
         return rows[0];
       });
-      enabled = row?.google_reviews_enabled !== false;
+      // enabled = 'false' string → false, cualquier otra cosa (incluida
+      // null/undefined) → true (fail-open a "reseñas ON").
+      enabled = row?.enabled !== 'false';
     } catch (e) {
       // Query falló (DB down / migration pendiente) — asumimos enabled=true
       // por default. Es fail-open: mejor mostrar reseñas que ocultarlas por
