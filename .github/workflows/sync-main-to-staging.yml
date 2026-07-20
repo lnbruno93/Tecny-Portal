@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout staging
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: staging
           fetch-depth: 0  # historial completo — necesario para ff-only
