@@ -16,9 +16,16 @@
 
 const autocannon = require('autocannon');
 const scenarios = require('./scenarios');
+const SLOS      = require('./slos');
 
 const TARGET = process.env.IPRO_TARGET;
 const TOKEN  = process.env.IPRO_TOKEN;
+
+// 2026-07-20 (Rec proactiva #1 post-audit): flag `--check-slo` para gate CI.
+// Sin este flag, el runner reporta y termina exit 0 aunque haya breach — el
+// operador decide qué hacer. Con `--check-slo`, breach → exit 1 (útil para
+// scripts / cron / CI futura).
+const CHECK_SLO = process.argv.includes('--check-slo');
 
 if (!TARGET) {
   console.error('❌  IPRO_TARGET es requerido. Ej:');
@@ -143,6 +150,51 @@ async function main() {
   }
   console.log('══════════════════════════════════════════════════════════════');
   console.log('Guardar estos números en docs/LOAD_BASELINE.md si es la baseline.');
+
+  // 2026-07-20 (Rec proactiva #1): SLO check opcional con --check-slo.
+  // Compara cada scenario contra los thresholds de loadtest/slos.js. Reporta
+  // breach a stdout y exit 1 si hubo alguno — usable como gate en scripts.
+  if (CHECK_SLO) {
+    console.log('\n══════════════════════════════════════════════════════════════');
+    console.log('SLO CHECK — thresholds en backend/loadtest/slos.js');
+    console.log('══════════════════════════════════════════════════════════════');
+
+    const breaches = [];
+    for (const r of results) {
+      if (r.error) {
+        breaches.push({ scenario: r.name, metric: 'run', actual: 'ERROR', threshold: 'N/A' });
+        continue;
+      }
+      const slo = SLOS[r.name] || SLOS._default;
+      const checks = [
+        { metric: 'p50',    actual: r.latency_p50_ms, threshold: slo.p50 },
+        { metric: 'p90',    actual: r.latency_p90_ms, threshold: slo.p90 },
+        { metric: 'p99',    actual: r.latency_p99_ms, threshold: slo.p99 },
+        { metric: 'errRate', actual: r.error_rate_pct / 100, threshold: slo.errorRate },
+      ];
+      const status = checks.map((c) => {
+        const ok = c.actual <= c.threshold;
+        if (!ok) breaches.push({ scenario: r.name, ...c });
+        return ok ? '✓' : '✗';
+      });
+      console.log(
+        r.name.padEnd(25) +
+        ` p50:${status[0]} p90:${status[1]} p99:${status[2]} err:${status[3]}`
+      );
+    }
+    console.log('══════════════════════════════════════════════════════════════');
+
+    if (breaches.length === 0) {
+      console.log('✓ Todos los SLOs OK.');
+    } else {
+      console.log(`✗ ${breaches.length} breach(es) de SLO:\n`);
+      for (const b of breaches) {
+        console.log(`  ${b.scenario} — ${b.metric}: actual=${b.actual} threshold=${b.threshold}`);
+      }
+      console.log('\nInterpretar breach: ver comentarios en backend/loadtest/slos.js.');
+      process.exit(1);
+    }
+  }
 }
 
 main().catch(err => {
