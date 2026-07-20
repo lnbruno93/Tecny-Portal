@@ -614,7 +614,7 @@ function TabUsd() {
                   onChange={e => o.set(e.target.checked)}
                   style={{ accentColor: 'var(--accent)', width: 15, height: 15 }}
                 />
-                <div style={{ flex: 1 }}>
+                <div className="u-flex-1">
                   <div style={{ fontWeight: 600, fontSize: 13.5 }}>{o.label}</div>
                   <div className="muted tiny" style={{ marginTop: 2 }}>{o.sub}</div>
                 </div>

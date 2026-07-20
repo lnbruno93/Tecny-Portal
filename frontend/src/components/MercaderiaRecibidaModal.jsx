@@ -494,7 +494,7 @@ export default function MercaderiaRecibidaModal({ cliente, saldoActual, onClose,
             {totalUsd > 0 && (
               <div style={previewStyle}>
                 <span style={{ fontSize: 16 }}>{saldoCierraEnCero ? '✓' : '⚠'}</span>
-                <div style={{ flex: 1 }}>
+                <div className="u-flex-1">
                   {saldoCierraEnCero ? (
                     <>
                       Después de la entrega: <strong style={{ color: 'var(--pos)' }}>saldo {primerNombre} = {fmtUSD(0)}</strong> (deuda cancelada).

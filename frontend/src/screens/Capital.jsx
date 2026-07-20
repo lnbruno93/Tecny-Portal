@@ -215,15 +215,15 @@ export default function Capital() {
           Auditoría 2026-06-30 F-02→05: labels y símbolos dinámicos por país
           (ARS/$ en AR, UYU/$U en UY) vía useMonedasTenant + fmtMoney. */}
       <div className="row" style={{ marginBottom: 14 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · {monedaLocal}</div>
           <div className="kpi-value mono" style={{ color: patrimonio.totalLocal >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalLocal, monedaLocal)}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · USD</div>
           <div className="kpi-value mono" style={{ color: patrimonio.totalUsd >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalUsd, 'USD')}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Patrimonio · USDT</div>
           <div className="kpi-value mono" style={{ color: patrimonio.totalUsdt >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{fmtMoney(patrimonio.totalUsdt, 'USDT')}</div>
         </div>
@@ -265,10 +265,10 @@ export default function Capital() {
       {tab === 'movimientos' && <>
       {/* Totales del ledger (USD) */}
       <div className="row" style={{ marginBottom: 12 }}>
-        <div className="card card-tight" style={{ flex: 1 }}><div className="kpi-label">Ingresos · USD</div><div className="kpi-value mono pos">u$s {fmt(ledger.totales.ingresos_usd)}</div></div>
-        <div className="card card-tight" style={{ flex: 1 }}><div className="kpi-label">Egresos · USD</div><div className="kpi-value mono neg">u$s {fmt(ledger.totales.egresos_usd)}</div></div>
-        <div className="card card-tight" style={{ flex: 1 }}><div className="kpi-label">Neto · USD</div><div className={'kpi-value mono ' + (Number(ledger.totales.neto_usd) >= 0 ? 'pos' : 'neg')}>u$s {fmt(ledger.totales.neto_usd)}</div></div>
-        <div className="card card-tight" style={{ flex: 1 }}><div className="kpi-label">Movimientos</div><div className="kpi-value mono">{ledger.totales.count}</div></div>
+        <div className="card card-tight u-flex-1"><div className="kpi-label">Ingresos · USD</div><div className="kpi-value mono pos">u$s {fmt(ledger.totales.ingresos_usd)}</div></div>
+        <div className="card card-tight u-flex-1"><div className="kpi-label">Egresos · USD</div><div className="kpi-value mono neg">u$s {fmt(ledger.totales.egresos_usd)}</div></div>
+        <div className="card card-tight u-flex-1"><div className="kpi-label">Neto · USD</div><div className={'kpi-value mono ' + (Number(ledger.totales.neto_usd) >= 0 ? 'pos' : 'neg')}>u$s {fmt(ledger.totales.neto_usd)}</div></div>
+        <div className="card card-tight u-flex-1"><div className="kpi-label">Movimientos</div><div className="kpi-value mono">{ledger.totales.count}</div></div>
       </div>
 
       {/* Filtros */}

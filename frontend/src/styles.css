@@ -2918,3 +2918,59 @@ body.modal-open { overflow: hidden; }
   border-radius: 3px;
   transition: width .2s ease-out;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Utility classes (Rec #6 CSP Fase 2 Sprint 1, 2026-07-20)
+
+   Reemplazan patterns comunes de inline `style={}`. Cada clase tiene 1
+   propósito estrecho — no son "helpers de estilo genérico". El plan:
+   cada dev migra `style={{ x: y }}` → `className="u-x-y"` cuando toca el
+   archivo por otra razón. El check anti-regression (Fase 1, ci job
+   `csp-inline-styles`) previene que se agreguen nuevos inline styles.
+
+   Los 20 patterns cubren ~30% del baseline actual (3512 → ~2500 tras
+   migración completa). Ver docs/CSP.md para detalles.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Layout */
+.u-flex-1 { flex: 1; }
+.u-w-100  { width: 100%; }
+
+/* Text align */
+.u-text-right { text-align: right; }
+
+/* Colors (usan CSS vars del tema — reactive a light/dark) */
+.u-color-neg    { color: var(--neg); }
+.u-color-accent { color: var(--accent); }
+
+/* Font weight */
+.u-fw-600 { font-weight: 600; }
+
+/* Font size */
+.u-fs-12 { font-size: 12px; }
+.u-fs-13 { font-size: 13px; }
+.u-fs-14 { font-size: 14px; }
+
+/* Margins (top) */
+.u-mt-2  { margin-top: 2px; }
+.u-mt-4  { margin-top: 4px; }
+.u-mt-6  { margin-top: 6px; }
+.u-mt-12 { margin-top: 12px; }
+
+/* Margins (bottom) */
+.u-mb-2  { margin-bottom: 2px; }
+.u-mb-4  { margin-bottom: 4px; }
+.u-mb-8  { margin-bottom: 8px; }
+.u-mb-10 { margin-bottom: 10px; }
+.u-mb-12 { margin-bottom: 12px; }
+.u-mb-14 { margin-bottom: 14px; }
+.u-mb-16 { margin-bottom: 16px; }
+
+/* Gap (flex/grid) */
+.u-gap-8  { gap: 8px; }
+.u-gap-12 { gap: 12px; }
+.u-gap-14 { gap: 14px; }
+
+/* Composed patterns (2+ props, ya combinado por alta frecuencia) */
+.u-fs-13-fw-600 { font-size: 13px; font-weight: 600; }
+.u-fs-14-fw-600 { font-size: 14px; font-weight: 600; }

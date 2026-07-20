@@ -1102,3 +1102,57 @@ a { color: inherit; text-decoration: none; }
 .bar-row-track {
   grid-column: 1 / -1;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Utility classes (Rec #6 CSP Fase 2 Sprint 1, 2026-07-20)
+
+   Idem frontend/src/styles.css — mismos patterns comunes, mismo naming
+   convention (`u-<abbrev>-<value>`). Ver docs/CSP.md.
+
+   Nota: se duplica el bloque entre frontend y admin-frontend a propósito
+   (bundles distintos, sin shared package). Mantener sincronizados los
+   cambios manualmente cuando se agreguen nuevas utility classes.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Layout */
+.u-flex-1 { flex: 1; }
+.u-w-100  { width: 100%; }
+
+/* Text align */
+.u-text-right { text-align: right; }
+
+/* Colors */
+.u-color-neg    { color: var(--neg); }
+.u-color-accent { color: var(--accent); }
+
+/* Font weight */
+.u-fw-600 { font-weight: 600; }
+
+/* Font size */
+.u-fs-12 { font-size: 12px; }
+.u-fs-13 { font-size: 13px; }
+.u-fs-14 { font-size: 14px; }
+
+/* Margins (top) */
+.u-mt-2  { margin-top: 2px; }
+.u-mt-4  { margin-top: 4px; }
+.u-mt-6  { margin-top: 6px; }
+.u-mt-12 { margin-top: 12px; }
+
+/* Margins (bottom) */
+.u-mb-2  { margin-bottom: 2px; }
+.u-mb-4  { margin-bottom: 4px; }
+.u-mb-8  { margin-bottom: 8px; }
+.u-mb-10 { margin-bottom: 10px; }
+.u-mb-12 { margin-bottom: 12px; }
+.u-mb-14 { margin-bottom: 14px; }
+.u-mb-16 { margin-bottom: 16px; }
+
+/* Gap (flex/grid) */
+.u-gap-8  { gap: 8px; }
+.u-gap-12 { gap: 12px; }
+.u-gap-14 { gap: 14px; }
+
+/* Composed patterns */
+.u-fs-13-fw-600 { font-size: 13px; font-weight: 600; }
+.u-fs-14-fw-600 { font-size: 14px; font-weight: 600; }

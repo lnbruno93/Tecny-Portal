@@ -422,7 +422,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">Cobrar en</label>
               <select className="input" value={cajaId} onChange={e => setCajaId(e.target.value)}>
                 <option value="">— Cuenta corriente (suma deuda) —</option>
@@ -589,7 +589,7 @@ export default function VentaB2BModal({ cliente, onClose, onSaved }) {
 
           {/* ── Descripción + Total ── */}
           <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">Descripción / notas (opcional)</label>
               <input className="input" value={descripcion} onChange={e => setDescripcion(e.target.value)}
                 placeholder="Ej. Pedido WhatsApp del 29/5" />

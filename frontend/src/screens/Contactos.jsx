@@ -439,22 +439,22 @@ export default function Contactos() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row" style={{ gap: 12 }}>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label" htmlFor="contacto-nombre">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input id="contacto-nombre" className={'input' + (fieldErrors.nombre ? ' input-error' : '')} value={form.nombre} onChange={e => setField('nombre', e.target.value)} autoFocus aria-invalid={!!fieldErrors.nombre} />
                       {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label" htmlFor="contacto-apellido">Apellido</label>
                       <input id="contacto-apellido" className="input" value={form.apellido} onChange={e => setField('apellido', e.target.value)} />
                     </div>
                   </div>
                   <div className="row" style={{ gap: 12 }}>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label" htmlFor="contacto-tel">Contacto (teléfono / WhatsApp)</label>
                       <input id="contacto-tel" type="tel" inputMode="tel" autoComplete="tel" className="input" value={form.telefono} onChange={e => setField('telefono', e.target.value)} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label" htmlFor="contacto-dni">DNI</label>
                       <input id="contacto-dni" inputMode="numeric" pattern="[0-9]*" className="input" value={form.dni} onChange={e => setField('dni', e.target.value)} />
                     </div>
@@ -465,13 +465,13 @@ export default function Contactos() {
                     {fieldErrors.email && <div className="field-error">{fieldErrors.email}</div>}
                   </div>
                   <div className="row" style={{ gap: 12 }}>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">De dónde vino</label>
                       <select className="input" value={form.origen} onChange={e => setField('origen', e.target.value)}>
                         {ORIGENES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Tipo</label>
                       <select className="input" value={form.tipo} onChange={e => setField('tipo', e.target.value)}>
                         {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}

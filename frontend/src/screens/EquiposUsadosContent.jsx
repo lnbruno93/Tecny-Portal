@@ -242,7 +242,7 @@ export default function EquiposUsadosContent({ onCountChange }) {
           <option value="en_tecnico">En técnico</option>
           <option value="reservado">Reservado</option>
         </select>
-        <div style={{ flex: 1 }} />
+        <div className="u-flex-1" />
         {/* 2026-07-11 (Lucas): copy del listado para WhatsApp de venta a clientes.
             Ver `copiarListado` para las reglas de filtro (solo disponibles con precio). */}
         <button

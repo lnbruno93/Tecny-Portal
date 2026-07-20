@@ -1214,19 +1214,19 @@ export default function Inventario() {
         className="kpi-grid"
         style={{ marginBottom: 12, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
       >
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">En técnico</div>
           <div className="kpi-value mono" style={{ color: 'var(--warn)' }}>{metricas ? metricas.en_tecnico_count : '—'}</div>
           <div className="muted tiny" style={{ marginTop: 6 }}>
             {metricas && metricas.en_tecnico_usd != null ? money(metricas.en_tecnico_usd, 'USD') : ''}
           </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Stock disponible</div>
           <div className="kpi-value mono pos">{metricas ? fmt(metricas.stock_disponible) : '—'}</div>
           <div className="muted tiny" style={{ marginTop: 6 }}>unidades</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Total valorizado</div>
           <div className="kpi-value">
             <span className="ccy">USD</span>
@@ -1584,14 +1584,14 @@ export default function Inventario() {
               <div className="modal-body">
                 <div className="stack" style={{ gap: 14 }}>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Tipo de carga</label>
                       <select className="input" value={form.tipo_carga} onChange={e => setF('tipo_carga', e.target.value)}>
                         <option value="unitario">Unitario (ej. celulares)</option>
                         <option value="lote">Con stock / lote</option>
                       </select>
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Categoría</label>
                       {/* F3.c (2026-07-08) — F3.d-1 (2026-07-09): dropdown lista
                           las categorías editables del tenant (clases_producto).
@@ -1637,9 +1637,9 @@ export default function Inventario() {
                     {fieldErrors.nombre && <div className="field-error">{fieldErrors.nombre}</div>}
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Batería (%)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="85" value={form.bateria} onChange={e => setF('bateria', e.target.value)} /></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">GB</label><input className="input" placeholder="128" value={form.gb} onChange={e => setF('gb', e.target.value)} /></div>
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Color</label><input className="input" placeholder="Natural" value={form.color} onChange={e => setF('color', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Batería (%)</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="85" value={form.bateria} onChange={e => setF('bateria', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">GB</label><input className="input" placeholder="128" value={form.gb} onChange={e => setF('gb', e.target.value)} /></div>
+                    <div className="field u-flex-1"><label className="field-label">Color</label><input className="input" placeholder="Natural" value={form.color} onChange={e => setF('color', e.target.value)} /></div>
                   </div>
                   <div className="field">
                     <label className="field-label">IMEI (opcional)</label>
@@ -1680,10 +1680,10 @@ export default function Inventario() {
                     </select>
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Costo</label>
                       <div className="flex-row" style={{ gap: 6 }}>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} style={{ flex: 1 }} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.costo} onChange={e => setF('costo', e.target.value)} className="u-flex-1" />
                         {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
                         <select className="input" style={{ width: 80 }} value={form.costo_moneda} onChange={e => setF('costo_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.costo_moneda].filter(Boolean)))
@@ -1691,10 +1691,10 @@ export default function Inventario() {
                         </select>
                       </div>
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Precio de venta</label>
                       <div className="flex-row" style={{ gap: 6 }}>
-                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} style={{ flex: 1 }} />
+                        <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" placeholder="0" value={form.precio_venta} onChange={e => setF('precio_venta', e.target.value)} className="u-flex-1" />
                         <select className="input" style={{ width: 80 }} value={form.precio_moneda} onChange={e => setF('precio_moneda', e.target.value)}>
                           {Array.from(new Set(['USD', monedaLocal, form.precio_moneda].filter(Boolean)))
                             .map(m => <option key={m} value={m}>{m}</option>)}
@@ -1703,8 +1703,8 @@ export default function Inventario() {
                     </div>
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}><label className="field-label">Cantidad</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} /></div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1"><label className="field-label">Cantidad</label><input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} className="input mono" value={form.cantidad} onChange={e => setF('cantidad', e.target.value)} /></div>
+                    <div className="field u-flex-1">
                       <label className="field-label">Estado</label>
                       <select className="input" value={form.estado} onChange={e => setF('estado', e.target.value)}>
                         <option value="disponible">Disponible</option>
@@ -1713,7 +1713,7 @@ export default function Inventario() {
                         <option value="vendido">Vendido</option>
                       </select>
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Condición</label>
                       <select className="input" value={form.condicion} onChange={e => setF('condicion', e.target.value)}>
                         <option value="nuevo">Nuevo</option>
@@ -1914,7 +1914,7 @@ export default function Inventario() {
                             </div>
 
                             <div className="row">
-                              <div className="field" style={{ flex: 1 }}>
+                              <div className="field u-flex-1">
                                 <label className="field-label">
                                   Monto ({monedaSel}) <span style={{ color: 'var(--neg)' }}>*</span>
                                 </label>

@@ -119,17 +119,17 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
         <div className="modal-body">
           <div className="stack" style={{ gap: 12 }}>
             <div className="row" style={{ gap: 12 }}>
-              <div className="field" style={{ flex: 1 }}>
+              <div className="field u-flex-1">
                 <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
                 <input type="text" className="input" value={form.nombre} onChange={set('nombre')} />
               </div>
-              <div className="field" style={{ flex: 1 }}>
+              <div className="field u-flex-1">
                 <label className="field-label">Apellido</label>
                 <input type="text" className="input" value={form.apellido} onChange={set('apellido')} />
               </div>
             </div>
             <div className="row" style={{ gap: 12 }}>
-              <div className="field" style={{ flex: 1 }}>
+              <div className="field u-flex-1">
                 <label className="field-label">Contacto</label>
                 <input type="text" className="input" placeholder="Tel / WhatsApp / email" value={form.contacto} onChange={set('contacto')} />
               </div>
@@ -143,11 +143,11 @@ function EditarClienteModal({ cliente, onClose, onSuccess }) {
               </div>
             </div>
             <div className="row" style={{ gap: 12 }}>
-              <div className="field" style={{ flex: 1 }}>
+              <div className="field u-flex-1">
                 <label className="field-label">Provincia</label>
                 <input type="text" className="input" value={form.provincia} onChange={set('provincia')} />
               </div>
-              <div className="field" style={{ flex: 1 }}>
+              <div className="field u-flex-1">
                 <label className="field-label">Localidad</label>
                 <input type="text" className="input" value={form.localidad} onChange={set('localidad')} />
               </div>
@@ -1020,7 +1020,7 @@ export default function CuentasCC() {
                 { label: 'Crédito a favor', unit: 'USD', val: <span className="mono pos">{fmt(rgData.total_credito)}</span>, sub: 'les debemos a clientes' },
                 { label: 'Neto',            unit: 'USD', val: <span className={'mono ' + (Number(rgData.neto) >= 0 ? 'neg' : 'pos')}>{fmtSigned(rgData.neto)}</span>, sub: Number(rgData.neto) >= 0 ? 'a cobrar (neto)' : 'a pagar (neto)' },
               ].map(k => (
-                <div key={k.label} className="card card-tight" style={{ flex: 1 }}>
+                <div key={k.label} className="card card-tight u-flex-1">
                   <div className="kpi-label">{k.label}</div>
                   <div className="kpi-value">
                     {k.unit && <span className="muted" style={{ fontSize: 12 }}>{k.unit} </span>}
@@ -1462,24 +1462,24 @@ export default function CuentasCC() {
             <div className="modal-body">
               <div className="stack" style={{ gap: 12 }}>
                 <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Nombre <span style={{ color: 'var(--neg)' }}>*</span></label>
                     <input type="text" className="input" placeholder="Ej: Juan"
                       value={clienteForm.nombre} onChange={e => setClienteForm(f => ({ ...f, nombre: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Apellido</label>
                     <input type="text" className="input" placeholder="Ej: García"
                       value={clienteForm.apellido} onChange={e => setClienteForm(f => ({ ...f, apellido: e.target.value }))} />
                   </div>
                 </div>
                 <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Contacto</label>
                     <input type="text" className="input" placeholder="Teléfono / WhatsApp / email"
                       value={clienteForm.contacto} onChange={e => setClienteForm(f => ({ ...f, contacto: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Categoría <span style={{ color: 'var(--neg)' }}>*</span></label>
                     <select className="input" value={clienteForm.categoria}
                       onChange={e => setClienteForm(f => ({ ...f, categoria: e.target.value }))}>
@@ -1490,12 +1490,12 @@ export default function CuentasCC() {
                   </div>
                 </div>
                 <div className="row" style={{ gap: 12 }}>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Provincia</label>
                     <input type="text" className="input" placeholder="Ej: Buenos Aires"
                       value={clienteForm.provincia} onChange={e => setClienteForm(f => ({ ...f, provincia: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <label className="field-label">Localidad</label>
                     <input type="text" className="input" placeholder="Ej: Lanús"
                       value={clienteForm.localidad} onChange={e => setClienteForm(f => ({ ...f, localidad: e.target.value }))} />

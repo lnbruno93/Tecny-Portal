@@ -208,7 +208,7 @@ export default function Desglose360() {
               ))}
             </div>
           </div>
-          <div style={{ flex: 1 }} />
+          <div className="u-flex-1" />
           <div>
             <div className="muted tiny" style={{ marginBottom: 4 }}>Categoría</div>
             <select className="input" style={{ minWidth: 130 }} value={claseId} onChange={e => setClaseId(e.target.value)}>

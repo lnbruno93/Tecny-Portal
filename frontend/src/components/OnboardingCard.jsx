@@ -192,7 +192,7 @@ export default function OnboardingCard() {
             }}
           >
             <IconCheckCircle done={false} />
-            <div style={{ flex: 1 }}>
+            <div className="u-flex-1">
               <div style={{ fontWeight: 600, fontSize: 14 }}>
                 Verificá tu email
               </div>
@@ -234,7 +234,7 @@ export default function OnboardingCard() {
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
               <IconCheckCircle done={done} />
-              <div style={{ flex: 1 }}>
+              <div className="u-flex-1">
                 <div style={{
                   fontWeight: 600,
                   fontSize: 14,

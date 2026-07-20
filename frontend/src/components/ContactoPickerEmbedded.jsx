@@ -64,7 +64,7 @@ export default function ContactoPickerEmbedded({ form, setForm, allContacts }) {
                    value={form.nuevoApellido}
                    onChange={e => setForm(f => ({ ...f, nuevoApellido: e.target.value }))} />
           </div>
-          <div className="field" style={{ flex: 1 }}>
+          <div className="field u-flex-1">
             <label className="field-label tiny">Tipo</label>
             <select className="input"
                     value={form.nuevoTipo}

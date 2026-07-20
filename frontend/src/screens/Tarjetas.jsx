@@ -690,19 +690,19 @@ export default function Tarjetas() {
         <>
           {/* KPIs globales */}
           <div className="row" style={{ marginBottom: 14 }}>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Saldo a tu favor</div>
               <div className="kpi-value mono" style={{ color: saldoColor(global.saldo) }}>$ {fmt(global.saldo)}</div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Comisión financiera</div>
               <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>$ {fmt(global.comision)}</div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Ya recibido (liquidado)</div>
               <div className="kpi-value mono">$ {fmt(global.liquidado)}</div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Cobrado bruto</div>
               <div className="kpi-value mono">$ {fmt(global.bruto)}</div>
             </div>
@@ -859,19 +859,19 @@ export default function Tarjetas() {
               {/* KPIs sumados — mismos 4 cards que cada tarjeta individual,
                   pero con los totales globales del rango elegido. */}
               <div className="row">
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben (falta cobrar)</div>
                   <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>$ {fmt(global.saldo)}</div>
                 </div>
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Comisión financiera</div>
                   <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>$ {fmt(global.comision)}</div>
                 </div>
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Cobrado (bruto)</div>
                   <div className="kpi-value mono">$ {fmt(global.bruto)}</div>
                 </div>
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Movimientos</div>
                   <div className="kpi-value mono">{estadoCuenta.length}</div>
                 </div>
@@ -1077,7 +1077,7 @@ export default function Tarjetas() {
                             · Caja USD recibe: u$s {fmt(usdRecibidoN)}
                           </div>
                         )}
-                        <div style={{ flex: 1 }} />
+                        <div className="u-flex-1" />
                         <button className="btn btn-primary btn-sm"
                                 disabled={savingMultiLiq || !multiOk}
                                 type="submit">
@@ -1141,19 +1141,19 @@ export default function Tarjetas() {
               </div>
 
               <div className="row">
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben (falta cobrar)</div>
                   <div className="kpi-value mono" style={{ color: saldoColor(r.saldo) }}>{sym(mon)} {fmt(r.saldo)}</div>
                 </div>
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Comisión financiera</div>
                   <div className="kpi-value mono" style={{ color: 'var(--neg)' }}>{sym(mon)} {fmt(r.comision_total)}</div>
                 </div>
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Cobrado (bruto)</div>
                   <div className="kpi-value mono">{sym(mon)} {fmt(r.bruto_total)}</div>
                 </div>
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Movimientos</div>
                   <div className="kpi-value mono">{r.movimientos || 0}</div>
                 </div>
@@ -1257,12 +1257,12 @@ export default function Tarjetas() {
                     </select>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Fecha del cobro</label>
                       <input type="date" className="input" value={cobroPrev.fecha}
                              onChange={e => setCobroPrev(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                              className="input mono" placeholder="0"
@@ -1341,12 +1341,12 @@ export default function Tarjetas() {
                   {editMov.tipo === 'cobro' ? (
                     <>
                       <div className="row" style={{ gap: 8 }}>
-                        <div className="field" style={{ flex: 1 }}>
+                        <div className="field u-flex-1">
                           <label className="field-label">Fecha</label>
                           <input type="date" className="input" value={editForm.fecha || ''}
                                  onChange={e => setEditForm(f => ({ ...f, fecha: e.target.value }))} />
                         </div>
-                        <div className="field" style={{ flex: 1 }}>
+                        <div className="field u-flex-1">
                           <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
                           <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                                  className="input mono" value={editForm.monto_bruto || ''}

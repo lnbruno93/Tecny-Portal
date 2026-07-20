@@ -307,7 +307,7 @@ export default function RecepcionStock() {
           <label>
             <div className="muted tiny" style={{ marginBottom: 4 }}>Costo unitario</div>
             <div style={{ display: 'flex', gap: 4 }}>
-              <input className="input" inputMode="decimal" placeholder="0" value={mCosto} onChange={e => setMCosto(e.target.value)} style={{ flex: 1 }} />
+              <input className="input" inputMode="decimal" placeholder="0" value={mCosto} onChange={e => setMCosto(e.target.value)} className="u-flex-1" />
               {/* 2026-06-29 Multi-país F3: USD + moneda local del tenant. */}
               <select className="input" value={mCostoMoneda} onChange={e => setMCostoMoneda(e.target.value)} style={{ width: 70 }}>
                 {Array.from(new Set(['USD', monedaLocal, mCostoMoneda].filter(Boolean)))
@@ -318,7 +318,7 @@ export default function RecepcionStock() {
           <label>
             <div className="muted tiny" style={{ marginBottom: 4 }}>Precio venta</div>
             <div style={{ display: 'flex', gap: 4 }}>
-              <input className="input" inputMode="decimal" placeholder="0" value={mPrecio} onChange={e => setMPrecio(e.target.value)} style={{ flex: 1 }} />
+              <input className="input" inputMode="decimal" placeholder="0" value={mPrecio} onChange={e => setMPrecio(e.target.value)} className="u-flex-1" />
               <select className="input" value={mPrecioMoneda} onChange={e => setMPrecioMoneda(e.target.value)} style={{ width: 70 }}>
                 {Array.from(new Set(['USD', monedaLocal, mPrecioMoneda].filter(Boolean)))
                   .map(m => <option key={m} value={m}>{m}</option>)}
@@ -358,7 +358,7 @@ export default function RecepcionStock() {
               onChange={e => setManualImei(e.target.value.replace(/\D/g, ''))}
               maxLength={17}
               disabled={!modeloListo}
-              style={{ flex: 1 }}
+              className="u-flex-1"
               aria-label="IMEI manual"
             />
             <button className="btn" type="submit" disabled={!modeloListo || !manualImei.trim()}>
@@ -415,7 +415,7 @@ export default function RecepcionStock() {
                 </div>
                 {/* Costo + Precio editables */}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <label style={{ flex: 1 }}>
+                  <label className="u-flex-1">
                     <div className="muted tiny" style={{ marginBottom: 2 }}>Costo</div>
                     <div style={{ display: 'flex', gap: 2 }}>
                       <input
@@ -440,7 +440,7 @@ export default function RecepcionStock() {
                       </select>
                     </div>
                   </label>
-                  <label style={{ flex: 1 }}>
+                  <label className="u-flex-1">
                     <div className="muted tiny" style={{ marginBottom: 2 }}>Precio venta</div>
                     <div style={{ display: 'flex', gap: 2 }}>
                       <input
@@ -478,7 +478,7 @@ export default function RecepcionStock() {
         background: 'linear-gradient(0deg, var(--surface) 70%, transparent)',
         display: 'flex', gap: 8,
       }}>
-        <button className="btn" onClick={cancelar} disabled={guardando} style={{ flex: 1 }}>
+        <button className="btn u-flex-1" onClick={cancelar} disabled={guardando}>
           Cancelar
         </button>
         <button

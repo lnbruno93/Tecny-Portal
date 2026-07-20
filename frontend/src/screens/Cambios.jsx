@@ -395,33 +395,33 @@ export default function Cambios() {
             </div>
 
             <div className="row">
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Te deben · USD</div>
                 <div className="kpi-value mono" style={{ color: Number(r.saldo_usd) > 0 ? 'var(--accent)' : 'inherit' }}>u$s {fmt(r.saldo_usd)}</div>
               </div>
               {/* 2026-07-14 (dirección inversa): saldos en moneda local, solo
                  si != 0 para no llenar de "0" a users que no usan la inversa. */}
               {Number(r.saldo_ars) !== 0 && (
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben · ARS</div>
                   <div className="kpi-value mono" style={{ color: Number(r.saldo_ars) > 0 ? 'var(--accent)' : 'inherit' }}>$ {fmt(r.saldo_ars)}</div>
                 </div>
               )}
               {Number(r.saldo_uyu) !== 0 && (
-                <div className="card card-tight" style={{ flex: 1 }}>
+                <div className="card card-tight u-flex-1">
                   <div className="kpi-label">Te deben · UYU</div>
                   <div className="kpi-value mono" style={{ color: Number(r.saldo_uyu) > 0 ? 'var(--accent)' : 'inherit' }}>$U {fmt(r.saldo_uyu)}</div>
                 </div>
               )}
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Entregado · USD equiv.</div>
                 <div className="kpi-value mono">u$s {fmt(r.entregado_usd)}</div>
               </div>
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Recibido · USD</div>
                 <div className="kpi-value mono">u$s {fmt(r.recibido_usd)}</div>
               </div>
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Movimientos</div>
                 <div className="kpi-value mono">{r.movimientos || 0}</div>
               </div>

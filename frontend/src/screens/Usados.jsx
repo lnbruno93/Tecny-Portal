@@ -183,24 +183,24 @@ export default function Usados() {
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
       <div className="row" style={{ marginBottom: 16 }}>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Equipos en catálogo</div>
           <div className="kpi-value mono">{rows.length}</div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Último registro</div>
           <div style={{ fontSize: 14, fontWeight: 600, marginTop: 6 }}>
             {lastUpdated ? relDate(lastUpdated.toISOString()) : '—'}
           </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Precio promedio</div>
           <div className="kpi-value">
             <span className="muted" style={{ fontSize: 13 }}>USD </span>
             <span className="mono">{fmt(avgPrecio)}</span>
           </div>
         </div>
-        <div className="card card-tight" style={{ flex: 1 }}>
+        <div className="card card-tight u-flex-1">
           <div className="kpi-label">Cambios sin guardar</div>
           <div className="kpi-value mono">
             <span className={editCount > 0 ? 'neg' : 'muted'}>{editCount}</span>
@@ -314,7 +314,7 @@ export default function Usados() {
                         autoFocus
                       />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Capacidad</label>
                       <input
                         className="input"
@@ -325,7 +325,7 @@ export default function Usados() {
                     </div>
                   </div>
                   <div className="row">
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Batería</label>
                       <input
                         className="input"
@@ -334,7 +334,7 @@ export default function Usados() {
                         onChange={e => setForm(f => ({ ...f, pct_bateria: e.target.value }))}
                       />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Precio USD <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <div className="input-group">
                         <span className="addon addon-l muted tiny" style={{ padding: '0 8px' }}>USD</span>

@@ -181,7 +181,7 @@ export default function ShareLinkPanel() {
         aria-expanded={abierto}
       >
         <span style={{ fontSize: 18 }}>🔗</span>
-        <div style={{ flex: 1 }}>
+        <div className="u-flex-1">
           <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
             Link público de equipos usados
             <span
@@ -226,7 +226,7 @@ export default function ShareLinkPanel() {
 
           {/* Config: whatsapp + mensaje */}
           <div className="row" style={{ marginBottom: 14 }}>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">WhatsApp de contacto (opcional)</label>
               <input
                 className="input"
@@ -239,7 +239,7 @@ export default function ShareLinkPanel() {
                 Aparece en el pie del listado. Si lo dejás vacío no se muestra botón WhatsApp.
               </span>
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">Mensaje adicional (opcional)</label>
               <input
                 className="input"
@@ -262,7 +262,7 @@ export default function ShareLinkPanel() {
                 checked={mostrarBateria}
                 onChange={e => setMostrarBateria(e.target.checked)}
               />
-              <div style={{ flex: 1 }}>
+              <div className="u-flex-1">
                 <div style={{ fontSize: 13, fontWeight: 500 }}>Mostrar batería del equipo</div>
                 <div className="muted tiny">Si preferís no mostrarla al público, apagalo.</div>
               </div>
@@ -273,7 +273,7 @@ export default function ShareLinkPanel() {
                 checked={mostrarPrecio}
                 onChange={e => setMostrarPrecio(e.target.checked)}
               />
-              <div style={{ flex: 1 }}>
+              <div className="u-flex-1">
                 <div style={{ fontSize: 13, fontWeight: 500 }}>Mostrar precio de venta</div>
                 <div className="muted tiny">Apagalo si preferís que consulten por WhatsApp. El equipo sale igual pero sin monto.</div>
               </div>

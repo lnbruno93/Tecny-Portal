@@ -308,7 +308,7 @@ function FlagCard({ flag, savingKey, onGlobalToggle, onRolloutChange, onReload }
               value={addingTenantReason}
               onChange={(e) => setAddingTenantReason(e.target.value)}
               maxLength={200}
-              style={{ flex: 1 }}
+              className="u-flex-1"
             />
             <Btn kind="primary" sm icon="plus" onClick={addTenantOverride}>
               Agregar

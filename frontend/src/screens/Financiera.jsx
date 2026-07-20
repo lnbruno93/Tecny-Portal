@@ -769,7 +769,7 @@ export default function Financiera() {
           </div>
           {/* KPI cards */}
           <div className="row" style={{ marginBottom: 16 }}>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Monto bruto · {rangeLabel(dashRange)}</div>
               <div className="kpi-value">
                 <span className="ccy">ARS </span>
@@ -779,7 +779,7 @@ export default function Financiera() {
                 {dashData?.count ?? 0} comprobantes
               </div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Retención financiera</div>
               <div className="kpi-value">
                 <span className="ccy">ARS </span>
@@ -791,7 +791,7 @@ export default function Financiera() {
                 {pct.toFixed(1)}% del bruto
               </div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Nos queda · neto</div>
               <div className="kpi-value">
                 <span className="ccy">ARS </span>
@@ -801,7 +801,7 @@ export default function Financiera() {
                 bruto − retención
               </div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Vendedores activos</div>
               <div className="kpi-value mono">{vendedores.length}</div>
               <div className="muted tiny" style={{ marginTop: 6 }}>
@@ -901,7 +901,7 @@ export default function Financiera() {
             <div style={{ padding: '0 18px 18px' }}>
               {/* Row 1: fecha + cliente */}
               <div className="row" style={{ marginBottom: 12 }}>
-                <div className="field" style={{ flex: 1 }}>
+                <div className="field u-flex-1">
                   <div className="field-label">Fecha de pago</div>
                   <input
                     type="date"
@@ -910,7 +910,7 @@ export default function Financiera() {
                     onChange={e => setCFecha(e.target.value)}
                   />
                 </div>
-                <div className="field" style={{ flex: 1 }}>
+                <div className="field u-flex-1">
                   <div className="field-label">Cliente</div>
                   <input
                     className="input"
@@ -923,7 +923,7 @@ export default function Financiera() {
 
               {/* Row 2: vendedor + monto */}
               <div className="row" style={{ marginBottom: 12 }}>
-                <div className="field" style={{ flex: 1 }}>
+                <div className="field u-flex-1">
                   <div className="field-label">Vendedor</div>
                   <select
                     className="input"
@@ -936,7 +936,7 @@ export default function Financiera() {
                     ))}
                   </select>
                 </div>
-                <div className="field" style={{ flex: 1 }}>
+                <div className="field u-flex-1">
                   <div className="field-label">Monto bruto (ARS)</div>
                   <div className="input-group">
                     <span className="addon addon-l" style={{ color: 'var(--accent)' }}>$</span>
@@ -1345,7 +1345,7 @@ export default function Financiera() {
                       value={pagoForm.fecha}
                       onChange={e => setPagoForm(f => ({ ...f, fecha: e.target.value }))} />
                   </div>
-                  <div className="field" style={{ flex: 1 }}>
+                  <div className="field u-flex-1">
                     <div className="field-label">Referencia</div>
                     <input className="input"
                       placeholder="Ej: Liquidación semana 4 mayo"
@@ -1483,7 +1483,7 @@ export default function Financiera() {
                 </div>
                 <div style={{ padding: '0 18px 18px' }}>
                   <div className="row" style={{ marginBottom: 16 }}>
-                    <div style={{ flex: 1 }}>
+                    <div className="u-flex-1">
                       <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                         Recibido
                       </div>
@@ -1492,7 +1492,7 @@ export default function Financiera() {
                         <span className="mono pos">{fmt(pagosTotales.total_monto)}</span>
                       </div>
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div className="u-flex-1">
                       <div className="muted tiny" style={{ fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                         N° pagos
                       </div>
@@ -1599,7 +1599,7 @@ export default function Financiera() {
                       <input type="date" className="input" value={manualForm.fecha}
                              onChange={e => setManualForm(f => ({ ...f, fecha: e.target.value }))} />
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Cliente <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input className="input" placeholder="Nombre del cliente" autoFocus
                              value={manualForm.cliente}
@@ -1615,7 +1615,7 @@ export default function Financiera() {
                     </select>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
-                    <div className="field" style={{ flex: 1 }}>
+                    <div className="field u-flex-1">
                       <label className="field-label">Monto bruto <span style={{ color: 'var(--neg)' }}>*</span></label>
                       <input type="number" inputMode="decimal" onKeyDown={blockInvalidNumberKeys} min="0" step="0.01"
                              className="input mono" placeholder="0"

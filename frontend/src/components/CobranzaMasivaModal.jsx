@@ -216,7 +216,7 @@ export default function CobranzaMasivaModal({ onClose, onSaved }) {
               <label className="field-label">Fecha</label>
               <input type="date" className="input" value={fecha} onChange={e => setFecha(e.target.value)} />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field u-flex-1">
               <label className="field-label">Caja por defecto</label>
               <select className="input" value={cajaDefault} onChange={e => setCD(e.target.value)}>
                 <option value="">— Sin default —</option>

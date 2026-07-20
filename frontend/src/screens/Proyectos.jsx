@@ -225,19 +225,19 @@ export default function Proyectos() {
       {vista === 'panorama' && (
         <>
           <div className="row" style={{ marginBottom: 14 }}>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Proyectos</div>
               <div className="kpi-value mono">{global.proyectos}</div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Invertido · USD</div>
               <div className="kpi-value mono" style={{ color: 'var(--accent)' }}>u$s {fmt(global.total_usd)}</div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Invertido · $</div>
               <div className="kpi-value mono">$ {fmt(global.total_ars)}</div>
             </div>
-            <div className="card card-tight" style={{ flex: 1 }}>
+            <div className="card card-tight u-flex-1">
               <div className="kpi-label">Movimientos</div>
               <div className="kpi-value mono">{global.movimientos}</div>
             </div>
@@ -337,19 +337,19 @@ export default function Proyectos() {
 
             {/* KPIs */}
             <div className="row">
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Invertido · USD</div>
                 <div className="kpi-value mono">u$s {fmt(r.total_usd)}</div>
               </div>
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Invertido · $</div>
                 <div className="kpi-value mono">$ {fmt(r.total_ars)}</div>
               </div>
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Movimientos</div>
                 <div className="kpi-value mono">{r.cant_movimientos || 0}</div>
               </div>
-              <div className="card card-tight" style={{ flex: 1 }}>
+              <div className="card card-tight u-flex-1">
                 <div className="kpi-label">Período</div>
                 <div className="mono" style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>
                   {r.desde ? `${fmtFecha(r.desde)} → ${fmtFecha(r.hasta)}` : '—'}
@@ -487,7 +487,7 @@ export default function Proyectos() {
                     <label className="field-label">Participantes <span className="muted">(de tus contactos)</span></label>
                     {/* Quick-add: crear un contacto nuevo sin salir del modal */}
                     <div className="flex-row" style={{ gap: 6, marginBottom: 8 }}>
-                      <input className="input" style={{ flex: 1 }} placeholder="Nuevo contacto (nombre)…" value={nuevoContacto}
+                      <input className="input u-flex-1" placeholder="Nuevo contacto (nombre)…" value={nuevoContacto}
                         onChange={e => setNuevoContacto(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddContacto(); } }} />
                       <button type="button" className="btn btn-ghost btn-sm" disabled={addingContacto || !nuevoContacto.trim()} onClick={handleQuickAddContacto}>
