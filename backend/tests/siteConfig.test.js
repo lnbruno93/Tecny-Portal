@@ -37,24 +37,30 @@ beforeAll(async () => {
   await userAuthCache.invalidateUserAuth(1);
   // Re-seed de la row singleton (el TRUNCATE del setup la vació — hay que
   // volver a poblarla como hace la migration).
+  //
+  // Sprint 3 M4d (2026-07-20): post-DROP COLUMN, la tabla queda con id,
+  // content, updated_at, updated_by, created_at. Todo el content editable
+  // vive en `content` JSONB.
   await pool.query(`
-    INSERT INTO site_landing_config (
-      id, contact_email, contact_whatsapp, contact_whatsapp_display,
-      contact_address, contact_instagram_handle, contact_instagram_url,
-      testimonials
-    ) VALUES (
-      1, 'hola@tecnyapp.com', '5491126165007', '+54 9 11 2616-5007',
-      'Buenos Aires, Argentina', 'tecny.app', 'https://instagram.com/tecny.app',
-      '[]'::jsonb
-    ) ON CONFLICT (id) DO UPDATE SET
-      contact_email = EXCLUDED.contact_email,
-      contact_whatsapp = EXCLUDED.contact_whatsapp,
-      contact_whatsapp_display = EXCLUDED.contact_whatsapp_display,
-      contact_address = EXCLUDED.contact_address,
-      contact_instagram_handle = EXCLUDED.contact_instagram_handle,
-      contact_instagram_url = EXCLUDED.contact_instagram_url,
-      testimonials = EXCLUDED.testimonials
-  `);
+    INSERT INTO site_landing_config (id, content) VALUES (
+      1,
+      $1::jsonb
+    ) ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content
+  `, [JSON.stringify({
+    contact: {
+      email: 'hola@tecnyapp.com',
+      whatsapp: '5491126165007',
+      whatsapp_display: '+54 9 11 2616-5007',
+      address: 'Buenos Aires, Argentina',
+      instagram_handle: 'tecny.app',
+      instagram_url: 'https://instagram.com/tecny.app',
+    },
+    hero: { headline: null, subheadline: null, blurb: null },
+    cta: { headline: null, body: null },
+    testimonials: [],
+    faq: [],
+    features: { google_reviews_enabled: true },
+  })]);
 
   superAdminToken = jwt.sign(
     {
@@ -392,7 +398,7 @@ describe('google_reviews_enabled toggle', () => {
 
   it('default true en la row seed (migration aplicada)', async () => {
     const { rows } = await pool.query(
-      `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+      `SELECT (content->'features'->>'google_reviews_enabled')::boolean AS google_reviews_enabled FROM site_landing_config WHERE id = 1`
     );
     expect(rows[0].google_reviews_enabled).toBe(true);
   });
@@ -405,13 +411,13 @@ describe('google_reviews_enabled toggle', () => {
 
     // Verificar en DB directamente.
     const { rows } = await pool.query(
-      `SELECT google_reviews_enabled FROM site_landing_config WHERE id = 1`
+      `SELECT (content->'features'->>'google_reviews_enabled')::boolean AS google_reviews_enabled FROM site_landing_config WHERE id = 1`
     );
     expect(rows[0].google_reviews_enabled).toBe(false);
 
     // Cleanup: dejar en true para no cross-contaminar.
     await pool.query(
-      `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+      `UPDATE site_landing_config SET content = jsonb_set(content, '{features,google_reviews_enabled}', 'true'::jsonb) WHERE id = 1`
     );
   });
 
@@ -436,7 +442,7 @@ describe('google_reviews_enabled toggle', () => {
     it('flag=false → devuelve empty con disabled:true (NO llama a Google)', async () => {
       // Setear flag a false.
       await pool.query(
-        `UPDATE site_landing_config SET google_reviews_enabled = false WHERE id = 1`
+        `UPDATE site_landing_config SET content = jsonb_set(content, '{features,google_reviews_enabled}', 'false'::jsonb) WHERE id = 1`
       );
       const fetchSpy = jest.spyOn(global, 'fetch');
 
@@ -449,14 +455,14 @@ describe('google_reviews_enabled toggle', () => {
 
       // Cleanup.
       await pool.query(
-        `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+        `UPDATE site_landing_config SET content = jsonb_set(content, '{features,google_reviews_enabled}', 'true'::jsonb) WHERE id = 1`
       );
     });
 
     it('flag=true → llama a Google normalmente', async () => {
       // Confirmar que default está en true (viene del test anterior o seed).
       await pool.query(
-        `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+        `UPDATE site_landing_config SET content = jsonb_set(content, '{features,google_reviews_enabled}', 'true'::jsonb) WHERE id = 1`
       );
       jest.spyOn(global, 'fetch').mockResolvedValueOnce({
         ok: true,
@@ -517,7 +523,7 @@ describe('google_reviews_enabled toggle', () => {
 
     it('refleja enabled=false cuando el flag está apagado', async () => {
       await pool.query(
-        `UPDATE site_landing_config SET google_reviews_enabled = false WHERE id = 1`
+        `UPDATE site_landing_config SET content = jsonb_set(content, '{features,google_reviews_enabled}', 'false'::jsonb) WHERE id = 1`
       );
       jest.spyOn(global, 'fetch').mockResolvedValueOnce({
         ok: true,
@@ -530,455 +536,69 @@ describe('google_reviews_enabled toggle', () => {
 
       // Cleanup.
       await pool.query(
-        `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`
+        `UPDATE site_landing_config SET content = jsonb_set(content, '{features,google_reviews_enabled}', 'true'::jsonb) WHERE id = 1`
       );
     });
   });
 });
 
-// ── Sprint 3 M4a: content JSONB trigger ────────────────────────────────
+// ── Sprint 3 M4d: post-sunset invariants ────────────────────────────────
 //
-// La migration 20260720000001_site_landing_content_jsonb agrega la columna
-// `content JSONB` + un trigger BEFORE INSERT/UPDATE que la mantiene
-// sincronizada con las columnas legacy. Esta suite verifica la invariante
-// "content == columnas" ante los distintos writes que el sistema puede
-// producir.
-//
-// Se testea acá (no en unit tests) porque necesita PG real — el trigger
-// vive en la DB. Un mock de pg no lo cubriría.
+// M4d dropea las 14 cols legacy + el trigger. Estos tests verifican el
+// nuevo steady state: solo existen `id`, `content`, `updated_at`,
+// `updated_by`, `created_at` en la tabla. Todo el content editable vive
+// en JSONB. Este bloque es un smoke test de la migration de sunset.
 
-describe('Sprint 3 M4a — trigger site_landing_config_sync_content', () => {
-  // Helper: espera a que la row singleton tenga content JSONB alineado con
-  // las columnas legacy. Es sync porque el trigger corre en el mismo statement.
-  async function readContent() {
-    const { rows } = await pool.query(
-      `SELECT content, contact_email, contact_whatsapp, contact_whatsapp_display,
-              contact_address, contact_instagram_handle, contact_instagram_url,
-              hero_headline, hero_subheadline, hero_blurb,
-              cta_headline, cta_body,
-              testimonials, faq, google_reviews_enabled
-         FROM site_landing_config WHERE id = 1`,
-    );
-    return rows[0];
-  }
-
-  it('content JSONB tiene todas las secciones esperadas', async () => {
-    const row = await readContent();
-    // Contract del content JSONB definido en la migration. Estas keys deben
-    // existir siempre — landing/admin no tolera cambios accidentales.
-    expect(row.content).toHaveProperty('contact');
-    expect(row.content).toHaveProperty('hero');
-    expect(row.content).toHaveProperty('cta');
-    expect(row.content).toHaveProperty('testimonials');
-    expect(row.content).toHaveProperty('faq');
-    expect(row.content).toHaveProperty('features');
-  });
-
-  it('content.contact matchea las columnas contact_*', async () => {
-    const row = await readContent();
-    expect(row.content.contact).toEqual({
-      email: row.contact_email,
-      whatsapp: row.contact_whatsapp,
-      whatsapp_display: row.contact_whatsapp_display,
-      address: row.contact_address,
-      instagram_handle: row.contact_instagram_handle,
-      instagram_url: row.contact_instagram_url,
-    });
-  });
-
-  it('UPDATE de una columna hero_* sincroniza content.hero automáticamente', async () => {
-    await pool.query(
-      `UPDATE site_landing_config SET hero_headline = $1 WHERE id = 1`,
-      ['Test headline sync'],
-    );
-    const row = await readContent();
-    expect(row.content.hero.headline).toBe('Test headline sync');
-    expect(row.hero_headline).toBe('Test headline sync');
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET hero_headline = NULL WHERE id = 1`,
-    );
-  });
-
-  it('UPDATE de testimonials (JSONB) sincroniza content.testimonials', async () => {
-    const testimonials = [
-      { id: 't1', name: 'Test User', initial: 'T', color: 'blue', time: 'hace 1 mes', text: 'ok' },
-    ];
-    await pool.query(
-      `UPDATE site_landing_config SET testimonials = $1::jsonb WHERE id = 1`,
-      [JSON.stringify(testimonials)],
-    );
-    const row = await readContent();
-    expect(row.content.testimonials).toEqual(testimonials);
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET testimonials = '[]'::jsonb WHERE id = 1`,
-    );
-  });
-
-  it('UPDATE de google_reviews_enabled sincroniza content.features', async () => {
-    await pool.query(
-      `UPDATE site_landing_config SET google_reviews_enabled = false WHERE id = 1`,
-    );
-    const row = await readContent();
-    expect(row.content.features.google_reviews_enabled).toBe(false);
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET google_reviews_enabled = true WHERE id = 1`,
-    );
-  });
-
-  it('el PATCH endpoint del admin dispara el sync (invariante end-to-end)', async () => {
-    // Simula lo que la UI del admin hace: PATCH con hero + testimonials +
-    // toggle google reviews. Después leemos la row y verificamos que content
-    // JSONB refleja los cambios sin que el endpoint escriba a `content`.
-    const payload = {
-      hero_headline: 'Headline via PATCH',
-      cta_body: 'CTA body via PATCH',
-      testimonials: [
-        // Color debe ser #RRGGBB + text mínimo 10 chars — matchea el Zod
-        // schema del PATCH (`testimonialItemSchema` en schemas/superAdmin.js).
-        { name: 'Cliente Real', initial: 'C', color: '#22c55e', time: 'hace 3 días', text: 'testimonio real de prueba' },
-      ],
-      google_reviews_enabled: false,
-    };
-    const r = await request(app)
-      .patch('/api/super-admin/site-config')
-      .set(auth())
-      .send(payload);
-    expect(r.status).toBe(200);
-
-    const row = await readContent();
-    expect(row.content.hero.headline).toBe('Headline via PATCH');
-    expect(row.content.cta.body).toBe('CTA body via PATCH');
-    expect(row.content.features.google_reviews_enabled).toBe(false);
-    expect(row.content.testimonials).toHaveLength(1);
-    expect(row.content.testimonials[0].name).toBe('Cliente Real');
-    // El id fue generado server-side (crypto.randomUUID) — verificamos que
-    // aparece en el JSONB con el mismo valor que en la columna.
-    expect(row.content.testimonials[0].id).toBe(row.testimonials[0].id);
-
-    // Cleanup — restaurar el estado inicial.
-    await pool.query(`
-      UPDATE site_landing_config
-         SET hero_headline = NULL,
-             cta_body = NULL,
-             testimonials = '[]'::jsonb,
-             google_reviews_enabled = true
-       WHERE id = 1
+describe('Sprint 3 M4d — post-sunset invariants', () => {
+  it('site_landing_config tiene solo 5 columnas (id, content, audit fields)', async () => {
+    const { rows } = await pool.query(`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'site_landing_config'
+       ORDER BY ordinal_position
     `);
+    const cols = rows.map(r => r.column_name).sort();
+    expect(cols).toEqual(['content', 'created_at', 'id', 'updated_at', 'updated_by']);
   });
 
-  it('columnas NULL se serializan como null en content JSONB (no como "null" string)', async () => {
-    // Todos los campos hero_* + cta_* arrancan NULL. Verificamos que el
-    // JSONB los expone como null JSON, no como string "null" o missing.
-    await pool.query(`
-      UPDATE site_landing_config
-         SET hero_headline = NULL, hero_subheadline = NULL, hero_blurb = NULL,
-             cta_headline = NULL, cta_body = NULL
-       WHERE id = 1
+  it('trigger site_landing_config_sync_content_trg está droppeado', async () => {
+    const { rows } = await pool.query(`
+      SELECT trigger_name FROM information_schema.triggers
+       WHERE event_object_table = 'site_landing_config'
     `);
-    const row = await readContent();
-    expect(row.content.hero).toEqual({ headline: null, subheadline: null, blurb: null });
-    expect(row.content.cta).toEqual({ headline: null, body: null });
-  });
-});
-
-// ── Sprint 3 M4b: reads desde content JSONB ────────────────────────────
-//
-// M4a agregó `content` JSONB con trigger que la sincroniza desde cols.
-// M4b hace el flip: los reads (GET público + GET super-admin +
-// google-reviews flag) leen desde `content` en vez de las cols.
-//
-// El shape del RESPONSE no cambia (compat con landing y admin). Este
-// bloque de tests prueba que los reads efectivamente vienen del JSONB —
-// no de las cols — creando una divergencia intencional entre ambos.
-
-describe('Sprint 3 M4b — reads from content JSONB', () => {
-  // Helper: fuerza una divergencia entre `content` y las cols. Como el
-  // trigger BEFORE UPDATE sincroniza automáticamente en cada write,
-  // usamos ALTER TABLE ... DISABLE TRIGGER para que el UPDATE se
-  // aplique sin re-sincronizar. Después de asertar el read, re-enable +
-  // fire una UPDATE no-op para restaurar la invariante.
-  //
-  // Ojo: es un patrón invasivo (toca el schema) pero es aislado al test
-  // y se revierte antes del beforeEach del siguiente test — no ensucia.
-  async function withDivergentContent(contentOverrides, fn) {
-    await pool.query(`ALTER TABLE site_landing_config DISABLE TRIGGER site_landing_config_sync_content_trg`);
-    try {
-      await pool.query(
-        `UPDATE site_landing_config SET content = content || $1::jsonb WHERE id = 1`,
-        [JSON.stringify(contentOverrides)],
-      );
-      await fn();
-    } finally {
-      await pool.query(`ALTER TABLE site_landing_config ENABLE TRIGGER site_landing_config_sync_content_trg`);
-      // Re-sync content desde las cols (no-op UPDATE dispara el trigger).
-      await pool.query(`UPDATE site_landing_config SET id = id WHERE id = 1`);
-    }
-  }
-
-  it('GET /api/public/site-config lee contact desde content (no de las cols)', async () => {
-    await withDivergentContent(
-      {
-        contact: {
-          email: 'jsonb@only.test',
-          whatsapp: '9999999999',
-          whatsapp_display: '+99 9 9999-9999',
-          address: 'Solo en JSONB',
-          instagram_handle: 'only.jsonb',
-          instagram_url: 'https://instagram.com/only.jsonb',
-        },
-      },
-      async () => {
-        const r = await request(app).get('/api/public/site-config');
-        expect(r.status).toBe(200);
-        // El endpoint debe devolver los valores DEL JSONB, no de las cols
-        // (que tienen los valores originales del seed).
-        expect(r.body.contact.email).toBe('jsonb@only.test');
-        expect(r.body.contact.address).toBe('Solo en JSONB');
-      },
-    );
+    expect(rows).toHaveLength(0);
   });
 
-  it('GET /api/public/site-config lee hero + cta + faq desde content', async () => {
-    await withDivergentContent(
-      {
-        hero: { headline: 'H de JSONB', subheadline: null, blurb: 'B de JSONB' },
-        cta: { headline: 'CTA de JSONB', body: 'body de JSONB' },
-        faq: [{ id: '11111111-1111-4111-8111-111111111111', question: 'Q JSONB', answer: 'A JSONB' }],
-      },
-      async () => {
-        const r = await request(app).get('/api/public/site-config');
-        expect(r.status).toBe(200);
-        expect(r.body.hero.headline).toBe('H de JSONB');
-        expect(r.body.cta.headline).toBe('CTA de JSONB');
-        expect(r.body.faq).toHaveLength(1);
-        expect(r.body.faq[0].question).toBe('Q JSONB');
-      },
-    );
-  });
-
-  it('GET /api/public/google-reviews respeta el flag desde content.features', async () => {
-    await withDivergentContent(
-      { features: { google_reviews_enabled: false } },
-      async () => {
-        // Con el flag false, el endpoint devuelve reviews vacías + disabled=true
-        // (misma semantica que el test original de google-reviews toggle).
-        jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ reviews: [{ author_name: 'no-va' }] }),
-        });
-        const r = await request(app).get('/api/public/google-reviews');
-        expect(r.status).toBe(200);
-        expect(r.body.disabled).toBe(true);
-        expect(r.body.reviews).toEqual([]);
-      },
-    );
-  });
-
-  it('GET /api/super-admin/site-config devuelve shape flat desde content', async () => {
-    await withDivergentContent(
-      {
-        contact: { email: 'admin-flat@jsonb.test' },
-        hero: { headline: 'Hero from JSONB via admin GET' },
-      },
-      async () => {
-        const r = await request(app)
-          .get('/api/super-admin/site-config')
-          .set(auth());
-        expect(r.status).toBe(200);
-        // Contract: shape flat (mismos nombres de fields que antes) — la
-        // admin UI no cambia. La source detrás sí (content JSONB).
-        expect(r.body.contact_email).toBe('admin-flat@jsonb.test');
-        expect(r.body.hero_headline).toBe('Hero from JSONB via admin GET');
-      },
-    );
-  });
-
-  it('PATCH endpoint returns response shape flat desde content', async () => {
-    // Verifica que el RETURNING del PATCH también usa content (no cols).
-    // Sin divergence acá porque el PATCH inmediatamente re-sync por el
-    // trigger — solo probamos que el shape de la response es correcto.
-    const r = await request(app)
-      .patch('/api/super-admin/site-config')
-      .set(auth())
-      .send({ hero_headline: 'PATCH → returning', cta_headline: 'PATCH cta' });
-    expect(r.status).toBe(200);
-    expect(r.body.hero_headline).toBe('PATCH → returning');
-    expect(r.body.cta_headline).toBe('PATCH cta');
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET content = jsonb_set(jsonb_set(content, '{hero,headline}', 'null'::jsonb), '{cta,headline}', 'null'::jsonb) WHERE id = 1`,
-    );
-  });
-});
-
-// ── Sprint 3 M4c: writes flip a content JSONB + trigger bidireccional ──
-//
-// M4b hizo el flip de reads. M4c hace el flip de writes: PATCH escribe
-// content JSONB via UPDATE SET content = ... El trigger de M4a se
-// reemplaza por uno bidireccional que respeta cuál lado se tocó:
-//   · UPDATE cols → sync content ← cols (rama A, backward compat)
-//   · UPDATE content → sync cols ← content (rama B, nuevo path del PATCH)
-//
-// Objetivo del bidireccional: durante deploy transition, el server viejo
-// (M4b) sigue escribiendo cols hasta que muera. Con el trigger bidireccional
-// ambos servers coexisten sin corromper la invariante.
-
-describe('Sprint 3 M4c — writes to content + bidirectional trigger', () => {
-  it('PATCH endpoint escribe content JSONB directo (no cols)', async () => {
-    // Verificamos que el UPDATE del PATCH toca la column `content`. La
-    // manera indirecta: hacer un PATCH, ver que cols quedaron sincronizadas
-    // (esto pasa si content se escribió y el trigger sincronizó cols FROM
-    // content — rama B). Si el PATCH escribiera cols directo (path viejo),
-    // el resultado sería el mismo — no discriminaría. Para probar rama B
-    // específicamente hacemos abajo un test con trigger DISABLED.
-    const r = await request(app)
-      .patch('/api/super-admin/site-config')
-      .set(auth())
-      .send({ contact_email: 'm4c-write@tecnyapp.com' });
-    expect(r.status).toBe(200);
-
-    // Ambos deben mostrar el nuevo valor.
-    const { rows: [row] } = await pool.query(
-      `SELECT content->'contact'->>'email' AS from_content, contact_email AS from_col
-         FROM site_landing_config WHERE id = 1`,
-    );
-    expect(row.from_content).toBe('m4c-write@tecnyapp.com');
-    expect(row.from_col).toBe('m4c-write@tecnyapp.com');
-
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET content = jsonb_set(content, '{contact,email}', '"hola@tecnyapp.com"'::jsonb) WHERE id = 1`,
-    );
-  });
-
-  it('trigger rama B: UPDATE content → cols quedan sincronizadas', async () => {
-    // SQL directo: escribir content sin tocar cols. Verificar que las cols
-    // reflejan el nuevo valor por acción del trigger (rama B del trigger
-    // bidireccional).
-    await pool.query(
-      `UPDATE site_landing_config
-          SET content = jsonb_set(content, '{hero,headline}', '"Rama B test"'::jsonb)
-        WHERE id = 1`,
-    );
-    const { rows: [row] } = await pool.query(
-      `SELECT hero_headline FROM site_landing_config WHERE id = 1`,
-    );
-    expect(row.hero_headline).toBe('Rama B test');
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET content = jsonb_set(content, '{hero,headline}', 'null'::jsonb) WHERE id = 1`,
-    );
-  });
-
-  it('trigger rama A: UPDATE cols (legacy path) → content sigue sincronizado', async () => {
-    // Regresión: el path viejo (UPDATE de cols directo, como haría el
-    // server pre-M4c durante deploy transition) sigue funcionando. Rama A
-    // del trigger bidireccional.
-    await pool.query(
-      `UPDATE site_landing_config SET hero_headline = 'Rama A test' WHERE id = 1`,
-    );
-    const { rows: [row] } = await pool.query(
-      `SELECT content->'hero'->>'headline' AS from_content, hero_headline FROM site_landing_config WHERE id = 1`,
-    );
-    expect(row.from_content).toBe('Rama A test');
-    expect(row.hero_headline).toBe('Rama A test');
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET hero_headline = NULL WHERE id = 1`,
-    );
-  });
-
-  it('PATCH parcial preserva otros fields del content (partial update)', async () => {
-    // Set múltiples fields, luego PATCH toca solo uno, verifica que el resto
-    // sigue intacto. Esto verifica el merge JS del PATCH (read-current +
-    // set-field + write).
-    // Setup: usar el trigger para poblar cols → content.
-    await pool.query(`
-      UPDATE site_landing_config
-         SET hero_headline = 'H headline',
-             hero_blurb = 'H blurb',
-             cta_headline = 'C headline',
-             cta_body = 'C body'
-       WHERE id = 1
+  it('function site_landing_config_sync_content está droppeada', async () => {
+    const { rows } = await pool.query(`
+      SELECT proname FROM pg_proc WHERE proname = 'site_landing_config_sync_content'
     `);
-
-    // PATCH solo hero_headline.
-    const r = await request(app)
-      .patch('/api/super-admin/site-config')
-      .set(auth())
-      .send({ hero_headline: 'H headline updated' });
-    expect(r.status).toBe(200);
-
-    // Verificar: hero_headline actualizado, resto intacto.
-    const { rows: [row] } = await pool.query(
-      `SELECT content FROM site_landing_config WHERE id = 1`,
-    );
-    expect(row.content.hero.headline).toBe('H headline updated');
-    expect(row.content.hero.blurb).toBe('H blurb');
-    expect(row.content.cta.headline).toBe('C headline');
-    expect(row.content.cta.body).toBe('C body');
-
-    // Cleanup.
-    await pool.query(`
-      UPDATE site_landing_config
-         SET content = jsonb_set(
-               jsonb_set(
-                 jsonb_set(
-                   jsonb_set(content, '{hero,headline}', 'null'::jsonb),
-                   '{hero,blurb}', 'null'::jsonb
-                 ),
-                 '{cta,headline}', 'null'::jsonb
-               ),
-               '{cta,body}', 'null'::jsonb
-             )
-       WHERE id = 1
-    `);
+    expect(rows).toHaveLength(0);
   });
 
-  it('PATCH testimonials genera UUIDs server-side (backward compat)', async () => {
-    // Comportamiento pre-M4c que sigue valiendo: items nuevos (sin id)
-    // reciben UUID del server; items con id lo preservan.
+  it('PATCH end-to-end sigue funcionando (contract flat preservado)', async () => {
+    // Post-sunset, la única mecánica activa es el PATCH escribiendo content
+    // JSONB. Este test lo prueba de punta a punta: PATCH → GET público
+    // refleja el cambio, response shape sigue siendo flat.
     const r = await request(app)
       .patch('/api/super-admin/site-config')
       .set(auth())
       .send({
-        testimonials: [
-          { name: 'Sin ID', initial: 'S', color: '#22c55e', time: 'ahora', text: 'nuevo testimonio de prueba' },
-          { id: '11111111-1111-4111-8111-111111111111', name: 'Con ID', initial: 'C', color: '#3b82f6', time: 'ahora', text: 'testimonio existente' },
-        ],
+        hero_headline: 'Post-sunset headline',
+        cta_body: 'Post-sunset CTA body',
       });
     expect(r.status).toBe(200);
-    expect(r.body.testimonials).toHaveLength(2);
-    // Primero: UUID generado (matchea el regex del uuidLoose).
-    expect(r.body.testimonials[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-    // Segundo: id preservado.
-    expect(r.body.testimonials[1].id).toBe('11111111-1111-4111-8111-111111111111');
-    // Cleanup.
-    await pool.query(
-      `UPDATE site_landing_config SET content = jsonb_set(content, '{testimonials}', '[]'::jsonb) WHERE id = 1`,
-    );
-  });
+    expect(r.body.hero_headline).toBe('Post-sunset headline');
+    expect(r.body.cta_body).toBe('Post-sunset CTA body');
 
-  it('PATCH normaliza empty string → null (backward compat)', async () => {
-    // Set un valor, luego PATCH con '' para limpiarlo.
-    await pool.query(
-      `UPDATE site_landing_config SET contact_address = 'algo' WHERE id = 1`,
-    );
-    const r = await request(app)
+    const pub = await request(app).get('/api/public/site-config');
+    expect(pub.body.hero.headline).toBe('Post-sunset headline');
+    expect(pub.body.cta.body).toBe('Post-sunset CTA body');
+
+    // Cleanup: restaurar el content de arranque via PATCH (no acceso a cols).
+    await request(app)
       .patch('/api/super-admin/site-config')
       .set(auth())
-      .send({ contact_address: '' });
-    expect(r.status).toBe(200);
-    expect(r.body.contact_address).toBeNull();
-    // Verificar en DB también (columna Y JSONB).
-    const { rows: [row] } = await pool.query(
-      `SELECT contact_address, content->'contact'->>'address' AS from_content
-         FROM site_landing_config WHERE id = 1`,
-    );
-    expect(row.contact_address).toBeNull();
-    expect(row.from_content).toBeNull();
+      .send({ hero_headline: null, cta_body: null });
   });
 });
+
