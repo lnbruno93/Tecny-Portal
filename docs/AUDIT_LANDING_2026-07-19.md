@@ -156,15 +156,15 @@ Es un rediseño de landing B2C (compare iPhones, drag&drop) hecho en Replit. Nar
 
 **Objetivo**: la landing pasa CI con tests que atraparían el bug de hoy, es mantenible por sub-secciones, y cumple WCAG 2.1 AA básico.
 
-### Sprint 3 (cuando duela) — Escalabilidad del CMS
+### Sprint 3 — Escalabilidad del CMS
 
-| # | Item | Severidad | Esfuerzo |
-|---|---|---|---|
-| M4 | Refactor `site_landing_config` → `content JSONB` con schema Zod | MED | 1 semana |
-| L1 | Deduplicar CSP entre `netlify.toml` root y admin | LOW | 30 min |
-| L2 | Limpieza `Landing.css` | LOW | 30 min |
+| # | Item | Severidad | Esfuerzo | Estado |
+|---|---|---|---|---|
+| M4 | Refactor `site_landing_config` → `content JSONB` con schema Zod | MED | 1 semana | ⏳ Pending (disparador no cumplido) |
+| L1 | Deduplicar CSP entre `netlify.toml` root y admin | LOW | 30 min | ✅ Done — spec canónica en `scripts/security/csp-spec.js` + test de paridad en CI |
+| L2 | Limpieza `Landing.css` | LOW | 30 min | ✅ Done — 26 líneas de selectores huérfanos removidas (`.strip*`, `.test*`, `.bigstat*`, `.tint-slate`) |
 
-**Disparador**: cuando la tabla singleton supere 20 columnas o alguien pida agregar un campo dinámico complejo (ej. hero video URL con thumbnail).
+**Disparador M4**: cuando la tabla singleton supere 20 columnas o alguien pida agregar un campo dinámico complejo (ej. hero video URL con thumbnail). Hoy en 15+ columnas — todavía manejable.
 
 ## Métricas baseline (2026-07-19)
 
