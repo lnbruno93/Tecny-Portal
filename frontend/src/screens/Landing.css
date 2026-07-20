@@ -264,11 +264,12 @@
 .tecny-landing .pill-pos { background: rgba(74,222,128,0.13); color: var(--pos); }
 .tecny-landing .pill-amber { background: var(--accent-soft); color: var(--accent); }
 
-/* ── Logo strip ──────────────────────────────────────── */
-.tecny-landing .strip { border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); padding: 36px 0; }
-.tecny-landing .strip-label { text-align: center; font-size: 12.5px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; margin-bottom: 22px; }
-.tecny-landing .strip-logos { display: flex; justify-content: center; gap: 48px; flex-wrap: wrap; align-items: center; opacity: 0.6; }
-.tecny-landing .strip-logos .lg { font-weight: 700; font-size: 19px; letter-spacing: -0.02em; color: var(--text-2); }
+/* Logo strip (`.strip*`) removido en Sprint 3 L2 (2026-07-19). Antes vivía
+   acá el CSS de la franja "Equipos que ya operan con Tecny" con 6 logos
+   inventados. La sección JSX se quitó en #441 (2026-06-26) y el CSS quedó
+   huérfano — este cleanup lo saca del bundle. Si a futuro volvemos con
+   logos reales, el patrón de carrusel (`.trusted-*` para "Empresas que
+   confiaron") sirve como base. */
 
 /* ── Section frame ───────────────────────────────────── */
 .tecny-landing section.s { padding: 96px 0; }
@@ -303,7 +304,9 @@
 .tecny-landing .tint-purple{background:rgba(167,139,250,0.16);color:#c4aeff}
 .tecny-landing .tint-cyan{background:rgba(56,189,248,0.14);color:#6fcef5}
 .tecny-landing .tint-pink{background:rgba(244,114,182,0.14);color:#f4a5cf}
-.tecny-landing .tint-slate{background:rgba(148,163,184,0.14);color:#cbd5e1}
+/* .tint-slate removido en Sprint 3 L2: nunca fue aplicado a ningún módulo
+   (los tints en uso son amber/blue/green/purple/cyan/pink). Si a futuro se
+   necesita un tint neutro, agregar de vuelta. */
 
 /* ── Feature highlight ───────────────────────────────── */
 .tecny-landing .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
@@ -322,21 +325,13 @@
 .tecny-landing .calc-total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 14px; display:flex; justify-content: space-between; align-items: baseline; }
 .tecny-landing .calc-total .v { font-family:'JetBrains Mono',monospace; font-size: 24px; font-weight: 700; color: var(--accent); }
 
-/* ── Testimonios ─────────────────────────────────────── */
-.tecny-landing .tests { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.tecny-landing .test { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px; display: flex; flex-direction: column; }
-.tecny-landing .test .stars { color: var(--accent); font-size: 14px; letter-spacing: 2px; margin-bottom: 16px; }
-.tecny-landing .test .q { font-size: 15.5px; line-height: 1.55; color: var(--text); margin: 0 0 22px; flex: 1; }
-.tecny-landing .test .who { display: flex; align-items: center; gap: 12px; }
-.tecny-landing .test .av { width: 40px; height: 40px; border-radius: 50%; background: var(--surface-3); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
-.tecny-landing .test .nm { font-weight: 600; font-size: 14px; }
-.tecny-landing .test .rl { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
-
-.tecny-landing .bigstat { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--surface); margin-top: 48px; }
-.tecny-landing .bigstat > div { padding: 28px; border-right: 1px solid var(--hairline); text-align: center; }
-.tecny-landing .bigstat > div:last-child { border-right: 0; }
-.tecny-landing .bigstat .v { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; color: var(--accent); font-family:'JetBrains Mono',monospace; }
-.tecny-landing .bigstat .l { font-size: 13px; color: var(--text-2); margin-top: 6px; }
+/* Testimonios (`.test*`) y BigStat (`.bigstat*`) removidos en Sprint 3 L2
+   (2026-07-19). Contexto: la sección JSX se removió en #441 (2026-06-26)
+   por contenido inventado (nombres/quotes fake + 4 métricas no auditables
+   como "+2.800 reseñas Google" sin perfil real). El CSS quedó huérfano
+   hasta este cleanup. Cuando volvamos con testimonios reales, el patrón
+   de las reseñas Google actuales (`.reviews-*`) sirve como base — o
+   reintroducimos estos selectores. Ver comentario del JSX line ~477. */
 
 /* ── Pricing ─────────────────────────────────────────── */
 .tecny-landing .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
@@ -439,10 +434,9 @@
 @media (max-width: 940px) {
   .tecny-landing { --pad: 24px; }
   .tecny-landing .steps { grid-template-columns: 1fr 1fr; }
-  .tecny-landing .mods, .tecny-landing .tests, .tecny-landing .plans { grid-template-columns: 1fr; }
+  .tecny-landing .mods, .tecny-landing .plans { grid-template-columns: 1fr; }
   .tecny-landing .feat { grid-template-columns: 1fr; gap: 32px; }
-  .tecny-landing .bigstat { grid-template-columns: 1fr 1fr; }
-  .tecny-landing .bigstat > div:nth-child(2) { border-right: 0; }
+  /* .tests + .bigstat removidos del media query en Sprint 3 L2 — los selectores base también salieron. */
   .tecny-landing .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
   .tecny-landing .contact-grid { grid-template-columns: 1fr 1fr; }
   .tecny-landing .nav-links { display: none; }
@@ -480,7 +474,8 @@
   .tecny-landing .nav-cta .btn { padding: 0 8px; font-size: 13px; height: 44px; }
 }
 @media (max-width: 560px) {
-  .tecny-landing .steps, .tecny-landing .bigstat { grid-template-columns: 1fr; }
+  .tecny-landing .steps { grid-template-columns: 1fr; }
+  /* .bigstat removida — el selector base también salió (Sprint 3 L2). */
   .tecny-landing .shot-kpis { grid-template-columns: 1fr 1fr; }
   .tecny-landing .plan .price .num { font-size: 38px; }
   .tecny-landing .contact-grid { grid-template-columns: 1fr; }

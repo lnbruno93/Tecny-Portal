@@ -290,9 +290,9 @@ export default function Landing() {
         google-ea cualquiera de los nombres.
         Cuando tengamos 3+ clientes con permiso explícito para mostrar el
         nombre, agregamos el strip de vuelta — con los reales únicamente.
-        El CSS de .strip queda en el bundle sin uso (cleanup en otra pasada
-        — el costo del CSS no usado es ~80 bytes minificados, no vale el
-        riesgo de regresión visual en otras pantallas que pudieran reusarlo).
+        Sprint 3 L2 (2026-07-19): el CSS `.strip*` que quedaba huérfano en
+        Landing.css se removió — cuando volvamos con logos reales, el
+        pattern del carrusel de "Empresas que confiaron" sirve como base.
       */}
 
       {/* ── CÓMO FUNCIONA ────────────────────────────────── */}
@@ -494,6 +494,8 @@ export default function Landing() {
         verificar.
         Footer "Clientes" link al anchor #testimonios también removido — el
         anchor no existe más.
+        Sprint 3 L2 (2026-07-19): el CSS `.test*` y `.bigstat*` que quedaba
+        huérfano en Landing.css se removió como parte del cleanup general.
       */}
 
       {/* ── PRECIOS ──────────────────────────────────────── */}

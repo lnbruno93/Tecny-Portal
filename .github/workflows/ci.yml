@@ -7,6 +7,33 @@ on:
     branches: [main]
 
 jobs:
+  # Sprint 3 L1 (roadmap post-auditoría 2026-07-19). Fast infra-linting job
+  # (~5s): asserta paridad de CSP entre netlify.toml root y admin, previniendo
+  # la clase de bug del 2026-07-19 (admin's CSP tenía `img-src 'self' data:`
+  # sin las backend URLs → logos del carrusel Empresas 404 en admin.tecnyapp.com).
+  # Sin services, sin build — solo lee 2 files + assertions. Corre en paralelo
+  # con el resto, no bloquea nada.
+  csp-parity:
+    name: CSP parity (netlify.toml)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Los tests del parser + el verify usan solo el built-in `node:test` y
+      # `fs`. No requerimos `npm ci` en root porque scripts/security/* no importa
+      # ninguna dependency de node_modules. Ahorramos ~30s por run.
+      - name: Run parser unit tests
+        run: npm run test:csp
+
+      - name: Verify CSP parity between netlify.toml files
+        run: npm run verify:csp
+
   test:
     name: Integration Tests
     runs-on: ubuntu-latest
