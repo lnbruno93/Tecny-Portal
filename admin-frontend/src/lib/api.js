@@ -92,8 +92,44 @@ export function abortAllInFlight() {
   inFlightControllers.clear();
 }
 
+// 2026-07-21 Task #190 Fase 3: refresh token pattern (mismo approach que
+// portal frontend/src/lib/api.js). Ante un 401, intentar silent refresh
+// vía POST /api/auth/refresh antes de dar por muerta la sesión.
+//
+// `refreshInFlight` es un singleton promise que dedupica llamadas
+// concurrentes cuando N requests fallan 401 en paralelo.
+let refreshInFlight = null;
+
+async function attemptRefresh() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(BASE + '/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include', // requisito para cookie httpOnly del backend
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data?.token) {
+        saveToken(data.token);
+        return data.token;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    } finally {
+      setTimeout(() => { refreshInFlight = null; }, 0);
+    }
+  })();
+  return refreshInFlight;
+}
+
 // Core wrapper — devuelve JSON, throw en error con mensaje legible.
-export async function api(path, method = 'GET', body = null, timeoutMs = 15000) {
+//
+// 2026-07-21 Task #190 Fase 3: `_isRetry` interno para prevenir loop de
+// refresh. Si el retry post-refresh también da 401, cae al admin-session
+// -expired flow previo.
+export async function api(path, method = 'GET', body = null, timeoutMs = 15000, _isRetry = false) {
   const controller = new AbortController();
   inFlightControllers.add(controller);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -102,6 +138,10 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
     method,
     headers: { 'Content-Type': 'application/json' },
     signal: controller.signal,
+    // credentials para que el cookie httpOnly del refresh viaje al backend.
+    // Cookie tiene path scope a /api/auth/refresh — en otros endpoints
+    // el browser NO lo manda, cero overhead.
+    credentials: 'include',
   };
   const token = getToken();
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
@@ -119,6 +159,15 @@ export async function api(path, method = 'GET', body = null, timeoutMs = 15000) 
   }
 
   if (res.status === 401) {
+    // Fase 3 refresh flow (mismo que Fase 2 portal). Excluye /api/auth/refresh
+    // mismo para no loop, y `_isRetry` para prevenir doble refresh en el
+    // caso donde el retry post-refresh también dé 401.
+    if (!_isRetry && path !== '/api/auth/refresh') {
+      const newToken = await attemptRefresh();
+      if (newToken) {
+        return api(path, method, body, timeoutMs, true);
+      }
+    }
     clearToken();
     // Evento custom diferenciado del portal — un mismo browser podría tener
     // ambas apps abiertas y no queremos disparar logout cruzado.
@@ -171,6 +220,11 @@ async function loginDirect(username, password, code, hcaptchaResponse) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(bodyObj),
+    // 2026-07-21 Task #190 Fase 3: credentials:'include' requerido para
+    // que el browser ACEPTE el Set-Cookie httpOnly del backend (refresh
+    // token). Sin esto el cookie se descarta silencioso y el refresh
+    // flow futuro nunca puede activarse.
+    credentials: 'include',
   });
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data; // { token, user }
